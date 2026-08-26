@@ -11,6 +11,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from ...entities.worker_failure_protocol import (
+    PREFIX_PROVIDER_CAPABILITY,
+    PREFIX_PROVIDER_DETERMINISTIC,
+    PREFIX_PROVIDER_EMPTY,
+    PREFIX_PROVIDER_TRANSIENT,
+    PREFIX_SCHEMA_GATE,
+)
+
 
 ProviderFailureCategory = Literal["deterministic", "transient", "incomplete"]
 
@@ -86,11 +94,11 @@ _DETERMINISTIC_MARKERS = (
 # treats a present Research Packet + failed status as content (not missing
 # packet); prefixes still matter when the packet is absent.
 _EXPLICIT_EXTERNAL_FAILURE_MARKERS = (
-    "schema_gate:",
-    "provider_empty:",
-    "provider_capability:",
-    "provider_transient:",
-    "provider_deterministic:",
+    PREFIX_SCHEMA_GATE,
+    PREFIX_PROVIDER_EMPTY,
+    PREFIX_PROVIDER_CAPABILITY,
+    PREFIX_PROVIDER_TRANSIENT,
+    PREFIX_PROVIDER_DETERMINISTIC,
     "provider error",
     "provider failed",
     "provider failure",
@@ -113,7 +121,7 @@ def classify_provider_failure(value: object) -> ProviderFailureClassification:
     # transiency of the failure: a collection call that timed out or hit a
     # rate limit does not repeat verbatim, so the transient markers inside the
     # text decide the category.
-    if text.startswith("schema_gate:"):
+    if text.startswith(PREFIX_SCHEMA_GATE):
         if any(marker in text for marker in _TRANSIENT_MARKERS):
             return ProviderFailureClassification(
                 category="transient",
@@ -123,17 +131,17 @@ def classify_provider_failure(value: object) -> ProviderFailureClassification:
             category="deterministic",
             reason_code="provider_deterministic_failure",
         )
-    if text.startswith("provider_deterministic:"):
+    if text.startswith(PREFIX_PROVIDER_DETERMINISTIC):
         return ProviderFailureClassification(
             category="deterministic",
             reason_code="provider_deterministic_failure",
         )
-    if text.startswith("provider_transient:"):
+    if text.startswith(PREFIX_PROVIDER_TRANSIENT):
         return ProviderFailureClassification(
             category="transient",
             reason_code="provider_transient_failure",
         )
-    if text.startswith("provider_empty:"):
+    if text.startswith(PREFIX_PROVIDER_EMPTY):
         return ProviderFailureClassification(
             category="incomplete",
             reason_code="provider_empty_result",
@@ -143,7 +151,7 @@ def classify_provider_failure(value: object) -> ProviderFailureClassification:
     # *different* Provider, so this is an incomplete round, not a deterministic
     # contract failure: the domain keeps its one bounded targeted re-research,
     # which is precisely the round that switches modality.
-    if text.startswith("provider_capability:"):
+    if text.startswith(PREFIX_PROVIDER_CAPABILITY):
         return ProviderFailureClassification(
             category="incomplete",
             reason_code="provider_capability_declined",

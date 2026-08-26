@@ -3,34 +3,27 @@
 Workers write a single string into ``TravelAgentState.last_error``. Artifact Gate
 and Candidate Gate classify with substring markers in
 ``orchestrator.provider_failure``. Prefixes make schema vs provider outcomes
-explicit without a parallel structured error channel.
+explicit without a parallel structured error channel. The prefix constants
+themselves live in ``entities/worker_failure_protocol.py`` so the classifier
+(which sits upstream in the import graph) reads the same values.
 """
 
 from __future__ import annotations
 
-from typing import Final
-
+from ..entities.worker_failure_protocol import (
+    KNOWN_PREFIXES as _KNOWN_PREFIXES,
+    PREFIX_PROVIDER_CAPABILITY as PREFIX_PROVIDER_CAPABILITY,
+    PREFIX_PROVIDER_DETERMINISTIC as PREFIX_PROVIDER_DETERMINISTIC,
+    PREFIX_PROVIDER_EMPTY as PREFIX_PROVIDER_EMPTY,
+    PREFIX_PROVIDER_TRANSIENT as PREFIX_PROVIDER_TRANSIENT,
+    PREFIX_SCHEMA_GATE as PREFIX_SCHEMA_GATE,
+    PREFIX_WORKER_FAILED as PREFIX_WORKER_FAILED,
+)
 from .orchestrator.provider_failure import (
     _DETERMINISTIC_MARKERS,
     _TRANSIENT_MARKERS,
 )
 from .research_packet_output import ResearchPacketOutputError
-
-PREFIX_SCHEMA_GATE: Final = "schema_gate:"
-PREFIX_PROVIDER_EMPTY: Final = "provider_empty:"
-PREFIX_PROVIDER_CAPABILITY: Final = "provider_capability:"
-PREFIX_PROVIDER_TRANSIENT: Final = "provider_transient:"
-PREFIX_PROVIDER_DETERMINISTIC: Final = "provider_deterministic:"
-PREFIX_WORKER_FAILED: Final = "worker_failed:"
-
-_KNOWN_PREFIXES: Final = (
-    PREFIX_SCHEMA_GATE,
-    PREFIX_PROVIDER_EMPTY,
-    PREFIX_PROVIDER_CAPABILITY,
-    PREFIX_PROVIDER_TRANSIENT,
-    PREFIX_PROVIDER_DETERMINISTIC,
-    PREFIX_WORKER_FAILED,
-)
 
 _QUERY_MISS_MARKERS = (
     "found no executable route",
