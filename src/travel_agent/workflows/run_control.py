@@ -23,6 +23,11 @@ from langgraph.errors import GraphInterrupt
 
 from ..entities.request_contract import IntentAmendment, IntentAmendmentRejection
 from ..entities.run_budget import RunBudgetSnapshot
+from .node_names import (
+    NODE_INTENT_AMENDMENT_ROUTER as _INTENT_AMENDMENT_ROUTER,
+    NODE_REQUEST_CONTRACT_NORMALIZER as _REQUEST_CONTRACT_NORMALIZER,
+    RESEARCH_WORKER_NODES as _RESEARCH_WORKER_NODES,
+)
 from .run_budget import RunBudgetLedger, ledger_for, peek_ledger, seed_run_budget
 from .run_deadline import (
     DeadlineObservation,
@@ -637,11 +642,7 @@ async def emit_node_lifecycle(
 NodeFn = TypeVar("NodeFn", bound=Callable[..., Any])
 
 
-_RESEARCH_WORKER_NODES = {
-    "destination_researcher",
-    "transport_researcher",
-    "accommodation_researcher",
-}
+# _RESEARCH_WORKER_NODES 的真源在 `node_names.RESEARCH_WORKER_NODES`。
 # Itinerary composition is a model path too, but it is the deliverable rather
 # than research, so it runs on its own window and stays enterable through the
 # minute the research workers have already lost.
@@ -652,8 +653,6 @@ _DEADLINE_BLOCKED_WORKER_NODES = _RESEARCH_WORKER_NODES | _COMPOSITION_WORKER_NO
 # later composition window; charging it to the research window makes it fail
 # immediately whenever a valid itinerary finishes during closeout.
 _COMPOSITION_MODEL_WINDOW_NODES = _COMPOSITION_WORKER_NODES | {"budget_estimate"}
-_REQUEST_CONTRACT_NORMALIZER = "request_contract_normalizer"
-_INTENT_AMENDMENT_ROUTER = "intent_amendment_router"
 
 
 def is_structural_connector_round(state: Any, node_name: str) -> bool:

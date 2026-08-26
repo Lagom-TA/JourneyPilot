@@ -27,6 +27,7 @@ from ...entities.delivery_bundle import (
 )
 from ...entities.state import TravelAgentState
 from ...workflows.composition_repair import apply_composition_repair_budget
+from ...workflows.node_names import RESEARCH_WORKER_NODES as _RESEARCH_WORKERS
 from ...workflows.run_deadline import observe_run_deadline
 from ..utils import strip_round_suffix
 from .candidate_gate import (
@@ -35,13 +36,6 @@ from .candidate_gate import (
     worker_targeted_research_exhausted,
 )
 from .provider_failure import classify_provider_failure, is_provider_or_model_failure
-
-
-_RESEARCH_WORKERS = {
-    "destination_researcher",
-    "transport_researcher",
-    "accommodation_researcher",
-}
 
 
 def _round_trip_workspace(workspace: Any) -> TripWorkspaceV2 | None:

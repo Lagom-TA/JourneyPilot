@@ -79,6 +79,7 @@ from ...services.weather_impact_engine import (
     risk_profile_from_constraint_pack,
 )
 from ...workflows.composition_repair import apply_composition_repair_budget
+from ...workflows.node_names import RESEARCH_WORKER_NODES as _RESEARCH_WORKERS
 from ...workflows.run_deadline import (
     DeadlineObservation,
     observe_run_deadline,
@@ -90,11 +91,6 @@ from .provider_failure import classify_provider_failure, is_provider_or_model_fa
 
 logger = logging.getLogger(__name__)
 
-_RESEARCH_WORKERS = {
-    "destination_researcher",
-    "accommodation_researcher",
-    "transport_researcher",
-}
 _ROUND_SUFFIX = re.compile(r"_r(\d+)$")
 _MAX_TARGETED_RESEARCH_ATTEMPTS = 1
 # The one gap kind whose targeted round is widened to carry every companion
