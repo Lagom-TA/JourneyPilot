@@ -43,6 +43,7 @@ from ...entities.evidence_basis import PublicProjectionContractViolation
 from ...infrastructure.cost_ledger_store import cost_event_summary
 from ...tools.exposure_ledger import get_tool_exposure_ledger
 from ...workflows.delivery_finalizer import DeliveryFinalizationError
+from ...workflows.node_names import CHECKPOINT_GATE_NODES
 from ...workflows.travel_planning import CheckpointContractError
 from ...workflows.run_budget import peek_ledger, release_ledger
 from ...workflows.run_control import (
@@ -65,7 +66,6 @@ from .chat_stream_handlers import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["chat"])
 
-_CHECKPOINT_GATE_NODES = {"plan_gate"}
 _WORKFLOW_CANCEL_GRACE_SECONDS = 1.0
 
 # Deep Research 可以在单个节点里静默数分钟。没有任何字节写出时，一条仍在工作的流与
@@ -359,7 +359,7 @@ async def chat_stream(
         }:
             raise HTTPException(status_code=409, detail=f"TripRun 当前状态不可继续: {detail.run.status.value}")
         trip_run = detail.run
-        gate_node = detail.run.current_node if detail.run.current_node in _CHECKPOINT_GATE_NODES else None
+        gate_node = detail.run.current_node if detail.run.current_node in CHECKPOINT_GATE_NODES else None
         if (
             use_deep_research
             and detail.run.status == TripRunStatus.AWAITING_INPUT

@@ -19,7 +19,7 @@ from ...workflows.trace import make_trace_event, summarize_state_update
 from ...workflows.run_control import node_timing_registry, run_ts_ms
 from .chat_helpers import strip_thinking_text
 
-# Node sets used by handlers (kept local to avoid circular import with chat.py).
+# Node sets used by handlers.
 _DEEP_WORKER_NODES = {
     "destination_researcher",
     "transport_researcher",
@@ -27,7 +27,6 @@ _DEEP_WORKER_NODES = {
     "itinerary_planner",
 }
 _FINAL_OUTPUT_NODES = {"fast_answer_agent"}
-_CHECKPOINT_GATE_NODES = {"plan_gate"}
 _PROGRESS_STEP_NODES = {
     "request_contract_normalizer",
     "research_brief_builder",
