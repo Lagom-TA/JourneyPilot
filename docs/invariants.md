@@ -288,6 +288,70 @@ Tests:
 - `agent_behavior/test_intent_research_ranking_selection.py::test_visit_must_fit_inside_published_opening_window`
 - `agent_behavior/test_intent_research_ranking_selection.py::test_visit_rejects_published_weekday_closure`
 
+### INV-WEP-001：schema_gate: 前缀进门后暂态性由文本里的暂态标记决定
+Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
+`src/travel_agent/agents/orchestrator/provider_failure.py`、
+`src/travel_agent/agents/worker_errors.py`
+Enforced by: `classify_provider_failure` 见该前缀进条件分支（文本含 `_TRANSIENT_MARKERS`
+判 (transient, provider_transient_failure)，否则判 (deterministic,
+provider_deterministic_failure)）；`is_provider_or_model_failure` 对它返回 True。
+前缀字符串是随 checkpoint 落盘的持久化格式，逐字符不许变。
+`_EXPLICIT_EXTERNAL_FAILURE_MARKERS` 禁止用 `*KNOWN_PREFIXES` splat 全表混进名单：
+`worker_failed:` 不在名单里是待决缺陷不是不变量（见 `docs/pending.md`），
+收编它是路由级变更，单独拍板单独立项。
+Tests:
+- `test_worker_error_protocol_contract.py::test_every_known_prefix_keeps_its_current_reader_verdict`
+- `test_worker_error_protocol_contract.py::test_schema_gate_prefix_verdict_depends_on_transient_markers_in_the_payload`
+- `test_worker_error_protocol_contract.py::test_explicit_markers_contain_exactly_the_five_gate_visible_prefixes`
+
+### INV-WEP-002：provider_empty: 前缀进门后固定判 (incomplete, provider_empty_result)
+Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
+`src/travel_agent/agents/orchestrator/provider_failure.py`、
+`src/travel_agent/agents/worker_errors.py`
+Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider_or_model_failure`
+对它返回 True；Provider 完成了调用但零命中是诚实的空结果，不是合同失败。
+前缀字符串是持久化格式，逐字符不许变
+Tests:
+- `test_worker_error_protocol_contract.py::test_every_known_prefix_keeps_its_current_reader_verdict`
+- `test_worker_error_protocol_contract.py::test_explicit_markers_contain_exactly_the_five_gate_visible_prefixes`
+
+### INV-WEP-003：provider_transient: 前缀进门后固定判 (transient, provider_transient_failure)
+Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
+`src/travel_agent/agents/orchestrator/provider_failure.py`、
+`src/travel_agent/agents/worker_errors.py`
+Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider_or_model_failure`
+对它返回 True；暂态失败重试不会逐字复现，不许读成确定性失败关域。
+前缀字符串是持久化格式，逐字符不许变
+Tests:
+- `test_worker_error_protocol_contract.py::test_every_known_prefix_keeps_its_current_reader_verdict`
+- `test_worker_error_protocol_contract.py::test_explicit_markers_contain_exactly_the_five_gate_visible_prefixes`
+
+### INV-WEP-004：provider_deterministic: 前缀进门后固定判 (deterministic, provider_deterministic_failure)
+Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
+`src/travel_agent/agents/orchestrator/provider_failure.py`、
+`src/travel_agent/agents/worker_errors.py`
+Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider_or_model_failure`
+对它返回 True；确定性失败重试逐字复现，域按有限重试后关闭。
+前缀字符串是持久化格式，逐字符不许变
+Tests:
+- `test_worker_error_protocol_contract.py::test_every_known_prefix_keeps_its_current_reader_verdict`
+- `test_worker_error_protocol_contract.py::test_explicit_markers_contain_exactly_the_five_gate_visible_prefixes`
+
+### INV-WEP-005：provider_capability: 前缀进门后固定判 (incomplete, provider_capability_declined)
+Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
+`src/travel_agent/agents/orchestrator/provider_failure.py`、
+`src/travel_agent/agents/worker_errors.py`
+Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider_or_model_failure`
+对它返回 True；Gateway 在任何调用前判定 Provider 答不了所请求的日期，
+是 incomplete 不是合同失败，域保留那轮换模态的定向重研。
+前缀字符串是持久化格式，逐字符不许变。
+五条覆盖关系不许写成「前缀集合 ↔ 判类覆盖集合相等」的相等断言：
+那会把 `worker_failed:` 逼进 `_EXPLICIT_EXTERNAL_FAILURE_MARKERS`，四道门当场翻面，
+是无人拍板的路由变更
+Tests:
+- `test_worker_error_protocol_contract.py::test_every_known_prefix_keeps_its_current_reader_verdict`
+- `test_worker_error_protocol_contract.py::test_explicit_markers_contain_exactly_the_five_gate_visible_prefixes`
+
 ### INV-FIDELITY-001：硬禁止不得以预算耗尽为由降级
 Owner: `agents/orchestrator/intent_fidelity_gate.py`、`services/intent_verification.py`
 Enforced by: Fidelity Gate 分开识别 never-violate 与 repair-then-deviate；前者发现一次即拒绝，
