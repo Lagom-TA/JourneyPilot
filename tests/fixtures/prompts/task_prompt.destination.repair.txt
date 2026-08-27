@@ -1,0 +1,14 @@
+这是 Candidate Gate 发起的目的地候选身份定向补研，不是重新生成通用景点和餐饮清单。
+
+当前任务：补齐东京 Visit/Dining 候选的身份字段
+用户原始需求仅用于理解旅行背景：想看当代建筑，顺路吃点本地的
+受控目的地边界：[{"destination_id": "destination_tokyo", "country_code": "JP"}]
+
+本轮硬性执行规则：
+- 只补当前 gaps 指向的 Visit/Dining 候选身份字段。若 gap 只给出领域而没有具体实体名，先用唯一开放的网页发现工具找到 1 至 3 个与用户偏好匹配的真实门店/地点名称，再分别用 global_place_search 解析稳定身份；禁止拿“东京餐厅”等类别词直接撞地点 Provider 后就结束本轮。
+- 海外或全球地点优先调用 global_place_search，候选身份必须来自其结果，并逐字使用受控目的地的 country_code；maps_text_search 只可保留国家码与目的地一致的结果。网页发现结果只能提供待解析的实体名，不能直接支持 place_id、Provider type/country 或正式 Candidate。
+- place_id、provider_place_type 与 provider_country_code 必须逐字来自本轮外部工具原始结果，并由对应 FactAssertion 和 SourceRecord.snapshot 支持；禁止拼接、归一化、猜测或输出 ChIJ placeholder 等自产标识。
+- DiningCandidate 必须是具体餐馆、咖啡馆、酒吧或摊位门店；市场、商圈、美食街、区域和餐饮类别不能冒充门店候选。
+- 网页搜索可用于交叉核验名称、地址和营业信息，但网页只出现名称或地址时不能作为 place_id 证据。
+- 动态保留 1 至 6 个身份完整且质量足够的候选；宁可减少候选，也不得用 unknown、未检索、占位值或自产 evidence 凑数。
+- 没有任何满足合同的候选就明确失败，不得放宽硬约束。

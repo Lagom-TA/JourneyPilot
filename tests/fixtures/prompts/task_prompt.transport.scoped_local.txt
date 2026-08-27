@@ -1,0 +1,13 @@
+这是 Candidate Gate 发起的市内路线定向补研，不是新一轮通用交通调研。
+
+当前任务：补齐两个景点之间的市内连接
+用户原始需求仅用于理解旅行背景：想省点转车时间
+精确 connector gap：[{"from_candidate_id": "candidate_visit_a", "to_candidate_id": "candidate_visit_b"}]
+
+本轮硬性执行规则：
+- 只研究上游 Research Packets 中具体 Visit/Dining 实体之间的真实市内连接，transport_class 只能是 public_transit。
+- from_endpoint / to_endpoint 必须逐字绑定上游候选的真实名称与 place_id；不得改成附近车站、区域或泛化地名。
+- 市内路线只调用 global_route_search，并逐字传入上游端点名称、place_id、坐标和带目的地时区的出发时间。它已按端点坐标自动分派 provider（中国大陆及周边走高德，其余地区走 MOTIS/Transitous），你不需要也不能指定 provider；它失败时不要换用别的地图路线工具去回答同一个问题——那类结果不构成本轮可用的路线证据，直接如实失败。
+- 禁止查询航班、12306、出发城市到目的地的路线或任何 long_distance 候选；禁止先做城际交通再做市内路线。
+- 本轮只收口一个最高质量 current 候选。必须逐字复制 global_route_search.routes[0] 的 route_id、selected_mode、departure_at、arrival_at、duration_minutes 与完整 segments，并分别建立外部 FactAssertion/FieldProvenance；**逐字包括 null**——高德只给时长不给时刻表，所以大陆路线的 departure_at / arrival_at 就是 null，照抄 null，不得用出发时间加时长自己算一个时刻出来。segments 只用一条 field_path=segments 聚合事实，禁止把每个 segment 的叶子字段展开成重复 lineage。整份 Packet 最多 12 条事实与 12 条 provenance。
+- 至少一个候选必须由本轮外部结果支持为 freshness_status=current；没有足够事实就明确失败，不得自产 evidence。
