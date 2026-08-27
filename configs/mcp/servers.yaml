@@ -1,0 +1,112 @@
+# 仓库内置的 MCP server 静态声明。**全仓唯一定义处**。
+#
+# 只放声明：server 名、描述、Key 名、npm 包名与本地 bin 名、仓内脚本相对路径或
+# -m 模块名。求值留在 `config/mcp_defaults.py`——本地 bin 探测、环境变量现读、
+# sys.executable 与 repo root 拼路径，这几样都依赖运行时状态，写不进 YAML。
+#
+# 失败语义与 `configs/providers/*.yaml` 相反：那边坏一份只影响那一家模型供应商的
+# preset，其余照跑；这份坏掉等于 0 个 server，四个 worker 的 MCP 工具全空。而
+# `builders.py` 里 MCP 初始化的 except 只打一行 warning，系统会"正常启动"然后每个
+# worker 都没工具。所以这份文件缺失、解析失败或 schema 不合法，一律在 Settings
+# 构造期抛出，不吞、不回落。
+#
+# provider 的原生环境变量名（TAVILY_API_KEY 等）保持原名：它们要原样传给子进程，
+# 改成 JOURNEYPILOT_ 前缀反而会让子进程读不到。
+#
+# 设计原则（真实可用 + 官方可溯源）：
+# - 检索层用 agent 原生、带引用的搜索（Tavily/Brave）+ 深度抓取（Firecrawl），
+#   DuckDuckGo/fetch 作为零 Key 降级兜底。
+# - 数据源一律走官方 API（Duffel 航班、高德/百度地图、Open-Meteo），不用浏览器爬虫，
+#   也不接远程第三方聚合服务。酒店/住宿不依赖专用点评 MCP，统一由
+#   Tavily/Brave/Firecrawl/fetch 检索覆盖。
+# - 地图做高德 + 百度双覆盖；UGC 由公开网页检索补充。
+#
+# 凡带 required_env 的 server，未配置对应 Key 时会被 MCPManager 自动跳过
+# （见 tools/mcp_manager.py::_missing_required_env），不影响其他 server 启动，
+# 因此可以「配好一个用一个」逐步开通。
+#
+# 键序即声明顺序，会原样传给 Settings.mcp_servers。
+
+servers:
+  # ── 检索层：agent 原生搜索 + 深度抓取 ──────────────────────────────────
+  tavily-search:
+    description: Tavily agent 原生检索（搜索/提取/爬取，返回带引用结果，https://tavily.com）
+    required_env: [TAVILY_API_KEY]
+    node:
+      package: tavily-mcp@0.2.21
+      bin: tavily-mcp
+
+  brave-search:
+    description: Brave 独立索引网络搜索（备份检索源，https://brave.com/search/api）
+    required_env: [BRAVE_API_KEY]
+    node:
+      package: "@brave/brave-search-mcp-server@2.1.0"
+      bin: brave-search-mcp-server
+
+  firecrawl:
+    description: Firecrawl 深度网页抓取与正文提取（反爬强，https://firecrawl.dev）
+    required_env: [FIRECRAWL_API_KEY]
+    node:
+      package: firecrawl-mcp@3.23.0
+      bin: firecrawl-mcp
+
+  duckduckgo-search:
+    description: DuckDuckGo 免费网络搜索（零 Key，作为降级兜底 free_web_search 的 backbone）
+    python:
+      script: mcp_servers/search/free_search.py
+
+  fetch:
+    description: 通用 HTTP 获取服务（零 Key 轻量抓取）
+    python:
+      module: mcp_server_fetch
+
+  # ── 地图层：高德 + 百度双覆盖 ──────────────────────────────────────────
+  baidu-maps:
+    description: 百度地图（国内）：地理编码、POI、路线、天气、路况（https://lbsyun.baidu.com）
+    required_env: [BAIDU_MAP_API_KEY]
+    node:
+      package: "@baidumap/mcp-server-baidu-map@1.0.5"
+      bin: mcp-server-baidu-map
+
+  amap-maps:
+    description: 高德地图（国内）：地理编码 maps_geo、天气 maps_weather、路线、POI（https://lbs.amap.com）
+    required_env: [AMAP_MAPS_API_KEY]
+    node:
+      package: "@amap/amap-maps-mcp-server@0.0.8"
+      bin: mcp-amap
+
+  # ── 航班：仓库内 Duffel v2 MCP（全球，取代已停用的 Amadeus）────────────
+  # 不再使用 flights-mcp 0.1.0：它固定发送已停用的 Duffel-Version:v1，所有请求均 400。
+  # 本地 server 只开放强类型 search_flights，并将 Provider 响应规范化为 long_distance route。
+  # 酒店不走这里：Duffel Stays 无干净免费 MCP，住宿改由检索与抓取工具覆盖。
+  duffel-flights:
+    description: Duffel v2 航班搜索（全球官方 API，https://duffel.com）
+    required_env: [DUFFEL_API_KEY_LIVE]
+    python:
+      script: mcp_servers/flights/duffel_mcp.py
+
+  # ── 火车：仓库内 12306 MCP（国内，零 Key）──────────────────────────────
+  # 不再使用 12306-mcp 0.3.9（已是最新发布版）：它把 12306 早已下线的
+  # /otn/leftTicket/query 写死在代码里，get-tickets 恒定 404，交付出的国内行程一条
+  # 城际铁路腿都没有。12306 会轮换该路径并把当前值发布在 /otn/leftTicket/init 的
+  # HTML 里（CLeftTicketUrl），只有仓库内客户端能跟着轮换走；官方站点表快照见
+  # mcp_servers/rail/station_name.js。
+  12306-train:
+    description: 12306 火车票与车次查询服务（仓库内实现，零 Key，国内）
+    python:
+      script: mcp_servers/rail/rail_12306_mcp.py
+
+  # ── 天气：独立一等源（全球，零 Key）────────────────────────────────────
+  # 注：mcp-openweathermap 的 fastmcp 版本存在 completion 能力声明 bug，与本项目
+  # MCP 客户端不兼容（启动即崩），故改用零 Key 的 Open-Meteo。
+  open-meteo:
+    description: Open-Meteo MCP：当前天气、固定 7 日预报、历史天气与空气质量（零 Key，https://open-meteo.com）
+    node:
+      package: open-meteo-mcp@0.1.0
+      bin: weather-mcp
+
+  # ── 汇率（全球，零 Key）────────────────────────────────────────────────
+  currency-exchange-mcp:
+    description: 实时汇率换算（内置 Frankfurter API，无需 API Key，不依赖 Node）
+    python:
+      script: mcp_servers/currency/frankfurter_mcp.py

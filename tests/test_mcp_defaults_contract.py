@@ -23,7 +23,12 @@ from pathlib import Path
 
 import pytest
 
-from travel_agent.config.mcp_defaults import default_mcp_servers
+from travel_agent.config import mcp_defaults
+from travel_agent.config.mcp_defaults import (
+    MCPDeclarationError,
+    default_mcp_servers,
+    reload_declarations,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _FIXTURE_DIR = _REPO_ROOT / "tests" / "fixtures" / "mcp"
@@ -106,10 +111,14 @@ def test_default_mcp_servers_match_the_committed_baseline(monkeypatch, branch):
     # 故意没有"一键重生成"的按钮。这份东西是等价性证明，不是快照：需要它变的时候，
     # 变的是 11 个 server 的声明本身，那要单独立票并在 review 里逐字段看。
     assert path.exists(), f"{path.relative_to(_REPO_ROOT)} 缺失"
-    assert json.loads(path.read_text(encoding="utf-8")) == json.loads(expected), (
+    committed = json.loads(path.read_text(encoding="utf-8"))
+    current = json.loads(expected)
+    assert committed == current, (
         f"{path.relative_to(_REPO_ROOT)} 与 default_mcp_servers() 不一致。"
         "改 MCP 默认声明本身是行为改动，要单独立票；重构不该动这份输出。"
     )
+    # dict 相等不看键序，而键序就是声明顺序——单独钉一次。
+    assert list(committed) == list(current), "server 的声明顺序变了"
 
 
 def test_the_two_branches_really_differ_on_the_node_servers(monkeypatch):
@@ -172,3 +181,174 @@ def test_env_is_derived_from_required_env_and_read_per_call(monkeypatch):
         assert set(item.env or {}) <= set(item.required_env), (
             "env 的 Key 必须从 required_env 派生，不许各写一份"
         )
+
+
+# --- 失败必须硬抛 --------------------------------------------------------- #
+#
+# 失败语义与 configs/providers/*.yaml 相反：那边坏一份只影响那一家模型供应商的
+# preset，其余照跑；这份坏掉等于 0 个 server，四个 worker 的 MCP 工具全空。而
+# builders.py 里 MCP 初始化的 except Exception 只打一行 warning，系统会"正常启动"
+# 然后每个 worker 都没工具——那种失败没人会在启动日志里看见。
+
+
+@pytest.fixture
+def declaration_path(monkeypatch, tmp_path):
+    """把声明文件指到 tmp_path，并保证缓存前后都是干净的。
+
+    ``_declarations`` 带 lru_cache，不清就会拿到上一条用例解析好的好声明。
+    """
+
+    path = tmp_path / "servers.yaml"
+    monkeypatch.setattr(mcp_defaults, "DECLARATION_PATH", path)
+    reload_declarations()
+    yield path
+    monkeypatch.undo()
+    reload_declarations()
+
+
+def test_a_missing_declaration_file_fails_settings_construction(declaration_path):
+    """文件缺失必须抛，不许回落到空 dict 或硬编码默认。"""
+
+    assert not declaration_path.exists()
+    with pytest.raises(MCPDeclarationError) as caught:
+        default_mcp_servers()
+    # 报错要点明是哪个文件：这是运维唯一能拿去查的东西。
+    assert str(declaration_path) in str(caught.value)
+
+
+def test_unparseable_yaml_fails_and_names_the_file(declaration_path):
+    declaration_path.write_text("servers:\n  broken: [unclosed\n", encoding="utf-8")
+    with pytest.raises(MCPDeclarationError) as caught:
+        default_mcp_servers()
+    assert str(declaration_path) in str(caught.value)
+
+
+def test_a_non_mapping_top_level_fails(declaration_path):
+    declaration_path.write_text("- tavily-search\n", encoding="utf-8")
+    with pytest.raises(MCPDeclarationError) as caught:
+        default_mcp_servers()
+    assert str(declaration_path) in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "body, named",
+    [
+        # 拼错的字段名：extra="forbid" 必须在启动期抓住它，理由同 AgentToolPolicy。
+        (
+            "servers:\n"
+            "  tavily-search:\n"
+            "    description: d\n"
+            "    requiredEnv: [TAVILY_API_KEY]\n"
+            "    node: {package: p@1, bin: b}\n",
+            "requiredEnv",
+        ),
+        # node 段里拼错：嵌套模型也必须是 strict 的。
+        (
+            "servers:\n"
+            "  tavily-search:\n"
+            "    description: d\n"
+            "    node: {packge: p@1, bin: b}\n",
+            "packge",
+        ),
+        # 既没有 node 也没有 python：起不来的 server 不许静默存在。
+        ("servers:\n  tavily-search:\n    description: d\n", "tavily-search"),
+        # node 与 python 都给了：拿哪个起子进程说不清。
+        (
+            "servers:\n"
+            "  tavily-search:\n"
+            "    description: d\n"
+            "    node: {package: p@1, bin: b}\n"
+            "    python: {module: m}\n",
+            "tavily-search",
+        ),
+        # python 段 script 与 module 都给了。
+        (
+            "servers:\n"
+            "  x:\n"
+            "    description: d\n"
+            "    python: {script: a/b.py, module: m}\n",
+            "x",
+        ),
+        # 脚本路径往上走：这份文件决定拿什么去起子进程。
+        (
+            "servers:\n"
+            "  x:\n"
+            "    description: d\n"
+            "    python: {script: ../../etc/passwd}\n",
+            "x",
+        ),
+        # 空 description：一个没有描述的 server 在工具清单里等于匿名。
+        (
+            "servers:\n"
+            "  x:\n"
+            "    description: ''\n"
+            "    python: {module: m}\n",
+            "description",
+        ),
+        # 一个 server 都没有：等价于文件缺失，同样不许静默通过。
+        ("servers: {}\n", "servers"),
+    ],
+    ids=[
+        "misspelled_top_field",
+        "misspelled_node_field",
+        "no_launch_form",
+        "both_launch_forms",
+        "both_python_forms",
+        "escaping_script_path",
+        "empty_description",
+        "no_servers",
+    ],
+)
+def test_an_invalid_declaration_fails_and_names_the_offending_section(
+    declaration_path, body, named
+):
+    """schema 校验失败必须抛，而且报错要点名是哪个文件的哪一段。"""
+
+    declaration_path.write_text(body, encoding="utf-8")
+    with pytest.raises(MCPDeclarationError) as caught:
+        default_mcp_servers()
+    message = str(caught.value)
+    assert str(declaration_path) in message
+    assert named in message, message
+
+
+def test_only_the_yaml_parse_is_cached(declaration_path):
+    """缓存粒度只能到 YAML 解析：构造每次都跑，否则 env 的现读就没了。
+
+    这条与 test_env_is_derived_from_required_env_and_read_per_call 是一件事的两面：
+    那条从行为上验，这条从「同一份声明解析一次、构造两次」上验。
+    """
+
+    declaration_path.write_text(
+        "servers:\n"
+        "  tavily-search:\n"
+        "    description: d\n"
+        "    required_env: [TAVILY_API_KEY]\n"
+        "    node: {package: p@1, bin: b}\n",
+        encoding="utf-8",
+    )
+    first = default_mcp_servers()
+    # 解析结果被缓存了：文件删掉也还能构造。
+    declaration_path.unlink()
+    second = default_mcp_servers()
+    assert list(first) == list(second) == ["tavily-search"]
+    # 但两次构造出的是不同对象——没有把最终的 server dict 缓存住。
+    assert first is not second
+    assert first["tavily-search"] is not second["tavily-search"]
+
+
+def test_reload_declarations_picks_up_a_newly_broken_file(declaration_path):
+    """清了缓存就必须重新读，包括读到一份坏的。"""
+
+    declaration_path.write_text(
+        "servers:\n"
+        "  x:\n"
+        "    description: d\n"
+        "    python: {module: m}\n",
+        encoding="utf-8",
+    )
+    assert list(default_mcp_servers()) == ["x"]
+    declaration_path.write_text("servers:\n  x: {descriptn: d}\n", encoding="utf-8")
+    reload_declarations()
+    with pytest.raises(MCPDeclarationError):
+        default_mcp_servers()
