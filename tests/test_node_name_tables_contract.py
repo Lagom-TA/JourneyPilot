@@ -27,8 +27,6 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import AbstractSet, Iterable
 
-import pytest
-
 
 @lru_cache(maxsize=1)
 def _graph_node_names() -> frozenset[str]:
@@ -96,10 +94,6 @@ def test_trace_phase_table_covers_every_graph_node():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="四个节点还没有中文 Agent 名，表待补齐，见提交 3",
-)
 def test_agent_display_names_cover_every_graph_node():
     """缺一行的代价：界面上出现英文内部名。"""
 
@@ -113,10 +107,6 @@ def test_agent_display_names_cover_every_graph_node():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="四个节点还没有中文步骤名，表待补齐，见提交 3",
-)
 def test_step_display_names_cover_every_graph_node():
     """缺一行的代价：界面上出现英文内部名。"""
 
