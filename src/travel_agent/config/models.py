@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -459,6 +459,13 @@ class ProviderSnapshotCacheConfig(StrictConfig):
     place_identity_ttl_seconds: int = Field(default=7 * 24 * 60 * 60, gt=0)
     route_ttl_seconds: int = Field(default=300, gt=0)
 
+
+class AgentToolPolicy(StrictConfig):
+    """单个 worker agent 的工具访问策略。字段全带默认值：键可以只写一部分。"""
+
+    servers: Set[str] = Field(default_factory=set)
+    deny_tools: Set[str] = Field(default_factory=set)
+    extra_tools: Set[str] = Field(default_factory=set)
 
 
 class ToolExposureConfig(StrictConfig):

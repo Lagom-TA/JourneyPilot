@@ -35,6 +35,7 @@ from .loader import (
 from .models import (
     MAX_COMPLETION_TOKENS,
     CONFIG_VERSION,
+    AgentToolPolicy,
     BackgroundJobsConfig,
     BlockingWorkConfig,
     CheckpointRetentionConfig,
@@ -78,6 +79,7 @@ from .redaction import redact, redacted_settings
 __all__ = [
     "CONFIG_VERSION",
     "MAX_COMPLETION_TOKENS",
+    "AgentToolPolicy",
     "BackgroundJobsConfig",
     "BlockingWorkConfig",
     "CheckpointRetentionConfig",

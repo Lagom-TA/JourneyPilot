@@ -20,9 +20,9 @@ import time
 import uuid
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set, Tuple, TypedDict
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set, Tuple
 
-from ..config import get_settings
+from ..config import AgentToolPolicy, get_settings
 from ..tools.builtin_tools import SEARCH_TOOLS_NAME, build_search_tools_item
 from ..tools.exposure_ledger import (
     estimate_schema_tokens,
@@ -267,16 +267,10 @@ def make_round_name(base_name: str, round_num: int) -> str:
 # 工具获取与过滤
 # ---------------------------------------------------------------------------
 
-class _AgentToolPolicy(TypedDict, total=False):
-    """Agent 工具访问策略。未在策略中的 agent 默认拒绝所有 MCP 工具，保留本地工具。"""
-    servers: Set[str]       # 允许的 MCP server_name 集合
-    deny_tools: Set[str]    # 要拒绝的工具名集合（含本地工具），"*" 表示拒绝所有
-    extra_tools: Set[str]   # 额外允许的工具名集合
-
-_AGENT_TOOL_POLICY: Dict[str, _AgentToolPolicy] = {
-    "destination_researcher": {
+_AGENT_TOOL_POLICY: Dict[str, AgentToolPolicy] = {
+    "destination_researcher": AgentToolPolicy(
         # 检索层（tavily/brave/firecrawl/duckduckgo/fetch）。
-        "servers": {
+        servers={
             "tavily-search",
             "brave-search",
             "firecrawl",
@@ -286,7 +280,7 @@ _AGENT_TOOL_POLICY: Dict[str, _AgentToolPolicy] = {
         # destination_researcher 是唯一被允许调用 ask_user 的 Worker：
         # 当用户目的地存在重大歧义（同名城市、日期不明、地点指向不确定）时主动澄清。
         # 地图/天气工具不在其 server 白名单中，无需额外 deny。
-        "extra_tools": {
+        extra_tools={
             "free_web_search",
             "global_place_search",
             "maps_text_search",
@@ -294,20 +288,20 @@ _AGENT_TOOL_POLICY: Dict[str, _AgentToolPolicy] = {
             # CN dining amap text search returns no geometry; detail resolves pins.
             "maps_search_detail",
         },
-    },
-    "transport_researcher": {
+    ),
+    "transport_researcher": AgentToolPolicy(
         # 火车（12306）+ 航班（Duffel）+ 国内地图（高德）
-        "servers": {"12306-train", "duffel-flights", "amap-maps"},
+        servers={"12306-train", "duffel-flights", "amap-maps"},
         # 地图投影只消费 typed entity/place identity；天气由前置正式 Provider 获取。
-        "deny_tools": {"maps_geo", "maps_geocode", "maps_weather", "ask_user"},
-        "extra_tools": {"free_web_search", "global_route_search"},
-    },
-    "accommodation_researcher": {
+        deny_tools={"maps_geo", "maps_geocode", "maps_weather", "ask_user"},
+        extra_tools={"free_web_search", "global_route_search"},
+    ),
+    "accommodation_researcher": AgentToolPolicy(
         # 住宿：Nominatim 核验海外 property identity；Tavily/Brave 检索价格与可订性；汇率（Frankfurter）；
         # 国内酒店在 OpenStreetMap 覆盖极差，用高德 POI（maps_text_search/maps_around_search）落地具体酒店身份。
-        "servers": {"tavily-search", "brave-search", "currency-exchange-mcp"},
-        "deny_tools": {"ask_user"},
-        "extra_tools": {
+        servers={"tavily-search", "brave-search", "currency-exchange-mcp"},
+        deny_tools={"ask_user"},
+        extra_tools={
             "free_web_search",
             "global_place_search",
             "maps_text_search",
@@ -316,11 +310,11 @@ _AGENT_TOOL_POLICY: Dict[str, _AgentToolPolicy] = {
             # POI id to its point location so lodging can carry a map pin.
             "maps_search_detail",
         },
-    },
-    "itinerary_planner": {
-        "servers": set(),
-        "deny_tools": {"*"},  # 拒绝所有工具（纯 LLM 规划）
-    },
+    ),
+    "itinerary_planner": AgentToolPolicy(
+        servers=set(),
+        deny_tools={"*"},  # 拒绝所有工具（纯 LLM 规划）
+    ),
 }
 
 _SCOPED_NON_MCP_TOOLS = {"global_place_search", "global_route_search"}
@@ -448,14 +442,14 @@ def filter_tools_for_agent(
             not in _SCOPED_NON_MCP_TOOLS
         ]
 
-    deny_tools = policy.get("deny_tools", set())
+    deny_tools = policy.deny_tools
 
     # "*" 表示拒绝所有工具
     if "*" in deny_tools:
         return []
 
-    allowed_servers = policy.get("servers", set())
-    extra_tools = policy.get("extra_tools", set())
+    allowed_servers = policy.servers
+    extra_tools = policy.extra_tools
 
     result = []
     for t in tools:
