@@ -20,8 +20,8 @@
 - ``_MODULE_LEVEL_CURRENT_STATE``：当前状态，容忍的是模块级导入。新增一条就红，
   改的人得来这里写理由，并借此机会决定它是否配得上永久化。
 
-扫描器本身（``scan_imports``）是通用件：后续 A6 的写点守卫、B2 的 state 写面
-守卫复用同一套遍历，它只回答「谁在 import 谁、是模块级还是函数内」。
+遍历基础设施在 ``tests/_ast_support.py``（A6 的写点守卫、B2 的 state 写面守卫共用）；
+本文件的 ``scan_imports`` 只回答「谁在 import 谁、是模块级还是函数内」。
 """
 
 from __future__ import annotations
@@ -31,6 +31,17 @@ import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+
+from tests._ast_support import (
+    assert_scan_floor,
+    assert_sentinels,
+    dotted_name,
+    iter_python_files,
+    package_root,
+    parse_file,
+    relative_import_target,
+    walk_with_function_context,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _ENTITIES_DIR = _REPO_ROOT / "src" / "travel_agent" / "entities"
@@ -83,48 +94,7 @@ _MODULE_LEVEL_CURRENT_STATE: dict[tuple[str, str], str] = {
 }
 
 
-# --- 通用扫描器（A6/B2 复用） ---------------------------------------------
-
-
-def _package_root(package_dir: Path) -> Path:
-    """找到相对导入的锚点包，断言它就叫 ``travel_agent``。
-
-    不沿 ``__init__.py`` 盲目上爬：本仓 ``src/`` 自己带一个 ``__init__.py``，
-    爬过头会把所有相对导入解析成 ``src.travel_agent.*``。锚点钉在 ``src/travel_agent``，
-    相对导入的深度以它为基准，不假设所有被扫文件都在同一层。
-    """
-
-    root = package_dir
-    while root.name != _ROOT_PACKAGE and (root.parent / "__init__.py").exists():
-        root = root.parent
-    assert root.name == _ROOT_PACKAGE, (
-        f"{package_dir} 不在 {_ROOT_PACKAGE} 包之下，相对导入无从解析"
-    )
-    return root
-
-
-def _dotted_name(root: Path, path: Path) -> str:
-    rel = path.relative_to(root)
-    parts = list(rel.with_suffix("").parts)
-    if parts and parts[-1] == "__init__":
-        parts = parts[:-1]
-    return ".".join([root.name, *parts])
-
-
-def _relative_target(dotted: str, is_init: bool, level: int, module: str | None) -> str:
-    """把相对导入解析成绝对 dotted 落点，按文件真实深度算。
-
-    在 ``entities/x.py`` 里 ``from ..config`` 落 ``travel_agent.config``；
-    若将来有 ``entities/sub/y.py``，同样写法会落 ``travel_agent.entities.config``。
-    ``__init__.py`` 里 ``from .`` 指的是包自己，比普通文件少升一层。
-    """
-
-    parts = dotted.split(".")
-    up = level - 1 if is_init else level
-    base = parts[: len(parts) - up]
-    if not base:
-        raise ValueError(f"相对导入越过了顶层包：{dotted} level={level}")
-    return ".".join([*base, *module.split(".")]) if module else ".".join(base)
+# --- 通用扫描器 ------------------------------------------------------------
 
 
 def _records_for(
@@ -141,45 +111,29 @@ def _records_for(
     if not node.level:
         yield ImportRecord(path, node.lineno, node.module or "", in_function)
         return
-    target = _relative_target(dotted, is_init, node.level, node.module)
+    target = relative_import_target(dotted, is_init, node.level, node.module)
     yield ImportRecord(path, node.lineno, target, in_function)
 
 
 def _walk_imports(
     path: Path, tree: ast.AST, dotted: str, is_init: bool
 ) -> Iterator[ImportRecord]:
-    """递归收集 import 节点，并沿父链记录是否在函数体内。
+    """收集 import 节点，父链上下文由共用遍历器提供。"""
 
-    ``ast`` 没有 parent 指针，所以遍历时自己带上下文：进 ``FunctionDef`` /
-    ``AsyncFunctionDef`` 的子树即视为函数内。类体内的 import 按模块级计 ——
-    类体本来就在 import 期执行。
-    """
-
-    def walk(node: ast.AST, in_function: bool) -> Iterator[ImportRecord]:
-        for child in ast.iter_child_nodes(node):
-            if isinstance(child, (ast.Import, ast.ImportFrom)):
-                yield from _records_for(path, child, dotted, is_init, in_function)
-                continue
-            yield from walk(
-                child,
-                in_function
-                or isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)),
-            )
-
-    yield from walk(tree, False)
+    for node, in_function in walk_with_function_context(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            yield from _records_for(path, node, dotted, is_init, in_function)
 
 
 def scan_imports(package_dir: Path) -> ImportScan:
     """AST 扫描一个包（含子目录）下每个 ``.py`` 的全部 import 语句。"""
 
-    root = _package_root(package_dir)
-    files = tuple(
-        sorted(p for p in package_dir.rglob("*.py") if "__pycache__" not in p.parts)
-    )
+    root = package_root(package_dir)
+    files = iter_python_files(package_dir)
     records: list[ImportRecord] = []
     for path in files:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        dotted = _dotted_name(root, path)
+        tree = parse_file(path)
+        dotted = dotted_name(root, path)
         records.extend(_walk_imports(path, tree, dotted, path.name == "__init__.py"))
     return ImportScan(files=files, imports=tuple(records))
 
@@ -295,11 +249,10 @@ def test_the_scan_itself_is_not_vacuous():
     """
 
     scan = scan_imports(_ENTITIES_DIR)
-    assert len(scan.files) >= 40, (
-        f"只扫到 {len(scan.files)} 个文件，entities 层不该这么小 —— 路径或解析器多半坏了"
-    )
-    names = {path.name for path in scan.files}
-    assert {"contract_base.py", "state.py", "trip_run.py"} <= names, (
-        f"关键文件缺席：{sorted({'contract_base.py', 'state.py', 'trip_run.py'} - names)}"
+    assert_scan_floor(len(scan.files), 40, "文件")
+    assert_sentinels(
+        {path.name for path in scan.files},
+        {"contract_base.py", "state.py", "trip_run.py"},
+        "文件",
     )
     assert scan.imports, "收集到 0 条 import 语句，AST 遍历器多半坏了"
