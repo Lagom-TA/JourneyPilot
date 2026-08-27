@@ -1,0 +1,295 @@
+<title>JourneyPilot 架构全景</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+
+<style>
+:root{
+  --paper:#EDEFEC; --surface:#F7F8F6; --sunk:#E3E7E2;
+  --ink:#151A18; --ink-2:#3E4A46; --ink-soft:#6A7773;
+  --rule:#C7CFC9; --rule-soft:#DCE2DD;
+  --det:#0E6154; --model:#A24218; --gate:#8A6A14; --halt:#8C2436;
+  --det-wash:#0E615412; --model-wash:#A2421812; --gate-wash:#8A6A1412; --halt-wash:#8C243614;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --cond:"IBM Plex Sans Condensed","Noto Sans SC",system-ui,sans-serif;
+  --sans:"IBM Plex Sans","Noto Sans SC",system-ui,sans-serif;
+  --maxw:72ch;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#151918; --surface:#1C2120; --sunk:#232A28;
+    --ink:#E6EBE8; --ink-2:#B7C2BD; --ink-soft:#84918B;
+    --rule:#39433F; --rule-soft:#2B3330;
+    --det:#57C3AB; --model:#E08D5E; --gate:#D2B25A; --halt:#E27E8C;
+    --det-wash:#57C3AB1a; --model-wash:#E08D5E1a; --gate-wash:#D2B25A1a; --halt-wash:#E27E8C1f;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#151918; --surface:#1C2120; --sunk:#232A28;
+  --ink:#E6EBE8; --ink-2:#B7C2BD; --ink-soft:#84918B;
+  --rule:#39433F; --rule-soft:#2B3330;
+  --det:#57C3AB; --model:#E08D5E; --gate:#D2B25A; --halt:#E27E8C;
+  --det-wash:#57C3AB1a; --model-wash:#E08D5E1a; --gate-wash:#D2B25A1a; --halt-wash:#E27E8C1f;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--sans); font-size:15.5px; line-height:1.9;
+  -webkit-font-smoothing:antialiased;
+}
+.frame{max-width:1140px; margin:0 auto; padding:0 24px 96px;}
+.layout{display:grid; grid-template-columns:1fr; gap:0;}
+@media (min-width:1100px){ .layout{grid-template-columns:210px minmax(0,1fr); gap:56px;} }
+
+/* ── header ── */
+header.masthead{padding:64px 0 30px; border-bottom:2px solid var(--ink); margin-bottom:8px;}
+.kicker{font-family:var(--mono); font-size:12px; letter-spacing:.14em; color:var(--det); text-transform:uppercase; margin:0 0 14px;}
+h1{font-family:var(--cond); font-weight:700; font-size:clamp(30px,4.4vw,44px); line-height:1.15; margin:0 0 14px; text-wrap:balance;}
+.meta{font-family:var(--mono); font-size:12.5px; color:var(--ink-soft); display:flex; flex-wrap:wrap; gap:6px 22px; margin:0;}
+.meta b{color:var(--ink-2); font-weight:500;}
+
+/* ── toc ── */
+nav.toc{display:none;}
+@media (min-width:1100px){
+  nav.toc{display:block; position:sticky; top:28px; align-self:start; padding-top:44px;}
+  nav.toc ol{list-style:none; margin:0; padding:0; border-left:1px solid var(--rule);}
+  nav.toc li a{
+    display:block; padding:6px 0 6px 14px; color:var(--ink-soft);
+    text-decoration:none; font-family:var(--cond); font-size:13.5px; line-height:1.45;
+    border-left:2px solid transparent; margin-left:-1.5px;
+  }
+  nav.toc li a:hover{color:var(--ink); border-left-color:var(--rule);}
+  nav.toc li a:focus-visible{outline:2px solid var(--det); outline-offset:2px;}
+  nav.toc .toc-label{font-family:var(--mono); font-size:11px; letter-spacing:.14em; color:var(--ink-soft); text-transform:uppercase; margin:0 0 10px;}
+}
+
+/* ── article ── */
+article{min-width:0; padding-top:44px;}
+article > *{max-width:var(--maxw);}
+section{margin:0 0 8px;}
+h2{
+  font-family:var(--cond); font-weight:700; font-size:26px; line-height:1.25;
+  margin:60px 0 8px; padding-top:28px; border-top:1px solid var(--rule);
+  text-wrap:balance; scroll-margin-top:24px;
+}
+h2 .no{font-family:var(--mono); font-weight:500; font-size:14px; color:var(--det); display:block; letter-spacing:.1em; margin-bottom:8px;}
+h3{font-family:var(--cond); font-weight:600; font-size:18.5px; margin:40px 0 4px; text-wrap:balance;}
+p{margin:13px 0;}
+ul,ol{margin:13px 0; padding-left:1.6em;}
+li{margin:8px 0;}
+li::marker{color:var(--ink-soft);}
+strong{font-weight:600;}
+code{
+  font-family:var(--mono); font-size:.86em; background:var(--sunk);
+  padding:.08em .4em; border-radius:3px; color:var(--ink-2);
+}
+.lead{font-size:16.5px; color:var(--ink-2);}
+.note{
+  background:var(--surface); border:1px solid var(--rule-soft);
+  padding:14px 20px; margin:20px 0; font-size:14.5px; color:var(--ink-2);
+}
+.note .note-label{
+  font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--det); display:block; margin-bottom:4px;
+}
+
+/* ── tables ── */
+.tbl{overflow-x:auto; margin:22px 0;}
+table{border-collapse:collapse; width:100%; font-size:14px; line-height:1.8;}
+th{
+  font-family:var(--mono); font-weight:500; font-size:11px; letter-spacing:.12em;
+  text-transform:uppercase; text-align:left; color:var(--ink-soft);
+  padding:0 20px 9px 0; border-bottom:1.5px solid var(--ink); white-space:nowrap;
+}
+td{padding:12px 20px 12px 0; border-bottom:1px solid var(--rule-soft); vertical-align:top;}
+th:last-child, td:last-child{padding-right:0;}
+tr:last-child td{border-bottom:none;}
+td.key{
+  font-family:var(--cond); font-weight:600; font-size:14.5px; color:var(--ink);
+  white-space:nowrap; padding-right:28px;
+}
+td.num{font-family:var(--mono); font-size:12.5px; color:var(--ink-2); white-space:nowrap; font-variant-numeric:tabular-nums;}
+
+footer{
+  margin-top:76px; padding-top:20px; border-top:2px solid var(--ink);
+  font-family:var(--mono); font-size:12px; color:var(--ink-soft); line-height:1.9;
+}
+@media (prefers-reduced-motion: no-preference){
+  html{scroll-behavior:smooth;}
+}
+</style>
+
+<div class="frame">
+<header class="masthead">
+  <p class="kicker">JourneyPilot · Agent Architecture</p>
+  <h1>JourneyPilot Agent 架构全景</h1>
+  <p class="meta">
+    <span><b>日期</b> 2026-08-26</span>
+    <span><b>范围</b> 深度研究图 · 快答图 · 交付后编辑</span>
+    <span><b>姊妹页</b> AGENT-ARCHITECTURE.html（运行图谱）</span>
+  </p>
+</header>
+
+<div class="layout">
+<nav class="toc" aria-label="目录">
+  <p class="toc-label">目录</p>
+  <ol>
+    <li><a href="#s1">1 · 这套系统在做什么</a></li>
+    <li><a href="#s2">2 · 一条消息进来之后</a></li>
+    <li><a href="#s3">3 · 八个环节</a></li>
+    <li><a href="#s4">4 · 全图的运行规则</a></li>
+    <li><a href="#s5">5 · 横切机制</a></li>
+    <li><a href="#s6">6 · 与参考项目的对照</a></li>
+  </ol>
+</nav>
+
+<article>
+
+<section>
+<h2 id="s1"><span class="no">§ 1</span>这套系统在做什么</h2>
+<p class="lead">JourneyPilot 是一个自托管的旅行规划应用，跑在单机单进程里，服务一位用户。它交付的不是一段聊天回复，而是一份可以直接照着走的行程：日程、地图、天气、预算、来源出处互相一致。用户提出的硬性要求不会被悄悄绕过，查不实的信息保持可见的不确定，而不是被写成笃定的结论。</p>
+<p>实现上，整个系统是一张 LangGraph 状态图，外面围一圈确定性服务。我们对模型的态度很明确：让它只在少数几个可以校验的位置说话，其余工作交给普通代码。全图 22 个节点里有 15 个完全不调用模型；最强的模型档位只有行程组合这一个节点在用。这个比例是刻意的，凡是能用规则算出来的，就不请模型猜。</p>
+<p>这份页面按运行顺序把架构讲一遍：消息怎么进来、八个环节各自做什么、信息在环节之间怎么流动、贯穿全图的机制有哪些，最后是与两个参考项目对照后互相印证的几个设计选择。</p>
+</section>
+
+<section>
+<h2 id="s2"><span class="no">§ 2</span>一条消息进来之后</h2>
+<p>用户消息先经过一次轻量的意图判定，分成四类：新的行程规划、对已有行程的修改、目的地探索、普通的快问快答。前两类进入深度研究图，一张 22 个节点的状态图，从理解需求一路走到交付行程；后两类走一张单节点的快答图，一次生成直接回复。判不出意图时，系统直接拒绝这次请求，而不是猜一条默认路线。分流是回答的前提，宁可报错也不错跑。</p>
+<div class="note"><span class="note-label">一个反直觉的选择</span>目的地探索走的是快答图，不是深度图。用户在这个阶段要的是发散的灵感和比较，而不是一份合同化的行程，让它走快路反而贴合意图。</div>
+<p>两张图共用同一份运行状态和同一层运行控制包装。用户画像与长期记忆抵达模型也只有一条通道，就是约束包（Constraint Pack），快慢两路共用同一个装配函数。</p>
+</section>
+
+<section>
+<h2 id="s3"><span class="no">§ 3</span>八个环节</h2>
+<p>深度路径可以概括成一句话：先把话变成合同，合同经用户批准后封存时间与预算，然后在限定的时间窗里研究、组合、验收，最后一次性原子提交。按职责切开，加上行程落库之后的编辑体系，一共八个环节：</p>
+<div class="tbl">
+<table>
+<tr><th>环节</th><th>它做什么</th></tr>
+<tr><td class="key">入口与整理</td><td>判定意图，整理会话上下文，历史过长时自动压缩。</td></tr>
+<tr><td class="key">合同</td><td>把自然语言变成结构化的需求合同，铺好坐标、天气、摘要卡这些基础事实。</td></tr>
+<tr><td class="key">授权</td><td>计划门，全图唯一停下来等用户的位置。批准的那一刻封存草案、时间窗与预算。</td></tr>
+<tr><td class="key">研究</td><td>调度器扇出三个研究员并行查证，候选门归并结果、决定是否补研。</td></tr>
+<tr><td class="key">组合</td><td>行程组合器分三个阶段，把选中的候选拼成一份完整行程。</td></tr>
+<tr><td class="key">验收</td><td>三道门逐项检查产物完整性、意图覆盖与交付质量，缺口退回上游修复。</td></tr>
+<tr><td class="key">交付</td><td>确定性投影出报告、地图、来源视图，单个数据库事务原子落库。</td></tr>
+<tr><td class="key">交付后编辑</td><td>行程落库之后，用户的每次修改、候选替换、天气刷新走一套独立的编辑服务。</td></tr>
+</table>
+</div>
+
+<h3>3.1 合同：把话变成合同</h3>
+<p>进入这一段时，状态里只有会话内容和已确认的目的地身份。整理节点不调模型，它测量会话体量，超过阈值就触发压缩。归一化是这一段唯一的模型调用：把用户的话切成条款，逐条转成结构化字段，输出用严格的 JSON Schema 框住。模型偏出格式时先逐条打捞，仍不行就落回纯规则解析，所以这一步永远有结果。归一化顺带产出约束包的原料，后续装配不再请模型。</p>
+<p>合同是三件套的原子写入，同代同版本，恢复运行时任何不匹配都会拒绝加载。合同落定之后是四步纯规则的铺垫：最小交付草案、目的地坐标（只从已确认的身份里取，从不重新猜）、天气快照、行程摘要卡。这是授权之前必须存在的确定性底座。</p>
+
+<h3>3.2 授权：计划门</h3>
+<p>计划编制不调模型，从合同直接推导出研究计划：目的地先行，交通与住宿并行，最后组合。任何硬性要求没有被计划认领，这里直接报错，不做兜底。</p>
+<p>计划门（plan gate）是全图唯一的人在环阻塞点。用户可以批准、修改、补充或取消，修改机会有一次。批准的那一刻发生三件事：封存交付草案、启动时间窗、启动资源预算。窗口一开就不再续期，预算也不会中途加钱，"跑多久、花多少"在批准时就定死了。</p>
+
+<h3>3.3 研究环</h3>
+<p>调度器是纯代码，按固定优先级决策：先看时间窗，研究时间用尽就把计划直接推进到组合；再看计划边界与组内完成度，然后扇出。组内有多个待办研究员时并行派发。</p>
+<p>三个研究员（目的地、交通、住宿）共享同一副骨架。每个研究员只取自己认领的那部分合同，连同约束包、天气和最近几条历史一起注入。真正干活之前先做确定性预检：票务、酒店这类查询如果能直接从供给方拿到结构化结果，就完全跳过模型的推理循环；预检不足时才进入带工具的推理循环，循环有轮数上限，也受时间窗约束。研究产物是结构化的研究包，出循环时经过三层校验定型。格式修复只允许一次受限的模型调用，而且形状固定：模型只做选择，服务端负责重组。</p>
+<p>供给方绑定值得单独说一句。查火车票走官方数据源，选票按固定的判据顺序：可订、站点匹配、车型、历时、发车时间；查不到就交还推理循环处理。住宿按国家路由到不同的地图源，这是互斥选路，不是失败降级。每一次真实的工具调用都留下审计记录，这条记录一路跟着候选走进最终报告的脚注。</p>
+<p>候选门是研究环的归并点。它把各路研究包合并成候选目录，做世代校验、约束证明、价格归一化，再用一次轻量的模型调用评估候选与用户意图的匹配度。这是四道门里唯一请模型的地方，而且它失败不阻断流程。之后是确定性排名、集合覆盖式的选择、缺口计算。缺口明确时，候选门会改写对应研究员的任务合同、扣减补研预算，把控制权定向发回去。</p>
+
+<h3>3.4 组合：三个阶段</h3>
+<p>行程组合器是全图唯一使用最强模型档位的节点，分三相推进，处在哪一相由状态本身判定，不靠谁传消息。第一相生成不含市内交通的日程骨架，温度为零的一次调用，后接规则补齐与校验，然后把控制权交还候选门去找连接器候选。第二相把骨架和连接器物化成完整的行程工作台，通常不需要模型，只有个别缺口让模型补写交通方式与时长，端点坐标一律由服务端填写。第三相在需要重组时整份重新生成，后接确定性后处理和一次修复机会。</p>
+<p>组合失败的原因会被压缩成一段上下文，供下一轮修复参考。它只回看一轮，避免旧错误无限累积。</p>
+
+<h3>3.5 验收与交付</h3>
+<p>验收是串行的三道门加一次估价。产物门检查研究包的身份完整性与内容质量，缺口在预算内退回候选门。意图保真门核对每一条硬性要求是否被行程覆盖，"绝不违反"级别的要求一旦违反直接终止本次交付，不允许降级；普通缺口按各自标注的修复目标退回。交付质量门做最后的评估，有修复价值且窗口预算尚在就退回组合，否则放行。"降级但仍交付"是刻意的产品选择：时间到了，宁可交付一份标注了缺口的行程，也不交付一句"失败了"。花费估算用一次轻量调用只写一个数，估不出就空着，从不因为它拖垮交付。</p>
+<p>交付分两步。投影节点进门先做三道断言（质量门通过、工作台在、天气快照在），然后纯规则投影出报告、地图与来源三个视图，顺带把约束包里的饮食过敏提醒注入用餐节点。落库节点五步走完：校验世代、检查窗口余量、组装交付包、先做一次演练式投影确认能成功但丢弃结果、最后单个数据库事务原子提交。演练放在提交之前，因为提交之后这次运行就不允许再转为失败了。</p>
+
+<h3>3.6 快答路径</h3>
+<p>快答是一条线性执行的路径，没有推理循环。它自己装配 prompt，但约束包用的是与深度路径同一个装配函数，压缩机制也同源。工具只有两个只读事实源：汇率查询和内部知识检索。生成一次完成，出口做置信度打分与来源标注。只标注，不拦截。</p>
+
+<h3>3.7 交付后编辑</h3>
+<p>行程落库之后，用户还会继续改。这些改动走一套独立于图的编辑服务：条目修改、候选替换、天气刷新各有入口，合计约四千行。每次编辑都在同一本组合台账上追加一条记录，标明来自用户编辑，与图内组合期的记录同源可查。</p>
+</section>
+
+<section>
+<h2 id="s4"><span class="no">§ 4</span>全图的运行规则</h2>
+<p>把 22 个节点的路由细节放到一边，真正需要记住的是四条贯穿全图的规则。</p>
+<p><strong>修订永远优先。</strong>除两条固定边之外，每个节点走完，下一条边都先检查有没有运行中追加的新要求，有就先转入修订受理，再决定从哪里续跑。用户不需要等一轮跑完才能补话。</p>
+<p><strong>停下来等用户的位置只有两个，形态各不相同。</strong>计划门用引擎级中断加检查点，恢复时从断点继续。目的地研究员遇到必须由用户裁决的分歧（比如两个同名城市），会正常走到图的终点，把问题留在状态里，续接由图外的会话层完成。</p>
+<p><strong>正常终点只有两个。</strong>一个是交付落库，一个是上面说的目的地询问。其余所有离开图的路径都是异常，而异常就应该响。</p>
+<p><strong>时间到了不抛超时，而是改变图的形状。</strong>研究窗关了，调度器把计划直接推进到组合；组合窗也关了，各道门把未放行的裁决折成放行，只留投影与落库。系统在时间压力下的行为是逐步收拢，而不是突然死亡。</p>
+<p>沿途的几个关键路口，分支逻辑如下：</p>
+<div class="tbl">
+<table>
+<tr><th>路口</th><th>分支</th></tr>
+<tr><td class="key">计划门</td><td>批准放行进研究环；修改或补充则整条合同链重跑一遍；取消即终止运行。</td></tr>
+<tr><td class="key">调度器</td><td>组内有待办研究员就扇出；该归并了去候选门；研究收口了去验收。</td></tr>
+<tr><td class="key">候选门</td><td>目录可用交回调度器；缺口明确定向发回某个研究员补研；骨架就绪交回组合。</td></tr>
+<tr><td class="key">三道验收门</td><td>通过进下一道；有可修的缺口退回组合或候选门；硬性违规终止交付。</td></tr>
+<tr><td class="key">落库</td><td>提交成功即全图终点；此后的一切改动走交付后编辑。</td></tr>
+</table>
+</div>
+</section>
+
+<section>
+<h2 id="s5"><span class="no">§ 5</span>横切机制</h2>
+
+<h3>5.1 运行时修订</h3>
+<p>运行中追加的要求不去改 prompt，而是先转成一条结构化的修订记录，注入运行状态，在下一条边被拦截进入受理。受理按五条谓词顺序判定：身份变更、不支持的类型、已交付、研究窗已关、组合窗已关，任一命中即拒绝并说明原因。接受之后按影响强度展开作废阶梯：只影响展示的几乎不清空，影响组合的清掉组合层，影响研究的从合同重来。已交付的行程不接受运行时修订，改动一律走交付后编辑。</p>
+
+<h3>5.2 时间窗与预算</h3>
+<p>时间窗分五个相位，每个相位对应图允许做的事：</p>
+<div class="tbl">
+<table>
+<tr><th>相位</th><th>窗口</th><th>这段时间允许什么</th></tr>
+<tr><td class="key">研究期</td><td class="num">0 – 375 秒</td><td>正常研究，全部能力开放。</td></tr>
+<tr><td class="key">目标已过</td><td class="num">375 – 450 秒</td><td>仍可发起研究调用，调度开始收紧。</td></tr>
+<tr><td class="key">收口期</td><td class="num">450 – 570 秒</td><td>研究关闭，组合继续。</td></tr>
+<tr><td class="key">组合关闭</td><td class="num">570 – 600 秒</td><td>只剩投影与落库。</td></tr>
+<tr><td class="key">窗口耗尽</td><td class="num">600 秒以后</td><td>交付时间用完。</td></tr>
+</table>
+</div>
+<p>资源预算五个维度同时记账：模型调用次数、工具调用次数、输入与输出 token、金额（默认单次运行 5 美元）。每次调用前按最坏情况预判，调用后用同一把尺落账，失败的调用同样计费。组合修复全局三次机会，几道门共享；定向补研按范围单独记账。</p>
+
+<h3>5.3 每个模型调用点能看到什么</h3>
+<p>上下文注入有清楚的边界，每个调用点只拿到完成本职所需的信息：</p>
+<div class="tbl">
+<table>
+<tr><th>调用点</th><th>模型能看到什么</th></tr>
+<tr><td class="key">意图分流</td><td>用户消息与会话线索。</td></tr>
+<tr><td class="key">条款归一化</td><td>已确认的身份与本轮条款文本。不含记忆，不含天气。</td></tr>
+<tr><td class="key">候选评估</td><td>意图清单与候选摘要，按领域分批。</td></tr>
+<tr><td class="key">三个研究员</td><td>各自认领的合同子集、约束包、天气、最近八条历史。知识检索只给目的地研究员。</td></tr>
+<tr><td class="key">行程组合</td><td>合同投影、组合规则、选中候选、约束包、天气、最近四条历史。</td></tr>
+<tr><td class="key">花费估算</td><td>只有标题、天数、人数与已知价格。</td></tr>
+</table>
+</div>
+<p>约束包本身也有行数预算，投影分两节：本轮统一约束只放用户可见的硬约束与偏好；参考级背景放画像与低档记忆，并在 prompt 里写明不得当作硬性要求，超出预算必须出声。画像与记忆抵达模型，只此一条通道。</p>
+
+<h3>5.4 工具治理</h3>
+<p>工具经过三层收窄才到模型手里：会话层决定本次有哪些工具，Agent 层按策略过滤，轮次层决定曝光形式。所有执行走同一个网关，前置检查、时间窗与预算短路、快照缓存、指数退避、降级依次排开。最硬的一条规则是：降级目标也必须再过一遍白名单。治理不因降级而放松。</p>
+
+<h3>5.5 证据链</h3>
+<p>从一次工具调用到报告里的一条脚注，中间是一条完整的链：工具审计记录、来源记录（自我背书直接拒绝）、事实断言（已验证的事实必须有来源支撑，类型层强制）、实体血统（行程里每个实体绑回它的研究包、候选、事实与来源）、供给方结论、交付包的闭包校验（引用不悬空、不串位），最后是公开的证据视图。"报告里每句话能追到来源"在类型层就是闭环。</p>
+
+<h3>5.6 记忆与检索</h3>
+<p>会话压缩由整理节点触发、独立服务执行。长期记忆的写入是后台任务，入库之前过准入门禁，不合格的内容进不了库。知识检索是完整的四段管线：改写、混合检索、重排、质量分级；深度路径上只有目的地研究员消费它，其余节点各司其职、不碰检索。</p>
+
+<h3>5.7 模型分层</h3>
+<p>模型分三个档位，用途分明：最强档只有行程组合在用；快档负责分流、归一化、研究、候选评估与估价；其余 15 个节点不调模型。并发有按档位的通道闸，排队时间也计入时间窗。记账与预算用同一把尺，拿不到真实用量时用字符估算并明确标记，绝不编数。</p>
+</section>
+
+<section>
+<h2 id="s6"><span class="no">§ 6</span>与参考项目的对照</h2>
+<p>我们把 JourneyPilot 的关键机制与两个参考项目逐一对照：codex 是 Rust 实现的编码代理，openpi 是 TypeScript 的扩展体系。对照下来，这套架构的核心选择在三个仓库里都站得住，几个关键位置走得更远：</p>
+<ul>
+<li>输出契约不靠文字描述。研究包的完整 JSON Schema 逐字符注入 prompt，与 codex 从类型派生 schema、openpi 把工具定义当作参数唯一来源，是同一条原则的三种写法。</li>
+<li>工具治理整体收紧，降级也要过白名单。三个仓库里，我们是唯一把"降级不放松治理"写成硬规则的。</li>
+<li>验收是引擎级的回边机制，缺口退回、预算受控。openpi 把重试与终止下放给脚本自由裁量，这一维我们做得更完整。</li>
+<li>机械守卫测试我们已经有，而且比 openpi 的版本多一层元测试：守卫自己收集到零条引用时必须失败，守卫失效不会静默。</li>
+</ul>
+<p>两个项目也各有值得记下的手艺：codex 把协议定义拆成独立的包，谁定义谁被依赖，边界由构建系统强制；两家都坚持配置"未知字段即硬错误"，拼错的键会拒绝整份文件而不是静默放行；openpi 用测试把"未分类即失败"钉进流水线。这些手法与我们既有的契约基类、严格配置管线、机械守卫是同一路数，对照的过程本身就是一次互相印证。</p>
+</section>
+
+<footer>
+JourneyPilot 架构全景 · 2026-08-26<br>
+逐条标注代码位置的完整审查报告：docs/review/2026-08-26-agent-architecture-review.md · 姊妹页：AGENT-ARCHITECTURE.html（运行图谱）
+</footer>
+
+</article>
+</div>
+</div>
