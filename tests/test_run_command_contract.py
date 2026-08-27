@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional, Sequence
 
 import pytest
@@ -264,7 +265,12 @@ async def test_supplement_is_consumed_only_after_contract_normalization(wired, r
 async def test_a_failed_node_keeps_the_supplement_for_the_next_boundary(
     wired, run_id
 ) -> None:
-    """节点抛异常时它的更新被丢掉，那条要求就没有生效，不许标成已消费。"""
+    """节点抛异常时它的更新被丢掉，那条要求就没有生效，不许标成已消费。
+
+    三值口径下这条路径落在 deferred 桶：applied 与 rejected 都是空集——库里
+    保持 CLAIMED、result 未写、命令留在 handle 的 pending 列表里等下一个边界。
+    随后的成功边界把它判进 applied 桶（CONSUMED），三个桶各就各位。
+    """
 
     handle, store, _runs, coordinator = wired
     command, _ = await store.enqueue(
@@ -280,10 +286,12 @@ async def test_a_failed_node_keeps_the_supplement_for_the_next_boundary(
             TravelAgentState(run_id=run_id, user_message="x")
         )
 
-    assert store.commands[command.command_id].status is RunCommandStatus.CLAIMED
     assert [item["command_id"] for item in handle.pending_supplements()] == [
         command.command_id
     ]
+    settled = store.commands[command.command_id]
+    assert settled.status is RunCommandStatus.CLAIMED
+    assert settled.result is None
 
     update = await with_run_control(
         "request_contract_normalizer",
@@ -296,6 +304,58 @@ async def test_a_failed_node_keeps_the_supplement_for_the_next_boundary(
     )
     assert update["applied_intent_amendment_ids"] == [command.command_id]
     assert store.commands[command.command_id].status is RunCommandStatus.CONSUMED
+
+
+async def test_divert_boundary_defers_every_read_command_without_touching_the_store(
+    wired, run_id, caplog
+) -> None:
+    """divert 边界把命令搭进 state 等 router 下轮裁决：本轮既不 applied 也不 rejected，
+    三值收口里它们落在 deferred 桶——一行日志把这说出口，库里状态不变。
+
+    空 content 的命令本来更安静（连 fresh_amendments 都不进），现在同样被 deferred
+    点名，不再无痕迹地消失。
+    """
+
+    handle, store, _runs, coordinator = wired
+    live, _ = await store.enqueue(
+        run_id,
+        RunCommandType.SUPPLEMENT,
+        {"category": "food", "content": "想吃本地早餐"},
+    )
+    blank, _ = await store.enqueue(
+        run_id,
+        RunCommandType.SUPPLEMENT,
+        {"category": "food", "content": "   "},
+    )
+    await coordinator.poll_once()
+
+    async def diverted(_state: TravelAgentState) -> Dict[str, Any]:  # pragma: no cover
+        raise AssertionError("合同已建立且带新鲜 supplement 时应 divert，节点体不该执行")
+
+    with caplog.at_level(logging.INFO, logger="travel_agent.workflows.run_control"):
+        update = await with_run_control("planner", diverted)(
+            TravelAgentState.model_construct(request_contract=object(), run_id=run_id)
+        )
+
+    # 节点体没跑：结果只有 resume_node 与搭车的 amendments（空内容那条进不来）。
+    assert set(update) == {"intent_amendment_resume_node", "pending_intent_amendments"}
+    assert [item.command_id for item in update["pending_intent_amendments"]] == [
+        live.command_id
+    ]
+    # deferred 桶：两条命令都被日志点名，库里没有任何写发生。
+    assert store.commands[live.command_id].status is RunCommandStatus.CLAIMED
+    assert store.commands[blank.command_id].status is RunCommandStatus.CLAIMED
+    assert store.commands[live.command_id].result is None
+    assert [item["command_id"] for item in handle.pending_supplements()] == [
+        live.command_id,
+        blank.command_id,
+    ]
+    defer_logs = [
+        record for record in caplog.records if "未产生判定" in record.getMessage()
+    ]
+    assert len(defer_logs) == 1
+    message = defer_logs[0].getMessage()
+    assert live.command_id in message and blank.command_id in message
 
 
 async def test_router_rejection_settles_the_durable_supplement(wired, run_id) -> None:

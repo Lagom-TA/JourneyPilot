@@ -829,8 +829,16 @@ async def _settle_amendments(
     intent_spec_revision: Any,
     generation_id: Any,
     rejected_amendments: List[IntentAmendmentRejection],
+    deferred_command_ids: List[str],
 ) -> None:
-    """Give every judged command its durable outcome. Never touches ``result``.
+    """Give every read command exactly one named outcome among three.
+
+    applied and rejected get their durable writes here. deferred means the
+    command was read this round but neither applied nor rejected — it rode
+    along through a divert boundary, the contract is not established yet, or
+    its content was empty. For deferred the only action is one log line;
+    writing anything would change the command's state machine (the durable
+    claim is released at executor stop, see RunCommandCoordinator.stop).
 
     All inputs are computed by the caller: ``rejected_amendments`` must be the
     list captured **before** a late ignored_after_delivery overwrite clears
@@ -891,6 +899,18 @@ async def _settle_amendments(
                     node_name,
                     settle_err,
                 )
+    if deferred_command_ids:
+        # 这是常态而不是异常：没有产生判定本身就是三值里的一值。命令继续留在
+        # handle 的 pending 列表里（或不依赖本轮写入地随 state 流转），下一个
+        # 节点边界会再读到它们。不写库、不改状态、不发事件。
+        logger.info(
+            "本轮 %d 条追加要求未产生判定，留待下一个节点边界 run_id=%s "
+            "node=%s command_ids=%s",
+            len(deferred_command_ids),
+            run_id,
+            node_name,
+            deferred_command_ids,
+        )
 
 
 def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]]:
@@ -1026,6 +1046,20 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                     for item in claimed_supplements
                     if str(item.get("command_id") or "") in applied_amendment_ids
                 ]
+                # 三值收口：本轮读出的每条命令恰好落进 applied / rejected /
+                # deferred 之一。前两个由节点结果决定（在 result 被覆写之前算好）；
+                # 读出却两条都没沾上的就是 deferred——divert 边界、合同未建立时
+                # 的搭车条目、空内容过滤，今天都从这里显式可见。
+                _read_command_ids = {
+                    str(item.get("command_id") or "")
+                    for item in claimed_supplements
+                    if str(item.get("command_id") or "")
+                }
+                deferred_command_ids = sorted(
+                    _read_command_ids
+                    - set(claimed_applied_ids)
+                    - {rejection.command_id for rejection in rejected_amendments}
+                )
                 # 结算函数不碰 result：这两样在这里无条件算好传入。result 不是 dict
                 # 而 claimed_applied_ids 非空的组合不可能发生（ids 非空 ⟹ 上面按 dict
                 # 读出过 applied），所以无条件求值只是把隐式不变量摆到明面上。
@@ -1046,6 +1080,7 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                     ),
                     generation_id=getattr(_generation, "generation_id", None),
                     rejected_amendments=rejected_amendments,
+                    deferred_command_ids=deferred_command_ids,
                 )
                 await emit_node_lifecycle(
                     "completed",
