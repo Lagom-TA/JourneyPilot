@@ -16,6 +16,7 @@ from enum import Enum
 from typing import Annotated, Any, Dict, Iterable, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_core import PydanticCustomError
 
 from .candidate_discovery import CandidateDiscoveryRecord
 from .candidate_intent import CandidateIntentMatch
@@ -1818,6 +1819,13 @@ class FactStoreSnapshot(StrictModel):
         return self
 
 
+# Structured error type for the "no eligible identity-bound facts" rejection
+# below.  The packet parser routes on this code via ValidationError.errors();
+# a substring match on the rendered message would be forgeable because the
+# model-authored payload is echoed back into str(ValidationError).
+RESEARCH_PACKET_IDENTITY_FACTS_MISSING = "research_packet_identity_facts_missing"
+
+
 class ResearchPacket(StrictModel):
     # LangGraph may reconstruct an invalid checkpoint with model_construct.
     # Revalidate this packet boundary so nested candidate/fact dicts cannot
@@ -1944,7 +1952,10 @@ class ResearchPacket(StrictModel):
                 normalized_status_ids.add(fact.fact_assertion_id)
             eligible_facts.append(fact)
         if not eligible_facts and self.candidates:
-            raise ValueError("research packet requires external identity-bound facts")
+            raise PydanticCustomError(
+                RESEARCH_PACKET_IDENTITY_FACTS_MISSING,
+                "research packet requires external identity-bound facts",
+            )
         if not self.candidates and eligible_facts:
             raise ValueError("zero-candidate research packet cannot contain facts")
         if not self.candidates and self.field_provenance:
