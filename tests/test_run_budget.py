@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from typing import get_args
+
 import pytest
 
 from travel_agent.config import get_settings
 from travel_agent.entities.run_budget import (
+    BudgetDimension,
     RunBudgetSnapshot,
     RunBudgetUsage,
     exhausted_dimension,
@@ -248,3 +251,52 @@ def test_release_drops_the_process_local_ledger():
     assert peek_ledger("run_k") is not None
     release_ledger("run_k")
     assert peek_ledger("run_k") is None
+
+
+# ── 维度清单与它的两个反射面 ──────────────────────────────────────────────
+#
+# `max_tool_retries_per_target` 在 RunBudgetSnapshot 上，但**不是**一个预算维度：
+# 它是「同一个工具目标最多重试几次」的局部上限，由 run_budget 的重试计数单独执行，
+# 不进 `remaining_budget`、不进 `exhausted_dimension`、也不会成为一个耗尽原因码。
+# 所以下面两条是单向包含（每一维都要有字段），不是双向相等。
+_NON_DIMENSION_LIMIT_FIELDS = {"max_tool_retries_per_target"}
+
+
+def test_every_budget_dimension_has_a_limit_field_to_reflect_onto():
+    """`limit()` 用 `f"max_{dimension}"` 取上限 —— 名字对不上就没有上限。
+
+    比的是**两个独立来源**：`BudgetDimension` 这个 Literal，和 pydantic 模型自己
+    报出来的字段集。不能改成遍历 `BUDGET_DIMENSIONS` 去 `hasattr` —— 那张表现在
+    派生自同一个 Literal，遍历它等于拿一个来源比它自己，恒真。
+    """
+
+    dimensions = set(get_args(BudgetDimension))
+    limit_fields = set(RunBudgetSnapshot.model_fields) - _NON_DIMENSION_LIMIT_FIELDS
+
+    missing = {d for d in dimensions if f"max_{d}" not in limit_fields}
+    assert not missing, (
+        f"这些预算维度在 RunBudgetSnapshot 上没有 max_* 字段，limit() 会当场 "
+        f"AttributeError：{sorted(missing)}\n"
+        f"  模型上的上限字段：{sorted(limit_fields)}\n"
+        f"  已登记的非维度上限：{sorted(_NON_DIMENSION_LIMIT_FIELDS)}"
+    )
+
+    # `spent()` 走同一套反射，只是不带 max_ 前缀。
+    usage_fields = set(RunBudgetUsage.model_fields)
+    assert not (dimensions - usage_fields), (
+        "这些预算维度在 RunBudgetUsage 上没有同名字段，spent() 会当场 "
+        f"AttributeError：{sorted(dimensions - usage_fields)}"
+    )
+
+
+def test_remaining_budget_reports_every_dimension_and_nothing_else():
+    """从 BUDGET_DIMENSIONS 里删掉一维，原来 23 个用例全绿，那一维静默停止执行。
+
+    反射绑定写错会当场红一片（好几条现有用例直接读 `remaining["cost_usd"]`），
+    但「少一维」不会 —— 没有任何断言说得出这个字典**应该**有几个键。这一条说。
+
+    右边取 `get_args`，不取 `BUDGET_DIMENSIONS`：被守的那张表不能同时当标尺。
+    """
+
+    remaining = remaining_budget(_snapshot(), RunBudgetUsage())
+    assert set(remaining) == set(get_args(BudgetDimension))

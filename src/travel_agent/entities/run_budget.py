@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Literal, Optional
+from typing import Dict, Literal, Optional, get_args
 
 from pydantic import Field
 
@@ -27,13 +27,9 @@ BudgetDimension = Literal[
     "cost_usd",
 ]
 
-BUDGET_DIMENSIONS: tuple[BudgetDimension, ...] = (
-    "llm_calls",
-    "tool_calls",
-    "input_tokens",
-    "output_tokens",
-    "cost_usd",
-)
+#: 同一份清单派生自上面的 Literal，不再手抄一遍。顺序有语义 —— `exhausted_dimension`
+#: 按这个顺序判哪一维先耗尽，而 `get_args` 保留 Literal 的书写顺序。
+BUDGET_DIMENSIONS: tuple[BudgetDimension, ...] = get_args(BudgetDimension)
 
 
 class RunBudgetSnapshot(StrictModel):
