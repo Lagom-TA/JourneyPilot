@@ -7,7 +7,8 @@ from typing import Any, Dict, List
 import pytest
 
 from travel_agent.agents import utils as agent_utils
-from travel_agent.agents.utils import filter_tools_for_agent
+from travel_agent.agents.utils import _SCOPED_NON_MCP_TOOLS, filter_tools_for_agent
+from travel_agent.workflows.node_names import WORKER_NODES
 
 
 def _local(name: str) -> Dict[str, Any]:
@@ -139,3 +140,61 @@ def test_extra_tools_admits_mcp_outside_servers(fake_policy):
         "ask_user",
         "currency_convert",
     ]
+
+
+def test_policy_keys_equal_worker_nodes():
+    policy_keys = set(agent_utils._AGENT_TOOL_POLICY)
+    worker_nodes = set(WORKER_NODES)
+    only_in_graph = sorted(worker_nodes - policy_keys)
+    only_in_table = sorted(policy_keys - worker_nodes)
+    assert not only_in_graph, f"WORKER_NODES 有、策略表没有: {only_in_graph}"
+    assert not only_in_table, f"策略表有、WORKER_NODES 没有: {only_in_table}"
+
+
+def test_policy_servers_are_configured_mcp_servers():
+    from travel_agent.config.mcp_defaults import default_mcp_servers
+
+    configured = set(default_mcp_servers())
+    referenced = set().union(
+        *(policy.servers for policy in agent_utils._AGENT_TOOL_POLICY.values())
+    )
+    unknown = sorted(referenced - configured)
+    assert not unknown, f"策略表引用了 mcp_defaults 未配置的 server: {unknown}"
+
+
+def test_deny_star_policy_leaves_nothing_else_configured():
+    for name, policy in agent_utils._AGENT_TOOL_POLICY.items():
+        if "*" not in policy.deny_tools:
+            continue
+        assert not policy.servers, (
+            f"{name}: deny_tools 含 '*'，servers 白名单不会生效: {sorted(policy.servers)}"
+        )
+        assert not policy.extra_tools, (
+            f"{name}: deny_tools 含 '*'，extra_tools 不会生效: {sorted(policy.extra_tools)}"
+        )
+
+
+def test_unknown_agent_branch_not_wider_than_policies():
+    from travel_agent.tools import registry as registry_module
+    from travel_agent.tools.builtin_tools import register_builtin_tools
+
+    registry_module._registry = None
+    try:
+        register_builtin_tools()
+        tools = registry_module.get_tool_registry().get_tools_as_schemas()
+        leaked = _names(filter_tools_for_agent(tools, "no_policy_for_this_agent"))
+    finally:
+        registry_module._registry = None
+
+    def explicitly_denied(tool_name: str) -> bool:
+        return any(
+            tool_name in policy.deny_tools or "*" in policy.deny_tools
+            for policy in agent_utils._AGENT_TOOL_POLICY.values()
+        )
+
+    for name in leaked:
+        if name in _SCOPED_NON_MCP_TOOLS:
+            continue
+        assert explicitly_denied(name), (
+            f"{name} 在未知 agent 分支可见，但没有任何 worker 的 deny_tools 拒绝它"
+        )
