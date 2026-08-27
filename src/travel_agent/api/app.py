@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from ..builders import AppBuilder, set_components
 from ..capabilities import capability_gaps
 from ..config import get_settings
+from ..utils.log_redaction import install_query_secret_redaction
 from .middleware import request_logging_middleware
 from .routes import chat, knowledge, memory, places, preset, product, sessions, system, trip_runs, user
 
@@ -201,6 +202,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 def create_app() -> FastAPI:
     """创建并配置 FastAPI 应用实例"""
     settings = get_settings()
+
+    # 查询串凭据脱敏的第二个挂载点。第一个在 `services/amap_route_search.py` 的
+    # import 时（那个不能挪：绕过入口直接 import 那个模块的脚本/单测/工具直调会裸奔）。
+    # 这里再挂一遍是为了反方向的缺口：下一个按查询串带 key 的 provider 忘了自己那句。
+    # `install_query_secret_redaction` 按 logger 名幂等，重复调用不叠加 filter。
+    install_query_secret_redaction()
 
     app = FastAPI(
         title="JourneyPilot TripOps API",

@@ -2770,6 +2770,15 @@ def route_after_candidate_gate(state: TravelAgentState) -> str:
     try:
         _observed, observation = observe_run_deadline(deadline)
     except ValueError:
+        # 防御性分支，今天不可达：`observe_run_deadline`（workflows/run_deadline.py:140）
+        # 的入参是 typed `RunDeadlineSnapshot`，而 `state.run_deadline`
+        # （entities/state.py:317-318）正是 `Optional[RunDeadlineSnapshot]` —— None 已
+        # 被上一行挡掉，剩下的是 pydantic 校验过的模型。
+        #
+        # 这里没有加 WARNING：给不可达分支加日志只会让读的人以为它可能发生。而
+        # "passed" 是 fail-open 的路由值，真要有人让它可达，这里需要的是归因而不是
+        # 放行 —— 参照同文件 :2089 与 :2478 那两处**可达**的处置，它们 catch 的是
+        # `_observe_deadline(state)`，给出 reason_code="run_deadline_invalid"。
         return "passed"
     if observation.research_closed:
         # An exact connector sweep is composition work whose inputs do not exist

@@ -1034,6 +1034,12 @@ def main(argv: list[str] | None = None) -> int:
         level=getattr(logging, str(args.log_level).upper(), logging.WARNING),
         format="%(levelname)s %(message)s",
     )
+    # 同 `api/app.py:create_app`：查询串凭据脱敏在日志配好之后再挂一遍。provider
+    # 模块自己 import 时那句才是主挂点，这里覆盖的是「忘了自己那句」的反方向缺口。
+    # 延迟导入，跟这个文件里其他 travel_agent 导入一致：CLI 的启动开销按子命令付。
+    from ..utils.log_redaction import install_query_secret_redaction
+
+    install_query_secret_redaction()
     return int(args.func(args))
 
 

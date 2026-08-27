@@ -1,10 +1,12 @@
 import json
+import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
 
+from travel_agent.workflows.run_control import current_node, current_run_id
 from travel_agent.entities.candidate_discovery import (
     CandidateDiscoveryOrigin,
     CandidateDiscoveryRecord,
@@ -2240,3 +2242,206 @@ def test_domain_cap_keeps_targeted_and_intent_candidates_before_fallback():
     assert {
         candidate.candidate_id for packet in capped for candidate in packet.candidates
     } == {"candidate_targeted", "candidate_intent"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 静默降级留痕（评审条目 B9 的第二处）。
+#
+# 这个模块原来有三条静默路径：模型响应解析失败被吞成「没有任何行」、分数解析失败被
+# 哨兵值丢掉、以及「精确匹配不中就交给语义评估器」这条正常移交发生时不留痕。三条
+# 都必须带得出「哪一次执行的哪个域、这一轮多大」—— 这张图有修复回边、有并发扇出，
+# 一条 backend.log 里三个 worker 的输出会交织，不带这些就没法归因。
+#
+# 断言写在这里而不是新文件里：上面那批 `_intent` / `_packet` / `_catalog` 就是这三条
+# 路径要的输入，重建一份只会多一份要跟着改的夹具。
+# ─────────────────────────────────────────────────────────────────────────────
+
+_EVAL_LOGGER = "travel_agent.services.candidate_intent_evaluation"
+
+
+def _warnings(caplog) -> list[str]:
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == _EVAL_LOGGER and record.levelno == logging.WARNING
+    ]
+
+
+@pytest.mark.asyncio
+async def test_unparsed_model_response_is_logged_with_domain_and_round_scale(caplog):
+    """(1) 整批响应解析失败 → WARNING，带异常类型、domain、本轮规模。"""
+
+    intent = _intent("intent_arch", "contemporary architecture")
+    spec = _spec(intent)
+    packet = _packet(
+        "candidate_one",
+        "A place",
+        origin=CandidateDiscoveryOrigin.INTENT_QUERY,
+        query_id="query_one",
+        intent_id=intent.intent_id,
+    )
+
+    class BrokenModel:
+        async def ainvoke(self, *_args, **_kwargs):
+            return "not json at all"
+
+    with caplog.at_level(logging.WARNING, logger=_EVAL_LOGGER):
+        matches, _cache = await evaluate_candidate_intents(
+            catalog=_catalog(packet),
+            intent_spec=spec,
+            llm=BrokenModel(),
+        )
+
+    lines = _warnings(caplog)
+    assert len(lines) == 1, lines
+    assert "semantic batch unparsed" in lines[0]
+    assert "domain=visit" in lines[0]
+    assert "pairs=1 candidates=1 intents=1" in lines[0]
+    assert "error=" in lines[0]
+    assert "run=" in lines[0] and "node=" in lines[0]
+    # 降级的后果本身没变：本域每个候选照旧落 UNKNOWN。
+    assert [match.status for match in matches] == [IntentMatchStatus.UNKNOWN]
+
+
+@pytest.mark.asyncio
+async def test_unparsed_score_is_logged_and_the_score_is_still_dropped(caplog):
+    """(2) 分数解析失败 → WARNING 指名具体哪一对；score 仍然是 None。"""
+
+    intent = _intent("intent_arch", "contemporary architecture")
+    spec = _spec(intent)
+    packet = _packet(
+        "candidate_one",
+        "A place",
+        origin=CandidateDiscoveryOrigin.INTENT_QUERY,
+        query_id="query_one",
+        intent_id=intent.intent_id,
+    )
+
+    class BadScoreModel:
+        async def ainvoke(self, *_args, **_kwargs):
+            return json.dumps(
+                {
+                    "matches": [
+                        {
+                            "candidate_id": "candidate_one",
+                            "intent_id": intent.intent_id,
+                            "status": "matched",
+                            "score": "很高",
+                            "supporting_fact_assertion_ids": [
+                                "fact_candidate_one"
+                            ],
+                            "supporting_source_record_ids": [
+                                "source_candidate_one"
+                            ],
+                        }
+                    ]
+                }
+            )
+
+    with caplog.at_level(logging.WARNING, logger=_EVAL_LOGGER):
+        matches, _cache = await evaluate_candidate_intents(
+            catalog=_catalog(packet),
+            intent_spec=spec,
+            llm=BadScoreModel(),
+        )
+
+    lines = _warnings(caplog)
+    assert len(lines) == 1, lines
+    assert "score unparsed" in lines[0]
+    assert "domain=visit" in lines[0]
+    assert "pairs=1" in lines[0]
+    assert "candidate=candidate_one" in lines[0]
+    assert f"intent={intent.intent_id}" in lines[0]
+    assert "run=" in lines[0] and "node=" in lines[0]
+    # 行为不变：-1.0 哨兵让 0.0 <= x <= 1.0 不成立，分数被丢掉。
+    assert [match.score for match in matches] == [None]
+
+
+@pytest.mark.asyncio
+async def test_deferral_to_semantic_evaluator_leaves_a_debug_trace(caplog):
+    """(3) 移交语义评估器 → DEBUG（级别低于前两条），带 domain 与本轮规模。
+
+    要的是 `_deterministic_match` 里 ``if not matched_terms`` 那一条，所以 intent 必须
+    先过得了它上面那道门（kind 在确定性集合里、verification_mode 不是 SEMANTIC），
+    再在词面上不中 —— 「潜水」不在 "A place" 里。
+    """
+
+    intent = _intent(
+        "intent_diving",
+        "潜水",
+        kind=IntentKind.MUST_INCLUDE,
+        strength=IntentStrength.HARD,
+        verification=VerificationMode.DETERMINISTIC,
+    )
+    spec = _spec(intent)
+    packet = _packet(
+        "candidate_one",
+        "A place",
+        origin=CandidateDiscoveryOrigin.INTENT_QUERY,
+        query_id="query_one",
+        intent_id=intent.intent_id,
+    )
+
+    with caplog.at_level(logging.DEBUG, logger=_EVAL_LOGGER):
+        await evaluate_candidate_intents(
+            catalog=_catalog(packet),
+            intent_spec=spec,
+            llm=None,
+        )
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == _EVAL_LOGGER
+    ]
+    # 这条路径不该产生 WARNING：它是正常移交，不是降级。
+    assert _warnings(caplog) == []
+
+    deferred = [m for m in messages if "deferred to semantic evaluator" in m]
+    assert len(deferred) == 1, messages
+    assert "domain=visit" in deferred[0]
+    assert "candidate=candidate_one" in deferred[0]
+    assert f"intent={intent.intent_id}" in deferred[0]
+
+    # 本轮规模由按域那条给（`_deterministic_match` 一次只看一对，拿不到规模）。
+    scale = [m for m in messages if "semantic batch |" in m]
+    assert len(scale) == 1, messages
+    assert "domain=visit" in scale[0]
+    assert "pairs=1 candidates=1 intents=1" in scale[0]
+    assert "llm=no" in scale[0]
+
+
+@pytest.mark.asyncio
+async def test_trace_scope_reads_the_ambient_run_and_node(caplog):
+    """归因串取自 run_control 的 contextvar，不是新加的参数穿透。"""
+
+    intent = _intent("intent_arch", "contemporary architecture")
+    spec = _spec(intent)
+    packet = _packet(
+        "candidate_one",
+        "A place",
+        origin=CandidateDiscoveryOrigin.INTENT_QUERY,
+        query_id="query_one",
+        intent_id=intent.intent_id,
+    )
+
+    class BrokenModel:
+        async def ainvoke(self, *_args, **_kwargs):
+            return "not json at all"
+
+    run_token = current_run_id.set("run_under_test")
+    node_token = current_node.set("candidate_gate")
+    try:
+        with caplog.at_level(logging.WARNING, logger=_EVAL_LOGGER):
+            await evaluate_candidate_intents(
+                catalog=_catalog(packet),
+                intent_spec=spec,
+                llm=BrokenModel(),
+            )
+    finally:
+        current_run_id.reset(run_token)
+        current_node.reset(node_token)
+
+    lines = _warnings(caplog)
+    assert len(lines) == 1
+    assert "run=run_under_test node=candidate_gate" in lines[0]

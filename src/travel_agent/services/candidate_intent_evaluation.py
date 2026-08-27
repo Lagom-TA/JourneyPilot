@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections import defaultdict
 from typing import Any, Mapping, Sequence
@@ -20,6 +21,28 @@ from ..entities.intent_spec import (
     VerificationMode,
     canonical_json_hash,
 )
+from ..workflows.run_control import current_node, current_run_id
+
+logger = logging.getLogger(__name__)
+
+# 这个模块的三条静默降级路径共用的归因前缀。
+#
+# 为什么必须带轮次/身份而不只是打一句「解析失败」：这张图有修复回边、有并发扇出，
+# 一条 backend.log 里三个 worker 的输出会交织。run_id 与 node 从
+# `workflows/run_control` 的 contextvar 取（低层调用点拿不到 TravelAgentState，
+# 这两个 contextvar 就是为此存在的），domain 与本轮规模从本地作用域取。
+#
+# 缺口，写在这里而不是留给下一个人猜：**每个域的 attempt 计数拿不到**。它在
+# `TravelAgentState.candidate_gate_attempts`（entities/state.py:385）上，只有调用方
+# `agents/orchestrator/candidate_gate.py` 手里有；为了记日志给
+# `evaluate_candidate_intents` 新增一个参数穿透进来不值得，所以这里用
+# run_id + node + domain 定位到「哪一次节点执行的哪个域」，同一 run 里同一 node 的
+# 多轮之间靠日志的时间顺序区分。
+
+
+def _trace_scope() -> str:
+    """当前执行上下文的归因串：交织的日志里靠它认出是谁打的。"""
+    return f"run={current_run_id.get() or '-'} node={current_node.get() or '-'}"
 
 
 INTENT_EVALUATION_POLICY_VERSION = "candidate_intent_evaluation.v1"
@@ -132,6 +155,19 @@ def _deterministic_match(
         # vocabularies (for example a localized request and an enum value), let
         # the bounded structured semantic evaluator decide.  With no model this
         # still resolves to UNKNOWN below, so the safety boundary is unchanged.
+        #
+        # DEBUG 而不是 WARNING：上面那段注释说的是设计意图，这条移交本身是正常
+        # 路径，只是发生时原来不留痕。本轮规模在这里拿不到（这个函数一次只看一对
+        # 候选×intent），它由调用方那条按域打的 DEBUG 给出。
+        logger.debug(
+            "candidate intent deferred to semantic evaluator | %s domain=%s "
+            "candidate=%s intent=%s kind=%s",
+            _trace_scope(),
+            _candidate_target(candidate).value,
+            candidate.candidate_id,
+            intent.intent_id,
+            intent.kind.value,
+        )
         return None
     status = (
         IntentMatchStatus.VIOLATED
@@ -242,6 +278,18 @@ async def evaluate_candidate_intents(
             for candidate, intent, facts, source_ids in batch
         }
         response_rows: list[dict[str, Any]] = []
+        # 本域这一轮的规模。上面那条按对打的 DEBUG 说的是「哪一对移交了」，这条说
+        # 的是「这一轮一共有多大」——两条合起来才能把交织的日志归因到某一轮某个域。
+        logger.debug(
+            "candidate intent semantic batch | %s domain=%s pairs=%d "
+            "candidates=%d intents=%d llm=%s",
+            _trace_scope(),
+            domain,
+            len(batch),
+            len({item[0].candidate_id for item in batch}),
+            len({item[1].intent_id for item in batch}),
+            "yes" if llm is not None else "no",
+        )
         if llm is not None and batch:
             allowed_fact_ids = sorted(
                 {
@@ -407,7 +455,21 @@ async def evaluate_candidate_intents(
                     response_rows = [
                         row for row in parsed["matches"] if isinstance(row, dict)
                     ]
-            except Exception:
+            except Exception as exc:
+                # 这一条最该记：整批响应被吞成「没有任何行」，本域下面每个候选都会
+                # 落 UNKNOWN，而在结果里这和「模型确实答不出」长得一模一样。异常
+                # 类型与摘要必须进日志，否则连「是超时还是 schema 不合」都分不出。
+                logger.warning(
+                    "candidate intent semantic batch unparsed | %s domain=%s "
+                    "pairs=%d candidates=%d intents=%d error=%s: %s",
+                    _trace_scope(),
+                    domain,
+                    len(batch),
+                    len({item[0].candidate_id for item in batch}),
+                    len({item[1].intent_id for item in batch}),
+                    type(exc).__name__,
+                    str(exc)[:200],
+                )
                 response_rows = []
 
         rows_by_key = {
@@ -441,7 +503,21 @@ async def evaluate_candidate_intents(
             if row is not None and row.get("score") is not None and status != "unknown":
                 try:
                     parsed_score = float(row["score"])
-                except (TypeError, ValueError):
+                except (TypeError, ValueError) as exc:
+                    # -1.0 是个哨兵：它让下面的 0.0 <= x <= 1.0 不成立，于是 score
+                    # 保持 None，模型给的分数被丢掉。状态照旧保留，所以这次降级在
+                    # 结果里完全看不出来 —— 只能从这里看出来。
+                    logger.warning(
+                        "candidate intent score unparsed | %s domain=%s "
+                        "pairs=%d candidate=%s intent=%s error=%s: %s",
+                        _trace_scope(),
+                        domain,
+                        len(batch),
+                        candidate.candidate_id,
+                        intent.intent_id,
+                        type(exc).__name__,
+                        str(exc)[:200],
+                    )
                     parsed_score = -1.0
                 if 0.0 <= parsed_score <= 1.0:
                     score = 0.0 if status == "violated" else parsed_score

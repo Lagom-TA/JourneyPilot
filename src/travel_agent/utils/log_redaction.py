@@ -12,6 +12,14 @@ applied there cannot be forgotten by the next provider that keys by query
 string. Any module that mints a secret-bearing URL should call
 :func:`install_query_secret_redaction` at import so the filter is in place
 before its first request, in every entry point (server, script, test).
+
+That import-time call is the load-bearing one and must not be moved into the
+app's logging setup: a script, a unit test or a direct tool invocation that
+imports the provider module without going through an entry point would then log
+the key in clear text.  The logging entry points install it *as well* —
+:func:`install_query_secret_redaction` is idempotent per logger name, so the
+second call is a no-op and the filter never stacks — which covers the reverse
+gap, a future provider that keys by query string and forgets its own call.
 """
 
 from __future__ import annotations
