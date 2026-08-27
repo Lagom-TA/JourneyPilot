@@ -13,6 +13,10 @@
 
 这三件事都不会让任何测试变红，也不会写进任何日志。这一份把它们换成红灯。
 
+第四张表不查显示用的东西，查的是「意图变更之后能从哪个节点接着跑」——
+`amendment_continuations` 也是按节点名手抄的一份名单，漏一个的后果同样是静默的：
+那个节点变成不可续跑，一次补充要求把用户打回更早的阶段。它一起放在这里。
+
 真源是 `build_travel_workflow()` 构出来的图本身，不是 `node_names.py` 那份常量表：
 常量表和图可能一起漂（加常量忘了 add_node，或反过来）。构图是纯构造器 —— 不连库、
 不起 MCP、不发模型调用，只是把节点函数挂上去，一秒多一点，可以进单元测试。
@@ -29,16 +33,24 @@ from typing import AbstractSet, Iterable
 
 
 @lru_cache(maxsize=1)
-def _graph_node_names() -> frozenset[str]:
-    """图上所有节点名 —— 深研主干加上快答那一个节点。
+def _travel_graph():
+    """深研主干的图本身。
 
-    缓存到模块级：构图约 1.4 秒，三条断言各构一次就没必要了。
+    缓存到模块级：构图约 1.4 秒，每条断言各构一次就没必要了。
     """
 
-    from travel_agent.workflows.fast_answer import NODE_FAST_ANSWER
     from travel_agent.workflows.travel_planning import build_travel_workflow
 
-    return frozenset(build_travel_workflow().nodes.keys()) | {NODE_FAST_ANSWER}
+    return build_travel_workflow()
+
+
+@lru_cache(maxsize=1)
+def _graph_node_names() -> frozenset[str]:
+    """图上所有节点名 —— 深研主干加上快答那一个节点。"""
+
+    from travel_agent.workflows.fast_answer import NODE_FAST_ANSWER
+
+    return frozenset(_travel_graph().nodes.keys()) | {NODE_FAST_ANSWER}
 
 
 def _assert_table_covers_the_graph(
@@ -117,4 +129,44 @@ def test_step_display_names_cover_every_graph_node():
         table_name="utils/display_names.py 的 STEP_DISPLAY_NAMES",
         non_graph_keys=_NON_GRAPH_STEP_LABEL_KEYS,
         consequence="这些节点会把英文内部名原样显示给用户",
+    )
+
+
+# ── 意图变更的续跑落点 ────────────────────────────────────────────────────
+
+# 图上唯二不接受续跑的节点，两个都有理由：
+#   scope_clarifier —— 它到 request_contract_normalizer 是无条件边，本来就没有停下来
+#     问用户这条分支（travel_planning.py:665-667）；补充要求回不到「再澄清一次」。
+#   intent_amendment_router —— 路由节点自己，回到自己就是死循环。
+_NON_RESUMABLE_NODES = frozenset({"scope_clarifier", "intent_amendment_router"})
+
+
+def test_intent_amendment_resumes_at_every_node_except_the_two_it_must_not():
+    """`amendment_continuations` 是按节点名手抄的一份名单，漏一个不会报错。
+
+    补充要求进来之后，`route_after_intent_amendment` 只能落到这份名单里的节点。
+    加一个节点忘了往名单里补一行，它就悄悄变成不可续跑 —— 用户加一句话，进度被
+    打回更早的阶段重做，没有任何日志说这是因为一张表少了一行。
+
+    名单是 `build_travel_workflow` 里的局部变量，导不出来，所以这里从构好的图上把
+    那条 conditional edge 的落点读回来 —— 读的是构造器产物本身，不是扫源码。
+    """
+
+    graph = _travel_graph()
+    branches = graph.branches.get("intent_amendment_router") or {}
+    branch = branches.get("route_after_intent_amendment")
+    assert branch is not None and branch.ends, (
+        "读不到 intent_amendment_router 的分支落点：LangGraph 的 branches/ends 结构变了，"
+        f"这条守卫需要跟着改，不能当成「名单没问题」。实际拿到：{sorted(branches)}"
+    )
+
+    resumable = set(branch.ends)
+    nodes = set(graph.nodes)
+    unreachable = nodes - resumable
+    assert unreachable == set(_NON_RESUMABLE_NODES), (
+        "意图变更的续跑落点与图不一致：\n"
+        f"  图里有、名单里没有（这些节点会变成不可续跑）："
+        f"{sorted(unreachable - _NON_RESUMABLE_NODES)}\n"
+        f"  名单里有、图里没有：{sorted(resumable - nodes)}\n"
+        f"  已登记的不可续跑节点：{sorted(_NON_RESUMABLE_NODES)}"
     )

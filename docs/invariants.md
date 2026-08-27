@@ -395,6 +395,33 @@ Tests:
 - `agent_behavior/test_run_diff.py::test_completion_audit_records_replay_layers_without_raw_user_text`
 - `agent_behavior/test_run_diff.py::test_run_diff_locates_selection_and_composition_delta`
 
+### INV-NODE-001：图上每个节点都在三张按名字查的表里有一行
+Owner: `workflows/trace.py` 的 `NODE_PHASES`、`utils/display_names.py` 的
+`AGENT_DISPLAY_NAMES` 与 `STEP_DISPLAY_NAMES`
+Enforced by: 真源取 `build_travel_workflow()` 构出来的图加上 `NODE_FAST_ANSWER`，
+不取 `node_names.py` 的常量表 —— 常量表和图可能一起漂。三张表都按「键集 == 图上的节点
+加上显式登记的非节点键」比，两个方向都断言；不做「表里多出来的一律放过」的宽松匹配，
+否则删掉一个节点之后表里那行会一直留着。漏一行不报错，只是静默变差：`NODE_PHASES`
+缺一行让 `infer_trace_phase` 落进 `postprocess` 默认档，时间线把一个跑在交付之前的门
+画到最后一段；两张显示名表缺一行让界面直接显示英文内部名
+Tests:
+- `test_node_name_tables_contract.py::test_trace_phase_table_covers_every_graph_node`
+- `test_node_name_tables_contract.py::test_agent_display_names_cover_every_graph_node`
+- `test_node_name_tables_contract.py::test_step_display_names_cover_every_graph_node`
+
+### INV-INTENT-006：意图变更能从每个节点续跑，除了明确不该的两个
+Owner: `workflows/travel_planning.py` 里 `build_travel_workflow` 的
+`amendment_continuations`、`workflows/intent_amendments.py` 的
+`route_after_intent_amendment`
+Enforced by: 名单是按节点名手抄的局部变量，导不出来，所以守卫从构好的图上把
+`intent_amendment_router` 那条 conditional edge 的落点读回来（读构造器产物，不扫源码），
+再与图上的节点比。唯二允许缺席的是 `scope_clarifier`（它到
+`request_contract_normalizer` 是无条件边，本来就没有「停下来再澄清一次」这条分支）
+和路由节点自己。加一个节点忘了往名单里补一行，它就悄悄变成不可续跑 —— 用户补一句
+要求，进度被打回更早的阶段重做，没有任何日志说这是因为一张表少了一行
+Tests:
+- `test_node_name_tables_contract.py::test_intent_amendment_resumes_at_every_node_except_the_two_it_must_not`
+
 ---
 
 ## 流与会话
@@ -534,6 +561,22 @@ Enforced by: 价格表未命中时 `cost_complete=false`，费用维不参与判
 Tests:
 - `test_run_budget.py::test_an_unpriced_call_never_lets_cost_reject_a_call`
 
+### INV-BUDGET-006：预算维度只有一份清单，而且每一维都落得到字段上
+Owner: `entities/run_budget.py` 的 `BudgetDimension`（唯一来源）、
+`BUDGET_DIMENSIONS`（从它 `get_args` 派生）、`RunBudgetSnapshot.limit`、
+`RunBudgetUsage.spent`
+Enforced by: 派生保证清单不会写两遍写歪，`get_args` 保留 Literal 的书写顺序 ——
+顺序有语义，`exhausted_dimension` 按它判哪一维先耗尽。守卫比的是**两个独立来源**：
+Literal 与 pydantic 报出的字段集，断言每一维都有 `max_*` 上限字段和同名用量字段。
+不许改成遍历 `BUDGET_DIMENSIONS` 去 `hasattr` —— 那张表现在派生自同一个 Literal，
+遍历它等于拿一个来源比它自己，恒真。这一条是单向包含不是双向相等：
+`max_tool_retries_per_target` 是每个工具目标的重试上限，不进 `remaining_budget`、
+不进 `exhausted_dimension`、不会成为耗尽原因码，所以它显式登记在
+`_NON_DIMENSION_LIMIT_FIELDS` 里而不是被当成第六维
+Tests:
+- `test_run_budget.py::test_every_budget_dimension_has_a_limit_field_to_reflect_onto`
+- `test_run_budget.py::test_remaining_budget_reports_every_dimension_and_nothing_else`
+
 ### INV-CHAN-001：入库不许把在线请求排到队尾
 Owner: `utils/concurrency.py`、`models/router.llm_channel`
 Storage: 进程内通道，配额在 `Settings.provider_channels`
@@ -637,3 +680,45 @@ Enforced by: 认得出的形状读成人话，零结果与失败分开说；认�
 Tests:
 - `test_tool_result_summary.py::*`
 - `frontend/src/lib/toolDisplay.test.ts`
+
+---
+
+## 门禁自身
+
+### INV-META-001：这份文档的门禁只证明测试还在，不证明它还在干活
+Owner: `tests/test_invariants_doc.py`
+Enforced by: `test_every_referenced_test_exists` 拿 pytest 自己的收集结果比对每条
+`Tests:` 点名的用例，`test_every_referenced_owner_file_exists` 让每个 `Owner:` 落到
+磁盘上，`test_the_gate_itself_collects_references` 挡住「解析器什么都没抓到于是永远
+通过」这种恒绿。
+**它到此为止。** 它不断言那个用例真的在校验它声称在校验的那张表：一个被掏空成
+`assert True`、或者断言条件被改软了的守卫，照样能被收集到，照样让这份文档全绿。
+这条门禁买的是「守卫没被删掉、没被改名、没被漏收集」，不是「守卫还在干活」。
+后者只能靠改坏它一次看它红不红 —— 每条新守卫合入前都该这么试一次，但那是人做的事，
+不是这份门禁做的事。
+把它当成比实际更强的保证，就会在某次「顺手简化一下测试」之后，留下一份读起来
+处处有人守着、实际没人守着的文档。
+Tests:
+- `test_invariants_doc.py::test_every_referenced_test_exists`
+- `test_invariants_doc.py::test_the_gate_itself_collects_references`
+- `test_invariants_doc.py::test_every_invariant_names_an_owner_and_a_test`
+
+---
+
+## 不立不变量的裁定
+
+记在这里是为了不被重新裁一遍 —— 否则下一个人看到「这张表没有 INV」会以为是漏了。
+
+1. **`_KNOWN_NEXT_AGENTS`（`agents/orchestrator/dispatcher.py:32-36`）不立。**
+   不变量买的是「防静默」，而这张表的失败不静默：未知 `next_agent` 在
+   `dispatcher.py:178-183` 打一条 `logger.error` 说清收敛去了哪，然后确定性落到
+   artifact gate，不会开出一条新的模型路径。已经有一条看得见的失败信号的地方，
+   再挂一条不变量只是让文档变长。
+
+2. **`_AGENT_TOOL_POLICY` 与 `_FALLBACK_MAP` 有守卫但还没有不变量指向它们。**
+   `tests/test_tool_policy_contract.py` 已经双向守住了策略表与 `WORKER_NODES`、
+   与已配置 MCP server 的关系；`tests/test_tool_registry_contract.py::
+   test_hand_written_no_fallback_tools_absent_from_fallback_map` 守住了
+   `_FALLBACK_MAP` 的一半（手写 `allow_offline_fallback=False` 的工具不许在里面有键）。
+   两处都还没有任何一条 `### INV-` 点名。这不是裁定不立，是一个还没做的补注 ——
+   谁下次动这两张表，顺手把它们挂到不变量上。
