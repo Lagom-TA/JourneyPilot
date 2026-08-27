@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Sequence
 
 import pytest
+from langgraph.errors import GraphInterrupt
 
 from travel_agent.entities.trip_run import (
     RunCommand,
@@ -37,9 +38,22 @@ from travel_agent.workflows.run_control import (
     current_run_budget,
     current_run_deadline,
     current_run_id,
+    node_lifecycle_sink,
     run_control_registry,
     with_run_control,
 )
+from travel_agent.workflows.run_deadline import DeadlineObservation
+
+
+def _capture_lifecycle() -> tuple[List[Dict[str, Any]], Any]:
+    """挂一个收集 lifecycle 事件的 sink，返回 (事件列表, 还原用的 token)。"""
+
+    events: List[Dict[str, Any]] = []
+
+    async def sink(payload: Dict[str, Any]) -> None:
+        events.append(payload)
+
+    return events, node_lifecycle_sink.set(sink)
 
 
 class FakeCommandStore:
@@ -530,3 +544,143 @@ async def test_wrapped_node_restores_deadline_overwritten_by_bare_set(run_id) ->
         assert current_run_deadline.get() is sentinel_a
     finally:
         current_run_deadline.reset(token)
+
+
+async def test_worker_entering_after_delivery_is_ignored_without_any_lifecycle_event(
+    wired, run_id
+) -> None:
+    """交付已经落库才被调度的 worker 在进入前就被拦下：不执行、不发任何事件。"""
+
+    handle, _store, _runs, _coordinator = wired
+    handle.mark_delivery_ready()
+
+    events, token = _capture_lifecycle()
+    try:
+
+        async def late_worker(_state: TravelAgentState) -> Dict[str, Any]:  # pragma: no cover
+            raise AssertionError("交付之后 worker 不该再被执行")
+
+        update = await with_run_control("destination_researcher", late_worker)(
+            TravelAgentState(run_id=run_id, user_message="x")
+        )
+    finally:
+        node_lifecycle_sink.reset(token)
+
+    assert update == {
+        "run_deadline": None,
+        "agent_status": {"destination_researcher": "ignored_after_delivery"},
+    }
+    assert events == []
+
+
+async def test_a_worker_returning_after_delivery_is_overwritten_but_still_reports_completed(
+    wired, run_id
+) -> None:
+    """finalizer 在 worker 返回途中赢了：更新被丢弃，但节点确实跑完了，completed 照发。"""
+
+    handle, _store, _runs, _coordinator = wired
+    events, token = _capture_lifecycle()
+    try:
+
+        async def losing_worker(_state: TravelAgentState) -> Dict[str, Any]:
+            # 模拟另一个协程在 worker 执行期间完成了交付。
+            handle.mark_delivery_ready()
+            return {
+                "applied_intent_amendment_ids": ["cmd-late-1"],
+                "agent_status": {"destination_researcher": "completed"},
+            }
+
+        update = await with_run_control("destination_researcher", losing_worker)(
+            TravelAgentState(run_id=run_id, user_message="x")
+        )
+    finally:
+        node_lifecycle_sink.reset(token)
+
+    assert update == {
+        "run_deadline": None,
+        "agent_status": {"destination_researcher": "ignored_after_delivery"},
+    }
+    assert [event["status"] for event in events] == ["started", "completed"]
+
+
+async def test_delivery_finalizer_marks_the_handle_delivery_ready(wired, run_id) -> None:
+    """唯一置位 delivery_ready 的路径：finalizer 报告 delivery_persisted=True。"""
+
+    handle, _store, _runs, _coordinator = wired
+    assert not handle.delivery_ready_event.is_set()
+
+    async def finalizer(_state: TravelAgentState) -> Dict[str, Any]:
+        return {"delivery_persisted": True}
+
+    await with_run_control("delivery_finalizer", finalizer)(
+        TravelAgentState(run_id=run_id, user_message="x")
+    )
+
+    assert handle.delivery_ready_event.is_set()
+
+
+async def test_graph_interrupt_passes_through_the_wrapper_untouched(wired, run_id) -> None:
+    """plan_gate 的 interrupt 靠包装层原样放行才能落进 checkpoint：不算失败。"""
+
+    _handle, _store, _runs, _coordinator = wired
+    events, token = _capture_lifecycle()
+    try:
+
+        async def gating(_state: TravelAgentState) -> Dict[str, Any]:
+            raise GraphInterrupt()
+
+        with pytest.raises(GraphInterrupt):
+            await with_run_control("plan_gate", gating)(
+                TravelAgentState(run_id=run_id, user_message="x")
+            )
+    finally:
+        node_lifecycle_sink.reset(token)
+
+    # started 已发；重抛发生在 failed/completed 之前，两者都不许出现。
+    assert [event["status"] for event in events] == ["started"]
+
+
+def test_blocked_research_worker_update_shape() -> None:
+    """窗口关闭时挡住 worker 的返回结构：过期相位写 failed + last_error，其余写 partial。
+
+    dispatcher 靠这两个 agent_status 推进计划（`partial`/`failed` 是终态值），错误文案
+    区分 research worker 与 itinerary 组合两条路径。
+    """
+
+    observed = object()
+    research_phase = DeadlineObservation(
+        elapsed_seconds=100.0, remaining_seconds=0.0, phase="closeout"
+    )
+
+    blocked = run_control._blocked_research_worker_update(
+        node_name="transport_researcher",
+        observed_deadline=observed,
+        observation=research_phase,
+    )
+    assert blocked == {
+        "run_deadline": observed,
+        "agent_status": {"transport_researcher": "partial"},
+    }
+
+    expired_research = DeadlineObservation(
+        elapsed_seconds=500.0, remaining_seconds=-10.0, phase="expired"
+    )
+    failed = run_control._blocked_research_worker_update(
+        node_name="transport_researcher",
+        observed_deadline=observed,
+        observation=expired_research,
+    )
+    assert failed["run_deadline"] is observed
+    assert failed["agent_status"] == {"transport_researcher": "failed"}
+    assert failed["last_error"] == (
+        "delivery deadline elapsed before research worker could start"
+    )
+
+    expired_composition = run_control._blocked_research_worker_update(
+        node_name="itinerary_planner",
+        observed_deadline=observed,
+        observation=expired_research,
+    )
+    assert expired_composition["last_error"] == (
+        "delivery deadline elapsed before itinerary composition"
+    )
