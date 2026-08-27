@@ -51,10 +51,17 @@ _BRANCHES = ("local_bin", "npx_fallback")
 
 
 def _normalize(value: str) -> str:
-    """把逐机器不同的前缀换成占位符。先换 repo root，它更长。"""
+    """把逐机器不同的前缀换成占位符。
 
-    return value.replace(str(_REPO_ROOT), _REPO_ROOT_TOKEN).replace(
-        sys.executable, _PYTHON_TOKEN
+    **先换解释器，再换 repo root**，顺序不能反。`uv sync` 默认把 venv 建在仓库里，
+    于是 `sys.executable` 是 `<repo>/.venv/bin/python3` —— 先换 repo root 会把它的
+    前缀吃掉，变成 `<REPO_ROOT>/.venv/bin/python3`，第二个 replace 再也匹配不上，
+    fixture 里的 `<PYTHON>` 永远对不上。反过来没有这个问题：repo root 不可能是
+    解释器路径的后缀。
+    """
+
+    return value.replace(sys.executable, _PYTHON_TOKEN).replace(
+        str(_REPO_ROOT), _REPO_ROOT_TOKEN
     )
 
 
