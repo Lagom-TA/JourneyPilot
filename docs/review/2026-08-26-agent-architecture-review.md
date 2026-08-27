@@ -80,7 +80,7 @@ JourneyPilot 是单机、单进程、单用户的自托管旅行规划应用（A
 | 14 | `intent_fidelity_gate` | `agents/orchestrator/intent_fidelity_gate.py:51` | 门（确定性） | 硬意图覆盖校验；`never_violate` 违规直接抛 `DeliveryContractViolation`（`:82-87`） |
 | 15 | `delivery_quality_gate` | `agents/orchestrator/delivery_quality_gate.py:610` | 门（确定性） | 交付质量缺口；无 workspace 且窗口/预算尽则硬失败（`:625-636`） |
 | 16 | `destination_researcher` | `agents/destination_researcher/node.py:1344` | 模型调用（fast）+ 人在环 | 目的地研究；唯一 `can_ask_user=True` 的 worker，触发即 HALT（`:1622-1643`） |
-| 17 | `transport_researcher` | `agents/transport_researcher/node.py:1872` | 模型调用（fast） | 交通研究；也承载组合期的结构性连接器补研（`run_control.py:659-681`） |
+| 17 | `transport_researcher` | `agents/transport_researcher/node.py:1872` | 模型调用（fast） | 交通研究；也承载组合期的结构性连接器补研（`run_control.py:658-680`） |
 | 18 | `accommodation_researcher` | `agents/accommodation_researcher/node.py:787` | 模型调用（fast） | 住宿研究 |
 | 19 | `itinerary_planner` | `agents/itinerary_planner/node.py:2954` | 模型调用（primary） | 三相组合；全图唯一 primary 节点，所有 `composition_repair` 的落点 |
 | 20 | `budget_estimate` | `workflows/budget_estimate.py:139` | 模型调用（fast） | 估总花费；查不到就不写，从不让交付失败（`travel_planning.py:620-621`） |
@@ -133,19 +133,19 @@ JourneyPilot 是单机、单进程、单用户的自托管旅行规划应用（A
 
 ### 4.3 包装层短路：等价于隐式路由的一层
 
-`with_run_control`（`run_control.py:735`）在节点体之前和之后都可能改写结果，这些改写会改变下游路由函数读到的字段，必须计入路由认知：
+`with_run_control`（`run_control.py:916`）在节点体之前和之后都可能改写结果，这些改写会改变下游路由函数读到的字段，必须计入路由认知：
 
 | 条件 | 后果 | 证据 |
 |---|---|---|
-| 进程内取消标志命中 | `raise RunCancelled`，直接冒到 `ainvoke`/`astream` | `run_control.py:764, 416-428` |
-| 节点属于四个受限 worker 且自身窗口已关 | 节点体不执行，写 `agent_status={node:"failed"}`+`last_error`（相位 expired）或 `{node:"partial"}`（其余相位） | `:772-783 → :705-732` |
-| `delivery_ready_event` 已置位（进入前或返回时） | 不执行 / 丢弃结果，写 `agent_status={node:"ignored_after_delivery"}` | `:785-794, 848-860` |
-| 有新鲜 supplement 且合同已建立且节点不是 normalizer/router | 节点体不执行，只写 `intent_amendment_resume_node=节点名` | `:821-831` |
-| 有新鲜 supplement 但合同未建立 | 节点正常执行，结果追加 `pending_intent_amendments`（不写 resume_node） | `:861-871` |
-| finalizer 返回 `delivery_persisted=True` | 置位 `delivery_ready_event` | `:872-878` |
-| 节点抛 `GraphInterrupt`/`RunCancelled`/`CancelledError` | 原样重抛（plan_gate 的 interrupt 靠这条穿过包装层） | `:956-957` |
+| 进程内取消标志命中 | `raise RunCancelled`，直接冒到 `ainvoke`/`astream` | `run_control.py:934, 421-437` |
+| 节点属于四个受限 worker 且自身窗口已关 | 节点体不执行，写 `agent_status={node:"failed"}`+`last_error`（相位 expired）或 `{node:"partial"}`（其余相位） | `:942-953 → :704-731` |
+| `delivery_ready_event` 已置位（进入前或返回时） | 不执行 / 丢弃结果，写 `agent_status={node:"ignored_after_delivery"}` | `:955-961, 1004-1013`（字典构造共用 `:768-778`） |
+| 有新鲜 supplement 且合同已建立且节点不是 normalizer/router | 节点体不执行，只写 `intent_amendment_resume_node=节点名` | 谓词 `:807-815`；分支 `:980-986` |
+| 有新鲜 supplement 但合同未建立 | 节点正常执行，结果追加 `pending_intent_amendments`（不写 resume_node） | `:1014-1024` |
+| finalizer 返回 `delivery_persisted=True` | 置位 `delivery_ready_event` | `:1025-1031` |
+| 节点抛 `GraphInterrupt`/`RunCancelled`/`CancelledError` | 原样重抛（plan_gate 的 interrupt 靠这条穿过包装层） | `:1091-1092` |
 
-窗口归属：`itinerary_planner` 与 `budget_estimate` 记 composition 窗口，结构性连接器轮次的 `transport_researcher` 临时记 composition 窗口，其余记 research 窗口（`run_control.py:684-689`）。
+窗口归属：`itinerary_planner` 与 `budget_estimate` 记 composition 窗口，结构性连接器轮次的 `transport_researcher` 临时记 composition 窗口，其余记 research 窗口（`run_control.py:683-688`）。
 
 注意 `partial`/`failed` 与 `ignored_after_delivery` 是两个独立分支写的不同值：前者会被 dispatcher 当作终态推进计划（`dispatcher.py:29`），语义与"迟到 worker 被丢弃"不同。
 
