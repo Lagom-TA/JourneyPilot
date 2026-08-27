@@ -373,6 +373,14 @@ async def readiness() -> JSONResponse:
             if item.get("enabled") and item.get("configured") and not item.get("healthy")
         },
     }
+    # 无冲突时不带这一项：健康面在无冲突时必须与历史输出逐字段一致。
+    tool_name_collisions = {
+        name: item.get("tool_name_collisions")
+        for name, item in mcp_states.items()
+        if item.get("tool_name_collisions")
+    }
+    if tool_name_collisions:
+        mcp_summary["tool_name_collisions"] = tool_name_collisions
 
     snapshot_summary = _probe_data_snapshots(settings)
 

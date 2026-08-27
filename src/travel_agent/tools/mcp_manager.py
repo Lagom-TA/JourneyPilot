@@ -409,6 +409,7 @@ class MCPServerState:
     status: str = "pending"
     tool_count: int = 0
     tools_list: List[str] = field(default_factory=list)
+    tool_name_collisions: List[str] = field(default_factory=list)
     last_error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -423,6 +424,7 @@ class MCPServerState:
             "status": self.status,
             "tool_count": self.tool_count,
             "tools_list": list(self.tools_list),
+            "tool_name_collisions": list(self.tool_name_collisions),
             "last_error": self.last_error,
         }
 
@@ -507,14 +509,15 @@ class MCPManager:
                     if not tool_name:
                         continue
 
-                    registry.register(
+                    if registry.register(
                         name=tool_name,
                         description=tool_meta["description"],
                         parameters_schema=tool_meta["parameters_schema"],
                         executor=self._make_executor(server_name, tool_name),
                         source="mcp",
                         server_name=server_name,
-                    )
+                    ):
+                        state.tool_name_collisions.append(tool_name)
                     tool_names.append(tool_name)
 
                 state.healthy = True
@@ -541,6 +544,13 @@ class MCPManager:
         registered_tools = sum(tool_counts)
 
         self._initialized = True
+        collisions = registry.collisions()
+        if collisions:
+            logger.error(
+                "工具注册同名覆盖 %s 处: %s",
+                len(collisions),
+                ", ".join(sorted({c["tool_name"] for c in collisions})),
+            )
         logger.info(
             "MCP 初始化完成 | 成功服务器: %s/%s | 工具数: %s",
             len([s for s in self._server_states.values() if s.healthy]),
