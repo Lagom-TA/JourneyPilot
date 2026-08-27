@@ -856,7 +856,7 @@ async def execute_tool(
                 if is_retryable and attempt < max_retries:
                     await record_retry_failure(last_error, attempt)
                     await await_model_operation(
-                        asyncio.sleep(1.0 * (2 ** attempt)),
+                        asyncio.sleep(_tool_retry_backoff_seconds(attempt)),
                         operation=f"tool.{tool_name}.retry_backoff",
                     )
                     continue
@@ -875,7 +875,7 @@ async def execute_tool(
             is_retryable = _is_retryable_tool_error(err_str)
             last_error = str(e)
             if is_retryable and attempt < max_retries:
-                wait = 1.0 * (2 ** attempt)
+                wait = _tool_retry_backoff_seconds(attempt)
                 logger.warning(f"工具 [{tool_name}] 可重试错误（attempt {attempt + 1}），{wait:.0f}s 后重试: {e}")
                 await record_retry_failure(last_error, attempt)
                 try:
@@ -1080,6 +1080,15 @@ def classify_tool_result(
             f"{tool_name} 成功应答但结果集为空（keys={sorted(result.keys())}）",
         )
     return ToolResultOutcome.CONTENT, ""
+
+
+_TOOL_RETRY_BASE_SECONDS = 1.0
+_TOOL_RETRY_FACTOR = 2  # 保持 int：2 ** attempt 走整数幂，与内联公式数值逐值相等。
+
+
+def _tool_retry_backoff_seconds(attempt: int) -> float:
+    """第 attempt 轮重试前的退避秒数（attempt 从 0 开始）。"""
+    return _TOOL_RETRY_BASE_SECONDS * (_TOOL_RETRY_FACTOR ** attempt)
 
 
 def _is_retryable_tool_error(error: str) -> bool:
