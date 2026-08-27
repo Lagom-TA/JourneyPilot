@@ -381,7 +381,7 @@ research_query_ids / success_criteria / excluded_categories …），**不含档
   全图唯一的 `interrupt()` 在 `plan_gate`（`travel_planning.py:359`）
 - `api/routes/chat.py:68` `_CHECKPOINT_GATE_NODES = {"plan_gate"}` —— 只有计划门能断点续跑
 - worker HALT 留下的 `AWAITING_INPUT` 不满足 `checkpoint_resume`（`chat.py:374-391`），于是走 else 分支
-  **构造全新 `TravelAgentState`，从 `START → scope_clarifier` 重新开始**（`travel_planning.py:927-931`）
+  **构造全新 `TravelAgentState`，从 `START → scope_clarifier` 重新开始**（`travel_planning.py:884-900`）
 
 → **用户回答之后，这次 Run 已经做过的研究被整个丢弃、从合同段重来。** 在一个墙钟封存的系统里，
 这不是「等人」的代价，是「作废」的代价。

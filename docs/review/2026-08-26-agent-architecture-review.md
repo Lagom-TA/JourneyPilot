@@ -56,7 +56,7 @@ JourneyPilot 是单机、单进程、单用户的自托管旅行规划应用（A
 
 ## 4. 运行图全景
 
-本节的三张表全部经第二遍逐条回源码核对（核对基准 `travel_planning.py` 全文 + 每个 `route_after_*` 函数的实现文件）。图规模：22 个 `add_node`，3 条固定边（含 START），16 组条件边；唯一 `interrupt()` 在 `travel_planning.py:359`；图内没有任何节点用 `Command` 跳转（`Command(resume=…)` 只出现在 `astream` 的恢复入口 `:928`）。递归上限 250（`:140`，注释：让失控自转环在秒级失败，而不是耗到墙钟截止）。
+本节的三张表全部经第二遍逐条回源码核对（核对基准 `travel_planning.py` 全文 + 每个 `route_after_*` 函数的实现文件）。图规模：22 个 `add_node`，3 条固定边（含 START），16 组条件边；唯一 `interrupt()` 在 `travel_planning.py:359`；图内没有任何节点用 `Command` 跳转（`Command(resume=…)` 只出现在 `astream` 的恢复入口 `:882`）。递归上限 250（`:140`，注释：让失控自转环在秒级失败，而不是耗到墙钟截止）。
 
 ### 4.1 节点全表（22 个）
 
@@ -259,7 +259,7 @@ Bundle 落库之后，用户对行程的每次改动走 `WorkspaceV2Service`：`
 
 ### 6.2 run 控制与终态
 
-每次 run 以 `run_attribution(run_id)` 为归因边界（`travel_planning.py:896, 976`）。TripRun 状态机的合法迁移收在一张表里（`entities/trip_run.py` 的 `ALLOWED_STATUS_TRANSITIONS`），唯一写方是 `trip_run_store` 的三个带事务锁的方法（`transition_status`/`claim_checkpoint_resume`/`complete_delivery`）——但 `claim_checkpoint_resume` 的 CAS 用调用方传入的集合判定、绕开迁移矩阵，与实体层的可恢复集合已经分叉（发现 F-04）。执行租约与控制命令是两张独立表（`trip_run_executions`/`trip_run_commands`），都以数据库 `NOW()` 为唯一时钟。取消是进程内停止标志 + `RunCancelled` 异常冒泡；恢复时 checkpoint 要过双重合同校验（LangGraph 反序列化 + `TravelAgentState.model_validate`，`travel_planning.py:805-846`），失败收敛为 `CheckpointContractError`——旧 checkpoint 不允许带着无关 Draft 的新预算复活。
+每次 run 以 `run_attribution(run_id)` 为归因边界（`travel_planning.py:930`；非流式入口已删，仅剩 `astream` 一处）。TripRun 状态机的合法迁移收在一张表里（`entities/trip_run.py` 的 `ALLOWED_STATUS_TRANSITIONS`），唯一写方是 `trip_run_store` 的三个带事务锁的方法（`transition_status`/`claim_checkpoint_resume`/`complete_delivery`）——但 `claim_checkpoint_resume` 的 CAS 用调用方传入的集合判定、绕开迁移矩阵，与实体层的可恢复集合已经分叉（发现 F-04）。执行租约与控制命令是两张独立表（`trip_run_executions`/`trip_run_commands`），都以数据库 `NOW()` 为唯一时钟。取消是进程内停止标志 + `RunCancelled` 异常冒泡；恢复时 checkpoint 要过双重合同校验（LangGraph 反序列化 + `TravelAgentState.model_validate`，`travel_planning.py:817-854`），失败收敛为 `CheckpointContractError`——旧 checkpoint 不允许带着无关 Draft 的新预算复活。
 
 ### 6.3 墙钟五相与预算五维（权威数表）
 
@@ -417,7 +417,7 @@ RAG 的检索管线是 改写（fast 模型）→ 混合检索 → 重排 → CR
 
 **F-07｜"报告是否有内容"两份实现，一份修好另一份还在探测不存在的字段。** finalizer 侧已修并注释自陈那两个键从未存在（`delivery_finalizer.py:87-96`）；`run_completion_metrics.py:522-528` 仍在 `document.get("sections")/get("summary")`，走 Mapping.get 不抛错、静默失效。修复方向：提取共享判定函数。
 
-**F-08｜没有 checkpointer 的执行路径走到 plan_gate 必抛 RuntimeError。** `run()` 把开关硬算成 `checkpointer is not None and 配置`（`travel_planning.py:886-888`），门禁关闭即抛（`:346-347`），无降级分支；`astream()` 允许显式覆盖（`:948-951`），两个入口行为不对称。修复方向：构造期 fail-fast，统一覆盖语义。
+**F-08｜没有 checkpointer 的执行路径走到 plan_gate 必抛 RuntimeError。**（本次清理已删掉非流式 `run()` 入口，它硬算开关、不可覆盖的那一半入口不对称已随之消失）`astream()` 允许显式覆盖（`:902-906`），门禁关闭即抛（`:346-347`），无降级分支。修复方向：构造期 fail-fast，统一覆盖语义。
 
 **F-09｜修订影响分类与作废范围这条协议零测试。** `classify_amendment` 与 `invalidation_update` 在 `tests/` 下零引用（`_terminal_bucket`、`_document_has_content`、`claim_checkpoint_resume` 同样为零）。F-02/03/04/07/29 能长期共存的直接原因。修复方向：先补"每个枚举值 → 清空哪些字段"的参数化穷举测试。
 

@@ -74,11 +74,11 @@
 
 **实测结论：可行，且立刻兑现。** 把 `state.py:668` 临时加上 `"extra": "forbid"` 跑全量（`tests/ --ignore=tests/db`，收集 255 条）：250 通过、5 失败，失败全部来自 `tests/test_run_command_contract.py` 六处 `TravelAgentState(run_id=..., user_message="x")`（`:197/:224/:259/:274/:305/:328`）——`user_message` 不是字段，真名是 `user_query`。今天这个值被静默丢弃，那五个测试一直在一个比自己以为的更空的 state 上做断言。这是开关自己抓出来的第一批存量债。（另有一条墙钟敏感测试 `test_slow_normalization_calls_share_one_operation_budget` 在整目录跑时闪红一次、单跑三次通过，与本改动无关，如实记录。）
 
-与 LangGraph 的交互逐条验证过。checkpoint 恢复不炸：通道恢复只遍历当前 channel spec 取值（langgraph `pregel/_checkpoint.py:70-76`），checkpoint 里多出的键进不了 `schema(**input)`（`graph/state.py:1533-1534`）；实测往 InMemorySaver checkpoint 注入废弃字段后 resume 正常。旧 checkpoint 构造不失败：97 字段必填 0。`probe_checkpoint` 那条路（`travel_planning.py:828` 的 `model_validate(snapshot.values)`，全仓唯一整包校验点）实测不含注入的额外键。
+与 LangGraph 的交互逐条验证过。checkpoint 恢复不炸：通道恢复只遍历当前 channel spec 取值（langgraph `pregel/_checkpoint.py:70-76`），checkpoint 里多出的键进不了 `schema(**input)`（`graph/state.py:1533-1534`）；实测往 InMemorySaver checkpoint 注入废弃字段后 resume 正常。旧 checkpoint 构造不失败：97 字段必填 0。`probe_checkpoint` 那条路（`travel_planning.py:841` 的 `model_validate(snapshot.values)`，全仓唯一整包校验点）实测不含注入的额外键。
 
-但必须写清它买不到什么。实测 LangGraph 1.1.3 对节点返回的未知 key 既不抛也不 warn——键在写通道那层就没有对应 channel，在 pydantic 之前就被丢掉。所以 `extra="forbid"` 只盖"直接构造 `TravelAgentState`"这一面（生产四处：`travel_planning.py:864/:928`、`fast_answer.py:78/:119`，关键字已逐一核对合法），盖不住"节点返回值写错字段名"这个真正的高频风险——后者只有 2.2 的 AST 守卫盖得住。两条成对做才闭合；单做本条会制造"字段名已被类型系统看住"的错觉，比不做更危险。
+但必须写清它买不到什么。实测 LangGraph 1.1.3 对节点返回的未知 key 既不抛也不 warn——键在写通道那层就没有对应 channel，在 pydantic 之前就被丢掉。所以 `extra="forbid"` 只盖"直接构造 `TravelAgentState`"这一面（生产两处：`travel_planning.py:885`、`fast_answer.py:79`，关键字已逐一核对合法；原有两个非流式 `run()` 入口及其构造点已删），盖不住"节点返回值写错字段名"这个真正的高频风险——后者只有 2.2 的 AST 守卫盖得住。两条成对做才闭合；单做本条会制造"字段名已被类型系统看住"的错觉，比不做更危险。
 
-【行为标注】这不是纯加固：加开关后，直接构造 state 时的未知键从静默丢弃变成 `ValidationError`。今天的四个生产构造点不触发，但这是行为变更，PR 里要点名。配套测试修法取零风险版：把六处 `user_message="x"` 直接删掉参数（保持这五个测试今天实际的语义——空 query），不要改成 `user_query="x"`——那会让被测路径从空 query 变成非空 query，是否等价没有证据。
+【行为标注】这不是纯加固：加开关后，直接构造 state 时的未知键从静默丢弃变成 `ValidationError`。今天的两个生产构造点不触发，但这是行为变更，PR 里要点名。配套测试修法取零风险版：把六处 `user_message="x"` 直接删掉参数（保持这五个测试今天实际的语义——空 query），不要改成 `user_query="x"`——那会让被测路径从空 query 变成非空 query，是否等价没有证据。
 
 **代价。** 生产一行、测试删六个参数，半小时。`model_config` 旁留注释写明覆盖面与不覆盖面，指向 2.2。
 
@@ -303,7 +303,7 @@ def _route_literals(node: ast.expr) -> set[str]:
 
 **参照的做法。** openpi 把这类词表写成显式字符串联合加一张迁移表（`invocation-ledger.ts:12-16`、`isLegalTransition :250-273`、非法迁移 throw），而那个 throw 在真实控制流里永远不该触发——调用方先查合法起点再选唯一下一步，表的价值在防回归。
 
-**吸收建议。** `entities/state.py` 模块级加 `WorkerStatus` Literal 与分类集合，`dispatcher._DONE_STATUSES` 改 import；守卫测试断言集合互斥、并集恰等于 `get_args(WorkerStatus)`、每个写点字面量是词表成员（源码扫描，样板照 4.1）。两条红线，都来自核实阶段。其一，分类集合必须是两张：dispatcher 读三值 `{completed, partial, failed}`（`dispatcher.py:29`），但另外三处读方读的是两值 `{completed, partial}`——`candidate_gate.py:1670`、`artifact_gate.py:207` 与 `:268` 都不含 failed（`:211` 对 failed 另有专门分支）。照"四处读方统一换成一个 import"去做，failed 会被两个门当成可接受状态，那是改门裁决。正确形状是 `TERMINAL_WORKER_STATUSES`（三值，dispatcher 用）与 `ACCEPTED_WORKER_STATUSES`（两值，门用）并列，注释写死两者为什么不同。其二，字段注解保持 `Dict[str, str]` 不动：`TravelAgentState.model_validate` 是 checkpoint 恢复的第二道合同校验（`travel_planning.py:828`），值上加 Literal 会让带旧值的历史 checkpoint 从可恢复变成 `CheckpointContractError`——那是本轮最不该动的路径。词表放模块级、字段留裸 str，是这个形态下唯一免费的一档。
+**吸收建议。** `entities/state.py` 模块级加 `WorkerStatus` Literal 与分类集合，`dispatcher._DONE_STATUSES` 改 import；守卫测试断言集合互斥、并集恰等于 `get_args(WorkerStatus)`、每个写点字面量是词表成员（源码扫描，样板照 4.1）。两条红线，都来自核实阶段。其一，分类集合必须是两张：dispatcher 读三值 `{completed, partial, failed}`（`dispatcher.py:29`），但另外三处读方读的是两值 `{completed, partial}`——`candidate_gate.py:1670`、`artifact_gate.py:207` 与 `:268` 都不含 failed（`:211` 对 failed 另有专门分支）。照"四处读方统一换成一个 import"去做，failed 会被两个门当成可接受状态，那是改门裁决。正确形状是 `TERMINAL_WORKER_STATUSES`（三值，dispatcher 用）与 `ACCEPTED_WORKER_STATUSES`（两值，门用）并列，注释写死两者为什么不同。其二，字段注解保持 `Dict[str, str]` 不动：`TravelAgentState.model_validate` 是 checkpoint 恢复的第二道合同校验（`travel_planning.py:841`），值上加 Literal 会让带旧值的历史 checkpoint 从可恢复变成 `CheckpointContractError`——那是本轮最不该动的路径。词表放模块级、字段留裸 str，是这个形态下唯一免费的一档。
 
 **代价与档位。** 半天。必做：五写四读零测试，且缺席语义双关是新缺陷的产地——第五个 worker 或第六个状态值进来时，今天没有任何东西会响。
 
@@ -317,7 +317,7 @@ def _route_literals(node: ast.expr) -> set[str]:
 
 ### 5.4 A-16｜冷热两条 checkpoint 探测路径共用同一个异常分类器（必做）
 
-**我们的观察。** 热路径 `probe_checkpoint`（`travel_planning.py:802-843`）很讲究：探测抛错先过 `_is_checkpoint_contract_failure`（`:108-112`），不是合同失败原样重抛（`:815-816`）。冷路径 `run_recovery._resume_verdict`（`:283-298`）的 `except Exception`（`:290-295`）把一切异常收敛成 `checkpoint_contract_mismatch`，落库成 `recovery_status = NON_RESUMABLE`（`:215-222`），而 `chat.py:402-412` 读到它就永久拒绝续跑。一次数据库抖动因此被记成"合同读不懂这个 checkpoint"，用户看到"请重新规划这趟旅行"。严格的语义在热路径，宽松的在决定 durable 结论的冷路径——装反了。
+**我们的观察。** 热路径 `probe_checkpoint`（`travel_planning.py:817-854`）很讲究：探测抛错先过 `_is_checkpoint_contract_failure`（`:108-112`），不是合同失败原样重抛（`:831-832`）。冷路径 `run_recovery._resume_verdict`（`:283-298`）的 `except Exception`（`:290-295`）把一切异常收敛成 `checkpoint_contract_mismatch`，落库成 `recovery_status = NON_RESUMABLE`（`:215-222`），而 `chat.py:402-412` 读到它就永久拒绝续跑。一次数据库抖动因此被记成"合同读不懂这个 checkpoint"，用户看到"请重新规划这趟旅行"。严格的语义在热路径，宽松的在决定 durable 结论的冷路径——装反了。
 
 **参照的做法。** openpi 冷热两条中断分类路径共用同一个纯函数（5.1 已引），保证进程正常打断与崩溃后重启发现两种触发不产生不一致的终态语义。
 
@@ -343,7 +343,7 @@ def _route_literals(node: ast.expr) -> set[str]:
 
 **B-9｜包装层两处逐字重复的短路判据提成纯谓词。** "交付已封存就丢弃"的三段条件与两键载荷在 `run_control.py` 同一个闭包里写了两遍（进入前 `:784-793`、返回后 `:847-858`，逐字相同）；`divert_to_amendment_router`（`:820-825`）同样内联。而同文件的分窗/短路链已经全部提成可单测的纯函数（`:658-731` 四个）——留在闭包里的恰好是没测的。提成 `_delivery_sealed_for`/`_ignored_after_delivery_update`/`_should_divert_to_amendment_router` 三个纯函数，两处调用各变两行。约 40 行，提函数与两处替换必须同一次改动完成，防止判据分叉。openpi 的对照是 controller（有状态资源所有者）与 coordinator（零状态纯判据）切在文件级。
 
-**B-10｜checkpoint 探测的名实之辨（值得做；第二条是行为票）。** `probe_checkpoint` 的 docstring 写明 id 必须来自决定可恢复性的同一次读（`travel_planning.py:805-810`），但 `safe_checkpoint_id` 实际从不进图的 config——`configurable`（`:952-960`）里有 thread_id、plan_gate_enabled 与五个 store/recorder，没有 checkpoint_id；恢复实际从"此刻最新"续跑，名字承诺的 pin 不存在。教义被绕开得最明显的一处是核实新补的：`chat.py:910-921` 有第二次 probe 加 `mark_safe_checkpoint`——与"必须同一次读"正面冲突。三件事：局部变量与字段注释改名成 observed_checkpoint_id 并写清"审计用、不是恢复 pin"（纯改名）；补一个测试钉住"available=True 而 checkpoint_id=None 是允许的组合"（`:838-843` 两个判据来源不同步）；`chat.py:413` 的 `getattr(..., "probe_checkpoint", None)` 换成直接属性访问——【行为标注】这条会把"方法改名"的症状从 409"未找到 checkpoint"变成 AttributeError/500，是有意的失败提前，但属行为变更，单独立项（全仓只有一个实现，仅在改名时触发）。
+**B-10｜checkpoint 探测的名实之辨（值得做；第二条是行为票）。** `probe_checkpoint` 的 docstring 写明 id 必须来自决定可恢复性的同一次读（`travel_planning.py:818-823`），但 `safe_checkpoint_id` 实际从不进图的 config——`configurable`（`:909-917`）里有 thread_id、plan_gate_enabled 与五个 store/recorder，没有 checkpoint_id；恢复实际从"此刻最新"续跑，名字承诺的 pin 不存在。教义被绕开得最明显的一处是核实新补的：`chat.py:910-921` 有第二次 probe 加 `mark_safe_checkpoint`——与"必须同一次读"正面冲突。三件事：局部变量与字段注释改名成 observed_checkpoint_id 并写清"审计用、不是恢复 pin"（纯改名）；补一个测试钉住"available=True 而 checkpoint_id=None 是允许的组合"（`:849-854` 两个判据来源不同步）；`chat.py:413` 的 `getattr(..., "probe_checkpoint", None)` 换成直接属性访问——【行为标注】这条会把"方法改名"的症状从 409"未找到 checkpoint"变成 AttributeError/500，是有意的失败提前，但属行为变更，单独立项（全仓只有一个实现，仅在改名时触发）。
 
 **B-11｜`claim_checkpoint_resume` 的跨实现合同测试（钉 F-04 的护栏半边）。** 两个 store 实现各有一份默认值与绕过迁移矩阵的 CAS（`trip_run_store.py:1168` 与 `:2115`）。F-04 的修复（allowed_statuses 收回实体层）是行为票，本条只做护栏：参数化测试对两个实现跑同一组断言——allowed 里每个状态到 RUNNING 的迁移在 `ALLOWED_STATUS_TRANSITIONS` 里合法；调用方实际传的两个集合是 `_RESUMABLE_STATUSES` 的子集。今天两条都绿（CREATED 只是多在实体表里没被用），钉的是下一个人加状态或换调用方的那天。两小时。
 
