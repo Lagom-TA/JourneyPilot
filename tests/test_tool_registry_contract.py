@@ -118,3 +118,61 @@ def test_global_place_search_hand_written_manifest_flips_on_overwrite():
     entry = _tool_entry(registry, "global_place_search")
     assert entry["source"] == "mcp"
     assert entry["manifest"]["allow_offline_fallback"] is True
+
+
+def test_collision_recorded_with_provenance():
+    registry = ToolRegistry()
+    registry.register(
+        name="t",
+        description="v1",
+        parameters_schema={"type": "object"},
+        executor=_noop_executor,
+        source="builtin",
+        manifest={"allow_offline_fallback": False},
+    )
+    assert registry.collisions() == []
+
+    collided = registry.register(
+        name="t",
+        description="v2",
+        parameters_schema={"type": "object"},
+        executor=_noop_executor,
+        source="mcp",
+        server_name="srv",
+    )
+    assert collided is True
+    rows = registry.collisions()
+    assert len(rows) == 1
+    assert rows[0]["tool_name"] == "t"
+    assert rows[0]["previous"] == {
+        "source": "builtin",
+        "server_name": None,
+        "manifest_hand_written": True,
+    }
+    assert rows[0]["incoming"] == {
+        "source": "mcp",
+        "server_name": "srv",
+        "manifest_hand_written": False,
+    }
+    rows[0]["previous"]["source"] = "tampered"
+    assert registry.collisions()[0]["previous"]["source"] == "builtin"
+
+
+def test_no_collision_keeps_ledger_empty():
+    registry = ToolRegistry()
+    assert registry.collisions() == []
+    registry.register(
+        name="a",
+        description="d",
+        parameters_schema={"type": "object"},
+        executor=_noop_executor,
+    )
+    assert registry.register(
+        name="b",
+        description="d",
+        parameters_schema={"type": "object"},
+        executor=_noop_executor,
+        source="mcp",
+        server_name="srv",
+    ) is False
+    assert registry.collisions() == []

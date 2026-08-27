@@ -95,6 +95,7 @@ class ToolRegistry:
 
     def __init__(self) -> None:
         self._tools: Dict[str, Dict[str, Any]] = {}
+        self._collisions: List[Dict[str, Any]] = []
 
     def register(
         self,
@@ -105,8 +106,8 @@ class ToolRegistry:
         source: str = "local",  # "local" | "mcp"
         server_name: Optional[str] = None,
         manifest: Optional[ToolManifest | Dict[str, Any]] = None,
-    ) -> None:
-        """注册一个工具"""
+    ) -> bool:
+        """注册一个工具；同名重复注册时照旧覆盖并返回 True（行为不变，只记账）。"""
         resolved_manifest = infer_tool_manifest(
             tool_name=name,
             description=description,
@@ -114,6 +115,39 @@ class ToolRegistry:
             server_name=server_name,
             manifest=manifest,
         )
+        hand_written = manifest is not None
+        collided = name in self._tools
+        if collided:
+            previous = self._tools[name]
+            previous_hand_written = bool(previous.get("manifest_hand_written"))
+            self._collisions.append(
+                {
+                    "tool_name": name,
+                    "previous": {
+                        "source": previous.get("source"),
+                        "server_name": previous.get("server_name"),
+                        "manifest_hand_written": previous_hand_written,
+                    },
+                    "incoming": {
+                        "source": source,
+                        "server_name": server_name,
+                        "manifest_hand_written": hand_written,
+                    },
+                }
+            )
+            logger.warning(
+                "工具同名注册覆盖: [%s] 旧方 source=%s server=%s 手写manifest=%s "
+                "被新方 source=%s server=%s 手写manifest=%s 覆盖"
+                "%s",
+                name,
+                previous.get("source"),
+                previous.get("server_name"),
+                previous_hand_written,
+                source,
+                server_name,
+                hand_written,
+                "（manifest 从手写变成推断）" if previous_hand_written and not hand_written else "",
+            )
         self._tools[name] = {
             "name": name,
             "description": description,
@@ -122,8 +156,21 @@ class ToolRegistry:
             "source": source,
             "server_name": server_name,
             "manifest": resolved_manifest,
+            "manifest_hand_written": hand_written,
         }
         logger.debug(f"工具注册: [{name}] from {source}")
+        return collided
+
+    def collisions(self) -> List[Dict[str, Any]]:
+        """返回同名覆盖台账的只读拷贝。"""
+        return [
+            {
+                "tool_name": entry["tool_name"],
+                "previous": dict(entry["previous"]),
+                "incoming": dict(entry["incoming"]),
+            }
+            for entry in self._collisions
+        ]
 
     def has_tool(self, name: str) -> bool:
         """检查工具是否已注册。"""
