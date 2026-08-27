@@ -842,60 +842,6 @@ class TravelPlanningWorkflow:
         checkpoint_id = configurable.get("checkpoint_id")
         return available, str(checkpoint_id) if checkpoint_id else None
 
-    async def run(
-        self,
-        user_message: str,
-        session_id: str,
-        user_id: str = LOCAL_USER_ID,
-        selected_mcp_servers: Optional[List[str]] = None,
-        current_time: str = "",
-        conversation_history: Optional[list] = None,
-        session_anchor: Optional[Dict[str, Any]] = None,
-        session_compressed: bool = False,
-        preset_context: str = "",
-        preset_pack_constraints: Optional[Dict[str, str]] = None,
-        run_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """执行一轮完整的深度调研对话。"""
-        import datetime
-
-        messages = build_messages(conversation_history, user_message)
-
-        initial_state = TravelAgentState(
-            messages=messages,
-            session_id=session_id,
-            user_id=user_id,
-            selected_mcp_servers=selected_mcp_servers or [],
-            user_query=user_message,
-            run_id=run_id or generate_trip_run_id(),
-            current_time=current_time or datetime.datetime.now().strftime("%Y-%m-%d %A %H:%M:%S"),
-            session_anchor=session_anchor,
-            session_compressed=session_compressed,
-            preset_context=preset_context,
-            preset_pack_constraints=dict(preset_pack_constraints or {}),
-            model_versions=_configured_model_versions(),
-        )
-
-        config = {
-            "recursion_limit": GRAPH_RECURSION_LIMIT,
-            "configurable": {
-                "thread_id": initial_state.run_id,
-                "plan_gate_enabled": bool(
-                    self._checkpointer is not None and get_settings().run_control.plan_gate_enabled
-                ),
-                "cost_ledger_store": get_cost_ledger_store(),
-                "usage_recorder": get_usage_recorder(),
-                "tool_audit_store": get_tool_audit_store(),
-                "delivery_bundle_store": self._delivery_bundle_store,
-                "trip_run_store": self._trip_run_store,
-            }
-        }
-        with run_attribution(initial_state.run_id):
-            final_state = await self._graph.ainvoke(
-                initial_state, config=config, durability="sync"
-            )
-        return final_state
-
     async def astream(
         self,
         user_message: str,
