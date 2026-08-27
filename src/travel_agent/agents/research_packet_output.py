@@ -21,6 +21,7 @@ from ..entities.delivery_bundle import (
     FactSourceLink,
     FieldProvenance,
     ProviderSnapshotProvenance,
+    RESEARCH_PACKET_IDENTITY_FACTS_MISSING,
     RecommendationCatalog,
     ResearchPacket,
     SourceRecord,
@@ -339,9 +340,6 @@ def build_authoritative_research_packet_metadata(
 
 class ResearchPacketOutputError(ValueError):
     """The worker did not emit the exact v2 Research Packet contract."""
-
-
-_NO_ELIGIBLE_IDENTITY_FACTS = "research packet requires external identity-bound facts"
 
 
 def _canonical_snapshot_hash(snapshot: Mapping[str, Any]) -> str:
@@ -4585,10 +4583,14 @@ def parse_research_packet_output(
             for source_id, source in compiled_tool_sources.items()
             if source.lifecycle_status == "rejected"
         ]
-        if (
-            _NO_ELIGIBLE_IDENTITY_FACTS not in str(exc)
-            or not compiled_failure_source_ids
-        ):
+        # Route on the structured error type the validator raised, never on
+        # rendered text: str(exc) echoes the model-authored payload back, so a
+        # substring match there is forgeable by the very output being judged.
+        _identity_facts_missing = any(
+            err.get("type") == RESEARCH_PACKET_IDENTITY_FACTS_MISSING
+            for err in exc.errors()
+        )
+        if not _identity_facts_missing or not compiled_failure_source_ids:
             raise ResearchPacketOutputError(
                 f"worker Research Packet failed schema gate: {exc}"
             ) from exc
