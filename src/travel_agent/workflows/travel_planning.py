@@ -17,7 +17,7 @@ Worker 半串行策略（Planner 生成）：
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, NoReturn, Optional
 
 import langchain
 from langchain_core.runnables import RunnableConfig
@@ -110,6 +110,21 @@ def _is_checkpoint_contract_failure(exc: BaseException) -> bool:
         return True
     nested = getattr(exc, "exceptions", None)
     return bool(nested) and all(_is_checkpoint_contract_failure(item) for item in nested)
+
+
+def _reject_checkpoint_contract(
+    run_id: str,
+    exc: Exception,
+    *,
+    warning_template: str,
+    contract_message: str,
+) -> NoReturn:
+    """checkpoint 合同拒绝的公共收尾：先 warning 再把原异常包成 CheckpointContractError。
+
+    是否先过谓词闸由调用方决定，本函数不判别。
+    """
+    logger.warning(warning_template, run_id, exc)
+    raise CheckpointContractError(contract_message) from exc
 
 # LangChain 1.x 运行时在部分环境里不再暴露 `langchain.debug`，
 # 但 langgraph/langchain_core 仍会读取它。这里补一个兼容值，避免
@@ -815,26 +830,22 @@ class TravelPlanningWorkflow:
         except Exception as exc:
             if not _is_checkpoint_contract_failure(exc):
                 raise
-            logger.warning(
-                "Checkpoint rejected by current v2 contract run_id=%s error=%s",
+            _reject_checkpoint_contract(
                 run_id,
                 exc,
+                warning_template="Checkpoint rejected by current v2 contract run_id=%s error=%s",
+                contract_message="checkpoint does not satisfy the current JourneyPilot v2 contract",
             )
-            raise CheckpointContractError(
-                "checkpoint does not satisfy the current JourneyPilot v2 contract"
-            ) from exc
         if snapshot.values:
             try:
                 TravelAgentState.model_validate(snapshot.values)
             except Exception as exc:
-                logger.warning(
-                    "Checkpoint completion contract rejected run_id=%s error=%s",
+                _reject_checkpoint_contract(
                     run_id,
                     exc,
+                    warning_template="Checkpoint completion contract rejected run_id=%s error=%s",
+                    contract_message="checkpoint does not satisfy the current JourneyPilot completion contract",
                 )
-                raise CheckpointContractError(
-                    "checkpoint does not satisfy the current JourneyPilot completion contract"
-                ) from exc
         available = bool(
             snapshot.values or snapshot.next or snapshot.tasks or snapshot.interrupts
         )
