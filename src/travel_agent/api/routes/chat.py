@@ -38,7 +38,11 @@ from ...services.public_delivery import (
 )
 from ..sse_buffer import build_sse_buffer
 from ..sse_projection import project_sse_payload
-from ...entities.delivery_bundle import DeliveryContractViolation
+from ...entities.delivery_bundle import (
+    DeliveryContractViolation,
+    InternalFailureClass,
+)
+from ...entities.terminal_attribution import delivery_integrity_reason_code
 from ...entities.evidence_basis import PublicProjectionContractViolation
 from ...infrastructure.cost_ledger_store import cost_event_summary
 from ...tools.exposure_ledger import get_tool_exposure_ledger
@@ -89,7 +93,9 @@ def _extract_interrupt_payload(value: Any) -> Dict[str, Any]:
     return out
 
 
-_PROJECTION_FAILURE_REASON_CODE = "delivery_integrity_projection_failure"
+_PROJECTION_FAILURE_REASON_CODE = delivery_integrity_reason_code(
+    InternalFailureClass.PROJECTION_FAILURE
+)
 
 
 def _resume_blocked_by_projection_failure(detail: Any) -> bool:
@@ -390,7 +396,7 @@ async def chat_stream(
                 raise HTTPException(
                     status_code=409,
                     detail={
-                        "code": "delivery_integrity_projection_failure",
+                        "code": _PROJECTION_FAILURE_REASON_CODE,
                         "message": "这次运行的结果无法生成可展示的方案，断点续跑会得到同一个结果。请重新规划这趟旅行。",
                     },
                 )
@@ -1509,7 +1515,9 @@ async def chat_stream(
             # workflow error stays explicitly unclassified for Eval.
             if isinstance(terminal_failure, DeliveryFinalizationError):
                 terminal_reason_code = (
-                    f"delivery_integrity_{terminal_failure.record.failure_class.value}"
+                    delivery_integrity_reason_code(
+                        terminal_failure.record.failure_class
+                    )
                 )
                 terminal_gate_class = None
             elif isinstance(terminal_failure, DeliveryContractViolation):

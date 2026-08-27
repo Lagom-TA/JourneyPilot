@@ -29,10 +29,16 @@ Metric conventions
 * Optional ``bundle_metadata_by_run`` is only a fallback for an older audit
   missing formal Bundle fields.  It must describe the immutable delivery
   Bundle, not a later refreshed/current revision.
+* ``unclassified_terminal_count`` is a bare number, so a recompute that found
+  any unclassified outcome emits **one** aggregate WARNING naming the reason
+  codes it could not bucket and how many runs each accounts for.  It is one line
+  per recompute, never one per run: this function runs over every authorized run
+  and the developer/Eval endpoint above it may be polled.
 """
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable, Mapping
 from datetime import datetime, timezone
 from math import ceil
@@ -45,6 +51,9 @@ from ..entities.trip_run import (
     TripRunDetail,
     completion_audit_from_state_summary,
 )
+from ..entities.terminal_attribution import DELIVERY_INTEGRITY_REASON_PREFIX
+
+logger = logging.getLogger(__name__)
 
 
 _TERMINAL_BUCKET_KEYS = (
@@ -189,6 +198,12 @@ def recompute_completion_metrics(
             latest_observed_at,
         ):
             totals.unclassified_terminal_count += 1
+            # 明细：哪些 reason code 没被认出来。逐 run 攒进 totals，循环结束后
+            # 汇总成一行 —— 在这里打就是每个 run 一行。
+            observed_reason = _terminal_reason_code(audit) or "(none)"
+            totals.unclassified_reason_codes[observed_reason] = (
+                totals.unclassified_reason_codes.get(observed_reason, 0) + 1
+            )
 
         if not _is_strictly_eligible(status, audit):
             continue
@@ -229,6 +244,18 @@ def recompute_completion_metrics(
         if _has_hard_constraint_relaxation(audit):
             totals.hard_constraint_relaxation_count += 1
         _accumulate_timing(totals, audit, ready_events)
+
+    if totals.unclassified_reason_codes:
+        logger.warning(
+            "completion metrics: %d unclassified terminal run(s) over %d authorized | "
+            "reason_codes=%s",
+            totals.unclassified_terminal_count,
+            totals.authorized_run_count,
+            ", ".join(
+                f"{code}={count}"
+                for code, count in sorted(totals.unclassified_reason_codes.items())
+            ),
+        )
 
     usable_rate = (
         round(totals.usable_bundle_count / totals.eligible_run_count, 4)
@@ -407,6 +434,9 @@ class _MetricTotals:
         self.projection_drift_count = 0
         self.duplicate_ready_count = 0
         self.unclassified_terminal_count = 0
+        # reason_code -> 落进 unclassified_terminal_count 的 run 数。
+        # 只为那一行汇总日志存在，不进任何返回值。
+        self.unclassified_reason_codes: dict[str, int] = {}
         self.delivery_ready_elapsed_seconds: list[float] = []
         self.delivery_ready_timing_missing_count = 0
         self.delivery_ready_within_target_count = 0
@@ -492,7 +522,7 @@ def _is_user_cancelled(status: str, audit: Mapping[str, Any]) -> bool:
 def _is_delivery_integrity_failure(status: str, audit: Mapping[str, Any]) -> bool:
     attribution = _as_mapping(audit.get("terminal_attribution"))
     reason_code = _enum_text(attribution.get("reason_code"))
-    return status == "failed" and reason_code.startswith("delivery_integrity")
+    return status == "failed" and reason_code.startswith(DELIVERY_INTEGRITY_REASON_PREFIX)
 
 
 def _formal_delivery(
@@ -659,6 +689,12 @@ def _parse_datetime(value: Any) -> Optional[datetime]:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
 
 
+def _terminal_reason_code(audit: Mapping[str, Any]) -> str:
+    """The durable terminal reason code, read the same way ``_terminal_bucket`` reads it."""
+    attribution = _as_mapping(audit.get("terminal_attribution"))
+    return _enum_text(attribution.get("reason_code"))
+
+
 def _terminal_bucket(status: str, audit: Mapping[str, Any]) -> Optional[str]:
     attribution = _as_mapping(audit.get("terminal_attribution"))
     terminal_status = _enum_text(attribution.get("closure_status"))
@@ -679,7 +715,7 @@ def _terminal_bucket(status: str, audit: Mapping[str, Any]) -> Optional[str]:
     if (
         status == "failed"
         and terminal_status == "failed"
-        and reason_code.startswith("delivery_integrity")
+        and reason_code.startswith(DELIVERY_INTEGRITY_REASON_PREFIX)
     ):
         return "delivery_integrity_failed"
     return None

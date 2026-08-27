@@ -18,6 +18,9 @@ from typing import Any, Callable, Dict, List, Optional
 from sqlalchemy import bindparam, text
 
 from ..entities.delivery_bundle import DeliveryRevisionManifest
+from ..entities.terminal_attribution import (
+    DELIVERY_INTEGRITY_UNCLASSIFIED_FALLBACK_REASON,
+)
 from ..entities.trip_run import (
     TripRun,
     TripRunDetail,
@@ -303,11 +306,17 @@ def _completion_audit_for_status(
             next_audit["terminal_attribution"] = {
                 "draft_id": next_audit.get("draft_id"),
                 "closure_status": target.value,
+                # 兜底值不是 InternalFailureClass 的任何一个值，但它以
+                # delivery_integrity 前缀开头，所以今天会被度量的 startswith 命中
+                # （run_completion_metrics.py:_terminal_bucket）——
+                # delivery_integrity_failed 那个桶里因此混着「有具体失败分类」和
+                # 「调用方没给分类的兜底」两类 run。改这个字符串的值会改度量输出，
+                # 是独立的行为票，不在此处顺手改。
                 "reason_code": reason_code
                 or (
                     "user_cancelled"
                     if target == TripRunStatus.CANCELLED
-                    else "delivery_integrity_failure"
+                    else DELIVERY_INTEGRITY_UNCLASSIFIED_FALLBACK_REASON
                 ),
                 "recorded_at": utc_now_iso(),
                 "delivery_bundle_id": delivery_bundle_id,
