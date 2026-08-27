@@ -83,10 +83,6 @@ _NON_GRAPH_STEP_LABEL_KEYS = _NON_GRAPH_AGENT_LABEL_KEYS | {
 }
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="intent_fidelity_gate 还没进 NODE_PHASES，表待补齐，见提交 2",
-)
 def test_trace_phase_table_covers_every_graph_node():
     """缺一行的代价：那个节点的 trace 事件被划进 postprocess，时间线画错位置。"""
 

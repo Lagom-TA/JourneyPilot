@@ -39,6 +39,7 @@ NODE_PHASES: Dict[str, str] = {
     # verification
     "candidate_gate": "verification",
     "artifact_gate": "verification",
+    "intent_fidelity_gate": "verification",
     "delivery_quality_gate": "verification",
     # delivery
     "budget_estimate": "delivery",
