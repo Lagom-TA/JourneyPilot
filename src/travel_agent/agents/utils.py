@@ -48,6 +48,7 @@ from ..tools.registry import (
     get_tool_registry,
     search_tool_items,
 )
+from ..workflows.node_names import WORKER_NODES
 from ..workflows.run_budget import RunBudgetExhausted
 from ..workflows.run_control import (
     ModelWindowClosed,
@@ -491,8 +492,8 @@ def filter_tools_for_agent(
 # Tool Search 按需工具曝光
 # ---------------------------------------------------------------------------
 
-# worker agent 集合（= filter_tools_for_agent 白名单键）——worker_only 判定用。
-_WORKER_AGENTS: Set[str] = set(_AGENT_TOOL_POLICY.keys())
+# worker agent 集合（派生自 WORKER_NODES 唯一真源）——worker_only 判定用。
+_WORKER_AGENTS: Set[str] = set(WORKER_NODES)
 
 _CATALOG_HINT = (
     "\n\n【可用工具（按需激活）】\n"
