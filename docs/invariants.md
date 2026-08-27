@@ -395,19 +395,28 @@ Tests:
 - `agent_behavior/test_run_diff.py::test_completion_audit_records_replay_layers_without_raw_user_text`
 - `agent_behavior/test_run_diff.py::test_run_diff_locates_selection_and_composition_delta`
 
-### INV-NODE-001：图上每个节点都在三张按名字查的表里有一行
+### INV-NODE-001：图上每个节点都进得了时间线，一路到界面那一格
 Owner: `workflows/trace.py` 的 `NODE_PHASES`、`utils/display_names.py` 的
-`AGENT_DISPLAY_NAMES` 与 `STEP_DISPLAY_NAMES`
-Enforced by: 真源取 `build_travel_workflow()` 构出来的图加上 `NODE_FAST_ANSWER`，
-不取 `node_names.py` 的常量表 —— 常量表和图可能一起漂。三张表都按「键集 == 图上的节点
-加上显式登记的非节点键」比，两个方向都断言；不做「表里多出来的一律放过」的宽松匹配，
-否则删掉一个节点之后表里那行会一直留着。漏一行不报错，只是静默变差：`NODE_PHASES`
-缺一行让 `infer_trace_phase` 落进 `postprocess` 默认档，时间线把一个跑在交付之前的门
-画到最后一段；两张显示名表缺一行让界面直接显示英文内部名
+`AGENT_DISPLAY_NAMES` 与 `STEP_DISPLAY_NAMES`、
+`frontend/src/lib/agentStages.ts` 的 `NODE_STAGES`
+Enforced by: 后端真源取 `build_travel_workflow()` 构出来的图加上 `NODE_FAST_ANSWER`，
+不取 `node_names.py` 的常量表 —— 常量表和图可能一起漂。三张后端表都按「键集 == 图上的
+节点加上显式登记的非节点键」比，两个方向都断言；不做「表里多出来的一律放过」的宽松
+匹配，否则删掉一个节点之后表里那行会一直留着。
+界面那一段跨语言，没有可 import 的运行期真值，所以 `agentStages.test.ts` 去读
+`display_names.py` 的源码做双向差集（与 INV-UI-001 同一手法）：后端会发的每个名字
+界面都要有阶段映射，界面也不许留后端从不发送的键。前端表写成一行同时给出内部名和
+显示名、两个键从同一行生成，让「只改一半」结构上不可能 —— 这条界以前就是这么漂的。
+链条接起来：图 → 后端三张表 → 界面阶段表。
+漏一行都不报错，只是静默变差：`NODE_PHASES` 缺一行让 `infer_trace_phase` 落进
+`postprocess` 默认档，把一个跑在交付之前的门画到时间线最后一段；两张显示名表缺一行
+让界面直接显示英文内部名；界面阶段表缺一行让 `deriveStages` 把那个 step 整个跳过，
+对应的责任阶段永远停在 pending
 Tests:
 - `test_node_name_tables_contract.py::test_trace_phase_table_covers_every_graph_node`
 - `test_node_name_tables_contract.py::test_agent_display_names_cover_every_graph_node`
 - `test_node_name_tables_contract.py::test_step_display_names_cover_every_graph_node`
+- `frontend/src/lib/agentStages.test.ts`（双向差集 + 内部名与显示名必须同阶段）
 
 ### INV-INTENT-006：意图变更能从每个节点续跑，除了明确不该的两个
 Owner: `workflows/travel_planning.py` 里 `build_travel_workflow` 的

@@ -31,43 +31,63 @@ export const STAGE_DEFS: StageDef[] = [
   { id: 'synthesis', label: '交付', responsibility: '生成统一投影并原子保存正式旅行结果' },
 ];
 
-/** 后端 agent_name → 责任阶段（固定映射）。未列出的（如 fast_answer）不计入工作流。 */
-const AGENT_TO_STAGE: Record<string, StageId> = {
-  scope_clarifier: 'planning',
-  request_contract_normalizer: 'planning',
-  research_brief_builder: 'planning',
-  intent_amendment_router: 'planning',
-  destination_geo_resolver: 'planning',
-  weather_context_builder: 'planning',
-  trip_summary_card_brief: 'planning',
-  planner: 'planning',
-  dispatcher: 'planning',
-  destination_researcher: 'research',
-  transport_researcher: 'research',
-  accommodation_researcher: 'research',
-  itinerary_planner: 'research',
-  candidate_gate: 'verify',
-  artifact_gate: 'review',
-  delivery_quality_gate: 'review',
-  delivery_projector: 'synthesis',
-  delivery_finalizer: 'synthesis',
-  智能调度: 'planning',
-  需求确认: 'planning',
-  需求合同: 'planning',
-  调研简报: 'planning',
-  要求更新: 'planning',
-  任务规划: 'planning',
-  任务分发: 'planning',
-  目的地调研: 'research',
-  交通查询: 'research',
-  住宿查询: 'research',
-  行程规划: 'research',
-  候选准入: 'verify',
-  产物校验: 'review',
-  交付质量: 'review',
-  交付投影: 'synthesis',
-  原子交付: 'synthesis',
-};
+/**
+ * 工作流节点 → 责任阶段，一个节点一行。
+ *
+ * 一行同时给出内部名和中文显示名，`AGENT_TO_STAGE` 从这里生成两个键 —— 因为线上
+ * `agent_name` 发的是**显示名**（`api/routes/chat_stream_handlers.py:202/218/244`），
+ * 而数据库里翻回来的历史会话可能还存着更早那版的内部名，两种都要认得。
+ *
+ * 写成一行两名是为了让「只改一半」这件事不可能发生：以前两半是分开的两段字面量，
+ * 结果中文那半漂到了后端从来没发过的名字上（`候选准入` / `交付质量` / `交付投影` /
+ * `原子交付` 四个键从未在 `display_names.py` 里存在过，`git log -S` 查不到任何提交），
+ * 于是「准入」这一阶段在时间线上永远亮不起来，而没有任何测试会红。
+ *
+ * `agentStages.test.ts` 拿这张表跟后端 `utils/display_names.py` 双向对差集。
+ * 后端那张表覆盖图上每个节点由 INV-NODE-001 保证，所以这两条接起来就是
+ * 「图上每个节点都进得了时间线」。
+ */
+const NODE_STAGES: ReadonlyArray<readonly [node: string, display: string, stage: StageId]> = [
+  ['supervisor', '智能调度', 'planning'],
+  ['scope_clarifier', '需求确认', 'planning'],
+  ['request_contract_normalizer', '需求合同', 'planning'],
+  ['research_brief_builder', '调研简报', 'planning'],
+  ['minimum_delivery_draft_builder', '行程骨架', 'planning'],
+  ['intent_amendment_router', '要求更新', 'planning'],
+  ['destination_geo_resolver', '目的地定位', 'planning'],
+  ['weather_context_builder', '天气事实', 'planning'],
+  ['trip_summary_card_brief', '旅行摘要', 'planning'],
+  ['planner', '任务规划', 'planning'],
+  ['plan_gate', '计划审批', 'planning'],
+  ['dispatcher', '任务分发', 'planning'],
+  ['destination_researcher', '目的地调研', 'research'],
+  ['transport_researcher', '交通查询', 'research'],
+  ['accommodation_researcher', '住宿查询', 'research'],
+  ['itinerary_planner', '行程规划', 'research'],
+  ['candidate_gate', '候选校验', 'verify'],
+  ['artifact_gate', '产物校验', 'review'],
+  ['intent_fidelity_gate', '意图校验', 'review'],
+  ['delivery_quality_gate', '交付校验', 'review'],
+  ['budget_estimate', '预算估算', 'synthesis'],
+  ['delivery_projector', '交付内容', 'synthesis'],
+  ['delivery_finalizer', '交付定稿', 'synthesis'],
+];
+
+/**
+ * 时间线**不收**的节点，逐个列出理由 —— 留空集会让 `agentStages.test.ts` 的差集
+ * 断言把「漏了一个」和「有意不收」混为一谈。
+ *
+ * - `fast_answer_agent`：快答是单步问答，不构成深度工作流（见文件头 JP-03-03 §8）。
+ */
+export const NON_WORKFLOW_NODES: ReadonlySet<string> = new Set(['fast_answer_agent']);
+
+/** 后端 agent_name → 责任阶段。内部名与显示名都收，两个键必然同阶段。 */
+export const AGENT_TO_STAGE: Record<string, StageId> = Object.fromEntries(
+  NODE_STAGES.flatMap(([node, display, stage]) => [
+    [node, stage],
+    [display, stage],
+  ]),
+);
 
 export function getStageIdForAgent(agentName: string): StageId | null {
   const { base } = parseAgentRound(agentName);
