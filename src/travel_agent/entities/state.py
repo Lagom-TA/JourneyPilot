@@ -438,6 +438,8 @@ class TravelAgentState(BaseModel):
     final_grounding: Annotated[Dict[str, Any], _merge_dicts] = Field(
         default_factory=dict
     )
+    # Fast Answer 的回答置信度（high/medium/low），由 OutputGuard 评估，仅快路径写。
+    output_confidence: Optional[str] = None
 
     # ── 用户交互 ────────────────────────────────────────────────────────────
     pending_user_choice: Annotated[Optional[Dict[str, Any]], _prefer_pending_choice] = (
