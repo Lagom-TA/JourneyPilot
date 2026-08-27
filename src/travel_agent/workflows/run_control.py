@@ -17,7 +17,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, List, Literal, Optional, TypeVar
+from typing import Any, Awaitable, Callable, Dict, Iterator, List, Literal, Optional, TypeVar
 
 from langgraph.errors import GraphInterrupt
 
@@ -731,6 +731,40 @@ def _blocked_research_worker_update(
     }
 
 
+@contextlib.contextmanager
+def _run_control_scope(
+    run_id: Optional[str], node_name: str, state: Any
+) -> Iterator[ModelWindow]:
+    """把一个节点执行期间的六个运行归属 contextvar 成对绑定与归还。
+
+    yield 出 model_window，因为节点体后面还要用它。
+
+    注：节点之间的 contextvar 隔离由 LangGraph 的 copy_context() 提供，而那条路径
+    只在 Python >= 3.11 生效（CONTEXT_NOT_SUPPORTED = sys.version_info < (3, 11)）。
+    本 scope 的价值不依赖那个前提：它保的是同一个 context 内的成对释放，
+    覆盖绕过 Pregel 的直接调用路径，以及绑定过程本身抛异常的情形。
+    """
+    with contextlib.ExitStack() as stack:
+        stack.callback(current_run_id.reset, current_run_id.set(run_id))
+        stack.callback(current_node.reset, current_node.set(node_name))
+        stack.callback(current_agent.reset, current_agent.set(node_name))
+        stack.callback(current_run_deadline.reset, current_run_deadline.set(None))
+        # 预算快照是 Run 的属性、不随节点变化，所以在这里绑一次，节点里调到的每一层
+        # 助手函数都免费继承它。
+        stack.callback(
+            current_run_budget.reset,
+            current_run_budget.set(getattr(state, "run_budget", None)),
+        )
+        # The window a node's model calls draw on is a property of the node, so
+        # it is bound here with the other run attribution rather than inside each
+        # node body — helper functions the node calls inherit it for free.
+        model_window = _model_window_for_node(node_name, state)
+        stack.callback(
+            current_model_window.reset, current_model_window.set(model_window)
+        )
+        yield model_window
+
+
 def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]]:
     """Wrap a LangGraph node with cancel checks and run attribution contextvars.
 
@@ -745,233 +779,216 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
     @functools.wraps(fn)
     async def _wrapped(state: Any, *args: Any, **kwargs: Any) -> Any:
         run_id = _state_run_id(state)
-        token_run = current_run_id.set(run_id)
-        token_node = current_node.set(node_name)
-        token_agent = current_agent.set(node_name)
-        token_deadline = current_run_deadline.set(None)
-        # 预算快照是 Run 的属性、不随节点变化，所以在这里绑一次，节点里调到的每一层
-        # 助手函数都免费继承它。
-        token_budget = current_run_budget.set(getattr(state, "run_budget", None))
-        # The window a node's model calls draw on is a property of the node, so
-        # it is bound here with the other run attribution rather than inside each
-        # node body — helper functions the node calls inherit it for free.
-        model_window = _model_window_for_node(node_name, state)
-        token_window = current_model_window.set(model_window)
-        started = time.perf_counter()
-        ts_ms = run_ts_ms()
-        try:
-            check_cancel_requested(node_name)
-            await ensure_budget_baseline()
-            deadline = getattr(state, "run_deadline", None)
-            observation: Optional[DeadlineObservation] = None
-            if deadline is not None and hasattr(state, "model_copy"):
-                observed_deadline, observation = observe_run_deadline(deadline)
-                state = state.model_copy(update={"run_deadline": observed_deadline})
-                current_run_deadline.set(observed_deadline)
-                if node_name in _DEADLINE_BLOCKED_WORKER_NODES and _worker_window_closed(
-                    node_name,
-                    observation,
-                    model_window=model_window,
+        with _run_control_scope(run_id, node_name, state) as model_window:
+            started = time.perf_counter()
+            ts_ms = run_ts_ms()
+            try:
+                check_cancel_requested(node_name)
+                await ensure_budget_baseline()
+                deadline = getattr(state, "run_deadline", None)
+                observation: Optional[DeadlineObservation] = None
+                if deadline is not None and hasattr(state, "model_copy"):
+                    observed_deadline, observation = observe_run_deadline(deadline)
+                    state = state.model_copy(update={"run_deadline": observed_deadline})
+                    current_run_deadline.set(observed_deadline)
+                    if node_name in _DEADLINE_BLOCKED_WORKER_NODES and _worker_window_closed(
+                        node_name,
+                        observation,
+                        model_window=model_window,
+                    ):
+                        # Do not enter a worker once the window its model calls draw
+                        # on is closed — research and composition close separately.
+                        return _blocked_research_worker_update(
+                            node_name=node_name,
+                            observed_deadline=observed_deadline,
+                            observation=observation,
+                        )
+                handle = run_control_registry.get(run_id)
+                if (
+                    handle is not None
+                    and handle.delivery_ready_event.is_set()
+                    and node_name in _DEADLINE_BLOCKED_WORKER_NODES
                 ):
-                    # Do not enter a worker once the window its model calls draw
-                    # on is closed — research and composition close separately.
-                    return _blocked_research_worker_update(
-                        node_name=node_name,
-                        observed_deadline=observed_deadline,
-                        observation=observation,
-                    )
-            handle = run_control_registry.get(run_id)
-            if (
-                handle is not None
-                and handle.delivery_ready_event.is_set()
-                and node_name in _DEADLINE_BLOCKED_WORKER_NODES
-            ):
-                # A detached/late worker must not overwrite a durable Bundle.
-                return {
-                    "run_deadline": getattr(state, "run_deadline", None),
-                    "agent_status": {node_name: "ignored_after_delivery"},
-                }
-            claimed_supplements = handle.pending_supplements() if handle is not None else []
-            existing_amendments = list(
-                getattr(state, "pending_intent_amendments", None) or []
-            )
-            existing_ids = {item.command_id for item in existing_amendments}
-            fresh_amendments = [
-                IntentAmendment(
-                    command_id=str(item["command_id"]),
-                    category=str(item.get("category") or "other"),
-                    content=str(item.get("content") or "").strip(),
-                    source_kind="run_supplement",
-                )
-                for item in claimed_supplements
-                if str(item.get("command_id") or "") not in existing_ids
-                and str(item.get("content") or "").strip()
-            ]
-            if fresh_amendments and hasattr(state, "model_copy"):
-                state = state.model_copy(
-                    update={
-                        "pending_intent_amendments": [
-                            *existing_amendments,
-                            *fresh_amendments,
-                        ]
+                    # A detached/late worker must not overwrite a durable Bundle.
+                    return {
+                        "run_deadline": getattr(state, "run_deadline", None),
+                        "agent_status": {node_name: "ignored_after_delivery"},
                     }
+                claimed_supplements = handle.pending_supplements() if handle is not None else []
+                existing_amendments = list(
+                    getattr(state, "pending_intent_amendments", None) or []
                 )
-            await emit_node_lifecycle("started", node=node_name)
-            divert_to_amendment_router = bool(
-                fresh_amendments
-                and getattr(state, "request_contract", None) is not None
-                and node_name
-                not in {_REQUEST_CONTRACT_NORMALIZER, _INTENT_AMENDMENT_ROUTER}
-            )
-            if divert_to_amendment_router:
-                result = {
-                    "intent_amendment_resume_node": node_name,
-                }
-            else:
-                result = fn(state, *args, **kwargs)
-                if inspect.isawaitable(result):
-                    result = await result
-            applied_amendment_ids = set(
-                result.get("applied_intent_amendment_ids") or []
-                if isinstance(result, dict)
-                else []
-            )
-            rejected_amendments = [
-                IntentAmendmentRejection.model_validate(item)
-                for item in (
-                    result.get("rejected_intent_amendments") or []
+                existing_ids = {item.command_id for item in existing_amendments}
+                fresh_amendments = [
+                    IntentAmendment(
+                        command_id=str(item["command_id"]),
+                        category=str(item.get("category") or "other"),
+                        content=str(item.get("content") or "").strip(),
+                        source_kind="run_supplement",
+                    )
+                    for item in claimed_supplements
+                    if str(item.get("command_id") or "") not in existing_ids
+                    and str(item.get("content") or "").strip()
+                ]
+                if fresh_amendments and hasattr(state, "model_copy"):
+                    state = state.model_copy(
+                        update={
+                            "pending_intent_amendments": [
+                                *existing_amendments,
+                                *fresh_amendments,
+                            ]
+                        }
+                    )
+                await emit_node_lifecycle("started", node=node_name)
+                divert_to_amendment_router = bool(
+                    fresh_amendments
+                    and getattr(state, "request_contract", None) is not None
+                    and node_name
+                    not in {_REQUEST_CONTRACT_NORMALIZER, _INTENT_AMENDMENT_ROUTER}
+                )
+                if divert_to_amendment_router:
+                    result = {
+                        "intent_amendment_resume_node": node_name,
+                    }
+                else:
+                    result = fn(state, *args, **kwargs)
+                    if inspect.isawaitable(result):
+                        result = await result
+                applied_amendment_ids = set(
+                    result.get("applied_intent_amendment_ids") or []
                     if isinstance(result, dict)
                     else []
                 )
-            ]
-            if (
-                handle is not None
-                and handle.delivery_ready_event.is_set()
-                and node_name in _DEADLINE_BLOCKED_WORKER_NODES
-            ):
-                # The finalizer may win while an externally scheduled worker
-                # is returning. Drop that stale update rather than merging it
-                # into a checkpoint that already owns a Bundle identity.
-                result = {
-                    "run_deadline": getattr(state, "run_deadline", None),
-                    "agent_status": {node_name: "ignored_after_delivery"},
-                }
-                applied_amendment_ids.clear()
-            elif (
-                fresh_amendments
-                and isinstance(result, dict)
-                and node_name
-                not in {_REQUEST_CONTRACT_NORMALIZER, _INTENT_AMENDMENT_ROUTER}
-            ):
-                result = dict(result)
-                result["pending_intent_amendments"] = [
-                    *(result.get("pending_intent_amendments") or []),
-                    *fresh_amendments,
+                rejected_amendments = [
+                    IntentAmendmentRejection.model_validate(item)
+                    for item in (
+                        result.get("rejected_intent_amendments") or []
+                        if isinstance(result, dict)
+                        else []
+                    )
                 ]
-            if (
-                handle is not None
-                and node_name == "delivery_finalizer"
-                and isinstance(result, dict)
-                and result.get("delivery_persisted") is True
-            ):
-                handle.mark_delivery_ready()
-            # Keep a durable, non-decreasing checkpoint observation at every
-            # successful graph boundary.  A node that explicitly replaces or
-            # clears its deadline (approval/edit) owns that state transition.
-            if (
-                deadline is not None
-                and isinstance(result, dict)
-                and "run_deadline" not in result
-            ):
-                result = dict(result)
-                result["run_deadline"] = observe_run_deadline(
-                    getattr(state, "run_deadline")
-                )[0]
-            claimed_applied_ids = [
-                str(item.get("command_id"))
-                for item in claimed_supplements
-                if str(item.get("command_id") or "") in applied_amendment_ids
-            ]
-            if handle is not None and claimed_applied_ids:
-                try:
-                    generation = result.get("planning_generation")
-                    await handle.mark_supplements_applied(
-                        claimed_applied_ids,
-                        node=node_name,
-                        result={
-                            "outcome": "applied",
-                            "intent_spec_revision": result.get(
-                                "intent_spec_revision"
-                            ),
-                            "generation_id": getattr(
-                                generation, "generation_id", None
-                            ),
-                        },
-                    )
-                except Exception as settle_err:
-                    # 标记生效失败不能吃掉节点已经算出来的结果：那是几分钟的模型与工具
-                    # 调用。命令留在 claimed，执行器停下来时归还，下一个边界再标一次。
-                    logger.warning(
-                        "追加要求标记生效失败 run_id=%s node=%s error=%s",
-                        run_id,
-                        node_name,
-                        settle_err,
-                    )
-            if handle is not None and rejected_amendments:
-                for rejection in rejected_amendments:
+                if (
+                    handle is not None
+                    and handle.delivery_ready_event.is_set()
+                    and node_name in _DEADLINE_BLOCKED_WORKER_NODES
+                ):
+                    # The finalizer may win while an externally scheduled worker
+                    # is returning. Drop that stale update rather than merging it
+                    # into a checkpoint that already owns a Bundle identity.
+                    result = {
+                        "run_deadline": getattr(state, "run_deadline", None),
+                        "agent_status": {node_name: "ignored_after_delivery"},
+                    }
+                    applied_amendment_ids.clear()
+                elif (
+                    fresh_amendments
+                    and isinstance(result, dict)
+                    and node_name
+                    not in {_REQUEST_CONTRACT_NORMALIZER, _INTENT_AMENDMENT_ROUTER}
+                ):
+                    result = dict(result)
+                    result["pending_intent_amendments"] = [
+                        *(result.get("pending_intent_amendments") or []),
+                        *fresh_amendments,
+                    ]
+                if (
+                    handle is not None
+                    and node_name == "delivery_finalizer"
+                    and isinstance(result, dict)
+                    and result.get("delivery_persisted") is True
+                ):
+                    handle.mark_delivery_ready()
+                # Keep a durable, non-decreasing checkpoint observation at every
+                # successful graph boundary.  A node that explicitly replaces or
+                # clears its deadline (approval/edit) owns that state transition.
+                if (
+                    deadline is not None
+                    and isinstance(result, dict)
+                    and "run_deadline" not in result
+                ):
+                    result = dict(result)
+                    result["run_deadline"] = observe_run_deadline(
+                        getattr(state, "run_deadline")
+                    )[0]
+                claimed_applied_ids = [
+                    str(item.get("command_id"))
+                    for item in claimed_supplements
+                    if str(item.get("command_id") or "") in applied_amendment_ids
+                ]
+                if handle is not None and claimed_applied_ids:
                     try:
-                        await handle.mark_supplements_rejected(
-                            [rejection.command_id],
+                        generation = result.get("planning_generation")
+                        await handle.mark_supplements_applied(
+                            claimed_applied_ids,
                             node=node_name,
                             result={
-                                "outcome": (
-                                    "rejected_late"
-                                    if rejection.reason_code
-                                    in {
-                                        "research_window_closed",
-                                        "composition_window_closed",
-                                        "delivery_already_committed",
-                                    }
-                                    else "rejected"
+                                "outcome": "applied",
+                                "intent_spec_revision": result.get(
+                                    "intent_spec_revision"
                                 ),
-                                "impact": rejection.impact.value,
-                                "reason_code": rejection.reason_code,
-                                "requires_new_run": rejection.requires_new_run,
+                                "generation_id": getattr(
+                                    generation, "generation_id", None
+                                ),
                             },
                         )
                     except Exception as settle_err:
+                        # 标记生效失败不能吃掉节点已经算出来的结果：那是几分钟的模型与工具
+                        # 调用。命令留在 claimed，执行器停下来时归还，下一个边界再标一次。
                         logger.warning(
-                            "追加要求拒绝结论写入失败 run_id=%s node=%s error=%s",
+                            "追加要求标记生效失败 run_id=%s node=%s error=%s",
                             run_id,
                             node_name,
                             settle_err,
                         )
-            await emit_node_lifecycle(
-                "completed",
-                node=node_name,
-                duration_ms=round((time.perf_counter() - started) * 1000.0, 3),
-            )
-            return result
-        except (GraphInterrupt, RunCancelled, asyncio.CancelledError):
-            raise
-        except Exception as exc:
-            await emit_node_lifecycle(
-                "failed",
-                node=node_name,
-                duration_ms=round((time.perf_counter() - started) * 1000.0, 3),
-                error_type=type(exc).__name__,
-            )
-            raise
-        finally:
-            node_timing_registry.record(run_id, node_name, {
-                "duration_ms": round((time.perf_counter() - started) * 1000.0, 3),
-                "ts_ms": ts_ms,
-            })
-            current_agent.reset(token_agent)
-            current_node.reset(token_node)
-            current_run_id.reset(token_run)
-            current_run_deadline.reset(token_deadline)
-            current_run_budget.reset(token_budget)
-            current_model_window.reset(token_window)
+                if handle is not None and rejected_amendments:
+                    for rejection in rejected_amendments:
+                        try:
+                            await handle.mark_supplements_rejected(
+                                [rejection.command_id],
+                                node=node_name,
+                                result={
+                                    "outcome": (
+                                        "rejected_late"
+                                        if rejection.reason_code
+                                        in {
+                                            "research_window_closed",
+                                            "composition_window_closed",
+                                            "delivery_already_committed",
+                                        }
+                                        else "rejected"
+                                    ),
+                                    "impact": rejection.impact.value,
+                                    "reason_code": rejection.reason_code,
+                                    "requires_new_run": rejection.requires_new_run,
+                                },
+                            )
+                        except Exception as settle_err:
+                            logger.warning(
+                                "追加要求拒绝结论写入失败 run_id=%s node=%s error=%s",
+                                run_id,
+                                node_name,
+                                settle_err,
+                            )
+                await emit_node_lifecycle(
+                    "completed",
+                    node=node_name,
+                    duration_ms=round((time.perf_counter() - started) * 1000.0, 3),
+                )
+                return result
+            except (GraphInterrupt, RunCancelled, asyncio.CancelledError):
+                raise
+            except Exception as exc:
+                await emit_node_lifecycle(
+                    "failed",
+                    node=node_name,
+                    duration_ms=round((time.perf_counter() - started) * 1000.0, 3),
+                    error_type=type(exc).__name__,
+                )
+                raise
+            finally:
+                node_timing_registry.record(run_id, node_name, {
+                    "duration_ms": round((time.perf_counter() - started) * 1000.0, 3),
+                    "ts_ms": ts_ms,
+                })
 
     return _wrapped

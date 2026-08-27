@@ -28,8 +28,15 @@ from travel_agent.services.run_commands import (
     RUN_ENDED_BEFORE_CONSUMPTION,
     RunCommandCoordinator,
 )
+from travel_agent.workflows import run_control
 from travel_agent.workflows.run_control import (
     RunCancelled,
+    current_agent,
+    current_model_window,
+    current_node,
+    current_run_budget,
+    current_run_deadline,
+    current_run_id,
     run_control_registry,
     with_run_control,
 )
@@ -438,3 +445,88 @@ def test_replacing_amendments_keeps_order_and_distinct_commands():
     )
 
     assert _replace_amendments([first], [second, first]) == [second, first]
+
+
+_ATTRIBUTION_VARS = (
+    current_run_id,
+    current_node,
+    current_agent,
+    current_run_deadline,
+    current_run_budget,
+    current_model_window,
+)
+
+
+def _attribution_values() -> Dict[Any, Any]:
+    return {var: var.get() for var in _ATTRIBUTION_VARS}
+
+
+def _assert_attribution_restored(before: Dict[Any, Any]) -> None:
+    for var, value in before.items():
+        assert var.get() == value
+
+
+async def test_wrapped_node_restores_attribution_after_success(run_id) -> None:
+    before = _attribution_values()
+
+    update = await with_run_control("planner", lambda state: {"ok": True})(
+        TravelAgentState(run_id=run_id, user_message="x")
+    )
+
+    assert update == {"ok": True}
+    _assert_attribution_restored(before)
+
+
+async def test_wrapped_node_restores_attribution_after_body_failure(run_id) -> None:
+    before = _attribution_values()
+
+    async def failing(_state: TravelAgentState) -> Dict[str, Any]:
+        raise RuntimeError("node body exploded")
+
+    with pytest.raises(RuntimeError):
+        await with_run_control("planner", failing)(
+            TravelAgentState(run_id=run_id, user_message="x")
+        )
+
+    _assert_attribution_restored(before)
+
+
+async def test_wrapped_node_restores_attribution_when_binding_fails(
+    run_id, monkeypatch
+) -> None:
+    def exploded_window(*_args: Any, **_kwargs: Any) -> Any:
+        raise RuntimeError("model window binding exploded")
+
+    def exploded_ts() -> Any:
+        raise RuntimeError("run_ts_ms binding exploded")
+
+    for target, exploded in (
+        ("_model_window_for_node", exploded_window),
+        ("run_ts_ms", exploded_ts),
+    ):
+        before = _attribution_values()
+        monkeypatch.setattr(run_control, target, exploded)
+        with pytest.raises(RuntimeError):
+            await with_run_control("planner", lambda state: {})(
+                TravelAgentState(run_id=run_id, user_message="x")
+            )
+        _assert_attribution_restored(before)
+        monkeypatch.undo()
+
+
+async def test_wrapped_node_restores_deadline_overwritten_by_bare_set(run_id) -> None:
+    sentinel_a = object()
+    sentinel_b = object()
+    token = current_run_deadline.set(sentinel_a)
+    try:
+        async def node(_state: TravelAgentState) -> Dict[str, Any]:
+            current_run_deadline.set(sentinel_b)
+            return {}
+
+        await with_run_control("planner", node)(
+            TravelAgentState(run_id=run_id, user_message="x")
+        )
+
+        assert current_run_deadline.get() is sentinel_a
+    finally:
+        current_run_deadline.reset(token)
