@@ -7,6 +7,12 @@ from pydantic import Field, model_validator
 from .contract_base import StrictModel
 
 
+# generic_fallback 来源的候选要被扣两次分：一次在排名里（ranking_tuple 的
+# fallback 位），一次在选择的加总里（candidate_selection 减掉
+# generic_fallback_penalty）。两处读同一个值，改这里就是同时改两处。
+GENERIC_FALLBACK_PENALTY = 0.2
+
+
 class CandidateRankingScore(StrictModel):
     candidate_id: str = Field(min_length=1)
     generation_id: str = Field(min_length=1)

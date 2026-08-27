@@ -4,7 +4,10 @@ from collections import defaultdict
 
 from ..entities.candidate_discovery import CandidateDiscoveryOrigin
 from ..entities.candidate_intent import CandidateIntentMatch, IntentMatchStatus
-from ..entities.candidate_ranking import CandidateRankingScore
+from ..entities.candidate_ranking import (
+    GENERIC_FALLBACK_PENALTY,
+    CandidateRankingScore,
+)
 from ..entities.delivery_bundle import RecommendationCatalog
 from ..entities.intent_spec import IntentKind, IntentSpec, IntentStrength
 
@@ -99,7 +102,7 @@ def rank_candidates(
         )
         fit = admission.fit_scores if admission is not None else None
         fallback_penalty = (
-            0.2
+            GENERIC_FALLBACK_PENALTY
             if CandidateDiscoveryOrigin.GENERIC_FALLBACK
             in discovery[candidate_id].origins
             else 0.0

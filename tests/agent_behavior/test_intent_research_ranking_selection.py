@@ -53,6 +53,7 @@ from travel_agent.entities.research_brief import (
     DomainResearchObjective,
     ResearchBriefV2,
 )
+from travel_agent.entities.candidate_ranking import GENERIC_FALLBACK_PENALTY
 from travel_agent.entities.research_domain import ResearchDomain
 from travel_agent.entities.research_query_plan import ResearchQueryKind
 from travel_agent.entities.trip_input import ControlledTripIdentity
@@ -69,6 +70,7 @@ from travel_agent.entities.itinerary_composition_v2 import (
 from travel_agent.services.candidate_intent_evaluation import (
     evaluate_candidate_intents,
 )
+from travel_agent.services import candidate_ranking as candidate_ranking_service
 from travel_agent.services.candidate_ranking import rank_candidates
 from travel_agent.services.candidate_selection import (
     build_candidate_selection_plan,
@@ -1494,6 +1496,69 @@ def test_fallback_candidate_is_penalized_and_targeted_repair_is_stable():
         destination_count=1,
     )
     assert selection.entries[0].candidate_id == "candidate_intent"
+
+
+def test_generic_fallback_penalty_has_one_source():
+    """扣分值只有一份定义：排名和 fallback 查询策略读的是同一个常量对象。
+
+    以前两边各写一个 0.2 字面量，改一边不会连带另一边。这里用 ``is`` 而不是 ``==``：
+    值相等挡不住有人把字面量抄回去，同一个对象才说明它确实是从常量导进来的。
+    """
+    assert candidate_ranking_service.GENERIC_FALLBACK_PENALTY is (
+        GENERIC_FALLBACK_PENALTY
+    )
+    assert FallbackQueryPolicy().fallback_penalty is GENERIC_FALLBACK_PENALTY
+
+
+def test_generic_fallback_origin_lands_in_the_ranking_tuple():
+    """GENERIC_FALLBACK 来源的候选，ranking_tuple 的扣分位就是常量的相反数。"""
+    intent = _intent("intent_arch", "contemporary architecture")
+    spec = _spec(intent)
+    intent_packet = _packet(
+        "candidate_intent",
+        "Intent Place",
+        origin=CandidateDiscoveryOrigin.INTENT_QUERY,
+        query_id="query_intent",
+        intent_id=intent.intent_id,
+    )
+    fallback_packet = _packet(
+        "candidate_fallback",
+        "Fallback Place",
+        origin=CandidateDiscoveryOrigin.GENERIC_FALLBACK,
+        query_id="query_fallback",
+        intent_id=intent.intent_id,
+    )
+    catalog = _catalog(intent_packet, fallback_packet)
+    matches = [
+        CandidateIntentMatch(
+            candidate_id=candidate_id,
+            intent_id=intent.intent_id,
+            status=IntentMatchStatus.MATCHED,
+            score=1,
+            method="semantic_batch_evaluation",
+            supporting_fact_assertion_ids=[f"fact_{candidate_id}"],
+            supporting_source_record_ids=[f"source_{candidate_id}"],
+            reason_code="semantic_match",
+        )
+        for candidate_id in ("candidate_intent", "candidate_fallback")
+    ]
+    by_id = {
+        score.candidate_id: score
+        for score in rank_candidates(
+            catalog=catalog, intent_spec=spec, matches=matches
+        )
+    }
+    # ranking_tuple 的第 11 位（下标 10）是 fallback 扣分位，见 candidate_ranking.py
+    # 里构造 ranking_tuple 的那段。
+    fallback_slot = 10
+    assert by_id["candidate_fallback"].ranking_tuple[fallback_slot] == (
+        -GENERIC_FALLBACK_PENALTY
+    )
+    assert by_id["candidate_intent"].ranking_tuple[fallback_slot] == 0.0
+    # 同一个值还要进 CandidateRankingScore，candidate_selection 在加总时减的是它。
+    assert by_id["candidate_fallback"].generic_fallback_penalty == (
+        GENERIC_FALLBACK_PENALTY
+    )
 
 
 @pytest.mark.asyncio
