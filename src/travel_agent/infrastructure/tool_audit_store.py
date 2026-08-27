@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
 
@@ -17,6 +18,12 @@ from ..entities.tool_gateway import (
 from ..entities.trip_run import utc_now_iso
 from .database import get_db_session
 from .row_values import iso_or_none as _iso, json_dumps as _json_dumps
+
+logger = logging.getLogger(__name__)
+
+
+class ToolAuditConflict(Exception):
+    """Same audit id already stored with different content."""
 
 
 _SENSITIVE_KEY_RE = re.compile(
@@ -174,6 +181,56 @@ def build_audit_record_from_envelope(
     )
 
 
+def _audit_identity(record: ToolAuditRecord) -> Tuple[Any, ...]:
+    """Fields that must match for same-id idempotent replay.
+
+    Picked the same way ``cost_ledger_store._ledger_identity`` picks its own: the
+    written surface is wider than this tuple, and everything that legitimately
+    differs between two arrivals of one ``audit_id`` is deliberately left out.
+    Latency, retry counters and ``created_at`` all move on a replay, so comparing
+    them would only manufacture false conflicts.
+
+    ``run_id`` is excluded, and unlike the cost ledger it *must* be — the two
+    tables in this package do not share FK semantics:
+
+    * ``migrations/versions/0001_baseline_current_schema.py:593`` —
+      ``tool_execution_audits.run_id ... ON DELETE SET NULL``
+    * ``migrations/versions/0001_baseline_current_schema.py:647`` —
+      ``run_llm_calls.run_id NOT NULL ... ON DELETE CASCADE``
+
+    So a deleted parent run leaves the stored audit row behind with ``run_id``
+    nulled out, while a re-arriving envelope still carries its ``run_id``.  That
+    is a normal state for this table and not a content conflict.  The cost ledger
+    can afford ``run_id`` in its tuple only because its rows are cascaded away
+    with the parent, so the state cannot arise there.
+    """
+    return (
+        record.tool_name,
+        record.server_name,
+        record.source_type,
+        record.status,
+        record.gateway_decision,
+        record.args_digest,
+        record.result_digest,
+    )
+
+
+def _assert_audit_idempotent(
+    existing: ToolAuditRecord, incoming: ToolAuditRecord
+) -> None:
+    """Refuse to silently drop a second, different envelope for one audit id."""
+    if _audit_identity(existing) != _audit_identity(incoming):
+        logger.error(
+            "tool audit id conflict: audit_id=%s existing_status=%s incoming_status=%s",
+            incoming.audit_id,
+            existing.status,
+            incoming.status,
+        )
+        raise ToolAuditConflict(
+            f"Tool audit id {incoming.audit_id!r} already stored with different content"
+        )
+
+
 class ToolAuditStore:
     """PostgreSQL-backed tool audit repository."""
 
@@ -198,7 +255,9 @@ class ToolAuditStore:
             )
             row = result.mappings().first()
             if row:
-                return _record_from_row(dict(row))
+                existing = _record_from_row(dict(row))
+                _assert_audit_idempotent(existing, record)
+                return existing
             await session.execute(
                 text(
                     """
@@ -279,7 +338,9 @@ class InMemoryToolAuditStore(ToolAuditStore):
             raise KeyError("manifest")
         record = build_audit_record_from_envelope(envelope, **kwargs)
         if record.audit_id in self.records:
-            return self.records[record.audit_id]
+            existing = self.records[record.audit_id]
+            _assert_audit_idempotent(existing, record)
+            return existing
         record.metadata = sanitize_audit_metadata(record.metadata)
         self.records[record.audit_id] = record
         return record
