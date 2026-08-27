@@ -765,6 +765,134 @@ def _run_control_scope(
         yield model_window
 
 
+def _ignored_after_delivery_update(state: Any, node_name: str) -> Dict[str, Any]:
+    """The update that drops a worker's work once delivery owns the checkpoint.
+
+    Both call sites (entry interception and post-return overwrite) build the
+    same shape; the branches themselves differ in position and follow-up actions
+    and are deliberately not merged.
+    """
+
+    return {
+        "run_deadline": getattr(state, "run_deadline", None),
+        "agent_status": {node_name: "ignored_after_delivery"},
+    }
+
+
+def _claim_fresh_amendments(
+    claimed_supplements: List[Dict[str, str]],
+    *,
+    existing_ids: set[str],
+) -> List[IntentAmendment]:
+    """Fold this round's claimed commands into amendments worth injecting.
+
+    Commands already carried in state (replayed deliveries) and empty-content
+    entries are skipped: the former are already live, the latter carry nothing
+    a prompt could act on.
+    """
+
+    return [
+        IntentAmendment(
+            command_id=str(item["command_id"]),
+            category=str(item.get("category") or "other"),
+            content=str(item.get("content") or "").strip(),
+            source_kind="run_supplement",
+        )
+        for item in claimed_supplements
+        if str(item.get("command_id") or "") not in existing_ids
+        and str(item.get("content") or "").strip()
+    ]
+
+
+def _should_divert_to_amendment_router(
+    *,
+    fresh_amendments: List[IntentAmendment],
+    state: Any,
+    node_name: str,
+) -> bool:
+    """Whether a fresh supplement redirects this boundary to the router."""
+
+    return bool(
+        fresh_amendments
+        and getattr(state, "request_contract", None) is not None
+        and node_name
+        not in {_REQUEST_CONTRACT_NORMALIZER, _INTENT_AMENDMENT_ROUTER}
+    )
+
+
+async def _settle_amendments(
+    handle: Optional[RunControlHandle],
+    *,
+    node_name: str,
+    run_id: str,
+    claimed_applied_ids: List[str],
+    intent_spec_revision: Any,
+    generation_id: Any,
+    rejected_amendments: List[IntentAmendmentRejection],
+) -> None:
+    """Give every judged command its durable outcome. Never touches ``result``.
+
+    All inputs are computed by the caller: ``rejected_amendments`` must be the
+    list captured **before** a late ignored_after_delivery overwrite clears
+    applied ids only — recomputing it from the final result would silently drop
+    rejections on that path and strand those commands in CLAIMED forever.
+    A settlement failure never fails the node; the command stays claimed and
+    the next boundary retries.
+    """
+
+    if handle is None:
+        return
+    if claimed_applied_ids:
+        try:
+            await handle.mark_supplements_applied(
+                claimed_applied_ids,
+                node=node_name,
+                result={
+                    "outcome": "applied",
+                    "intent_spec_revision": intent_spec_revision,
+                    "generation_id": generation_id,
+                },
+            )
+        except Exception as settle_err:
+            # 标记生效失败不能吃掉节点已经算出来的结果：那是几分钟的模型与工具
+            # 调用。命令留在 claimed，执行器停下来时归还，下一个边界再标一次。
+            logger.warning(
+                "追加要求标记生效失败 run_id=%s node=%s error=%s",
+                run_id,
+                node_name,
+                settle_err,
+            )
+    if rejected_amendments:
+        for rejection in rejected_amendments:
+            try:
+                await handle.mark_supplements_rejected(
+                    [rejection.command_id],
+                    node=node_name,
+                    result={
+                        "outcome": (
+                            "rejected_late"
+                            if rejection.reason_code
+                            in {
+                                "research_window_closed",
+                                "composition_window_closed",
+                                "delivery_already_committed",
+                            }
+                            else "rejected"
+                        ),
+                        "impact": rejection.impact.value,
+                        "reason_code": rejection.reason_code,
+                        "requires_new_run": rejection.requires_new_run,
+                    },
+                )
+            except Exception as settle_err:
+                logger.warning(
+                    "追加要求拒绝结论写入失败 run_id=%s node=%s error=%s",
+                    run_id,
+                    node_name,
+                    settle_err,
+                )
+
+
 def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]]:
     """Wrap a LangGraph node with cancel checks and run attribution contextvars.
 
@@ -810,26 +938,15 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                     and node_name in _DEADLINE_BLOCKED_WORKER_NODES
                 ):
                     # A detached/late worker must not overwrite a durable Bundle.
-                    return {
-                        "run_deadline": getattr(state, "run_deadline", None),
-                        "agent_status": {node_name: "ignored_after_delivery"},
-                    }
+                    return _ignored_after_delivery_update(state, node_name)
                 claimed_supplements = handle.pending_supplements() if handle is not None else []
                 existing_amendments = list(
                     getattr(state, "pending_intent_amendments", None) or []
                 )
                 existing_ids = {item.command_id for item in existing_amendments}
-                fresh_amendments = [
-                    IntentAmendment(
-                        command_id=str(item["command_id"]),
-                        category=str(item.get("category") or "other"),
-                        content=str(item.get("content") or "").strip(),
-                        source_kind="run_supplement",
-                    )
-                    for item in claimed_supplements
-                    if str(item.get("command_id") or "") not in existing_ids
-                    and str(item.get("content") or "").strip()
-                ]
+                fresh_amendments = _claim_fresh_amendments(
+                    claimed_supplements, existing_ids=existing_ids
+                )
                 if fresh_amendments and hasattr(state, "model_copy"):
                     state = state.model_copy(
                         update={
@@ -840,11 +957,8 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                         }
                     )
                 await emit_node_lifecycle("started", node=node_name)
-                divert_to_amendment_router = bool(
-                    fresh_amendments
-                    and getattr(state, "request_contract", None) is not None
-                    and node_name
-                    not in {_REQUEST_CONTRACT_NORMALIZER, _INTENT_AMENDMENT_ROUTER}
+                divert_to_amendment_router = _should_divert_to_amendment_router(
+                    fresh_amendments=fresh_amendments, state=state, node_name=node_name
                 )
                 if divert_to_amendment_router:
                     result = {
@@ -875,10 +989,7 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                     # The finalizer may win while an externally scheduled worker
                     # is returning. Drop that stale update rather than merging it
                     # into a checkpoint that already owns a Bundle identity.
-                    result = {
-                        "run_deadline": getattr(state, "run_deadline", None),
-                        "agent_status": {node_name: "ignored_after_delivery"},
-                    }
+                    result = _ignored_after_delivery_update(state, node_name)
                     applied_amendment_ids.clear()
                 elif (
                     fresh_amendments
@@ -915,60 +1026,27 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                     for item in claimed_supplements
                     if str(item.get("command_id") or "") in applied_amendment_ids
                 ]
-                if handle is not None and claimed_applied_ids:
-                    try:
-                        generation = result.get("planning_generation")
-                        await handle.mark_supplements_applied(
-                            claimed_applied_ids,
-                            node=node_name,
-                            result={
-                                "outcome": "applied",
-                                "intent_spec_revision": result.get(
-                                    "intent_spec_revision"
-                                ),
-                                "generation_id": getattr(
-                                    generation, "generation_id", None
-                                ),
-                            },
-                        )
-                    except Exception as settle_err:
-                        # 标记生效失败不能吃掉节点已经算出来的结果：那是几分钟的模型与工具
-                        # 调用。命令留在 claimed，执行器停下来时归还，下一个边界再标一次。
-                        logger.warning(
-                            "追加要求标记生效失败 run_id=%s node=%s error=%s",
-                            run_id,
-                            node_name,
-                            settle_err,
-                        )
-                if handle is not None and rejected_amendments:
-                    for rejection in rejected_amendments:
-                        try:
-                            await handle.mark_supplements_rejected(
-                                [rejection.command_id],
-                                node=node_name,
-                                result={
-                                    "outcome": (
-                                        "rejected_late"
-                                        if rejection.reason_code
-                                        in {
-                                            "research_window_closed",
-                                            "composition_window_closed",
-                                            "delivery_already_committed",
-                                        }
-                                        else "rejected"
-                                    ),
-                                    "impact": rejection.impact.value,
-                                    "reason_code": rejection.reason_code,
-                                    "requires_new_run": rejection.requires_new_run,
-                                },
-                            )
-                        except Exception as settle_err:
-                            logger.warning(
-                                "追加要求拒绝结论写入失败 run_id=%s node=%s error=%s",
-                                run_id,
-                                node_name,
-                                settle_err,
-                            )
+                # 结算函数不碰 result：这两样在这里无条件算好传入。result 不是 dict
+                # 而 claimed_applied_ids 非空的组合不可能发生（ids 非空 ⟹ 上面按 dict
+                # 读出过 applied），所以无条件求值只是把隐式不变量摆到明面上。
+                _generation = (
+                    result.get("planning_generation")
+                    if isinstance(result, dict)
+                    else None
+                )
+                await _settle_amendments(
+                    handle,
+                    node_name=node_name,
+                    run_id=run_id,
+                    claimed_applied_ids=claimed_applied_ids,
+                    intent_spec_revision=(
+                        result.get("intent_spec_revision")
+                        if isinstance(result, dict)
+                        else None
+                    ),
+                    generation_id=getattr(_generation, "generation_id", None),
+                    rejected_amendments=rejected_amendments,
+                )
                 await emit_node_lifecycle(
                     "completed",
                     node=node_name,
