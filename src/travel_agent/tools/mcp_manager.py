@@ -756,13 +756,6 @@ class MCPManager:
             update_server_state=False,
         )
 
-    def _normalize_tool_arguments(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        对特定工具的参数名做防御性规范化，处理 LLM 可能使用 snake_case 而
-        MCP Schema 定义为 camelCase 的情况。
-        """
-        return arguments
-
     async def _execute_tool(
         self,
         server_name: str,
@@ -780,7 +773,6 @@ class MCPManager:
                 "tool_name": tool_name,
             }
 
-        arguments = self._normalize_tool_arguments(tool_name, arguments)
         call_lock = await self._server_call_lock(server_name)
 
         async with call_lock:

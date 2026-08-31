@@ -6,7 +6,8 @@ from typing import List, Literal
 
 from pydantic import Field, model_validator
 
-from .delivery_bundle import ResearchDomain, StrictModel
+from .contract_base import StrictModel
+from .research_domain import ResearchDomain
 from .trip_input import ControlledTripIdentity
 
 

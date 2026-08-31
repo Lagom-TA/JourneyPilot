@@ -119,11 +119,6 @@ class PublicRequirementFulfillment(StrictModel):
     explanation: str = Field(min_length=1, max_length=500)
 
 
-class PublicFulfillmentSummary(StrictModel):
-    fulfilled: List[PublicRequirementFulfillment] = Field(default_factory=list)
-    deviations: List[PublicRequirementFulfillment] = Field(default_factory=list)
-
-
 class IntentCoverageStatus(str, Enum):
     SATISFIED = "satisfied"
     PARTIALLY_SATISFIED = "partially_satisfied"

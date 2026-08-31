@@ -1803,7 +1803,6 @@ async def streaming_react_loop(
             messages.insert(0, {"role": "system", "content": exposure_plan.catalog_prompt.lstrip()})
     get_tool_exposure_ledger().record(
         tool_context.get("run_id"),
-        agent=exposure_plan.agent,
         deferred=exposure_plan.deferred,
         injected_tokens=exposure_plan.injected_tokens,
         full_tokens=exposure_plan.full_tokens,

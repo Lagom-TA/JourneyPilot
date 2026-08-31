@@ -386,7 +386,10 @@ class TravelAgentState(BaseModel):
     candidate_gate_failure_signatures: Dict[str, List[str]] = Field(
         default_factory=dict
     )
-    # Single writer: gates that emit composition_repair. Cleared on plan edit.
+    # Shared repair budget. Gates normally spend it through
+    # apply_composition_repair_budget; the missing-workspace quality path
+    # increments directly because exhaustion there must raise instead of
+    # releasing an empty projection. Plan edits reset the budget.
     composition_repair_attempts: int = 0
     # Normalized authored place names whose whole resolution ladder ran and
     # found nothing. Single writer: itinerary_planner. A later composition

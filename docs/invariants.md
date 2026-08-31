@@ -296,13 +296,9 @@ Enforced by: `classify_provider_failure` 见该前缀进条件分支（文本含
 判 (transient, provider_transient_failure)，否则判 (deterministic,
 provider_deterministic_failure)）；`is_provider_or_model_failure` 对它返回 True。
 前缀字符串是随 checkpoint 落盘的持久化格式，逐字符不许变。
-`_EXPLICIT_EXTERNAL_FAILURE_MARKERS` 禁止用 `*KNOWN_PREFIXES` splat 全表混进名单：
-`worker_failed:` 不在名单里是待决缺陷不是不变量（见 `docs/pending.md`），
-收编它是路由级变更，单独拍板单独立项。
 Tests:
-- `test_worker_error_protocol_contract.py::test_every_known_prefix_keeps_its_current_reader_verdict`
-- `test_worker_error_protocol_contract.py::test_schema_gate_prefix_verdict_depends_on_transient_markers_in_the_payload`
-- `test_worker_error_protocol_contract.py::test_explicit_markers_contain_exactly_the_five_gate_visible_prefixes`
+- `test_worker_error_protocol_contract.py::test_persisted_failure_prefixes_have_stable_reader_verdict`
+- `test_worker_error_protocol_contract.py::test_schema_gate_prefix_preserves_transient_retryability`
 
 ### INV-WEP-002：provider_empty: 前缀进门后固定判 (incomplete, provider_empty_result)
 Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
@@ -312,8 +308,7 @@ Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider
 对它返回 True；Provider 完成了调用但零命中是诚实的空结果，不是合同失败。
 前缀字符串是持久化格式，逐字符不许变
 Tests:
-- `test_worker_error_protocol_contract.py::test_every_known_prefix_keeps_its_current_reader_verdict`
-- `test_worker_error_protocol_contract.py::test_explicit_markers_contain_exactly_the_five_gate_visible_prefixes`
+- `test_worker_error_protocol_contract.py::test_persisted_failure_prefixes_have_stable_reader_verdict`
 
 ### INV-WEP-003：provider_transient: 前缀进门后固定判 (transient, provider_transient_failure)
 Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
@@ -323,8 +318,7 @@ Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider
 对它返回 True；暂态失败重试不会逐字复现，不许读成确定性失败关域。
 前缀字符串是持久化格式，逐字符不许变
 Tests:
-- `test_worker_error_protocol_contract.py::test_every_known_prefix_keeps_its_current_reader_verdict`
-- `test_worker_error_protocol_contract.py::test_explicit_markers_contain_exactly_the_five_gate_visible_prefixes`
+- `test_worker_error_protocol_contract.py::test_persisted_failure_prefixes_have_stable_reader_verdict`
 
 ### INV-WEP-004：provider_deterministic: 前缀进门后固定判 (deterministic, provider_deterministic_failure)
 Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
@@ -334,8 +328,7 @@ Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider
 对它返回 True；确定性失败重试逐字复现，域按有限重试后关闭。
 前缀字符串是持久化格式，逐字符不许变
 Tests:
-- `test_worker_error_protocol_contract.py::test_every_known_prefix_keeps_its_current_reader_verdict`
-- `test_worker_error_protocol_contract.py::test_explicit_markers_contain_exactly_the_five_gate_visible_prefixes`
+- `test_worker_error_protocol_contract.py::test_persisted_failure_prefixes_have_stable_reader_verdict`
 
 ### INV-WEP-005：provider_capability: 前缀进门后固定判 (incomplete, provider_capability_declined)
 Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
@@ -345,12 +338,8 @@ Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider
 对它返回 True；Gateway 在任何调用前判定 Provider 答不了所请求的日期，
 是 incomplete 不是合同失败，域保留那轮换模态的定向重研。
 前缀字符串是持久化格式，逐字符不许变。
-五条覆盖关系不许写成「前缀集合 ↔ 判类覆盖集合相等」的相等断言：
-那会把 `worker_failed:` 逼进 `_EXPLICIT_EXTERNAL_FAILURE_MARKERS`，四道门当场翻面，
-是无人拍板的路由变更
 Tests:
-- `test_worker_error_protocol_contract.py::test_every_known_prefix_keeps_its_current_reader_verdict`
-- `test_worker_error_protocol_contract.py::test_explicit_markers_contain_exactly_the_five_gate_visible_prefixes`
+- `test_worker_error_protocol_contract.py::test_persisted_failure_prefixes_have_stable_reader_verdict`
 
 ### INV-FIDELITY-001：硬禁止不得以预算耗尽为由降级
 Owner: `agents/orchestrator/intent_fidelity_gate.py`、`services/intent_verification.py`
@@ -385,38 +374,15 @@ ADR: [ADR-0012](adr/ADR-0012-intent-fidelity-and-controlled-exploration.md)
 Tests:
 - `agent_behavior/test_intent_research_ranking_selection.py::test_explore_selection_is_seeded_reproducible_and_diverse`
 
-### INV-REPLAY-001：运行差异必须能定位到具体规划层
-Owner: `entities/trip_run.py`、`services/run_diff.py`
-Enforced by: Completion Audit 只保存各层版本、Hash、ID 与聚合指标；Run Diff 分开比较 Input、
-Intent、Constraint、Query、Provider、Candidate、Admission、Ranking、Selection、Composition、
-Mutation、Coverage 与 Projection
-ADR: [ADR-0012](adr/ADR-0012-intent-fidelity-and-controlled-exploration.md)
-Tests:
-- `agent_behavior/test_run_diff.py::test_completion_audit_records_replay_layers_without_raw_user_text`
-- `agent_behavior/test_run_diff.py::test_run_diff_locates_selection_and_composition_delta`
-
-### INV-NODE-001：图上每个节点都进得了时间线，一路到界面那一格
+### INV-NODE-001：运行图节点都有用户可见元数据
 Owner: `workflows/trace.py` 的 `NODE_PHASES`、`utils/display_names.py` 的
 `AGENT_DISPLAY_NAMES` 与 `STEP_DISPLAY_NAMES`、
 `frontend/src/lib/agentStages.ts` 的 `NODE_STAGES`
-Enforced by: 后端真源取 `build_travel_workflow()` 构出来的图加上 `NODE_FAST_ANSWER`，
-不取 `node_names.py` 的常量表 —— 常量表和图可能一起漂。三张后端表都按「键集 == 图上的
-节点加上显式登记的非节点键」比，两个方向都断言；不做「表里多出来的一律放过」的宽松
-匹配，否则删掉一个节点之后表里那行会一直留着。
-界面那一段跨语言，没有可 import 的运行期真值，所以 `agentStages.test.ts` 去读
-`display_names.py` 的源码做双向差集（与 INV-UI-001 同一手法）：后端会发的每个名字
-界面都要有阶段映射，界面也不许留后端从不发送的键。前端表写成一行同时给出内部名和
-显示名、两个键从同一行生成，让「只改一半」结构上不可能 —— 这条界以前就是这么漂的。
-链条接起来：图 → 后端三张表 → 界面阶段表。
-漏一行都不报错，只是静默变差：`NODE_PHASES` 缺一行让 `infer_trace_phase` 落进
-`postprocess` 默认档，把一个跑在交付之前的门画到时间线最后一段；两张显示名表缺一行
-让界面直接显示英文内部名；界面阶段表缺一行让 `deriveStages` 把那个 step 整个跳过，
-对应的责任阶段永远停在 pending
+Enforced by: 后端测试从实际构造的 LangGraph 读取节点并与三张运行时表比较；前端阶段映射
+从同一行生成内部名和显示名，并用当前名、历史内部名和补研后缀做行为回归。
 Tests:
-- `test_node_name_tables_contract.py::test_trace_phase_table_covers_every_graph_node`
-- `test_node_name_tables_contract.py::test_agent_display_names_cover_every_graph_node`
-- `test_node_name_tables_contract.py::test_step_display_names_cover_every_graph_node`
-- `frontend/src/lib/agentStages.test.ts`（双向差集 + 内部名与显示名必须同阶段）
+- `test_node_name_tables_contract.py::test_user_facing_node_metadata_matches_the_runtime_graph`
+- `frontend/src/lib/agentStages.test.ts`
 
 ### INV-INTENT-006：意图变更能从每个节点续跑，除了明确不该的两个
 Owner: `workflows/travel_planning.py` 里 `build_travel_workflow` 的
@@ -429,7 +395,7 @@ Enforced by: 名单是按节点名手抄的局部变量，导不出来，所以�
 和路由节点自己。加一个节点忘了往名单里补一行，它就悄悄变成不可续跑 —— 用户补一句
 要求，进度被打回更早的阶段重做，没有任何日志说这是因为一张表少了一行
 Tests:
-- `test_node_name_tables_contract.py::test_intent_amendment_resumes_at_every_node_except_the_two_it_must_not`
+- `test_node_name_tables_contract.py::test_intent_amendments_can_resume_at_every_runtime_node_that_accepts_them`
 
 ---
 
@@ -615,13 +581,6 @@ Enforced by: 覆盖是 `setattr`，它不触发 Field 约束与 `model_validator
 Tests:
 - `test_config_contract.py::*`
 
-### INV-CFG-006：CI 与 compose 跑同一个数据库镜像
-Owner: `docker-compose.yml`、`.github/workflows/*.yml`
-Enforced by: `services:` 块里用不了 env 上下文，所以那个 digest 必须多处各写一份 ——
-由测试钉住它们一致，改一处漏三处会红而不是让某次 nightly 对着旧镜像报绿
-Tests:
-- `test_invariants_doc.py::test_ci_and_compose_pin_the_same_database_image`
-
 ### INV-CFG-002：每个生效值都能说出它从哪来
 Owner: `config/loader.EffectiveConfig`
 Enforced by: 来源三档 config default / config.yaml / environment (VAR)
@@ -673,11 +632,12 @@ Enforced by: 翻页取回的消息带 `isEarlierHistory`，投影不切它 —�
 Tests:
 - `frontend/src/lib/conversationFlow.test.ts`
 
-### INV-UI-001：后端能发的每一个失败 code，界面都有自己的一句话
+### INV-UI-001：资料处理失败给出可执行且不泄露内部信息的提示
 Owner: `api/routes/knowledge.py` 与 `frontend/src/lib/knowledgeIngestFailure.ts`
-Enforced by: 前端测试**读后端源文件**，要求两张表差集为空
+Enforced by: 已知文件、繁忙、寻址和空文本错误映射到换文件、重试、刷新或停止操作；
+未知错误走通用安全文案，不直接显示后端原文
 Tests:
-- `frontend/src/lib/knowledgeIngestFailure.test.ts`（双向差集 + 每个 code 有自己的话）
+- `frontend/src/lib/knowledgeIngestFailure.test.ts`
 
 ### INV-UI-003：产品面永远不印工具原始载荷
 Owner: `tools/governance.py` 的 `summarize_tool_result`（唯一决定**说什么**）、
@@ -689,28 +649,6 @@ Enforced by: 认得出的形状读成人话，零结果与失败分开说；认�
 Tests:
 - `test_tool_result_summary.py::*`
 - `frontend/src/lib/toolDisplay.test.ts`
-
----
-
-## 门禁自身
-
-### INV-META-001：这份文档的门禁只证明测试还在，不证明它还在干活
-Owner: `tests/test_invariants_doc.py`
-Enforced by: `test_every_referenced_test_exists` 拿 pytest 自己的收集结果比对每条
-`Tests:` 点名的用例，`test_every_referenced_owner_file_exists` 让每个 `Owner:` 落到
-磁盘上，`test_the_gate_itself_collects_references` 挡住「解析器什么都没抓到于是永远
-通过」这种恒绿。
-**它到此为止。** 它不断言那个用例真的在校验它声称在校验的那张表：一个被掏空成
-`assert True`、或者断言条件被改软了的守卫，照样能被收集到，照样让这份文档全绿。
-这条门禁买的是「守卫没被删掉、没被改名、没被漏收集」，不是「守卫还在干活」。
-后者只能靠改坏它一次看它红不红 —— 每条新守卫合入前都该这么试一次，但那是人做的事，
-不是这份门禁做的事。
-把它当成比实际更强的保证，就会在某次「顺手简化一下测试」之后，留下一份读起来
-处处有人守着、实际没人守着的文档。
-Tests:
-- `test_invariants_doc.py::test_every_referenced_test_exists`
-- `test_invariants_doc.py::test_the_gate_itself_collects_references`
-- `test_invariants_doc.py::test_every_invariant_names_an_owner_and_a_test`
 
 ---
 

@@ -6,9 +6,10 @@ the adjacent stops, an adjacency with no connector at all, one candidate
 materialized twice — blocks. Source coverage, weather coverage and slot
 richness are recorded and shipped.
 
-A blocking gap buys at most one repair round; once that budget is spent the
-current composition goes to projection. The gate never spends a provider retry
-budget: Candidate Gate is the only owner of targeted research attempts.
+A blocking gap buys a repair round out of the composition repair budget; once
+that budget is spent the current composition goes to projection. The gate never
+spends a provider retry budget: Candidate Gate is the only owner of targeted
+research attempts.
 """
 
 from __future__ import annotations
@@ -647,9 +648,9 @@ async def delivery_quality_gate_node(state: TravelAgentState) -> Dict[str, Any]:
         )
         return update
     if not blocking or composition_repair_budget_exhausted(state):
-        # Either nothing structural is open, or the single repair round is
-        # spent. Both release the current composition to projection, which
-        # reads every subgate as passed.
+        # Either nothing structural is open, or the repair budget this run was
+        # granted is spent. Both release the current composition to projection,
+        # which reads every subgate as passed.
         update["recommendation_quality"] = quality.model_copy(update=_RELEASED_SUBGATES)
         update["delivery_quality_route"] = "passed"
         return update
@@ -673,11 +674,12 @@ async def delivery_quality_gate_node(state: TravelAgentState) -> Dict[str, Any]:
 
 
 def route_after_delivery_quality_gate(state: TravelAgentState) -> str:
-    """Route to projection unless the node granted this run's one repair round.
+    """Route to projection unless the node granted a repair round out of budget.
 
     The budget is enforced at write time in the node, so this edge must not
-    re-read ``composition_repair_attempts``: the granted round already set it
-    to one, and folding here would cancel the hop the node just paid for.
+    re-read ``composition_repair_attempts``: the granted round already spent
+    its share of the budget, and folding here would cancel the hop the node
+    just paid for.
     """
 
     if state.delivery_quality_route != "composition_repair":

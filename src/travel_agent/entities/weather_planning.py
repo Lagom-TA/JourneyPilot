@@ -7,7 +7,7 @@ from typing import Optional
 
 from pydantic import Field
 
-from .delivery_bundle import StrictModel
+from .contract_base import StrictModel
 
 
 class DestinationGeoPoint(StrictModel):

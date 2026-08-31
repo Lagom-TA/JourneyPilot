@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import Field, model_validator
 
-from .delivery_bundle import StrictModel
+from .contract_base import StrictModel
 from .intent_spec import IntentSpec
 
 

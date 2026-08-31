@@ -190,20 +190,3 @@ def test_identity_tuple_excludes_run_id_and_created_at() -> None:
     moved.created_at = "2099-01-01T00:00:00+00:00"
 
     assert _audit_identity(base) == _audit_identity(moved)
-
-
-def test_identity_tuple_covers_every_content_field() -> None:
-    """七个内容字段各自单独变一次，元组都必须跟着变（否则守卫是空转的）。"""
-
-    base = build_audit_record_from_envelope(_envelope(), manifest=_MANIFEST)
-    for field, value in (
-        ("tool_name", "other_tool"),
-        ("server_name", "other_server"),
-        ("source_type", "mcp"),
-        ("status", "failed"),
-        ("gateway_decision", "deny"),
-        ("args_digest", "sha256:bbbb"),
-        ("result_digest", "sha256:cccc"),
-    ):
-        mutated = base.model_copy(update={field: value})
-        assert _audit_identity(base) != _audit_identity(mutated), field

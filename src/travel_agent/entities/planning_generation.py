@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from .delivery_bundle import StrictModel
+from .contract_base import StrictModel
 
 
 class PlanningGeneration(StrictModel):

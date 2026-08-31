@@ -329,7 +329,7 @@ export function describeToolStep(step: ThinkingStep): ToolDisplay {
  * 不出现一坨 provider JSON。两件事分开的理由是这道闸挡的东西后端已经挡不到了：历史会话里
  * 存着的 `tool_result` 是当时那版摘要器留下的，翻回去照样会把 JSON 铺在思维链上。
  */
-export function looksLikeMachinePayload(text: string): boolean {
+function looksLikeMachinePayload(text: string): boolean {
   const trimmed = text.trimStart();
   return trimmed.startsWith('{') || trimmed.startsWith('[');
 }

@@ -15,8 +15,8 @@ from __future__ import annotations
 
 import json
 import threading
-from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional
+from dataclasses import dataclass
+from typing import Any, Dict, Iterable, Optional
 
 from ..models.usage import estimate_tokens
 
@@ -45,7 +45,6 @@ class _RunExposure:
     full_tokens: int = 0
     exposed_tool_count: int = 0     # deferred 初始暴露给模型的工具数（含 search_tools）
     full_tool_count: int = 0        # 全量注入本会暴露的工具数
-    agents: List[str] = field(default_factory=list)
 
 
 class ToolExposureLedger:
@@ -59,7 +58,6 @@ class ToolExposureLedger:
         self,
         run_id: Optional[str],
         *,
-        agent: Optional[str],
         deferred: bool,
         injected_tokens: int,
         full_tokens: int,
@@ -81,8 +79,6 @@ class ToolExposureLedger:
             entry.full_tokens += max(0, full_tokens)
             entry.exposed_tool_count += max(0, exposed_tool_count)
             entry.full_tool_count += max(0, full_tool_count)
-            if agent:
-                entry.agents.append(agent)
 
     def summary(self, run_id: Optional[str]) -> Optional[Dict[str, Any]]:
         """返回 run 级曝光汇总；无记录返回 None（无 worker 走过按需曝光路径，如纯 Fast Answer）。"""

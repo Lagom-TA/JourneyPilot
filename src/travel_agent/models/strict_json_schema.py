@@ -133,35 +133,6 @@ def _describe(value: Any) -> str:
     return str(value)
 
 
-def promoted_required(schema: Any) -> Dict[str, List[str]]:
-    """Return the properties :func:`as_strict_schema` would add to ``required``.
-
-    Promotion is the one rewrite that changes what the generating model must
-    produce, so it is reportable on its own: a caller can pin the exact set and
-    find out when a new field starts being demanded of the model.
-    """
-
-    promotions: Dict[str, List[str]] = {}
-
-    def walk(node: Any, path: str) -> None:
-        if isinstance(node, dict):
-            if _is_object_node(node):
-                required = set(node.get("required", []))
-                missing = [
-                    name for name in node.get("properties", {}) if name not in required
-                ]
-                if missing:
-                    promotions[path] = missing
-            for key, child in node.items():
-                walk(child, f"{path}/{key}")
-        elif isinstance(node, list):
-            for index, child in enumerate(node):
-                walk(child, f"{path}/{index}")
-
-    walk(schema, "#")
-    return promotions
-
-
 def as_strict_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
     """Return ``schema`` rewritten into the strict subset.
 

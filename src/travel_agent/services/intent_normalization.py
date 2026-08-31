@@ -12,7 +12,7 @@ from typing import Dict, Iterable, List, Literal, Optional
 from openai import OpenAIError
 from pydantic import Field, ValidationError, model_validator
 
-from ..entities.delivery_bundle import StrictModel
+from ..entities.contract_base import StrictModel
 from ..entities.intent_spec import (
     AlternativeIntentValue,
     CadenceIntentValue,

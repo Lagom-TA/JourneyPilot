@@ -41,11 +41,11 @@ Schema 只能保证单个对象的形状，不能证明“每天最多两个”�
 
 ## 结果
 
-运行完成审计记录 Intent、Query、Catalog、Selection、Workspace 与 Coverage 的版本和 Hash，
-`run_diff` 能定位两次运行的差异在哪一层出现或消失。用户编辑或天气刷新 Workspace 后必须
-重新生成 Coverage；破坏禁止型硬规则的编辑在提交前失败。
+运行完成审计记录 Intent、Query、Catalog、Selection、Workspace 与 Coverage 的版本和 Hash。
+用户编辑或天气刷新 Workspace 后必须重新生成 Coverage；破坏禁止型硬规则的编辑在提交前
+失败。两次运行的比较只有在出现真实 API 或 CLI 消费方时再实现，不保留测试专用服务。
 
 ## 对应不变量
 
 INV-COMPOSITION-001、INV-FIDELITY-001、INV-MUTATION-001、
-INV-EXPLORE-001、INV-REPLAY-001。
+INV-EXPLORE-001。

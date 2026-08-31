@@ -3,7 +3,7 @@ import { AnimatePresence, m } from 'motion/react';
 import { AppProvider, useApp } from './context/AppContext';
 import { MotionProviders } from './components/motion/MotionProviders';
 import { MainLayout } from './layouts/MainLayout';
-import { ChatView } from './components/chat/ChatView';
+import { TripWorkspaceShell } from './components/workspace/TripWorkspaceShell';
 import { PageSkeleton } from './components/ui/PageSkeleton';
 import { LazyViewBoundary } from './components/ui/LazyViewBoundary';
 import { useSessionManager } from './hooks/useSessionManager';
@@ -32,7 +32,7 @@ const UserPreferencesPage = lazy(() =>
 const ViewContent: React.FC<{ view: string }> = ({ view }) => {
   switch (view) {
     case 'chat':
-      return <ChatView />;
+      return <TripWorkspaceShell />;
     case 'knowledge-base':
       return <KnowledgeBasePage />;
     case 'presets':
@@ -40,7 +40,7 @@ const ViewContent: React.FC<{ view: string }> = ({ view }) => {
     case 'user-preferences':
       return <UserPreferencesPage />;
     default:
-      return <ChatView />;
+      return <TripWorkspaceShell />;
   }
 };
 

@@ -5,10 +5,10 @@
 
 ## 决定
 
-PR 与 nightly 的每一个作业都**不花钱**：状态机、数据合同、工具治理、SSE、迁移、
-恢复、预算、前端协议全部用 Fake LLM / Fake MCP / 固定 fixture / PostgreSQL 与 Redis
-service container 验证。真实 Provider 的 live smoke 是**可选的 release 作业**，
-用专用低额度 Key，手动或受保护地触发。
+PR 的每一个作业都**不花钱**：状态机、数据合同、工具治理、SSE、迁移、恢复、预算、
+前端协议全部用 Fake LLM / Fake MCP / 固定 fixture / PostgreSQL 与 Redis service
+container 验证。项目不保留定时 nightly 或 release 工作流；真实 Provider 的验证只在
+需要时由维护者在隔离环境手动运行，并使用显式提供的低额度 Key。
 
 ## 为什么
 
@@ -27,5 +27,5 @@ service container 验证。真实 Provider 的 live smoke 是**可选的 release
 
 - Fake LLM 必须支持 invoke / stream / tool calls / 畸形 JSON / 超时 / 可重试错误 /
   usage 元数据 / 延迟与取消。只返回固定字符串的 fake 验证不了工作流边界。
-- 重型矩阵（10k 事件、kill-point 全矩阵、多架构镜像、备份恢复全量 fixture）进
-  nightly 与 release，不进每个 PR。
+- 重型矩阵（10k 事件、kill-point 全矩阵、多架构镜像、备份恢复全量 fixture）不进入
+  定时自动化；需要时在本地或隔离环境显式运行。

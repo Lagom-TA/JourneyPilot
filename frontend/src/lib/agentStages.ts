@@ -43,9 +43,7 @@ export const STAGE_DEFS: StageDef[] = [
  * `原子交付` 四个键从未在 `display_names.py` 里存在过，`git log -S` 查不到任何提交），
  * 于是「准入」这一阶段在时间线上永远亮不起来，而没有任何测试会红。
  *
- * `agentStages.test.ts` 拿这张表跟后端 `utils/display_names.py` 双向对差集。
- * 后端那张表覆盖图上每个节点由 INV-NODE-001 保证，所以这两条接起来就是
- * 「图上每个节点都进得了时间线」。
+ * 生产流只携带这张表中的名字；历史会话仍可能携带内部名，因此两种键都从同一行生成。
  */
 const NODE_STAGES: ReadonlyArray<readonly [node: string, display: string, stage: StageId]> = [
   ['supervisor', '智能调度', 'planning'],
@@ -72,14 +70,6 @@ const NODE_STAGES: ReadonlyArray<readonly [node: string, display: string, stage:
   ['delivery_projector', '交付内容', 'synthesis'],
   ['delivery_finalizer', '交付定稿', 'synthesis'],
 ];
-
-/**
- * 时间线**不收**的节点，逐个列出理由 —— 留空集会让 `agentStages.test.ts` 的差集
- * 断言把「漏了一个」和「有意不收」混为一谈。
- *
- * - `fast_answer_agent`：快答是单步问答，不构成深度工作流（见文件头 JP-03-03 §8）。
- */
-export const NON_WORKFLOW_NODES: ReadonlySet<string> = new Set(['fast_answer_agent']);
 
 /** 后端 agent_name → 责任阶段。内部名与显示名都收，两个键必然同阶段。 */
 export const AGENT_TO_STAGE: Record<string, StageId> = Object.fromEntries(

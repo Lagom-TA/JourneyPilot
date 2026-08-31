@@ -1068,15 +1068,6 @@ def completion_audit_from_state_summary(summary: Any) -> Dict[str, Any]:
     return data if data.get("planning_authorized_at") else {}
 
 
-def public_trip_run_state_summary(summary: Any) -> Dict[str, Any]:
-    """Hide provider and gap diagnostics and trip identity from the REST surface."""
-
-    safe = _as_mapping(summary)
-    safe.pop(COMPLETION_AUDIT_SUMMARY_KEY, None)
-    safe.pop("controlled_trip_identity", None)
-    return safe
-
-
 def build_trip_run_completion_audit(state: Any) -> Dict[str, Any]:
     """Return the separate developer/Eval completion projection for a state."""
 

@@ -766,46 +766,6 @@ def cmd_config_docs(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def cmd_prompts_snapshot(args: argparse.Namespace) -> int:
-    """生成三个 research worker 的提示词快照。
-
-    ``--check`` 只比对不写，与 ``config docs --check`` 同形：CI 用它保证「改了模型
-    读到的合同却没人看见」不能合入。提示词是硬合同而不是文档，见
-    ``cli/prompt_snapshot`` 的模块 docstring。
-    """
-
-    from .prompt_snapshot import fixture_dir, snapshot_artifacts
-
-    target = fixture_dir(_REPO_ROOT)
-    artifacts = {target / name: text for name, text in snapshot_artifacts().items()}
-    stale = [
-        path for path, content in artifacts.items()
-        if not path.exists() or path.read_text(encoding="utf-8") != content
-    ]
-    if args.check:
-        payload = {"stale": [str(path.relative_to(_REPO_ROOT)) for path in stale]}
-        if stale:
-            lines = [
-                "这些提示词快照与当前代码不一致：",
-                *(f"  {path.relative_to(_REPO_ROOT)}" for path in stale),
-                "跑 `journeypilot prompts snapshot` 重新生成并提交。",
-            ]
-            _emit(payload, as_json=args.json, lines=lines)
-            return EXIT_FAILED
-        _emit(payload, as_json=args.json, lines=["提示词快照与当前代码一致"])
-        return EXIT_OK
-
-    target.mkdir(parents=True, exist_ok=True)
-    for path, content in artifacts.items():
-        path.write_text(content, encoding="utf-8")
-    _emit(
-        {"written": [str(path.relative_to(_REPO_ROOT)) for path in artifacts]},
-        as_json=args.json,
-        lines=[f"已写入 {path.relative_to(_REPO_ROOT)}" for path in artifacts],
-    )
-    return EXIT_OK
-
-
 def cmd_configure(args: argparse.Namespace) -> int:
     """按 provider preset 写好 config.yaml 的模型段。
 
@@ -982,19 +942,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="只比对不写：生成物与当前 schema 不一致时以 1 退出（CI 门禁）",
     )
     config_docs.set_defaults(func=cmd_config_docs)
-
-    prompts = subparsers.add_parser("prompts", help="research worker 提示词的生成物")
-    prompts_subparsers = prompts.add_subparsers(dest="prompts_command", required=True)
-
-    prompts_snapshot = prompts_subparsers.add_parser(
-        "snapshot", help="生成三个 research worker 的提示词快照（提交进仓）"
-    )
-    prompts_snapshot.add_argument("--json", action="store_true", help="输出机器可读 JSON")
-    prompts_snapshot.add_argument(
-        "--check", action="store_true",
-        help="只比对不写：快照与当前代码不一致时以 1 退出（CI 门禁）",
-    )
-    prompts_snapshot.set_defaults(func=cmd_prompts_snapshot)
 
     configure = subparsers.add_parser(
         "configure", help="按 provider preset 写好 config.yaml 的模型段（不写 API Key）"

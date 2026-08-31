@@ -4,9 +4,7 @@
 # 变红，然后所有人开始忽略红灯。这里的每一个作业都只用 fake / fixture /
 # service container。
 #
-# 重型矩阵（10k 事件、kill-point 全矩阵、多架构镜像、备份恢复全量 fixture）在
-# nightly.yml 与 release.yml，不在这里 —— 但迁移、前端 build 与核心 SSE 测试
-# 不许为了省时间取消。
+# 这里保留源码构建所需的迁移、前端 build 与核心 SSE 测试；没有定时或发布工作流。
 name: PR
 
 on:
@@ -240,8 +238,7 @@ jobs:
           # 修复版本，而 npm audit 没有 "ignore-unfixed"。让它拦门禁，等于让一个 PR
           # 作者无法解决的问题挡住他的改动 —— 然后所有人开始忽略红灯。
           #
-          # 会拦门禁的那一版检查在 release.yml 的 trivy（HIGH/CRITICAL +
-          # ignore-unfixed），那一档是维护者真能动手的。
+          # 这里只报告：传递依赖 advisory 不该让一个无法自行修复的改动卡住。
           npm audit --omit=dev --audit-level=high || \
             echo "::warning::npm audit 报了 high 以上的问题，见上面的清单"
       - uses: astral-sh/setup-uv@v5

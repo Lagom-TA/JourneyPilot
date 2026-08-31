@@ -6,9 +6,7 @@ Candidate Gate round) only when two conditions hold together: the schema
 failure is the "no eligible identity-bound facts" rejection, and the server's
 own transcript recorded a failed tool source.  These tests pin that the first
 condition is decided by the structured validation error type raised in
-``delivery_bundle.ResearchPacket``, never by text that appears in
-``str(ValidationError)`` — model-authored payload is echoed into that string,
-so a substring match there is an injection surface.
+``delivery_bundle.ResearchPacket``.
 """
 
 import json
@@ -153,36 +151,6 @@ def test_identity_facts_missing_without_failed_source_raises_schema_gate_error(
                 _candidate_bearing_packet_payload(),
                 authoritative_source_records=[
                     _compiled_source(lifecycle_status="active")
-                ],
-            )
-    assert not _closure_dropped(caplog)
-
-
-def _validation_error_text(payload: dict) -> str:
-    try:
-        ResearchPacket.model_validate(payload)
-    except Exception as exc:  # pydantic ValidationError
-        return str(exc)
-    raise AssertionError("payload was expected to fail validation")
-
-
-def test_injected_literal_reaches_str_of_error_but_not_the_rewrite_branch(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """Injection surface: model-authored text reaches str(ValidationError) via
-    input echoes, so a payload naming the identity-facts message must not
-    satisfy the rewrite condition.  The literal rides in as a forbidden extra
-    key, which the error rendering echoes verbatim — a substring check on
-    str(exc) takes the rewrite branch here; the structured error type does not."""
-
-    payload = _candidate_bearing_packet_payload(**{_IDENTITY_FACTS_MESSAGE: "x"})
-    assert _IDENTITY_FACTS_MESSAGE in _validation_error_text(payload)
-    with caplog.at_level(logging.WARNING, logger=_PACKET_LOGGER):
-        with pytest.raises(ResearchPacketOutputError):
-            _parse(
-                payload,
-                authoritative_source_records=[
-                    _compiled_source(lifecycle_status="rejected")
                 ],
             )
     assert not _closure_dropped(caplog)

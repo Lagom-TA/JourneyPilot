@@ -7,7 +7,7 @@
     env.py            JOURNEYPILOT_<段>__<字段> 的一处解析
     providers.py      provider preset 与 capability
     pricing.py        内置定价快照与价格查找
-    mcp_defaults.py   内置 MCP server 的求值（静态声明在 `configs/mcp/servers.yaml`）
+    mcp_defaults.py   内置 MCP server 的直接定义与运行时求值
     redaction.py      脱敏
     schema_export.py  字段表 / JSON Schema 生成（CI 检查 diff 为空）
 

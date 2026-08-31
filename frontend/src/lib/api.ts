@@ -14,12 +14,9 @@ import type {
   MemoryDeletionResponse,
   MemoryFactListResponse,
   MemoryRetentionCleanupRequest,
-  ModelConfigRequest,
   SessionDetail,
   SessionTurnPage,
   SessionSummary,
-  SystemConfig,
-  ToolInfo,
   TripRunControlRequest,
   TripRunControlResponse,
   TripRunDetailResponse,
@@ -249,13 +246,6 @@ export const api = {
     );
   },
 
-  async addTripRunSupplement(runId: string, request: { category: import('../types/api').TripSupplementCategory; content: string; session_id?: string | null }): Promise<import('../types/api').TripRunSupplementResponse> {
-    return fetchJson(`/trip-runs/${encodeURIComponent(runId)}/supplements`, {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
-  },
-
   async listTripRuns(options?: { sessionId?: string; mode?: 'deep' | 'fast'; limit?: number }): Promise<TripRunListResponse> {
     return fetchJson<TripRunListResponse>(
       withQuery('/trip-runs', {
@@ -440,30 +430,8 @@ export const api = {
     }, LLM_TIMEOUT_MS);
   },
 
-  async getConfig(): Promise<SystemConfig> {
-    return fetchJson<SystemConfig>('/config');
-  },
-
-  async updateConfig(req: ModelConfigRequest): Promise<{ message: string }> {
-    const result = await fetchJson<{ status?: string; message?: string }>('/configure', {
-      method: 'POST',
-      body: JSON.stringify(req),
-    });
-    return { message: result.message || '配置已更新' };
-  },
-
-  async getTools(): Promise<{ tools: ToolInfo[]; total: number }> {
-    return fetchJson<{ tools: ToolInfo[]; total: number }>('/tools');
-  },
-
   async getUserProfile(): Promise<UserProfile> {
-    const profile = await fetchJson<Partial<UserProfile>>('/user/profile');
-    return {
-      display_name: profile.display_name || '',
-      preferences: profile.preferences || {},
-      trip_history_count: profile.trip_history_count || profile.trip_history?.length || 0,
-      trip_history: profile.trip_history || [],
-    };
+    return fetchJson<UserProfile>('/user/profile');
   },
 
   /**

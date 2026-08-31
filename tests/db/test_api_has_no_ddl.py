@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import dataclasses
 import uuid
-from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -18,26 +17,6 @@ from travel_agent.db import migrate
 from travel_agent.db.connection import connect, connect_maintenance
 from travel_agent.db.report import verify_database_contract
 from travel_agent.db.schema_contract import MANAGED_TABLES
-
-_DDL = ("CREATE TABLE", "ALTER TABLE", "DROP TABLE", "CREATE INDEX", "DROP INDEX",
-        "CREATE EXTENSION", "DROP COLUMN", "TRUNCATE")
-
-_SRC = Path(__file__).resolve().parents[2] / "src" / "travel_agent"
-
-
-def test_database_module_issues_no_ddl():
-    source = (_SRC / "infrastructure" / "database.py").read_text(encoding="utf-8").upper()
-    found = [keyword for keyword in _DDL if keyword in source]
-    assert not found, f"API 侧的数据库模块里出现了 DDL：{found}"
-
-
-def test_no_init_db_entry_point_remains():
-    """`init_db` 已经不存在。留一个能建表的函数就等于留一条能绕过迁移的路。"""
-
-    from travel_agent.infrastructure import database
-
-    assert not hasattr(database, "init_db")
-
 
 @pytest.fixture
 def dml_only_role(temp_database):

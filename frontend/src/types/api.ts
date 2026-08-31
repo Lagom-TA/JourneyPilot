@@ -100,71 +100,6 @@ export interface ChatRequest {
   } | null;
 }
 
-export interface ChatResponse {
-  session_id: string;
-  message_id: string;
-  content: string;
-  task_type?: string | null;
-  tokens_used?: number | null;
-}
-
-export interface MemoryExtractionStats {
-  attempted: number;
-  succeeded: number;
-  failed: number;
-  facts_written: number;
-  portraits_written: number;
-  last_error: string | null;
-}
-
-export interface SystemStatus {
-  status: string;
-  version: string;
-  tools_count: number;
-  db_connected: boolean;
-  redis_connected: boolean;
-  /** 记忆抽取管线累计计数（CB-05）；旧后端可能不含此字段。 */
-  memory_extraction?: MemoryExtractionStats;
-}
-
-export interface SystemConfig {
-  primary_model: ModelConfig;
-  fast_model: ModelConfig;
-  rag: RagConfig;
-  env: string;
-}
-
-export interface ModelConfig {
-  model_name: string;
-  base_url: string;
-  api_key_set: boolean;
-  max_tokens?: number;
-  temperature?: number;
-}
-
-export interface RagConfig {
-  chunk_size: number;
-  top_k: number;
-  embedding_model: string;
-}
-
-export interface ModelConfigRequest {
-  api_key: string;
-  model_name: string;
-  base_url: string;
-  max_tokens: number;
-  temperature: number;
-  tier: 'primary' | 'fast';
-}
-
-export interface ToolInfo {
-  name: string;
-  description?: string;
-  source?: string;
-  server_name?: string | null;
-  [key: string]: unknown;
-}
-
 export interface KnowledgeUploadResponse {
   chunks_indexed: number;
   collection: string;
@@ -207,21 +142,9 @@ export interface KnowledgeDeleteResponse {
   message: string;
 }
 
-export interface TripItem {
-  tripId: string;
-  destination: string;
-  durationDays: number;
-  date: string;
-  travelers?: number;
-  rating?: number;
-  highlights?: string[];
-}
-
 export interface UserProfile {
   display_name: string;
   preferences: Record<string, unknown>;
-  trip_history_count: number;
-  trip_history?: TripItem[];
 }
 
 /**
@@ -369,8 +292,6 @@ export interface ContextCompactionPayload {
 
 export type JsonObject = Record<string, unknown>;
 
-export type TripRunMode = 'deep' | 'fast';
-
 export type TripRunStatus =
   | 'created'
   | 'running'
@@ -404,14 +325,6 @@ export function isTripRunAwaitingInput(status: TripRunStatus | null): boolean {
 
 export function isTripRunCancellable(status: TripRunStatus | null): boolean {
   return isTripRunActive(status) || isTripRunAwaitingInput(status);
-}
-
-export function isTripRunTerminal(status: TripRunStatus | null): boolean {
-  return status === 'completed' || status === 'failed' || status === 'cancelled';
-}
-
-export function isTripRunResumable(status: TripRunStatus | null): boolean {
-  return status === 'interrupted';
 }
 
 /** 执行归属：谁在跑这个 run，以及重启后服务端给出的恢复判定。 */
@@ -476,17 +389,6 @@ export interface TripRunControlResponse {
   run_status: TripRunStatus;
   message: string;
 }
-
-export interface TripRunSupplementResponse {
-  run_id: string;
-  command_id: string;
-  accepted: boolean;
-  status: TripRunCommandStatus;
-  category: TripSupplementCategory;
-  message: string;
-  impact_scope: string[];
-}
-
 
 export interface TripRunResponse {
   run_id: string;

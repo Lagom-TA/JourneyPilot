@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping
 
-from ..entities.candidate_ranking import GENERIC_FALLBACK_PENALTY
 from ..entities.research_domain import ResearchDomain
 from ..entities.research_query_plan import ResearchQuery
 from ..workflows.run_budget import RunBudgetExhausted
@@ -41,7 +40,6 @@ def runtime_fallback_capacity() -> tuple[bool, bool]:
 @dataclass(frozen=True)
 class FallbackQueryPolicy:
     policy_version: str = FALLBACK_QUERY_POLICY_VERSION
-    fallback_penalty: float = GENERIC_FALLBACK_PENALTY
 
     def is_allowed(
         self,

@@ -25,7 +25,6 @@ import hashlib
 import json
 import logging
 import shutil
-import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -387,17 +386,3 @@ def prune_automatic_backups(
             shutil.rmtree(path, ignore_errors=True)
             logger.info("已清理超出保留份数的自动备份：%s", path)
     return doomed
-
-
-def restore_list(
-    directory: Path, target: DatabaseTarget, *, server_major: int, preferred_container: str = ""
-) -> str:
-    """`pg_restore --list` 的输出，给 doctor / 人工检查用。"""
-
-    runner = resolve_runner(
-        target, server_major=server_major, preferred_container=preferred_container
-    )
-    result: subprocess.CompletedProcess = runner.run(
-        "pg_restore", ["--list"], target=target, stdin_path=directory / DUMP_FILENAME
-    )
-    return (result.stdout or b"").decode("utf-8", "replace")

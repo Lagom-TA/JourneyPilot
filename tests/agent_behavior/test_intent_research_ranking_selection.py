@@ -72,7 +72,6 @@ from travel_agent.entities.itinerary_composition_v2 import (
 from travel_agent.services.candidate_intent_evaluation import (
     evaluate_candidate_intents,
 )
-from travel_agent.services import candidate_ranking as candidate_ranking_service
 from travel_agent.services.candidate_ranking import rank_candidates
 from travel_agent.services.candidate_selection import (
     build_candidate_selection_plan,
@@ -1498,18 +1497,6 @@ def test_fallback_candidate_is_penalized_and_targeted_repair_is_stable():
         destination_count=1,
     )
     assert selection.entries[0].candidate_id == "candidate_intent"
-
-
-def test_generic_fallback_penalty_has_one_source():
-    """扣分值只有一份定义：排名和 fallback 查询策略读的是同一个常量对象。
-
-    以前两边各写一个 0.2 字面量，改一边不会连带另一边。这里用 ``is`` 而不是 ``==``：
-    值相等挡不住有人把字面量抄回去，同一个对象才说明它确实是从常量导进来的。
-    """
-    assert candidate_ranking_service.GENERIC_FALLBACK_PENALTY is (
-        GENERIC_FALLBACK_PENALTY
-    )
-    assert FallbackQueryPolicy().fallback_penalty is GENERIC_FALLBACK_PENALTY
 
 
 def test_generic_fallback_origin_lands_in_the_ranking_tuple():

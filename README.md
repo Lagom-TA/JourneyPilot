@@ -307,20 +307,15 @@ npm run check                                        # type-check + unit tests +
 npm run test:e2e                                     # needs a running stack; see playwright.config.ts
 ```
 
-The same jobs run in [`.github/workflows/pr.yml`](.github/workflows/pr.yml). Nightly picks
-up the heavier matrix (dependency combinations, repeated runs, multi-arch images) and the
-release workflow verifies the delivered artifacts.
+The same jobs run in [`.github/workflows/pr.yml`](.github/workflows/pr.yml). There is no
+scheduled nightly or release workflow; source builds are verified locally when needed.
 
 ### Design documents
 
 - [`docs/adr/`](docs/adr/) — the decisions, and what was rejected instead
-- [`docs/invariants.md`](docs/invariants.md) — what must always hold, who guarantees it,
-  which test pins it. A test named there must exist; `tests/test_invariants_doc.py`
-  enforces that, because a reference to a deleted test reads like someone is watching
-  when nobody is.
+- [`docs/invariants.md`](docs/invariants.md) — the runtime guarantees the code must preserve
 - [`docs/architecture/overview.md`](docs/architecture/overview.md) — how one request
   travels through the system
-- [`docs/release-checklist.md`](docs/release-checklist.md) — what a release note has to answer
 
 Issues and pull requests are welcome. Keep changes focused, add a regression test for bug fixes, and update both README languages when behavior visible to users changes.
 

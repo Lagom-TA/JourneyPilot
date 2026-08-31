@@ -108,7 +108,6 @@ export interface AppState {
   runCostSummary: RunCostSummary | null;
   isStreaming: boolean;
   isSynthesizing: boolean;
-  splitViewActive: boolean;
   /** 停靠画布是否展开：有结构化面板时自动打开，可手动收起 / 全屏。 */
   canvasOpen: boolean;
   canvasFullscreen: boolean;
@@ -118,11 +117,6 @@ export interface AppState {
    * 或「在画布查看行程」显式唤起，避免流式中途 Sheet 突然盖住对话。
    */
   mobileCanvasOpen: boolean;
-  activeDayIndex: number | null;
-  /** 当前选中的行程项 id（itinerary ↔ map ↔ risk affected item 双向联动锚点） */
-  activeItemId: string | null;
-  /** 当前选中的现实地点；可来自已排入 item、待安排卡片或地图 marker。 */
-  activePlaceId: string | null;
   inputMode: 'normal' | 'stopped';
   activePresetId: string | null;
   activePresetName: string | null;
@@ -179,13 +173,9 @@ export type SessionRuntimeSnapshot = Pick<
   | 'runCostSummary'
   | 'isStreaming'
   | 'isSynthesizing'
-  | 'splitViewActive'
   | 'canvasOpen'
   | 'canvasFullscreen'
   | 'mobileCanvasOpen'
-  | 'activeDayIndex'
-  | 'activeItemId'
-  | 'activePlaceId'
   | 'inputMode'
 >;
 
@@ -220,13 +210,9 @@ export function createSessionRuntimeSnapshot(state: AppState): SessionRuntimeSna
     runCostSummary: state.runCostSummary,
     isStreaming: state.isStreaming,
     isSynthesizing: state.isSynthesizing,
-    splitViewActive: state.splitViewActive,
     canvasOpen: state.canvasOpen,
     canvasFullscreen: state.canvasFullscreen,
     mobileCanvasOpen: state.mobileCanvasOpen,
-    activeDayIndex: state.activeDayIndex,
-    activeItemId: state.activeItemId,
-    activePlaceId: state.activePlaceId,
     inputMode: state.inputMode,
   };
 }
@@ -243,7 +229,6 @@ export type AppAction =
   | { type: 'SET_DELIVERABLE_VIEW'; payload: AppState['deliverableView'] }
   | { type: 'BUMP_TRIP_RUN_REFRESH' }
   | { type: 'SET_SESSIONS'; payload: ChatSession[] }
-  | { type: 'ADD_SESSION'; payload: ChatSession }
   | { type: 'REMOVE_SESSION'; payload: string }
   | { type: 'RENAME_SESSION'; payload: { id: string; title: string } }
   | { type: 'SET_MESSAGES'; payload: Message[] }
@@ -283,13 +268,9 @@ export type AppAction =
   | { type: 'SET_RUN_COST_SUMMARY'; payload: RunCostSummary | null }
   | { type: 'CLEAR_TRACE' }
   | { type: 'SET_STREAMING'; payload: boolean }
-  | { type: 'SET_SPLIT_VIEW'; payload: boolean }
   | { type: 'SET_CANVAS_OPEN'; payload: boolean }
   | { type: 'SET_CANVAS_FULLSCREEN'; payload: boolean }
   | { type: 'SET_MOBILE_CANVAS_OPEN'; payload: boolean }
-  | { type: 'SET_ACTIVE_DAY'; payload: number | null }
-  | { type: 'SET_ACTIVE_ITEM'; payload: string | null }
-  | { type: 'SET_ACTIVE_PLACE'; payload: string | null }
   | { type: 'SET_INPUT_MODE'; payload: 'normal' | 'stopped' }
   | { type: 'MARK_PENDING_DECISIONS_CANCELLED' }
   | { type: 'REMOVE_MESSAGE_BY_ID'; payload: string }
@@ -325,13 +306,9 @@ const initialState: AppState = {
   runCostSummary: null,
   isStreaming: false,
   isSynthesizing: false,
-  splitViewActive: false,
   canvasOpen: false,
   canvasFullscreen: false,
   mobileCanvasOpen: false,
-  activeDayIndex: null,
-  activeItemId: null,
-  activePlaceId: null,
   inputMode: 'normal',
   // 旅行风格的选择跨刷新存活（见 lib/activePresetStorage.ts）。初始态直接读存储，
   // 而不是先渲染成「没选」再由某个 effect 补回来：后者会让 chip 闪一下，
@@ -352,7 +329,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         activeView: action.payload,
-        splitViewActive: action.payload === 'chat' ? state.splitViewActive : false,
       };
     case 'TOGGLE_SIDEBAR':
       return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
@@ -408,7 +384,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         deliveryBundleLoadState: { status: 'ready', message: null },
         deliverableView: 'interactive_itinerary',
         sidebarCollapsed: true,
-        splitViewActive: true,
         canvasOpen: true,
         canvasFullscreen: false,
         mobileCanvasOpen: false,
@@ -421,8 +396,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, tripRunRefreshKey: state.tripRunRefreshKey + 1 };
     case 'SET_SESSIONS':
       return { ...state, sessions: action.payload };
-    case 'ADD_SESSION':
-      return { ...state, sessions: [action.payload, ...state.sessions] };
     case 'REMOVE_SESSION':
       return {
         ...state,
@@ -707,21 +680,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, isStreaming: action.payload, isSynthesizing: action.payload ? state.isSynthesizing : false };
     case 'SET_SYNTHESIZING':
       return { ...state, isSynthesizing: action.payload };
-    case 'SET_SPLIT_VIEW':
-      return { ...state, splitViewActive: action.payload };
     case 'SET_CANVAS_OPEN':
       return { ...state, canvasOpen: action.payload, canvasFullscreen: action.payload ? state.canvasFullscreen : false };
     case 'SET_CANVAS_FULLSCREEN':
       return { ...state, canvasFullscreen: action.payload, canvasOpen: action.payload ? true : state.canvasOpen };
     case 'SET_MOBILE_CANVAS_OPEN':
       return { ...state, mobileCanvasOpen: action.payload };
-    case 'SET_ACTIVE_DAY':
-      // 切换天时清掉选中项，避免高亮停留在其它天的行程项上
-      return { ...state, activeDayIndex: action.payload, activeItemId: null, activePlaceId: null };
-    case 'SET_ACTIVE_ITEM':
-      return { ...state, activeItemId: action.payload };
-    case 'SET_ACTIVE_PLACE':
-      return { ...state, activePlaceId: action.payload };
     case 'SET_GUIDED_INTAKE':
       return { ...state, pendingGuidedIntake: action.payload };
     case 'SET_ROUTE_CONFIRMATION':
@@ -774,13 +738,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         currentTripRunRecovery: null,
         tripRunSource: 'none',
         tripRunRefreshKey: state.tripRunRefreshKey + 1,
-        splitViewActive: false,
         canvasOpen: false,
         canvasFullscreen: false,
         mobileCanvasOpen: false,
-        activeDayIndex: null,
-        activeItemId: null,
-        activePlaceId: null,
         inputMode: 'normal',
         isStreaming: false,
         isSynthesizing: false,

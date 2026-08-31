@@ -267,13 +267,9 @@ export function useSessionManager() {
         runCostSummary: null,
         isStreaming: false,
         isSynthesizing: false,
-        splitViewActive: deliveryBundle !== null,
         canvasOpen: deliveryBundle !== null,
         canvasFullscreen: false,
         mobileCanvasOpen: false,
-        activeDayIndex: null,
-        activeItemId: null,
-        activePlaceId: null,
         inputMode: 'normal',
       };
       dispatch({ type: 'RESTORE_SESSION_RUNTIME', payload: restoredRuntime });

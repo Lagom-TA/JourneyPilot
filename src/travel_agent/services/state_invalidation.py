@@ -72,21 +72,6 @@ def invalidation_update(impact: AmendmentImpact) -> Dict[str, Any]:
     }
 
 
-def classify_intent_impact(impact_stages: list[str]) -> AmendmentImpact:
-    stages = set(impact_stages)
-    if "research" in stages:
-        return AmendmentImpact.RESEARCH_AFFECTING
-    if "admission" in stages:
-        return AmendmentImpact.ADMISSION_AFFECTING
-    if "ranking" in stages:
-        return AmendmentImpact.RANKING_AFFECTING
-    if "composition" in stages:
-        return AmendmentImpact.COMPOSITION_AFFECTING
-    if "projection" in stages:
-        return AmendmentImpact.PROJECTION_ONLY
-    return AmendmentImpact.UNSUPPORTED
-
-
 def generation_packet_key(worker_key: str, generation_id: str) -> str:
     return f"{worker_key}@{generation_id}"
 

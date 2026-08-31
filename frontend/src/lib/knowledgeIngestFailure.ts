@@ -2,33 +2,6 @@ import { apiErrorDetail } from './apiErrorDetail';
 import { describeRequestFailure, type RequestAction, type RequestFailure } from './requestFailureMessage';
 
 /**
- * 资料库这条路上后端能给出的**每一个** 4xx `code`。
- *
- * 这张表与 `src/travel_agent/api/routes/knowledge.py` 的 4xx code 集合**逐条相等**，
- * 两个方向都必须保持齐全：
- *
- * - 后端有而这里没有 → 那一种失败会掉进按状态码说话的回落里，被**画成另一种失败**。
- *   典型：损坏的 PDF/DOCX 走 422 裸字符串 detail，界面读不到 code，
- *   于是印「上传请求的信息不完整，请刷新页面后重试」—— 请求是完整的，刷新也不会让
- *   一份损坏的文件变好。所以这里要求的不是某几个 code 存在，而是两张表的差集为空。
- * - 这里有而后端从不发 → 一条永远不执行的分支，和没有分支是同一件事。
- */
-export const KNOWLEDGE_FAILURE_CODES = [
-  'collection_address_invalid',
-  'unsupported_file_type',
-  'file_too_large',
-  'document_unreadable',
-  'document_too_complex',
-  'document_parse_timeout',
-  'ingest_busy',
-  'no_indexable_text',
-  'document_text_unavailable',
-  'unknown_source',
-] as const;
-
-export type KnowledgeFailureCode = (typeof KNOWLEDGE_FAILURE_CODES)[number];
-
-/**
  * 每一种失败对旅行者说的那一句，**以及那一句之后他能按的那个键**。
  *
  * 句子由界面写（不许把后端原文印给旅行者，后端那份 `message`
@@ -45,7 +18,7 @@ export type KnowledgeFailureCode = (typeof KNOWLEDGE_FAILURE_CODES)[number];
  * `no_indexable_text` 不在这张表里：它的句子取决于旅行者刚才给的是一份文件还是一段
  * 手输的字，由 `emptyTextMessage` 按动作说 —— 同一个 code 两种说法，不是两个 code。
  */
-const FAILURE_BY_CODE: Record<Exclude<KnowledgeFailureCode, 'no_indexable_text'>, RequestFailure> = {
+const FAILURE_BY_CODE: Record<string, RequestFailure> = {
   collection_address_invalid: {
     message: '这一屏指向的资料库地址不对，刷新页面后重来。',
     recovery: 'reload',
@@ -102,7 +75,7 @@ function knownFailure(error: unknown, action: RequestAction): RequestFailure | n
     return { message: emptyTextMessage(action), recovery: 'none' };
   }
   if (code && code in FAILURE_BY_CODE) {
-    return FAILURE_BY_CODE[code as keyof typeof FAILURE_BY_CODE];
+    return FAILURE_BY_CODE[code];
   }
   return null;
 }

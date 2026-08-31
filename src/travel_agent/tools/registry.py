@@ -224,51 +224,6 @@ class ToolRegistry:
             })
         return result
 
-    def compact_catalog(self, names: Optional[Iterable[str]] = None) -> List[Dict[str, str]]:
-        """返回压缩目录 [{name, brief}]（brief=描述首行截断）。
-
-        Tool Search 上下文节省（deferred 曝光）下注入 system prompt 的候选工具清单。``names=None`` 取全部
-        已注册工具；否则按给定名称过滤（保持给定顺序，忽略未注册名）。
-        """
-        if names is None:
-            selected = list(self._tools.values())
-        else:
-            selected = [self._tools[n] for n in names if n in self._tools]
-        return [
-            {"name": t["name"], "brief": brief_from_description(t.get("description") or "")}
-            for t in selected
-        ]
-
-    def full_schemas(self, names: Iterable[str]) -> List[Dict[str, Any]]:
-        """返回给定名称工具的完整 schema 项（get_tools_as_schemas 形状，保持给定顺序）。
-
-        search_tools 命中后据此激活工具完整定义。
-        """
-        result: List[Dict[str, Any]] = []
-        for name in names:
-            tool = self._tools.get(name)
-            if tool is None:
-                continue
-            result.append({
-                "schema": {
-                    "type": "function",
-                    "function": {
-                        "name": tool["name"],
-                        "description": tool["description"],
-                        "parameters": tool["parameters_schema"],
-                    },
-                },
-                "executor": tool["executor"],
-                "source": tool["source"],
-                "server_name": tool.get("server_name"),
-                "manifest": (
-                    tool.get("manifest").model_dump(mode="json")
-                    if hasattr(tool.get("manifest"), "model_dump")
-                    else tool.get("manifest")
-                ),
-            })
-        return result
-
     async def execute(self, tool_name: str, **kwargs: Any) -> Dict[str, Any]:
         """执行工具调用"""
         if tool_name not in self._tools:

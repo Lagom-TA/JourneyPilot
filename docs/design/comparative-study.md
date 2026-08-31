@@ -3,7 +3,7 @@
 > **状态：大纲待确认。** 骨架 + 已收集到的关键证据位置，正文逐轴补齐。
 
 参考版本：`codex-main`（Rust，OpenAI Codex）、`openpi`（TypeScript，Pi 工作台扩展），
-读取日期 2026-08-25。JourneyPilot 侧基线：`main @ 5fbb2b29`，详见根目录 `AGENT-ARCHITECTURE.html`。
+读取日期 2026-08-25。JourneyPilot 侧基线：`main @ 5fbb2b29`。
 
 ---
 
@@ -310,7 +310,7 @@ reducer 是 `_prefer_non_empty_str`（`state.py:153-158`，`b or a`），而 `di
 
 ### 7.7 JourneyPilot 轴一/轴二实现（已复核，含三条对「已确认事实」的修正）
 
-> ✅ 下面前三条与开工时给定的「已确认现状事实」不一致。**已确认采纳，`AGENT-ARCHITECTURE.html` §13 已同步修订。**
+> ✅ 下面前三条与开工时给定的「已确认现状事实」不一致。结论已在当时的架构图谱中同步；该图谱现已退役。
 
 **修正 D：`execution_plan` 实际只有两种形状，不是三种。**
 `services/capability_planning.py:174-184` 三次 append 组装 `order`，但三组里有两组是**结构强制**的：

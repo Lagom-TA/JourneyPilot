@@ -165,4 +165,4 @@ async def clarifier_node(state: TravelAgentState, config: Optional[RunnableConfi
         raise ScopeIdentityError(state.run_id or "")
 
     logger.info("Clarifier: 受控旅行身份已确认，进入请求合同归一化")
-    return {"next_agent": "request_contract_normalizer", **compaction_updates}
+    return compaction_updates

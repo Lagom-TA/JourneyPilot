@@ -95,18 +95,6 @@ _LAST_ERROR_LOG_LIMIT = 600
 # 交通调研：12306/Duffel 航班/高德·Google 路线 多工具串联，
 # 跨城市比价场景需要 5 轮迭代
 _MAX_TOOL_ITERATIONS = 5
-_EXPLICIT_CROSS_DAY = re.compile(
-    r"跨日|跨夜|overnight|red[- ]?eye",
-    re.IGNORECASE,
-)
-
-
-def requires_cross_day_long_distance(*values: str) -> bool:
-    """Recognize only an explicit user/task contract, never infer a default."""
-
-    return any(_EXPLICIT_CROSS_DAY.search(value or "") for value in values)
-
-
 def constrain_cross_day_flight_tools(
     available_tools: List[Dict[str, Any]],
     *,

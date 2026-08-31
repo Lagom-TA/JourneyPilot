@@ -11,7 +11,7 @@
 
 方法：三轮多代理静态阅读。第一、二轮由 17 个读代码代理分子系统产出笔记；第三轮由 4 个分析代理交叉复核——路由表逐条回源码核对、信息流以 `entities/state.py` 为底本重建、审查发现逐条验证（验证不成立的候选单列"已排除"）、工程对照锚定三个仓库的实际源码；最后一个批评代理找出材料缺口，其中可当场补上的已用源码补齐。全程零测试运行、零代码执行，所有结论基于静态阅读与 grep。这意味着第 8 节的严重度分级是推断而非复现，报告在相应位置注明了这一点。
 
-与既有文档的关系：`docs/architecture/overview.md` 讲部署形态，`docs/adr/` 讲已做出的选择，`docs/invariants.md` 讲什么必须永远成立，`docs/design/agent-workflow.md` 是撰写中的规范，`docs/design/comparative-study.md` 是设计哲学层的对照（其 §4.4 已定案的四条 `last_error` 协议缺陷，本报告不重复，只在关联处引用）。根目录 `AGENT-ARCHITECTURE.html` 是上一轮产出的运行图谱页面。本报告与它们的差别：这里的路由表、信息流、发现清单全部经过第二遍独立核对，并且覆盖了此前没人写过的快答路径、交付后编辑、证据链端到端。
+与既有文档的关系：`docs/architecture/overview.md` 讲部署形态，`docs/adr/` 讲已做出的选择，`docs/invariants.md` 讲什么必须永远成立，`docs/design/agent-workflow.md` 是撰写中的规范，`docs/design/comparative-study.md` 是设计哲学层的对照（其 §4.4 已定案的四条 `last_error` 协议缺陷，本报告不重复，只在关联处引用）。本报告的路由表、信息流、发现清单全部经过第二遍独立核对，并且覆盖了此前没人写过的快答路径、交付后编辑、证据链端到端。
 
 参考仓库版本锚定：codex 读取自 `/Users/lagom/Downloads/codex-main/codex-rs/`（审查期间该目录从 `~/Code/` 移至 `~/Downloads/`），openpi 读取自 `/Users/lagom/Code/openpi/`，读取日期均为 2026-08-26。
 

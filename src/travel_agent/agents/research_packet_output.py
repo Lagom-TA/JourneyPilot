@@ -530,36 +530,12 @@ def _prune_payload_to_candidate_closure(payload: dict[str, Any]) -> None:
     payload["field_provenance"] = retained_provenance
 
 
-def _retrieved_urls(evidence_messages: Sequence[Mapping[str, Any]]) -> set[str]:
-    """Every page URL a retrieval tool actually returned this round.
-
-    A thin read over :func:`_retrieved_source_snapshots` so the set of pages and
-    the record kept for each page can never answer differently.
-
-    Read off the Tool Gateway transcript, which is server-owned: the model cannot
-    add to this set by writing anything in its packet.  Collected by key name
-    across the sanitized payload because the four search tools shape their results
-    differently (``results[].url``, ``sources[].url``, a bare ``url``), and the
-    question is the same for all of them.
-
-    A ``degraded`` round counts.  Degradation here means a fallback answered —
-    ``global_place_search`` dropping to ``free_web_search`` is the routine case —
-    and the pages that fallback returned were observed by the server just as a
-    successful round's are.  Reading only ``success`` would drop a citation of a
-    page the round really fetched, which costs real candidates on the most common
-    fallback path in the system.  ``reference_only`` deliberately does not count:
-    that status marks data the Gateway already ruled out as evidence.
-    """
-
-    return set(_retrieved_source_snapshots(evidence_messages))
-
-
 def _retrieved_source_snapshots(
     evidence_messages: Sequence[Mapping[str, Any]],
 ) -> dict[str, dict[str, Any]]:
     """Each page a retrieval returned this round, mapped to what it returned.
 
-    The keys are the same normalized URLs :func:`_retrieved_urls` compares on.
+    The keys are normalized URLs used to identify one retrieved page.
     The value is the **complete sanitized tool return** that named the page,
     which is what the contract asks a snapshot to be ("完整工具返回或完整 RAG
     chunk，禁止裁剪成模型摘要").  Keeping only the enclosing result item would be
@@ -5138,10 +5114,6 @@ async def parse_or_repair_research_packet_output(
             raise ResearchPacketOutputError(
                 f"worker Research Packet schema repair failed: {repair_error}"
             ) from initial_error
-
-
-def serialize_research_packet(packet: ResearchPacket) -> str:
-    return packet.model_dump_json(exclude_none=True)
 
 
 def format_research_packet_context(packets: Mapping[str, ResearchPacket]) -> str:
