@@ -108,7 +108,7 @@ JourneyPilot 是一个开源的 AI 旅行规划工作台。告诉它出行日期
 ### 启动 JourneyPilot
 
 ```bash
-git clone https://github.com/Dreamaker-TA/JourneyPilot.git
+git clone https://github.com/Lagom-TA/JourneyPilot.git
 cd JourneyPilot
 cp config.example.yaml config.yaml
 ```

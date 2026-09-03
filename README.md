@@ -108,7 +108,7 @@ The full report follows the same itinerary shown in the workspace and can be exp
 ### Run JourneyPilot
 
 ```bash
-git clone https://github.com/Dreamaker-TA/JourneyPilot.git
+git clone https://github.com/Lagom-TA/JourneyPilot.git
 cd JourneyPilot
 cp config.example.yaml config.yaml
 ```
