@@ -24,7 +24,7 @@ JourneyPilot researches transport, places, weather, routes, and the open web, th
 
 **English** | [简体中文](README.zh-CN.md)
 
-[Overview](#overview) · [Highlights](#highlights) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Configuration](#configuration) · [Development](#development)
+[Website](https://imlagom.com/journeypilot/) · [Overview](#overview) · [Highlights](#highlights) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Configuration](#configuration) · [Development](#development)
 
 </div>
 
@@ -48,6 +48,23 @@ The current product interface is in Simplified Chinese. Code, configuration, and
 - **Weather-aware planning** — forecasts are considered while the itinerary is being built, with practical alternatives for affected days.
 - **Control over long-running plans** — review the research plan, resume interrupted work, make bounded edits, undo recent changes, or cancel a run cleanly.
 - **Personal context** — remember common departure points and travel preferences, and search uploaded guides through the built-in knowledge base.
+
+## Who it is for
+
+- **Independent travelers** turning dates, budgets, and preferences into a plan they can check and revise.
+- **Trips with several constraints** where transport, weather, opening hours, and connections need to fit together.
+- **Developers exploring agent applications** with LangGraph orchestration, MCP tools, retrieval, and a connected web workspace.
+
+## Explore the project
+
+| Looking for | Start here |
+|---|---|
+| Interactive introduction to the planning workflow | [JourneyPilot website](https://imlagom.com/journeypilot/) |
+| Design and engineering background | [Project write-up](https://imlagom.com/blog/journeypilot/) · [Documentation](docs/) |
+| Model and service configuration | [Example configuration](config.example.yaml) · [Configuration](#configuration) |
+| Feedback and bug reports | [GitHub Issues](https://github.com/Lagom-TA/JourneyPilot/issues) |
+
+The website demonstrates the product. To generate your own itineraries, self-host the workspace and configure a model provider and the data services you need. The app researches and organizes travel information; reservations and purchases remain with the relevant providers.
 
 ## Product tour
 
