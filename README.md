@@ -60,7 +60,7 @@ The current product interface is in Simplified Chinese. Code, configuration, and
 | Looking for | Start here |
 |---|---|
 | Interactive introduction to the planning workflow | [JourneyPilot website](https://imlagom.com/journeypilot/) |
-| Design and engineering background | [Project write-up](https://imlagom.com/blog/journeypilot/) · [Documentation](docs/) |
+| Design and engineering background | [Project notes (in progress)](https://imlagom.com/blog/journeypilot/) · [Documentation](docs/) |
 | Model and service configuration | [Example configuration](config.example.yaml) · [Configuration](#configuration) |
 | Feedback and bug reports | [GitHub Issues](https://github.com/Lagom-TA/JourneyPilot/issues) |
 

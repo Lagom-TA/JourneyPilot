@@ -60,7 +60,7 @@ JourneyPilot 是一个开源的 AI 旅行规划工作台。告诉它出行日期
 | 想看什么 | 从这里开始 |
 |---|---|
 | 旅行规划流程的交互式介绍 | [JourneyPilot 项目网站](https://imlagom.com/journeypilot/) |
-| 产品与工程设计 | [项目文章](https://imlagom.com/blog/journeypilot/) · [文档目录](docs/) |
+| 产品与工程设计 | [项目手记（撰写中）](https://imlagom.com/blog/journeypilot/) · [文档目录](docs/) |
 | 模型和外部服务配置 | [示例配置](config.example.yaml) · [配置说明](#配置) |
 | 反馈建议或报告问题 | [GitHub Issues](https://github.com/Lagom-TA/JourneyPilot/issues) |
 
