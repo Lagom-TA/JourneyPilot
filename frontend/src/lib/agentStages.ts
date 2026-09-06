@@ -93,7 +93,7 @@ const STAGE_INDEX: Record<StageId, number> = {
 };
 
 /** 去掉补研轮次后缀 `_rN`（对齐 display_names.py 的 `_rN` 约定），返回基础 agent 名 + 轮次 */
-function parseAgentRound(agentName: string): { base: string; round: number } {
+export function parseAgentRound(agentName: string): { base: string; round: number } {
   const m = /^(.+?)_r(\d+)$/.exec(agentName);
   if (m) return { base: m[1], round: parseInt(m[2], 10) };
   const display = /^(.+?)（第(\d+)轮补充）$/.exec(agentName);

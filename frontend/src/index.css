@@ -742,6 +742,26 @@ button.thinking-chain-summary-row:hover .thinking-chain-chevron {
   color: var(--color-accent);
 }
 
+/* 运行中：标题前那枚 7px 信标让位给 20px 的活动球（`ui/AgentOrb`）。球是第一个子元素，
+   所以上面按 `:first-child` / `:not(:first-child)` 分派的两组 flex 角色要各右移一位：
+   球不伸缩，球后面那一个（标题）接过 `flex: 1` 与省略号。三条都比原规则多一级权重
+   （.is-live），只在 live 态生效；settled 后 DOM 里没有球，原规则原样接管。 */
+.thinking-chain-shell.is-live .thinking-chain-summary-content::before {
+  content: none;
+}
+.thinking-chain-shell.is-live .thinking-chain-summary-content > .agent-orb {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.thinking-chain-shell.is-live .thinking-chain-summary-content > .agent-orb + * {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+}
+
 @keyframes thinking-chain-beacon {
   0%, 100% { transform: scale(1); opacity: 0.94; }
   48% { transform: scale(1.16); opacity: 0.68; }

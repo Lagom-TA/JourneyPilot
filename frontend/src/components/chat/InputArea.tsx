@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
+import { BorderBeam } from 'border-beam';
 import { cn } from '../../lib/utils';
 import { isTripRunCancellable } from '../../types/api';
 import { useApp } from '../../context/AppContext';
@@ -196,105 +197,116 @@ export const InputArea: React.FC<{ showCompaction?: boolean }> = ({ showCompacti
     state.currentTripRunId && isTripRunCancellable(state.currentTripRunStatus)
   );
   const showStop = runInFlight && (state.isStreaming || !input.trim());
+  /* 底边一道游走的光（BorderBeam `line`）：composer 可见、但后台还有事在做的那几种情况 ——
+     运行挂起等你决定（发送键此刻是停止键）、或「补全行程描述」正在请求模型。
+     流式期间 composer 整块不渲染（`ConversationThread`），所以这里**不用**读 `isStreaming`。 */
+  const beamActive = showStop || isOptimizing;
 
   return (
     <div className="w-full">
       {/* ── 主容器（登记条皮：暖纸面板 + 静态多层暖阴影，全站同款；内容按模式变形） ── */}
-      <div
-        className={cn(
-          // 边框走 token（`border-stroke` 是暖色描边），不写字面 rgba。
-          'overflow-hidden rounded-card border border-stroke bg-panel',
-          // 阴影按 focus-within **直接切换，不做过渡**：§Motion Rules 点名「never animate
-          // box-shadow」，而 `transition-shadow duration-300` 那种写法既动了被点名的属性、
-          // 又用了一个表外的时长。注意这一处躲得过只跑单屏的判据 —— composer 在那些屏上
-          // 根本没挂载，所以它得靠这条注释守着。
-          'shadow-md'
-        )}
+      {/* 阴影挂在 BorderBeam 这一层：它的容器 `overflow: hidden`，`shadow-md` 留在里面会被剪掉。
+          阴影按 focus-within **直接切换，不做过渡**：§Motion Rules 点名「never animate
+          box-shadow」，而 `transition-shadow duration-300` 那种写法既动了被点名的属性、
+          又用了一个表外的时长。注意这一处躲得过只跑单屏的判据 —— composer 在那些屏上
+          根本没挂载，所以它得靠这条注释守着。 */}
+      <BorderBeam
+        size="line"
+        colorVariant="ocean"
+        theme="light"
+        /* 与票根同一处理由：关掉库默认的 30° 色相漂移，边光只许是产品那只交互蓝。 */
+        staticColors
+        strength={1}
+        active={beamActive}
+        className="rounded-card shadow-md"
       >
-        <div className="input-normal-row">
-          <div className="input-normal-inner flex items-center gap-2 px-4 py-3">
-            {mode === 'stopped' ? (
-              /* stopped 模式：补充信息 + 发送 + 新建行程 */
-              <>
-                <textarea
-                  value={stoppedInput}
-                  onChange={(e) => setStoppedInput(e.target.value)}
-                  onKeyDown={handleStoppedKeyDown}
-                  placeholder="告诉 JourneyPilot 这趟行程想怎么调整…"
-                  rows={1}
-                  autoFocus
-                  className={cn(
-                    'flex-1 bg-transparent border-none resize-none',
-                    'text-sm text-ink placeholder:text-ink-muted',
-                    'min-h-[24px] max-h-[120px] leading-relaxed'
-                  )}
-                />
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleStoppedSend}
-                  disabled={!stoppedInput.trim()}
-                  className="flex-shrink-0 !rounded-card !h-8 !w-8 !p-0"
-                >
-                  <Send size={14} />
-                </Button>
-                <button
-                  onClick={handleNewChat}
-                  className={cn(
-                    'flex-shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-card',
-                    'text-xs font-medium text-ink-secondary',
-                    'border border-stroke/60 bg-transparent',
-                    'hover:bg-ink/5 hover:text-ink hover:border-stroke/60',
-                    'transition-[color,background-color,opacity] duration-base ease-standard'
-                  )}
-                >
-                  <Plus size={13} />
-                  新建行程
-                </button>
-              </>
-            ) : (
-              /* normal 模式：标准输入 + 发送/停止按钮 */
-              <>
-                <textarea
-                  ref={textareaRef}
-                  data-testid="brief-input"
-                  value={input}
-                  onChange={(e) => {
-                    setInput(e.target.value);
-                    adjustHeight();
-                  }}
-                  onKeyDown={handleKeyDown}
-                  placeholder="描述这趟旅行：目的地、日期、同行人、预算、硬约束…"
-                  rows={1}
-                  name="chat-message"
-                  autoComplete="off"
-                  className={cn(
-                    'flex-1 bg-transparent border-none resize-none',
-                    'text-sm text-ink placeholder:text-ink-muted',
-                    'min-h-[24px] max-h-[200px] leading-relaxed'
-                  )}
-                />
-                <Button
-                  variant="primary"
-                  size="sm"
-                  data-testid="send-button"
-                  aria-label={showStop ? '停止本次运行' : '发送'}
-                  data-streaming={showStop ? 'true' : 'false'}
-                  onClick={showStop ? handleStop : handleSend}
-                  disabled={!showStop && !input.trim()}
-                  className={cn(
-                    'flex-shrink-0 !rounded-card !h-8 !w-8 !p-0',
-                    showStop &&
-                      '!bg-ink/75 hover:!bg-ink !shadow-none'
-                  )}
-                >
-                  {showStop ? <Square size={13} /> : <Send size={14} />}
-                </Button>
-              </>
-            )}
+        {/* 边框走 token（`border-stroke` 是暖色描边），不写字面 rgba。 */}
+        <div className="overflow-hidden rounded-card border border-stroke bg-panel">
+          <div className="input-normal-row">
+            <div className="input-normal-inner flex items-center gap-2 px-4 py-3">
+              {mode === 'stopped' ? (
+                /* stopped 模式：补充信息 + 发送 + 新建行程 */
+                <>
+                  <textarea
+                    value={stoppedInput}
+                    onChange={(e) => setStoppedInput(e.target.value)}
+                    onKeyDown={handleStoppedKeyDown}
+                    placeholder="告诉 JourneyPilot 这趟行程想怎么调整…"
+                    rows={1}
+                    autoFocus
+                    className={cn(
+                      'flex-1 bg-transparent border-none resize-none',
+                      'text-sm text-ink placeholder:text-ink-muted',
+                      'min-h-[24px] max-h-[120px] leading-relaxed'
+                    )}
+                  />
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleStoppedSend}
+                    disabled={!stoppedInput.trim()}
+                    className="flex-shrink-0 !rounded-card !h-8 !w-8 !p-0"
+                  >
+                    <Send size={14} />
+                  </Button>
+                  <button
+                    onClick={handleNewChat}
+                    className={cn(
+                      'flex-shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-card',
+                      'text-xs font-medium text-ink-secondary',
+                      'border border-stroke/60 bg-transparent',
+                      'hover:bg-ink/5 hover:text-ink hover:border-stroke/60',
+                      'transition-[color,background-color,opacity] duration-base ease-standard'
+                    )}
+                  >
+                    <Plus size={13} />
+                    新建行程
+                  </button>
+                </>
+              ) : (
+                /* normal 模式：标准输入 + 发送/停止按钮 */
+                <>
+                  <textarea
+                    ref={textareaRef}
+                    data-testid="brief-input"
+                    value={input}
+                    onChange={(e) => {
+                      setInput(e.target.value);
+                      adjustHeight();
+                    }}
+                    onKeyDown={handleKeyDown}
+                    placeholder="描述这趟旅行：目的地、日期、同行人、预算、硬约束…"
+                    rows={1}
+                    name="chat-message"
+                    autoComplete="off"
+                    className={cn(
+                      'flex-1 bg-transparent border-none resize-none',
+                      'text-sm text-ink placeholder:text-ink-muted',
+                      'min-h-[24px] max-h-[200px] leading-relaxed'
+                    )}
+                  />
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    data-testid="send-button"
+                    aria-label={showStop ? '停止本次运行' : '发送'}
+                    data-streaming={showStop ? 'true' : 'false'}
+                    onClick={showStop ? handleStop : handleSend}
+                    disabled={!showStop && !input.trim()}
+                    className={cn(
+                      'flex-shrink-0 !rounded-card !h-8 !w-8 !p-0',
+                      showStop &&
+                        '!bg-ink/75 hover:!bg-ink !shadow-none'
+                    )}
+                  >
+                    {showStop ? <Square size={13} /> : <Send size={14} />}
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      </BorderBeam>
 
       {/* ── 工具栏（仅 normal 模式显示，放在输入框下方） ── */}
       <div
