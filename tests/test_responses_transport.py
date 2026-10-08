@@ -35,6 +35,49 @@ def gateway_settings(monkeypatch):
     return settings
 
 
+@pytest.mark.parametrize("stream", [False, True])
+async def test_deadline_rejection_before_provider_admission_has_no_usage_attempt(
+    gateway_settings, monkeypatch, tmp_path, stream,
+):
+    import travel_agent.models.router as router_module
+    import travel_agent.workflows.run_control as control_module
+    from travel_agent.workflows.run_deadline import DeadlineObservation
+    from travel_agent.workflows.run_control import ModelWindowClosed
+
+    requests = []
+    recorder = UsageRecorder(spool_path=tmp_path / "usage.sqlite3")
+    monkeypatch.setattr(router_module, "get_usage_recorder", lambda: recorder)
+
+    def closed(operation):
+        raise ModelWindowClosed(operation, DeadlineObservation(1000, 0, "expired"), "research")
+
+    monkeypatch.setattr(router_module, "remaining_model_seconds", closed)
+    monkeypatch.setattr(control_module, "remaining_model_seconds", closed)
+
+    def respond(request):
+        requests.append(request)
+        raise AssertionError("expired operations must not reach the provider")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        monkeypatch.setattr(router_module, "ChatOpenAI", lambda **kwargs: ReasoningChatOpenAI(
+            **kwargs, http_async_client=client,
+        ))
+        llm = ModelRouter().get_for_task(TaskKind.COMPOSITION)
+        token = current_run_id.set("run_expired_before_provider")
+        try:
+            with pytest.raises(ModelWindowClosed):
+                if stream:
+                    async for _ in llm.astream([{"role": "user", "content": "Return JSON."}]):
+                        pass
+                else:
+                    await llm.ainvoke([{"role": "user", "content": "Return JSON."}])
+        finally:
+            current_run_id.reset(token)
+    assert requests == []
+    assert recorder.drain() == []
+    assert recorder._spool.db.execute("SELECT COUNT(*) FROM usage_outbox").fetchone()[0] == 0
+
+
 @pytest.mark.parametrize("stream,aggregate", [(False, False), (True, False), (False, True)])
 async def test_primary_responses_roundtrip_and_usage(gateway_settings, monkeypatch, stream, aggregate):
     import travel_agent.models.router as router_module

@@ -53,6 +53,7 @@ from ..entities.delivery_bundle import (
     WeatherProposalDecision,
 )
 from ..entities.coverage_disclosure import coverage_disclosure_notes
+from ..entities.intent_coverage import public_requirement_explanation
 from ..entities.evidence_basis import EvidenceBasisView
 from ..entities.provider_environment import ProviderEnvironmentView
 
@@ -645,7 +646,7 @@ def _public_workspace(
             "requirement_id": f"requirement_{index}",
             "summary": requirement.public_summary,
             "status": status,
-            "explanation": coverage.public_explanation,
+            "explanation": public_requirement_explanation(requirement, coverage),
         }
         (fulfilled if status == "satisfied" else deviations).append(item)
 

@@ -733,17 +733,26 @@ class OpenAICompatibleLLM(BaseLLM):
         logical_id = generate_call_id()
         for attempt in range(self._max_retries + 1):
             self._guard_budget(f"model.{method}", messages, output_tokens=output_limit)
-            record = self._start_record(method, stream=self._responses_streaming)
-            if record is not None:
-                record.logical_call_id, record.attempt_number = logical_id, attempt + 1
-            self._request_estimate(record, messages, kwargs, tools)
-            if record is not None:
-                self._recorder().admit(record)
+            record = None
             started = time.perf_counter()
             bound = self._client.bind_tools(tools) if tools is not None else self._client
+
+            async def invoke_admitted():
+                nonlocal record, started
+                # The channel/deadline guards must accept the operation before
+                # outbox admission: a rejected coroutine never reaches a provider.
+                record = self._start_record(method, stream=self._responses_streaming)
+                if record is not None:
+                    record.logical_call_id, record.attempt_number = logical_id, attempt + 1
+                self._request_estimate(record, messages, kwargs, tools)
+                if record is not None:
+                    self._recorder().admit(record)
+                started = time.perf_counter()
+                return await bound.ainvoke(_to_langchain_messages(messages), **kwargs)
+
             try:
                 response = await self._in_channel(
-                    bound.ainvoke(_to_langchain_messages(messages), **kwargs),
+                    invoke_admitted(),
                     operation=f"model.{method}",
                 )
                 self._validate_response_completion(response)
@@ -806,12 +815,7 @@ class OpenAICompatibleLLM(BaseLLM):
         logical_id = generate_call_id()
         for attempt in range(self._max_retries + 1):
             self._guard_budget("model.astream", messages, output_tokens=output_limit)
-            record = self._start_record("astream", stream=True)
-            if record is not None:
-                record.logical_call_id, record.attempt_number = logical_id, attempt + 1
-            self._request_estimate(record, messages, kwargs)
-            if record is not None:
-                self._recorder().admit(record)
+            record = None
             started = time.perf_counter()
             full: Any = None
             last_usage = None
@@ -820,10 +824,18 @@ class OpenAICompatibleLLM(BaseLLM):
             status, error, retry = "ok", None, False
 
             async def consume_stream() -> AsyncIterator[str]:
-                nonlocal full, last_usage, ttft_ms
+                nonlocal full, last_usage, ttft_ms, record, started
                 remaining = remaining_model_seconds("model.astream")
                 queue_wait = remaining if remaining is not None else self._queue_wait_seconds()
                 async with self._channel().hold(wait_seconds=queue_wait):
+                    remaining_model_seconds("model.astream")
+                    record = self._start_record("astream", stream=True)
+                    if record is not None:
+                        record.logical_call_id, record.attempt_number = logical_id, attempt + 1
+                    self._request_estimate(record, messages, kwargs)
+                    if record is not None:
+                        self._recorder().admit(record)
+                    started = time.perf_counter()
                     async for chunk in self._client.astream(_to_langchain_messages(messages), **kwargs):
                         sample = extract_usage(chunk)
                         if sample is not None:

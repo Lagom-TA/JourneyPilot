@@ -552,6 +552,20 @@ def _citation_lookup(
     return by_fact, by_entity
 
 
+def _intent_deviation_notes(workspace: TripWorkspaceV2) -> list[str]:
+    from ..entities.intent_coverage import IntentCoverageStatus, public_requirement_explanation
+
+    if workspace.intent_coverage_report is None:
+        return []
+    coverage = {item.intent_id: item for item in workspace.intent_coverage_report.items}
+    return [
+        public_requirement_explanation(requirement, item)
+        for requirement in workspace.intent_contract_snapshot.requirements
+        if (item := coverage.get(requirement.intent_id)) is not None
+        and item.status is not IntentCoverageStatus.SATISFIED
+    ]
+
+
 def _trip_level_requirements(workspace: TripWorkspaceV2) -> list[str]:
     categories = {
         "budget_cap",
@@ -1093,6 +1107,7 @@ def project_report(
             dict.fromkeys(
                 [
                     *_trip_level_requirements(workspace),
+                    *_intent_deviation_notes(workspace),
                     *_long_distance_path_notes(workspace, generated_at),
                     *itinerary.important_notes,
                 ]

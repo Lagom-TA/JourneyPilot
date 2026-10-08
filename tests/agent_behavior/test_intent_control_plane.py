@@ -578,14 +578,16 @@ def test_contract_and_capability_plan_are_deterministic_and_cover_hard_intents()
     } == set(query_plan.query_index())
 
 
-@pytest.mark.parametrize("stages,owner", [
-    (["composition", "projection"], "itinerary_planner"),
-    (["research", "admission", "composition"], "accommodation_researcher"),
+@pytest.mark.parametrize("stages,overnight,owner", [
+    (["composition", "projection"], False, "itinerary_planner"),
+    (["research", "admission", "composition"], False, "itinerary_planner"),
+    (["research", "admission", "composition"], True, "accommodation_researcher"),
 ])
-def test_same_day_lodging_exclusion_has_an_owner_without_unneeded_research(stages, owner):
+def test_lodging_exclusion_has_an_owner_without_unneeded_research(stages, overnight, owner):
     contract, generation = _contract()
     identity = _identity()
-    identity["end_date"] = identity["start_date"]
+    if not overnight:
+        identity["end_date"] = identity["start_date"]
     excluded = contract.intent_spec.active_items[0].model_copy(update={
         "intent_id": "intent_no_hotel", "kind": IntentKind.MUST_EXCLUDE,
         "target": IntentTarget.LODGING, "strength": IntentStrength.HARD,
@@ -615,6 +617,14 @@ def test_planner_assigns_authoritative_transport_scopes_for_local_and_intercity_
     identity = _identity()
     if same_city:
         identity["destinations"] = [identity["origin"]]
+    local = contract.intent_spec.active_items[0].model_copy(update={
+        "intent_id": "intent_local_transit", "kind": IntentKind.MUST_INCLUDE,
+        "target": IntentTarget.LOCAL_TRANSPORT, "value": ScalarIntentValue(value="公共交通"),
+        "impact_stages": ["research", "composition"],
+    })
+    contract = contract.model_copy(update={"intent_spec": contract.intent_spec.model_copy(update={
+        "active_items": [*contract.intent_spec.active_items, local],
+    })})
     brief = build_research_brief(contract, identity)
     state = TravelAgentState(
         run_id="run_intent_contract",
@@ -665,6 +675,28 @@ def test_transport_resume_repairs_only_legacy_initial_same_city_scopes(same_city
     assert all(item.scope.run_id == state.run_id and item.scope.constraint_pack_revision == 2
                for item in scopes)
     assert assignment["provider_evidence_assignments"] == []
+
+
+def test_same_city_exclusions_do_not_create_hotel_or_intercity_research():
+    contract, generation = _contract()
+    identity = _identity()
+    identity["destinations"] = [identity["origin"]]
+    identity["end_date"] = identity["start_date"]
+    exclusions = [contract.intent_spec.active_items[0].model_copy(update={
+        "intent_id": f"excluded_{target.value}", "kind": IntentKind.MUST_EXCLUDE,
+        "target": target, "impact_stages": ["research", "composition"],
+    }) for target in (IntentTarget.LODGING, IntentTarget.LONG_DISTANCE_TRANSPORT)]
+    contract = contract.model_copy(update={"intent_spec": contract.intent_spec.model_copy(update={
+        "active_items": [*contract.intent_spec.active_items, *exclusions],
+    })})
+    brief = build_research_brief(contract, identity)
+    queries = build_research_query_plan(intent_spec=contract.intent_spec, brief=brief)
+    plan = build_capability_plan(request_contract=contract, brief=brief,
+                                 plan_revision=generation.plan_revision, research_query_plan=queries)
+    assert "transport_researcher" not in plan.assignments
+    assert "accommodation_researcher" not in plan.assignments
+    assert {item.intent_id for item in exclusions} <= set(
+        plan.assignments["itinerary_planner"].must_cover_intent_ids)
 
 
 def test_plan_gate_separates_hard_preferences_and_attention():

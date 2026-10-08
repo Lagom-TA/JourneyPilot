@@ -15,6 +15,7 @@ from ..entities.intent_spec import (
     canonical_json_hash,
 )
 from ..entities.request_contract import RequestContract
+from ..entities.provider_evidence import build_required_long_distance_legs
 from ..entities.research_brief import (
     DomainResearchObjective,
     ResearchBriefV2,
@@ -25,8 +26,8 @@ from ..entities.trip_input import ControlledTripIdentity
 from .product_requirements import required_physical_candidate_kinds
 
 
-RESEARCH_BRIEF_POLICY_VERSION = "research_brief_projection.v2"
-CAPABILITY_PLAN_POLICY_VERSION = "capability_plan.v1"
+RESEARCH_BRIEF_POLICY_VERSION = "research_brief_projection.v3"
+CAPABILITY_PLAN_POLICY_VERSION = "capability_plan.v2"
 
 
 _TARGET_DOMAIN = {
@@ -64,8 +65,10 @@ _TOOLS: Dict[AgentName, List[str]] = {
 }
 
 
-def _intent_owner(item: IntentItem) -> AgentName:
+def _intent_owner(item: IntentItem, research_domains: set[ResearchDomain]) -> AgentName:
     if not any(stage in item.impact_stages for stage in ("research", "admission", "ranking")):
+        return "itinerary_planner"
+    if item.kind is IntentKind.MUST_EXCLUDE and _TARGET_DOMAIN.get(item.target) not in research_domains:
         return "itinerary_planner"
     return _TARGET_OWNER[item.target]
 
@@ -83,6 +86,7 @@ def build_research_brief(
         _TARGET_DOMAIN[item.target]
         for item in active
         if item.target in _TARGET_DOMAIN
+        and item.kind is not IntentKind.MUST_EXCLUDE
         and any(stage in item.impact_stages for stage in ("research", "admission", "ranking"))
     }
     required_kinds = required_physical_candidate_kinds(controlled_identity)
@@ -92,7 +96,8 @@ def build_research_brief(
         domains.add(ResearchDomain.DINING)
     if identity.duration_days > 1:
         domains.add(ResearchDomain.LODGING)
-    domains.add(ResearchDomain.LONG_DISTANCE_TRANSPORT)
+    if build_required_long_distance_legs(controlled_identity, cross_day_return_required=False):
+        domains.add(ResearchDomain.LONG_DISTANCE_TRANSPORT)
 
     objectives: List[DomainResearchObjective] = []
     for domain in sorted(domains, key=lambda item: item.value):
@@ -174,7 +179,8 @@ def build_capability_plan(
     agents: set[AgentName] = {
         _DOMAIN_OWNER[objective.domain] for objective in brief.domain_objectives
     }
-    agents.update(_intent_owner(item) for item in active)
+    research_domains = {objective.domain for objective in brief.domain_objectives}
+    agents.update(_intent_owner(item, research_domains) for item in active)
     agents.add("itinerary_planner")
     assignments: Dict[str, AgentAssignmentContract] = {}
 
@@ -204,7 +210,7 @@ def build_capability_plan(
         for agent in agents
     }
     for agent in sorted(agents):
-        owned_intents = [item for item in active if _intent_owner(item) == agent]
+        owned_intents = [item for item in active if _intent_owner(item, research_domains) == agent]
         objectives = objective_by_agent.get(agent, [])
         upstream = []
         if agent in {"transport_researcher", "accommodation_researcher"} and "destination_researcher" in agents:
