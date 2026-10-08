@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { AgentOrb } from '../ui/AgentOrb';
+import { deriveOrbState } from '../../lib/orbState';
 import { m } from 'motion/react';
 import {
   Calculator,
@@ -827,6 +829,9 @@ export const ThinkingChain: React.FC<ThinkingChainProps> = ({
   const isTransient = steps.length === 0;
   const latestStep = steps[steps.length - 1];
   const sourceCount = React.useMemo(() => countToolSources(steps), [steps]);
+  /* 运行中标题前的活动球：与登机牌票根同一个派生值（`lib/orbState`），所以两处永远
+     说的是同一个动作。只在 `thinkingLive` 时渲染；settled 后标题前回到静止的时间轴节点。 */
+  const orbState = deriveOrbState(steps, { isStreaming: isGenerating, isSynthesizing, answerStarted: hasDisplay });
 
   useEffect(() => {
     if (isGenerating && !hasDisplay && !isSynthesizing) setExpanded(true);
@@ -932,7 +937,10 @@ export const ThinkingChain: React.FC<ThinkingChainProps> = ({
             可折叠的「思考过程 · N 步」头，让历史推理可以收起。 */}
         {steps.length === 0 || thinkingLive ? (
           <div className={cn(summaryRowClass, 'py-0.5')}>
-            <span className="thinking-chain-summary-content">{summaryLabel}</span>
+            <span className="thinking-chain-summary-content">
+              {thinkingLive && <AgentOrb state={orbState} size={20} />}
+              {summaryLabel}
+            </span>
           </div>
         ) : (
           <button

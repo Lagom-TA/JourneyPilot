@@ -16,7 +16,8 @@ import {
   type BundleSourceDetail,
 } from '../citations/BundleCitationMarker';
 import { EvidenceBasisChip } from '../citations/EvidenceBasisChip';
-import { useApp } from '../../context/AppContext';
+import { SegmentedTabs, type SegmentedTab } from '../ui/SegmentedTabs';
+import { useApp, type AppState } from '../../context/AppContext';
 import { useDeliveryBundleMutation } from '../../hooks/useDeliveryBundleMutation';
 import { useDeliveryBundleUndo } from '../../hooks/useDeliveryBundleUndo';
 import { cn } from '../../lib/utils';
@@ -43,6 +44,12 @@ import type {
 import { SelectionSlotCard } from './SelectionSlotCard';
 import type { BundleMapPlace } from './BundleMapLeaflet';
 import { BundleMapLeafletLazy } from './BundleMapLeafletLazy';
+
+/** 结果面顶栏的两种形态。`testId` 是 e2e 的判据锚点，改名要连 e2e 一起改。 */
+const DELIVERABLE_VIEW_TABS: ReadonlyArray<SegmentedTab<AppState['deliverableView']>> = [
+  { id: 'interactive_itinerary', label: '交互行程', testId: 'itinerary-view-tab' },
+  { id: 'full_report', label: '完整报告', testId: 'report-view-tab' },
+];
 import { TransportLegCard } from './TransportLegCard';
 import { FullReportView } from './FullReportView';
 import {
@@ -776,28 +783,14 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle, va
       {sourceDetail && <BundleSourceDetailView detail={sourceDetail} onClose={closeSourceDetail} />}
       <div className={cn('flex h-full min-h-0 flex-col', sourceDetail && 'hidden')}>
       <div className="flex flex-none items-center justify-between gap-3 border-b border-stroke px-3 py-2 sm:px-4">
-        <div role="tablist" aria-label="结果形态" className="flex min-w-0 items-center rounded-card bg-surface p-1">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={state.deliverableView === 'interactive_itinerary'}
-            data-testid="itinerary-view-tab"
-            onClick={() => dispatch({ type: 'SET_DELIVERABLE_VIEW', payload: 'interactive_itinerary' })}
-            className={cn('rounded-label px-3 py-1.5 text-xs font-semibold transition-colors', state.deliverableView === 'interactive_itinerary' ? 'bg-panel text-ink shadow-sm' : 'text-ink-secondary hover:text-ink')}
-          >
-            交互行程
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={state.deliverableView === 'full_report'}
-            data-testid="report-view-tab"
-            onClick={() => dispatch({ type: 'SET_DELIVERABLE_VIEW', payload: 'full_report' })}
-            className={cn('rounded-label px-3 py-1.5 text-xs font-semibold transition-colors', state.deliverableView === 'full_report' ? 'bg-panel text-ink shadow-sm' : 'text-ink-secondary hover:text-ink')}
-          >
-            完整报告
-          </button>
-        </div>
+        {/* 两种结果形态之间是**同一个选择在移动**，所以托只有一枚、在两项之间流过去
+            （`ui/SegmentedTabs`），而不是两枚底色各自开关。 */}
+        <SegmentedTabs
+          aria-label="结果形态"
+          tabs={DELIVERABLE_VIEW_TABS}
+          value={state.deliverableView}
+          onChange={(view) => dispatch({ type: 'SET_DELIVERABLE_VIEW', payload: view })}
+        />
         <div className="flex shrink-0 items-center gap-1">
           {undo.available && (
             <button
