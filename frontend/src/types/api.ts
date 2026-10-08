@@ -528,6 +528,9 @@ export interface ToolContextSaving {
 }
 
 export interface RunCostSummary {
+  pending_call_count?: number;
+  spool_write_failed?: number;
+  capture_complete?: boolean;
   run_id: string;
   call_count: number;
   priced_call_count: number;

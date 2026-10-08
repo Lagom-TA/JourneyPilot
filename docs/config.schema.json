@@ -1120,6 +1120,24 @@
       },
       "title": "ToolExposureConfig",
       "type": "object"
+    },
+    "UsageConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "flush_seconds": {
+          "default": 2,
+          "minimum": 0.1,
+          "title": "Flush Seconds",
+          "type": "number"
+        },
+        "spool_path": {
+          "default": "data/usage/outbox.sqlite3",
+          "title": "Spool Path",
+          "type": "string"
+        }
+      },
+      "title": "UsageConfig",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -1220,6 +1238,9 @@
     },
     "tool_exposure": {
       "$ref": "#/$defs/ToolExposureConfig"
+    },
+    "usage": {
+      "$ref": "#/$defs/UsageConfig"
     }
   },
   "title": "Settings",

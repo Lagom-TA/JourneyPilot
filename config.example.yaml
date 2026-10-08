@@ -280,3 +280,8 @@ mcp:
     open-meteo: {}
 
     currency-exchange-mcp: {}
+
+# 每次模型尝试的本地持久 outbox；部署时将 data/usage 挂载为持久卷。
+usage:
+  spool_path: data/usage/outbox.sqlite3
+  flush_seconds: 2

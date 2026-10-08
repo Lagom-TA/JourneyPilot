@@ -573,6 +573,7 @@ async def chat_stream(
                 return []
             try:
                 ledger = await cost_ledger_store.record_calls(batch)
+                usage_recorder.ack(batch)
             except Exception as exc:
                 # 落库失败：回放进缓冲等待重试（record_calls 幂等），本轮不发 usage_update；
                 # 终态 finalize 会重试并如实上报，绝不静默吞账（CB-02）。
@@ -624,10 +625,11 @@ async def chat_stream(
             record_failed = 0
             record_error: Optional[str] = None
             if usage_recorder is not None:
-                batch = usage_recorder.drain()
+                batch = usage_recorder.drain(run_id=trip_run.run_id)
                 if batch:
                     try:
                         await cost_ledger_store.record_calls(batch)
+                        usage_recorder.ack(batch)
                     except Exception as exc:
                         # 回放进缓冲等待后续重试（record_calls 幂等；transient 故障可自愈），
                         # 并按本 run 记录数如实计数——只统计本 run 的失败，其余 run 由各自终态上报。
@@ -649,6 +651,12 @@ async def chat_stream(
             except Exception as exc:
                 logger.debug(f"tool_context_saving 汇总失败（不影响主流）: {exc}")
             summary["record_failed"] = record_failed
+            if usage_recorder is not None:
+                summary.update(usage_recorder.integrity(trip_run.run_id))
+                record_failed = summary["record_failed"]
+                if not summary["capture_complete"]:
+                    summary["token_usage_complete"] = False
+                    summary["cost_complete"] = False
             # 预算读数随成本汇总一起下发：花了多少和还能花多少是同一个问题的两半，
             # 分两个通道送会让界面有机会只显示其中一半。账本不在时不塞占位值 ——
             # 没封过预算的 Run（快问快答）本来就没有这个数。

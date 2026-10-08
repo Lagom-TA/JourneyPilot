@@ -88,6 +88,8 @@
 | `run_budget.max_output_tokens` | int | null | >= 1 | `JOURNEYPILOT_RUN_BUDGET__MAX_OUTPUT_TOKENS` |
 | `run_budget.max_cost_usd` | float | null | > 0 | `JOURNEYPILOT_RUN_BUDGET__MAX_COST_USD` |
 | `run_budget.max_tool_retries_per_target` | int | null | >= 0 | `JOURNEYPILOT_RUN_BUDGET__MAX_TOOL_RETRIES_PER_TARGET` |
+| `usage.spool_path` | str | `data/usage/outbox.sqlite3` | — | `JOURNEYPILOT_USAGE__SPOOL_PATH` |
+| `usage.flush_seconds` | float | `2` | >= 0.1 | `JOURNEYPILOT_USAGE__FLUSH_SECONDS` |
 | `background_jobs.poll_seconds` | float | `5.0` | > 0 | `JOURNEYPILOT_BACKGROUND_JOBS__POLL_SECONDS` |
 | `background_jobs.lease_seconds` | int | `60` | > 0 | `JOURNEYPILOT_BACKGROUND_JOBS__LEASE_SECONDS` |
 | `background_jobs.batch_size` | int | `1` | >= 1 | `JOURNEYPILOT_BACKGROUND_JOBS__BATCH_SIZE` |

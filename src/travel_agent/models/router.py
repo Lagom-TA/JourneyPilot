@@ -702,6 +702,8 @@ class OpenAICompatibleLLM(BaseLLM):
             if record is not None:
                 record.logical_call_id, record.attempt_number = logical_id, attempt + 1
             self._request_estimate(record, messages, kwargs, tools)
+            if record is not None:
+                self._recorder().admit(record)
             started = time.perf_counter()
             bound = self._client.bind_tools(tools) if tools is not None else self._client
             try:
@@ -768,6 +770,8 @@ class OpenAICompatibleLLM(BaseLLM):
             if record is not None:
                 record.logical_call_id, record.attempt_number = logical_id, attempt + 1
             self._request_estimate(record, messages, kwargs)
+            if record is not None:
+                self._recorder().admit(record)
             started = time.perf_counter()
             full: Any = None
             last_usage = None

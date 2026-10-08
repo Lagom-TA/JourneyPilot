@@ -206,3 +206,13 @@ Token 修复批次已通过：257 项选定后端测试、22 项前端测试、�
 验证：新增 4 项恢复故障边界测试、相关工具测试共 19 项通过；原 278 项 suite 加新测试中 281 项通过，1 项离线 SQL 测试仅接受 `CREATE TABLE IF NOT EXISTS` 而拒绝普通版本化 `CREATE TABLE`，已修正其匹配合同并复验。独立 PostgreSQL 14 验证升级/降级、typed AIMessage roundtrip、CAS、stale lease 拒绝、事务回滚与新表 fingerprint 均通过。未迁移业务数据库。
 
 部署需要经既有 `journeypilot migrate` 入口升级到 0009；journal 不能替代 Research Packet admission 或交付 store 的幂等提交。
+
+## 续批 B：持久 usage outbox 与确认边界
+
+移除 10,000 条 deque 挤出语义；批大小仅限制一次取批，不丢记录。生产 singleton 使用 `usage.spool_path`（默认 `data/usage/outbox.sqlite3`）的 SQLite WAL + synchronous FULL、0600 文件。记录不包含提示词、工具原文或凭据。每次 router attempt 在请求前先持久准入；进程死亡留下的 started 记录在存活 PID 检查后转为 interrupted / missing usage，不编造 Token。finish 更新同一 call_id。
+
+`drain` 改为读取，只有 PostgreSQL 完整提交之后才 `ack` 精确 payload。DB 不可用、部分提交、commit→ack 崩溃和多进程重复 drain 均安全重放。独立后台 `UsageFlushService` 在无 SSE / run 时也补记；单条冲突隔离，其他 run 可继续落库。旧账单价格快照不随配置变化重算，同一 capture 的新价格不再让幂等重放产生冲突。未知用量和 pending / 写盘失败均通过 `capture_complete`、`record_failed` 等字段进入汇总与前端；读盘异常不终止 SSE。磁盘故障时保留 volatile 记录并明确不完整，不能承诺此后再崩溃的恢复。
+
+新增配置和生成文档同步。部署需要把 `data/usage` 挂载为持久卷；销毁本地卷会丢失未落库记录，跨主机恢复不自动传输此卷。本 outbox 是持久补记机制，不是累计 Run 限額。
+
+验证：7 项新 outbox 故障测试，相关计量、配置、worker 回归合计 105 项通过；前端 22 项通过，TypeScript 与生产构建通过；独立 PostgreSQL 14 ledger 迁移/回放/冲突与历史价格快照验证通过。累计 Run 预算仍默认仅计量，reasoning 保持 medium/low。

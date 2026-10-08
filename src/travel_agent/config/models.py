@@ -522,6 +522,11 @@ class MCPServerItem(StrictConfig):
 # 根配置对象
 # ---------------------------------------------------------------------------
 
+class UsageConfig(StrictConfig):
+    spool_path: str = "data/usage/outbox.sqlite3"
+    flush_seconds: float = Field(default=2, ge=0.1)
+
+
 class Settings(StrictConfig):
     """全局设置。优先级：环境变量 > config.yaml > 这里的默认值。
 
@@ -549,6 +554,7 @@ class Settings(StrictConfig):
     run_control: RunControlConfig = Field(default_factory=RunControlConfig)
     run_deadline: RunDeadlineConfig = Field(default_factory=RunDeadlineConfig)
     run_budget: RunBudgetConfig = Field(default_factory=RunBudgetConfig)
+    usage: UsageConfig = Field(default_factory=UsageConfig)
     background_jobs: BackgroundJobsConfig = Field(default_factory=BackgroundJobsConfig)
     streaming: StreamingConfig = Field(default_factory=StreamingConfig)
     blocking_work: BlockingWorkConfig = Field(default_factory=BlockingWorkConfig)

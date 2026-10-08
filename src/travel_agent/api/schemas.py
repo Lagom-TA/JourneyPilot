@@ -557,6 +557,10 @@ class LLMCallCostResponse(BaseModel):
 
 class RunCostSummaryResponse(BaseModel):
     run_id: str
+    record_failed: int = 0
+    pending_call_count: int = 0
+    spool_write_failed: int = 0
+    capture_complete: bool = True
     call_count: int = 0
     priced_call_count: int = 0
     unpriced_call_count: int = 0

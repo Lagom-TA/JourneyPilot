@@ -323,7 +323,7 @@ def summarize_calls(run_id: str, calls: List[LLMCostCall]) -> Dict[str, Any]:
             priced += 1
         if call.estimated:
             estimated += 1
-        if call.status in {"error", "cancelled"}:
+        if call.status in {"error", "cancelled", "interrupted"}:
             errors += 1
         st = _parse_ts(call.start_ts)
         en = _parse_ts(call.end_ts)
@@ -487,8 +487,12 @@ def _ledger_identity(call: LLMCostCall) -> Tuple[Any, ...]:
         call.tool_schema_tokens_estimate,
         call.finish_reason,
         call.reasoning_output_tokens,
-        _norm_cost(call.cost_usd),
+        # Prices are a commit-time snapshot. A changed price configuration
+        # must not reject replay of the same captured telemetry after a crash.
         call.status,
+        call.tier,
+        call.estimated,
+        call.stream,
     )
 
 
@@ -518,6 +522,7 @@ class CostLedgerStore:
         ledger = [build_ledger_call(rec, pricing=pricing) for rec in batch if rec and rec.run_id]
         if not ledger:
             return []
+        committed = []
         async with get_db_session() as session:
             for call in ledger:
                 await session.execute(
@@ -579,8 +584,10 @@ class CostLedgerStore:
                 )
                 row = existing_row.mappings().first()
                 if row is not None:
-                    _assert_ledger_idempotent(_call_from_row(dict(row)), call)
-        return ledger
+                    existing = _call_from_row(dict(row))
+                    _assert_ledger_idempotent(existing, call)
+                    committed.append(existing)
+        return committed
 
     async def list_calls(
         self,
@@ -618,7 +625,13 @@ class CostLedgerStore:
                 {"run_id": run_id},
             )
             calls = [_call_from_row(dict(row)) for row in result.mappings().all()]
-        return summarize_calls(run_id, calls)
+        summary = summarize_calls(run_id, calls)
+        from ..models.usage import get_usage_recorder
+        summary.update(get_usage_recorder().integrity(run_id))
+        if not summary["capture_complete"]:
+            summary["token_usage_complete"] = False
+            summary["cost_complete"] = False
+        return summary
 
     async def count_calls(self, run_id: str) -> int:
         async with get_db_session() as session:

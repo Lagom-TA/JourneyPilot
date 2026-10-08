@@ -51,6 +51,7 @@ from .tools.registry import ToolRegistry, get_tool_registry
 from .services.background_jobs import BackgroundJobWorker, build_job_handlers
 from .services.run_lease import release_all_leases
 from .services.run_recovery import RunRecoveryService
+from .services.usage_flush import UsageFlushService
 from .services.weather_context_builder import WeatherContextBuilder
 from .workflows.fast_answer import FastAnswerWorkflow
 from .workflows.travel_planning import TravelPlanningWorkflow
@@ -70,6 +71,7 @@ class AppComponents:
 
     # C 域遥测：LLM usage 捕获缓冲（router 捕获写入，落库方 drain 消费）
     usage_recorder: UsageRecorder = field(default_factory=get_usage_recorder)
+    usage_flush_service: Optional[UsageFlushService] = None
 
     # C 域台账：drain 出的 usage 记录算成本后落库（run_llm_calls），SSE/REST 暴露
     cost_ledger_store: CostLedgerStore = field(default_factory=get_cost_ledger_store)
@@ -270,6 +272,11 @@ class AppBuilder:
             batch_size=self.settings.background_jobs.batch_size,
             completed_retention_days=self.settings.background_jobs.completed_retention_days,
         )
+        components.usage_flush_service = UsageFlushService(
+            components.usage_recorder, components.cost_ledger_store,
+            self.settings.usage.flush_seconds,
+        )
+        components.usage_flush_service.start()
         return components
 
     async def teardown(self) -> None:
@@ -279,6 +286,8 @@ class AppBuilder:
         否则「交还租约」会变成一条关不掉的连接错误，而下一次启动要白等一个租约周期。
         """
         components = _components
+        if components and components.usage_flush_service is not None:
+            await components.usage_flush_service.stop()
         if components and components.background_job_worker is not None:
             await components.background_job_worker.stop()
         if components and components.run_recovery_service is not None:

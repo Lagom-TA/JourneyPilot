@@ -1,6 +1,6 @@
 """LLM usage capture layer（C 域遥测捕获）.
 
-本模块只做**捕获与进程内缓冲**：把每一次 LLM 调用的 token（含缓存/推理细分）、
+本模块做捕获与持久 outbox：把每一次 LLM 调用的 token（含缓存/推理细分）、
 wall time、TTFT、model、tier 以及 run/node/agent 归因收敛成一条 ``LLMCallRecord``，
 投进线程/协程安全的 ``UsageRecorder`` 缓冲区。落库、成本计算、价格表、SSE 暴露都不
 在这里。
@@ -24,16 +24,20 @@ wall time、TTFT、model、tier 以及 run/node/agent 归因收敛成一条 ``LL
 
 from __future__ import annotations
 
-import collections
+import logging
+from pathlib import Path
+from copy import deepcopy
+
+from .usage_spool import UsageSpool, UsageSpoolConflict
 import threading
 import uuid
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from .token_counting import estimate_tokens as estimate_tokens
 
 
-# 缓冲上限：08 落库方尚未接线时（或落库暂时落后）避免无界增长；超限丢最旧并计数。
+# 默认取批大小；不限制总记录数，不挤出未确认记录。
 DEFAULT_BUFFER_MAX = 10_000
 
 
@@ -125,64 +129,113 @@ class LLMCallRecord:
 # --------------------------------------------------------------------------- #
 
 class UsageRecorder:
-    """进程内计量缓冲：捕获方 ``record()``，落库方（08）``drain()`` 取走。
+    """Durable pending telemetry. Drain is a read; ack follows DB commit.
 
-    线程/协程安全：LangGraph 的异步节点共享事件循环，但 Pregel 亦可能在线程池里
-    跑同步节点——统一用一把 ``threading.Lock`` 保护，代价可忽略。
+    maxlen is retained as a batch size, never an eviction limit. Isolated tests
+    use an in-memory SQLite database; the application singleton uses a file.
+    Disk failure retains unbounded volatile records and an explicit coverage
+    failure. That fallback cannot promise survival of a subsequent crash.
     """
-
-    def __init__(self, maxlen: int = DEFAULT_BUFFER_MAX) -> None:
-        self._buffer: "collections.deque[LLMCallRecord]" = collections.deque(maxlen=maxlen)
+    def __init__(self, maxlen=DEFAULT_BUFFER_MAX, *, spool_path=":memory:"):
         self._lock = threading.Lock()
-        self._dropped = 0
+        self._batch_size = max(1, maxlen)
+        self._volatile = {}
+        self._failures = {}
+        self._spool_error = False
+        try:
+            self._spool = UsageSpool(spool_path)
+        except Exception as exc:
+            logging.getLogger(__name__).error("Usage spool unavailable: %s", type(exc).__name__)
+            self._spool = None
+            self._spool_error = True
 
-    def record(self, rec: LLMCallRecord) -> None:
+    def _put(self, rec, phase):
         with self._lock:
-            if self._buffer.maxlen is not None and len(self._buffer) >= self._buffer.maxlen:
-                self._dropped += 1  # deque 满时 append 会自动挤掉最旧的一条
-            self._buffer.append(rec)
+            try:
+                if self._spool is None:
+                    raise OSError("usage spool unavailable")
+                self._spool.put(rec.to_dict(), phase=phase)
+                for run_id, count in self._failures.items():
+                    self._spool.failure(run_id, count)
+                self._failures.clear()
+                self._volatile.pop(rec.id, None)
+                self._spool_error = False
+            except UsageSpoolConflict:
+                raise
+            except Exception as exc:
+                self._spool_error = True
+                self._failures[rec.run_id] = self._failures.get(rec.run_id, 0) + 1
+                self._volatile[rec.id] = (phase, deepcopy(rec))
+                logging.getLogger(__name__).error("Usage persistence failed call_id=%s error=%s", rec.id, type(exc).__name__)
 
-    def drain(self) -> List[LLMCallRecord]:
-        """取走并清空全部缓冲记录（FIFO 顺序）。"""
+    def admit(self, rec):
+        rec.status, rec.usage_complete, rec.usage_source = "started", False, "missing"
+        self._put(rec, "started")
+
+    def record(self, rec):
+        self._put(rec, "complete")
+
+    def drain(self, *, run_id=None):
         with self._lock:
-            items = list(self._buffer)
-            self._buffer.clear()
-            return items
+            records = {}
+            if self._spool:
+                try:
+                    self._spool.recover_abandoned()
+                    for data in self._spool.pending(run_id=run_id, limit=self._batch_size):
+                        records[data["id"]] = LLMCallRecord(**data)
+                except Exception as exc:
+                    self._spool_error = True
+                    logging.getLogger(__name__).error("Usage spool read failed: %s", type(exc).__name__)
+            for phase, rec in self._volatile.values():
+                if phase == "complete" and (not run_id or rec.run_id == run_id):
+                    records[rec.id] = deepcopy(rec)
+            return list(records.values())
 
-    def requeue(self, records: List[LLMCallRecord]) -> None:
-        """把一批落库失败的记录放回缓冲头部，等待下一次 drain 重试。
-
-        ``record_calls`` 按 id 幂等，重试安全；放回头部保持 FIFO，让最早失败的先被重试。
-        缓冲已满时 extendleft 从右端（最新）挤出并计入 dropped——落库失败是罕见路径，
-        这里让「已产生但未落库」的旧计量优先于尚在缓冲的新计量。
-        """
-        if not records:
-            return
+    def ack(self, records):
         with self._lock:
-            before = len(self._buffer)
-            self._buffer.extendleft(reversed(records))
-            overflow = before + len(records) - len(self._buffer)
-            if overflow > 0:
-                self._dropped += overflow
+            if self._spool:
+                self._spool.ack([rec.to_dict() for rec in records])
+            for rec in records:
+                if self._volatile.get(rec.id) == ("complete", rec):
+                    self._volatile.pop(rec.id)
 
-    def snapshot(self) -> List[LLMCallRecord]:
-        """只读快照，不清空（测试/巡检用）。"""
+    def requeue(self, records):
+        # A failed consumer never removed these records. Legacy callers may
+        # requeue an external batch, so put is still idempotent and conflict-safe.
+        for rec in records:
+            self.record(rec)
+
+    def snapshot(self):
+        return self.drain()
+
+    def integrity(self, run_id):
         with self._lock:
-            return list(self._buffer)
+            try:
+                pending, failures = self._spool.integrity(run_id) if self._spool else (0, 0)
+            except Exception:
+                pending, failures = 0, 0
+                self._spool_error = True
+            pending += sum(1 for _, rec in self._volatile.values() if rec.run_id == run_id)
+            failures += self._failures.get(run_id, 0)
+            return {"pending_call_count": pending, "spool_write_failed": failures,
+                    "capture_complete": not (pending or failures or self._spool_error),
+                    "record_failed": pending + failures}
 
     @property
-    def dropped(self) -> int:
-        with self._lock:
-            return self._dropped
+    def dropped(self):
+        return 0
 
-    def clear(self) -> None:
+    def clear(self):
         with self._lock:
-            self._buffer.clear()
-            self._dropped = 0
+            if self._spool:
+                with self._spool.db:
+                    self._spool.db.execute("DELETE FROM usage_outbox")
+                    self._spool.db.execute("DELETE FROM usage_capture_failures")
+            self._volatile.clear()
+            self._failures.clear()
 
-    def __len__(self) -> int:
-        with self._lock:
-            return len(self._buffer)
+    def __len__(self):
+        return len(self.snapshot())
 
 
 _recorder_singleton: Optional[UsageRecorder] = None
@@ -192,7 +245,8 @@ def get_usage_recorder() -> UsageRecorder:
     """进程级计量缓冲单例（router 捕获与 AppComponents 暴露共用同一实例）。"""
     global _recorder_singleton
     if _recorder_singleton is None:
-        _recorder_singleton = UsageRecorder()
+        from ..config import get_settings
+        _recorder_singleton = UsageRecorder(spool_path=Path(get_settings().usage.spool_path))
     return _recorder_singleton
 
 

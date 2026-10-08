@@ -83,6 +83,9 @@ export const UNIT_LEDGER_FIELDS: Record<string, string> = {
  * 一个字段不许两张表都不在，也不许两张表都在。
  */
 export const OFF_SCREEN_LEDGER_FIELDS: Record<string, string> = {
+  pending_call_count: '待落库数量通过 record_failed 的完整性提示展示。',
+  spool_write_failed: '持久捕获失败通过 record_failed 的完整性提示展示。',
+  capture_complete: '捕获完整性参与完整费用判断。',
   total_request_input_tokens_estimate: '请求大小估算用于内部诊断；账单用量由模型 usage 决定。',
   total_tool_schema_tokens_estimate: '逐次请求的工具 schema 估算用于优化分析，不代表已计费 Token。',
   logical_call_count: '内部用于将重试归入同一次逻辑调用；模型调用数包含每次实际尝试。',
@@ -352,12 +355,14 @@ function projectSettled(summary: RunCostSummary): CostLedgerView {
     : null;
 
   const notices: CostLedgerNotice[] = [];
-  if (summary.record_failed) {
+  if (summary.record_failed || summary.capture_complete === false) {
     // CB-02：终结时落库失败已回放待重试。台账可能不完整这件事如实说，不静默吞账。
     notices.push({
       field: 'record_failed',
       tone: 'warning',
-      text: `有 ${formatCount(summary.record_failed)} 条调用的成本正在补记，稍后自动更新。`,
+      text: summary.spool_write_failed || (summary.capture_complete === false && !summary.pending_call_count)
+        ? '用量持久记录出现故障，账单可能不完整。'
+        : `有 ${formatCount(summary.record_failed)} 条调用的成本待落库，账单尚不完整。`,
     });
   }
   if (!costKnown && summary.call_count > 0) {
@@ -481,7 +486,7 @@ export function buildCostLedgerView(
   summary: RunCostSummary | null | undefined,
   live: RunCostLive | null | undefined
 ): CostLedgerView | null {
-  if (summary && (summary.call_count > 0 || summary.record_failed)) {
+  if (summary && (summary.call_count > 0 || summary.record_failed || summary.capture_complete === false)) {
     return projectSettled(summary);
   }
   if (live && live.callCount > 0) {
