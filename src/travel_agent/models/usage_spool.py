@@ -8,6 +8,16 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import socket
+
+
+def process_identity(pid):
+    try:
+        # PID reuse must not keep an abandoned request alive indefinitely.
+        fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+        return f"{socket.gethostname()}:{fields[19]}"
+    except (OSError, IndexError):
+        return None
 
 
 class UsageSpoolConflict(ValueError):
@@ -34,9 +44,14 @@ class UsageSpool:
         self.db = sqlite3.connect(str(path), check_same_thread=False, timeout=10)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=FULL")
-        self.db.execute("CREATE TABLE IF NOT EXISTS usage_outbox (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, phase TEXT NOT NULL, pid INTEGER NOT NULL, payload TEXT NOT NULL)")
-        self.db.execute("CREATE TABLE IF NOT EXISTS usage_capture_failures (run_id TEXT PRIMARY KEY, failures INTEGER NOT NULL)")
-        self.db.commit()
+        with self.db:
+            # Multiple API processes may open/upgrade the same volume together.
+            # Serialize schema inspection and migration just like call_id writes.
+            self.db.execute("BEGIN IMMEDIATE")
+            self.db.execute("CREATE TABLE IF NOT EXISTS usage_outbox (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, phase TEXT NOT NULL, pid INTEGER NOT NULL, payload TEXT NOT NULL, owner_token TEXT)")
+            self.db.execute("CREATE TABLE IF NOT EXISTS usage_capture_failures (run_id TEXT PRIMARY KEY, failures INTEGER NOT NULL)")
+            if "owner_token" not in {row[1] for row in self.db.execute("PRAGMA table_info(usage_outbox)")}:
+                self.db.execute("ALTER TABLE usage_outbox ADD COLUMN owner_token TEXT")
         self.recover_abandoned()
 
     @staticmethod
@@ -45,9 +60,9 @@ class UsageSpool:
 
     def recover_abandoned(self, alive=pid_alive):
         with self.db:
-            rows = self.db.execute("SELECT id,pid,payload FROM usage_outbox WHERE phase='started'").fetchall()
-            for call_id, pid, data in rows:
-                if alive(pid):
+            rows = self.db.execute("SELECT id,pid,payload,owner_token FROM usage_outbox WHERE phase='started'").fetchall()
+            for call_id, pid, data, owner_token in rows:
+                if alive(pid) and (owner_token is None or process_identity(pid) == owner_token):
                     continue
                 payload = json.loads(data)
                 payload.update(status="interrupted", usage_complete=False, usage_source="missing",
@@ -58,11 +73,12 @@ class UsageSpool:
     def put(self, payload, *, phase):
         encoded = self.encode(payload)
         with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
             row = self.db.execute("SELECT phase,payload FROM usage_outbox WHERE id=?", (payload["id"],)).fetchone()
             if row and row[0] == "complete" and row[1] != encoded:
                 raise UsageSpoolConflict("call_id has conflicting usage payload")
-            self.db.execute("INSERT INTO usage_outbox VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET phase=excluded.phase,payload=excluded.payload",
-                            (payload["id"], payload["run_id"], phase, os.getpid(), encoded))
+            self.db.execute("INSERT INTO usage_outbox (id,run_id,phase,pid,payload,owner_token) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET phase=excluded.phase,payload=excluded.payload",
+                            (payload["id"], payload["run_id"], phase, os.getpid(), encoded, process_identity(os.getpid())))
 
     def pending(self, *, run_id=None, limit=500):
         sql = "SELECT payload FROM usage_outbox WHERE phase='complete'"

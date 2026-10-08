@@ -5,6 +5,7 @@ by the live execution lease, in one business database transaction. A graph
 checkpoint and this transaction are deliberately not treated as one commit.
 """
 from copy import deepcopy
+from functools import wraps
 
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from sqlalchemy import text
@@ -16,7 +17,20 @@ class JournalConflict(RuntimeError):
     pass
 
 
+def journal_boundary(method):
+    @wraps(method)
+    async def wrapped(*args, **kwargs):
+        try:
+            return await method(*args, **kwargs)
+        except JournalConflict:
+            raise
+        except Exception as exc:
+            raise JournalConflict("worker journal persistence unavailable") from exc
+    return wrapped
+
+
 class WorkerJournalStore:
+    @journal_boundary
     async def load(self, run_id, scope_id):
         async with get_db_session() as session:
             result = await session.execute(text(
@@ -30,6 +44,7 @@ class WorkerJournalStore:
             (row["payload_type"], bytes(row["payload"]))
         )
 
+    @journal_boundary
     async def save(self, run_id, scope_id, version, payload, *, lease_token):
         kind, data = JsonPlusSerializer().dumps_typed(payload)
         async with get_db_session() as session:

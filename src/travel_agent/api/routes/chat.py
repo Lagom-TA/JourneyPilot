@@ -652,11 +652,8 @@ async def chat_stream(
                 logger.debug(f"tool_context_saving 汇总失败（不影响主流）: {exc}")
             summary["record_failed"] = record_failed
             if usage_recorder is not None:
-                summary.update(usage_recorder.integrity(trip_run.run_id))
+                usage_recorder.apply_integrity(summary)
                 record_failed = summary["record_failed"]
-                if not summary["capture_complete"]:
-                    summary["token_usage_complete"] = False
-                    summary["cost_complete"] = False
             # 预算读数随成本汇总一起下发：花了多少和还能花多少是同一个问题的两半，
             # 分两个通道送会让界面有机会只显示其中一半。账本不在时不塞占位值 ——
             # 没封过预算的 Run（快问快答）本来就没有这个数。

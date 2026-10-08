@@ -493,6 +493,10 @@ def _ledger_identity(call: LLMCostCall) -> Tuple[Any, ...]:
         call.tier,
         call.estimated,
         call.stream,
+        _parse_ts(call.start_ts),
+        _parse_ts(call.end_ts),
+        call.latency_ms,
+        call.ttft_ms,
     )
 
 
@@ -627,11 +631,7 @@ class CostLedgerStore:
             calls = [_call_from_row(dict(row)) for row in result.mappings().all()]
         summary = summarize_calls(run_id, calls)
         from ..models.usage import get_usage_recorder
-        summary.update(get_usage_recorder().integrity(run_id))
-        if not summary["capture_complete"]:
-            summary["token_usage_complete"] = False
-            summary["cost_complete"] = False
-        return summary
+        return get_usage_recorder().apply_integrity(summary)
 
     async def count_calls(self, run_id: str) -> int:
         async with get_db_session() as session:

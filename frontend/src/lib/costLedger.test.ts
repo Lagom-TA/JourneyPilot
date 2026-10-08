@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { appReducer, type AppState } from '../context/AppContext';
-import type { UsageUpdateEvent } from '../types/api';
+import type { UsageUpdateEvent, RunCostSummary } from '../types/api';
 import { buildCostLedgerView } from './costLedger';
 
 describe('live token accounting', () => {
@@ -27,5 +27,20 @@ describe('live token accounting', () => {
     expect(view?.tiles.find(tile => tile.field === 'total_cost_usd')?.value).toBeNull();
     expect(view?.tiles.find(tile => tile.field === 'total_tokens')?.value).toBeNull();
     expect(view?.notices.some(notice => notice.text.includes('缺少完整计量'))).toBe(true);
+  });
+
+  it('shows an incomplete bill even when no captured row has committed', () => {
+    const summary = {
+      run_id: 'run-test', call_count: 0, record_failed: 1, pending_call_count: 1,
+      capture_complete: false, token_usage_complete: false, cost_complete: false,
+      total_tokens: null, total_cost_usd: null, currency: 'USD',
+      estimated_call_count: 0, estimated_ratio: 0, error_call_count: 0,
+      cost_coverage_ratio: 0, by_node: [],
+    } as unknown as RunCostSummary;
+    const view = buildCostLedgerView(summary, null);
+    expect(view?.tiles.find(tile => tile.field === 'total_tokens')?.value).toBeNull();
+    expect(view?.notices.some(notice => notice.text.includes('账单尚不完整'))).toBe(true);
+    const failed = buildCostLedgerView({ ...summary, spool_write_failed: 1 }, null);
+    expect(failed?.notices.some(notice => notice.text.includes('持久记录出现故障'))).toBe(true);
   });
 });

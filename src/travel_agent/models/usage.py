@@ -221,6 +221,18 @@ class UsageRecorder:
                     "capture_complete": not (pending or failures or self._spool_error),
                     "record_failed": pending + failures}
 
+    def apply_integrity(self, summary):
+        summary.update(self.integrity(summary["run_id"]))
+        if not summary["capture_complete"]:
+            summary["token_usage_complete"] = False
+            summary["cost_complete"] = False
+            if not summary.get("call_count"):
+                for key in ("total_tokens", "total_input_tokens", "total_output_tokens",
+                            "total_cached_input_tokens", "total_cache_write_input_tokens",
+                            "total_reasoning_output_tokens"):
+                    summary[key] = None
+        return summary
+
     @property
     def dropped(self):
         return 0

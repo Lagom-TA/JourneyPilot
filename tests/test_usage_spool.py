@@ -105,3 +105,73 @@ def test_write_failure_keeps_record_and_explicit_incomplete_state(monkeypatch):
     assert len(recorder.snapshot()) == 1
     assert not recorder.integrity("run")["capture_complete"]
     assert recorder.integrity("run")["spool_write_failed"] == 1
+
+
+def test_concurrent_capture_conflict_is_not_last_writer_wins(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    path = tmp_path / "spool.sqlite3"
+    recorders = [UsageRecorder(spool_path=path), UsageRecorder(spool_path=path)]
+    barrier = Barrier(2)
+    def capture(n):
+        barrier.wait()
+        try:
+            recorders[n].record(replace(record(), output_tokens=5 + n))
+            return "ok"
+        except UsageSpoolConflict:
+            return "conflict"
+    with ThreadPoolExecutor(2) as pool:
+        outcomes = list(pool.map(capture, range(2)))
+    assert sorted(outcomes) == ["conflict", "ok"]
+    assert len(recorders[0].snapshot()) == 1
+
+
+def test_reused_pid_does_not_hide_abandoned_attempt():
+    recorder = UsageRecorder()
+    recorder.admit(record())
+    with recorder._spool.db:
+        recorder._spool.db.execute("UPDATE usage_outbox SET owner_token='old_process'")
+    assert recorder.snapshot()[0].status == "interrupted"
+
+
+async def test_changed_price_does_not_reprice_idempotent_ledger_capture():
+    from travel_agent.config import ModelPricingItem
+    store = InMemoryCostLedgerStore()
+    old = ModelPricingItem(pattern="test", input_per_1m=2, output_per_1m=10)
+    new = old.model_copy(update={"input_per_1m": 30, "output_per_1m": 100})
+    await store.record_calls([record()], pricing=[old])
+    price = store.calls[0].cost_usd
+    await store.record_calls([record()], pricing=[new])
+    assert len(store.calls) == 1 and store.calls[0].cost_usd == price
+
+
+def test_pending_capture_is_not_a_complete_zero_bill():
+    from travel_agent.infrastructure.cost_ledger_store import summarize_calls
+    recorder = UsageRecorder()
+    recorder.record(record())
+    summary = recorder.apply_integrity(summarize_calls("run", []))
+    assert summary["total_tokens"] is None and summary["total_input_tokens"] is None
+    assert not summary["cost_complete"] and not summary["token_usage_complete"]
+    assert summary["record_failed"] == 1
+
+
+def test_concurrent_startup_upgrades_old_spool_without_volatile_fallback(tmp_path):
+    import sqlite3
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    path = tmp_path / "old.sqlite3"
+    with sqlite3.connect(path) as database:
+        database.execute("PRAGMA journal_mode=WAL")
+        database.execute("CREATE TABLE usage_outbox (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, phase TEXT NOT NULL, pid INTEGER NOT NULL, payload TEXT NOT NULL)")
+    barrier = Barrier(4)
+    def open_recorder(n):
+        barrier.wait()
+        recorder = UsageRecorder(spool_path=path)
+        recorder.record(replace(record(), id=f"call_{n}"))
+        return recorder
+    with ThreadPoolExecutor(4) as pool:
+        recorders = list(pool.map(open_recorder, range(4)))
+    assert all(recorder._spool is not None for recorder in recorders)
+    assert len(recorders[0].snapshot()) == 4
+    assert all(recorder.integrity("run")["spool_write_failed"] == 0 for recorder in recorders)

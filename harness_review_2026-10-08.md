@@ -2,6 +2,8 @@
 
 日期：2026-10-08。基线：`5e08d829a04048c6f6dba86b191813e22825c106`。
 
+**续接状态**：原始批次记录保留在前半部分；本轮 A–E 已实施，最新结果与限制见续批 E。`study` 已固定并推送到上述基线，所有新修改在 `main` 分组提交。当前授权允许 commit/push 与付费测试，原交接中的相反限制已被用户后续指令覆盖。
+
 参考代码：`temp/harness-review-2026-10-05/`（目录被 Git 忽略，包含固定 SHA 的 OpenAI Codex 与 DeepSeek Harness）
 
 这轮工作的第一目标是让 Token 账本能够解释每一次模型请求，第二目标是让缓存和上下文策略可以用真实账单验证。当前配置按模型名称和任务类型工作：primary 是 `openai/gpt-6.1-sol`，推理档为 `medium`；fast 是 `deepseek/deepseek-v4.1-flash`，推理档为 `low`。模型调用不再关闭推理。DeepSeek V4 的 `medium` 会被模型策略归一为 `low`，因为该系列把 `medium` 映射为更高档位。
@@ -236,3 +238,17 @@ Token 修复批次已通过：257 项选定后端测试、22 项前端测试、�
 OpenAI Docs 本次已实际抓取 [GPT-6.1 Sol 官方页面](https://developers.openai.com/api/docs/models/gpt-6.1-sol)：明确 `low/medium` 支持且 `none/minimal` 不支持；Chat Completions 无工具调用，工具要用 Responses。本项目没有把 primary 直接替换成工具研究模型；路由与底层 client 均阻止 Sol 的 Chat 工具请求。Sol schema-only 修复把历史工具结果变成明确的数据观察，保留内容，移除 foreign opaque reasoning 与 active tool protocol。没有引入 Responses 传输、自动关 reasoning 或累计限額。
 
 验证：新增 13 项路由/协议测试及相关回归 172 项通过；接入实际归一化和候选修复后相关回归 164 项通过；另新增真实 TaskLLM 的候选 schema failure→primary repair 断言。策略升级能否降低最终交付成本仍需端到端真实质量实验，不能从路由测试推断。
+
+## 续批 E1：恢复、缓存与账单收尾
+
+实际故障验证发现：只用语义输入哈希识别 worker invocation，会把图新调度的相同任务当作上一次恢复，重复返回旧失败。journal scope v2 增加 LangGraph 注入的 `__pregel_task_id`，它在同一 pending task 的 checkpoint resume 时稳定，在新 dispatch 时改变。typed 输入摘要继续区分合同变化。新增真实 LangGraph 回归证明相同任务的新调度会执行第二次，并能从 failed 转 completed；恢复仍使用原任务的已提交结果。
+
+另外收紧五处提交边界：完成结果的缓存重放也检查活 lease；journal I/O 异常统一成 `JournalConflict` 传播；保存并恢复每轮成功/失败/能力判定计数；恢复迭代上限时初始化内容；禁止跨 invocation 复用旧 graph-state tool envelope。ProviderSnapshotCache 继续在 Gateway 白名单和 manifest 判定之后检查 TTL/provider validity，并为命中生成本 run 的审计记录。调用内缓存也排除 Gateway 标记的 side-effecting 结果；两次相同写请求会产生两个执行和审计，不被旧 envelope 合并。已执行但未提交的写操作仍只返回 outcome unknown 等待对账。
+
+usage SQLite 同 ID 冲突检查与写入使用 `BEGIN IMMEDIATE`，避免两个进程同时读取空行后互相覆盖；表结构检查和升级也在该锁内，4 个并发 API 实例升级旧文件不再因重复 ALTER 退回 volatile recorder。started owner 加 hostname + Linux PID 启动时间，避免 PID 被复用后未完成调用永远停留在 started。ledger 幂等身份增加规范化时间戳、latency、TTFT，保留此前历史价格快照规则。空 ledger 若仍有待落库记录，其 Token 总量为 null，前端显示不完整；不再伪装成已完成零用量。
+
+journal 保留到所属 TripRun 删除，由 FK `ON DELETE CASCADE` 清理；本次未给可恢复数据增加定时 TTL。它可能保留较大的完整 transcript/envelope，应随 run 的既有数据生命周期管理。usage outbox 是 ledger 成功提交后逐项 ack，没有隐式累计 Run 配额。embeddings 不属于此 LLM ledger；本地 Qwen embedding 不计成外部模型费用。
+
+验证：全量后端 **477 passed / 116 skipped**；跳过项依赖项目 PostgreSQL/pgvector 条件。前端 **23 项通过**，TypeScript 与生产构建通过。Ruff 与 diff check 通过。独立 PostgreSQL 14 重验 journal 和 ledger 的升级/降级、fingerprint、CAS、活 lease、typed roundtrip、幂等/冲突、历史价格快照；并新增真实 `AsyncPostgresSaver + WorkerJournalStore + with_run_control` 的并行 worker 故障恢复，覆盖 journal→Pregel pending write 之间及两 worker 完成→合并节点之前。两种边界均不重复 worker 执行、消息或 typed 研究包，合并节点只成功执行一次。
+
+上述图实验使用强类型 fixture 与替代合并节点，不代表生产 Candidate Gate admission 或 Trip Delivery 已完成端到端验证；独立数据库只建立所需 stub 与 checkpoint/journal/ledger 表，**业务数据库未迁移**。LangGraph 当前 typed serializer roundtrip 已通过，升级其依赖时仍需重验枚举和 Pydantic 合同。

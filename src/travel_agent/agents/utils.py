@@ -438,9 +438,11 @@ async def execute_tool(tool_name, arguments, *args, **kwargs):
     key = journal.next_tool(tool_name, arguments)
     tools = journal.payload.setdefault("tools", {})
     previous = tools.get(key)
+    manifest = _manifest_from_metadata(tool_name, get_tool_registry().get_tool_metadata(tool_name))
+    if manifest.disabled:
+        return await _execute_tool_once(tool_name, arguments, *args, **kwargs)
     if previous and "result" in previous:
         return deepcopy(previous["result"])
-    manifest = _manifest_from_metadata(tool_name, get_tool_registry().get_tool_metadata(tool_name))
     if previous and manifest.side_effecting:
         # Provider may have completed before our result commit. Never repeat a
         # write on the strength of an execution checkpoint alone.
@@ -1629,6 +1631,9 @@ def _cacheable_tool_result(tool_name: str, result: Dict[str, Any]) -> bool:
         return False
     if result.get("status") not in {"success", "degraded"}:
         return False
+    metadata = result.get("metadata") or {}
+    if metadata.get("side_effecting"):
+        return False
     sanitized_result = result.get("sanitized_result") if is_tool_execution_envelope(result) else result
     return not (
         isinstance(sanitized_result, dict)
@@ -1673,6 +1678,11 @@ async def streaming_react_loop(
     authoritative_tool_results: List[Dict[str, Any]] = []
     last_text_content = ""
     tool_context = tool_context or {}
+    # Old graph-state envelopes have no TTL or current permission decision.
+    # Reuse is limited to this invocation; durable recovery lives in the journal
+    # and provider reuse lives in the Gateway's snapshot cache.
+    invocation_cache: Dict[str, Any] = {}
+    allowed_names = {item["schema"]["function"]["name"] for item in available_tools}
 
     # ── Tool Search 按需工具曝光 ────────────────────────────────────────────
     # deferred 时初始只暴露 search_tools 元工具 + 把压缩目录注入 system prompt；模型经
@@ -1709,17 +1719,19 @@ async def streaming_react_loop(
         if saved.get("done"):
             return saved["content"], tool_results_summary, saved.get("pending_choice"), authoritative_tool_results
 
+    round_counts = {"fail": 0, "success": 0, "capabilities": []}
     async def save_round(iteration, **phase):
         if journal:
             journal.payload["react"] = {
                 "iteration": iteration, "messages": deepcopy(messages),
                 "summaries": list(tool_results_summary), "results": deepcopy(authoritative_tool_results),
                 "last_text": last_text_content, "activated": exposure.activated_names,
-                "tool_cursor": journal.tool_cursor, **phase,
+                "tool_cursor": journal.tool_cursor, "round_counts": deepcopy(round_counts), **phase,
             }
             await journal.commit()
 
     start_iteration = saved.get("iteration", 0)
+    content = last_text_content
     for iteration in range(start_iteration, effective_max_iterations):
         check_cancel_requested(node_name)
         try:
@@ -1778,6 +1790,7 @@ async def streaming_react_loop(
             await save_round(iteration, done=True, content=content)
             return content, tool_results_summary, None, authoritative_tool_results
 
+        round_counts = deepcopy(saved.get("round_counts", round_counts)) if recovered_response else {"fail": 0, "success": 0, "capabilities": []}
         if not recovered_response:
             messages.append({
                 "role": "assistant",
@@ -1789,14 +1802,14 @@ async def streaming_react_loop(
             await save_round(iteration, response=[content, tool_calls, assistant_replay], next_tool=0)
 
         pending_choice: Optional[Dict[str, Any]] = None
-        fail_count = 0
-        success_count = 0
+        fail_count = round_counts["fail"]
+        success_count = round_counts["success"]
         total_count = len(tool_calls)
         # 服务端在调用前作出的日期能力判定（``reference_only`` / ``not_applicable``）：
         # Provider 一次都没被调用，所以它既不是成功也不是失败，**不能进断路器的分子或
         # 分母** —— 否则「唯一一个工具撞上能力判定」会被判成这一轮全部失败，模型收到的是
         # 「工具不可用，别编」，而不是它真正需要的「这个数据源答不了这个日期，换个模态」。
-        capability_tool_names: List[str] = []
+        capability_tool_names: List[str] = list(round_counts["capabilities"])
 
         for tool_index, tc in enumerate(tool_calls):
             if recovered_response and tool_index < saved.get("next_tool", 0):
@@ -1858,16 +1871,16 @@ async def streaming_react_loop(
 
             cache_key = _make_cache_key(tc_name, tc_args)
             cache_hit = (
-                tool_cache is not None
+                tc_name in allowed_names
                 and tc_name not in _NO_CACHE_TOOLS
-                and cache_key in tool_cache
+                and cache_key in invocation_cache
             )
 
             category = TOOL_CATEGORIES.get(tc_name, "other")
 
             tool_started = time.perf_counter()
             if cache_hit:
-                tool_result = tool_cache[cache_key]
+                tool_result = invocation_cache[cache_key]
                 logger.info(f"[{node_name}] 缓存命中: {tc_name}")
                 if stream_queue is not None:
                     await stream_queue.put(("tool_start", node_name, {
@@ -1899,8 +1912,8 @@ async def streaming_react_loop(
                     provider_snapshot_cache=tool_context.get("provider_snapshot_cache"),
                     trip_run_store=tool_context.get("trip_run_store"),
                 )
-                if tool_cache is not None and _cacheable_tool_result(tc_name, tool_result):
-                    tool_cache[cache_key] = tool_result
+                if _cacheable_tool_result(tc_name, tool_result):
+                    invocation_cache[cache_key] = tool_result
             if isinstance(tool_result, dict):
                 authoritative_tool_results.append(tool_result)
 
@@ -1944,6 +1957,7 @@ async def streaming_react_loop(
             else:
                 fail_count += 1
 
+            round_counts = {"fail": fail_count, "success": success_count, "capabilities": list(capability_tool_names)}
             summary = _summarize_tool_result(tc_name, tool_result)
             model_tool_content = compact_tool_content_for_model(tool_result)
             tool_results_summary.append(f"[{tc_name}]: {summary[:400]}")
