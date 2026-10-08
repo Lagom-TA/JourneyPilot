@@ -1,0 +1,1192 @@
+{
+  "review_date": "2026-10-08",
+  "baseline_commit": "5e08d829a04048c6f6dba86b191813e22825c106",
+  "source_commit_before_experiment_packaging": "4ad7891",
+  "references": {
+    "codex": "823ea830c0fd418b09ff02d36cad9a1fff66465b",
+    "deepseek_harness": "5badb15009ae1756c3afe0ae0cef1faafc290ccc"
+  },
+  "environment": {
+    "langgraph": "1.1.3",
+    "langgraph-checkpoint": "4.0.1",
+    "langgraph-checkpoint-postgres": "3.0.5",
+    "langchain-core": "1.2.20",
+    "pydantic": "2.12.5",
+    "openai": "2.29.0",
+    "SQLAlchemy": "2.0.48",
+    "pytest": "9.1.1",
+    "ruff": "0.16.10"
+  },
+  "model_policy": {
+    "primary": "openai/gpt-6.1-sol",
+    "primary_reasoning": "medium",
+    "fast": "deepseek/deepseek-v4.1-flash",
+    "fast_reasoning": "low",
+    "run_budget_enforced": false
+  },
+  "validation": {
+    "backend_passed": 477,
+    "backend_skipped": 116,
+    "frontend_passed": 23,
+    "frontend_typecheck": "passed",
+    "frontend_build": "passed",
+    "ruff": "passed",
+    "diff_check": "passed",
+    "postgres_version": 14,
+    "ledger_migration_and_replay": "passed",
+    "journal_migration_cas_and_lease": "passed",
+    "langgraph_postgres_fan_in_recovery_boundaries": [
+      "before_pending_write",
+      "after_pending_write"
+    ],
+    "project_database_migrated": false
+  },
+  "offline_matrix": [
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_aa4e05ccc3c6127c",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13712,
+      "scenario": {
+        "cache": "cold",
+        "complexity": "simple",
+        "run_mode": "new",
+        "tool_mode": "full"
+      },
+      "stable_system_sha256": "62bfa59007032c395240ce4cd2c60749c647846de7fd757d4f7d01ec1bbf33fb",
+      "tool_schema_tokens_estimate": 333,
+      "trial_id": "aa4e05ccc3c6127c",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_743aa3d8ff583546",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13820,
+      "scenario": {
+        "cache": "cold",
+        "complexity": "simple",
+        "run_mode": "new",
+        "tool_mode": "deferred"
+      },
+      "stable_system_sha256": "c5aab877a427057e6e3e999cd66adb8129089deb84c3ba21eea186457118fd34",
+      "tool_schema_tokens_estimate": 186,
+      "trial_id": "743aa3d8ff583546",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_0bc1e7e3fd6dd6d8",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13724,
+      "scenario": {
+        "cache": "cold",
+        "complexity": "complex",
+        "run_mode": "new",
+        "tool_mode": "full"
+      },
+      "stable_system_sha256": "62bfa59007032c395240ce4cd2c60749c647846de7fd757d4f7d01ec1bbf33fb",
+      "tool_schema_tokens_estimate": 333,
+      "trial_id": "0bc1e7e3fd6dd6d8",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_6dd704379adf0e4a",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13832,
+      "scenario": {
+        "cache": "cold",
+        "complexity": "complex",
+        "run_mode": "new",
+        "tool_mode": "deferred"
+      },
+      "stable_system_sha256": "c5aab877a427057e6e3e999cd66adb8129089deb84c3ba21eea186457118fd34",
+      "tool_schema_tokens_estimate": 186,
+      "trial_id": "6dd704379adf0e4a",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_c80582583943a440",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13712,
+      "scenario": {
+        "cache": "cold",
+        "complexity": "simple",
+        "run_mode": "supplement",
+        "tool_mode": "full"
+      },
+      "stable_system_sha256": "62bfa59007032c395240ce4cd2c60749c647846de7fd757d4f7d01ec1bbf33fb",
+      "tool_schema_tokens_estimate": 333,
+      "trial_id": "c80582583943a440",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_cc9cac59b8d1d0d6",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13820,
+      "scenario": {
+        "cache": "cold",
+        "complexity": "simple",
+        "run_mode": "supplement",
+        "tool_mode": "deferred"
+      },
+      "stable_system_sha256": "c5aab877a427057e6e3e999cd66adb8129089deb84c3ba21eea186457118fd34",
+      "tool_schema_tokens_estimate": 186,
+      "trial_id": "cc9cac59b8d1d0d6",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_863a8b749f90917e",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13724,
+      "scenario": {
+        "cache": "cold",
+        "complexity": "complex",
+        "run_mode": "supplement",
+        "tool_mode": "full"
+      },
+      "stable_system_sha256": "62bfa59007032c395240ce4cd2c60749c647846de7fd757d4f7d01ec1bbf33fb",
+      "tool_schema_tokens_estimate": 333,
+      "trial_id": "863a8b749f90917e",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_bf0fd61578bc99f8",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13832,
+      "scenario": {
+        "cache": "cold",
+        "complexity": "complex",
+        "run_mode": "supplement",
+        "tool_mode": "deferred"
+      },
+      "stable_system_sha256": "c5aab877a427057e6e3e999cd66adb8129089deb84c3ba21eea186457118fd34",
+      "tool_schema_tokens_estimate": 186,
+      "trial_id": "bf0fd61578bc99f8",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_3208011293968935",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13712,
+      "scenario": {
+        "cache": "cold",
+        "complexity": "simple",
+        "run_mode": "resume",
+        "tool_mode": "full"
+      },
+      "stable_system_sha256": "62bfa59007032c395240ce4cd2c60749c647846de7fd757d4f7d01ec1bbf33fb",
+      "tool_schema_tokens_estimate": 333,
+      "trial_id": "3208011293968935",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_1e924dc06a0b22e1",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13820,
+      "scenario": {
+        "cache": "cold",
+        "complexity": "simple",
+        "run_mode": "resume",
+        "tool_mode": "deferred"
+      },
+      "stable_system_sha256": "c5aab877a427057e6e3e999cd66adb8129089deb84c3ba21eea186457118fd34",
+      "tool_schema_tokens_estimate": 186,
+      "trial_id": "1e924dc06a0b22e1",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_f0c222045d566b0f",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13724,
+      "scenario": {
+        "cache": "cold",
+        "complexity": "complex",
+        "run_mode": "resume",
+        "tool_mode": "full"
+      },
+      "stable_system_sha256": "62bfa59007032c395240ce4cd2c60749c647846de7fd757d4f7d01ec1bbf33fb",
+      "tool_schema_tokens_estimate": 333,
+      "trial_id": "f0c222045d566b0f",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_15953fc34a51c514",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13832,
+      "scenario": {
+        "cache": "cold",
+        "complexity": "complex",
+        "run_mode": "resume",
+        "tool_mode": "deferred"
+      },
+      "stable_system_sha256": "c5aab877a427057e6e3e999cd66adb8129089deb84c3ba21eea186457118fd34",
+      "tool_schema_tokens_estimate": 186,
+      "trial_id": "15953fc34a51c514",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_72007d6f67f856b5",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13712,
+      "scenario": {
+        "cache": "warm",
+        "complexity": "simple",
+        "run_mode": "new",
+        "tool_mode": "full"
+      },
+      "stable_system_sha256": "62bfa59007032c395240ce4cd2c60749c647846de7fd757d4f7d01ec1bbf33fb",
+      "tool_schema_tokens_estimate": 333,
+      "trial_id": "72007d6f67f856b5",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_efa6d0a00e2b50e3",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13820,
+      "scenario": {
+        "cache": "warm",
+        "complexity": "simple",
+        "run_mode": "new",
+        "tool_mode": "deferred"
+      },
+      "stable_system_sha256": "c5aab877a427057e6e3e999cd66adb8129089deb84c3ba21eea186457118fd34",
+      "tool_schema_tokens_estimate": 186,
+      "trial_id": "efa6d0a00e2b50e3",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_54bae2e13e8e1f3d",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13724,
+      "scenario": {
+        "cache": "warm",
+        "complexity": "complex",
+        "run_mode": "new",
+        "tool_mode": "full"
+      },
+      "stable_system_sha256": "62bfa59007032c395240ce4cd2c60749c647846de7fd757d4f7d01ec1bbf33fb",
+      "tool_schema_tokens_estimate": 333,
+      "trial_id": "54bae2e13e8e1f3d",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_70f2a6a4df54e178",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13832,
+      "scenario": {
+        "cache": "warm",
+        "complexity": "complex",
+        "run_mode": "new",
+        "tool_mode": "deferred"
+      },
+      "stable_system_sha256": "c5aab877a427057e6e3e999cd66adb8129089deb84c3ba21eea186457118fd34",
+      "tool_schema_tokens_estimate": 186,
+      "trial_id": "70f2a6a4df54e178",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_a742d1bce6b6ca90",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13712,
+      "scenario": {
+        "cache": "warm",
+        "complexity": "simple",
+        "run_mode": "supplement",
+        "tool_mode": "full"
+      },
+      "stable_system_sha256": "62bfa59007032c395240ce4cd2c60749c647846de7fd757d4f7d01ec1bbf33fb",
+      "tool_schema_tokens_estimate": 333,
+      "trial_id": "a742d1bce6b6ca90",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_fd73cde399d9cac6",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13820,
+      "scenario": {
+        "cache": "warm",
+        "complexity": "simple",
+        "run_mode": "supplement",
+        "tool_mode": "deferred"
+      },
+      "stable_system_sha256": "c5aab877a427057e6e3e999cd66adb8129089deb84c3ba21eea186457118fd34",
+      "tool_schema_tokens_estimate": 186,
+      "trial_id": "fd73cde399d9cac6",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_3ab2d9ffad3b78a3",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13724,
+      "scenario": {
+        "cache": "warm",
+        "complexity": "complex",
+        "run_mode": "supplement",
+        "tool_mode": "full"
+      },
+      "stable_system_sha256": "62bfa59007032c395240ce4cd2c60749c647846de7fd757d4f7d01ec1bbf33fb",
+      "tool_schema_tokens_estimate": 333,
+      "trial_id": "3ab2d9ffad3b78a3",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_7047ab11d5204bb7",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13832,
+      "scenario": {
+        "cache": "warm",
+        "complexity": "complex",
+        "run_mode": "supplement",
+        "tool_mode": "deferred"
+      },
+      "stable_system_sha256": "c5aab877a427057e6e3e999cd66adb8129089deb84c3ba21eea186457118fd34",
+      "tool_schema_tokens_estimate": 186,
+      "trial_id": "7047ab11d5204bb7",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_c4eb55b13ad927a7",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13712,
+      "scenario": {
+        "cache": "warm",
+        "complexity": "simple",
+        "run_mode": "resume",
+        "tool_mode": "full"
+      },
+      "stable_system_sha256": "62bfa59007032c395240ce4cd2c60749c647846de7fd757d4f7d01ec1bbf33fb",
+      "tool_schema_tokens_estimate": 333,
+      "trial_id": "c4eb55b13ad927a7",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_3166c34e09c9058f",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13820,
+      "scenario": {
+        "cache": "warm",
+        "complexity": "simple",
+        "run_mode": "resume",
+        "tool_mode": "deferred"
+      },
+      "stable_system_sha256": "c5aab877a427057e6e3e999cd66adb8129089deb84c3ba21eea186457118fd34",
+      "tool_schema_tokens_estimate": 186,
+      "trial_id": "3166c34e09c9058f",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_732b7453ae433f0e",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13724,
+      "scenario": {
+        "cache": "warm",
+        "complexity": "complex",
+        "run_mode": "resume",
+        "tool_mode": "full"
+      },
+      "stable_system_sha256": "62bfa59007032c395240ce4cd2c60749c647846de7fd757d4f7d01ec1bbf33fb",
+      "tool_schema_tokens_estimate": 333,
+      "trial_id": "732b7453ae433f0e",
+      "usage_complete": false
+    },
+    {
+      "cached_input_tokens": null,
+      "call_id": "offline_dda9c49263cad399",
+      "contract_passed": null,
+      "cost_usd": null,
+      "delivery_succeeded": null,
+      "fixture": "tests/test_research_context.py; synthetic source padding",
+      "input_tokens": null,
+      "measurement": "offline_fixture",
+      "note": "Cold/warm and resume are experiment labels; API cache/recovery are not executed by this matrix.",
+      "request_input_tokens_estimate": 13832,
+      "scenario": {
+        "cache": "warm",
+        "complexity": "complex",
+        "run_mode": "resume",
+        "tool_mode": "deferred"
+      },
+      "stable_system_sha256": "c5aab877a427057e6e3e999cd66adb8129089deb84c3ba21eea186457118fd34",
+      "tool_schema_tokens_estimate": 186,
+      "trial_id": "dda9c49263cad399",
+      "usage_complete": false
+    }
+  ],
+  "recovery_matrix": [
+    {
+      "scenario": {
+        "cache": "cold",
+        "run_mode": "new",
+        "complexity": "simple",
+        "tool_mode": "full"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 2,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "cold",
+        "run_mode": "new",
+        "complexity": "simple",
+        "tool_mode": "deferred"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 3,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "cold",
+        "run_mode": "new",
+        "complexity": "complex",
+        "tool_mode": "full"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 2,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "cold",
+        "run_mode": "new",
+        "complexity": "complex",
+        "tool_mode": "deferred"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 3,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "cold",
+        "run_mode": "supplement",
+        "complexity": "simple",
+        "tool_mode": "full"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 2,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "cold",
+        "run_mode": "supplement",
+        "complexity": "simple",
+        "tool_mode": "deferred"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 3,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "cold",
+        "run_mode": "supplement",
+        "complexity": "complex",
+        "tool_mode": "full"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 2,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "cold",
+        "run_mode": "supplement",
+        "complexity": "complex",
+        "tool_mode": "deferred"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 3,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "cold",
+        "run_mode": "resume",
+        "complexity": "simple",
+        "tool_mode": "full"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 2,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "cold",
+        "run_mode": "resume",
+        "complexity": "simple",
+        "tool_mode": "deferred"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 3,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "cold",
+        "run_mode": "resume",
+        "complexity": "complex",
+        "tool_mode": "full"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 2,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "cold",
+        "run_mode": "resume",
+        "complexity": "complex",
+        "tool_mode": "deferred"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 3,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "warm",
+        "run_mode": "new",
+        "complexity": "simple",
+        "tool_mode": "full"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 2,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "warm",
+        "run_mode": "new",
+        "complexity": "simple",
+        "tool_mode": "deferred"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 3,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "warm",
+        "run_mode": "new",
+        "complexity": "complex",
+        "tool_mode": "full"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 2,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "warm",
+        "run_mode": "new",
+        "complexity": "complex",
+        "tool_mode": "deferred"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 3,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "warm",
+        "run_mode": "supplement",
+        "complexity": "simple",
+        "tool_mode": "full"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 2,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "warm",
+        "run_mode": "supplement",
+        "complexity": "simple",
+        "tool_mode": "deferred"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 3,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "warm",
+        "run_mode": "supplement",
+        "complexity": "complex",
+        "tool_mode": "full"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 2,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "warm",
+        "run_mode": "supplement",
+        "complexity": "complex",
+        "tool_mode": "deferred"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 3,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "warm",
+        "run_mode": "resume",
+        "complexity": "simple",
+        "tool_mode": "full"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 2,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "warm",
+        "run_mode": "resume",
+        "complexity": "simple",
+        "tool_mode": "deferred"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 3,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "warm",
+        "run_mode": "resume",
+        "complexity": "complex",
+        "tool_mode": "full"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 2,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    },
+    {
+      "scenario": {
+        "cache": "warm",
+        "run_mode": "resume",
+        "complexity": "complex",
+        "tool_mode": "deferred"
+      },
+      "measurement": "fake_model_real_gateway",
+      "contract_passed": true,
+      "provider_calls": 2,
+      "audit_records": 2,
+      "model_requests": 3,
+      "typed_fixture_transcript_preserved": true,
+      "delivery_succeeded": null,
+      "api_cache_hit": null,
+      "cost_usd": null
+    }
+  ],
+  "paid_protocol_calls": [
+    {
+      "cache_write_input_tokens": 0,
+      "cached_input_tokens": 0,
+      "call_id": "llm_7325b99a2fda41c1",
+      "contract_passed": true,
+      "cost_usd": 0.000522,
+      "delivery_succeeded": null,
+      "error_type": null,
+      "finish_reason": "stop",
+      "input_tokens": 136,
+      "measurement": "paid_api",
+      "model": "openai/gpt-6.1-sol",
+      "note": "Protocol/constraint extraction only; no typed trip delivery.",
+      "output_tokens": 25,
+      "reasoning_effort": "medium",
+      "reasoning_output_tokens": 0,
+      "request_input_tokens_estimate": 174,
+      "run_wall_ms": 5514.5475850004,
+      "scenario": {
+        "cache": "cold_attempt",
+        "task": "protocol_calibration"
+      },
+      "tier": "primary",
+      "trial_id": "protocol_primary_0_6af2c49b",
+      "usage_complete": true
+    },
+    {
+      "cache_write_input_tokens": 0,
+      "cached_input_tokens": 0,
+      "call_id": "llm_8e44a79f3e9648f5",
+      "contract_passed": true,
+      "cost_usd": 0.000522,
+      "delivery_succeeded": null,
+      "error_type": null,
+      "finish_reason": "stop",
+      "input_tokens": 136,
+      "measurement": "paid_api",
+      "model": "openai/gpt-6.1-sol",
+      "note": "Protocol/constraint extraction only; no typed trip delivery.",
+      "output_tokens": 25,
+      "reasoning_effort": "medium",
+      "reasoning_output_tokens": 0,
+      "request_input_tokens_estimate": 174,
+      "run_wall_ms": 2230.567216000054,
+      "scenario": {
+        "cache": "warm_attempt",
+        "task": "protocol_calibration"
+      },
+      "tier": "primary",
+      "trial_id": "protocol_primary_1_a40c4983",
+      "usage_complete": true
+    },
+    {
+      "cache_write_input_tokens": 0,
+      "cached_input_tokens": 0,
+      "call_id": "llm_8e45d8e267d349cf",
+      "contract_passed": true,
+      "cost_usd": 0.0001293,
+      "delivery_succeeded": null,
+      "error_type": null,
+      "finish_reason": "stop",
+      "input_tokens": 147,
+      "measurement": "paid_api",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "note": "Protocol/constraint extraction only; no typed trip delivery.",
+      "output_tokens": 71,
+      "reasoning_effort": "low",
+      "reasoning_output_tokens": 50,
+      "request_input_tokens_estimate": 174,
+      "run_wall_ms": 1939.5024180048495,
+      "scenario": {
+        "cache": "cold_attempt",
+        "task": "protocol_calibration"
+      },
+      "tier": "fast",
+      "trial_id": "protocol_fast_0_37d26e87",
+      "usage_complete": true
+    },
+    {
+      "cache_write_input_tokens": 0,
+      "cached_input_tokens": 0,
+      "call_id": "llm_563d33778b314b63",
+      "contract_passed": true,
+      "cost_usd": 0.0001557,
+      "delivery_succeeded": null,
+      "error_type": null,
+      "finish_reason": "stop",
+      "input_tokens": 147,
+      "measurement": "paid_api",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "note": "Protocol/constraint extraction only; no typed trip delivery.",
+      "output_tokens": 93,
+      "reasoning_effort": "low",
+      "reasoning_output_tokens": 72,
+      "request_input_tokens_estimate": 174,
+      "run_wall_ms": 851.1367989995051,
+      "scenario": {
+        "cache": "warm_attempt",
+        "task": "protocol_calibration"
+      },
+      "tier": "fast",
+      "trial_id": "protocol_fast_1_1334bb22",
+      "usage_complete": true
+    },
+    {
+      "cached_input_tokens": 0,
+      "call_id": "llm_3a6bb5b59eca461c",
+      "contract_passed": true,
+      "cost_usd": 0.0001941,
+      "delivery_succeeded": null,
+      "error_type": null,
+      "finish_reason": "tool_calls",
+      "input_tokens": 323,
+      "measurement": "paid_api_synthetic_tool",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "output_tokens": 81,
+      "reasoning_effort": "low",
+      "reasoning_output_tokens": 36,
+      "run_wall_ms": 3324.0805719979107,
+      "trial_id": "tool_protocol_26e1ee815c9b",
+      "usage_complete": true
+    },
+    {
+      "cached_input_tokens": 0,
+      "call_id": "llm_f75127afec0b4bfc",
+      "contract_passed": true,
+      "cost_usd": 0.0001158,
+      "delivery_succeeded": null,
+      "error_type": null,
+      "finish_reason": "stop",
+      "input_tokens": 130,
+      "measurement": "paid_api_synthetic_tool",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "output_tokens": 64,
+      "reasoning_effort": "low",
+      "reasoning_output_tokens": 49,
+      "run_wall_ms": 3324.0930149986525,
+      "trial_id": "tool_protocol_26e1ee815c9b",
+      "usage_complete": true
+    }
+  ],
+  "paid_protocol_summary": {
+    "call_count": 4,
+    "trial_count": 4,
+    "total_input_tokens": 566,
+    "weighted_cache_hit": 0.0,
+    "total_cost_usd": 0.0013289999999999999,
+    "cost_complete": true,
+    "successful_deliveries": null,
+    "successful_delivery_cost_usd": null,
+    "delivery_success_rate": null,
+    "p95_run_wall_ms": 5514.5475850004,
+    "truncated_calls": 0,
+    "repair_calls": 0,
+    "contract_passed_calls": 4,
+    "missing_usage_calls": 0
+  },
+  "paid_tool_summary": {
+    "call_count": 2,
+    "trial_count": 1,
+    "total_input_tokens": 453,
+    "weighted_cache_hit": 0.0,
+    "total_cost_usd": 0.0003099,
+    "cost_complete": true,
+    "successful_deliveries": null,
+    "successful_delivery_cost_usd": null,
+    "delivery_success_rate": null,
+    "p95_run_wall_ms": 3324.0930149986525,
+    "truncated_calls": 0,
+    "repair_calls": 0,
+    "contract_passed_calls": 2,
+    "missing_usage_calls": 0
+  },
+  "paid_combined_summary": {
+    "call_count": 6,
+    "trial_count": 5,
+    "total_input_tokens": 1019,
+    "weighted_cache_hit": 0.0,
+    "total_cost_usd": 0.0016389,
+    "cost_complete": true,
+    "successful_deliveries": null,
+    "successful_delivery_cost_usd": null,
+    "delivery_success_rate": null,
+    "p95_run_wall_ms": 5514.5475850004,
+    "truncated_calls": 0,
+    "repair_calls": 0,
+    "contract_passed_calls": 6,
+    "missing_usage_calls": 0
+  },
+  "scope_notes": [
+    "Offline matrix labels do not execute API cold/warm caches or checkpoint recovery.",
+    "Recovery matrix uses fake models and real Gateway with memory journal/audit stores; its simple/complex and supplement labels do not measure constraint quality.",
+    "PostgreSQL graph recovery uses typed fixtures and a substitute fan-in; it does not prove production packet admission or trip delivery.",
+    "Paid calls calibrate protocol and synthetic constraint/tool extraction only. Reported cost uses configured price snapshots.",
+    "No successful delivery cost, production quality, cache improvement, or production p95 has been measured.",
+    "Sol was requested with medium reasoning; API reported zero reasoning output in these two small probes.",
+    "Embeddings are outside this LLM ledger."
+  ],
+  "local_evidence_sha256": {
+    "final-suite.log": "89bf7f6b15d68f7e26ec976ffc445d76d37c5373824649f08a582f153565b634",
+    "final-postgres-journal.log": "93e71cdc4c00c14c66b2285593e5c22fbcaa167536768ca957e7e8371174a4a9",
+    "final-postgres-ledger.log": "a11bc4d9c8033a87ce63ccf395ea5ee1e69314331c4bd2282f1fd2199d313b61",
+    "experiment-matrix.jsonl": "30719275e1adf5f48dfa61cea00e9c6f7e3b9fd29a6159793f0a7bc104c521a6",
+    "recovery-matrix.json": "a2c600dcfa751ed6af601d4583be61074904ec82a79388c354f428bc4d8a78b3",
+    "live-protocol.jsonl": "63e64e3face92a52f05416f3fbb9752b8f9e98ffd404feea43dbf219bbef082d",
+    "live-tools.jsonl": "0b67dfa41edd8cf7f53cd569f6474fff99346d9fd8831291dd6c6c1fb27c7854"
+  }
+}

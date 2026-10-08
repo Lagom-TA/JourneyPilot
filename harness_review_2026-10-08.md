@@ -252,3 +252,11 @@ journal 保留到所属 TripRun 删除，由 FK `ON DELETE CASCADE` 清理；本
 验证：全量后端 **477 passed / 116 skipped**；跳过项依赖项目 PostgreSQL/pgvector 条件。前端 **23 项通过**，TypeScript 与生产构建通过。Ruff 与 diff check 通过。独立 PostgreSQL 14 重验 journal 和 ledger 的升级/降级、fingerprint、CAS、活 lease、typed roundtrip、幂等/冲突、历史价格快照；并新增真实 `AsyncPostgresSaver + WorkerJournalStore + with_run_control` 的并行 worker 故障恢复，覆盖 journal→Pregel pending write 之间及两 worker 完成→合并节点之前。两种边界均不重复 worker 执行、消息或 typed 研究包，合并节点只成功执行一次。
 
 上述图实验使用强类型 fixture 与替代合并节点，不代表生产 Candidate Gate admission 或 Trip Delivery 已完成端到端验证；独立数据库只建立所需 stub 与 checkpoint/journal/ledger 表，**业务数据库未迁移**。LangGraph 当前 typed serializer roundtrip 已通过，升级其依赖时仍需重验枚举和 Pydantic 合同。
+
+## 续批 E2：可复现实验与最终范围
+
+新增 `scripts/harness_experiments.py` 的离线矩阵、显式付费文本/工具协议校准及 JSONL 分析；`models/experiments.py` 对 call_id 去重、拒绝冲突，按 trial 聚合加权 cache read、p95、截断/修复和成功交付成本。没有完成 usage 或最终交付时保留 null，失败 run 的费用仍进入成功交付成本分子。live 验证失败或 usage 缺失会非零退出。故障矩阵在 `scripts/harness_recovery_experiment.py`；原独立 ledger 验证材料已复用并归档为 `scripts/verify_usage_postgres.py`，隔离 recorder，避免读取实际 outbox。
+
+24 个离线请求 fixture 与 24 个 fake-model/真实-Gateway 恢复场景已完成；后者全部通过。六次已授权付费调用中，4 次无工具约束 JSON（Sol medium / Flash low）以及 2 次 Flash synthetic 工具协议均通过，usage 完整、无截断，按配置价格合计 **$0.0016389**；实际 cache read rate **0**。未重新运行已完成的付费 probes。此次精简 8 工具 fixture 的 deferred 初始估算反而比 full 多 108 Token，说明按需曝光有目录和额外轮次开销，初始定义变小的旧 fixture 不能代表普遍收益。
+
+复现命令、依赖版本、已脱敏 API/fixture 结果和精确范围已进入版本控制：[实验记录](docs/review/harness-experiments-2026-10-08.md)、[验证数据](docs/review/harness-verification-2026-10-08.json)。固定 Codex/DSH SHA 未变化，study 保持基线。本轮可在现有环境完成的架构审查、修复和验证已收尾；项目数据库/pgvector 集成、真实 packet admission 和交付端到端、缓存/质量/成功交付成本收益仍需部署环境验证，不能由本次离线或协议结果推断。
