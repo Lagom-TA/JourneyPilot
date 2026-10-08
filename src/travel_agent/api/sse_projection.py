@@ -328,6 +328,7 @@ def _project_inspect_event(event_type: str, payload: Dict[str, Any]) -> Dict[str
             key: projected[key]
             for key in (
                 "type",
+                "call_id",
                 "message_id",
                 "run_id",
                 "node",
@@ -337,6 +338,7 @@ def _project_inspect_event(event_type: str, payload: Dict[str, Any]) -> Dict[str
                 "total_tokens",
                 "cost_usd",
                 "estimated",
+                "usage_complete",
             )
             if key in projected
         }

@@ -1,9 +1,9 @@
 """Tool-schema exposure metering（Tool Search 上下文节省量化）.
 
-按 run 累计 worker agent 每次组装工具列表时**实际注入**的 schema token 与**全量注入基线**，
+按 run 累计 worker 初始组装工具列表时的 schema token 估算与全量组装基线，
 据此报出 ``run_cost_summary.tool_context_saving = 1 - injected/full``。
 
-- **口径与 usage 捕获层一致**：无 tokenizer 时用字符数/4 粗估（``estimate_tokens``），schema 序列化
+- **共享离线估算**：复用 ``estimate_tokens``，schema 序列化
   成 JSON 后估。deferred 曝光下 injected = search_tools schema + 压缩目录文本；全量基线 =
   该 agent 白名单全部工具的 full schema。full 模式下两者相等，saving=0。
 - **进程内、按 run 聚合**：与 ``run_control_registry`` 同类的瞬态进程状态，run 终结时由
@@ -22,7 +22,7 @@ from ..models.usage import estimate_tokens
 
 
 def estimate_text_tokens(text: str) -> int:
-    """文本 token 粗估（len/4，同 07 口径）。"""
+    """共享离线文本 Token 估算，不代表供应商计费用量。"""
     return estimate_tokens(text or "")
 
 
@@ -99,6 +99,8 @@ class ToolExposureLedger:
             saving = round(1 - injected / full, 4) if full > 0 else 0.0
             return {
                 "mode": mode,
+                "measurement_scope": "initial_assembly",
+                "estimated": True,
                 "worker_assemblies": entry.worker_assemblies,
                 "deferred_assemblies": entry.deferred_assemblies,
                 "schema_tokens_injected": injected,

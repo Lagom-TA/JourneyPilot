@@ -484,9 +484,11 @@ export interface UsageUpdateEvent {
   agent: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
-  total_tokens: number;
+  total_tokens: number | null;
   cost_usd: number | null;
   estimated: boolean;
+  usage_complete?: boolean;
+  call_id?: string;
 }
 
 /** run_summary 的 by_agent / by_node 分组行（成本降序）。 */
@@ -494,9 +496,9 @@ export interface CostGroupBreakdown {
   agent?: string;
   node?: string;
   call_count: number;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
   cost_usd: number | null;
   latency_ms: number;
 }
@@ -509,9 +511,11 @@ export interface CostBottleneck {
   call_count: number;
 }
 
-/** Tool Search 上下文节省量（实测；DB/REST 路径为 null）。 */
+/** Tool Search 初始组装的上下文估算节省量；DB/REST 路径为 null。 */
 export interface ToolContextSaving {
   mode: 'full' | 'deferred' | 'mixed';
+  measurement_scope?: 'initial_assembly';
+  estimated?: boolean;
   worker_assemblies: number;
   deferred_assemblies: number;
   schema_tokens_injected: number;
@@ -532,11 +536,23 @@ export interface RunCostSummary {
   error_call_count: number;
   estimated_ratio: number;
   cost_coverage_ratio: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_cached_input_tokens: number;
-  total_reasoning_output_tokens: number;
-  total_tokens: number;
+  total_input_tokens: number | null;
+  total_output_tokens: number | null;
+  total_cached_input_tokens: number | null;
+  total_reasoning_output_tokens: number | null;
+  total_tokens: number | null;
+  total_cache_write_input_tokens?: number | null;
+  total_request_input_tokens_estimate?: number | null;
+  total_tool_schema_tokens_estimate?: number | null;
+  token_usage_complete?: boolean;
+  cache_read_usage_complete?: boolean;
+  cache_write_usage_complete?: boolean;
+  reasoning_usage_complete?: boolean;
+  cache_hit_ratio?: number | null;
+  cost_complete?: boolean;
+  partial_usage_call_count?: number;
+  missing_usage_call_count?: number;
+  logical_call_count?: number;
   /** 未命中价格（priced==0）时为 null——只报 token，不编造 0 成本。 */
   total_cost_usd: number | null;
   currency: string;

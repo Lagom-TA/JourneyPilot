@@ -29,7 +29,6 @@ from typing import (
 
 from ..config import (
     FastModelConfig,
-    MAX_COMPLETION_TOKENS,
     PrimaryModelConfig,
     ProviderCapabilities,
     capabilities_for,
@@ -52,6 +51,7 @@ from .usage import (
     UsageRecorder,
     estimate_tokens,
     extract_usage,
+    error_usage_message,
     generate_call_id,
     get_usage_recorder,
     infer_provider,
@@ -59,8 +59,20 @@ from .usage import (
     response_finish_reason,
     response_model_name,
 )
+from .chat_client import ReasoningChatOpenAI, reasoning_replay
+from .request_policy import is_openai_reasoning_model, model_reasoning_effort
+from .token_counting import estimate_request_tokens
 
 logger = logging.getLogger(__name__)
+
+
+def estimate_output_text(response: Any) -> str:
+    """Visible output estimate includes function arguments as well as prose."""
+    text = _coerce_text(response.content)
+    tool_calls = (getattr(response, "tool_calls", None) or []) + (getattr(response, "invalid_tool_calls", None) or [])
+    if tool_calls:
+        text += json.dumps(tool_calls, ensure_ascii=False, separators=(",", ":"))
+    return text
 
 
 def _close_unstarted(awaitable: Any) -> None:
@@ -100,7 +112,7 @@ class BaseLLM(Protocol):
 
 try:
     from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-    from langchain_openai import ChatOpenAI
+    ChatOpenAI = ReasoningChatOpenAI
 except ImportError:  # pragma: no cover - langchain 未安装时降级（如纯前端开发环境）
     AIMessage = HumanMessage = SystemMessage = ToolMessage = None  # type: ignore[assignment]
     ChatOpenAI = None  # type: ignore[assignment]
@@ -225,7 +237,11 @@ def _to_langchain_messages(messages: List[Dict[str, Any]]) -> List[Any]:
                 {"name": tc["name"], "args": tc["arguments"], "id": tc["id"], "type": "tool_call"}
                 for tc in _normalize_tool_calls(msg.get("tool_calls"))
             ]
-            converted.append(AIMessage(content=content, tool_calls=tool_calls))
+            converted.append(AIMessage(
+                content=content,
+                tool_calls=tool_calls,
+                additional_kwargs=reasoning_replay(msg.get("assistant_replay") or {}),
+            ))
             pending_tool_call_ids = {str(call["id"]) for call in tool_calls}
             continue
 
@@ -253,43 +269,17 @@ def _to_langchain_messages(messages: List[Dict[str, Any]]) -> List[Any]:
 
 
 def _provider_extra_body(
-    capabilities: ProviderCapabilities, *, max_tokens: int
+    capabilities: ProviderCapabilities, *, max_tokens: int, reasoning_effort: str = "low"
 ) -> Dict[str, Any]:
-    """关思维链 + 把输出上限送到上游真正会读的那个键。
-
-    本项目从不需要思维链，只需要答案：worker 的 ReAct 与结构化输出都不依赖它，而开着
-    思维链时 DeepSeek 会 (1) 拒绝 response_format（400 "This response_format type is
-    unavailable now"）、(2) 在多轮工具调用里破坏 tool 消息顺序，推理 token 还会整条
-    拖慢流水线（实测同一个 deepseek-v4-pro，直连 82 tok/s、经代理 19 tok/s）。
-
-    方言的归属现在**来自 preset 的声明**，不再靠 base_url 猜：
-
-      thinking   —— DeepSeek 直连自己的请求体开关；
-      reasoning  —— OpenRouter 的开关，也是被代理的 DeepSeek 唯一真正读的那个
-                    （实测 thinking 经代理完全无效，reasoning_tokens 照样 664）；
-      max_tokens —— langchain-openai 在 _get_request_payload 里无条件把 max_tokens
-                    改名成 max_completion_tokens，而 DeepSeek 只读 max_tokens，
-                    两者相乘会让配置的输出上限彻底空转（实测 fast tier 峰值 3932 >
-                    配置 2048 且 finish_reason=stop）。openai SDK 把 extra_body 平铺
-                    进 body，于是两个键共存，各取所需。
-
-    ``all_dialects`` 是保守档：认不出的上游把每一种都发一遍，认不出的那种会被对方
-    忽略（三个 provider 逐一实测过）。少发一种的代价是开关静默失效。
-    """
+    """Translate an enabled reasoning policy and output limit to the wire dialect."""
 
     body: Dict[str, Any] = {}
     control = capabilities.reasoning_control
     if control in ("deepseek", "all_dialects"):
-        body["thinking"] = {"type": "disabled"}
+        body["thinking"] = {"type": "enabled"}
+        body["reasoning_effort"] = reasoning_effort
     if control in ("openrouter", "all_dialects"):
-        # Send both normalized disable signals.  OpenRouter models whose
-        # supported_efforts omit ``none`` can otherwise keep their
-        # default_enabled reasoning path even though reasoning is not mandatory;
-        # an incremental JSON repair then spends the whole completion allowance
-        # on hidden reasoning and returns no document.  ``enabled=false`` makes
-        # the desired state explicit while ``effort=none`` preserves the common
-        # OpenAI-style dialect.
-        body["reasoning"] = {"effort": "none", "enabled": False}
+        body["reasoning"] = {"effort": reasoning_effort, "enabled": True}
     if capabilities.token_limit_field in ("max_tokens", "both"):
         body["max_tokens"] = max_tokens
     return body
@@ -407,6 +397,7 @@ class OpenAICompatibleLLM(BaseLLM):
         timeout: int = 60,
         max_retries: int = 2,
         tier: ModelTier,
+        reasoning_effort: Optional[str] = None,
         usage_recorder: Optional[UsageRecorder] = None,
     ) -> None:
         if ChatOpenAI is None:
@@ -418,9 +409,13 @@ class OpenAICompatibleLLM(BaseLLM):
         self.provider = infer_provider(base_url, model_name)
         # 这个上游支持什么，来自 `configs/providers/*.yaml` 的声明；认不出走保守档。
         self.capabilities = capabilities_for(base_url)
+        self._reasoning_effort = model_reasoning_effort(
+            model_name, reasoning_effort or ("medium" if tier == ModelTier.PRIMARY else "low")
+        )
         self._usage_recorder = usage_recorder
         # 预算守卫按「本次最坏输出」估账，而最坏输出就是这个上限。
         self._max_tokens = int(max_tokens)
+        self._max_retries = max(0, int(max_retries))
         # ``request_timeout`` is this client's default per SDK attempt.  A call
         # site needing a wider bound passes ``timeout=`` in its own kwargs; the
         # SDK applies that to the single request instead of the shared client.
@@ -428,14 +423,21 @@ class OpenAICompatibleLLM(BaseLLM):
             api_key=api_key,
             model=model_name,
             base_url=base_url,
-            temperature=temperature,
+            temperature=None if is_openai_reasoning_model(model_name) else temperature,
+            reasoning_effort=self._reasoning_effort if (
+                is_openai_reasoning_model(model_name)
+                or "deepseek" in model_name.lower()
+            ) else None,
             max_tokens=max_tokens,
             request_timeout=timeout,
-            max_retries=max_retries,
+            # Retry in this layer so every attempt receives its own usage row.
+            max_retries=0,
             # langchain-openai 仅在默认 OpenAI base_url 下自动开启流式 usage，而本仓
             # 全部模型自定义 base_url，不显式开则流式 usage 永远为空。
             stream_usage=self.capabilities.supports_stream_usage,
-            extra_body=_provider_extra_body(self.capabilities, max_tokens=max_tokens),
+            extra_body=_provider_extra_body(
+                self.capabilities, max_tokens=max_tokens, reasoning_effort=self._reasoning_effort
+            ),
         )
 
     # --- usage 捕获织入 ------------------------------------------------ #
@@ -469,7 +471,7 @@ class OpenAICompatibleLLM(BaseLLM):
         guard_run_budget(
             operation,
             llm_calls=1,
-            input_tokens=estimate_tokens(_messages_text(messages)),
+            input_tokens=estimate_tokens(json.dumps(messages, ensure_ascii=False), self.model_name),
             output_tokens=output_tokens or self._max_tokens,
         )
 
@@ -485,19 +487,28 @@ class OpenAICompatibleLLM(BaseLLM):
         configured default active on the other path.
         """
 
-        requested = kwargs.pop("max_output_tokens", None)
+        kwargs = dict(kwargs)
+        if is_openai_reasoning_model(self.model_name):
+            for parameter in ("temperature", "top_p", "top_logprobs", "logprobs"):
+                kwargs.pop(parameter, None)
+        limits = [value for key in ("max_output_tokens", "max_tokens", "max_completion_tokens")
+                  if (value := kwargs.pop(key, None)) is not None]
+        if any(isinstance(value, bool) or not isinstance(value, int) for value in limits):
+            raise ValueError("Output token limits must be positive integers")
+        if len({int(value) for value in limits}) > 1:
+            raise ValueError("Conflicting output token limits")
+        requested = limits[0] if limits else None
         if requested is None:
             return kwargs, self._max_tokens
         limit = int(requested)
-        if limit < 1 or limit > MAX_COMPLETION_TOKENS:
-            raise ValueError(
-                f"max_output_tokens must be between 1 and {MAX_COMPLETION_TOKENS}"
-            )
+        if limit < 1:
+            raise ValueError("max_output_tokens must be positive and supported by the model")
         scoped = dict(kwargs)
         scoped["max_tokens"] = limit
         scoped["extra_body"] = _provider_extra_body(
             self.capabilities,
             max_tokens=limit,
+            reasoning_effort=self._reasoning_effort,
         )
         return scoped, limit
 
@@ -554,6 +565,7 @@ class OpenAICompatibleLLM(BaseLLM):
         input_text: str = "",
         output_text: str = "",
         ttft_ms: Optional[float] = None,
+        reported_usage: Optional[Dict[str, Optional[int]]] = None,
     ) -> None:
         if record is None:
             return
@@ -563,29 +575,47 @@ class OpenAICompatibleLLM(BaseLLM):
         record.status = status
         if error is not None:
             record.error_type = type(error).__name__
+            if message is None:
+                message = error_usage_message(error)
         if message is not None:
             record.model_response = response_model_name(message)
 
-        usage = extract_usage(message) if message is not None else None
+        usage = reported_usage if reported_usage is not None else extract_usage(message)
         if usage is not None:
             record.input_tokens = usage["input_tokens"]
             record.output_tokens = usage["output_tokens"]
             record.total_tokens = usage["total_tokens"]
             record.cached_input_tokens = usage["cached_input_tokens"]
+            record.cache_write_input_tokens = usage["cache_write_input_tokens"]
             record.reasoning_output_tokens = usage["reasoning_output_tokens"]
             record.estimated = False
+            record.usage_complete = (
+                bool(usage.get("usage_complete", True))
+                and record.input_tokens is not None and record.output_tokens is not None
+                and (record.cached_input_tokens or 0) + (record.cache_write_input_tokens or 0) <= record.input_tokens
+                and (record.reasoning_output_tokens or 0) <= record.output_tokens
+            )
+            record.usage_source = "reported" if record.usage_complete else "partial"
         elif status == "ok":
             # usage 缺失（流被中断/供应商不回/全零对象）→ 字符数粗估并标记 estimated
-            in_est = estimate_tokens(input_text)
-            out_est = estimate_tokens(output_text)
+            in_est = record.request_input_tokens_estimate
+            if in_est is None:
+                in_est = estimate_tokens(input_text, self.model_name)
+            out_est = estimate_tokens(output_text, self.model_name)
             record.input_tokens = in_est
             record.output_tokens = out_est
             record.total_tokens = in_est + out_est
             record.estimated = True
+            record.usage_complete = False
+            record.usage_source = "estimated"
+        else:
+            record.usage_complete = False
+            record.usage_source = "missing"
+        record.finish_reason = response_finish_reason(message)
         # status=error 且无 usage：token 列留 null，绝不编数
 
         # 每次调用一行取证：finish_reason=length 即输出被 max_tokens 截断，配合
-        # output_tokens 就能判断 2048 的输出上限是否把 Research Packet 切断。归因直接用
+        # output_tokens 就能判断当前输出设置是否把 Research Packet 切断。归因直接用
         # record 的字段（run 控制层 contextvars），不另开一套通道；离线 eval 无 run 上下文
         # 时上面已经返回，日志与记账同进同退。
         logger.info(
@@ -627,13 +657,68 @@ class OpenAICompatibleLLM(BaseLLM):
         ledger.record_llm_call(
             input_tokens=record.input_tokens,
             output_tokens=record.output_tokens,
+            usage_complete=record.usage_complete and not record.estimated,
             cost_usd=compute_cost_usd(
                 price,
                 input_tokens=record.input_tokens,
                 output_tokens=record.output_tokens,
                 cached_input_tokens=record.cached_input_tokens,
+                cache_write_input_tokens=record.cache_write_input_tokens,
             ),
         )
+
+    def _request_estimate(
+        self, record: Optional[LLMCallRecord], messages: List[Dict[str, Any]],
+        kwargs: Dict[str, Any], tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
+        if record is None:
+            return
+        request_kwargs = dict(kwargs)
+        if tools is not None:
+            request_kwargs["tools"] = tools
+        payload = self._client._get_request_payload(_to_langchain_messages(messages), **request_kwargs)
+        record.request_input_tokens_estimate, record.tool_schema_tokens_estimate = estimate_request_tokens(
+            payload, self.model_name
+        )
+
+    @staticmethod
+    def _retryable(error: BaseException) -> bool:
+        from openai import APIConnectionError, APIStatusError
+
+        return isinstance(error, APIConnectionError) or (
+            isinstance(error, APIStatusError) and (
+                error.status_code in {408, 409, 429} or error.status_code >= 500
+            )
+        )
+
+    async def _invoke_message(
+        self, messages: List[Dict[str, Any]], kwargs: Dict[str, Any], *,
+        method: str, output_limit: int, tools: Optional[List[Dict[str, Any]]] = None,
+    ) -> Any:
+        logical_id = generate_call_id()
+        for attempt in range(self._max_retries + 1):
+            self._guard_budget(f"model.{method}", messages, output_tokens=output_limit)
+            record = self._start_record(method, stream=False)
+            if record is not None:
+                record.logical_call_id, record.attempt_number = logical_id, attempt + 1
+            self._request_estimate(record, messages, kwargs, tools)
+            started = time.perf_counter()
+            bound = self._client.bind_tools(tools) if tools is not None else self._client
+            try:
+                response = await self._in_channel(
+                    bound.ainvoke(_to_langchain_messages(messages), **kwargs),
+                    operation=f"model.{method}",
+                )
+            except BaseException as exc:
+                self._emit(record, started, status="cancelled" if isinstance(exc, asyncio.CancelledError) else "error", error=exc)
+                if attempt < self._max_retries and self._retryable(exc):
+                    await await_model_operation(asyncio.sleep(min(0.5 * 2 ** attempt, 8)),
+                                                operation=f"model.{method}.retry_wait")
+                    continue
+                raise
+            self._emit(record, started, message=response, output_text=estimate_output_text(response))
+            return response
+        raise AssertionError("unreachable")
 
     async def ainvoke(self, messages: List[Dict[str, Any]], **kwargs: Any) -> str:
         kwargs, output_limit = self._apply_output_token_limit(kwargs)
@@ -642,26 +727,10 @@ class OpenAICompatibleLLM(BaseLLM):
         messages = _satisfy_json_object_prompt_requirement(
             messages, kwargs, dropped_schema=dropped_schema
         )
-        self._guard_budget("model.ainvoke", messages, output_tokens=output_limit)
-        record = self._start_record("ainvoke", stream=False)
-        started = time.perf_counter()
-        try:
-            response = await self._in_channel(
-                self._client.ainvoke(_to_langchain_messages(messages), **kwargs),
-                operation="model.ainvoke",
-            )
-        except BaseException as exc:  # noqa: BLE001 - 记录后原样抛出
-            self._emit(record, started, status="error", error=exc, input_text=_messages_text(messages))
-            raise
-        text = _coerce_text(response.content).strip()
-        self._emit(
-            record,
-            started,
-            message=response,
-            input_text=_messages_text(messages),
-            output_text=text,
+        response = await self._invoke_message(
+            messages, kwargs, method="ainvoke", output_limit=output_limit,
         )
-        return text
+        return _coerce_text(response.content).strip()
 
     async def ainvoke_with_tools(
         self,
@@ -675,105 +744,86 @@ class OpenAICompatibleLLM(BaseLLM):
         messages = _satisfy_json_object_prompt_requirement(
             messages, kwargs, dropped_schema=dropped_schema
         )
-        self._guard_budget(
-            "model.ainvoke_with_tools", messages, output_tokens=output_limit
+        response = await self._invoke_message(
+            messages, kwargs, method="ainvoke_with_tools", output_limit=output_limit, tools=tools,
         )
-        record = self._start_record("ainvoke_with_tools", stream=False)
-        started = time.perf_counter()
-        bound = self._client.bind_tools(tools)
-        try:
-            response = await self._in_channel(
-                bound.ainvoke(_to_langchain_messages(messages), **kwargs),
-                operation="model.ainvoke_with_tools",
-            )
-        except BaseException as exc:  # noqa: BLE001
-            self._emit(record, started, status="error", error=exc, input_text=_messages_text(messages))
-            raise
         result = {
             "content": _coerce_text(response.content).strip(),
             "tool_calls": _normalize_tool_calls(getattr(response, "tool_calls", [])),
+            "assistant_replay": reasoning_replay(response.additional_kwargs),
         }
-        self._emit(
-            record,
-            started,
-            message=response,
-            input_text=_messages_text(messages),
-            output_text=result["content"],
-        )
         return result
 
     async def astream(
-        self,
-        messages: List[Dict[str, Any]],
-        **kwargs: Any,
+        self, messages: List[Dict[str, Any]], **kwargs: Any,
     ) -> AsyncIterator[str]:
         kwargs, output_limit = self._apply_output_token_limit(kwargs)
         dropped_schema = _downgraded_json_schema(kwargs, capabilities=self.capabilities)
         kwargs = _normalize_response_format(kwargs, capabilities=self.capabilities)
-        messages = _satisfy_json_object_prompt_requirement(
-            messages, kwargs, dropped_schema=dropped_schema
-        )
-        self._guard_budget("model.astream", messages, output_tokens=output_limit)
-        record = self._start_record("astream", stream=True)
-        started = time.perf_counter()
-        full: Any = None
-        ttft_ms: Optional[float] = None
-        collected: List[str] = []
-        status = "ok"
-        error: Optional[BaseException] = None
-        try:
-            remaining = remaining_model_seconds("model.astream")
-            gate = self._channel()
-            queue_wait = remaining if remaining is not None else self._queue_wait_seconds()
+        messages = _satisfy_json_object_prompt_requirement(messages, kwargs, dropped_schema=dropped_schema)
+        logical_id = generate_call_id()
+        for attempt in range(self._max_retries + 1):
+            self._guard_budget("model.astream", messages, output_tokens=output_limit)
+            record = self._start_record("astream", stream=True)
+            if record is not None:
+                record.logical_call_id, record.attempt_number = logical_id, attempt + 1
+            self._request_estimate(record, messages, kwargs)
+            started = time.perf_counter()
+            full: Any = None
+            last_usage = None
+            ttft_ms = None
+            collected: List[str] = []
+            status, error, retry = "ok", None, False
 
             async def consume_stream() -> AsyncIterator[str]:
-                nonlocal full, ttft_ms
-                # 通道位置要占满整条流：一条在读的流一直占着上游的一条连接。
-                async with gate.hold(wait_seconds=queue_wait):
-                    async for chunk in self._client.astream(
-                        _to_langchain_messages(messages), **kwargs
-                    ):
-                        # 逐 chunk 累加（add_usage 语义正确：全零/无 usage 的中间 chunk 相加不污染）
+                nonlocal full, last_usage, ttft_ms
+                remaining = remaining_model_seconds("model.astream")
+                queue_wait = remaining if remaining is not None else self._queue_wait_seconds()
+                async with self._channel().hold(wait_seconds=queue_wait):
+                    async for chunk in self._client.astream(_to_langchain_messages(messages), **kwargs):
+                        sample = extract_usage(chunk)
+                        if sample is not None:
+                            # API usage samples are cumulative snapshots. Summing
+                            # repeated snapshots double-charges the same output.
+                            last_usage = sample
                         full = chunk if full is None else full + chunk
                         text = _coerce_text(getattr(chunk, "content", ""))
                         if text:
-                            if ttft_ms is None:  # TTFT = 首个非空 delta 的时刻
-                                ttft_ms = (time.perf_counter() - started) * 1000.0
+                            if ttft_ms is None:
+                                ttft_ms = (time.perf_counter() - started) * 1000
                             collected.append(text)
                             yield text
 
-            if remaining is None:
-                async for text in consume_stream():
-                    yield text
-            else:
-                try:
-                    async with asyncio.timeout(remaining):
-                        async for text in consume_stream():
-                            yield text
-                except asyncio.TimeoutError as exc:
-                    _deadline, observation = observe_current_run_deadline()
-                    if observation is None:  # pragma: no cover - defensive context reset
-                        raise
-                    raise ModelWindowClosed(
-                        "model.astream", observation, current_model_window.get()
-                    ) from exc
-        except GeneratorExit:
-            # 消费方提前停止读取：干净早停，usage 多半缺失 → 走估算，不记为 error
-            raise
-        except BaseException as exc:  # noqa: BLE001 - 供应商报错 / 流被取消
-            status, error = "error", exc
-            raise
-        finally:
-            self._emit(
-                record,
-                started,
-                status=status,
-                error=error,
-                message=full,
-                input_text=_messages_text(messages),
-                output_text="".join(collected),
-                ttft_ms=ttft_ms,
-            )
+            try:
+                remaining = remaining_model_seconds("model.astream")
+                if remaining is None:
+                    async for text in consume_stream():
+                        yield text
+                else:
+                    try:
+                        async with asyncio.timeout(remaining):
+                            async for text in consume_stream():
+                                yield text
+                    except asyncio.TimeoutError as exc:
+                        _deadline, observation = observe_current_run_deadline()
+                        if observation is None:
+                            raise
+                        raise ModelWindowClosed("model.astream", observation, current_model_window.get()) from exc
+            except (GeneratorExit, asyncio.CancelledError) as exc:
+                status, error = "cancelled", exc
+                raise
+            except BaseException as exc:
+                status, error = "error", exc
+                retry = attempt < self._max_retries and not collected and self._retryable(exc)
+                if not retry:
+                    raise
+            finally:
+                self._emit(record, started, status=status, error=error, message=full,
+                           reported_usage=last_usage, output_text="".join(collected), ttft_ms=ttft_ms)
+            if not retry:
+                return
+            await await_model_operation(asyncio.sleep(min(0.5 * 2 ** attempt, 8)),
+                                        operation="model.astream.retry_wait")
 
     async def astream_with_tools(
         self,
@@ -791,6 +841,7 @@ class OpenAICompatibleLLM(BaseLLM):
             "type": "finish",
             "content": content,
             "tool_calls": result.get("tool_calls", []),
+            "assistant_replay": result.get("assistant_replay", {}),
         }
 
 
@@ -843,6 +894,7 @@ class ModelRouter:
             timeout=int(getattr(config, "timeout", 60)),
             max_retries=max_retries,
             tier=tier,
+            reasoning_effort=config.reasoning_effort,
             usage_recorder=get_usage_recorder(),
         )
 

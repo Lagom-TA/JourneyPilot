@@ -18,18 +18,19 @@ wall time、TTFT、model、tier 以及 run/node/agent 归因收敛成一条 ``LL
   dict 补读（04 号 §4）。
 - **全零 usage 对象**（个别供应商的中间 chunk 回 0 而非 null）不视作真实计数：
   input/output/total 全为 0/None 时判为「缺失」，走 estimated 降级。
-- **usage 缺失**（流被中断收不到终结 chunk、供应商不回）→ 字符数/4 粗估并显著标记
-  ``estimated=True``，**绝不编造精确数字**。
+- **usage 缺失**：成功响应使用共享离线估算并标记 ``estimated=True``；错误或取消时
+  用量保持未知。估算不能替代实际账单。
 """
 
 from __future__ import annotations
 
 import collections
-import math
 import threading
 import uuid
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Tuple
+
+from .token_counting import estimate_tokens as estimate_tokens
 
 
 # 缓冲上限：08 落库方尚未接线时（或落库暂时落后）避免无界增长；超限丢最旧并计数。
@@ -99,8 +100,16 @@ class LLMCallRecord:
     output_tokens: Optional[int] = None
     total_tokens: Optional[int] = None
     cached_input_tokens: Optional[int] = None
+    cache_write_input_tokens: Optional[int] = None
     reasoning_output_tokens: Optional[int] = None
     estimated: bool = False
+    usage_complete: bool = True
+    usage_source: str = "reported"
+    logical_call_id: Optional[str] = None
+    attempt_number: int = 1
+    request_input_tokens_estimate: Optional[int] = None
+    tool_schema_tokens_estimate: Optional[int] = None
+    finish_reason: Optional[str] = None
     end_ts: Optional[str] = None
     latency_ms: Optional[float] = None
     ttft_ms: Optional[float] = None  # 仅流式方法有意义
@@ -192,30 +201,30 @@ def get_usage_recorder() -> UsageRecorder:
 # --------------------------------------------------------------------------- #
 
 def _as_int(value: Any) -> Optional[int]:
+    """Accept nonnegative integer counts only; malformed telemetry is missing."""
     if value is None or isinstance(value, bool):
-        return None if value is None else int(value)
+        return None
     try:
-        return int(value)
-    except (TypeError, ValueError):
+        parsed = int(value)
+        return parsed if parsed >= 0 and float(value) == parsed else None
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
 def _getter(obj: Any):
-    """统一 dict / TypedDict / 对象 的取值方式。"""
     if isinstance(obj, dict):
         return obj.get
     return lambda key, default=None: getattr(obj, key, default)
 
 
-def _deepseek_cache_read(message: Any) -> Optional[int]:
-    """从原始 token_usage 补读 DeepSeek 顶层 prompt_cache_hit_tokens（标准映射会丢）。"""
-    meta = getattr(message, "response_metadata", None) or {}
-    if not isinstance(meta, dict):
-        return None
-    token_usage = meta.get("token_usage") or meta.get("usage") or {}
-    if not isinstance(token_usage, dict):
-        return None
-    return _as_int(token_usage.get("prompt_cache_hit_tokens"))
+def _first_count(*values: Any) -> Optional[int]:
+    return next((count for value in values if (count := _as_int(value)) is not None), None)
+
+
+def _raw_usage(message: Any) -> dict[str, Any]:
+    meta = _getter(message)("response_metadata") or {}
+    usage = _getter(meta)("token_usage") or _getter(meta)("usage") or {}
+    return usage if isinstance(usage, dict) else {}
 
 
 def response_finish_reason(message: Any) -> Optional[str]:
@@ -225,7 +234,7 @@ def response_finish_reason(message: Any) -> Optional[str]:
     finish_reason 是唯一能把「模型没写对」和「输出被截断」分开的证据。流式路径读的是
     累加后 chunk 的 ``response_metadata``（终结 chunk 带 finish_reason）。
     """
-    meta = getattr(message, "response_metadata", None) or {}
+    meta = _getter(message)("response_metadata") or {}
     if not isinstance(meta, dict):
         return None
     reason = meta.get("finish_reason") or meta.get("stop_reason")
@@ -233,7 +242,7 @@ def response_finish_reason(message: Any) -> Optional[str]:
 
 
 def response_model_name(message: Any) -> Optional[str]:
-    meta = getattr(message, "response_metadata", None) or {}
+    meta = _getter(message)("response_metadata") or {}
     if isinstance(meta, dict):
         name = meta.get("model_name") or meta.get("model")
         if name:
@@ -247,45 +256,97 @@ def _is_empty_usage(input_tokens: Optional[int], output_tokens: Optional[int], t
 
 
 def extract_usage(message: Any) -> Optional[Dict[str, Optional[int]]]:
-    """从 AIMessage / AIMessageChunk 归一化 token 字段；缺失/全零返回 None（交由估算降级）。"""
+    """Normalize inclusive input/output totals from standard AND raw usage.
+
+    Read/write are disjoint subsets of input. Reasoning is a subset of output,
+    never an additional completion charge. Anthropic-shaped raw input excludes
+    cache buckets; convert it once when standardized totals are unavailable.
+    """
     if message is None:
         return None
-
-    input_tokens = output_tokens = total_tokens = None
-    cached = reasoning = None
-
-    usage_meta = getattr(message, "usage_metadata", None)
-    if usage_meta:
-        get = _getter(usage_meta)
+    standard = _getter(message)("usage_metadata") or {}
+    get = _getter(standard)
+    raw = _raw_usage(message)
+    in_details = get("input_token_details") or {}
+    out_details = get("output_token_details") or {}
+    raw_in = raw.get("prompt_tokens_details") or raw.get("input_tokens_details") or {}
+    raw_out = raw.get("completion_tokens_details") or raw.get("output_tokens_details") or {}
+    cached = _first_count(raw.get("prompt_cache_hit_tokens"),
+                          _getter(raw_in)("cached_tokens"), raw.get("cache_read_input_tokens"),
+                          _getter(in_details)("cache_read"))
+    written = _first_count(_getter(raw_in)("cache_write_tokens"), _getter(raw_in)("cache_creation_tokens"),
+                           raw.get("cache_creation_input_tokens"), raw.get("cache_write_tokens"),
+                           _getter(in_details)("cache_creation"), _getter(in_details)("cache_write"))
+    reasoning = _first_count(_getter(raw_out)("reasoning_tokens"), _getter(out_details)("reasoning"))
+    input_tokens = _as_int(raw.get("prompt_tokens"))
+    if input_tokens is None:
+        input_tokens = _as_int(raw.get("input_tokens"))
+        if input_tokens is not None and any(key in raw for key in (
+            "cache_read_input_tokens", "cache_creation_input_tokens"
+        )):
+            input_tokens += (cached or 0) + (written or 0)
+    if input_tokens is None:
         input_tokens = _as_int(get("input_tokens"))
-        output_tokens = _as_int(get("output_tokens"))
-        total_tokens = _as_int(get("total_tokens"))
-        input_details = get("input_token_details") or {}
-        output_details = get("output_token_details") or {}
-        cached = _as_int(_getter(input_details)("cache_read"))
-        reasoning = _as_int(_getter(output_details)("reasoning"))
-
-    # DeepSeek 顶层字段补读（LangChain usage_metadata 只映射 OpenAI 形状）
-    if cached is None:
-        cached = _deepseek_cache_read(message)
-
-    if _is_empty_usage(input_tokens, output_tokens, total_tokens):
+    output_tokens = _first_count(raw.get("completion_tokens"), raw.get("output_tokens"), get("output_tokens"))
+    reported_total = _first_count(raw.get("total_tokens"), get("total_tokens"))
+    if reported_total == 0 and "total_tokens" not in raw and ((input_tokens or 0) + (output_tokens or 0)) > 0:
+        reported_total = None  # Empty standard total is another adapter placeholder.
+    # Standard adapters may insert zero for an absent side. A positive raw
+    # total establishes that this placeholder is missing, rather than free.
+    if reported_total is not None:
+        if (not any(key in raw for key in ("prompt_tokens", "input_tokens"))
+                and input_tokens == 0 and output_tokens is not None
+                and reported_total > output_tokens):
+            input_tokens = None
+        if (not any(key in raw for key in ("completion_tokens", "output_tokens"))
+                and output_tokens == 0 and input_tokens is not None
+                and reported_total > input_tokens):
+            output_tokens = None
+    if _is_empty_usage(input_tokens, output_tokens, reported_total):
         return None
-
-    if total_tokens is None and input_tokens is not None and output_tokens is not None:
-        total_tokens = input_tokens + output_tokens
-
+    # Derive a missing side only when a genuine total and the other side exist.
+    if reported_total is not None:
+        if input_tokens is None and output_tokens is not None and reported_total >= output_tokens:
+            input_tokens = reported_total - output_tokens
+        if output_tokens is None and input_tokens is not None and reported_total >= input_tokens:
+            output_tokens = reported_total - input_tokens
+    total = input_tokens + output_tokens if input_tokens is not None and output_tokens is not None else reported_total
     return {
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
-        "total_tokens": total_tokens,
+        "total_tokens": total,
         "cached_input_tokens": cached,
+        "cache_write_input_tokens": written,
         "reasoning_output_tokens": reasoning,
+        "usage_complete": (input_tokens is not None and output_tokens is not None
+                           and (reported_total is None or reported_total == total)),
     }
 
 
-def estimate_tokens(text: str) -> int:
-    """无 tokenizer 时的字符数/4 粗估（显著标记 estimated，绝不当精确值）。"""
-    if not text:
-        return 0
-    return max(1, math.ceil(len(text) / 4))
+def error_usage_message(error: BaseException) -> Any:
+    """Expose only returned usage, without retaining an error body or prompt."""
+    completion = getattr(error, "completion", None)
+    if completion is not None:
+        usage = getattr(completion, "usage", None)
+        if usage is not None:
+            choices = getattr(completion, "choices", None) or []
+            return {"response_metadata": {
+                "token_usage": usage.model_dump(),
+                "finish_reason": getattr(choices[0], "finish_reason", None) if choices else None,
+                "model_name": getattr(completion, "model", None),
+            }}
+    body = getattr(error, "body", None)
+    if not isinstance(body, dict):
+        body = {}
+    usage = body.get("usage") or _getter(body.get("error") or {})("usage")
+    if not isinstance(usage, dict):
+        response = getattr(error, "response", None)
+        if response is not None:
+            try:
+                raw = response.json()
+                usage = raw.get("usage") or _getter(raw.get("error") or {})("usage")
+            except (ValueError, TypeError, AttributeError):
+                pass
+    if not isinstance(usage, dict):
+        return None
+    return {"response_metadata": {"token_usage": usage}}

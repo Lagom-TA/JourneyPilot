@@ -48,6 +48,7 @@ def budget_config():
 
 def _snapshot(**overrides) -> RunBudgetSnapshot:
     payload = dict(
+        enforce_limits=True,
         max_llm_calls=10,
         max_tool_calls=10,
         max_input_tokens=10_000,

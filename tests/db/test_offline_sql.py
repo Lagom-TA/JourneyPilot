@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import contextlib
+import re
 
 from travel_agent.db import migrate
 from travel_agent.db.connection import DatabaseTarget
@@ -42,7 +43,7 @@ def test_offline_sql_creates_every_managed_table():
 
     sql = _offline_sql()
     for table in MANAGED_TABLES:
-        assert f"CREATE TABLE IF NOT EXISTS {table}" in sql, f"离线 SQL 没有建 {table}"
+        assert re.search(rf"CREATE TABLE (?:IF NOT EXISTS )?{re.escape(table)}\b", sql), f"离线 SQL 没有建 {table}"
 
 
 def test_offline_sql_states_its_text_search_assumption():

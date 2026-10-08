@@ -56,6 +56,7 @@ export const ON_SCREEN_LEDGER_FIELDS = [
   'total_input_tokens',
   'total_output_tokens',
   'total_cached_input_tokens',
+  'total_cache_write_input_tokens',
   'total_reasoning_output_tokens',
   'total_cost_usd',
   'estimated_ratio',
@@ -82,6 +83,17 @@ export const UNIT_LEDGER_FIELDS: Record<string, string> = {
  * 一个字段不许两张表都不在，也不许两张表都在。
  */
 export const OFF_SCREEN_LEDGER_FIELDS: Record<string, string> = {
+  total_request_input_tokens_estimate: '请求大小估算用于内部诊断；账单用量由模型 usage 决定。',
+  total_tool_schema_tokens_estimate: '逐次请求的工具 schema 估算用于优化分析，不代表已计费 Token。',
+  logical_call_count: '内部用于将重试归入同一次逻辑调用；模型调用数包含每次实际尝试。',
+  token_usage_complete: '计量是否完整由缺失用量提示表达。',
+  cost_complete: '成本是否完整由部分成本提示表达。',
+  partial_usage_call_count: '用于诊断部分用量，与计量完整性提示共用。',
+  missing_usage_call_count: '用于诊断缺失用量，与计量完整性提示共用。',
+  cache_read_usage_complete: '缓存细分缺失由计量提示表达。',
+  cache_write_usage_complete: '缓存细分缺失由计量提示表达。',
+  reasoning_usage_complete: '推理细分缺失由计量提示表达。',
+  cache_hit_ratio: '内部按 Token 加权的缓存命中率用于下一轮优化分析。',
   run_id:
     '内部键。2026-07-24 的用户裁决（用户前台信息边界 §5）明写「run_id 不得出现在用户文本、' +
     '卡片、弹窗、错误、历史条目或用户可见 SSE 模型中」—— 这一条不在「把成本台账接回来」的' +
@@ -206,9 +218,9 @@ function breakdownKey(row: CostGroupBreakdown, index: number): string {
  * 一个后端没算过的比率，用户读到的是一个没人负责的数。
  */
 function barShares(rows: CostGroupBreakdown[]): number[] {
-  const max = rows.reduce((peak, row) => Math.max(peak, row.total_tokens), 0);
+  const max = rows.reduce((peak, row) => Math.max(peak, row.total_tokens ?? 0), 0);
   if (max <= 0) return rows.map(() => 0);
-  return rows.map((row) => row.total_tokens / max);
+  return rows.map((row) => (row.total_tokens ?? 0) / max);
 }
 
 function savingModeLabel(mode: ToolContextSaving['mode']): string {
@@ -281,6 +293,11 @@ function projectSettled(summary: RunCostSummary): CostLedgerView {
       display: `${formatTokens(summary.total_cached_input_tokens)} tok`,
     },
     {
+      field: 'total_cache_write_input_tokens',
+      label: '缓存写入',
+      display: `${formatTokens(summary.total_cache_write_input_tokens)} tok`,
+    },
+    {
       field: 'total_reasoning_output_tokens',
       label: '推理输出',
       display: `${formatTokens(summary.total_reasoning_output_tokens)} tok`,
@@ -347,8 +364,17 @@ function projectSettled(summary: RunCostSummary): CostLedgerView {
     notices.push({
       field: 'currency',
       tone: 'warning',
-      text: '本轮未匹配到价目表，这里只报 token 用量。',
+      text: '用量或计价信息不足，暂时无法计算本轮成本。',
     });
+  }
+  if (summary.token_usage_complete === false || summary.cost_complete === false) {
+    notices.push({field: 'token_usage_complete', tone: 'warning',
+      text: '部分调用缺少完整计量，当前显示已知用量和成本。'});
+  }
+  if (summary.cache_read_usage_complete === false || summary.cache_write_usage_complete === false
+      || summary.reasoning_usage_complete === false) {
+    notices.push({field: 'cache_write_usage_complete', tone: 'warning',
+      text: '部分缓存或推理细分未返回，缺失值以占位符表示，累计值仅覆盖已知部分。'});
   }
 
   return {
@@ -378,8 +404,8 @@ function projectLive(live: RunCostLive): CostLedgerView {
     {
       field: 'total_tokens',
       label: 'Token',
-      value: live.totalTokens,
-      display: formatTokensCompact(live.totalTokens),
+      value: live.hasTotalUsage === false ? null : live.totalTokens,
+      display: formatTokensCompact(live.hasTotalUsage === false ? null : live.totalTokens),
       estimated,
       accent: false,
     },
@@ -398,12 +424,12 @@ function projectLive(live: RunCostLive): CostLedgerView {
     {
       field: 'total_input_tokens',
       label: '输入',
-      display: `${formatTokens(live.totalInputTokens)} tok`,
+      display: `${formatTokens(live.hasInputUsage === false ? null : live.totalInputTokens)} tok`,
     },
     {
       field: 'total_output_tokens',
       label: '输出',
-      display: `${formatTokens(live.totalOutputTokens)} tok`,
+      display: `${formatTokens(live.hasOutputUsage === false ? null : live.totalOutputTokens)} tok`,
     },
     {
       field: 'estimated_call_count',
@@ -423,8 +449,12 @@ function projectLive(live: RunCostLive): CostLedgerView {
     notices.push({
       field: 'currency',
       tone: 'warning',
-      text: '尚未匹配到价目表，暂时只累计 token。',
+      text: '用量或计价信息不足，暂时只累计已知用量。',
     });
+  }
+  if (live.incompleteCount) {
+    notices.push({field: 'token_usage_complete', tone: 'warning',
+      text: '部分调用缺少完整计量，当前显示已知用量和成本。'});
   }
 
   const activeInternal = live.lastAgent ?? live.lastNode;

@@ -63,6 +63,7 @@ def build_run_budget_snapshot(
     config = get_settings().run_budget
     return RunBudgetSnapshot(
         policy_version=policy_version,
+        enforce_limits=config.enforce_limits,
         max_llm_calls=config.max_llm_calls,
         max_tool_calls=config.max_tool_calls,
         max_input_tokens=config.max_input_tokens,
@@ -126,13 +127,14 @@ class RunBudgetLedger:
         input_tokens: Optional[int],
         output_tokens: Optional[int],
         cost_usd: Optional[float],
+        usage_complete: bool = True,
     ) -> None:
         self.llm_calls += 1
         self.input_tokens += max(0, int(input_tokens or 0))
         self.output_tokens += max(0, int(output_tokens or 0))
-        if cost_usd is None:
+        if cost_usd is None or not usage_complete:
             self.unpriced_calls += 1
-        else:
+        if cost_usd is not None:
             self.cost_usd += float(cost_usd)
 
     def record_tool_call(self, tool_name: str) -> None:
@@ -164,7 +166,9 @@ class RunBudgetLedger:
     def tool_retries_exhausted(self, tool_name: str) -> bool:
         """这个工具在这个 Run 上是否已经用完了它的重试轮数。"""
 
-        return self.tool_retries.get(tool_name, 0) >= self.snapshot.max_tool_retries_per_target
+        limit = self.snapshot.max_tool_retries_per_target
+        return (self.snapshot.enforce_limits and limit is not None
+                and self.tool_retries.get(tool_name, 0) >= limit)
 
     def report(self) -> Dict[str, Any]:
         """给 SSE / REST / doctor 的那一份读数。"""
@@ -172,6 +176,7 @@ class RunBudgetLedger:
         usage = self.usage()
         return {
             "policy_version": self.snapshot.policy_version,
+            "enforce_limits": self.snapshot.enforce_limits,
             "limits": self.snapshot.model_dump(mode="json"),
             "usage": usage.model_dump(mode="json"),
             "remaining": remaining_budget(self.snapshot, usage),
@@ -241,6 +246,8 @@ async def seed_run_budget(
     ledger.output_tokens = int(totals.get("total_output_tokens") or 0)
     ledger.cost_usd = float(totals.get("total_cost_usd") or 0.0)
     ledger.unpriced_calls = max(0, int(totals.get("unpriced_call_count") or 0))
+    if totals.get("cost_complete") is False:
+        ledger.unpriced_calls = max(1, ledger.unpriced_calls)
     if ledger.llm_calls:
         logger.info(
             "预算基线已载入 | run=%s calls=%d in=%d out=%d cost=%.6f",

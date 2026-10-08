@@ -35,6 +35,7 @@ from .infrastructure.run_execution_store import (
 )
 from .infrastructure.trip_run_store import TripRunStore, get_trip_run_store
 from .infrastructure.tool_audit_store import ToolAuditStore, get_tool_audit_store
+from .infrastructure.worker_journal_store import WorkerJournalStore
 from .infrastructure.weather_provider import default_weather_providers
 from .memory.chat_session import ChatSessionMemory
 from .memory.memory_extractor import MemoryExtractor
@@ -134,6 +135,7 @@ class AppComponents:
 
     # TripOps production tool gateway audit state
     tool_audit_store: ToolAuditStore = field(default_factory=get_tool_audit_store)
+    worker_journal_store: WorkerJournalStore = field(default_factory=WorkerJournalStore)
 
     # Memory lifecycle / physical forgetting audit state
     memory_lifecycle_store: MemoryLifecycleStore = field(

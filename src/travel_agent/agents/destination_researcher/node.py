@@ -23,6 +23,9 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
 from ...entities.state import TravelAgentState
+from ...memory.research_context import format_worker_research_context
+from ...workflows.run_control import RunCancelled
+from ...infrastructure.worker_journal_store import JournalConflict
 from ...models.router import get_model_router
 from ...rag.retriever import HybridRetriever
 from ...rag.retrieval_pipeline import retrieve_for_query
@@ -60,8 +63,6 @@ from ..utils import (
     exclude_tools,
     filter_tools_for_agent,
     get_available_tools,
-    inject_agent_context,
-    prioritize_recommended_tools,
     resolve_agent_assignment,
     resolve_scoped_research_output_key,
     execute_tool,
@@ -92,7 +93,7 @@ from ...services.fallback_query_policy import (
     runtime_fallback_capacity,
 )
 from ...services.constraint_applicability import active_hard_constraints, active_hard_constraint_ids
-from ..research_packet_prompt import build_research_packet_system_prompt
+from ..research_packet_prompt import build_research_packet_prompt
 from ..worker_errors import format_worker_last_error
 from ...utils.brief_helpers import build_assignment_context
 from .prompts import (
@@ -1440,6 +1441,15 @@ async def destination_researcher_node(
         )
         rag_context_section, injected_rag_sources = _format_rag_context(retriever, rag_docs)
 
+    if state.planning_generation is None:
+        raise ValueError("destination research requires a planning generation")
+    generation_id = state.planning_generation.generation_id
+    upstream_packet_context = format_worker_research_context(
+        state.research_packets, worker_kind=_NODE_NAME, run_id=run_id,
+        generation_id=generation_id, planned_queries=planned_queries,
+        assignment=assignment, gaps=state.candidate_research_gaps,
+    )
+
     # ── 构建 messages ─────────────────────────────────────────────────────
     active_constraint_ids = active_hard_constraint_ids(
         state.constraint_pack,
@@ -1449,7 +1459,7 @@ async def destination_researcher_node(
         state.constraint_pack,
         worker_kind=_NODE_NAME,
     )
-    system_content = build_research_packet_system_prompt(
+    prompt = build_research_packet_prompt(
         worker_kind=_NODE_NAME,
         run_id=run_id,
         task_id=output_key,
@@ -1458,15 +1468,13 @@ async def destination_researcher_node(
         current_time=current_time,
         research_brief_context=research_brief_context,
         candidate_limit=packet_candidate_limit(_NODE_NAME),
+        upstream_packet_context=upstream_packet_context,
         active_constraint_ids=active_constraint_ids,
+        state=state,
+        recommended_tools=recommended_tools,
     )
-    system_content = inject_agent_context(system_content, state, agent_label=_NODE_NAME)
 
-    # 这一行只报 ``inject_agent_context`` **真的追加过**的那几段。画像摘要字段的 ``len()``
-    # 不是注入是否成功的证据：那个变量在本文件里唯一的用途就是被 ``len()`` 一次，
-    # 画像从来没有进过这个 prompt，而日志里那个正数每轮都在，看着像注入成功了。
-    # **一句量死变量的日志比没有日志更糟**：画像现在经 Constraint Pack 的
-    # 【参考级背景】一节进 prompt，所以这里报的是 pack 有没有内容。
+    # Profile background is rendered through Constraint Pack, not a separate prompt copy.
     logger.info(
         "DestinationResearcher 上下文注入: constraint_pack=%s, anchor=%s, preset=%s, knowledge=%s",
         bool(state.constraint_pack),
@@ -1475,11 +1483,12 @@ async def destination_researcher_node(
         "user+factory",
     )
 
-    messages: List[Dict[str, Any]] = [{"role": "system", "content": system_content}]
-    append_recent_history(messages, state)
+    history: List[Dict[str, Any]] = []
+    append_recent_history(history, state)
+    messages = prompt.messages(history)
     destination_boundaries = build_destination_boundaries(state.controlled_trip_identity)
     # 任务提示词要逐字列出预检核验通过的餐饮 place_id，所以它在预检跑完之后才拼装
-    # （见下面 try 块）；最终消息顺序保持 system -> history -> user 任务 -> 预检信封。
+    # （见下面 try 块）；顺序为 system -> history -> runtime -> user 任务 -> 预检信封。
 
     # ── 工具准备（白名单过滤）──────────────────────────────────────────────
     # Candidate Gate owns scoped repair tool selection.  The initial Planner's
@@ -1498,14 +1507,9 @@ async def destination_researcher_node(
         recommended_tools,
         scoped_retry=require_current_candidate,
     )
-    available_tools = prioritize_recommended_tools(available_tools, recommended_tools)
 
-    tool_schemas = [t["schema"] for t in available_tools if "schema" in t]
     tool_cache = dict(state.tool_cache) if state.tool_cache else {}
     tool_context = build_tool_context_from_state(state)
-    if state.planning_generation is None:
-        raise ValueError("destination research requires a planning generation")
-    generation_id = state.planning_generation.generation_id
     executed_query_ids = list(rag_executed_query_ids)
     executed_queries = [
         query.model_dump(mode="json")
@@ -1607,7 +1611,6 @@ async def destination_researcher_node(
             ) = await streaming_react_loop(
                 llm=llm,
                 messages=messages,
-                tool_schemas=tool_schemas,
                 available_tools=available_tools,
                 stream_queue=stream_queue,
                 node_name=_NODE_NAME,
@@ -1695,6 +1698,8 @@ async def destination_researcher_node(
         }
         return result
 
+    except (RunCancelled, JournalConflict):
+        raise
     except Exception as e:
         if finalize_started_at is not None:
             logger.info(

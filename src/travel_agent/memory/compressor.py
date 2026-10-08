@@ -23,9 +23,6 @@ from ..utils.json_helpers import safe_parse_json
 
 logger = logging.getLogger(__name__)
 
-# 字符/token 估算比率（中文约 2.5 字符 ≈ 1 token）
-_CHARS_PER_TOKEN_ESTIMATE = 2.5
-
 # 压缩提示词（核心）
 _COMPRESS_SYSTEM_PROMPT = """\
 你是一个对话摘要专家，专门为旅行规划助手场景压缩对话历史。
@@ -103,7 +100,7 @@ class AnchorSummary:
     def estimate_tokens(self) -> int:
         """粗估 Anchor 的 token 数量（用于预算计算）。"""
         text = self.format_for_prompt()
-        return max(1, int(len(text) / _CHARS_PER_TOKEN_ESTIMATE))
+        return _count_tokens(text)
 
 
 def build_context_compaction_event(
@@ -139,13 +136,10 @@ def build_context_compaction_event(
 
 
 def _count_tokens(text: str, model: str = "gpt-4o") -> int:
-    """精确计算 token 数，失败时降级为字符估算。"""
-    try:
-        import tiktoken
-        enc = tiktoken.encoding_for_model(model)
-        return len(enc.encode(text))
-    except Exception:
-        return max(1, int(len(text) / _CHARS_PER_TOKEN_ESTIMATE))
+    """Shared offline estimate; authoritative billing comes from API usage."""
+    from ..models.token_counting import estimate_tokens
+
+    return estimate_tokens(text, model)
 
 
 def _format_messages_for_compression(

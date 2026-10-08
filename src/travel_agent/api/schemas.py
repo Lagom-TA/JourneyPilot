@@ -535,6 +535,15 @@ class LLMCallCostResponse(BaseModel):
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
     cached_input_tokens: Optional[int] = None
+    cache_write_input_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    usage_complete: bool = False
+    usage_source: str = "legacy"
+    logical_call_id: Optional[str] = None
+    attempt_number: int = 1
+    request_input_tokens_estimate: Optional[int] = None
+    tool_schema_tokens_estimate: Optional[int] = None
+    finish_reason: Optional[str] = None
     reasoning_output_tokens: Optional[int] = None
     cost_usd: Optional[float] = None
     estimated: bool = False
@@ -555,11 +564,23 @@ class RunCostSummaryResponse(BaseModel):
     error_call_count: int = 0
     estimated_ratio: float = 0.0
     cost_coverage_ratio: float = 0.0
-    total_input_tokens: int = 0
-    total_output_tokens: int = 0
-    total_cached_input_tokens: int = 0
-    total_reasoning_output_tokens: int = 0
-    total_tokens: int = 0
+    total_input_tokens: Optional[int] = 0
+    total_output_tokens: Optional[int] = 0
+    total_cached_input_tokens: Optional[int] = 0
+    total_cache_write_input_tokens: Optional[int] = 0
+    total_request_input_tokens_estimate: Optional[int] = 0
+    total_tool_schema_tokens_estimate: Optional[int] = 0
+    token_usage_complete: bool = False
+    cache_read_usage_complete: bool = False
+    cache_write_usage_complete: bool = False
+    reasoning_usage_complete: bool = False
+    cache_hit_ratio: Optional[float] = None
+    cost_complete: bool = False
+    partial_usage_call_count: int = 0
+    missing_usage_call_count: int = 0
+    logical_call_count: int = 0
+    total_reasoning_output_tokens: Optional[int] = 0
+    total_tokens: Optional[int] = 0
     total_cost_usd: Optional[float] = None
     currency: str = "USD"
     total_latency_ms: float = 0.0
@@ -598,7 +619,7 @@ class ModelConfigRequest(BaseModel):
     # default is written straight into settings and persisted, so a POST that
     # omits the field must not quietly lower a running deployment's ceiling — and
     # a second copy of the number is exactly how that happens.
-    max_tokens: int = MAX_COMPLETION_TOKENS
+    max_tokens: int = Field(default=MAX_COMPLETION_TOKENS, ge=1)
     temperature: float = 0.7
     tier: str = "primary"  # "primary" | "fast" | "vision"
 

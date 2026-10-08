@@ -15,14 +15,16 @@
 | `primary_model.api_key` | str | （空） | — | `JOURNEYPILOT_PRIMARY_MODEL__API_KEY` |
 | `primary_model.model_name` | str | `MiniMax-M2.7` | — | `JOURNEYPILOT_PRIMARY_MODEL__MODEL_NAME` |
 | `primary_model.base_url` | str | `https://api.minimaxi.com/v1` | — | `JOURNEYPILOT_PRIMARY_MODEL__BASE_URL` |
-| `primary_model.max_tokens` | int | `32768` | — | `JOURNEYPILOT_PRIMARY_MODEL__MAX_TOKENS` |
+| `primary_model.max_tokens` | int | `65536` | >= 1 | `JOURNEYPILOT_PRIMARY_MODEL__MAX_TOKENS` |
 | `primary_model.temperature` | float | `0.7` | — | `JOURNEYPILOT_PRIMARY_MODEL__TEMPERATURE` |
+| `primary_model.reasoning_effort` | low &#124; medium | `medium` | — | `JOURNEYPILOT_PRIMARY_MODEL__REASONING_EFFORT` |
 | `primary_model.timeout` | int | `120` | — | `JOURNEYPILOT_PRIMARY_MODEL__TIMEOUT` |
 | `fast_model.api_key` | str | （空） | — | `JOURNEYPILOT_FAST_MODEL__API_KEY` |
 | `fast_model.model_name` | str | `MiniMax-M2.7` | — | `JOURNEYPILOT_FAST_MODEL__MODEL_NAME` |
 | `fast_model.base_url` | str | `https://api.minimaxi.com/v1` | — | `JOURNEYPILOT_FAST_MODEL__BASE_URL` |
-| `fast_model.max_tokens` | int | `32768` | — | `JOURNEYPILOT_FAST_MODEL__MAX_TOKENS` |
+| `fast_model.max_tokens` | int | `65536` | >= 1 | `JOURNEYPILOT_FAST_MODEL__MAX_TOKENS` |
 | `fast_model.temperature` | float | `0.5` | — | `JOURNEYPILOT_FAST_MODEL__TEMPERATURE` |
+| `fast_model.reasoning_effort` | low &#124; medium | `low` | — | `JOURNEYPILOT_FAST_MODEL__REASONING_EFFORT` |
 | `fast_model.timeout` | int | `30` | — | `JOURNEYPILOT_FAST_MODEL__TIMEOUT` |
 | `embedding.provider` | str | `qwen3` | — | `JOURNEYPILOT_EMBEDDING__PROVIDER` |
 | `embedding.api_key` | str | （空） | — | `JOURNEYPILOT_EMBEDDING__API_KEY` |
@@ -79,12 +81,13 @@
 | `run_deadline.closeout_seconds` | int | `450` | > 0 | `JOURNEYPILOT_RUN_DEADLINE__CLOSEOUT_SECONDS` |
 | `run_deadline.composition_seconds` | int | `570` | > 0 | `JOURNEYPILOT_RUN_DEADLINE__COMPOSITION_SECONDS` |
 | `run_deadline.delivery_seconds` | int | `600` | > 0 | `JOURNEYPILOT_RUN_DEADLINE__DELIVERY_SECONDS` |
-| `run_budget.max_llm_calls` | int | `100` | >= 1 | `JOURNEYPILOT_RUN_BUDGET__MAX_LLM_CALLS` |
-| `run_budget.max_tool_calls` | int | `150` | >= 1 | `JOURNEYPILOT_RUN_BUDGET__MAX_TOOL_CALLS` |
-| `run_budget.max_input_tokens` | int | `1000000` | >= 1 | `JOURNEYPILOT_RUN_BUDGET__MAX_INPUT_TOKENS` |
-| `run_budget.max_output_tokens` | int | `100000` | >= 1 | `JOURNEYPILOT_RUN_BUDGET__MAX_OUTPUT_TOKENS` |
-| `run_budget.max_cost_usd` | float | `5.0` | > 0 | `JOURNEYPILOT_RUN_BUDGET__MAX_COST_USD` |
-| `run_budget.max_tool_retries_per_target` | int | `2` | >= 0 | `JOURNEYPILOT_RUN_BUDGET__MAX_TOOL_RETRIES_PER_TARGET` |
+| `run_budget.enforce_limits` | bool | `False` | — | `JOURNEYPILOT_RUN_BUDGET__ENFORCE_LIMITS` |
+| `run_budget.max_llm_calls` | int | null | >= 1 | `JOURNEYPILOT_RUN_BUDGET__MAX_LLM_CALLS` |
+| `run_budget.max_tool_calls` | int | null | >= 1 | `JOURNEYPILOT_RUN_BUDGET__MAX_TOOL_CALLS` |
+| `run_budget.max_input_tokens` | int | null | >= 1 | `JOURNEYPILOT_RUN_BUDGET__MAX_INPUT_TOKENS` |
+| `run_budget.max_output_tokens` | int | null | >= 1 | `JOURNEYPILOT_RUN_BUDGET__MAX_OUTPUT_TOKENS` |
+| `run_budget.max_cost_usd` | float | null | > 0 | `JOURNEYPILOT_RUN_BUDGET__MAX_COST_USD` |
+| `run_budget.max_tool_retries_per_target` | int | null | >= 0 | `JOURNEYPILOT_RUN_BUDGET__MAX_TOOL_RETRIES_PER_TARGET` |
 | `background_jobs.poll_seconds` | float | `5.0` | > 0 | `JOURNEYPILOT_BACKGROUND_JOBS__POLL_SECONDS` |
 | `background_jobs.lease_seconds` | int | `60` | > 0 | `JOURNEYPILOT_BACKGROUND_JOBS__LEASE_SECONDS` |
 | `background_jobs.batch_size` | int | `1` | >= 1 | `JOURNEYPILOT_BACKGROUND_JOBS__BATCH_SIZE` |

@@ -600,9 +600,11 @@ export function useSendMessage() {
                   agent: event.agent ?? null,
                   input_tokens: inputTokens,
                   output_tokens: outputTokens,
-                  total_tokens: event.total_tokens ?? (inputTokens ?? 0) + (outputTokens ?? 0),
+                  total_tokens: event.total_tokens ?? null,
                   cost_usd: event.cost_usd ?? null,
                   estimated: !!event.estimated,
+                  usage_complete: event.usage_complete,
+                  call_id: event.call_id,
                 };
                 pendingUsage.push(usage);
                 scheduleFrame();

@@ -36,15 +36,19 @@ class RunBudgetSnapshot(StrictModel):
     """Run 授权时封存的上限。跨进程的最终事实，随 checkpoint 一起走。"""
 
     policy_version: str = RUN_BUDGET_POLICY_VERSION
-    max_llm_calls: int = Field(ge=1)
-    max_tool_calls: int = Field(ge=1)
-    max_input_tokens: int = Field(ge=1)
-    max_output_tokens: int = Field(ge=1)
-    max_cost_usd: float = Field(gt=0)
-    max_tool_retries_per_target: int = Field(ge=0)
+    # Missing in old checkpoints means observation only, so resumed runs also
+    # stop inheriting the former implicit quotas.
+    enforce_limits: bool = False
+    max_llm_calls: Optional[int] = Field(default=None, ge=1)
+    max_tool_calls: Optional[int] = Field(default=None, ge=1)
+    max_input_tokens: Optional[int] = Field(default=None, ge=1)
+    max_output_tokens: Optional[int] = Field(default=None, ge=1)
+    max_cost_usd: Optional[float] = Field(default=None, gt=0)
+    max_tool_retries_per_target: Optional[int] = Field(default=None, ge=0)
 
-    def limit(self, dimension: BudgetDimension) -> float:
-        return float(getattr(self, f"max_{dimension}"))
+    def limit(self, dimension: BudgetDimension) -> Optional[float]:
+        value = getattr(self, f"max_{dimension}")
+        return None if value is None else float(value)
 
 
 class RunBudgetUsage(StrictModel):
@@ -68,11 +72,14 @@ class RunBudgetUsage(StrictModel):
 
 def remaining_budget(
     snapshot: RunBudgetSnapshot, usage: RunBudgetUsage
-) -> Dict[str, float]:
+) -> Dict[str, Optional[float]]:
     """每一维还剩多少。负数被夹到 0：已经超了就是没有了。"""
 
     return {
-        dimension: max(0.0, snapshot.limit(dimension) - usage.spent(dimension))
+        dimension: (
+            max(0.0, snapshot.limit(dimension) - usage.spent(dimension))
+            if snapshot.enforce_limits and snapshot.limit(dimension) is not None else None
+        )
         for dimension in BUDGET_DIMENSIONS
     }
 
@@ -96,6 +103,8 @@ def exhausted_dimension(
     ``cost_complete`` 报出去（readiness / 成本摘要），不在这里假装成一个上限。
     """
 
+    if not snapshot.enforce_limits:
+        return None
     projected = {
         "llm_calls": usage.llm_calls + llm_calls,
         "tool_calls": usage.tool_calls + tool_calls,
@@ -106,6 +115,7 @@ def exhausted_dimension(
     for dimension in BUDGET_DIMENSIONS:
         if dimension == "cost_usd" and not usage.cost_complete:
             continue
-        if projected[dimension] > snapshot.limit(dimension):
+        limit = snapshot.limit(dimension)
+        if limit is not None and projected[dimension] > limit:
             return dimension
     return None

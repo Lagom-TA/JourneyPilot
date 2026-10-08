@@ -328,6 +328,8 @@ export interface SSEEvent {
   total_tokens?: number | null;
   cost_usd?: number | null;
   estimated?: boolean;
+  usage_complete?: boolean;
+  call_id?: string;
   // context_report 事件专用：这一轮真的进了 prompt 的那三段（后端载荷是 snake_case）。
   referenced_sections?: Array<{ key?: unknown; items?: unknown }>;
   compaction?: {

@@ -62,6 +62,7 @@ MANAGED_TABLES: tuple[str, ...] = (
     # 审计与台账
     "tool_execution_audits",
     "run_llm_calls",
+    "run_worker_journals",
 )
 
 # 「这是不是一个 JourneyPilot 库」的判据。取三张分属不同领域、且从第一版起就存在的表：

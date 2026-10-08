@@ -83,10 +83,8 @@ _SCHEMA_REPAIR_TRANSIENT_RETRIES = 1
 # transcript.  Provider-selection normally returns quickly, but real runs with
 # 20+ verified place options have crossed 60 seconds before emitting their small
 # JSON choice.  This is an operation bound, not an output allowance: the compact
-# selection call below still has a task-local 4096-token ceiling, while a full
-# packet repair may use the deployment's larger configured ceiling.
+# selection and full-packet repair calls use the deployment output setting.
 _PACKET_MODEL_CALL_TIMEOUT_SECONDS = 120.0
-_PROVIDER_SELECTION_MAX_OUTPUT_TOKENS = 4096
 
 
 def _is_transient_model_call_failure(error: BaseException) -> bool:
@@ -138,9 +136,8 @@ RESEARCH_PACKET_CANDIDATE_LIMITS: dict[ResearchWorkerKind, int] = {
     #
     # These are **supply** numbers, picked off what an itinerary structurally
     # owes, and what each one costs to compose was measured.  They are not headroom
-    # under a provider hard cap: ``deepseek-v4-flash-0731`` reports
-    # ``max_completion_tokens=65536``, this deployment configures 32768, and the
-    # measured peak completion is 7103.
+    # under a provider hard cap. The historical measured peak completion was
+    # 7103; output allowance now follows the deployment's model setting.
     #
     # destination: every Visit/Dining entry is unique across the whole itinerary
     #   (``itinerary_planner.node.authoring_domains``), so a domain that cannot
@@ -3601,7 +3598,6 @@ async def _repair_from_provider_selection(
                     },
                 },
                 temperature=0,
-                max_output_tokens=_PROVIDER_SELECTION_MAX_OUTPUT_TOKENS,
             )
             selection_payload = json.loads(selected_raw)
         except (
@@ -4158,7 +4154,6 @@ async def _repair_from_provider_route_selection(
                     },
                 },
                 temperature=0,
-                max_output_tokens=_PROVIDER_SELECTION_MAX_OUTPUT_TOKENS,
             )
             selection_payload = json.loads(selected_raw)
         except (
@@ -5117,7 +5112,7 @@ async def parse_or_repair_research_packet_output(
 
 
 def format_research_packet_context(packets: Mapping[str, ResearchPacket]) -> str:
-    """Pass typed upstream packets without projecting them back into generic arrays."""
+    """Full diagnostic serialization; workers use memory.research_context views."""
     if not packets:
         return "[]"
     return json.dumps(

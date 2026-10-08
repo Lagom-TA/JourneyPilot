@@ -36,30 +36,20 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from ..models.token_counting import estimate_message_tokens
+
 logger = logging.getLogger(__name__)
 
-_CHARS_PER_TOKEN_ESTIMATE = 2.5
 _TOKEN_ESTIMATE_MODEL = "gpt-4o"     # 会话轴记账用的那把尺，全层一把
 _MIN_MESSAGES_BUDGET_TOKENS = 2_000   # 消息层最小保留 token 数（兜底）
 _TRIM_SAFETY_RATIO = 0.9             # 裁剪时预留 10% 安全余量
 
 
 def count_tokens(text: str, model: str = "gpt-4o") -> int:
-    """精确计算 token 数，失败时降级为字符估算。
+    """Shared offline estimate; authoritative billing comes from API usage."""
+    from ..models.token_counting import estimate_tokens
 
-    公开的原因：会话历史层要按 token 预算而不是按写死的条数取消息，
-    取消息的那一步必须用**同一把尺**估算，否则两侧口径不一致。
-    """
-    # tiktoken may download the o200k encoding for gpt-4o on first use. Context
-    # budgeting must stay offline-safe in tests and degraded runtime paths.
-    if model in {"gpt-4o", "gpt-4o-mini"}:
-        return max(1, int(len(text) / _CHARS_PER_TOKEN_ESTIMATE))
-    try:
-        import tiktoken
-        enc = tiktoken.encoding_for_model(model)
-        return len(enc.encode(text))
-    except Exception:
-        return max(1, int(len(text) / _CHARS_PER_TOKEN_ESTIMATE))
+    return estimate_tokens(text, model)
 
 
 # ---------------------------------------------------------------------------
@@ -267,10 +257,7 @@ class ContextBuilder:
 
         # ── 压缩检测（v3 核心逻辑）────────────────────────────────────────
         # 估算全量消息 token（用于判断是否超阈值）
-        all_messages_text = " ".join(
-            str(m.get("content", "")) for m in recent_messages
-        )
-        all_messages_tokens = count_tokens(all_messages_text, model)
+        all_messages_tokens = sum(estimate_message_tokens(m, model) for m in recent_messages)
 
         estimated_total = (
             system_tokens
@@ -321,7 +308,7 @@ class ContextBuilder:
         final_system = "".join(system_parts)
 
         total_used = count_tokens(final_system, model) + sum(
-            count_tokens(str(m.get("content", "")), model) for m in trimmed_messages
+            estimate_message_tokens(m, model) for m in trimmed_messages
         )
 
         logger.debug(
@@ -335,7 +322,7 @@ class ContextBuilder:
             "system": system_tokens,
             "anchor_summary": anchor_tokens,
             "messages": sum(
-                count_tokens(str(m.get("content", "")), model) for m in trimmed_messages
+                estimate_message_tokens(m, model) for m in trimmed_messages
             ),
             "total_estimated": total_used,
             "all_messages_estimated": all_messages_tokens,
@@ -379,8 +366,7 @@ class ContextBuilder:
         used_tokens = 0
 
         for msg in reversed(messages):
-            content = str(msg.get("content", ""))
-            tokens = count_tokens(content, model)
+            tokens = estimate_message_tokens(msg, model)
             if used_tokens + tokens > max_tokens:
                 break
             selected.append(msg)

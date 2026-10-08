@@ -273,11 +273,13 @@ def test_reasoning_dialects_follow_the_declaration():
     conservative = _provider_extra_body(
         capabilities_for("https://mystery.example.com/v1"), max_tokens=99
     )
-    assert set(direct) == {"thinking", "max_tokens"}
+    assert set(direct) == {"thinking", "reasoning_effort", "max_tokens"}
+    assert direct["thinking"] == {"type": "enabled"}
+    assert direct["reasoning_effort"] == "low"
     assert set(proxied) == {"reasoning", "max_tokens"}
-    assert proxied["reasoning"] == {"effort": "none", "enabled": False}
+    assert proxied["reasoning"] == {"effort": "low", "enabled": True}
     # 保守档全都发：认不出的那种会被对方忽略，少发一种的代价是开关静默失效。
-    assert set(conservative) == {"thinking", "reasoning", "max_tokens"}
+    assert set(conservative) == {"thinking", "reasoning_effort", "reasoning", "max_tokens"}
 
 
 def test_json_object_downgrade_does_not_duplicate_an_embedded_schema():
@@ -330,8 +332,8 @@ def test_task_scoped_output_limit_replaces_both_openrouter_token_fields():
     assert payload["max_completion_tokens"] == 16384
     assert payload["extra_body"]["max_tokens"] == 16384
     assert payload["extra_body"]["reasoning"] == {
-        "effort": "none",
-        "enabled": False,
+        "effort": "medium",
+        "enabled": True,
     }
 
 

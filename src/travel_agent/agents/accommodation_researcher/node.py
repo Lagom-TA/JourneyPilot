@@ -25,7 +25,10 @@ from langchain_core.runnables import RunnableConfig
 from ...entities.state import TravelAgentState
 from ...entities.research_domain import ResearchDomain
 from ...entities.research_query_plan import ResearchQuery, ResearchQueryKind
+from ...workflows.run_control import RunCancelled
+from ...infrastructure.worker_journal_store import JournalConflict
 from ...models.router import get_model_router
+from ...memory.research_context import format_worker_research_context
 from ..utils import (
     append_recent_history,
     assignment_research_round,
@@ -35,8 +38,6 @@ from ..utils import (
     execute_tool,
     filter_tools_for_agent,
     get_available_tools,
-    inject_agent_context,
-    prioritize_recommended_tools,
     resolve_agent_assignment,
     resolve_scoped_research_output_key,
     streaming_react_loop,
@@ -47,7 +48,6 @@ from ..research_packet_output import (
     authoritative_retry_source_records,
     build_authoritative_research_packet_metadata,
     build_failure_only_research_packet,
-    format_research_packet_context,
     has_required_provider_place_selection,
     parse_or_repair_research_packet_output,
     provider_evidence_outcomes,
@@ -65,7 +65,7 @@ from ...services.fallback_query_policy import (
     runtime_fallback_capacity,
 )
 from ...services.nominatim_place_search import is_concrete_lodging_place
-from ..research_packet_prompt import build_research_packet_system_prompt
+from ..research_packet_prompt import build_research_packet_prompt
 from ..worker_errors import format_worker_last_error
 from ...entities.place_identity import stable_place_id_amap_poi
 from ...utils.coordinates import amap_location_to_wgs84
@@ -796,8 +796,6 @@ async def accommodation_researcher_node(
     user_query = state.user_query or ""
     run_id = state.run_id
 
-    upstream_packet_context = format_research_packet_context(state.research_packets)
-
     # ── 任务分配（支持精炼轮次 round suffix）─────────────────────────────
     output_key, assignment = resolve_agent_assignment(
         state.agent_assignments or {}, _NODE_NAME
@@ -840,6 +838,16 @@ async def accommodation_researcher_node(
         scoped_retry=require_current_candidate,
     )
 
+    if state.planning_generation is None:
+        raise ValueError("accommodation research requires a planning generation")
+    generation_id = state.planning_generation.generation_id
+    upstream_packet_context = format_worker_research_context(
+        state.research_packets, worker_kind=_NODE_NAME, run_id=run_id,
+        generation_id=generation_id,
+        planned_queries=planned_queries, assignment=assignment,
+        gaps=state.candidate_research_gaps,
+    )
+
     # ── 构建 messages ─────────────────────────────────────────────────────
     active_constraint_ids = active_hard_constraint_ids(
         state.constraint_pack,
@@ -849,7 +857,7 @@ async def accommodation_researcher_node(
         state.constraint_pack,
         worker_kind=_NODE_NAME,
     )
-    system_content = build_research_packet_system_prompt(
+    prompt = build_research_packet_prompt(
         worker_kind=_NODE_NAME,
         run_id=run_id,
         task_id=output_key,
@@ -860,8 +868,9 @@ async def accommodation_researcher_node(
         candidate_limit=packet_candidate_limit(_NODE_NAME),
         upstream_packet_context=upstream_packet_context,
         active_constraint_ids=active_constraint_ids,
+        state=state,
+        recommended_tools=recommended_tools,
     )
-    system_content = inject_agent_context(system_content, state, agent_label=_NODE_NAME)
 
     logger.info(
         "AccommodationResearcher 上下文注入: anchor=%s, preset=%s, district_ctx_len=%d",
@@ -870,8 +879,9 @@ async def accommodation_researcher_node(
         len(upstream_packet_context),
     )
 
-    messages: List[Dict[str, Any]] = [{"role": "system", "content": system_content}]
-    append_recent_history(messages, state)
+    history: List[Dict[str, Any]] = []
+    append_recent_history(history, state)
+    messages = prompt.messages(history)
     messages.append({
         "role": "user",
         "content": build_accommodation_task_prompt(
@@ -892,19 +902,14 @@ async def accommodation_researcher_node(
     available_tools = await get_available_tools(selected_servers)
     available_tools = filter_tools_for_agent(available_tools, _NODE_NAME)
     available_tools = exclude_tools(available_tools, excluded_tools)
-    available_tools = prioritize_recommended_tools(available_tools, recommended_tools)
     available_tools = scope_accommodation_gap_tools(
         available_tools,
         recommended_tools,
         scoped_retry=require_current_candidate,
     )
 
-    tool_schemas = [t["schema"] for t in available_tools if "schema" in t]
     tool_cache = dict(state.tool_cache) if state.tool_cache else {}
     tool_context = build_tool_context_from_state(state)
-    if state.planning_generation is None:
-        raise ValueError("accommodation research requires a planning generation")
-    generation_id = state.planning_generation.generation_id
     executed_query_ids: List[str] = []
     packet_state_key = generation_packet_key(output_key, generation_id)
     authoritative_packet_metadata = build_authoritative_research_packet_metadata(
@@ -960,7 +965,6 @@ async def accommodation_researcher_node(
             ) = await streaming_react_loop(
                 llm=llm,
                 messages=messages,
-                tool_schemas=tool_schemas,
                 available_tools=available_tools,
                 stream_queue=stream_queue,
                 node_name=_NODE_NAME,
@@ -1013,6 +1017,8 @@ async def accommodation_researcher_node(
             ),
         }
 
+    except (RunCancelled, JournalConflict):
+        raise
     except Exception as e:
         if finalize_started_at is not None:
             logger.info(

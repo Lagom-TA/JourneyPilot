@@ -1656,7 +1656,7 @@ async def test_exact_miss_defers_to_compact_structured_semantic_evaluation():
     assert len(model.payload["candidates"]) == 1
     assert len(model.payload["intents"]) == 2
     assert len(model.payload["evaluations"]) == 2
-    assert model.kwargs["max_output_tokens"] == 16384
+    assert "max_output_tokens" not in model.kwargs
 
 
 @pytest.mark.asyncio

@@ -598,15 +598,17 @@ async def chat_stream(
                 # in ``frontend/src/lib/costLedger.ts`` — not here.
                 events.append({
                     "type": "usage_update",
+                    "call_id": call.id,
                     "message_id": message_id,
                     "run_id": trip_run.run_id,
                     "node": call.node,
                     "agent": call.agent,
                     "input_tokens": call.input_tokens,
                     "output_tokens": call.output_tokens,
-                    "total_tokens": (call.input_tokens or 0) + (call.output_tokens or 0),
+                    "total_tokens": call.total_tokens,
                     "cost_usd": call.cost_usd,
                     "estimated": call.estimated,
+                    "usage_complete": call.usage_complete,
                 })
             return events
 
@@ -741,6 +743,8 @@ async def chat_stream(
 
         async def run_workflow() -> None:
             """在后台任务中运行工作流，将 state events 写入 event_queue。"""
+            from ...workflows.worker_recovery import current_execution_lease
+            lease_context = current_execution_lease.set(lease_keeper.lease_token)
             try:
                 # 这个 dict 同时喂两个工作流，所以**只放两边都接的键**；
                 # 一边独有的键写在下面那个分支里。往这里加一个只有深度图接的键，
@@ -780,6 +784,7 @@ async def chat_stream(
             except Exception as exc:  # 工作流顶层边界：任何未预期异常都应转为 error 事件而非崩溃
                 await event_queue.put(("error", exc))
             finally:
+                current_execution_lease.reset(lease_context)
                 await event_queue.put(("done",))
 
         workflow_task: Optional[asyncio.Task] = None

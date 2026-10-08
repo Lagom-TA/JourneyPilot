@@ -34,11 +34,7 @@ from ..utils.json_helpers import safe_parse_json
 
 
 INTENT_NORMALIZATION_PROMPT_VERSION = "request_contract_normalization.v1"
-# A request contract is a bounded clause ledger, not a long-form answer.  Its
-# ceiling still needs room for every clause and the provider's structured
-# planning tokens; the operation budget below prevents that headroom from
-# turning a slow completion into an unbounded pre-approval wait.
-INTENT_NORMALIZATION_OUTPUT_TOKENS = 12288
+# Output length follows the configured model; operation deadlines remain local.
 INTENT_NORMALIZATION_CALL_TIMEOUT_SECONDS = 120.0
 INTENT_NORMALIZATION_OPERATION_TIMEOUT_SECONDS = 240.0
 
@@ -287,7 +283,6 @@ async def normalize_clauses(
                     messages,
                     response_format=response_format,
                     temperature=0,
-                    max_output_tokens=INTENT_NORMALIZATION_OUTPUT_TOKENS,
                 ),
                 timeout=min(
                     INTENT_NORMALIZATION_CALL_TIMEOUT_SECONDS,

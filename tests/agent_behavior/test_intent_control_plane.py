@@ -136,7 +136,7 @@ async def test_normalizer_projects_one_schema_by_provider_capability(
         async def ainvoke(self, messages, **kwargs):
             self.messages = messages
             self.response_format = kwargs["response_format"]
-            self.max_output_tokens = kwargs["max_output_tokens"]
+            self.max_output_tokens = kwargs.get("max_output_tokens")
             return json.dumps(
                 {
                     "clauses": [
@@ -154,7 +154,7 @@ async def test_normalizer_projects_one_schema_by_provider_capability(
     )
 
     wrapper = model.response_format["json_schema"]
-    assert model.max_output_tokens == 12288
+    assert model.max_output_tokens is None
     assert wrapper["strict"] is supports_native_schema
     clause_array = wrapper["schema"]["properties"]["clauses"]
     assert clause_array["minItems"] == clause_array["maxItems"] == 1

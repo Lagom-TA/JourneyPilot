@@ -9,8 +9,8 @@
 - **快照计算**：cost 在 ``record_calls`` 写入时算好并存库；``run_summary`` 只读库里的
   cost 聚合，绝不重算——因此改价格表不影响历史行。
 - **未命中价格 → cost_usd=None**：只报 token，不编造成本（``resolve_price`` 返回 None）。
-- **读折扣型公式**：``(input-cached)×p_in + cached×p_cached + output×p_out``；reasoning
-  已含在 output_tokens 里，不另算（05 号 §2）。
+- **互斥输入桶**：``(input-read-write)×p_in + read×p_read + write×p_write + output×p_out``；
+  reasoning 已含在 output_tokens 里，不另算。
 - **聚合走查询期**：表小无需预聚合；``run_summary`` 拉全量行后用纯函数 ``summarize_calls``
   聚合，SQL 与 InMemory 两实现共用同一聚合逻辑，保证形状一致、可单测。
 """
@@ -78,6 +78,15 @@ class LLMCostCall:
     latency_ms: Optional[float]
     status: str
     stream: bool
+    cache_write_input_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    usage_complete: bool = True
+    usage_source: str = "reported"
+    logical_call_id: Optional[str] = None
+    attempt_number: int = 1
+    request_input_tokens_estimate: Optional[int] = None
+    tool_schema_tokens_estimate: Optional[int] = None
+    finish_reason: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -92,6 +101,15 @@ class LLMCostCall:
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "cached_input_tokens": self.cached_input_tokens,
+            "cache_write_input_tokens": self.cache_write_input_tokens,
+            "total_tokens": self.total_tokens,
+            "usage_complete": self.usage_complete,
+            "usage_source": self.usage_source,
+            "logical_call_id": self.logical_call_id,
+            "attempt_number": self.attempt_number,
+            "request_input_tokens_estimate": self.request_input_tokens_estimate,
+            "tool_schema_tokens_estimate": self.tool_schema_tokens_estimate,
+            "finish_reason": self.finish_reason,
             "reasoning_output_tokens": self.reasoning_output_tokens,
             "cost_usd": self.cost_usd,
             "estimated": self.estimated,
@@ -110,22 +128,37 @@ def compute_cost_usd(
     input_tokens: Optional[int],
     output_tokens: Optional[int],
     cached_input_tokens: Optional[int],
+    cache_write_input_tokens: Optional[int] = None,
 ) -> Optional[float]:
-    """读折扣型成本公式；未命中价格或无 token → None（不编造成本）。"""
+    """Price disjoint uncached/read/write input buckets and inclusive output."""
     if price is None:
         return None
-    if input_tokens is None and output_tokens is None:
-        return None  # error 记录 token 留 null → 成本也 null
+    if input_tokens is None or output_tokens is None:
+        return None  # Missing usage is unknown, never a zero-token side.
+    if any(value is not None and (
+        isinstance(value, bool) or not isinstance(value, int) or value < 0
+    ) for value in (input_tokens, output_tokens, cached_input_tokens, cache_write_input_tokens)):
+        return None
     inp = max(0, input_tokens or 0)
     out = max(0, output_tokens or 0)
     cached = max(0, cached_input_tokens or 0)
-    cached = min(cached, inp)  # 缓存命中不可能超过总输入
+    written = max(0, cache_write_input_tokens or 0)
+    if cached + written > inp:
+        return None  # Invalid bucket counts cannot support an accurate bill.
+    if (cached_input_tokens is None and price.cached_input_per_1m is not None
+            and price.cached_input_per_1m != price.input_per_1m):
+        return None
+    if (cache_write_input_tokens is None and price.cache_write_per_1m is not None
+            and price.cache_write_per_1m != price.input_per_1m):
+        return None  # A surcharge exists, but its billed quantity is unknown.
     p_in = price.input_per_1m / 1_000_000.0
     p_cached = (
         price.cached_input_per_1m if price.cached_input_per_1m is not None else price.input_per_1m
     ) / 1_000_000.0
     p_out = price.output_per_1m / 1_000_000.0
-    cost = (inp - cached) * p_in + cached * p_cached + out * p_out
+    p_write = (price.cache_write_per_1m if price.cache_write_per_1m is not None
+               else price.input_per_1m) / 1_000_000.0
+    cost = (inp - cached - written) * p_in + cached * p_cached + written * p_write + out * p_out
     return round(cost, 8)
 
 
@@ -135,13 +168,34 @@ def build_ledger_call(
     pricing: Optional[List[ModelPricingItem]] = None,
 ) -> LLMCostCall:
     """捕获层 ``LLMCallRecord`` → 台账行，写入时快照计算 cost_usd。"""
+    count_fields = ("input_tokens", "output_tokens", "cached_input_tokens",
+                    "cache_write_input_tokens", "reasoning_output_tokens", "total_tokens")
+    counts = {field: getattr(record, field) for field in count_fields}
+    invalid_usage = False
+    for field, value in counts.items():
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+            counts[field] = None
+            invalid_usage = True
+    inp, out = counts["input_tokens"], counts["output_tokens"]
+    cached, written = counts["cached_input_tokens"], counts["cache_write_input_tokens"]
+    reasoning = counts["reasoning_output_tokens"]
     price = resolve_price(record.model_request, record.provider, pricing=pricing)
-    cost = compute_cost_usd(
+    cost = None if invalid_usage else compute_cost_usd(
         price,
-        input_tokens=record.input_tokens,
-        output_tokens=record.output_tokens,
-        cached_input_tokens=record.cached_input_tokens,
+        input_tokens=inp,
+        output_tokens=out,
+        cached_input_tokens=cached,
+        cache_write_input_tokens=written,
     )
+    complete = (
+        record.usage_complete and not record.estimated and not invalid_usage
+        and inp is not None and out is not None
+        and (cached or 0) + (written or 0) <= inp
+        and (reasoning or 0) <= out
+    )
+    source = record.usage_source
+    if not complete and source == "reported":
+        source = "missing" if inp is None and out is None else "partial"
     return LLMCostCall(
         id=record.id,
         run_id=record.run_id,
@@ -151,10 +205,19 @@ def build_ledger_call(
         provider=record.provider,
         model_request=record.model_request,
         model_response=record.model_response,
-        input_tokens=record.input_tokens,
-        output_tokens=record.output_tokens,
-        cached_input_tokens=record.cached_input_tokens,
-        reasoning_output_tokens=record.reasoning_output_tokens,
+        input_tokens=inp,
+        output_tokens=out,
+        cached_input_tokens=cached,
+        cache_write_input_tokens=written,
+        total_tokens=inp + out if inp is not None and out is not None else counts["total_tokens"],
+        usage_complete=complete,
+        usage_source=source,
+        logical_call_id=record.logical_call_id,
+        attempt_number=record.attempt_number,
+        request_input_tokens_estimate=record.request_input_tokens_estimate,
+        tool_schema_tokens_estimate=record.tool_schema_tokens_estimate,
+        finish_reason=record.finish_reason,
+        reasoning_output_tokens=reasoning,
         cost_usd=cost,
         estimated=bool(record.estimated),
         start_ts=record.start_ts,
@@ -169,6 +232,12 @@ def build_ledger_call(
 # --------------------------------------------------------------------------- #
 # run 级聚合（纯函数，SQL 与 InMemory 共用）
 # --------------------------------------------------------------------------- #
+
+def _call_total(call: LLMCostCall) -> Optional[int]:
+    if call.input_tokens is not None and call.output_tokens is not None:
+        return call.input_tokens + call.output_tokens
+    return call.total_tokens
+
 
 def _round_cost(value: Optional[float]) -> Optional[float]:
     return None if value is None else round(value, 8)
@@ -187,28 +256,50 @@ def _group_aggregate(calls: List[LLMCostCall], key_attr: str, label: str) -> Lis
                 "input_tokens": 0,
                 "output_tokens": 0,
                 "total_tokens": 0,
+                "cached_input_tokens": 0,
+                "cache_write_input_tokens": 0,
+                "reasoning_output_tokens": 0,
+                "usage_complete": True,
+                "_known": set(),
+                "cost_complete": True,
                 "cost_usd": None,
                 "latency_ms": 0.0,
             },
         )
         bucket["call_count"] += 1
+        for field in ("input_tokens", "output_tokens", "cached_input_tokens", "cache_write_input_tokens", "reasoning_output_tokens"):
+            if getattr(call, field) is not None:
+                bucket["_known"].add(field)
+        if _call_total(call) is not None:
+            bucket["_known"].add("total_tokens")
         bucket["input_tokens"] += call.input_tokens or 0
         bucket["output_tokens"] += call.output_tokens or 0
-        bucket["total_tokens"] += (call.input_tokens or 0) + (call.output_tokens or 0)
+        bucket["total_tokens"] += _call_total(call) or 0
+        bucket["cached_input_tokens"] += call.cached_input_tokens or 0
+        bucket["cache_write_input_tokens"] += call.cache_write_input_tokens or 0
+        bucket["reasoning_output_tokens"] += call.reasoning_output_tokens or 0
+        bucket["usage_complete"] = bucket["usage_complete"] and call.usage_complete and not call.estimated
+        bucket["cost_complete"] = bucket["cost_complete"] and call.cost_usd is not None and call.usage_complete and not call.estimated
         bucket["latency_ms"] += call.latency_ms or 0.0
         if call.cost_usd is not None:
             bucket["cost_usd"] = (bucket["cost_usd"] or 0.0) + call.cost_usd
     rows = list(buckets.values())
     for row in rows:
+        known = row.pop("_known")
+        for field in ("input_tokens", "output_tokens", "total_tokens", "cached_input_tokens", "cache_write_input_tokens", "reasoning_output_tokens"):
+            if field not in known:
+                row[field] = None
         row["cost_usd"] = _round_cost(row["cost_usd"])
         row["latency_ms"] = round(row["latency_ms"], 3)
-    rows.sort(key=lambda r: ((r["cost_usd"] or 0.0), r["total_tokens"]), reverse=True)
+    rows.sort(key=lambda r: ((r["cost_usd"] or 0.0), (r["total_tokens"] or 0)), reverse=True)
     return rows
 
 
 def summarize_calls(run_id: str, calls: List[LLMCostCall]) -> Dict[str, Any]:
     """聚合出 run 级成本摘要：总量、按 agent 分解、瓶颈节点 top3、estimated 占比。"""
-    total_input = total_output = total_cached = total_reasoning = 0
+    total_input = total_output = total_cached = total_written = total_reasoning = total_tokens = 0
+    complete_usage = missing_usage = 0
+    request_estimate = tool_schema_estimate = 0
     total_cost = 0.0
     priced = estimated = errors = 0
     total_latency = 0.0
@@ -218,7 +309,13 @@ def summarize_calls(run_id: str, calls: List[LLMCostCall]) -> Dict[str, Any]:
     for call in calls:
         total_input += call.input_tokens or 0
         total_output += call.output_tokens or 0
+        total_tokens += _call_total(call) or 0
         total_cached += call.cached_input_tokens or 0
+        total_written += call.cache_write_input_tokens or 0
+        complete_usage += int(call.usage_complete and not call.estimated)
+        missing_usage += int(call.usage_source == "missing")
+        request_estimate += call.request_input_tokens_estimate or 0
+        tool_schema_estimate += call.tool_schema_tokens_estimate or 0
         total_reasoning += call.reasoning_output_tokens or 0
         total_latency += call.latency_ms or 0.0
         if call.cost_usd is not None:
@@ -226,7 +323,7 @@ def summarize_calls(run_id: str, calls: List[LLMCostCall]) -> Dict[str, Any]:
             priced += 1
         if call.estimated:
             estimated += 1
-        if call.status == "error":
+        if call.status in {"error", "cancelled"}:
             errors += 1
         st = _parse_ts(call.start_ts)
         en = _parse_ts(call.end_ts)
@@ -272,11 +369,28 @@ def summarize_calls(run_id: str, calls: List[LLMCostCall]) -> Dict[str, Any]:
         "error_call_count": errors,
         "estimated_ratio": round(estimated / call_count, 4) if call_count else 0.0,
         "cost_coverage_ratio": round(priced / call_count, 4) if call_count else 0.0,
-        "total_input_tokens": total_input,
-        "total_output_tokens": total_output,
-        "total_cached_input_tokens": total_cached,
-        "total_reasoning_output_tokens": total_reasoning,
-        "total_tokens": total_input + total_output,
+        "total_input_tokens": total_input if not calls or any(call.input_tokens is not None for call in calls) else None,
+        "total_output_tokens": total_output if not calls or any(call.output_tokens is not None for call in calls) else None,
+        "total_cached_input_tokens": total_cached if not calls or any(call.cached_input_tokens is not None for call in calls) else None,
+        "total_reasoning_output_tokens": total_reasoning if not calls or any(call.reasoning_output_tokens is not None for call in calls) else None,
+        "total_tokens": total_tokens if not calls or any(_call_total(call) is not None for call in calls) else None,
+        "total_cache_write_input_tokens": total_written if not calls or any(call.cache_write_input_tokens is not None for call in calls) else None,
+        "total_request_input_tokens_estimate": request_estimate if not calls or any(call.request_input_tokens_estimate is not None for call in calls) else None,
+        "total_tool_schema_tokens_estimate": tool_schema_estimate if not calls or any(call.tool_schema_tokens_estimate is not None for call in calls) else None,
+        "token_usage_complete": complete_usage == call_count,
+        "cache_read_usage_complete": all(call.cached_input_tokens is not None for call in calls),
+        "cache_write_usage_complete": all(call.cache_write_input_tokens is not None for call in calls),
+        "reasoning_usage_complete": all(call.reasoning_output_tokens is not None for call in calls),
+        "cache_hit_ratio": (round(total_cached / total_input, 6) if total_input and all(
+            call.input_tokens is not None and call.cached_input_tokens is not None
+            and not call.estimated
+            and 0 <= call.cached_input_tokens + (call.cache_write_input_tokens or 0) <= call.input_tokens
+            for call in calls
+        ) else None),
+        "cost_complete": priced == call_count and complete_usage == call_count,
+        "partial_usage_call_count": call_count - complete_usage - missing_usage,
+        "missing_usage_call_count": missing_usage,
+        "logical_call_count": len({call.logical_call_id or call.id for call in calls}),
         # priced_call_count==0 时不编造 0 成本，报 None（只报 token）。
         "total_cost_usd": _round_cost(total_cost) if priced else None,
         "currency": "USD",
@@ -324,6 +438,15 @@ def _call_from_row(row: Dict[str, Any]) -> LLMCostCall:
         input_tokens=row.get("input_tokens"),
         output_tokens=row.get("output_tokens"),
         cached_input_tokens=row.get("cached_input_tokens"),
+        cache_write_input_tokens=row.get("cache_write_input_tokens", None),
+        total_tokens=row.get("total_tokens", None),
+        usage_complete=row.get("usage_complete", False),
+        usage_source=row.get("usage_source", "legacy"),
+        logical_call_id=row.get("logical_call_id", None),
+        attempt_number=row.get("attempt_number", 1),
+        request_input_tokens_estimate=row.get("request_input_tokens_estimate", None),
+        tool_schema_tokens_estimate=row.get("tool_schema_tokens_estimate", None),
+        finish_reason=row.get("finish_reason", None),
         reasoning_output_tokens=row.get("reasoning_output_tokens"),
         cost_usd=row.get("cost_usd"),
         estimated=bool(row.get("estimated")),
@@ -354,6 +477,15 @@ def _ledger_identity(call: LLMCostCall) -> Tuple[Any, ...]:
         call.input_tokens,
         call.output_tokens,
         call.cached_input_tokens,
+        call.cache_write_input_tokens,
+        call.total_tokens,
+        call.usage_complete,
+        call.usage_source,
+        call.logical_call_id,
+        call.attempt_number,
+        call.request_input_tokens_estimate,
+        call.tool_schema_tokens_estimate,
+        call.finish_reason,
         call.reasoning_output_tokens,
         _norm_cost(call.cost_usd),
         call.status,
@@ -394,12 +526,14 @@ class CostLedgerStore:
                         INSERT INTO run_llm_calls
                             (id, run_id, node, agent, tier, provider, model_request,
                              model_response, input_tokens, output_tokens, cached_input_tokens,
-                             reasoning_output_tokens, cost_usd, estimated, start_ts, end_ts,
+                             reasoning_output_tokens, cost_usd, estimated,
+                             cache_write_input_tokens, total_tokens, usage_complete, usage_source, logical_call_id, attempt_number, request_input_tokens_estimate, tool_schema_tokens_estimate, finish_reason, start_ts, end_ts,
                              ttft_ms, latency_ms, status, stream, created_at)
                         VALUES
                             (:id, :run_id, :node, :agent, :tier, :provider, :model_request,
                              :model_response, :input_tokens, :output_tokens, :cached_input_tokens,
                              :reasoning_output_tokens, :cost_usd, :estimated,
+                             :cache_write_input_tokens, :total_tokens, :usage_complete, :usage_source, :logical_call_id, :attempt_number, :request_input_tokens_estimate, :tool_schema_tokens_estimate, :finish_reason,
                              CAST(:start_ts AS timestamptz), CAST(:end_ts AS timestamptz),
                              :ttft_ms, :latency_ms, :status, :stream, NOW())
                         ON CONFLICT (id) DO NOTHING
@@ -417,6 +551,15 @@ class CostLedgerStore:
                         "input_tokens": call.input_tokens,
                         "output_tokens": call.output_tokens,
                         "cached_input_tokens": call.cached_input_tokens,
+                        "cache_write_input_tokens": call.cache_write_input_tokens,
+                        "total_tokens": call.total_tokens,
+                        "usage_complete": call.usage_complete,
+                        "usage_source": call.usage_source,
+                        "logical_call_id": call.logical_call_id,
+                        "attempt_number": call.attempt_number,
+                        "request_input_tokens_estimate": call.request_input_tokens_estimate,
+                        "tool_schema_tokens_estimate": call.tool_schema_tokens_estimate,
+                        "finish_reason": call.finish_reason,
                         "reasoning_output_tokens": call.reasoning_output_tokens,
                         "cost_usd": call.cost_usd,
                         "estimated": call.estimated,

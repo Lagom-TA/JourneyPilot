@@ -31,8 +31,7 @@ logger = logging.getLogger(__name__)
 
 PRESET_DIR = Path(__file__).resolve().parents[3] / "configs" / "providers"
 
-#: 关掉思维链的方言。同一个意图三家写法不同，而认不出的那种会被对方忽略，
-#: 所以保守档**全都发**（见 `models/router.py` 的 extra_body）。
+#: 推理参数的传输方言。推理档位由模型名称与任务配置决定。
 ReasoningControl = Literal["none", "deepseek", "openrouter", "all_dialects"]
 
 #: 输出上限字段名。langchain-openai 无条件把 max_tokens 改名成

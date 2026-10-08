@@ -17,6 +17,11 @@ export interface RunCostLive {
   /** 是否至少有一次调用报出了成本——false 时只展示 token。 */
   costKnown: boolean;
   estimatedCount: number;
+  incompleteCount?: number;
+  seenCallIds?: string[];
+  hasInputUsage?: boolean;
+  hasOutputUsage?: boolean;
+  hasTotalUsage?: boolean;
   lastNode: string | null;
   lastAgent: string | null;
 }
@@ -655,6 +660,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const ev = action.payload;
       // 换 run 则重置累加器（并发/历史 run 不串账）
       const prev = state.runCostLive && state.runCostLive.runId === ev.run_id ? state.runCostLive : null;
+      if (ev.call_id && prev?.seenCallIds?.includes(ev.call_id)) return state;
       const inputTokens = ev.input_tokens || 0;
       const outputTokens = ev.output_tokens || 0;
       const next: RunCostLive = {
@@ -666,6 +672,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         totalCostUsd: (prev?.totalCostUsd ?? 0) + (ev.cost_usd ?? 0),
         costKnown: (prev?.costKnown ?? false) || ev.cost_usd != null,
         estimatedCount: (prev?.estimatedCount ?? 0) + (ev.estimated ? 1 : 0),
+        incompleteCount: (prev?.incompleteCount ?? 0) + (ev.usage_complete === false || ev.cost_usd == null ? 1 : 0),
+        seenCallIds: ev.call_id ? [...(prev?.seenCallIds ?? []), ev.call_id] : prev?.seenCallIds,
+        hasInputUsage: (prev?.hasInputUsage ?? false) || ev.input_tokens != null,
+        hasOutputUsage: (prev?.hasOutputUsage ?? false) || ev.output_tokens != null,
+        hasTotalUsage: (prev?.hasTotalUsage ?? false) || ev.total_tokens != null,
         lastNode: ev.node ?? prev?.lastNode ?? null,
         lastAgent: ev.agent ?? prev?.lastAgent ?? null,
       };

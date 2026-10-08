@@ -202,13 +202,23 @@
           "type": "string"
         },
         "max_tokens": {
-          "default": 32768,
+          "default": 65536,
+          "minimum": 1,
           "title": "Max Tokens",
           "type": "integer"
         },
         "model_name": {
           "default": "MiniMax-M2.7",
           "title": "Model Name",
+          "type": "string"
+        },
+        "reasoning_effort": {
+          "default": "low",
+          "enum": [
+            "low",
+            "medium"
+          ],
+          "title": "Reasoning Effort",
           "type": "string"
         },
         "temperature": {
@@ -511,6 +521,7 @@
         "cache_write_per_1m": {
           "anyOf": [
             {
+              "minimum": 0,
               "type": "number"
             },
             {
@@ -523,6 +534,7 @@
         "cached_input_per_1m": {
           "anyOf": [
             {
+              "minimum": 0,
               "type": "number"
             },
             {
@@ -544,11 +556,13 @@
         },
         "input_per_1m": {
           "default": 0.0,
+          "minimum": 0,
           "title": "Input Per 1M",
           "type": "number"
         },
         "output_per_1m": {
           "default": 0.0,
+          "minimum": 0,
           "title": "Output Per 1M",
           "type": "number"
         },
@@ -588,13 +602,23 @@
           "type": "string"
         },
         "max_tokens": {
-          "default": 32768,
+          "default": 65536,
+          "minimum": 1,
           "title": "Max Tokens",
           "type": "integer"
         },
         "model_name": {
           "default": "MiniMax-M2.7",
           "title": "Model Name",
+          "type": "string"
+        },
+        "reasoning_effort": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium"
+          ],
+          "title": "Reasoning Effort",
           "type": "string"
         },
         "temperature": {
@@ -834,41 +858,88 @@
       "additionalProperties": false,
       "description": "一次 Run 允许花掉多少。\n\nRun 被授权时按这些值封存一份快照（``entities/run_budget.py``），之后改配置\n不影响在跑的 Run —— 与 Deadline 同一条规矩。墙钟**不在这里**：它由\n``RunDeadlineSnapshot`` 一处拥有，在这里再写一个 max_wall_seconds 就是让\n同一件事有两个 owner。",
       "properties": {
+        "enforce_limits": {
+          "default": false,
+          "title": "Enforce Limits",
+          "type": "boolean"
+        },
         "max_cost_usd": {
-          "default": 5.0,
-          "exclusiveMinimum": 0,
-          "title": "Max Cost Usd",
-          "type": "number"
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Cost Usd"
         },
         "max_input_tokens": {
-          "default": 1000000,
-          "minimum": 1,
-          "title": "Max Input Tokens",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Input Tokens"
         },
         "max_llm_calls": {
-          "default": 100,
-          "minimum": 1,
-          "title": "Max Llm Calls",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Llm Calls"
         },
         "max_output_tokens": {
-          "default": 100000,
-          "minimum": 1,
-          "title": "Max Output Tokens",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Output Tokens"
         },
         "max_tool_calls": {
-          "default": 150,
-          "minimum": 1,
-          "title": "Max Tool Calls",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Tool Calls"
         },
         "max_tool_retries_per_target": {
-          "default": 2,
-          "minimum": 0,
-          "title": "Max Tool Retries Per Target",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Tool Retries Per Target"
         }
       },
       "title": "RunBudgetConfig",

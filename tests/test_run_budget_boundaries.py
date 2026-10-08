@@ -23,6 +23,7 @@ def _isolate_ledgers():
 
 def _snapshot(**overrides) -> RunBudgetSnapshot:
     payload = dict(
+        enforce_limits=True,
         max_llm_calls=10,
         max_tool_calls=1,
         max_input_tokens=10_000,

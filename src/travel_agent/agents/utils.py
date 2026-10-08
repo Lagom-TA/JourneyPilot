@@ -18,15 +18,15 @@ import logging
 import re
 import time
 import uuid
-from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set, Tuple
 
-from ..config import AgentToolPolicy, get_settings
-from ..tools.builtin_tools import SEARCH_TOOLS_NAME, build_search_tools_item
+from ..config import AgentToolPolicy
+from ..memory.agent_context import render_agent_context
+from ..tools.exposure import ToolExposureSession, attach_tool_catalog
+from ..tools.exposure import apply_tool_exposure as apply_tool_exposure
+from ..tools.builtin_tools import SEARCH_TOOLS_NAME
 from ..tools.exposure_ledger import (
-    estimate_schema_tokens,
-    estimate_text_tokens,
     get_tool_exposure_ledger,
 )
 from ..tools.governance import (
@@ -44,11 +44,8 @@ from ..tools.governance import (
 from ..entities.tool_gateway import ToolGatewayDecision
 from ..tools.gateway import get_tool_gateway
 from ..tools.registry import (
-    compact_catalog_items,
     get_tool_registry,
-    search_tool_items,
 )
-from ..workflows.node_names import WORKER_NODES
 from ..workflows.run_budget import RunBudgetExhausted
 from ..workflows.run_control import (
     ModelWindowClosed,
@@ -79,48 +76,9 @@ _SUCCEEDED_TOOL_STATUSES = frozenset({
 # ---------------------------------------------------------------------------
 
 def inject_agent_context(system_content: str, state: Any, agent_label: str = "") -> str:
-    """向 system prompt 追加 session anchor、preset 与统一约束。
-
-    被三个 researcher (destination / transport / accommodation) 与
-    itinerary_planner 共享。延迟 import 避免与 memory / preset 模块循环依赖。
-    """
-    if getattr(state, "session_anchor", None):
-        try:
-            from ..memory.compressor import AnchorSummary
-            anchor_text = AnchorSummary.from_dict(state.session_anchor).format_for_prompt()
-            if anchor_text:
-                system_content += f"\n\n【历史对话摘要】\n{anchor_text}"
-        except Exception as e:
-            logger.debug(f"{agent_label or 'agent'} AnchorSummary 注入失败: {e}")
-
-    if getattr(state, "preset_context", None):
-        try:
-            from ..preset.injector import PresetInjector
-            # 整段进，不切片：``format_for_agent`` 交回的是一个
-            # ``<active_preset>…</active_preset>`` 信封，切在中间就是留一个开着的标签。
-            # 长度在存入时就由 ``entities.preset`` 的字段上限管住了。
-            preset_text = PresetInjector.format_for_agent(state.preset_context)
-            if preset_text:
-                system_content += "\n\n" + preset_text
-        except Exception as e:
-            logger.debug(f"{agent_label or 'agent'} Preset 上下文注入失败: {e}")
-
-    constraint_pack = getattr(state, "constraint_pack", None)
-    if constraint_pack:
-        from ..panels.constraint import format_constraint_pack_for_prompt
-
-        constraint_text = format_constraint_pack_for_prompt(constraint_pack)
-        if constraint_text:
-            system_content += "\n\n" + constraint_text
-
-    if getattr(state, "weather_context", None) is not None:
-        from ..workflows.weather_context import format_weather_context_for_planning
-
-        weather_text = format_weather_context_for_planning(state)
-        if weather_text:
-            system_content += "\n\n" + weather_text
-
-    return system_content
+    """Compatibility assembly for callers that still use one system string."""
+    context = render_agent_context(state, agent_label)
+    return system_content + ("\n\n" + context if context else "")
 
 
 def append_recent_history(
@@ -167,27 +125,6 @@ def session_history_for_context_builder(state: Any) -> List[Dict[str, Any]]:
     return history
 
 
-def prioritize_recommended_tools(
-    available: List[Dict[str, Any]],
-    recommended: List[str],
-) -> List[Dict[str, Any]]:
-    """将 recommended 中的工具名排在前面, 其余保持原序返回。
-
-    工具项结构: ``{"schema": {"function": {"name": ...}}, ...}``。
-    用于 Worker 节点在 tool_schemas 顺序上体现 planner 推荐倾向 (LLM 倾向于调首个)。
-    """
-    if not recommended:
-        return available
-    rec_set = set(recommended)
-
-    def _name(item: Dict[str, Any]) -> str:
-        return item.get("schema", {}).get("function", {}).get("name", "")
-
-    ranked = [t for t in available if _name(t) in rec_set]
-    rest = [t for t in available if _name(t) not in rec_set]
-    return ranked + rest
-
-
 def exclude_tools(
     available: List[Dict[str, Any]],
     excluded: List[str],
@@ -228,8 +165,6 @@ def build_tool_context_from_state(state: Any) -> Dict[str, Any]:
     except Exception:
         pass
     return context
-
-
 
 # ---------------------------------------------------------------------------
 # 轮次命名约定
@@ -483,98 +418,47 @@ def filter_tools_for_agent(
 
 
 # ---------------------------------------------------------------------------
-# Tool Search 按需工具曝光
+# Tool Gateway 执行
 # ---------------------------------------------------------------------------
 
-# worker agent 集合（派生自 WORKER_NODES 唯一真源）——worker_only 判定用。
-_WORKER_AGENTS: Set[str] = set(WORKER_NODES)
+async def execute_tool(tool_name, arguments, *args, **kwargs):
+    from ..workflows.worker_recovery import current_worker_journal
+    from ..tools.gateway import _manifest_from_metadata
+    from copy import deepcopy
 
-_CATALOG_HINT = (
-    "\n\n【可用工具（按需激活）】\n"
-    "你当前只加载了 search_tools 一个元工具，其余工具的完整定义尚未载入。需要用工具时先调用 "
-    "search_tools(query=\"关键词\") 检索并激活——支持中文（地图/航班/酒店/汇率/景点）或工具名前缀"
-    "（amap_/duffel_）检索，同前缀的一组工具一次即可命中。激活后该工具当轮与后续轮次持续可用，"
-    "无需重复检索；若无需任何工具可直接作答。\n"
-    "候选工具（名称 — 说明）：\n"
-)
-
-
-@dataclass
-class ToolExposurePlan:
-    """一次 worker 工具组装的曝光计划（apply_tool_exposure 产出）。"""
-
-    deferred: bool
-    agent: str
-    tool_schemas: List[Dict[str, Any]]   # 初始暴露给模型的 schema（deferred=仅 search_tools）
-    catalog_prompt: str                  # deferred 注入 system prompt 的能力提示 + 压缩目录
-    injected_tokens: int
-    full_tokens: int
-    exposed_tool_count: int
-    full_tool_count: int
-
-
-def _format_catalog_prompt(catalog: List[Dict[str, str]]) -> str:
-    lines = [
-        f"- {c['name']}" + (f" — {c['brief']}" if c.get("brief") else "")
-        for c in catalog
-    ]
-    return _CATALOG_HINT + "\n".join(lines)
-
-
-def apply_tool_exposure(
-    available_tools: List[Dict[str, Any]],
-    agent_name: str,
-) -> ToolExposurePlan:
-    """按 tool_exposure 配置决定 worker 的工具曝光方式（deferred 压缩目录 / full 全量注入）。
-
-    ``available_tools`` 是 ``filter_tools_for_agent`` 产出的**白名单**（= search_tools 的
-    搜索边界，治理不放松）。deferred 时初始只暴露 search_tools + 把压缩目录注入 system prompt；
-    full（或阈值以下 / 非 worker / 回退）时原样暴露全部 schema。两条路径都算出 injected/full
-    的 schema token，供 ``tool_context_saving`` 量化。
-    """
-    base_agent = strip_round_suffix(agent_name)
-    cfg = get_settings().tool_exposure
-
-    full_schemas = [t["schema"] for t in available_tools if "schema" in t]
-    full_tokens = estimate_schema_tokens(available_tools)
-    full_count = len(full_schemas)
-
-    is_worker = base_agent in _WORKER_AGENTS
-    should_defer = (
-        cfg.mode == "deferred"
-        and (is_worker if cfg.worker_only else True)
-        and full_count >= cfg.min_tools_threshold
-    )
-
-    if not should_defer:
-        return ToolExposurePlan(
-            deferred=False,
-            agent=base_agent,
-            tool_schemas=full_schemas,
-            catalog_prompt="",
-            injected_tokens=full_tokens,
-            full_tokens=full_tokens,
-            exposed_tool_count=full_count,
-            full_tool_count=full_count,
+    journal = current_worker_journal.get()
+    if journal is None:
+        return await _execute_tool_once(tool_name, arguments, *args, **kwargs)
+    allowed = kwargs.get("allowed_tool_names")
+    available = args[0] if args else kwargs.get("available_tools")
+    if allowed is None and available is not None:
+        allowed = {item["schema"]["function"]["name"] for item in available}
+    if allowed is not None and tool_name not in allowed:
+        return await _execute_tool_once(tool_name, arguments, *args, **kwargs)
+    key = journal.next_tool(tool_name, arguments)
+    tools = journal.payload.setdefault("tools", {})
+    previous = tools.get(key)
+    if previous and "result" in previous:
+        return deepcopy(previous["result"])
+    manifest = _manifest_from_metadata(tool_name, get_tool_registry().get_tool_metadata(tool_name))
+    if previous and manifest.side_effecting:
+        # Provider may have completed before our result commit. Never repeat a
+        # write on the strength of an execution checkpoint alone.
+        result = build_tool_execution_envelope(
+            tool_name=tool_name, arguments=arguments, status="failed",
+            error="tool_outcome_unknown_requires_reconciliation",
         )
-
-    search_item = build_search_tools_item()
-    catalog = compact_catalog_items(available_tools)
-    catalog_prompt = _format_catalog_prompt(catalog)
-    injected_tokens = estimate_schema_tokens([search_item]) + estimate_text_tokens(catalog_prompt)
-    return ToolExposurePlan(
-        deferred=True,
-        agent=base_agent,
-        tool_schemas=[search_item["schema"]],
-        catalog_prompt=catalog_prompt,
-        injected_tokens=injected_tokens,
-        full_tokens=full_tokens,
-        exposed_tool_count=1,
-        full_tool_count=full_count,
-    )
+    else:
+        tools[key] = {"name": tool_name, "arguments": deepcopy(arguments), "phase": "started"}
+        await journal.commit()
+        result = await _execute_tool_once(tool_name, arguments, *args, **kwargs)
+    tools[key]["result"] = deepcopy(result)
+    tools[key]["phase"] = "completed"
+    await journal.commit()
+    return result
 
 
-async def execute_tool(
+async def _execute_tool_once(
     tool_name: str,
     arguments: Dict[str, Any],
     available_tools: Optional[List[Dict[str, Any]]] = None,
@@ -632,6 +516,9 @@ async def execute_tool(
             logger.warning("工具 [%s] 被 ToolGateway 阻断: %s", tool_name, before.reason)
         return before.envelope
     main_manifest = before.manifest
+    if main_manifest.side_effecting:
+        max_retries = 0
+        allow_fallback = False
 
     # Capability/manifest policy runs first because an unsupported date must be
     # classified without spending run budget.  The 6-minute boundary applies
@@ -1732,6 +1619,8 @@ _NO_CACHE_TOOLS: Set[str] = {
     # and would incorrectly reuse a previous Run's audit id.
     "global_place_search",
     "global_route_search",
+    "maps_text_search",
+    "maps_search_detail",
 }
 
 
@@ -1755,7 +1644,6 @@ def _cacheable_tool_result(tool_name: str, result: Dict[str, Any]) -> bool:
 async def streaming_react_loop(
     llm: Any,
     messages: List[Dict[str, Any]],
-    tool_schemas: List[Dict[str, Any]],
     available_tools: List[Dict[str, Any]],
     stream_queue: Optional["SSEBuffer"],
     node_name: str,
@@ -1788,19 +1676,13 @@ async def streaming_react_loop(
 
     # ── Tool Search 按需工具曝光 ────────────────────────────────────────────
     # deferred 时初始只暴露 search_tools 元工具 + 把压缩目录注入 system prompt；模型经
-    # search_tools 按需激活的工具进入 activated_tools，当轮并入 tool_schemas 且延续后轮。
+    # search_tools 按需激活的定义由本次 invocation 的 exposure session 追加并延续后轮。
     # available_tools（白名单）保持不变——既是执行 allowlist，也是 search_tools 的检索边界。
     exposure_plan = apply_tool_exposure(available_tools, node_name)
-    tool_schemas = list(exposure_plan.tool_schemas)
-    activated_tools: Set[str] = set()
-    if exposure_plan.deferred:
-        if messages and messages[0].get("role") == "system":
-            messages[0] = {
-                **messages[0],
-                "content": messages[0]["content"] + exposure_plan.catalog_prompt,
-            }
-        else:
-            messages.insert(0, {"role": "system", "content": exposure_plan.catalog_prompt.lstrip()})
+    exposure = ToolExposureSession(available_tools, exposure_plan)
+    # Workers pass a private working transcript and reuse it for packet repair.
+    # Keep that list identity while replacing the copied prompt dictionaries.
+    messages[:] = attach_tool_catalog(messages, exposure_plan)
     get_tool_exposure_ledger().record(
         tool_context.get("run_id"),
         deferred=exposure_plan.deferred,
@@ -1813,7 +1695,32 @@ async def streaming_react_loop(
     # 避免按需曝光牺牲研究深度（仍有限，不会无界搜索）。
     effective_max_iterations = max_iterations + (1 if exposure_plan.deferred else 0)
 
-    for iteration in range(effective_max_iterations):
+    from copy import deepcopy
+    from ..workflows.worker_recovery import current_worker_journal
+    journal = current_worker_journal.get()
+    saved = journal.payload.get("react", {}) if journal else {}
+    if saved:
+        messages[:] = deepcopy(saved["messages"])
+        tool_results_summary[:] = saved["summaries"]
+        authoritative_tool_results[:] = deepcopy(saved["results"])
+        last_text_content = saved["last_text"]
+        exposure.restore(saved["activated"])
+        journal.tool_cursor = saved["tool_cursor"]
+        if saved.get("done"):
+            return saved["content"], tool_results_summary, saved.get("pending_choice"), authoritative_tool_results
+
+    async def save_round(iteration, **phase):
+        if journal:
+            journal.payload["react"] = {
+                "iteration": iteration, "messages": deepcopy(messages),
+                "summaries": list(tool_results_summary), "results": deepcopy(authoritative_tool_results),
+                "last_text": last_text_content, "activated": exposure.activated_names,
+                "tool_cursor": journal.tool_cursor, **phase,
+            }
+            await journal.commit()
+
+    start_iteration = saved.get("iteration", 0)
+    for iteration in range(start_iteration, effective_max_iterations):
         check_cancel_requested(node_name)
         try:
             # Do not start another open-ended model/tool round after minute
@@ -1822,39 +1729,64 @@ async def streaming_react_loop(
             remaining_model_seconds(f"react.{node_name}.iteration_{iteration + 1}")
         except ModelWindowClosed as exc:
             logger.info("[%s] research window closed: %s", node_name, exc)
+            if iteration == start_iteration and saved.get("response"):
+                for skipped in saved["response"][1][saved.get("next_tool", 0):]:
+                    messages.append({"role": "tool", "tool_call_id": skipped["id"],
+                                     "content": '{"status":"not_executed","reason":"research_window_closed"}'})
+            await save_round(iteration, done=True, content=last_text_content)
             return last_text_content, tool_results_summary, None, authoritative_tool_results
         content = ""
         tool_calls: List[Dict[str, Any]] = []
+        assistant_replay: Dict[str, Any] = {}
 
-        try:
-            async for event in llm.astream_with_tools(messages, tool_schemas):
-                if event["type"] == "text_delta":
-                    content += event["content"]
-                    if stream_queue is not None:
-                        await stream_queue.put(("react_thinking", node_name, event["content"]))
-                elif event["type"] == "reasoning_delta":
-                    if stream_queue is not None:
-                        await stream_queue.put(("react_thinking", node_name, event["content"]))
-                elif event["type"] == "finish":
-                    finish_content = event.get("content")
-                    if finish_content:
-                        content = finish_content
-                    tool_calls = event.get("tool_calls", [])
-        except Exception as e:
-            logger.error(f"[{node_name}] 流式 LLM 调用失败 (迭代 {iteration}): {e}")
-            return content or "", tool_results_summary, None, authoritative_tool_results
+        recovered_response = saved.get("response") if iteration == start_iteration else None
+        if recovered_response:
+            content, tool_calls, assistant_replay = recovered_response
+        else:
+            await save_round(iteration, phase="request_started")
+            finished = False
+            try:
+                async for event in llm.astream_with_tools(messages, exposure.tool_schemas):
+                    if event["type"] == "text_delta":
+                        content += event["content"]
+                        if stream_queue is not None:
+                            await stream_queue.put(("react_thinking", node_name, event["content"]))
+                    elif event["type"] == "reasoning_delta":
+                        if stream_queue is not None:
+                            await stream_queue.put(("react_thinking", node_name, event["content"]))
+                    elif event["type"] == "finish":
+                        finished = True
+                        finish_content = event.get("content")
+                        if finish_content:
+                            content = finish_content
+                        tool_calls = event.get("tool_calls", [])
+                        assistant_replay = event.get("assistant_replay") or {}
+            except Exception as e:
+                logger.error(f"[{node_name}] 流式 LLM 调用失败 (迭代 {iteration}): {e}")
+                return "", tool_results_summary, None, authoritative_tool_results
+
+            if not finished:
+                return "", tool_results_summary, None, authoritative_tool_results
+            # Persist exactly the IDs used by the assistant/tool pairing.
+            for tc in tool_calls:
+                tc["id"] = tc.get("id") or f"tool_{uuid.uuid4().hex}"
 
         if content.strip():
             last_text_content = content
 
         if not tool_calls:
+            await save_round(iteration, done=True, content=content)
             return content, tool_results_summary, None, authoritative_tool_results
 
-        messages.append({
-            "role": "assistant",
-            "content": content,
-            "tool_calls": tool_calls,
-        })
+        if not recovered_response:
+            messages.append({
+                "role": "assistant",
+                "content": content,
+                "tool_calls": tool_calls,
+                "assistant_replay": assistant_replay,
+            })
+
+            await save_round(iteration, response=[content, tool_calls, assistant_replay], next_tool=0)
 
         pending_choice: Optional[Dict[str, Any]] = None
         fail_count = 0
@@ -1866,7 +1798,9 @@ async def streaming_react_loop(
         # 「工具不可用，别编」，而不是它真正需要的「这个数据源答不了这个日期，换个模态」。
         capability_tool_names: List[str] = []
 
-        for tc in tool_calls:
+        for tool_index, tc in enumerate(tool_calls):
+            if recovered_response and tool_index < saved.get("next_tool", 0):
+                continue
             tc_name = tc.get("name", "")
             tc_args = tc.get("arguments", {})
             tc_id = tc.get("id", "") or f"tool_{uuid.uuid4().hex}"
@@ -1875,6 +1809,10 @@ async def streaming_react_loop(
                 remaining_model_seconds(f"react.{node_name}.tool.{tc_name}")
             except ModelWindowClosed as exc:
                 logger.info("[%s] suppressing tool after research cutoff: %s", node_name, exc)
+                for skipped in tool_calls[tool_index:]:
+                    messages.append({"role": "tool", "tool_call_id": skipped["id"],
+                                     "content": '{"status":"not_executed","reason":"research_window_closed"}'})
+                await save_round(iteration, done=True, content=content or last_text_content)
                 return (
                     content or last_text_content,
                     tool_results_summary,
@@ -1884,7 +1822,7 @@ async def streaming_react_loop(
 
             # ── search_tools 元工具：就地激活白名单内工具的完整 schema ─────────────
             # 不经 registry/gateway 执行——检索范围恒为 available_tools（该 agent 白名单），
-            # 命中的完整 schema 并入 tool_schemas 供当轮及后续轮次调用（activated_tools）。
+            # 命中的完整 schema 由本轮 session 追加，供后续模型请求调用。
             if tc_name == SEARCH_TOOLS_NAME:
                 query = tc_args.get("query", "") if isinstance(tc_args, dict) else ""
                 search_started = time.perf_counter()
@@ -1896,25 +1834,8 @@ async def streaming_react_loop(
                         "category": "internal",
                         "ts_ms": run_ts_ms(),
                     }))
-                matches = search_tool_items(query, available_tools, exclude=activated_tools)
-                newly: List[str] = []
-                for m in matches:
-                    m_name = m.get("schema", {}).get("function", {}).get("name", "")
-                    if not m_name or m_name in activated_tools:
-                        continue
-                    activated_tools.add(m_name)
-                    tool_schemas.append(m["schema"])
-                    newly.append(m_name)
-                search_result = {
-                    "success": True,
-                    "activated": newly,
-                    "catalog": compact_catalog_items(matches),
-                    "note": (
-                        f"已激活 {len(newly)} 个工具，现在可直接调用。"
-                        if newly
-                        else "未匹配到新工具，请更换关键词，或直接基于已有信息作答。"
-                    ),
-                }
+                search_result = exposure.activate(query)
+                newly = search_result["activated"]
                 logger.info("[%s] search_tools(query=%r) 激活: %s", node_name, query, newly)
                 if stream_queue is not None:
                     await stream_queue.put(("tool_done", node_name, {
@@ -1931,6 +1852,8 @@ async def streaming_react_loop(
                     "tool_call_id": tc_id,
                     "content": json.dumps(search_result, ensure_ascii=False),
                 })
+                await save_round(iteration, response=[content, tool_calls, assistant_replay], next_tool=tool_index + 1)
+                check_cancel_requested(node_name)
                 continue
 
             cache_key = _make_cache_key(tc_name, tc_args)
@@ -1972,7 +1895,7 @@ async def streaming_react_loop(
                     node_name=node_name,
                     tool_audit_store=tool_context.get("tool_audit_store"),
                     tool_gateway=tool_context.get("tool_gateway"),
-                    activation_source="searched" if tc_name in activated_tools else "preloaded",
+                    activation_source="searched" if exposure.was_activated(tc_name) else "preloaded",
                     provider_snapshot_cache=tool_context.get("provider_snapshot_cache"),
                     trip_run_store=tool_context.get("trip_run_store"),
                 )
@@ -1980,10 +1903,6 @@ async def streaming_react_loop(
                     tool_cache[cache_key] = tool_result
             if isinstance(tool_result, dict):
                 authoritative_tool_results.append(tool_result)
-
-            # Cooperative cancel after each tool result; next LLM
-            # round will also check at loop head.
-            check_cancel_requested(node_name)
 
             # 处理 ask_user
             sanitized_result = tool_result.get("sanitized_result") if is_tool_execution_envelope(tool_result) else tool_result
@@ -2007,6 +1926,12 @@ async def streaming_react_loop(
                         "duration_ms": round((time.perf_counter() - tool_started) * 1000.0, 3),
                         "ts_ms": run_ts_ms(),
                     }))
+                messages.append({"role": "tool", "tool_call_id": tc_id,
+                                 "content": compact_tool_content_for_model(tool_result)})
+                for skipped in tool_calls[tool_index + 1:]:
+                    messages.append({"role": "tool", "tool_call_id": skipped["id"],
+                                     "content": '{"status":"not_executed","reason":"awaiting_user_input"}'})
+                await save_round(iteration, done=True, content=content, pending_choice=pending_choice)
                 break
 
             tool_status = str(tool_result.get("status") or "")
@@ -2056,6 +1981,8 @@ async def streaming_react_loop(
                 "tool_call_id": tc_id,
                 "content": model_tool_content,
             })
+            await save_round(iteration, response=[content, tool_calls, assistant_replay], next_tool=tool_index + 1)
+            check_cancel_requested(node_name)
 
         if pending_choice is not None:
             return (
@@ -2089,6 +2016,9 @@ async def streaming_react_loop(
         if notices:
             messages.append({"role": "user", "content": "\n".join(notices)})
 
+        await save_round(iteration + 1)
+
+    await save_round(effective_max_iterations, done=True, content=content or last_text_content)
     return (
         content or last_text_content,
         tool_results_summary,

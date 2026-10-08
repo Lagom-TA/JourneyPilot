@@ -422,14 +422,6 @@ _COMPOSITION_FAILURE_VALIDATION_ERRORS = 3
 # How many blocking delivery-quality gaps a repair prompt restates.
 _COMPOSITION_REPAIR_GAP_LIMIT = 8
 
-# Composition carries all Days and placements, so it gets a wider task-scoped
-# ceiling than short classifiers and contract normalizers.  It remains well below
-# the provider/default 32768 ceiling: the prompt reductions should keep normal
-# outputs far under this value, while 16384 leaves recovery room for a genuinely
-# dense multi-day draft.
-ITINERARY_COMPOSITION_OUTPUT_TOKENS = 16384
-
-
 # What an output-ceiling truncation looks like coming back through the SDK.  The
 # provider does not raise a typed error for it: the completion simply stops at the
 # ceiling and the parser fails on the half-written JSON.
@@ -821,48 +813,6 @@ Alternative Candidate Capabilities（只供修复路由判断，不得直接放�
 </context>{repair_section}
 
 <json_schema>{schema}</json_schema>"""
-
-
-def _agent_context_pieces(state: TravelAgentState) -> List[tuple[str, str]]:
-    """The named pieces ``inject_agent_context`` appends to this prompt.
-
-    Each one is produced by its own single formatter; this asks those formatters
-    for the same strings rather than re-deriving them, so the segment table
-    cannot disagree with what was injected.
-    """
-    from ...panels.constraint import format_constraint_pack_for_prompt
-    from ...preset.injector import PresetInjector
-    from ...memory.compressor import AnchorSummary
-    from ...workflows.weather_context import format_weather_context_for_planning
-
-    anchor = (
-        AnchorSummary.from_dict(state.session_anchor).format_for_prompt()
-        if getattr(state, "session_anchor", None)
-        else ""
-    )
-    preset = (
-        PresetInjector.format_for_agent(state.preset_context)
-        if getattr(state, "preset_context", None)
-        else ""
-    )
-    constraints = (
-        format_constraint_pack_for_prompt(state.constraint_pack)
-        if state.constraint_pack
-        else ""
-    )
-    weather_prose = (
-        format_weather_context_for_planning(state)
-        if state.weather_context is not None
-        else ""
-    )
-    return [
-        ("session_anchor", anchor),
-        ("preset", preset),
-        ("constraint_pack", constraints),
-        # This is the prompt's **only** weather; the composition
-        # prompt no longer renders a second copy of the same day records.
-        ("weather_planning_prose", weather_prose),
-    ]
 
 
 # An authored place must resolve to a real map location before it can enter the
@@ -2962,7 +2912,6 @@ async def itinerary_planner_node(
                     },
                 },
                 "temperature": 0,
-                "max_output_tokens": ITINERARY_COMPOSITION_OUTPUT_TOKENS,
             }
             response = await llm.ainvoke(messages, **response_kwargs)
             content = response.content if hasattr(response, "content") else response
@@ -3276,7 +3225,6 @@ async def itinerary_planner_node(
                 },
             },
             "temperature": 0,
-            "max_output_tokens": ITINERARY_COMPOSITION_OUTPUT_TOKENS,
         }
         response = await llm.ainvoke(messages, **response_kwargs)
         content = response.content if hasattr(response, "content") else response

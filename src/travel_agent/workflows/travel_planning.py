@@ -591,9 +591,10 @@ def build_travel_workflow() -> StateGraph:
         NODE_DELIVERY_QUALITY_GATE,
         with_run_control(NODE_DELIVERY_QUALITY_GATE, delivery_quality_gate_node),
     )
-    graph.add_node(NODE_DESTINATION, with_run_control(NODE_DESTINATION, destination_researcher_node))
-    graph.add_node(NODE_TRANSPORT, with_run_control(NODE_TRANSPORT, transport_researcher_node))
-    graph.add_node(NODE_ACCOMMODATION, with_run_control(NODE_ACCOMMODATION, accommodation_researcher_node))
+    from .worker_recovery import with_worker_recovery
+    graph.add_node(NODE_DESTINATION, with_run_control(NODE_DESTINATION, with_worker_recovery(NODE_DESTINATION, destination_researcher_node)))
+    graph.add_node(NODE_TRANSPORT, with_run_control(NODE_TRANSPORT, with_worker_recovery(NODE_TRANSPORT, transport_researcher_node)))
+    graph.add_node(NODE_ACCOMMODATION, with_run_control(NODE_ACCOMMODATION, with_worker_recovery(NODE_ACCOMMODATION, accommodation_researcher_node)))
     graph.add_node(NODE_ITINERARY, with_run_control(NODE_ITINERARY, itinerary_planner_node))
     graph.add_node(
         NODE_BUDGET_ESTIMATE,

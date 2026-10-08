@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Literal, Optional, Set
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -42,16 +42,9 @@ class LoggingConfig(StrictConfig):
 # here, because three independent copies of the same ceiling is how a POST that
 # omits the field silently downgrades a running deployment.
 #
-# ``deepseek/deepseek-v4-flash-0731`` (what this deployment actually runs, via
-# OpenRouter) reports ``max_completion_tokens = 65536`` over a 1,048,576-token
-# context.
-#
-# Measured need, from ``run_llm_calls`` over 78 successful ``itinerary_planner``
-# completions: min 67, mean 1190, **max 7103**.  32768 is 4.6x the observed
-# maximum and still half the provider's own ceiling, so it is picked off the
-# measured distribution rather than off the provider's limit — raising it to
-# 65536 would buy nothing but a longer runaway.
-MAX_COMPLETION_TOKENS = 32768
+# This is a request default, not a run quota or a universal model ceiling.
+# A deployment can select a different positive value supported by its model.
+MAX_COMPLETION_TOKENS = 65536
 
 
 class PrimaryModelConfig(StrictConfig):
@@ -61,8 +54,9 @@ class PrimaryModelConfig(StrictConfig):
     api_key: str = ""
     model_name: str = "MiniMax-M2.7"
     base_url: str = "https://api.minimaxi.com/v1"
-    max_tokens: int = MAX_COMPLETION_TOKENS  # 省略该字段的 YAML 不得静默降档
+    max_tokens: int = Field(default=MAX_COMPLETION_TOKENS, ge=1)
     temperature: float = 0.7
+    reasoning_effort: Literal["low", "medium"] = "medium"
     timeout: int = 120  # LLM 请求超时（秒）；思维模型（MiniMax-M2.7、DeepSeek-R1）复杂推理可能超过 60s
 
 
@@ -75,8 +69,9 @@ class FastModelConfig(StrictConfig):
     api_key: str = ""
     model_name: str = "MiniMax-M2.7"
     base_url: str = "https://api.minimaxi.com/v1"
-    max_tokens: int = MAX_COMPLETION_TOKENS  # 与 primary 同顶：fast 截断会产不可解析 JSON
+    max_tokens: int = Field(default=MAX_COMPLETION_TOKENS, ge=1)
     temperature: float = 0.5
+    reasoning_effort: Literal["low", "medium"] = "low"
     timeout: int = 30  # Fast 模型超时更短，低延迟场景不应等太久
 
 
@@ -352,13 +347,14 @@ class RunBudgetConfig(StrictConfig):
     同一件事有两个 owner。
     """
 
-    max_llm_calls: int = Field(default=100, ge=1)
-    max_tool_calls: int = Field(default=150, ge=1)
-    max_input_tokens: int = Field(default=1_000_000, ge=1)
-    max_output_tokens: int = Field(default=100_000, ge=1)
-    max_cost_usd: float = Field(default=5.0, gt=0)
+    enforce_limits: bool = False
+    max_llm_calls: Optional[int] = Field(default=None, ge=1)
+    max_tool_calls: Optional[int] = Field(default=None, ge=1)
+    max_input_tokens: Optional[int] = Field(default=None, ge=1)
+    max_output_tokens: Optional[int] = Field(default=None, ge=1)
+    max_cost_usd: Optional[float] = Field(default=None, gt=0)
     #: 同一个工具在一次 Run 里允许重试多少轮。
-    max_tool_retries_per_target: int = Field(default=2, ge=0)
+    max_tool_retries_per_target: Optional[int] = Field(default=None, ge=0)
 
 
 class ProviderChannelConfig(StrictConfig):
@@ -496,10 +492,10 @@ class ModelPricingItem(StrictConfig):
 
     pattern: str                                   # 模型名前缀（大小写不敏感），如 "MiniMax-M2.7"
     provider: str = ""                             # 可选 provider 约束（infer_provider 输出），空=不限
-    input_per_1m: float = 0.0                      # 未命中缓存的输入价
-    cached_input_per_1m: Optional[float] = None    # 缓存命中读价（None=按 input 价，无折扣）
-    cache_write_per_1m: Optional[float] = None     # 缓存写入价（本卡公式不计，仅登记；写计费型供应商用）
-    output_per_1m: float = 0.0                      # 输出价（含 reasoning，不另算）
+    input_per_1m: float = Field(default=0.0, ge=0)  # 未命中缓存的输入价
+    cached_input_per_1m: Optional[float] = Field(default=None, ge=0)
+    cache_write_per_1m: Optional[float] = Field(default=None, ge=0)  # 写入桶总价
+    output_per_1m: float = Field(default=0.0, ge=0)  # 包含推理输出
     currency: str = "USD"
     effective_from: str = ""                        # 价格抓取/生效日期
     source_url: str = ""

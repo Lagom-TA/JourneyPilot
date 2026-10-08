@@ -95,7 +95,7 @@ def field_reference_markdown() -> str:
         dotted = _YAML_SPELLING.get(path) or ".".join(path)
         env = env_variable_name(path) if path in env_names else ""
         lines.append(
-            f"| `{dotted}` | {_type_name(field.annotation)} | {_default_text(field)} "
+            f"| `{dotted}` | {_type_name(field.annotation).replace('|', '&#124;')} | {_default_text(field)} "
             f"| {_constraint_text(field) or '—'} | {f'`{env}`' if env else '—'} |"
         )
     lines.append("")

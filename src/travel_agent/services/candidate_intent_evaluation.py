@@ -445,7 +445,6 @@ async def evaluate_candidate_intents(
                         },
                     },
                     temperature=0,
-                    max_output_tokens=16384,
                 )
                 content = response.content if hasattr(response, "content") else response
                 parsed = json.loads(
