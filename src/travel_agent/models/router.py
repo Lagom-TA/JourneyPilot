@@ -36,6 +36,7 @@ from ..config import (
     resolve_price,
 )
 from ..entities.trip_run import utc_now_iso
+from ..config.providers import TokenLimitField
 from ..utils.concurrency import channel_gate
 from ..workflows.run_control import (
     ModelWindowClosed,
@@ -64,6 +65,15 @@ from .request_policy import is_openai_reasoning_model, model_reasoning_effort
 from .token_counting import estimate_request_tokens
 
 logger = logging.getLogger(__name__)
+
+
+class IncompleteModelResponse(RuntimeError):
+    """A Responses request ended without a completed response envelope."""
+
+    def __init__(self, message: Any) -> None:
+        self.message = message
+        reason = response_finish_reason(message) or "missing_terminal_response"
+        super().__init__(f"Model response did not complete: {reason}")
 
 
 def estimate_output_text(response: Any) -> str:
@@ -399,6 +409,9 @@ class OpenAICompatibleLLM(BaseLLM):
         tier: ModelTier,
         reasoning_effort: Optional[str] = None,
         usage_recorder: Optional[UsageRecorder] = None,
+        use_responses_api: bool = False,
+        responses_streaming: bool = False,
+        token_limit_field: Optional[TokenLimitField] = None,
     ) -> None:
         if ChatOpenAI is None:
             raise RuntimeError("langchain_openai 不可用，无法创建真实模型客户端")
@@ -406,9 +419,13 @@ class OpenAICompatibleLLM(BaseLLM):
         self.model_name = model_name
         self.tier = tier
         self.base_url = base_url
+        self._use_responses_api = use_responses_api
+        self._responses_streaming = use_responses_api and responses_streaming
         self.provider = infer_provider(base_url, model_name)
         # 这个上游支持什么，来自 `configs/providers/*.yaml` 的声明；认不出走保守档。
         self.capabilities = capabilities_for(base_url)
+        if token_limit_field is not None:
+            self.capabilities = self.capabilities.model_copy(update={"token_limit_field": token_limit_field})
         self._reasoning_effort = model_reasoning_effort(
             model_name, reasoning_effort or ("medium" if tier == ModelTier.PRIMARY else "low")
         )
@@ -435,7 +452,13 @@ class OpenAICompatibleLLM(BaseLLM):
             # langchain-openai 仅在默认 OpenAI base_url 下自动开启流式 usage，而本仓
             # 全部模型自定义 base_url，不显式开则流式 usage 永远为空。
             stream_usage=self.capabilities.supports_stream_usage,
-            extra_body=_provider_extra_body(
+            use_responses_api=use_responses_api,
+            streaming=self._responses_streaming,
+            use_legacy_max_tokens=self.capabilities.token_limit_field == "max_tokens",
+            store=False if use_responses_api else None,
+            # Responses has native reasoning/output fields; Chat dialect extras
+            # would overwrite them after the SDK serializes the request.
+            extra_body={} if use_responses_api else _provider_extra_body(
                 self.capabilities, max_tokens=max_tokens, reasoning_effort=self._reasoning_effort
             ),
         )
@@ -478,13 +501,14 @@ class OpenAICompatibleLLM(BaseLLM):
     def _apply_output_token_limit(
         self, kwargs: Dict[str, Any]
     ) -> tuple[Dict[str, Any], int]:
-        """Apply one task-scoped output ceiling in both provider dialects.
+        """Apply one task-scoped output ceiling in the configured API dialect.
 
         ``langchain-openai`` serializes ``max_tokens`` as
         ``max_completion_tokens`` while DeepSeek-compatible providers may only
         read the former inside ``extra_body``.  A per-call limit therefore has
         to replace both fields together; changing just one leaves the client's
-        configured default active on the other path.
+        configured default active on the other path. Responses instead uses
+        its native ``max_output_tokens`` without Chat-specific body overrides.
         """
 
         kwargs = dict(kwargs)
@@ -504,6 +528,11 @@ class OpenAICompatibleLLM(BaseLLM):
         if limit < 1:
             raise ValueError("max_output_tokens must be positive and supported by the model")
         scoped = dict(kwargs)
+        if self._use_responses_api:
+            # LangChain stores the deployment default under this legacy key
+            # and maps it to max_output_tokens during Responses serialization.
+            scoped["max_completion_tokens"] = limit
+            return scoped, limit
         scoped["max_tokens"] = limit
         scoped["extra_body"] = _provider_extra_body(
             self.capabilities,
@@ -535,6 +564,12 @@ class OpenAICompatibleLLM(BaseLLM):
 
     def _queue_wait_seconds(self) -> float:
         return float(get_settings().provider_channels.max_queue_wait_seconds)
+
+    def _validate_response_completion(self, message: Any) -> None:
+        if self._use_responses_api:
+            metadata = getattr(message, "response_metadata", {}) or {}
+            if metadata.get("status") != "completed":
+                raise IncompleteModelResponse(message)
 
     def _start_record(self, method: str, *, stream: bool) -> Optional[LLMCallRecord]:
         """无 run 上下文（离线 eval 等）→ 返回 None，静默跳过记账。"""
@@ -698,7 +733,7 @@ class OpenAICompatibleLLM(BaseLLM):
         logical_id = generate_call_id()
         for attempt in range(self._max_retries + 1):
             self._guard_budget(f"model.{method}", messages, output_tokens=output_limit)
-            record = self._start_record(method, stream=False)
+            record = self._start_record(method, stream=self._responses_streaming)
             if record is not None:
                 record.logical_call_id, record.attempt_number = logical_id, attempt + 1
             self._request_estimate(record, messages, kwargs, tools)
@@ -711,8 +746,10 @@ class OpenAICompatibleLLM(BaseLLM):
                     bound.ainvoke(_to_langchain_messages(messages), **kwargs),
                     operation=f"model.{method}",
                 )
+                self._validate_response_completion(response)
             except BaseException as exc:
-                self._emit(record, started, status="cancelled" if isinstance(exc, asyncio.CancelledError) else "error", error=exc)
+                self._emit(record, started, status="cancelled" if isinstance(exc, asyncio.CancelledError) else "error",
+                           error=exc, message=getattr(exc, "message", None) if isinstance(exc, IncompleteModelResponse) else None)
                 if attempt < self._max_retries and self._retryable(exc):
                     await await_model_operation(asyncio.sleep(min(0.5 * 2 ** attempt, 8)),
                                                 operation=f"model.{method}.retry_wait")
@@ -816,6 +853,7 @@ class OpenAICompatibleLLM(BaseLLM):
                         if observation is None:
                             raise
                         raise ModelWindowClosed("model.astream", observation, current_model_window.get()) from exc
+                self._validate_response_completion(full)
             except (GeneratorExit, asyncio.CancelledError) as exc:
                 status, error = "cancelled", exc
                 raise
@@ -903,6 +941,9 @@ class ModelRouter:
             tier=tier,
             reasoning_effort=config.reasoning_effort,
             usage_recorder=get_usage_recorder(),
+            use_responses_api=config.use_responses_api,
+            responses_streaming=config.responses_streaming,
+            token_limit_field=config.token_limit_field,
         )
 
     def _get_or_create(self, tier: ModelTier) -> BaseLLM:
@@ -925,6 +966,8 @@ class ModelRouter:
             feedback, has_tools=has_tools,
             primary_effort=self._settings.primary_model.reasoning_effort,
             fast_effort=self._settings.fast_model.reasoning_effort,
+            primary_protocol="responses" if self._settings.primary_model.use_responses_api else "chat_completions",
+            fast_protocol="responses" if self._settings.fast_model.use_responses_api else "chat_completions",
         )
         logger.info("task_model_route task=%s tier=%s model=%s reasoning=%s protocol=%s reason=%s action=%s",
                     route.task.value, route.tier, route.model_name, route.reasoning_effort,

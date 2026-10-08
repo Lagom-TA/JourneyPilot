@@ -103,6 +103,7 @@ services:
       - ./outputs:/app/outputs
       - ./uploads:/app/uploads
       - ./config.yaml:/app/config.yaml:ro
+      - usage_data:/app/data/usage
       - huggingface_cache:/home/journeypilot/.cache/huggingface
     # entrypoint 不含等待逻辑，空卷 initdb 要十几秒，靠 restart 重试等不到。
     depends_on:
@@ -127,3 +128,4 @@ volumes:
   postgres_data:
   redis_data:
   huggingface_cache:
+  usage_data:

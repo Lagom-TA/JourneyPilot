@@ -43,7 +43,8 @@ def chat_tool_protocol_supported(name):
 
 
 def select_task_route(task, primary, fast, feedback=None, *, has_tools=False,
-                      primary_effort="medium", fast_effort="low"):
+                      primary_effort="medium", fast_effort="low",
+                      primary_protocol="chat_completions", fast_protocol="chat_completions"):
     task = TaskKind(task)
     quality = feedback or QualityFeedback()
     tier = "primary" if task in {TaskKind.COMPOSITION, TaskKind.CONSTRAINT_ARBITRATION} else "fast"
@@ -60,7 +61,8 @@ def select_task_route(task, primary, fast, feedback=None, *, has_tools=False,
     if has_tools and not chat_tool_protocol_supported(name):
         raise ValueError(f"{name} tool requests require a Responses adapter")
     effort = model_reasoning_effort(name, primary_effort if tier == "primary" else fast_effort)
-    return TaskRoute(task, tier, name, effort, "chat_completions", reason, action)
+    protocol = primary_protocol if tier == "primary" else fast_protocol
+    return TaskRoute(task, tier, name, effort, protocol, reason, action)
 
 
 def plain_observation_messages(messages):

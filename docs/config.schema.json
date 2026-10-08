@@ -221,6 +221,12 @@
           "title": "Reasoning Effort",
           "type": "string"
         },
+        "responses_streaming": {
+          "default": false,
+          "description": "Responses 使用流式传输；ainvoke 聚合完整响应后返回。",
+          "title": "Responses Streaming",
+          "type": "boolean"
+        },
         "temperature": {
           "default": 0.5,
           "title": "Temperature",
@@ -230,6 +236,30 @@
           "default": 30,
           "title": "Timeout",
           "type": "integer"
+        },
+        "token_limit_field": {
+          "anyOf": [
+            {
+              "enum": [
+                "max_tokens",
+                "max_completion_tokens",
+                "both"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Chat Completions 输出上限字段；null 使用 provider preset。",
+          "title": "Token Limit Field"
+        },
+        "use_responses_api": {
+          "default": false,
+          "description": "使用 OpenAI Responses 接口；false 使用 Chat Completions。",
+          "title": "Use Responses Api",
+          "type": "boolean"
         }
       },
       "title": "FastModelConfig",
@@ -621,6 +651,12 @@
           "title": "Reasoning Effort",
           "type": "string"
         },
+        "responses_streaming": {
+          "default": false,
+          "description": "Responses 使用流式传输；ainvoke 聚合完整响应后返回。",
+          "title": "Responses Streaming",
+          "type": "boolean"
+        },
         "temperature": {
           "default": 0.7,
           "title": "Temperature",
@@ -630,6 +666,30 @@
           "default": 120,
           "title": "Timeout",
           "type": "integer"
+        },
+        "token_limit_field": {
+          "anyOf": [
+            {
+              "enum": [
+                "max_tokens",
+                "max_completion_tokens",
+                "both"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Chat Completions 输出上限字段；null 使用 provider preset。",
+          "title": "Token Limit Field"
+        },
+        "use_responses_api": {
+          "default": false,
+          "description": "使用 OpenAI Responses 接口；false 使用 Chat Completions。",
+          "title": "Use Responses Api",
+          "type": "boolean"
         }
       },
       "title": "PrimaryModelConfig",

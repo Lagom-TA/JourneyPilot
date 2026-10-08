@@ -345,3 +345,17 @@ async def test_each_sdk_attempt_is_a_separate_row_with_returned_error_usage(monk
     summary = summarize_calls("run_attempts", [build_ledger_call(r, pricing=[]) for r in recorder.snapshot()])
     assert summary["call_count"] == 2 and summary["logical_call_count"] == 1
     assert summary["total_tokens"] == 132
+
+
+def test_failed_sse_preserves_unknown_usage_and_pending_billing():
+    from travel_agent.api.sse_projection import project_sse_payload
+
+    summary = {"run_id": "failed-run", "total_calls": 1, "total_cost_usd": None,
+               "total_input_tokens": None, "total_output_tokens": None,
+               "usage_complete": False, "cost_complete": False,
+               "capture_complete": False, "pending_capture": 1, "record_failed": 1}
+    event = project_sse_payload({"type": "run_failed", "run_id": "failed-run",
+                                 "run_cost_summary": summary,
+                                 "error_code": "provider_internal_error"})
+    assert event["run_cost_summary"] == summary
+    assert "error_code" not in event

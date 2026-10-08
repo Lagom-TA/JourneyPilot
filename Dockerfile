@@ -17,6 +17,7 @@ ARG UV_VERSION=0.9.7
 ARG DEPENDENCY_GROUPS="local-embedding"
 
 WORKDIR /app
+ENV UV_PROJECT_ENVIRONMENT="/opt/journeypilot"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
@@ -30,7 +31,7 @@ COPY pyproject.toml uv.lock ./
 RUN set -eu; \
     groups=""; \
     for group in ${DEPENDENCY_GROUPS}; do groups="${groups} --group ${group}"; done; \
-    uv sync --frozen --no-dev ${groups}
+    uv sync --frozen --no-default-groups ${groups}
 
 # ---------------------------------------------------------------------------
 # node-mcp：Node stdio MCP server 的包，装在自己的层
@@ -64,12 +65,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --shell /usr/sbin/nologin --uid 10001 journeypilot
 
+# 维护 CLI 在容器内也需要与默认 PostgreSQL 18 匹配的客户端。
+# 没有 pg_dump/pg_restore 时，非空库下一次升级会在备份闸门被拒绝。
+ARG POSTGRES_CLIENT_MAJOR=18
+RUN curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+        -o /usr/share/keyrings/postgresql.asc \
+    && printf '%s\n' 'deb [signed-by=/usr/share/keyrings/postgresql.asc] https://apt.postgresql.org/pub/repos/apt trixie-pgdg main' \
+        > /etc/apt/sources.list.d/postgresql.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends "postgresql-client-${POSTGRES_CLIENT_MAJOR}" \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /opt/journeypilot /opt/journeypilot
 COPY --from=node-mcp /mcp/node_modules /app/node_modules
-ENV PATH="/app/.venv/bin:/app/node_modules/.bin:${PATH}" \
-    VIRTUAL_ENV="/app/.venv" \
+ENV PATH="/opt/journeypilot/bin:/app/node_modules/.bin:${PATH}" \
+    VIRTUAL_ENV="/opt/journeypilot" \
     PYTHONUNBUFFERED=1
 
 COPY src/ ./src/
@@ -89,7 +101,7 @@ COPY static/ ./static/
 # 会让「我的配置没生效」变成「我改的那份文件根本没被读」。Compose 把宿主机的
 # config.yaml 挂进来；没挂也能跑（全部走 Pydantic 默认 + JOURNEYPILOT_* 环境变量）。
 
-RUN mkdir -p outputs uploads logs backups \
+RUN mkdir -p outputs uploads logs backups data/usage \
     && chown -R journeypilot:journeypilot /app
 
 COPY docker/api-entrypoint.sh /usr/local/bin/api-entrypoint.sh

@@ -1663,6 +1663,7 @@ async def chat_stream(
                     "message": "旅行方案暂时无法生成，请稍后重试。",
                     "message_id": message_id,
                     "run_id": trip_run.run_id,
+                    "run_cost_summary": terminal_cost_summary,
                 })
             yield sse_event({
                 "type": "error",

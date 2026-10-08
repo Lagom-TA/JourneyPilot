@@ -54,6 +54,11 @@ class PrimaryModelConfig(StrictConfig):
     api_key: str = ""
     model_name: str = "MiniMax-M2.7"
     base_url: str = "https://api.minimaxi.com/v1"
+    use_responses_api: bool = Field(default=False, description="使用 OpenAI Responses 接口；false 使用 Chat Completions。")
+    responses_streaming: bool = Field(default=False, description="Responses 使用流式传输；ainvoke 聚合完整响应后返回。")
+    token_limit_field: Optional[Literal["max_tokens", "max_completion_tokens", "both"]] = Field(
+        default=None, description="Chat Completions 输出上限字段；null 使用 provider preset。",
+    )
     max_tokens: int = Field(default=MAX_COMPLETION_TOKENS, ge=1)
     temperature: float = 0.7
     reasoning_effort: Literal["low", "medium"] = "medium"
@@ -69,6 +74,11 @@ class FastModelConfig(StrictConfig):
     api_key: str = ""
     model_name: str = "MiniMax-M2.7"
     base_url: str = "https://api.minimaxi.com/v1"
+    use_responses_api: bool = Field(default=False, description="使用 OpenAI Responses 接口；false 使用 Chat Completions。")
+    responses_streaming: bool = Field(default=False, description="Responses 使用流式传输；ainvoke 聚合完整响应后返回。")
+    token_limit_field: Optional[Literal["max_tokens", "max_completion_tokens", "both"]] = Field(
+        default=None, description="Chat Completions 输出上限字段；null 使用 provider preset。",
+    )
     max_tokens: int = Field(default=MAX_COMPLETION_TOKENS, ge=1)
     temperature: float = 0.5
     reasoning_effort: Literal["low", "medium"] = "low"

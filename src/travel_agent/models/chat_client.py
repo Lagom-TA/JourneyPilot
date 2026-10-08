@@ -21,6 +21,8 @@ else:
     class ReasoningChatOpenAI(_ChatOpenAI):
         """Retain Chat Completions reasoning fields that ChatOpenAI omits."""
 
+        use_legacy_max_tokens: bool = False
+
         def _create_chat_result(self, response: Any, generation_info: Any = None) -> Any:
             result = super()._create_chat_result(response, generation_info)
             raw = response if isinstance(response, dict) else response.model_dump()
@@ -31,6 +33,8 @@ else:
         def _get_request_payload(self, input_: Any, *, stop: Any = None, **kwargs: Any) -> dict[str, Any]:
             payload = super()._get_request_payload(input_, stop=stop, **kwargs)
             if "messages" in payload:
+                if self.use_legacy_max_tokens and "max_completion_tokens" in payload:
+                    payload["max_tokens"] = payload.pop("max_completion_tokens")
                 messages = self._convert_input(input_).to_messages()
                 for wire, message in zip(payload["messages"], messages):
                     if message.type == "ai":

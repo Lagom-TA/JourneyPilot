@@ -304,6 +304,12 @@ def response_finish_reason(message: Any) -> Optional[str]:
     if not isinstance(meta, dict):
         return None
     reason = meta.get("finish_reason") or meta.get("stop_reason")
+    if not reason and meta.get("status") == "incomplete":
+        details = meta.get("incomplete_details") or {}
+        reason = details.get("reason") if isinstance(details, dict) else None
+        reason = "length" if reason == "max_output_tokens" else (reason or "incomplete")
+    if not reason and meta.get("status") in {"completed", "failed", "cancelled"}:
+        reason = "stop" if meta["status"] == "completed" else meta["status"]
     return str(reason) if reason else None
 
 

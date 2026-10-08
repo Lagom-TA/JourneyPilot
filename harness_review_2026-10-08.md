@@ -260,3 +260,27 @@ journal 保留到所属 TripRun 删除，由 FK `ON DELETE CASCADE` 清理；本
 24 个离线请求 fixture 与 24 个 fake-model/真实-Gateway 恢复场景已完成；后者全部通过。六次已授权付费调用中，4 次无工具约束 JSON（Sol medium / Flash low）以及 2 次 Flash synthetic 工具协议均通过，usage 完整、无截断，按配置价格合计 **$0.0016389**；实际 cache read rate **0**。未重新运行已完成的付费 probes。此次精简 8 工具 fixture 的 deferred 初始估算反而比 full 多 108 Token，说明按需曝光有目录和额外轮次开销，初始定义变小的旧 fixture 不能代表普遍收益。
 
 复现命令、依赖版本、已脱敏 API/fixture 结果和精确范围已进入版本控制：[实验记录](docs/review/harness-experiments-2026-10-08.md)、[验证数据](docs/review/harness-verification-2026-10-08.json)。固定 Codex/DSH SHA 未变化，study 保持基线。本轮可在现有环境完成的架构审查、修复和验证已收尾；项目数据库/pgvector 集成、真实 packet admission 和交付端到端、缓存/质量/成功交付成本收益仍需部署环境验证，不能由本次离线或协议结果推断。
+
+## 续批 F1：正式部署入口审查（进行中）
+
+本轮起点：main 与远端均为 `aa5a2da6d16589c27534bbf31fb566098b310ff8`；study 与远端均为 `5e08d829a04048c6f6dba86b191813e22825c106`，保持固定。工作区已有 Responses/Chat 配置与传输测试改动，完整保留。`config.md` 是已有的本地凭据说明，新增忽略规则，不提交其内容；Docker build context 同时排除真实配置、凭据、参考仓库和运行数据。
+
+部署审查发现 Compose 没有挂载 `data/usage`，容器重建可能丢掉未确认账单。已声明 `usage_data:/app/data/usage`；镜像预建非 root 可写的目录。唯一 Python 虚拟环境改为 Docker 内 `/opt/journeypilot`，构建按 `uv.lock --frozen`，不再调用旧宿主机 test-venv。历史验证与固定参考继续复用。
+
+环境实测：WSL 默认 Docker socket 不存在，Docker Desktop 的 Linux socket 只有 root 可以访问。通过 WSL root Docker 客户端连接已有 Desktop daemon；此前只有其他项目 PostgreSQL 容器及卷，没有 JourneyPilot 业务卷。通过现有 Compose 创建本项目 PostgreSQL/pgvector 与 Redis，保留其他容器。迁移前只读检查确认 PostgreSQL **18.6**、`travel_agent` 的 public schema 无业务表。API 镜像构建进行中，尚未执行迁移与正式应用验证。
+
+Responses 审查发现缺少 terminal status 校验：SDK 可返回 `status=incomplete` 的部分正文，流提前 EOF 也可能被当成功。新增明确异常，拒绝不完整产物，已返回 usage 仍按错误尝试入账；`max_output_tokens` 映射成账本 `finish_reason=length`。这些改动尚待 Docker 中回归，不能列为验证通过。
+
+当前本地部署配置是 Sol `gpt-6.1-sol` / Responses / medium 与代理别名 `deepseek-flash` / Chat / low；代理 `/models` 仅列出 `deepseek-flash`、`deepseek-v4-flash` 等，没有用户指定的 `deepseek-v4.1-flash`。已提出精确 ID/映射确认，未把别名宣称为 v4.1。模型身份不明影响正式模型验证结论，环境与代码审查继续推进。累计 Run 预算仍 observe、各上限 null。
+
+## 续批 F2：真实迁移、协议与失败账单
+
+通过 Docker 内既有 `api-entrypoint.sh → journeypilot.py config validate → migrate → main.py` 已正式启动。迁移前 CLI dry-run 为 `migrate_empty`、0 行，随后升级到 **0009_worker_journal**；PostgreSQL 18.6 的 vector/pgcrypto、受管表指纹、LangGraph checkpoint 合同校验通过。数据卷与唯一环境 `/opt/journeypilot` 已实测，usage SQLite 为 WAL、0600、UID 10001。复制已有验证材料曾使 usage 目录归 root，已校正卷权限并重启；没有把这段故障称为完整计量。
+
+真实代理拒绝非流式 Sol Responses（400 `stream must be true`），新增 `responses_streaming` 配置，业务 `ainvoke` 聚合完整流后返回，并记录实际 transport stream 标志。Sol medium 修复后的真实短请求成功。精确 `deepseek-v4.1-flash` 被代理明确拒绝（422 model not supported），指定版本尚未验证。用户继续后，临时采用已有 `deepseek-flash` 别名开展运行链验证，版本保持未确认，不将其报告为 v4.1。
+
+首轮完整后端/真实 pgvector 回归：**563 passed / 8 failed / 0 skipped**（配置来源 suite 单独执行，避免 Compose 数据库 env 覆盖测试 YAML）。8 个失败均因运行镜像缺少与 PostgreSQL 18 匹配的 pg_dump/pg_restore。已通过 PGDG HTTPS + signed-by 安装 client 18，备份/恢复 **11/11** 通过。新增 Responses/usage/数据库维护回归 **84 passed**，配置 **30 passed**，Ruff 通过；前端 **23 passed**、类型与构建通过。单套环境不再调用历史宿主机 venv。
+
+真实失败 SSE：`trip_73e7ee37f5d94d2e`（精确 v4.1 422），产生 run_failed/error、业务状态 failed，3 个模型错误尝试完整落库，usage/费用保持未知，outbox pending=0。发现失败分支虽然结算账本却不发送汇总；已补齐 run_failed producer→public projection→前端 SET_RUN_COST_SUMMARY，并新增未知/待落库合同回归。真实后续失败 `trip_49e3ad1a066e4eb3` 已收到结算汇总：1 次 alias 调用、真实 4,271 输入/1,899 输出，capture_complete=true，费用未知。已有配置 `model_pricing=[]`，本轮不编造账单价格或替换用户价格表。
+
+真实受控单日行程在 planner 失败：硬约束「不安排酒店住宿」只有 composition/projection 阶段，却被分配给未调度的 accommodation researcher，触发 ownership 校验。已把仅组合/投影的约束归属 itinerary planner，研究/admission/ranking 阶段仍归领域 worker，并保证活跃意图 owner 被调度。修复与计划门恢复验证进行中；此时尚未产生 Research Packet 或 Delivery Bundle，不能列为端到端通过。

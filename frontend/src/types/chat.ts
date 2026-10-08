@@ -335,7 +335,7 @@ export interface SSEEvent {
   compaction?: {
     triggered: boolean;
   };
-  // chat_complete / run_cancelled 事件专用：run 级成本汇总（终结时一次）
+  // chat_complete / run_terminal / run_cancelled / run_failed：run 级成本汇总
   run_cost_summary?: RunCostSummary | null;
 }
 

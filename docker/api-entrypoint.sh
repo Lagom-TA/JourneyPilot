@@ -2,7 +2,7 @@
 # API 容器的启动编排器。与 run.sh 走同一个 Python 编排器。
 #
 # 顺序不可交换：API 进程不建表（ADR-P0-03），所以迁移必须先跑完。
-# 不用 `uv run`：.venv 已在 PATH 上，而它会去校验并可能改写 lockfile。
+# 不用 `uv run`：/opt/journeypilot 已在 PATH 上，而它会去校验并可能改写 lockfile。
 set -e
 
 echo "[entrypoint] 校验配置…"

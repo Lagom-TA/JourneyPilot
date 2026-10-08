@@ -799,6 +799,9 @@ export function useSendMessage() {
               }
 
               case 'run_failed': {
+                if (event.run_cost_summary !== undefined) {
+                  scopedDispatch({ type: 'SET_RUN_COST_SUMMARY', payload: event.run_cost_summary });
+                }
                 // 产品流终态失败必须可见，对齐 error 收敛。
                 flushFrameNow();
                 scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: new Date() } });

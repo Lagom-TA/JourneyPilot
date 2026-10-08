@@ -15,6 +15,9 @@
 | `primary_model.api_key` | str | （空） | — | `JOURNEYPILOT_PRIMARY_MODEL__API_KEY` |
 | `primary_model.model_name` | str | `MiniMax-M2.7` | — | `JOURNEYPILOT_PRIMARY_MODEL__MODEL_NAME` |
 | `primary_model.base_url` | str | `https://api.minimaxi.com/v1` | — | `JOURNEYPILOT_PRIMARY_MODEL__BASE_URL` |
+| `primary_model.use_responses_api` | bool | `False` | — | `JOURNEYPILOT_PRIMARY_MODEL__USE_RESPONSES_API` |
+| `primary_model.responses_streaming` | bool | `False` | — | `JOURNEYPILOT_PRIMARY_MODEL__RESPONSES_STREAMING` |
+| `primary_model.token_limit_field` | max_tokens &#124; max_completion_tokens &#124; both | null | — | `JOURNEYPILOT_PRIMARY_MODEL__TOKEN_LIMIT_FIELD` |
 | `primary_model.max_tokens` | int | `65536` | >= 1 | `JOURNEYPILOT_PRIMARY_MODEL__MAX_TOKENS` |
 | `primary_model.temperature` | float | `0.7` | — | `JOURNEYPILOT_PRIMARY_MODEL__TEMPERATURE` |
 | `primary_model.reasoning_effort` | low &#124; medium | `medium` | — | `JOURNEYPILOT_PRIMARY_MODEL__REASONING_EFFORT` |
@@ -22,6 +25,9 @@
 | `fast_model.api_key` | str | （空） | — | `JOURNEYPILOT_FAST_MODEL__API_KEY` |
 | `fast_model.model_name` | str | `MiniMax-M2.7` | — | `JOURNEYPILOT_FAST_MODEL__MODEL_NAME` |
 | `fast_model.base_url` | str | `https://api.minimaxi.com/v1` | — | `JOURNEYPILOT_FAST_MODEL__BASE_URL` |
+| `fast_model.use_responses_api` | bool | `False` | — | `JOURNEYPILOT_FAST_MODEL__USE_RESPONSES_API` |
+| `fast_model.responses_streaming` | bool | `False` | — | `JOURNEYPILOT_FAST_MODEL__RESPONSES_STREAMING` |
+| `fast_model.token_limit_field` | max_tokens &#124; max_completion_tokens &#124; both | null | — | `JOURNEYPILOT_FAST_MODEL__TOKEN_LIMIT_FIELD` |
 | `fast_model.max_tokens` | int | `65536` | >= 1 | `JOURNEYPILOT_FAST_MODEL__MAX_TOKENS` |
 | `fast_model.temperature` | float | `0.5` | — | `JOURNEYPILOT_FAST_MODEL__TEMPERATURE` |
 | `fast_model.reasoning_effort` | low &#124; medium | `low` | — | `JOURNEYPILOT_FAST_MODEL__REASONING_EFFORT` |

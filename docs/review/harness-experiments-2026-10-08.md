@@ -53,3 +53,15 @@ PYTHONPATH=src:. temp/harness-review-2026-10-05/test-venv/bin/python scripts/har
 当前应用保留无工具 Chat Completions 的 Sol medium 组合与 Flash low 工具研究。Sol 的工具调用需要 Responses adapter，本轮协议 guard 会拒绝不支持的 Chat 工具请求，没有实现或宣称已支持该 adapter。
 
 尚待部署环境执行完整 provider→Research Packet admission→typed gates→Delivery Bundle→SSE/恢复端到端验证，以及单变量真实缓存/质量/成功交付成本 A/B。独立 stub 数据库、synthetic 工具或短协议请求不能替代这些实验；embeddings 不属于本 LLM ledger。
+
+## 正式部署续验 F1（进行中）
+
+后续所有 Python 验证与应用运行使用 Docker 内唯一环境 `/opt/journeypilot`；上文 test-venv 命令仅记录历史验证复现。新材料位于忽略目录 `temp/formal-review-2026-10-08/`，最终脱敏摘要另行归档。WSL 通过 Docker Desktop daemon 的既有 socket 运行项目 Compose，不启动第二个 daemon。
+
+迁移前实际数据库为 PostgreSQL 18.6，JourneyPilot public schema 空。现有 Compose 的 `data/usage` 持久卷缺口已修复。尚未执行应用迁移和完整 provider/SSE/交付验证，不能用历史 477/116 或协议校准替代本轮正式结果。
+
+## 正式部署续验 F2
+
+业务库已通过既有启动入口从空库迁移至 0009，PostgreSQL 18.6 / pgvector / LangGraph checkpoint 校验通过。Docker Desktop 此 WSL distro 未启用 bind mount 集成，验证使用本项目独立 Docker 管理卷装入配置、复用 Qwen 权重和验证材料；没有调整其他项目的 daemon/容器。生产 Compose 补 usage_data 持久卷，唯一 Python 环境为 /opt/journeypilot。
+
+新增 `scripts/verify_formal_run.py --live --request REQUEST.json --output SSE.jsonl` 通过正式 chat-stream API 捕获公共 SSE、run/events/bundle 快照。它明确调用真实模型、写实际业务 run，无 fake worker/gate/finalizer。当前已保存两个真实失败 run；指定 v4.1 入口不可用和 planner ownership 缺陷分开归因。Sol medium 的真实 Responses stream 聚合已成功，Flash alias 的版本身份未确认。账本有真实 reported Token，但现有 model_pricing=[]，费用为 null。更完整交付/恢复结论将在后续批次记录。

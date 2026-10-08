@@ -479,16 +479,19 @@ def _project_product_event(event_type: str, payload: Dict[str, Any]) -> Dict[str
             out["run_cost_summary"] = audit_safe_value(payload["run_cost_summary"])
         return out
     if event_type == "run_failed":
-        # ``message`` only.  ``run_status`` restated the frame name; the failure
+        # ``run_status`` restated the frame name; the failure
         # codes (``reason_code`` / ``error_code``) are internal attribution with
         # no client reader — they are kept where they belong, on the durable run
         # record (``transition_status(terminal_reason_code=…)``), which is what
         # an operator reads.
-        return {
+        out = {
             **common,
             "message": payload.get("message")
             or "旅行方案暂时无法生成，请稍后重试。",
         }
+        if isinstance(payload.get("run_cost_summary"), dict):
+            out["run_cost_summary"] = audit_safe_value(payload["run_cost_summary"])
+        return out
     # error and other allowlisted product failures: never leak provider prose.
     return {
         **common,
