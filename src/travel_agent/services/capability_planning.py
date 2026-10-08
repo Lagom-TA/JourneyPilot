@@ -64,6 +64,12 @@ _TOOLS: Dict[AgentName, List[str]] = {
 }
 
 
+def _intent_owner(item: IntentItem) -> AgentName:
+    if not any(stage in item.impact_stages for stage in ("research", "admission", "ranking")):
+        return "itinerary_planner"
+    return _TARGET_OWNER[item.target]
+
+
 def build_research_brief(
     request_contract: RequestContract,
     controlled_identity: Mapping[str, object],
@@ -168,6 +174,7 @@ def build_capability_plan(
     agents: set[AgentName] = {
         _DOMAIN_OWNER[objective.domain] for objective in brief.domain_objectives
     }
+    agents.update(_intent_owner(item) for item in active)
     agents.add("itinerary_planner")
     assignments: Dict[str, AgentAssignmentContract] = {}
 
@@ -197,7 +204,7 @@ def build_capability_plan(
         for agent in agents
     }
     for agent in sorted(agents):
-        owned_intents = [item for item in active if _TARGET_OWNER[item.target] == agent]
+        owned_intents = [item for item in active if _intent_owner(item) == agent]
         objectives = objective_by_agent.get(agent, [])
         upstream = []
         if agent in {"transport_researcher", "accommodation_researcher"} and "destination_researcher" in agents:

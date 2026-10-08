@@ -61,8 +61,12 @@ from ..research_packet_output import (
 from ...entities.provider_evidence import (
     ProviderEvidenceScope,
     ProviderRouteLegScope,
+    build_provider_evidence_assignments,
+    dump_provider_evidence_assignments,
     parse_provider_evidence_assignments,
+    scope_attempt_numbers,
 )
+from ...entities.trip_input import ControlledTripIdentity
 from ...services.constraint_applicability import active_hard_constraints, active_hard_constraint_ids
 from ...services.state_invalidation import generation_packet_key
 from ...services.research_query_planner import queries_by_ids
@@ -1859,6 +1863,42 @@ def build_transport_task_prompt(
     return TASK_TEMPLATE.format(task_desc=task_desc, user_query=user_query)
 
 
+def transport_provider_assignments(assignment: Dict[str, Any], state: TravelAgentState):
+    """Upgrade the old planner's empty same-city scopes on checkpoint resume.
+
+    Only the known initial same-city defect is repairable. Missing scopes,
+    targeted retries and intercity assignments retain the strict parser guard.
+    The server rebuilds identities from the locked trip, never model output.
+    """
+    if (
+        assignment.get("provider_evidence_assignments") == []
+        and not assignment.get("require_current_candidate")
+        and not assignment.get("connector_gaps")
+    ):
+        identity = ControlledTripIdentity.model_validate(state.controlled_trip_identity)
+        if all(place.place_id == identity.origin.place_id for place in identity.destinations):
+            assignment = {
+                **assignment,
+                "provider_evidence_assignments": dump_provider_evidence_assignments(
+                    build_provider_evidence_assignments(
+                        run_id=state.run_id,
+                        constraint_pack_revision=state.constraint_pack_revision,
+                        worker_kind=_NODE_NAME,
+                        controlled_trip_identity=identity.model_dump(mode="json"),
+                        prior_scope_attempts=scope_attempt_numbers(state.provider_evidence_outcomes),
+                        transport_classes=["public_transit", "flexible"],
+                    )
+                ),
+            }
+            logger.info("Upgraded legacy same-city Provider scopes run_id=%s", state.run_id)
+    return parse_provider_evidence_assignments(
+        assignment,
+        expected_worker=_NODE_NAME,
+        expected_run_id=state.run_id,
+        expected_constraint_pack_revision=state.constraint_pack_revision,
+    )
+
+
 async def transport_researcher_node(
     state: TravelAgentState, config: RunnableConfig
 ) -> Dict[str, Any]:
@@ -1906,12 +1946,7 @@ async def transport_researcher_node(
     connector_gaps = assignment.get("connector_gaps")
     excluded_candidate_ids = assignment.get("excluded_candidate_ids")
     require_current_candidate = bool(assignment.get("require_current_candidate"))
-    provider_assignments = parse_provider_evidence_assignments(
-        assignment,
-        expected_worker=_NODE_NAME,
-        expected_run_id=run_id,
-        expected_constraint_pack_revision=state.constraint_pack_revision,
-    )
+    provider_assignments = transport_provider_assignments(assignment, state)
     required_route_scopes = [
         item.scope
         for item in provider_assignments

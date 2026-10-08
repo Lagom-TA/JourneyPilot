@@ -65,3 +65,9 @@ PYTHONPATH=src:. temp/harness-review-2026-10-05/test-venv/bin/python scripts/har
 业务库已通过既有启动入口从空库迁移至 0009，PostgreSQL 18.6 / pgvector / LangGraph checkpoint 校验通过。Docker Desktop 此 WSL distro 未启用 bind mount 集成，验证使用本项目独立 Docker 管理卷装入配置、复用 Qwen 权重和验证材料；没有调整其他项目的 daemon/容器。生产 Compose 补 usage_data 持久卷，唯一 Python 环境为 /opt/journeypilot。
 
 新增 `scripts/verify_formal_run.py --live --request REQUEST.json --output SSE.jsonl` 通过正式 chat-stream API 捕获公共 SSE、run/events/bundle 快照。它明确调用真实模型、写实际业务 run，无 fake worker/gate/finalizer。当前已保存两个真实失败 run；指定 v4.1 入口不可用和 planner ownership 缺陷分开归因。Sol medium 的真实 Responses stream 聚合已成功，Flash alias 的版本身份未确认。账本有真实 reported Token，但现有 model_pricing=[]，费用为 null。更完整交付/恢复结论将在后续批次记录。
+
+## 正式部署续验 F3
+
+`trip_5840a393a0e04c1c` 已验证真实 plan_gate 中断、API 重启后 approve 恢复、真实 Provider 研究与 typed Research Packet 持久化。续跑因同城交通空 scope 失败，保留原始 SSE、快照与只读 checkpoint/ledger 审计于 `temp/formal-review-2026-10-08/`；8 次调用、118,570 输入/15,894 输出/13,659 reasoning Token，usage 完整、pending=0、金额 null。所见缓存读 51,072 Token 只是这个 Run 的供应商报告，不能当作缓存策略 A/B 结论。
+
+已修复初始市内交通 scope 和限定旧同城断点兼容，相关 agent_behavior 回归 **96 passed**。恢复尝试没有新增模型调用：原 Run 的不可重置十分钟 deadline 已耗尽，无 workspace 被 delivery_quality_gate 拒绝（composition_window_exhausted）。保留原状态后，以新 Run 验证修复代码；交付、研究执行期间进程崩溃恢复与账本故障补记仍待正式验证。

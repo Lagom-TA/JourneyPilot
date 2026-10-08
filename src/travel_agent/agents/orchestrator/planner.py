@@ -40,9 +40,6 @@ def _attach_initial_provider_evidence_scopes(
     ):
         if worker not in scoped:
             continue
-        if worker == "transport_researcher" and not long_distance_legs:
-            scoped[worker]["provider_evidence_assignments"] = []
-            continue
         scoped[worker]["provider_evidence_assignments"] = (
             dump_provider_evidence_assignments(
                 build_provider_evidence_assignments(
@@ -52,6 +49,11 @@ def _attach_initial_provider_evidence_scopes(
                     controlled_trip_identity=state.controlled_trip_identity or {},
                     prior_scope_attempts=scope_attempt_numbers(
                         state.provider_evidence_outcomes
+                    ),
+                    transport_classes=(
+                        ["public_transit", "flexible"]
+                        if worker == "transport_researcher" and not long_distance_legs
+                        else None
                     ),
                     long_distance_legs=(
                         long_distance_legs

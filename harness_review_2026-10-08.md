@@ -284,3 +284,11 @@ Responses 审查发现缺少 terminal status 校验：SDK 可返回 `status=inco
 真实失败 SSE：`trip_73e7ee37f5d94d2e`（精确 v4.1 422），产生 run_failed/error、业务状态 failed，3 个模型错误尝试完整落库，usage/费用保持未知，outbox pending=0。发现失败分支虽然结算账本却不发送汇总；已补齐 run_failed producer→public projection→前端 SET_RUN_COST_SUMMARY，并新增未知/待落库合同回归。真实后续失败 `trip_49e3ad1a066e4eb3` 已收到结算汇总：1 次 alias 调用、真实 4,271 输入/1,899 输出，capture_complete=true，费用未知。已有配置 `model_pricing=[]`，本轮不编造账单价格或替换用户价格表。
 
 真实受控单日行程在 planner 失败：硬约束「不安排酒店住宿」只有 composition/projection 阶段，却被分配给未调度的 accommodation researcher，触发 ownership 校验。已把仅组合/投影的约束归属 itinerary planner，研究/admission/ranking 阶段仍归领域 worker，并保证活跃意图 owner 被调度。修复与计划门恢复验证进行中；此时尚未产生 Research Packet 或 Delivery Bundle，不能列为端到端通过。
+
+## 续批 F3：真实审批恢复与同城证据范围
+
+仅组合/投影意图 ownership 修复后，真实 Run `trip_5840a393a0e04c1c` 在 26.5 秒到达 plan_gate，业务状态 awaiting_input、checkpoint 恢复策略、公共审批 SSE 均已保存。重启 API 后通过正式 gate_decision approve 续跑；destination worker 调用真实 OSM/网页 Provider，模型选取修复后保存 3 个 Visit 候选及其来源、事实和 provenance。只读 checkpoint 审计确认该 typed packet 已持久化，累计 8 个模型调用 reported usage 完整，pending=0、capture_complete=true，金额仍 null。
+
+续跑在 transport worker 输入校验失败：planner 遇到同城无长途 Leg 时给它分配空 Provider scopes，而 worker 要求非空责任范围。修复为公共交通/灵活市内交通的服务器 scope，跨城继续保留精确 outbound/return Leg。为复用已完成研究，旧 checkpoint 的已知「同城初始空列表」可从锁定身份重建范围；缺失范围、跨城空范围、定向补研空范围仍拒绝，不修改 checkpoint 或关闭 typed gate。新增 planner/恢复合同回归，Docker 唯一环境中的 agent_behavior **96 passed**，Ruff 通过。
+
+修复后尝试续跑时，原 Run 授权于 09:29:58 UTC 的既有十分钟 deadline 已耗尽（观察 elapsed=829.94 秒），边界收口至 delivery_quality_gate；无 workspace 因 composition_window_exhausted 拒绝。没有新增模型调用，没有为了验证重置 deadline。该终态与 scope 缺陷分别归因；当前从正式 API 新建同输入 Run 验证完整交付，尚不能声称 Delivery Bundle 或端到端通过。

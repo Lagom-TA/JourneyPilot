@@ -578,6 +578,95 @@ def test_contract_and_capability_plan_are_deterministic_and_cover_hard_intents()
     } == set(query_plan.query_index())
 
 
+@pytest.mark.parametrize("stages,owner", [
+    (["composition", "projection"], "itinerary_planner"),
+    (["research", "admission", "composition"], "accommodation_researcher"),
+])
+def test_same_day_lodging_exclusion_has_an_owner_without_unneeded_research(stages, owner):
+    contract, generation = _contract()
+    identity = _identity()
+    identity["end_date"] = identity["start_date"]
+    excluded = contract.intent_spec.active_items[0].model_copy(update={
+        "intent_id": "intent_no_hotel", "kind": IntentKind.MUST_EXCLUDE,
+        "target": IntentTarget.LODGING, "strength": IntentStrength.HARD,
+        "value": CategoryIntentValue(categories=["酒店"]),
+        "impact_stages": stages, "public_summary": "不安排酒店住宿",
+    })
+    contract = contract.model_copy(update={"intent_spec": contract.intent_spec.model_copy(update={
+        "active_items": [*contract.intent_spec.active_items, excluded],
+    })})
+    brief = build_research_brief(contract, identity)
+    plan = build_capability_plan(
+        request_contract=contract, brief=brief, plan_revision=generation.plan_revision,
+        research_query_plan=build_research_query_plan(intent_spec=contract.intent_spec, brief=brief),
+    )
+    assert "intent_no_hotel" in plan.assignments[owner].must_cover_intent_ids
+    assert ("accommodation_researcher" in plan.assignments) == (owner == "accommodation_researcher")
+    assert sum("intent_no_hotel" in assignment.must_cover_intent_ids
+               for assignment in plan.assignments.values()) == 1
+
+
+@pytest.mark.parametrize("same_city", [True, False])
+def test_planner_assigns_authoritative_transport_scopes_for_local_and_intercity_trips(same_city):
+    from travel_agent.agents.orchestrator.planner import planner_node
+    from travel_agent.entities.provider_evidence import parse_provider_evidence_assignments
+
+    contract, generation = _contract()
+    identity = _identity()
+    if same_city:
+        identity["destinations"] = [identity["origin"]]
+    brief = build_research_brief(contract, identity)
+    state = TravelAgentState(
+        run_id="run_intent_contract",
+        controlled_trip_identity=identity,
+        request_contract=contract,
+        intent_spec=contract.intent_spec,
+        intent_spec_revision=contract.intent_spec.revision,
+        research_brief=brief,
+        planning_generation=generation,
+        constraint_pack_revision=contract.constraint_pack_revision,
+    )
+    result = asyncio.run(planner_node(state))
+    assignments = parse_provider_evidence_assignments(
+        result["agent_assignments"]["transport_researcher"],
+        expected_worker="transport_researcher",
+        expected_run_id=state.run_id,
+        expected_constraint_pack_revision=state.constraint_pack_revision,
+    )
+    assert {item.scope.transport_class for item in assignments} == (
+        {"public_transit", "flexible"} if same_city
+        else {"long_distance", "public_transit", "flexible"}
+    )
+    legs = [item.scope.route_leg for item in assignments if item.scope.route_leg]
+    assert [leg.leg_role for leg in legs] == ([] if same_city else ["outbound", "return"])
+
+
+@pytest.mark.parametrize("same_city,scoped,raw,repairable", [
+    (True, False, [], True),
+    (False, False, [], False),
+    (True, True, [], False),
+    (True, False, None, False),
+])
+def test_transport_resume_repairs_only_legacy_initial_same_city_scopes(same_city, scoped, raw, repairable):
+    from travel_agent.agents.transport_researcher.node import transport_provider_assignments
+
+    identity = _identity()
+    if same_city:
+        identity["destinations"] = [identity["origin"]]
+    state = TravelAgentState(run_id="run_local_resume", controlled_trip_identity=identity,
+                             constraint_pack_revision=2)
+    assignment = {"provider_evidence_assignments": raw, "require_current_candidate": scoped}
+    if not repairable:
+        with pytest.raises(ValueError, match="requires Provider evidence scopes"):
+            transport_provider_assignments(assignment, state)
+        return
+    scopes = transport_provider_assignments(assignment, state)
+    assert {item.scope.transport_class for item in scopes} == {"public_transit", "flexible"}
+    assert all(item.scope.run_id == state.run_id and item.scope.constraint_pack_revision == 2
+               for item in scopes)
+    assert assignment["provider_evidence_assignments"] == []
+
+
 def test_plan_gate_separates_hard_preferences_and_attention():
     contract, _generation = _contract()
     hard = contract.intent_spec.active_items[0]
