@@ -1,0 +1,786 @@
+{
+  "schema_version": "journeypilot.harness_formal_verification.v1",
+  "date": "2026-10-08",
+  "scope": "actual_provider_api_runs_and_docker_postgresql_runtime",
+  "repository": {
+    "branch": "main",
+    "initial_main": "aa5a2da6d16589c27534bbf31fb566098b310ff8",
+    "verified_code_commit": "3a6b7796b45f2f3605d158774e5c94d4c41df46a",
+    "study_fixed": "5e08d829a04048c6f6dba86b191813e22825c106",
+    "references": {
+      "codex": "823ea830c0fd418b09ff02d36cad9a1fff66465b",
+      "deepseek_harness": "5badb15009ae1756c3afe0ae0cef1faafc290ccc"
+    }
+  },
+  "environment": {
+    "python": "/opt/journeypilot/bin/python",
+    "virtual_env": "/opt/journeypilot",
+    "available_virtual_envs": [
+      "journeypilot"
+    ],
+    "dependencies": {
+      "langgraph": "1.1.3",
+      "langchain-openai": "1.1.11",
+      "openai": "2.29.0",
+      "asyncpg": "0.31.0",
+      "psycopg": "3.3.4",
+      "pydantic": "2.12.5",
+      "reportlab": "5.0.0",
+      "pypdf": "6.14.2"
+    },
+    "image_id": "sha256:11cde1a62b8ebfd4451a1d63370fb3aad9cdc864b014df0444a7ab9b9ce1dcf8",
+    "mounts": [
+      {
+        "Type": "volume",
+        "Name": "journeypilot_review_config",
+        "Destination": "/app/deployment",
+        "RW": true
+      },
+      {
+        "Type": "volume",
+        "Name": "journeypilot_review_outputs",
+        "Destination": "/app/outputs",
+        "RW": true
+      },
+      {
+        "Type": "volume",
+        "Name": "journeypilot_review_uploads",
+        "Destination": "/app/uploads",
+        "RW": true
+      },
+      {
+        "Type": "volume",
+        "Name": "journeypilot_usage_data",
+        "Destination": "/app/data/usage",
+        "RW": true
+      },
+      {
+        "Type": "volume",
+        "Name": "journeypilot_backups_data",
+        "Destination": "/app/backups",
+        "RW": true
+      },
+      {
+        "Type": "volume",
+        "Name": "journeypilot_huggingface_cache",
+        "Destination": "/home/journeypilot/.cache/huggingface",
+        "RW": true
+      }
+    ],
+    "permissions": [
+      "755 10001 10001 /app/data/usage",
+      "600 10001 10001 /app/data/usage/outbox.sqlite3",
+      "755 10001 10001 /app/backups",
+      "755 10001 10001 /app/backups/backup-20261008T103304Z-formal-review-2026-10-08"
+    ],
+    "docker_entrypoint": "api-entrypoint.sh -> config validate -> migrate -> main.py",
+    "wsl_binding": "existing Docker Desktop socket, project named volumes and ignored Compose override"
+  },
+  "configuration": {
+    "models": {
+      "primary": {
+        "name": "gpt-6.1-sol",
+        "reasoning": "medium",
+        "responses_streaming": true
+      },
+      "fast": {
+        "name": "deepseek-flash",
+        "reasoning": "low"
+      }
+    },
+    "requested_fast_model": "deepseek-v4.1-flash",
+    "requested_fast_model_reachable": false,
+    "requested_fast_model_error_http_status": 422,
+    "fast_alias_version_verified": false,
+    "reasoning_disabled": false,
+    "run_budget": {
+      "enforce_limits": false,
+      "max_llm_calls": null,
+      "max_tool_calls": null,
+      "max_input_tokens": null,
+      "max_output_tokens": null,
+      "max_cost_usd": null,
+      "max_tool_retries_per_target": null
+    },
+    "model_prices_configured": 0
+  },
+  "checks": {
+    "backend": {
+      "passed": 615,
+      "skipped": 0,
+      "business_database_suite_passed": 585,
+      "config_source_suite_passed": 30,
+      "config_suite_env_isolation": "unset JOURNEYPILOT_DATABASE__HOST"
+    },
+    "frontend": {
+      "passed": 23,
+      "typecheck": true,
+      "production_build": true,
+      "reused_after_unchanged_frontend": true
+    },
+    "ruff": true,
+    "diff_check": true,
+    "runtime_source_hashes_match_workspace": true
+  },
+  "database": {
+    "status": {
+      "backup_recommended": false,
+      "head_revision": "0009_worker_journal",
+      "migration_lock_free": true,
+      "migration_revision": "0009_worker_journal",
+      "postgres_major": 18,
+      "postgres_version": "PostgreSQL 18.6 (Debian 18.6-1.pgdg12+2) on x86_64-pc-linux-gnu, compiled by gcc (Debian 12.2.0-14+deb12u1) 12.2.0, 64-bit",
+      "reachable": true,
+      "schema_compatible": true
+    },
+    "checkpoint_schema": {
+      "missing_tables": [],
+      "next_action": "",
+      "ready": true
+    },
+    "schema_fingerprint_sha256": "a3475a5d68d47f275d4012a9a86b512cdf45c5cac69eb611d72dd40a08053891",
+    "extensions": {
+      "pgcrypto": true,
+      "plpgsql": true,
+      "vector": true
+    },
+    "optional_capabilities": {
+      "zhparser": false
+    },
+    "embedding_dimensions": {
+      "knowledge_chunks.embedding": 1024,
+      "memory_entities.embedding": 1024,
+      "memory_facts.embedding": 1024
+    },
+    "knowledge_seed_provided": false,
+    "embedding_identity_migration_compatibility_verified": false
+  },
+  "formal_runs": [
+    {
+      "run_id": "trip_73e7ee37f5d94d2e",
+      "scope": "formal_api_failure",
+      "status": "failed",
+      "cause": "requested DeepSeek v4.1 rejected by provider",
+      "http_status": 422,
+      "ledger_call_count": 3,
+      "provider_usage_known": false,
+      "pending_call_count": 0
+    },
+    {
+      "run_id": "trip_49e3ad1a066e4eb3",
+      "scope": "formal_api_failure",
+      "status": "failed",
+      "cause": "typed intent owner not scheduled; subsequently fixed",
+      "failed_sse_summary_verified": true,
+      "input_tokens": 4271,
+      "output_tokens": 1899,
+      "pending_call_count": 0
+    },
+    {
+      "run_id": "trip_5840a393a0e04c1c",
+      "scope": "formal_plan_gate_restart_resume",
+      "status": "failed",
+      "plan_gate_restart_approve_verified": true,
+      "actual_research_packet_persisted": true,
+      "local_transport_scope_bug_fixed": true,
+      "subsequent_delivery_rejected": "original deadline exhausted",
+      "deadline_reset": false,
+      "paid_calls_on_deadline_resume": 0,
+      "ledger_call_count": 8,
+      "input_tokens": 118570,
+      "output_tokens": 15894,
+      "reasoning_tokens": 13659,
+      "pending_call_count": 0
+    },
+    {
+      "run_id": "trip_9bcd381f336b41ef",
+      "scope": "formal_api_sigkill_and_explicit_resume",
+      "status": "completed",
+      "bundle_id": "bundle_52723103f64b4a95e6414e58",
+      "checkpoint_next": [],
+      "gates": {
+        "candidate_gate_route": "passed",
+        "candidate_gate_status": "passed",
+        "artifact_gate_route": "accepted",
+        "intent_fidelity_route": "passed",
+        "delivery_quality_route": "passed",
+        "delivery_persisted": true
+      },
+      "packets": [
+        {
+          "worker_kind": "destination_researcher",
+          "contract_version": "journeypilot.research_packet.v5",
+          "candidate_count": 4,
+          "source_count": 4,
+          "fact_count": 28
+        },
+        {
+          "worker_kind": "accommodation_researcher",
+          "contract_version": "journeypilot.research_packet.v5",
+          "candidate_count": 2,
+          "source_count": 2,
+          "fact_count": 14
+        },
+        {
+          "worker_kind": "destination_researcher",
+          "contract_version": "journeypilot.research_packet.v5",
+          "candidate_count": 0,
+          "source_count": 1,
+          "fact_count": 0
+        },
+        {
+          "worker_kind": "transport_researcher",
+          "contract_version": "journeypilot.research_packet.v5",
+          "candidate_count": 2,
+          "source_count": 2,
+          "fact_count": 16
+        }
+      ],
+      "itinerary": {
+        "visit_count": 2,
+        "dining_count": 1,
+        "lodging_count": 0,
+        "transport_count": 2
+      },
+      "ledger": {
+        "call_count": 25,
+        "logical_call_count": 25,
+        "total_input_tokens": 398396,
+        "total_output_tokens": 42620,
+        "total_reasoning_output_tokens": 34566,
+        "total_cached_input_tokens": 167936,
+        "total_cache_write_input_tokens": null,
+        "token_usage_complete": false,
+        "reasoning_usage_complete": false,
+        "cache_read_usage_complete": false,
+        "cache_write_usage_complete": false,
+        "missing_usage_call_count": 3,
+        "partial_usage_call_count": 0,
+        "pending_call_count": 0,
+        "capture_complete": true,
+        "cost_complete": false,
+        "total_cost_usd": null
+      },
+      "journal_replay": [
+        {
+          "worker": "accommodation_researcher",
+          "committed_tool_count_before_restart": 1,
+          "hashes_and_audit_ids_preserved": true,
+          "worker_completed_after_resume": true
+        },
+        {
+          "worker": "destination_researcher",
+          "committed_tool_count_before_restart": 11,
+          "hashes_and_audit_ids_preserved": true,
+          "worker_completed_after_resume": true
+        }
+      ],
+      "true_interrupted_model_usage_unknown_count": 2,
+      "legacy_pre_provider_phantom_attempt_count": 1,
+      "history_rewritten": false,
+      "deadline_reset": false,
+      "automatic_paid_resume": false,
+      "sweeper_interrupted_at_utc": "2026-10-08T09:49:47Z",
+      "explicit_resume_at_utc": "2026-10-08T09:49:52Z",
+      "all_requested_fact_quality_verified": false
+    },
+    {
+      "run_id": "trip_41c25fc35b564c75",
+      "scope": "real_model_database_outage_component_integration",
+      "status": "cancelled",
+      "closed_after_component_verification": true,
+      "pending_before_restart": {
+        "pending_call_count": 1,
+        "spool_write_failed": 0,
+        "capture_complete": false,
+        "record_failed": 1
+      },
+      "row_count_after_two_replays": 1,
+      "ledger": {
+        "call_count": 1,
+        "logical_call_count": 1,
+        "total_input_tokens": 45,
+        "total_output_tokens": 72,
+        "total_reasoning_output_tokens": 66,
+        "total_cached_input_tokens": 0,
+        "total_cache_write_input_tokens": null,
+        "token_usage_complete": true,
+        "reasoning_usage_complete": true,
+        "cache_read_usage_complete": true,
+        "cache_write_usage_complete": false,
+        "missing_usage_call_count": 0,
+        "partial_usage_call_count": 0,
+        "pending_call_count": 0,
+        "capture_complete": true,
+        "cost_complete": false,
+        "total_cost_usd": null
+      },
+      "full_itinerary_end_to_end": false
+    },
+    {
+      "run_id": "trip_9b66f2b6d2e74036",
+      "scope": "formal_api_inflight_cancel",
+      "status": "cancelled",
+      "terminal_type": "run_cancelled",
+      "sse_elapsed_to_terminal_seconds": 32.304541,
+      "client_observation_wall_seconds": 32.38,
+      "lease_released": true,
+      "bundle_created": false,
+      "cancellation_mode": "cooperative_after_inflight_round",
+      "provider_billing_stops_immediately_verified": false,
+      "ledger": {
+        "call_count": 1,
+        "logical_call_count": 1,
+        "total_input_tokens": 4271,
+        "total_output_tokens": 5351,
+        "total_reasoning_output_tokens": 4619,
+        "total_cached_input_tokens": 4224,
+        "total_cache_write_input_tokens": null,
+        "token_usage_complete": true,
+        "reasoning_usage_complete": true,
+        "cache_read_usage_complete": true,
+        "cache_write_usage_complete": false,
+        "missing_usage_call_count": 0,
+        "partial_usage_call_count": 0,
+        "pending_call_count": 0,
+        "capture_complete": true,
+        "cost_complete": false,
+        "total_cost_usd": null
+      }
+    },
+    {
+      "run_id": "trip_2dba16b29d29498f",
+      "scope": "formal_api_final_image_normal_delivery",
+      "status": "completed",
+      "bundle_id": "bundle_a57fda02d314da54a24dffbc",
+      "approval_to_completion_wall_seconds": 342.57,
+      "initial_execution_plan": [
+        [
+          "destination_researcher"
+        ],
+        [
+          "itinerary_planner"
+        ]
+      ],
+      "checkpoint_next": [],
+      "gates": {
+        "candidate_gate_route": "passed",
+        "candidate_gate_status": "passed",
+        "artifact_gate_route": "accepted",
+        "intent_fidelity_route": "passed",
+        "delivery_quality_route": "passed",
+        "delivery_persisted": true
+      },
+      "packets": [
+        {
+          "worker_kind": "destination_researcher",
+          "contract_version": "journeypilot.research_packet.v5",
+          "candidate_count": 4,
+          "source_count": 4,
+          "fact_count": 28
+        },
+        {
+          "worker_kind": "transport_researcher",
+          "contract_version": "journeypilot.research_packet.v5",
+          "candidate_count": 1,
+          "source_count": 1,
+          "fact_count": 8
+        }
+      ],
+      "itinerary": {
+        "visit_count": 2,
+        "dining_count": 0,
+        "lodging_count": 0,
+        "transport_count": 1
+      },
+      "sse_event_counts": {
+        "chat_start": 1,
+        "thinking": 1,
+        "agent_thinking": 17,
+        "tool_start": 22,
+        "usage_update": 11,
+        "tool_result": 22,
+        "agent_progress": 5,
+        "delivery_ready": 1,
+        "run_terminal": 1
+      },
+      "ledger": {
+        "call_count": 14,
+        "logical_call_count": 14,
+        "total_input_tokens": 212362,
+        "total_output_tokens": 28206,
+        "total_reasoning_output_tokens": 13881,
+        "total_cached_input_tokens": 106752,
+        "total_cache_write_input_tokens": null,
+        "token_usage_complete": true,
+        "reasoning_usage_complete": true,
+        "cache_read_usage_complete": true,
+        "cache_write_usage_complete": false,
+        "missing_usage_call_count": 0,
+        "partial_usage_call_count": 0,
+        "pending_call_count": 0,
+        "capture_complete": true,
+        "cost_complete": false,
+        "total_cost_usd": null
+      },
+      "all_requested_fact_quality_verified": false,
+      "unresolved_quality": {
+        "theme_verification": "unverifiable",
+        "release_policy": "existing bounded fidelity repair with explicit disclosure",
+        "disclosure_in_public_report_and_pdf": true,
+        "nonblocking_missing_dining_day": true
+      }
+    }
+  ],
+  "final_delivery_exports": {
+    "pdf": {
+      "http_status": 200,
+      "bytes": 54600,
+      "pages": 3,
+      "deviation_text_verified": true
+    },
+    "web": {
+      "http_status": 200,
+      "content_type": "text/html; charset=utf-8"
+    },
+    "health_http_status": 200
+  },
+  "persistent_usage": {
+    "spool": {
+      "journal_mode": "wal",
+      "pending_rows": 0,
+      "mode": "0o600"
+    },
+    "post_recreate_spool": {
+      "journal_mode": "wal",
+      "pending_rows": 0,
+      "mode": "0o600"
+    },
+    "same_run_ledger_after_recreate": true
+  },
+  "business_backup": {
+    "directory": "/app/backups/backup-20261008T103304Z-formal-review-2026-10-08",
+    "created_at": "2026-10-08T10:33:04.524490+00:00",
+    "revision": "0009_worker_journal",
+    "pg_dump": {
+      "bytes": 2133620,
+      "client_major": 18,
+      "container": "",
+      "format": "custom",
+      "strategy": "local"
+    },
+    "total_business_rows": 690,
+    "files": [
+      {
+        "bytes": 4413,
+        "name": "config.redacted.yaml",
+        "sha256": "7f9a1c36a2887362f7b76126bae8aca32fd2f0e5db20472a6ab18c8e76403d61"
+      },
+      {
+        "bytes": 2133620,
+        "name": "database.dump",
+        "sha256": "7898d8e1b3d3f738fc8a8e9023b610969afe516d9efe43b5917867b427c504de"
+      },
+      {
+        "bytes": 66272,
+        "name": "schema_fingerprint.json",
+        "sha256": "6cbfdbd2c121d61d18b9e6e68bc8a5a27c6fafd9c10b4a4b9f59caef5a8e1041"
+      }
+    ],
+    "create_checks": {
+      "checksums_written": true,
+      "dump_non_empty": true,
+      "pg_restore_list_parsed": true
+    },
+    "verification_before_recreate": {
+      "ok": true,
+      "path": "/app/backups/backup-20261008T103304Z-formal-review-2026-10-08",
+      "problems": []
+    },
+    "verification_after_recreate": {
+      "ok": true,
+      "path": "/app/backups/backup-20261008T103304Z-formal-review-2026-10-08",
+      "problems": []
+    },
+    "full_business_restore_performed": false
+  },
+  "persistence_recreate": {
+    "formal_entrypoint_ready": true,
+    "same_bundle_id": "bundle_a57fda02d314da54a24dffbc",
+    "ledger": {
+      "call_count": 14,
+      "total_input_tokens": 212362,
+      "total_output_tokens": 28206,
+      "total_reasoning_output_tokens": 13881,
+      "token_usage_complete": true,
+      "pending_call_count": 0,
+      "capture_complete": true,
+      "total_cost_usd": null
+    },
+    "pdf": {
+      "http_status": 200,
+      "bytes": 54601,
+      "pages": 3,
+      "deviation_text_verified": true
+    }
+  },
+  "not_verified": [
+    "exact DeepSeek v4.1 version behind current gateway",
+    "actual monetary billing",
+    "cache/quality/cost A/B benefits",
+    "other model providers",
+    "complex intercity/overnight production trips",
+    "full restore rehearsal of this business dump",
+    "optional local knowledge seed coverage",
+    "embedding model identity migration compatibility",
+    "immediate termination of upstream billing on cancel"
+  ],
+  "evidence": [
+    {
+      "path": "temp/formal-review-2026-10-08/final-backend-clean-tests.txt",
+      "bytes": 741,
+      "sha256": "7ef513acd34b158aa84e31b7bad81b2eb969ab151de7e3c946b1a6a347b335c7",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-config-tests.txt",
+      "bytes": 99,
+      "sha256": "46e10c304adf85fa975d90345ccffdbc6ed99b92e87dcf9b4adfeda64e73fb3c",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/frontend-check.txt",
+      "bytes": 20768,
+      "sha256": "aad3e98e4b38190ec656891d98f39d6fc372362098c27b092b590bdc6aed75e6",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-ruff.txt",
+      "bytes": 19,
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-build.log",
+      "bytes": 4407,
+      "sha256": "a3feede66950790034b003e5b677630563d9370492265707e2f18058305e2abc",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-delivery.jsonl",
+      "bytes": 158802,
+      "sha256": "9efc0cdb9f76ccf0e0a416212a4a77bc0b06672ecfb5944fa5fe72366bb7d7b0",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-delivery.summary.json",
+      "bytes": 296705,
+      "sha256": "53133000dc680b126fc8ed422fd0b335ca189c2fa6aacdb67cfbd6e8863fa55e",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-delivery-gate.summary.json",
+      "bytes": 36452,
+      "sha256": "e4764e7def87eaf6f5d62291f443799b7908c2cc7ad98abeb48bc3db910e4096",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-delivery-audit.json",
+      "bytes": 1394286,
+      "sha256": "e213933f1385439d3d5e0e3807fcf0d1dc44f5bdc72d92bbc1890065e27cbad9",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-runtime-verification.json",
+      "bytes": 5585,
+      "sha256": "f094f027ea970dc4c41eff368bb830a0a326961d5744eb30c7e4660a6bde7dff",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-runtime-checks.txt",
+      "bytes": 121,
+      "sha256": "fb671608914e88c102d29c7c8bf888caf9d6be6a7cdfbbb34cbd322ef4cee5b0",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-report.pdf",
+      "bytes": 54600,
+      "sha256": "fa36c98a93b40e522a2b34cde3dae3d88a7c9bd04df64794dcb2b759c8b5ad2f",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/post-crash-audit.json",
+      "bytes": 200414,
+      "sha256": "4d5ac59f936147a62dd9426f57bfaf00720d9165e77d4ee0dc8ce74715efc3d5",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-crash-audit.json",
+      "bytes": 1901641,
+      "sha256": "589d0f0de8b44d6fc4ebf1819e13a8c1891d965846ef7da44b7348acfd80131a",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/crash-resumed.jsonl",
+      "bytes": 151131,
+      "sha256": "657fac721c7a927243810aa74d12e51423e263dbc88a7eff21721caba0a27c69",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/crash-resumed.summary.json",
+      "bytes": 356831,
+      "sha256": "34599ad4f22fe331e4fed11843eebe7fef2d3b6f32ba6c0dc172e11194fb8c9e",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/crash-recovery-events.json",
+      "bytes": 27093,
+      "sha256": "8438697cc1d74919642836dc8e8cdfae0930be43e9eb51c83d41cf794df8b8f3",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/billing-outage-pending.json",
+      "bytes": 1323,
+      "sha256": "a3fec53861b799fbaae232cff2def6c17283f343ea3bc561bfdebf095ddef098",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/billing-outage-recovered.json",
+      "bytes": 2628,
+      "sha256": "a851fece19ffccceb12d201552c8c59ee24cc475ba37a409ab935e1e8b656ead",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/cancel-live.jsonl",
+      "bytes": 3169,
+      "sha256": "25d4c1d4c487c6d615664bda1f5d7cc8a8cc085ad8f09ccc03439959c7b65d87",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/cancel-live.summary.json",
+      "bytes": 15447,
+      "sha256": "603afce9ce416d299e78ae470b3dae7418f4c1fa116963bd3ea219dc6c607628",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/cancel-control.json",
+      "bytes": 327,
+      "sha256": "b096914e41591f1e384768fdf994222358b493edd6885e3e59db9e584b571d58",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/fast-failure.summary.json",
+      "bytes": 9517,
+      "sha256": "f314263e97dd0d885fde05c888d93a8816be26829397c4df45624c2c5f38febc",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/planning-gate.summary.json",
+      "bytes": 34219,
+      "sha256": "533bf71b6e8f611c7f7933aaaa4a7e520df9e8cc7658aaaea98a5387d0343b14",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/planning-gate-fixed.summary.json",
+      "bytes": 37051,
+      "sha256": "be197f2661f073e9a534358abaa3ca98827bfc6739547376244fe10c91eb9915",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/planning-resume.summary.json",
+      "bytes": 76958,
+      "sha256": "54697ac75813ce0d8aeb6445d88636410352b77f84d97909627c1a0e61be02bf",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/scope-resume.summary.json",
+      "bytes": 88349,
+      "sha256": "60d962009592b6cc61a77e3f941d0248f6b7ba27d2da9d02a0b4e5c89be19d64",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/formal-backup.json",
+      "bytes": 2695,
+      "sha256": "401256b76bbdca52d68316008a88a28bbce974ab76a3f5e69ac748a75815aa17",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/formal-backup-verify.json",
+      "bytes": 110,
+      "sha256": "b25fe68fc9c18854e89f868aa126a682d1a48747af1a650cf795bf5ae3a42fe4",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-doctor.json",
+      "bytes": 4427,
+      "sha256": "f453cb3fa01d0fa612c7fad737b2f25d4d470ba75e7912e6ffbf11dba0ed53fa",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-mounts.json",
+      "bytes": 1279,
+      "sha256": "548954126f33717aba2722154edbd114df32d92cd4603356dc7884fd22a97474",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-volume-permissions.txt",
+      "bytes": 186,
+      "sha256": "f4b3a2c810b6e5639e8a17fea2b5bb035242a82ae23dfa40d1a557e1e9aded17",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final-image-id.txt",
+      "bytes": 72,
+      "sha256": "b1ddfb1081f127ee7e543781a21a79ae122841db8c88378ef63902acd28ed6d6",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/persistence-recreate.log",
+      "bytes": 152,
+      "sha256": "749014cbff2ad9b48068a7bf6bba4fb5872573d66e9132035ad060d03ac22fe9",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/persistence-ready.json",
+      "bytes": 2549,
+      "sha256": "a1d4f81dbb92c6c18382c763e9280c69d030bc7bede7f306e7b2a7c388c38bd3",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/persistence-runtime-verification.json",
+      "bytes": 5585,
+      "sha256": "4690dc873c9a71bc6aba194dcb3f0d724a4b41407431ad71948cc8d6c5912db5",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/persistence-runtime-checks.txt",
+      "bytes": 121,
+      "sha256": "fb671608914e88c102d29c7c8bf888caf9d6be6a7cdfbbb34cbd322ef4cee5b0",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/persistence-backup-verify.json",
+      "bytes": 110,
+      "sha256": "b25fe68fc9c18854e89f868aa126a682d1a48747af1a650cf795bf5ae3a42fe4",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/runtime-source.sha256",
+      "bytes": 552,
+      "sha256": "01aa54523cd7151bf79d2a80a399a799d01b6019bf4f71f3e828b9495a960c4b",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/workspace-source.sha256",
+      "bytes": 552,
+      "sha256": "01aa54523cd7151bf79d2a80a399a799d01b6019bf4f71f3e828b9495a960c4b",
+      "committed_original": false
+    },
+    {
+      "path": "temp/formal-review-2026-10-08/final_runtime_checks.py",
+      "bytes": 4436,
+      "sha256": "416ff0f163b4bb4f33ca325f19ca4082fa52b6b8fe8284727bd2121a63e493b0",
+      "committed_original": false
+    }
+  ]
+}

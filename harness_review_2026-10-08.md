@@ -261,7 +261,7 @@ journal 保留到所属 TripRun 删除，由 FK `ON DELETE CASCADE` 清理；本
 
 复现命令、依赖版本、已脱敏 API/fixture 结果和精确范围已进入版本控制：[实验记录](docs/review/harness-experiments-2026-10-08.md)、[验证数据](docs/review/harness-verification-2026-10-08.json)。固定 Codex/DSH SHA 未变化，study 保持基线。本轮可在现有环境完成的架构审查、修复和验证已收尾；项目数据库/pgvector 集成、真实 packet admission 和交付端到端、缓存/质量/成功交付成本收益仍需部署环境验证，不能由本次离线或协议结果推断。
 
-## 续批 F1：正式部署入口审查（进行中）
+## 续批 F1：正式部署入口审查（阶段记录）
 
 本轮起点：main 与远端均为 `aa5a2da6d16589c27534bbf31fb566098b310ff8`；study 与远端均为 `5e08d829a04048c6f6dba86b191813e22825c106`，保持固定。工作区已有 Responses/Chat 配置与传输测试改动，完整保留。`config.md` 是已有的本地凭据说明，新增忽略规则，不提交其内容；Docker build context 同时排除真实配置、凭据、参考仓库和运行数据。
 
@@ -292,3 +292,35 @@ Responses 审查发现缺少 terminal status 校验：SDK 可返回 `status=inco
 续跑在 transport worker 输入校验失败：planner 遇到同城无长途 Leg 时给它分配空 Provider scopes，而 worker 要求非空责任范围。修复为公共交通/灵活市内交通的服务器 scope，跨城继续保留精确 outbound/return Leg。为复用已完成研究，旧 checkpoint 的已知「同城初始空列表」可从锁定身份重建范围；缺失范围、跨城空范围、定向补研空范围仍拒绝，不修改 checkpoint 或关闭 typed gate。新增 planner/恢复合同回归，Docker 唯一环境中的 agent_behavior **96 passed**，Ruff 通过。
 
 修复后尝试续跑时，原 Run 授权于 09:29:58 UTC 的既有十分钟 deadline 已耗尽（观察 elapsed=829.94 秒），边界收口至 delivery_quality_gate；无 workspace 因 composition_window_exhausted 拒绝。没有新增模型调用，没有为了验证重置 deadline。该终态与 scope 缺陷分别归因；当前从正式 API 新建同输入 Run 验证完整交付，尚不能声称 Delivery Bundle 或端到端通过。
+
+## 续批 F4：正式交付、进程崩溃与账单故障
+
+`trip_9bcd381f336b41ef` 已通过真实 Provider → typed Research Packet → Candidate admission → composition/artifact/intent/delivery gates → 唯一 delivery_finalizer → Delivery Bundle/SSE。正式审批后使用 OSM、高德与 Open-Meteo，Sol medium / Responses 和 Flash alias low。Run 最终 completed，公共 `delivery_ready`、`run_terminal`、Bundle GET 与完成审计均指向 `bundle_52723103f64b4a95e6414e58`；行程含 2 次参观、1 次午餐和 2 条真实步行路线，无住宿/跨城交通。该结果证明运行和持久交付链路；历史建筑主题的证据仍为 unverifiable，不能当作全部需求事实核验通过。
+
+研究执行期间对本项目 API 发 SIGKILL 并经既有入口重启。过期租约由 sweeper 收敛为 interrupted（09:49:47 UTC），随后显式 API resume（09:49:52）续跑，未重置 deadline、未自动产生付费续跑。崩溃后与完成后的 journal 比较：目的地 11 条、住宿 1 条已提交工具的哈希与 audit ID 全部相同，目的地完成结果保留；pending workers 继续完成。两次在途模型调用恢复为 interrupted/usage missing，保持未知，不伪装为 0；最终 outbox pending=0、capture_complete=true。
+
+真实审计继续发现并修复三处问题：
+
+- typed 排除意图单独创建不需要的住宿/跨城研究。brief v3 / capability plan v2 仅由正向需求和受控行程责任创建领域，负约束仍分配 owner 并进入组合/gate；确有过夜、跨城或正向领域需求时仍研究。agent_behavior **98 passed**。
+- deadline/channel 在 provider 之前拒绝的请求也写入 usage admission，造成虚假的 missing 调用。admission 改到通道和窗口接受以后、实际 provider 协程内执行；invoke/stream 的过期回归均确认零 HTTP、零 outbox 条目。历史 Run 的原始账单未改写：25 条记录中除 2 次真实崩溃未知，还保留 1 条旧代码的研究窗口前置拒绝记录，应按此解释历史计量。
+- 已审计的主题偏差只在浏览器需求落实摘要存在，正式报告/PDF 的 important_notes 丢失。现在相同中文解释进入报告与公共 fulfillment summary，保留“尚未核实”，不输出内部 intent/gap/status 词汇；跨 fidelity→report 回归通过。旧 Bundle 未重写，新 Bundle 使用修复后的投影。
+
+独立真实账单故障 Run `trip_41c25fc35b564c75`（组件集成，非行程端到端）：停止仅本项目 PostgreSQL 后调用真实 Flash，返回 45 输入/72 输出 Token；落库失败，WAL outbox 留 1 条、capture_complete=false、未 ack。数据库与最终 API 镜像恢复后自动补记；同 call_id 两次显式幂等重放仍只有 1 行，pending=0、reported usage 完整、金额 null。测试 Run 已结束。
+
+正式控制 API 在 1 次真实归一化调用在途时接受取消：`trip_9b66f2b6d2e74036` 收口为 cancelled，SSE run_cancelled、租约 released、无 Bundle，pending=0。现有取消合同为协作式，本轮等待在途模型完成后于 **32.35 秒**收口；返回的 4,271 输入/5,351 输出全部落库，没有取消后新增调用。不能将这个结果宣称为即时中止上游计费。
+
+最终镜像已重新构建并经正式入口对非空业务库启动。新增报告测试的 fixture 修正后，最终完整后端 **585 passed / 0 skipped**，配置来源独立 **30 passed**，合计 **615 passed**；Ruff 通过。正常交付与持久化收尾见 F5。
+
+## 续批 F5：最终镜像正常交付与持久性收尾
+
+正式 Run `trip_2dba16b29d29498f` 审批后在 **342.57 秒**完成，Bundle 为 `bundle_a57fda02d314da54a24dffbc`。初始计划只有 destination → itinerary，验证排除意图不会凭空调度酒店/跨城研究；后续由 typed 定向补研取得精确相邻路线。最终包含 2 次参观、1 条真实步行段，无住宿/跨城交通。Research Packets 保存在真实 checkpoint，candidate、artifact、intent fidelity 与 delivery quality 的终态均通过，唯一 finalizer 持久提交；公共 delivery_ready、run_terminal、Bundle GET 身份一致，checkpoint next=[]。
+
+该 Run 的 **14 次调用**全部为 reported usage：**212,362 输入 / 28,206 输出 / 13,881 reasoning / 106,752 cache-read Token**，missing=0、pending=0、capture_complete=true。供应商未报告 cache-write，价格表为空，cache-write 和金额仍为 null；不能把 Token 完整性写成费用完整性，也不能由本次 cache-read 推断优化收益。SSE 的工具曝光节省仍是 initial_assembly 本地估算，不是 API 或整次交付 A/B。
+
+历史建筑主题仍缺证据，按既有有界 fidelity 修复策略披露后交付，未更改 typed gates 或放宽策略。公共需求摘要与报告 important_notes 均保留“尚未核实：以历史建筑为主题安排游览内容”。最终还有非阻断的 missing_dining_day；本例不证明所有事实质量或餐饮覆盖均满足。正式 PDF API 返回 200，3 页 / 54,600 bytes，使用 pypdf 抽取文字确认主题偏差说明存在；网页入口与 readiness 均为 200。
+
+部署维护还发现 `/app/backups` 位于容器可写层，已有 CLI 的正式迁移备份可能随容器重建丢失。确认该目录为空后新增 `backups_data:/app/backups`，没有覆盖旧备份。通过既有 CLI 创建真实业务库备份：revision 0009、pg_dump/client 18、custom dump 2,133,620 bytes，manifest 文件 checksum、非空 dump 与 pg_restore list 检查通过。随后 force-recreate API，经正式入口再次启动；同一备份 checksum 校验、Bundle GET、14 条完整账单、WAL outbox pending=0 和 PDF 导出再次通过。usage 文件 0600，服务与备份卷由 UID 10001 使用。没有在业务库执行覆盖式 restore。
+
+最终验证镜像唯一 venv 是 `/opt/journeypilot`；本批五个源码文件与运行镜像 SHA256 一致。依赖为 LangGraph 1.1.3、langchain-openai 1.1.11、OpenAI 2.29.0、asyncpg 0.31.0、psycopg 3.3.4、Pydantic 2.12.5、ReportLab 5.0.0、pypdf 6.14.2。前端本批未再改动，复用 **23 项**、类型与生产构建通过的结果；固定参考与旧矩阵没有重跑。
+
+可评审的脱敏证据归档于 [正式验证数据](docs/review/harness-formal-verification-2026-10-08.json)，原始 SSE、checkpoint/source 快照、PDF 和备份本体只保留在忽略目录/本项目卷，不进入 Git。当前仍未验证：指定 `deepseek-v4.1-flash` 的真实版本（代理 422，运行使用版本未确认 alias）、实际费用金额、缓存/质量/成本 A/B、复杂跨城/过夜生产行程、其他供应商与真实业务备份完整 restore 演练。可选语料种子未提供，中文词法检索为 simple；readiness 明确报告，未用假语料填充。现有 10 分钟 deadline 与协作式取消合同保持原样，未增加累计 Run Token、费用或调用限额。
