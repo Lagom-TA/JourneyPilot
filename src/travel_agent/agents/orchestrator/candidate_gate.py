@@ -10,6 +10,8 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from ...models.task_routing import TaskKind, llm_for_task
+
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -1961,7 +1963,7 @@ async def candidate_gate_node(
     matches, evaluation_cache = await evaluate_candidate_intents(
         catalog=catalog,
         intent_spec=state.intent_spec,
-        llm=get_model_router().get_fast(),
+        llm=llm_for_task(get_model_router(), TaskKind.CANDIDATE_EVALUATION),
         cache=state.candidate_intent_evaluation_cache,
     )
     ranking_scores = rank_candidates(

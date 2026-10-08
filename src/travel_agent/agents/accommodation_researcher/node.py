@@ -17,6 +17,8 @@ import json
 import logging
 import re
 import time
+from ...models.task_routing import TaskKind, llm_for_task
+
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional
 
 from langchain_core.messages import AIMessage
@@ -789,7 +791,7 @@ async def accommodation_researcher_node(
 ) -> Dict[str, Any]:
     """住宿研究员节点：查询具体 property 并输出 Research Packet。"""
     router = get_model_router()
-    llm = router.get_fast()
+    llm = llm_for_task(router, TaskKind.RESEARCH_TOOLS, has_tools=True)
     stream_queue: Optional["SSEBuffer"] = config.get("configurable", {}).get("stream_queue")
 
     current_time = state.current_time or datetime.datetime.now().strftime("%Y-%m-%d %H:%M")

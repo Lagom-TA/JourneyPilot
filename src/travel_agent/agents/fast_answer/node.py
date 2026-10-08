@@ -16,6 +16,8 @@ import logging
 import re
 import time
 import uuid
+from ...models.task_routing import TaskKind, llm_for_task
+
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional
 
 from langchain_core.messages import AIMessage
@@ -567,7 +569,7 @@ async def fast_answer_node(state: TravelAgentState, config: RunnableConfig) -> D
 
     stream_queue: Optional["SSEBuffer"] = config.get("configurable", {}).get("stream_queue")
 
-    llm = router.get_fast()
+    llm = llm_for_task(router, TaskKind.QUICK_ANSWER)
     user_query = state.user_query or ""
     current_time = state.current_time or datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 

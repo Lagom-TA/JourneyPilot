@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import re
+from ..models.task_routing import TaskLLM, QualityFeedback, with_quality_feedback
+
 from collections import defaultdict
 from typing import Any, Mapping, Sequence
 
@@ -212,6 +214,22 @@ def _cache_key(
     )
 
 
+async def _semantic_batch_call(llm, messages, **kwargs):
+    response = await llm.ainvoke(messages, **kwargs)
+    if not isinstance(llm, TaskLLM):
+        return response
+    try:
+        content = response.content if hasattr(response, "content") else response
+        parsed = json.loads(content)
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("matches"), list):
+            raise ValueError("missing matches array")
+    except (ValueError, TypeError):
+        repair_llm = with_quality_feedback(llm, QualityFeedback(schema_failures=1))
+        logger.info("candidate batch quality repair model=%s", repair_llm.route.model_name)
+        return await repair_llm.ainvoke(messages, **kwargs)
+    return response
+
+
 async def evaluate_candidate_intents(
     *,
     catalog: RecommendationCatalog,
@@ -417,7 +435,7 @@ async def evaluate_candidate_intents(
                 "evaluations": evaluation_pairs,
             }
             try:
-                response = await llm.ainvoke(
+                response = await _semantic_batch_call(llm,
                     [
                         {
                             "role": "system",

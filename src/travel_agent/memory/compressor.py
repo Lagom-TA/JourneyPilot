@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import logging
 import re
+from ..models.task_routing import TaskKind, llm_for_task
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -286,7 +288,7 @@ class ContextCompressor:
 
         # 调用 Fast LLM
         router = get_model_router()
-        llm = router.get_fast()
+        llm = llm_for_task(router, TaskKind.SUMMARY)
 
         try:
             response_text = await llm.ainvoke(compress_messages)

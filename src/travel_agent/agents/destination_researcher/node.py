@@ -17,6 +17,8 @@ import json
 import logging
 import re
 import time
+from ...models.task_routing import TaskKind, llm_for_task
+
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
 
 from langchain_core.messages import AIMessage
@@ -1351,7 +1353,7 @@ async def destination_researcher_node(
     # rather than doing long-form reasoning, and the fast model avoids the slow
     # reasoning-model timeouts that starved provider grounding.  Orchestration
     # (planner/synthesizer) keeps the primary tier.
-    llm = router.get_fast()
+    llm = llm_for_task(router, TaskKind.RESEARCH_TOOLS, has_tools=True)
     retriever = HybridRetriever()
     stream_queue: Optional["SSEBuffer"] = config.get("configurable", {}).get("stream_queue")
 

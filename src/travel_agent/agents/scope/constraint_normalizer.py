@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+from ...models.task_routing import TaskKind, llm_for_task
+
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
@@ -166,7 +168,7 @@ async def build_run_constraint_pack(
 
     loader = ConstraintSourceLoader.from_loaded(
         state,
-        get_model_router().get_fast(),
+        llm_for_task(get_model_router(), TaskKind.INTENT_NORMALIZE),
         user_profile=loaded.user_profile,
         manual_memory_facts=loaded.manual_memory_facts,
         manual_memory_truncated=loaded.manual_memory_truncated,

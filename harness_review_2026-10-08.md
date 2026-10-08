@@ -226,3 +226,13 @@ Token 修复批次已通过：257 项选定后端测试、22 项前端测试、�
 快速回答按下一次请求计算窗口：计入实际配置的输出预留，以及新追加的 RAG / 工具 / 最新问题。固定受控背景本身超窗口会给明确错误，不截断硬约束；这与累计 Run Token/费用限额无关。摘要自然语言仍是模型生成，确定性保护主要覆盖明确约束，未声称任意信息都已得到语义等价证明。
 
 验证：10 项新的组合/压缩合同测试通过；prompt、intent control/composition/ranking、退化日志等相关回归共 107 项通过；Ruff 与 diff check 通过。任务与约束变化时同阶段 system 完全相同，动态 schema/runtime 不同；故障摘要不会被保存成成功。
+
+## 续批 D：任务质量路由与协议分离
+
+新增独立 `TaskKind / QualityFeedback / TaskRoute` 策略与 `TaskLLM` 适配，按配置的精确模型名判断协议。研究工具默认 fast/low；组合/全局仲裁默认 primary/medium；无工具 schema/semantic 修复在已有 typed schema 失败、截断或硬门失败信号下升级 primary。证据缺失的 unknown / closure gap 返回补研动作，不用升级伪造支持。恢复/补研标签不参与升级，Run 预算也不参与路由。
+
+生产已接入三个研究 worker、组合、快速回答、摘要、请求/约束归一化及 Candidate Gate 的语义评价；请求归一化的 typed reject 后续尝试可升级，候选语义批次只有无有效 matches/schema 时升级一次，unknown 本身不会重试。Research Packet 的 schema-only repair 可升级，确定性 provider selection 收口仍保持 fast。决策日志含 task、精确 model、tier、reasoning、protocol、reason/action；ledger 继续逐 attempt 保留实际 model/tier/usage。
+
+OpenAI Docs 本次已实际抓取 [GPT-6.1 Sol 官方页面](https://developers.openai.com/api/docs/models/gpt-6.1-sol)：明确 `low/medium` 支持且 `none/minimal` 不支持；Chat Completions 无工具调用，工具要用 Responses。本项目没有把 primary 直接替换成工具研究模型；路由与底层 client 均阻止 Sol 的 Chat 工具请求。Sol schema-only 修复把历史工具结果变成明确的数据观察，保留内容，移除 foreign opaque reasoning 与 active tool protocol。没有引入 Responses 传输、自动关 reasoning 或累计限額。
+
+验证：新增 13 项路由/协议测试及相关回归 172 项通过；接入实际归一化和候选修复后相关回归 164 项通过；另新增真实 TaskLLM 的候选 schema failure→primary repair 断言。策略升级能否降低最终交付成本仍需端到端真实质量实验，不能从路由测试推断。

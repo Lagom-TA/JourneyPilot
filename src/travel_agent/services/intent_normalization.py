@@ -6,6 +6,8 @@ import asyncio
 import json
 import logging
 import re
+from ..models.task_routing import QualityFeedback, with_quality_feedback
+
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Literal, Optional
 
@@ -267,6 +269,9 @@ async def normalize_clauses(
     loop = asyncio.get_running_loop()
     operation_deadline = loop.time() + INTENT_NORMALIZATION_OPERATION_TIMEOUT_SECONDS
     for attempt in range(3):
+        if attempt:
+            llm = with_quality_feedback(llm, QualityFeedback(schema_failures=attempt))
+            supports_native_schema = bool(getattr(getattr(llm, "capabilities", None), "supports_json_schema", False))
         remaining_seconds = operation_deadline - loop.time()
         if remaining_seconds <= 0:
             last_error = TimeoutError(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ...models.task_routing import TaskKind, llm_for_task
+
 from typing import Any, Dict, List, Optional
 
 from langchain_core.runnables import RunnableConfig
@@ -81,7 +83,7 @@ async def request_contract_normalizer_node(
     normalized = await normalize_clauses(
         clauses=clauses,
         controlled_identity=state.controlled_trip_identity,
-        llm=get_model_router().get_fast(),
+        llm=llm_for_task(get_model_router(), TaskKind.INTENT_NORMALIZE),
     )
     constraint_pack = await build_run_constraint_pack(
         state,

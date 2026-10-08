@@ -7,6 +7,8 @@ import hashlib
 import json
 import logging
 import re
+from ..models.task_routing import TaskKind, QualityFeedback, TaskLLM
+
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Any, Literal, Mapping, Optional, Sequence
@@ -5048,6 +5050,8 @@ async def parse_or_repair_research_packet_output(
                 ),
             }
         )
+        if isinstance(llm, TaskLLM):
+            llm = llm.router.get_for_task(TaskKind.SCHEMA_REPAIR, QualityFeedback(schema_failures=1))
         transient_retries = _SCHEMA_REPAIR_TRANSIENT_RETRIES
         while True:
             try:

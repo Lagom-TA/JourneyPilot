@@ -7,6 +7,8 @@ import copy
 import json
 import logging
 import unicodedata
+from ...models.task_routing import TaskKind, llm_for_task
+
 from datetime import date, datetime, time, timedelta
 from dataclasses import dataclass
 
@@ -2890,7 +2892,7 @@ async def itinerary_planner_node(
                 raise ValueError(
                     "placement skeleton requires an admitted Recommendation Catalog"
                 )
-            llm = get_model_router().get_primary()
+            llm = llm_for_task(get_model_router(), TaskKind.COMPOSITION)
             supports_native_schema = bool(
                 getattr(getattr(llm, "capabilities", None), "supports_json_schema", False)
             )
@@ -3139,7 +3141,7 @@ async def itinerary_planner_node(
             unfilled = unfilled_connector_gaps(state.recommendation_catalog, gaps)
             authored_routes = (
                 await _author_connector_routes(
-                    get_model_router().get_primary(),
+                    llm_for_task(get_model_router(), TaskKind.COMPOSITION),
                     unfilled,
                 )
                 if unfilled
@@ -3205,7 +3207,7 @@ async def itinerary_planner_node(
 
         if state.candidate_gate_status != "passed" or state.recommendation_catalog is None:
             raise ValueError("candidate gate must pass before itinerary composition")
-        llm = get_model_router().get_primary()
+        llm = llm_for_task(get_model_router(), TaskKind.COMPOSITION)
         supports_native_schema = bool(
             getattr(getattr(llm, "capabilities", None), "supports_json_schema", False)
         )

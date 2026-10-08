@@ -740,6 +740,9 @@ class OpenAICompatibleLLM(BaseLLM):
         tools: List[Dict[str, Any]],
         **kwargs: Any,
     ) -> Dict[str, Any]:
+        from .task_routing import chat_tool_protocol_supported
+        if not chat_tool_protocol_supported(self.model_name):
+            raise ValueError("gpt-6.1-sol tool requests require a Responses adapter")
         kwargs, output_limit = self._apply_output_token_limit(kwargs)
         dropped_schema = _downgraded_json_schema(kwargs, capabilities=self.capabilities)
         kwargs = _normalize_response_format(kwargs, capabilities=self.capabilities)
@@ -914,6 +917,19 @@ class ModelRouter:
 
     def get_fast(self) -> BaseLLM:
         return self._get_or_create(ModelTier.FAST)
+
+    def get_for_task(self, task, feedback=None, *, has_tools=False):
+        from .task_routing import TaskLLM, select_task_route
+        route = select_task_route(
+            task, self._settings.primary_model.model_name, self._settings.fast_model.model_name,
+            feedback, has_tools=has_tools,
+            primary_effort=self._settings.primary_model.reasoning_effort,
+            fast_effort=self._settings.fast_model.reasoning_effort,
+        )
+        logger.info("task_model_route task=%s tier=%s model=%s reasoning=%s protocol=%s reason=%s action=%s",
+                    route.task.value, route.tier, route.model_name, route.reasoning_effort,
+                    route.protocol, route.reason, route.action)
+        return TaskLLM(self, route, self._get_or_create(ModelTier(route.tier)))
 
     def get_scope(self) -> BaseLLM:
         """Scope owns one visible retry, so its transport must perform exactly one request per attempt."""
