@@ -152,6 +152,8 @@ def _format_messages_for_compression(
         content = str(msg.get("content", "")).strip()
         if not content:
             continue
+        if role not in {"user", "assistant"}:
+            continue
         role_label = "用户" if role == "user" else "助手"
         parts.append(f"{role_label}：{content}")
     return "\n\n".join(parts)
@@ -211,8 +213,10 @@ def _merge_user_constraints(base: List[str], additional: List[str]) -> List[str]
     merged: List[str] = []
     def _dup(text: str) -> bool:
         t = text.strip()
-        return any(t == m or t in m or m in t for m in merged if m)
+        return any(t == m for m in merged if m)
     for item in [*base, *additional]:
+        if not isinstance(item, str):
+            continue
         s = item.strip()
         if not s or _dup(s):
             continue
@@ -248,6 +252,8 @@ class ContextCompressor:
         from ..models.router import get_model_router
 
         if not messages:
+            if existing_anchor:
+                return AnchorSummary.from_dict(existing_anchor.to_dict())
             return AnchorSummary(
                 compressed_at=datetime.now(timezone.utc).isoformat(),
                 messages_compressed=0,
@@ -287,15 +293,10 @@ class ContextCompressor:
             parsed = safe_parse_json(response_text)
         except Exception as e:
             logger.error(f"ContextCompressor: LLM 调用失败: {e}")
-            parsed = None
+            raise ValueError("compaction failed; retain original history and boundary") from e
 
-        if not parsed:
-            logger.warning("ContextCompressor: 无法解析 LLM 响应，生成降级摘要")
-            summary_text = conversation_text[:800] + ("..." if len(conversation_text) > 800 else "")
-            parsed = {
-                "key_constraints": [],
-                "summary": f"（摘要生成失败，原始对话片段）{summary_text}",
-            }
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("summary"), str) or not parsed["summary"].strip():
+            raise ValueError("invalid compaction output; retain original history and boundary")
 
         key_constraints = parsed.get("key_constraints", [])
         if not isinstance(key_constraints, list):
@@ -303,10 +304,11 @@ class ContextCompressor:
 
         # 兜底保真：LLM 提取的 key_constraints 之外，再补上从用户消息里扫到的显式硬约束，
         # 避免压缩时把用户早先的硬约束丢掉。
-        key_constraints = _merge_user_constraints(
-            key_constraints,
-            _scan_user_hard_constraints(messages),
-        )
+        prior = list(existing_anchor.key_constraints) if existing_anchor else []
+        user_texts = [str(m.get("content") or "") for m in messages if m.get("role") == "user"]
+        grounded = [value for value in key_constraints if isinstance(value, str) and
+                    (value in prior or any(value in text for text in user_texts))]
+        key_constraints = _merge_user_constraints(prior, [*_scan_user_hard_constraints(messages), *grounded])
 
         summary = parsed.get("summary", "")
         if not isinstance(summary, str):

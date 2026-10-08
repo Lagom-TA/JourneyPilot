@@ -136,9 +136,8 @@ class CompactionService:
             return None
         try:
             return AnchorSummary.from_dict(raw)
-        except Exception:
-            # 旧摘要读不出来就当没有：这一轮生成一份全新的，绝不因此中断压缩。
-            return None
+        except Exception as exc:
+            raise ValueError("stored anchor invalid; preserve prior compaction boundary") from exc
 
 
 _service: Optional[CompactionService] = None

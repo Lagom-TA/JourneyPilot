@@ -8,6 +8,9 @@ import json
 import logging
 import unicodedata
 from datetime import date, datetime, time, timedelta
+from dataclasses import dataclass
+
+from ...memory.agent_context import render_agent_context
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import AIMessage
@@ -90,7 +93,6 @@ from ..utils import (
     append_recent_history,
     build_tool_context_from_state,
     execute_tool,
-    inject_agent_context,
     resolve_agent_assignment,
 )
 
@@ -678,7 +680,13 @@ def _previous_mutations_json(state: TravelAgentState) -> str:
     )
 
 
-def _composition_prompt(
+@dataclass(frozen=True)
+class CompositionPrompt:
+    system: str
+    runtime: str
+
+
+def _build_composition_prompt(
     state: TravelAgentState,
     task_desc: str,
     *,
@@ -686,7 +694,7 @@ def _composition_prompt(
     required_candidate_kinds: Optional[set[str]] = None,
     required_long_distance_legs: Optional[list] = None,
     strict_wire_schema: bool = True,
-) -> str:
+) -> CompositionPrompt:
     """Assemble the composition prompt.
 
     There is no ``Weather Context`` line in ``<context>`` any more.  This
@@ -774,7 +782,7 @@ def _composition_prompt(
             "只要 required 类型含 dining，就必须至少出现一个 DiningCandidate（用户明确要求美食），"
             "同理 visit 也必须至少出现一个。宁可减少同日停留点，也不得整类缺席。"
         )
-    return f"""<role>
+    system = f"""<role>
 你是 JourneyPilot 的行程组合器。你做已选主方案的日期、顺序、当地时间与停留时长决策；已选主方案不足以覆盖行程的领域由你直接撰写具名条目补足。
 </role>
 
@@ -783,7 +791,8 @@ def _composition_prompt(
 - 引用候选时只能引用 CandidateSelectionPlan 选入主方案、且由 JSON Schema 对当前 placement_kind 开放的 candidate_id：visit 只能选 VisitCandidate，dining 只能选 DiningCandidate，transport 只能选 TransportCandidate，lodging_candidate_ids 只能选 LodgingCandidate；禁止跨类型引用，也禁止复制或改写 candidate 的名称、价格、来源、交通 segments、营业事实或天气事实。
 - Composition Rules 是本轮可执行意图合同。never_violate 规则不得违反；repair_then_deviate 规则无法落实时留给 Fidelity Gate 形成明确偏差；nonblocking_preference 只参与选择和排程，不得伪装成硬事实。
 - Placement Capabilities 给出每个候选的 budget_fit / weather_fit / constraint_fit（0–1）。同一领域内优先选择分值高的候选；weather_fit 低的户外项排到天气更好的一天，budget_fit 低的项让位给分值更高的同类。
-- 主方案直接适应【规划前天气事实】里的逐日 data_kind、降水概率与风力：forecast 日的恶劣条件必须反映在排序、时间或交通选择上。{authoring_contract}
+- 主方案直接适应【规划前天气事实】里的逐日 data_kind、降水概率与风力：forecast 日的恶劣条件必须反映在排序、时间或交通选择上。
+- 本轮必须覆盖的领域、允许撰写的不足领域与精确 candidate_id 合同见最新 composition_runtime；禁止扩大授权领域。
 - 每个 Dining placement 必须选择具体门店并填写餐次；每个需要住宿的入住区间必须在 lodging_candidate_ids 选择具体 property。
 - 同一 Day 内每个条目（candidate 或撰写地点）只出现一次；同一个具体 Visit/Dining 在整份行程中也只能出现一次；同一个入住区间在 lodging_candidate_ids 也只选一家 property。候选不够时撰写新的具名地点，不得跨日重复门店或景点凑数。
 - 每个 Day 的 placements 必须非空。除已准入 long_distance 构成的真实 travel-only day 外，每个 Day 必须至少包含一个在整份行程中唯一的 Visit/Dining；先给每个 Day 分配一个唯一条目，再考虑给某天增加第二个停留点。不得把多个实体挤在前几天后再跨日复制其中一个填满剩余天。
@@ -793,12 +802,13 @@ def _composition_prompt(
   - placements 的书写顺序就是服务器读取锚点方向的依据，写反了会被当成反方向的锚点，并据此向反方向的端点索取一段市内接驳（例如把抵达高铁写在停留点之后，服务器就会去要一段「深圳的餐厅 → 上海虹桥」的市内路线）。顺序与方向必须一致。
   **锚点与停留点之间同样要留出 {MIN_LOCAL_TRANSFER_MINUTES} 分钟通行窗口**：抵达后的第一站，planned_start 减去锚点 arrival_at 不得小于该窗口；出发前的最后一站，锚点 departure_at 减去 planned_end 不得小于该窗口——从站台到景点、从餐厅回车站都是真实路程，需要这段时间才能排出接驳。当整份行程的每一天都被长途锚点占据（最典型的是两天往返）时，**必须**用这个办法把 required kinds 安排进去——此时不存在没有锚点的空闲 Day，把所有天都做成 travel-only 会导致 required kinds 无处安放、整份组合被拒。
 - Catalog 中存在已准入 long_distance 时，每一段**必需移动**（出发、逐对 inter_destination、返程）各选择一个主方案即可；"每个 service window 只选一个主方案" 指的是**同一段必需移动的同方向备选互斥**，不禁止同一天既到达又离开（例如 1 天同日往返，或末日既要交接又要返程）。若是后者那种同一天同时欠「到达腿」与「离开腿」的日子：**必须把到达腿放这一天第一个 placement、离开腿放这一天最后一个 placement**，所有 Visit/Dining 停留在两腿**之间**（planned_start 不早于到达腿 arrival_at、planned_end 不晚于离开腿 departure_at，且都留足 {MIN_LOCAL_TRANSFER_MINUTES} 分钟通行窗口），不得只放一段而漏另一段。长途锚点只能放在 Placement Capabilities 给出的 departure_date 或 arrival_date 对应 Day；行程还有不带锚点的 Day 时它可以单独构成 travel-only Day。禁止把同日备选航班分配到其它日期凑行程，也禁止为了同日追加停留点而把端点不一致的市内路线硬接到长距离锚点。
-{transport_contract}{required_kinds_contract}
+{transport_contract}
 - 不生成第二份晴雨行程；局部 Plan B 由后续 typed contingency 合同处理。
 - Visit/Dining 必须同时输出 planned_start 与 planned_end 两个键：有排期时两者都是带 IANA 对应 UTC offset、且落在 DayComposition.date 当地日期内的 ISO-8601 datetime；不排具体时间时两者都为 null，禁止只输出一端。
 - 同一 Day 内已排期的 Visit/Dining 必须按时间先后书写，且相邻两站之间至少留出 {MIN_LOCAL_TRANSFER_MINUTES} 分钟通行窗口：后一站的 planned_start 减去前一站的 planned_end 不得小于该窗口。禁止把两站首尾相接或时间重叠——两站之间的真实通行需要这段时间才能安排。
-</hard_contract>
-
+</hard_contract>"""
+    runtime = f"""<composition_runtime>
+<task_contract>{authoring_contract}{required_kinds_contract}</task_contract>
 <context>
 组合提示版本：{COMPOSITION_PROMPT_VERSION}
 任务：{task_desc}
@@ -812,7 +822,16 @@ Selected Candidate Capabilities：{capabilities}
 Alternative Candidate Capabilities（只供修复路由判断，不得直接放入本轮行程）：{alternatives}
 </context>{repair_section}
 
-<json_schema>{schema}</json_schema>"""
+<json_schema>{schema}</json_schema>
+{render_agent_context(state, _NODE_NAME)}
+</composition_runtime>"""
+    return CompositionPrompt(system, runtime)
+
+
+def _composition_prompt(state, task_desc, **kwargs) -> str:
+    """Legacy diagnostic rendering; production preserves message boundaries."""
+    prompt = _build_composition_prompt(state, task_desc, **kwargs)
+    return prompt.system + "\n\n" + prompt.runtime
 
 
 # An authored place must resolve to a real map location before it can enter the
@@ -2875,21 +2894,17 @@ async def itinerary_planner_node(
             supports_native_schema = bool(
                 getattr(getattr(llm, "capabilities", None), "supports_json_schema", False)
             )
-            system_content = inject_agent_context(
-                _composition_prompt(
-                    state,
-                    task_desc,
-                    skeleton_only=True,
-                    required_candidate_kinds=required_candidate_kinds,
-                    strict_wire_schema=supports_native_schema,
-                ),
+            prompt = _build_composition_prompt(
                 state,
-                agent_label=_NODE_NAME,
+                task_desc,
+                skeleton_only=True,
+                required_candidate_kinds=required_candidate_kinds,
+                strict_wire_schema=supports_native_schema,
             )
-            messages: List[Dict[str, Any]] = [
-                {"role": "system", "content": system_content}
-            ]
+            messages: List[Dict[str, Any]] = [{"role": "system", "content": prompt.system}]
             append_recent_history(messages, state, limit=4)
+            runtime_message = {"role": "user", "content": prompt.runtime}
+            messages.append(runtime_message)
             messages.append(
                 {
                     "role": "user",
@@ -2968,6 +2983,7 @@ async def itinerary_planner_node(
                     )
                     move_messages = [
                         messages[0],
+                        runtime_message,
                         {
                             "role": "user",
                             "content": (
@@ -3193,18 +3209,16 @@ async def itinerary_planner_node(
         supports_native_schema = bool(
             getattr(getattr(llm, "capabilities", None), "supports_json_schema", False)
         )
-        system_content = inject_agent_context(
-            _composition_prompt(
-                state,
-                task_desc,
-                required_candidate_kinds=required_candidate_kinds,
-                strict_wire_schema=supports_native_schema,
-            ),
+        prompt = _build_composition_prompt(
             state,
-            agent_label=_NODE_NAME,
+            task_desc,
+            required_candidate_kinds=required_candidate_kinds,
+            strict_wire_schema=supports_native_schema,
         )
-        messages: List[Dict[str, Any]] = [{"role": "system", "content": system_content}]
+        messages: List[Dict[str, Any]] = [{"role": "system", "content": prompt.system}]
         append_recent_history(messages, state, limit=4)
+        runtime_message = {"role": "user", "content": prompt.runtime}
+        messages.append(runtime_message)
         messages.append(
             {
                 "role": "user",

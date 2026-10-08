@@ -34,7 +34,7 @@ from ...rag.collections import (
     grounding_corpus,
     relabel_to_logical_collections,
 )
-from ...memory.context_builder import ContextBuilder
+from ...memory.context_builder import ContextBuilder, ContextBudget
 from ...panels.constraint import (
     format_constraint_pack_for_prompt,
     referenced_context_sections,
@@ -610,7 +610,8 @@ async def fast_answer_node(state: TravelAgentState, config: RunnableConfig) -> D
     # 记忆、检索记忆现在全部经 Constraint Pack 抵达模型 —— 让这一层也装一份，同一条
     # 手写记忆就会在【本轮统一约束】与【用户明确要求】两节里各印一遍，而那两节的
     # 强制力措辞还不一样。``ContextBuilder`` 上已经没有记忆层入参了。
-    ctx_builder = ContextBuilder()
+    from ...config import get_settings
+    ctx_builder = ContextBuilder(ContextBudget(response_reserve=get_settings().fast_model.max_tokens))
     built_ctx = await ctx_builder.build_context(
         session_id=state.session_id or "",
         system_prompt=base_system,
@@ -714,10 +715,20 @@ async def fast_answer_node(state: TravelAgentState, config: RunnableConfig) -> D
     realtime_evidence = [
         item for item in (realtime_context.get("evidence_records") or []) if isinstance(item, dict)
     ]
+    wire_tail = []
+    if str((state.route_decision or {}).get("route") or "") == "destination_discovery":
+        wire_tail.append({"role": "system", "content": DISCOVERY_OBJECTIVE_INSTRUCTION})
     if realtime_prompt:
-        messages.append({"role": "system", "content": realtime_prompt})
-
-    messages.append({"role": "user", "content": f"{rag_prefix}用户问题：{user_query}"})
+        wire_tail.append({"role": "user", "content": realtime_prompt})
+    wire_tail.append({"role": "user", "content": f"{rag_prefix}用户问题：{user_query}"})
+    # Measure the next wire request after RAG/tool context is known. Cumulative
+    # billed tokens never decide whether a context window needs compaction.
+    built_ctx = await ctx_builder.build_context(
+        session_id=state.session_id or "", system_prompt=base_system,
+        recent_messages=raw_history, session_anchor=session_anchor_obj,
+        session_compressed=state.session_compressed, runtime_messages=wire_tail,
+    )
+    messages = [{"role": "system", "content": built_ctx.system_prompt}, *built_ctx.messages, *wire_tail]
 
     try:
         # 直接流式交付。OutputGuard 只在终态生成来源/标签增强，不以文风审查

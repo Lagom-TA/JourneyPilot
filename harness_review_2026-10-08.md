@@ -216,3 +216,13 @@ Token 修复批次已通过：257 项选定后端测试、22 项前端测试、�
 新增配置和生成文档同步。部署需要把 `data/usage` 挂载为持久卷；销毁本地卷会丢失未落库记录，跨主机恢复不自动传输此卷。本 outbox 是持久补记机制，不是累计 Run 限額。
 
 验证：7 项新 outbox 故障测试，相关计量、配置、worker 回归合计 105 项通过；前端 22 项通过，TypeScript 与生产构建通过；独立 PostgreSQL 14 ledger 迁移/回放/冲突与历史价格快照验证通过。累计 Run 预算仍默认仅计量，reasoning 保持 medium/low。
+
+## 续批 C：组合合同与压缩保真
+
+组合的 system 只保留固定角色、阶段合同和规则；任务、允许撰写领域、required kinds、候选及 capabilities、天气/约束/anchor、repair context 和当前动态 schema 放入独立 `composition_runtime`。顺序是 system → history → 最新 runtime → 本轮任务。修复移动候选仍携带本轮 runtime。原动态 response schema 继续限定当前候选枚举和子任务形状，没有为了缓存把所有任务强行合成一个 schema；服务器 typed parse、mutation 和 fidelity gates 保留。
+
+压缩保留旧 anchor 全部明确约束，并且更具体的用户原话不被子串去重丢弃；LLM 的约束只有能追溯到用户原话或旧 anchor 才被采纳。无有效 summary / 模型异常时抛失败，CompactionService 不推进 CAS 边界，删除原 800 字降级片段被当作成功摘要的路径。anchor 不再按字符截断；会话裁剪以完整 user→assistant/tool 回合为单位。
+
+快速回答按下一次请求计算窗口：计入实际配置的输出预留，以及新追加的 RAG / 工具 / 最新问题。固定受控背景本身超窗口会给明确错误，不截断硬约束；这与累计 Run Token/费用限额无关。摘要自然语言仍是模型生成，确定性保护主要覆盖明确约束，未声称任意信息都已得到语义等价证明。
+
+验证：10 项新的组合/压缩合同测试通过；prompt、intent control/composition/ranking、退化日志等相关回归共 107 项通过；Ruff 与 diff check 通过。任务与约束变化时同阶段 system 完全相同，动态 schema/runtime 不同；故障摘要不会被保存成成功。

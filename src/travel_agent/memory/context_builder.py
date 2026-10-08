@@ -41,7 +41,6 @@ from ..models.token_counting import estimate_message_tokens
 logger = logging.getLogger(__name__)
 
 _TOKEN_ESTIMATE_MODEL = "gpt-4o"     # 会话轴记账用的那把尺，全层一把
-_MIN_MESSAGES_BUDGET_TOKENS = 2_000   # 消息层最小保留 token 数（兜底）
 _TRIM_SAFETY_RATIO = 0.9             # 裁剪时预留 10% 安全余量
 
 
@@ -228,6 +227,7 @@ class ContextBuilder:
         # v3 新增参数
         session_anchor: Optional[Any] = None,   # AnchorSummary 对象
         session_compressed: bool = False,
+        runtime_messages: Optional[List[Dict[str, Any]]] = None,
     ) -> BuiltContext:
         """
         构建优化后的会话轴上下文（v3）：
@@ -247,13 +247,15 @@ class ContextBuilder:
         if session_anchor is not None:
             try:
                 anchor_text = session_anchor.format_for_prompt()
-                anchor_text = self._trim_text(anchor_text, budget.anchor_summary_budget, model)
+                # Hard constraints in an anchor must never be lost by slicing.
+                # Its full size participates in the next-request window check.
             except Exception as e:
                 logger.debug(f"ContextBuilder: Anchor 格式化失败: {e}")
 
         # ── 计算各层 token 数 ──────────────────────────────────────────────
         system_tokens = count_tokens(system_prompt, model)
         anchor_tokens = count_tokens(anchor_text, model)
+        runtime_tokens = sum(estimate_message_tokens(m, model) for m in runtime_messages or [])
 
         # ── 压缩检测（v3 核心逻辑）────────────────────────────────────────
         # 估算全量消息 token（用于判断是否超阈值）
@@ -263,6 +265,7 @@ class ContextBuilder:
             system_tokens
             + anchor_tokens
             + all_messages_tokens
+            + runtime_tokens
             + budget.response_reserve
         )
 
@@ -287,11 +290,10 @@ class ContextBuilder:
                 )
 
         # ── 计算消息可用空间 ──────────────────────────────────────────────
-        used_so_far = system_tokens + anchor_tokens
-        available_for_messages = max(
-            budget.total_context_limit - budget.response_reserve - used_so_far,
-            _MIN_MESSAGES_BUDGET_TOKENS,
-        )
+        used_so_far = system_tokens + anchor_tokens + runtime_tokens
+        available_for_messages = max(0, budget.total_context_limit - budget.response_reserve - used_so_far)
+        if used_so_far + budget.response_reserve > budget.total_context_limit:
+            raise ValueError("fixed context exceeds the model window; constraints cannot be truncated")
 
         trimmed_messages = self._trim_messages(recent_messages, available_for_messages, model)
 
@@ -309,7 +311,7 @@ class ContextBuilder:
 
         total_used = count_tokens(final_system, model) + sum(
             estimate_message_tokens(m, model) for m in trimmed_messages
-        )
+        ) + runtime_tokens
 
         logger.debug(
             f"ContextBuilder v3: anchor={anchor_tokens}t, "
@@ -321,6 +323,7 @@ class ContextBuilder:
         token_usage = {
             "system": system_tokens,
             "anchor_summary": anchor_tokens,
+            "runtime": runtime_tokens,
             "messages": sum(
                 estimate_message_tokens(m, model) for m in trimmed_messages
             ),
@@ -362,17 +365,22 @@ class ContextBuilder:
         if not messages:
             return []
 
+        # Treat each user turn and its assistant/tool sequence as one unit.
+        # Cutting the middle of a turn can orphan a tool result or turn a
+        # provider answer into a user claim.
+        groups = []
+        for msg in messages:
+            if msg.get("role") == "user" or not groups:
+                groups.append([])
+            groups[-1].append(msg)
         selected = []
         used_tokens = 0
-
-        for msg in reversed(messages):
-            tokens = estimate_message_tokens(msg, model)
+        for group in reversed(groups):
+            tokens = sum(estimate_message_tokens(m, model) for m in group)
             if used_tokens + tokens > max_tokens:
                 break
-            selected.append(msg)
+            selected = group + selected
             used_tokens += tokens
-
-        selected.reverse()
 
         if len(selected) < len(messages):
             logger.info(
