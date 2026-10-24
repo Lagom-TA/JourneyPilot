@@ -100,7 +100,7 @@ _BRANCH_PARENTHETICAL = re.compile(r"[（(][^（()）]*[)）]\s*$")
 class AuthoredPlaceToolAccess:
     """The audited tool access one authored-place ladder is handed.
 
-    ``execute`` is ``agents.utils.execute_tool`` bound to the caller's own run
+    ``execute`` is ``tools.execution.execute_tool`` bound to the caller's own run
     context: it is what applies the Tool Gateway allowlist, the provider snapshot
     cache, the research-window boundary and — the reason this indirection exists
     — the durable ``tool_execution_audits`` row. It answers with a

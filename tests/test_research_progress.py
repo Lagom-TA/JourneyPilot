@@ -8,7 +8,7 @@ from travel_agent.api.routes.chat_stream_handlers import (
     _handle_state_update, _handle_tool_done, _handle_tool_start,
 )
 from travel_agent.api.sse_projection import project_sse_payload
-from travel_agent.services.research_progress import public_text, result_preview
+from travel_agent.tools.display import public_text, result_preview
 
 PACKET = '正在分派并行调研任务{"contract_version":"journeypilot.research_packet.v5","candidates":[{"name":"伪满皇宫博物院"}]}'
 
@@ -65,7 +65,7 @@ async def test_parallel_workers_and_tool_detail_survive_public_projection():
 
 
 async def test_worker_packet_still_reaches_internal_consumer():
-    from travel_agent.agents.utils import streaming_react_loop
+    from travel_agent.tools.react import streaming_react_loop
     from travel_agent.runtime.events import EventBuffer
 
     class LLM:
@@ -107,7 +107,7 @@ def test_history_sanitizes_old_packets_and_preserves_new_details():
 
 
 def test_worker_summary_uses_candidates_and_honors_failed_status():
-    from travel_agent.services.research_progress import worker_result
+    from travel_agent.planning.research.progress import worker_result
     update = {'research_packets': {'internal-key': {'worker_kind': 'destination_researcher', 'candidates': [{'name': '伪满皇宫博物院', 'address': '光复北路', 'candidate_id': 'internal-id'}]}}, 'messages': [PACKET]}
     assert worker_result('destination_researcher', update) == ('completed', '已整理 1 个地点候选', [{'title': '伪满皇宫博物院', 'detail': '光复北路'}])
     update['agent_status'] = {'destination_researcher': 'failed'}

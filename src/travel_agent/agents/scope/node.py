@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from langchain_core.runnables import RunnableConfig
 
 from ...entities.state import TravelAgentState
-from ..utils import session_history_for_context_builder
+from travel_agent.conversation.history import session_history_for_context_builder
 from .prompts import SCOPE_CONTEXT_SYSTEM_PROMPT
 
 if TYPE_CHECKING:

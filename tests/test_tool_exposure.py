@@ -8,7 +8,7 @@ from copy import deepcopy
 
 import pytest
 
-from travel_agent.agents import utils
+from travel_agent.tools import execution, react
 from travel_agent.config import ToolExposureConfig
 from travel_agent.storage.tool_audit_store import InMemoryToolAuditStore
 from travel_agent.tools.exposure import (
@@ -135,15 +135,15 @@ async def test_search_execution_and_replay_preserve_worker_transcript_and_gatewa
     registry.register(
         "fixture_lookup", "fixture lookup", {"type": "object", "properties": {}}, lookup
     )
-    monkeypatch.setattr(utils, "get_tool_registry", lambda: registry)
+    monkeypatch.setattr(execution, "get_tool_registry", lambda: registry)
     config = ToolExposureConfig(min_tools_threshold=1)
     monkeypatch.setattr(
-        utils,
+        react,
         "apply_tool_exposure",
         lambda tools, name: apply_tool_exposure(tools, name, config=config),
     )
     ledger = ToolExposureLedger()
-    monkeypatch.setattr(utils, "get_tool_exposure_ledger", lambda: ledger)
+    monkeypatch.setattr(react, "get_tool_exposure_ledger", lambda: ledger)
     llm = _ScriptedLLM(
         [
             {
@@ -174,7 +174,7 @@ async def test_search_execution_and_replay_preserve_worker_transcript_and_gatewa
     original_message = messages[0]
     queue = asyncio.Queue()
     audit_store = InMemoryToolAuditStore()
-    result = await utils.streaming_react_loop(
+    result = await react.streaming_react_loop(
         llm,
         messages,
         registry.get_tools_as_schemas(),
@@ -227,7 +227,7 @@ async def test_search_execution_and_replay_preserve_worker_transcript_and_gatewa
     assert events[-1][2]["audit_id"] == envelope["audit_id"]
     # A later invocation starts with its own exposure, even on the same working transcript.
     later = _ScriptedLLM([{"content": "next", "tool_calls": []}])
-    await utils.streaming_react_loop(
+    await react.streaming_react_loop(
         later, messages, registry.get_tools_as_schemas(), None, "destination_researcher"
     )
     assert _names(later.requests[0][1]) == ["search_tools"]

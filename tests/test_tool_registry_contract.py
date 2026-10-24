@@ -179,7 +179,7 @@ def test_no_collision_keeps_ledger_empty():
 
 
 def test_scoped_non_mcp_tools_are_builtin_owned():
-    from travel_agent.agents.utils import _SCOPED_NON_MCP_TOOLS
+    from travel_agent.tools.access import _SCOPED_NON_MCP_TOOLS
     from travel_agent.tools.builtin_tools import register_builtin_tools
     from travel_agent.tools.registry import get_tool_registry
 
@@ -190,7 +190,7 @@ def test_scoped_non_mcp_tools_are_builtin_owned():
         entry = next((t for t in registry.list_tools() if t["name"] == name), None)
         assert entry is not None and entry["source"] != "mcp", (
             f"[{name}] 被 source=mcp 的注册抢走（当前 sources={sorted(sources)}）。"
-            "agents/utils.py 的 _SCOPED_NON_MCP_TOOLS 限制表只在 source != 'mcp' 分支生效，"
+            "tools/access.py 的 _SCOPED_NON_MCP_TOOLS 限制表只在 source != 'mcp' 分支生效，"
             "一旦被 MCP 同名工具覆盖，「只给 extra_tools 点名的 agent」就静默放宽成"
             "「给所有 allowed_servers 覆盖到那台 server 的 agent」。要么改限制表，"
             "要么换工具名，不能让覆盖无声生效。"

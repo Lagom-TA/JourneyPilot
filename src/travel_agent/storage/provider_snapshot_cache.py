@@ -592,7 +592,7 @@ def build_provider_snapshot_record(
         or result.get("error")
         or result.get("identity_fallback_failure")
         # A provider that answered "nothing found" is a successful answer
-        # (agents/utils.py: ToolResultOutcome.EMPTY_SUCCESS), so such envelopes
+        # (tools/result.py: ToolResultOutcome.EMPTY_SUCCESS), so such envelopes
         # now reach this hook.  Not cacheable, but also not an error: reject it
         # here so ``write`` never has to raise for an ordinary empty round.
         or not _provider_snapshot_has_content(result)

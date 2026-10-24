@@ -7,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from travel_agent.agents import utils
+from travel_agent.tools import execution, react
 from travel_agent.entities.state import TravelAgentState
 from travel_agent.storage.worker_journal_store import InMemoryWorkerJournalStore, JournalConflict
 from travel_agent.tools.exposure import ToolExposurePlan
@@ -19,7 +19,7 @@ from travel_agent.planning.recovery import with_worker_recovery
 def tools(monkeypatch):
     schema = {"type": "function", "function": {"name": "read", "parameters": {"type": "object"}}}
     items = [{"schema": schema}]
-    monkeypatch.setattr(utils, "apply_tool_exposure", lambda *a: ToolExposurePlan(False, "worker", (schema,), "", 0, 0, 1, 1))
+    monkeypatch.setattr(react, "apply_tool_exposure", lambda *a: ToolExposurePlan(False, "worker", (schema,), "", 0, 0, 1, 1))
     return items
 
 
@@ -48,25 +48,25 @@ async def test_resume_between_tools_keeps_pairing_and_completed_results(monkeypa
         executed.append(args["n"])
         return {"status": "success", "sanitized_result": {"n": args["n"]}, "audit_id": f"a{args['n']}"}
 
-    monkeypatch.setattr(utils, "execute_tool", execute)
+    monkeypatch.setattr(react, "execute_tool", execute)
     def stop(node):
         if executed == [1]:
             raise asyncio.CancelledError()
-    monkeypatch.setattr(utils, "check_cancel_requested", stop)
+    monkeypatch.setattr(react, "check_cancel_requested", stop)
     token = current_worker_journal.set(journal)
     try:
         with pytest.raises(asyncio.CancelledError):
-            await utils.streaming_react_loop(llm, [{"role": "system", "content": "fixed"}], tools, None, "worker")
+            await react.streaming_react_loop(llm, [{"role": "system", "content": "fixed"}], tools, None, "worker")
     finally:
         current_worker_journal.reset(token)
     version, payload = await store.load("run", "scope")
     assert payload["react"]["next_tool"] == 1
     assert payload["react"]["messages"][-1]["tool_call_id"] == "tc1"
-    monkeypatch.setattr(utils, "check_cancel_requested", lambda *a: None)
+    monkeypatch.setattr(react, "check_cancel_requested", lambda *a: None)
     token = current_worker_journal.set(WorkerJournal(store, "run", "scope", version, payload, None))
     transcript = []
     try:
-        result = await utils.streaming_react_loop(llm, transcript, tools, None, "worker")
+        result = await react.streaming_react_loop(llm, transcript, tools, None, "worker")
     finally:
         current_worker_journal.reset(token)
     assert executed == [1, 2]
@@ -106,20 +106,20 @@ async def test_tool_outcome_commit_replays_before_transcript_commit(monkeypatch)
     store = InMemoryWorkerJournalStore()
     journal = WorkerJournal(store, "run", "scope", 0, {}, None)
     calls = []
-    monkeypatch.setattr(utils, "get_tool_registry", lambda: SimpleNamespace(get_tool_metadata=lambda name: {}))
+    monkeypatch.setattr(execution, "get_tool_registry", lambda: SimpleNamespace(get_tool_metadata=lambda name: {}))
     async def execute(*a, **kw):
         calls.append(1)
         return {"status": "success", "audit_id": "fixed", "sanitized_result": {"value": 1}}
-    monkeypatch.setattr(utils, "_execute_tool_once", execute)
+    monkeypatch.setattr(execution, "_execute_tool_once", execute)
     token = current_worker_journal.set(journal)
     try:
-        first = await utils.execute_tool("read", {})
+        first = await execution.execute_tool("read", {})
     finally:
         current_worker_journal.reset(token)
     version, payload = await store.load("run", "scope")
     token = current_worker_journal.set(WorkerJournal(store, "run", "scope", version, payload, None))
     try:
-        second = await utils.execute_tool("read", {})
+        second = await execution.execute_tool("read", {})
     finally:
         current_worker_journal.reset(token)
     assert first == second and calls == [1]
@@ -134,13 +134,13 @@ async def test_unknown_side_effect_is_not_reexecuted(monkeypatch):
     journal.tool_cursor = 0
     journal.payload["tools"] = {key: {"phase": "started"}}
     manifest = ToolManifest(tool_name="write", side_effecting=True)
-    monkeypatch.setattr(utils, "get_tool_registry", lambda: SimpleNamespace(get_tool_metadata=lambda name: {"manifest": manifest}))
+    monkeypatch.setattr(execution, "get_tool_registry", lambda: SimpleNamespace(get_tool_metadata=lambda name: {"manifest": manifest}))
     async def forbidden(*a, **kw):
         pytest.fail("uncertain write was repeated")
-    monkeypatch.setattr(utils, "_execute_tool_once", forbidden)
+    monkeypatch.setattr(execution, "_execute_tool_once", forbidden)
     token = current_worker_journal.set(journal)
     try:
-        result = await utils.execute_tool("write", {})
+        result = await execution.execute_tool("write", {})
     finally:
         current_worker_journal.reset(token)
     assert result["status"] == "failed"
@@ -151,9 +151,9 @@ async def test_ask_user_pairs_all_tool_calls_before_exit(monkeypatch, tools):
     llm = FakeLLM()
     async def asking(*a, **kw):
         return {"type": "user_input_required", "question": "destination?", "status": "success"}
-    monkeypatch.setattr(utils, "execute_tool", asking)
+    monkeypatch.setattr(react, "execute_tool", asking)
     messages = [{"role": "system", "content": "fixed"}]
-    result = await utils.streaming_react_loop(llm, messages, tools, None, "worker", can_ask_user=True)
+    result = await react.streaming_react_loop(llm, messages, tools, None, "worker", can_ask_user=True)
     assert result.pending_choice["question"] == "destination?"
     assert [m["tool_call_id"] for m in messages if m["role"] == "tool"] == ["tc1", "tc2"]
     assert "awaiting_user_input" in messages[-1]["content"]
@@ -163,7 +163,7 @@ async def test_stream_without_finish_never_admits_partial_json(tools):
     class Partial:
         async def astream_with_tools(self, *a):
             yield {"type": "text_delta", "content": '{"candidate":'}
-    result = await utils.streaming_react_loop(Partial(), [], tools, None, "worker")
+    result = await react.streaming_react_loop(Partial(), [], tools, None, "worker")
     assert result.content == ""
 
 
@@ -178,9 +178,9 @@ async def test_old_workflow_cache_cannot_bypass_gateway(monkeypatch, tools):
     async def execute(*a, **kw):
         executed.append(1)
         return {"status": "success", "audit_id": "current", "sanitized_result": {}}
-    monkeypatch.setattr(utils, "execute_tool", execute)
-    old_cache = {utils._make_cache_key("read", {}): {"status": "success", "audit_id": "old"}}
-    result = await utils.streaming_react_loop(LLM(), [], tools, None, "worker", tool_cache=old_cache)
+    monkeypatch.setattr(react, "execute_tool", execute)
+    old_cache = {react._make_cache_key("read", {}): {"status": "success", "audit_id": "old"}}
+    result = await react.streaming_react_loop(LLM(), [], tools, None, "worker", tool_cache=old_cache)
     assert executed == [1] and result.tool_results[0]["audit_id"] == "current"
 
 
@@ -286,13 +286,13 @@ async def test_repeated_side_effecting_tool_calls_are_never_locally_cached(monke
         return {"success": True}
     registry.register("fixture_write", "fixture write", {"type": "object"}, write,
                       manifest=ToolManifest(tool_name="fixture_write", side_effecting=True))
-    monkeypatch.setattr(utils, "get_tool_registry", lambda: registry)
+    monkeypatch.setattr(execution, "get_tool_registry", lambda: registry)
     class LLM:
         async def astream_with_tools(self, messages, schemas):
             tool_calls = [] if any(m["role"] == "tool" for m in messages) else [
                 {"id": str(n), "name": "fixture_write", "arguments": {}} for n in (1, 2)]
             yield {"type": "finish", "content": "", "tool_calls": tool_calls}
-    result = await utils.streaming_react_loop(LLM(), [], registry.get_tools_as_schemas(), None,
+    result = await react.streaming_react_loop(LLM(), [], registry.get_tools_as_schemas(), None,
         "worker", tool_context={"run_id": "run_test", "tool_audit_store": audit})
     assert calls == [1, 1]
     assert len({envelope["audit_id"] for envelope in result.tool_results}) == 2
@@ -340,13 +340,13 @@ async def test_terminal_outcomes_and_journal_replay_are_identical(monkeypatch, t
             from types import SimpleNamespace
             raise ModelWindowClosed("fixture-budget-ended", SimpleNamespace(elapsed_seconds=360), "research")
 
-    monkeypatch.setattr(utils, "execute_tool", execute)
-    monkeypatch.setattr(utils, "remaining_model_seconds", remaining)
+    monkeypatch.setattr(react, "execute_tool", execute)
+    monkeypatch.setattr(react, "remaining_model_seconds", remaining)
     store = InMemoryWorkerJournalStore()
     journal = WorkerJournal(store, "run", "scope", 0, {}, None)
     token = current_worker_journal.set(journal)
     try:
-        first = await utils.streaming_react_loop(Model(), [], tools, None, "worker", max_iterations=1 if scenario == "limit" else 2)
+        first = await react.streaming_react_loop(Model(), [], tools, None, "worker", max_iterations=1 if scenario == "limit" else 2)
     finally:
         current_worker_journal.reset(token)
     assert first.outcome.value == expected
@@ -366,7 +366,7 @@ async def test_terminal_outcomes_and_journal_replay_are_identical(monkeypatch, t
     count = len(calls)
     token = current_worker_journal.set(WorkerJournal(store, "run", "scope", version, payload, None))
     try:
-        replayed = await utils.streaming_react_loop(Model(), [], tools, None, "worker")
+        replayed = await react.streaming_react_loop(Model(), [], tools, None, "worker")
     finally:
         current_worker_journal.reset(token)
     assert replayed == first and len(calls) == count
@@ -390,13 +390,13 @@ async def test_worker_recovery_never_records_a_completed_fast_answer_after_loop_
     async def execute(*args, **kwargs):
         return {"status": "success", "sanitized_result": {"name": "City Park"}, "audit_id": "fixture_audit"}
 
-    monkeypatch.setattr(utils, "execute_tool", execute)
+    monkeypatch.setattr(react, "execute_tool", execute)
     store = InMemoryWorkerJournalStore()
     current = TravelAgentState(run_id="run_test", agent_assignments={"worker": {"objective": "answer"}})
     config = {"configurable": {"worker_journal_store": store}}
 
     async def worker(state, config):
-        result = await utils.streaming_react_loop(Model(), [], tools, None, "worker", max_iterations=1)
+        result = await react.streaming_react_loop(Model(), [], tools, None, "worker", max_iterations=1)
         return {"messages": [AIMessage(content=result.require_final_answer())], "is_completed": True}
 
     recovered = with_worker_recovery("worker", worker)

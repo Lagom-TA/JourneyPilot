@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from unittest.mock import patch
 
-from travel_agent.agents import utils
+from travel_agent.tools import execution, react
 from travel_agent.config import ToolExposureConfig
 from travel_agent.storage.tool_audit_store import InMemoryToolAuditStore
 from travel_agent.storage.worker_journal_store import InMemoryWorkerJournalStore
@@ -64,23 +64,23 @@ async def scenario(cache, mode, complexity, tool_mode):
     def stop(node):
         if mode == "resume" and provider_calls == [1]:
             raise asyncio.CancelledError()
-    with patch.object(utils, "get_tool_registry", lambda: registry), patch.object(utils, "apply_tool_exposure", lambda items, node: apply_tool_exposure(items, node, config=config)):
+    with patch.object(execution, "get_tool_registry", lambda: registry), patch.object(react, "apply_tool_exposure", lambda items, node: apply_tool_exposure(items, node, config=config)):
         token = current_worker_journal.set(journal)
         try:
-            with patch.object(utils, "check_cancel_requested", stop):
+            with patch.object(react, "check_cancel_requested", stop):
                 try:
-                    result = await utils.streaming_react_loop(llm, messages, tools, None, worker, tool_context=context)
+                    result = await react.streaming_react_loop(llm, messages, tools, None, worker, tool_context=context)
                 except asyncio.CancelledError:
                     version, payload = await store.load(run_id, "scope")
                     journal = WorkerJournal(store, run_id, "scope", version, payload, None)
                     current_worker_journal.set(journal)
-                    with patch.object(utils, "check_cancel_requested", lambda *a: None):
-                        result = await utils.streaming_react_loop(llm, messages, tools, None, worker, tool_context=context)
+                    with patch.object(react, "check_cancel_requested", lambda *a: None):
+                        result = await react.streaming_react_loop(llm, messages, tools, None, worker, tool_context=context)
             if cache == "warm":
                 # Replay final round with a reopened invocation journal.
                 version, payload = await store.load(run_id, "scope")
                 current_worker_journal.set(WorkerJournal(store, run_id, "scope", version, payload, None))
-                replay = await utils.streaming_react_loop(llm, messages, tools, None, worker, tool_context=context)
+                replay = await react.streaming_react_loop(llm, messages, tools, None, worker, tool_context=context)
                 assert replay == result
         finally:
             current_worker_journal.reset(token)

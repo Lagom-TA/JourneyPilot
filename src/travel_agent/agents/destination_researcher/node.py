@@ -34,11 +34,8 @@ from ...knowledge.place_mentions import (
     chunk_texts_by_collection,
     measure_place_funnel,
 )
-from ...knowledge.source_records import (
-    knowledge_tool_documents,
-    knowledge_tool_summaries,
-    rag_chunk_source_records,
-)
+from travel_agent.tools.knowledge_results import knowledge_tool_documents, knowledge_tool_summaries
+from travel_agent.knowledge.source_records import rag_chunk_source_records
 from ...llm.router import get_model_router
 from ...llm.task_routing import TaskKind, llm_for_task
 from ...memory.research_context import format_worker_research_context
@@ -83,16 +80,12 @@ from ..research_packet_output import (
     provider_round_capability_declared,
 )
 from ..research_packet_prompt import build_research_packet_prompt
-from travel_agent.agents.utils import (
-    append_recent_history,
-    build_tool_context_from_state,
-    compact_tool_content_for_model,
-    exclude_tools,
-    execute_tool,
-    filter_tools_for_agent,
-    get_available_tools,
-    streaming_react_loop,
-)
+from travel_agent.conversation.history import append_recent_history
+from travel_agent.planning.tool_context import build_tool_context_from_state
+from travel_agent.tools.content import compact_tool_content_for_model
+from travel_agent.tools.access import exclude_tools, filter_tools_for_agent, get_available_tools
+from travel_agent.tools.execution import execute_tool
+from travel_agent.tools.react import streaming_react_loop
 from travel_agent.planning.assignments import (
     assignment_research_round,
     resolve_agent_assignment,

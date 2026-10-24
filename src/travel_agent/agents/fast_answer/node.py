@@ -27,17 +27,17 @@ from ...entities.state import TravelAgentState
 from ...llm.router import get_model_router
 from ...guardrails.output_guard import OutputGuard
 from ...tools.governance import tool_envelope_to_evidence_candidate
-from ...knowledge.source_records import knowledge_tool_documents, knowledge_tool_summaries
+from travel_agent.tools.knowledge_results import knowledge_tool_documents, knowledge_tool_summaries
 from ...memory.context_builder import ContextBuilder, ContextBudget
 from ...panels.constraint import (
     format_constraint_pack_for_prompt,
     referenced_context_sections,
 )
 from ..scope.constraint_normalizer import build_run_constraint_pack
-from ..utils import (
-    build_tool_context_from_state, filter_tools_for_agent, get_available_tools,
-    session_history_for_context_builder, streaming_react_loop,
-)
+from travel_agent.planning.tool_context import build_tool_context_from_state
+from travel_agent.tools.access import filter_tools_for_agent, get_available_tools
+from travel_agent.conversation.history import session_history_for_context_builder
+from travel_agent.tools.react import streaming_react_loop
 from .prompts import DISCOVERY_OBJECTIVE_INSTRUCTION, SYSTEM_PROMPT
 
 if TYPE_CHECKING:
@@ -277,7 +277,7 @@ async def _build_realtime_tool_context(
         args["requested_date"] = requested_date
 
     try:
-        from ..utils import execute_tool
+        from travel_agent.tools.execution import execute_tool
         from ...builders import get_components
         from ...tools.registry import get_tool_registry
         from travel_agent.runtime.events import run_ts_ms

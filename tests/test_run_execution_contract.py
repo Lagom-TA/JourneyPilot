@@ -204,10 +204,10 @@ def test_ordinary_transport_research_stays_in_the_research_window():
 async def test_node_scope_shares_budget_attribution_and_lifecycle_with_low_level_calls():
     from types import SimpleNamespace
 
-    from travel_agent.agents import utils
+    from travel_agent.runtime import budget
     from travel_agent.llm import router, usage
     from travel_agent.planning import execution
-    from travel_agent.runtime import budget, context, events
+    from travel_agent.runtime import context, events
 
     run_id = "run_shared_execution_context"
     snapshot = budget.RunBudgetSnapshot(enforce_limits=True, max_llm_calls=1)
@@ -220,11 +220,11 @@ async def test_node_scope_shares_budget_attribution_and_lifecycle_with_low_level
 
     async def node(_state):
         assert usage.read_attribution() == (run_id, "planner", "planner")
-        assert utils.current_budget_ledger() is router.current_budget_ledger() is ledger
+        assert budget.current_budget_ledger() is router.current_budget_ledger() is ledger
         router.guard_run_budget("model.fixture", llm_calls=1)
         ledger.record_llm_call(input_tokens=2, output_tokens=3, cost_usd=None)
         with pytest.raises(budget.RunBudgetExhausted):
-            utils.guard_run_budget("model.fixture", llm_calls=1)
+            budget.guard_run_budget("model.fixture", llm_calls=1)
         return {"ok": True}
 
     before = (context.current_run_id.get(), context.current_run_budget.get())

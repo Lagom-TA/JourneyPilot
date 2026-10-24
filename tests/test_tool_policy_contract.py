@@ -6,8 +6,8 @@ from typing import Any, Dict, List
 
 import pytest
 
-from travel_agent.agents import utils as agent_utils
-from travel_agent.agents.utils import _SCOPED_NON_MCP_TOOLS, filter_tools_for_agent
+from travel_agent.tools import access
+from travel_agent.tools.access import _SCOPED_NON_MCP_TOOLS, filter_tools_for_agent
 from travel_agent.planning.nodes import WORKER_NODES
 
 
@@ -56,7 +56,7 @@ class _FakePolicy(dict):
 @pytest.fixture
 def fake_policy(monkeypatch):
     def apply(policy: Dict[str, _FakePolicy]) -> None:
-        monkeypatch.setattr(agent_utils, "_AGENT_TOOL_POLICY", policy)
+        monkeypatch.setattr(access, "_AGENT_TOOL_POLICY", policy)
 
     return apply
 
@@ -143,7 +143,7 @@ def test_extra_tools_admits_mcp_outside_servers(fake_policy):
 
 
 def test_policy_keys_equal_worker_nodes():
-    policy_keys = set(agent_utils._AGENT_TOOL_POLICY)
+    policy_keys = set(access._AGENT_TOOL_POLICY)
     worker_nodes = set(WORKER_NODES)
     only_in_graph = sorted(worker_nodes - policy_keys)
     only_in_table = sorted(policy_keys - worker_nodes)
@@ -156,14 +156,14 @@ def test_policy_servers_are_configured_mcp_servers():
 
     configured = set(default_mcp_servers())
     referenced = set().union(
-        *(policy.servers for policy in agent_utils._AGENT_TOOL_POLICY.values())
+        *(policy.servers for policy in access._AGENT_TOOL_POLICY.values())
     )
     unknown = sorted(referenced - configured)
     assert not unknown, f"策略表引用了 mcp_defaults 未配置的 server: {unknown}"
 
 
 def test_deny_star_policy_leaves_nothing_else_configured():
-    for name, policy in agent_utils._AGENT_TOOL_POLICY.items():
+    for name, policy in access._AGENT_TOOL_POLICY.items():
         if "*" not in policy.deny_tools:
             continue
         assert not policy.servers, (
@@ -189,7 +189,7 @@ def test_unknown_agent_branch_not_wider_than_policies():
     def explicitly_denied(tool_name: str) -> bool:
         return any(
             tool_name in policy.deny_tools or "*" in policy.deny_tools
-            for policy in agent_utils._AGENT_TOOL_POLICY.values()
+            for policy in access._AGENT_TOOL_POLICY.values()
         )
 
     for name in leaked:

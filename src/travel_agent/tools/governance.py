@@ -49,7 +49,7 @@ class ToolExecutionStatus(str, Enum):
 # rejected ``external_tool`` SourceRecord.  ``status`` is the carrier of that
 # distinction on purpose: it is a closed enum field written only by the
 # Gateway, and it is the only such marker that survives
-# ``agents.utils.compact_tool_content_for_model`` (whose ``_METADATA_KEEP_KEYS``
+# ``tools.content.compact_tool_content_for_model`` (whose ``_METADATA_KEEP_KEYS``
 # drops ``metadata.policy``) into the transcript downstream compilers read.
 CAPABILITY_DECLARATION_STATUSES = frozenset(
     {
@@ -59,7 +59,7 @@ CAPABILITY_DECLARATION_STATUSES = frozenset(
 )
 
 
-# Envelope ``metadata`` key stamped by ``agents.utils.execute_tool`` when a
+# Envelope ``metadata`` key stamped by ``tools.execution.execute_tool`` when a
 # Provider completed a call and reported zero hits.  Such a round is a
 # *successful* Provider answer, so the envelope carries no ``error``, no
 # ``degradation_reason`` and no ``fallback_from`` — which leaves nothing

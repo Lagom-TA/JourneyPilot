@@ -84,3 +84,8 @@ def resolve_scoped_research_output_key(
         if match:
             rounds.append(int(match.group(1)))
     return make_round_name(base_name, max(rounds, default=1) + 1)
+
+
+def strip_round_suffix(agent_name: str) -> str:
+    "去除 Agent 名称的轮次后缀，返回基础名称。"
+    return re.sub(r"_r\d+$", "", agent_name)

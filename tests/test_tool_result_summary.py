@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from travel_agent.agents.utils import _summarize_tool_result
+from travel_agent.tools.display import _summarize_tool_result
 from travel_agent.tools.governance import (
     TOOL_FAILURE_SUMMARY,
     build_tool_execution_envelope,

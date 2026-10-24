@@ -14,7 +14,7 @@ from ..entities.trip_run import TripRunStatus
 from ..entities.trip_summary_card import TripSummaryCard
 from ..services.public_delivery import public_event_manifest
 from .audit_projection import audit_safe_value
-from ..services.research_progress import public_text, result_preview
+from travel_agent.tools.display import public_text, result_preview
 
 # Product lifecycle + user-visible run boundaries.
 _NORMAL_SSE_EVENT_TYPES = frozenset(

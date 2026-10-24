@@ -3,9 +3,10 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from travel_agent.agents import utils
+from travel_agent.tools import access, content, execution, react
 from travel_agent.config import Settings
-from travel_agent.knowledge.source_records import knowledge_tool_documents, rag_chunk_source_records
+from travel_agent.tools.knowledge_results import knowledge_tool_documents
+from travel_agent.knowledge.source_records import rag_chunk_source_records
 from travel_agent.tools import builtin_tools
 from travel_agent.tools.governance import build_tool_execution_envelope
 from travel_agent.tools.registry import ToolRegistry
@@ -39,7 +40,8 @@ def knowledge(monkeypatch):
     monkeypatch.setattr(compaction, "get_compaction_service", lambda: compactor)
     registry = ToolRegistry()
     monkeypatch.setattr(builtin_tools, "get_tool_registry", lambda: registry)
-    monkeypatch.setattr(utils, "get_tool_registry", lambda: registry)
+    monkeypatch.setattr(execution, "get_tool_registry", lambda: registry)
+    monkeypatch.setattr(react, "get_tool_registry", lambda: registry)
     builtin_tools.register_builtin_tools()
     tools = [tool for tool in registry.get_tools_as_schemas()
              if tool["schema"]["function"]["name"] == "knowledge_search"]
@@ -55,7 +57,7 @@ def call(query, **arguments):
 
 async def run(responses, tools):
     llm = ScriptedLLM(responses)
-    result = await utils.streaming_react_loop(
+    result = await react.streaming_react_loop(
         llm, [{"role": "user", "content": "苏州建议"}], tools, None,
         "destination_researcher", max_iterations=4,
     )
@@ -114,8 +116,8 @@ async def test_disabled_tool_not_exposed_and_direct_call_denied(knowledge, monke
     monkeypatch.setattr(loader, "_effective", type("Effective", (), {
         "settings": Settings(embedding={"enabled": False}),
     })())
-    assert not utils.filter_tools_for_agent(tools, "destination_researcher")
-    result = await utils.execute_tool("knowledge_search", {"query": "园林"}, tools)
+    assert not access.filter_tools_for_agent(tools, "destination_researcher")
+    result = await execution.execute_tool("knowledge_search", {"query": "园林"}, tools)
     assert result["status"] in {"blocked", "failed"}
     with pytest.raises(RuntimeError, match="关闭"):
         await builtin_tools.knowledge_search("园林")
@@ -142,7 +144,7 @@ async def test_checkpoint_replay_keeps_fragments_and_rechecks_authorization(know
         with pytest.raises(RuntimeError, match="not authorized"):
             await run([], tools)
         journal.tool_cursor = 0
-        denied = await utils.execute_tool("knowledge_search", {"query": "园林", "collection": "travel_knowledge"}, tools)
+        denied = await execution.execute_tool("knowledge_search", {"query": "园林", "collection": "travel_knowledge"}, tools)
         assert denied["status"] == "blocked"
         assert search.await_count == 1
     finally:
@@ -273,8 +275,8 @@ async def test_packet_citations_use_only_whole_visible_fragments(knowledge, monk
     envelope["sanitized_result"]["documents"] = [
         {**doc, "content": (str(index) + "园林资料") * 150} for index in range(5)
     ]
-    monkeypatch.setattr(utils, "_TOOL_CONTENT_CHAR_LIMIT", 4000)
-    shown = utils.compact_tool_content_for_model(envelope)
+    monkeypatch.setattr(content, "_TOOL_CONTENT_CHAR_LIMIT", 4000)
+    shown = content.compact_tool_content_for_model(envelope)
     assert len(shown) <= 4000
     docs = knowledge_tool_documents([envelope])
     assert 0 < len(docs) < 5
@@ -299,7 +301,7 @@ def test_compact_generic_results_keep_web_and_train_fields():
             "departure_time": "09:30", "api_key": "do-not-leak",
         }]},
     )
-    text = utils.compact_tool_content_for_model(envelope)
+    text = content.compact_tool_content_for_model(envelope)
     assert "园林参观正文" in text
     assert "https://example.org/timetable" in text
     assert "G123" in text and "09:30" in text

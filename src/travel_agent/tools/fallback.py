@@ -32,7 +32,7 @@ tool audit 记录展示实际执行路径。
 否则就是又一个死键：映射表只收录确实暴露了对应工具的注册面。
 
 注：geocode / weather 工具（maps_geo / maps_weather 等）由 Worker 的
-deny_tools 排除（见 agents/utils.py: _AGENT_TOOL_POLICY），且
+deny_tools 排除（见 tools/access.py: _AGENT_TOOL_POLICY），且
 交付投影不调用工具；需要刷新坐标的 provider adapter 不经过本降级路径，
 因此不在映射中。
 

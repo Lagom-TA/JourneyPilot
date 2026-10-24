@@ -460,7 +460,7 @@ def format_tickets_text(tickets: Sequence[RailTicket]) -> str:
 #
 # * the list key must be literally ``results``: that key gets the 20-item cap
 #   (``_MAX_SEARCH_RESULTS``) while any other key is capped at 5, and
-#   ``agents/utils.py::classify_tool_result`` only counts content/result/results/
+#   ``tools/result.py::classify_tool_result`` only counts content/result/results/
 #   routes/data/text as substantive — a ``trains`` key would report a
 #   train-bearing answer as EMPTY_SUCCESS, i.e. "12306 found nothing".
 # * a record must be a flat dict of scalars: records sit at sanitize depth 2 and

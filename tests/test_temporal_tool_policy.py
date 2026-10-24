@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 
-from travel_agent.agents import utils as agent_utils
+from travel_agent.tools import execution
 from travel_agent.integrations.weather import (
     OpenMeteoSeasonalBaselineProvider,
     OpenMeteoWeatherProvider,
@@ -82,13 +82,13 @@ async def test_temporal_preflight_runs_before_runtime_budget_and_provider_call(
         source="mcp",
         server_name="12306-train",
     )
-    monkeypatch.setattr(agent_utils, "get_tool_registry", lambda: registry)
+    monkeypatch.setattr(execution, "get_tool_registry", lambda: registry)
 
     def runtime_guard_must_not_run(_operation: str):
         raise AssertionError("capability preflight must precede the run-time budget")
 
     monkeypatch.setattr(
-        agent_utils,
+        execution,
         "remaining_model_seconds",
         runtime_guard_must_not_run,
     )
@@ -96,7 +96,7 @@ async def test_temporal_preflight_runs_before_runtime_budget_and_provider_call(
         datetime.now(ZoneInfo("Asia/Shanghai")).date() + timedelta(days=15)
     ).isoformat()
 
-    envelope = await agent_utils.execute_tool(
+    envelope = await execution.execute_tool(
         "get-tickets",
         {
             "date": requested,

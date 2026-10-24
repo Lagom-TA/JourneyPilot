@@ -6,7 +6,7 @@ JourneyPilot 多智能体系统 — Agent 节点层
 1. **Streaming ReAct Agent** — 工具驱动的循环推理
    - 节点：destination_researcher, transport_researcher, accommodation_researcher
    - 特点：调用 MCP 工具 → 观察结果 → 决策下一步 → 循环直到满足条件
-   - 驱动函数：agents/utils.py 的 streaming_react_loop()
+   - 驱动函数：tools/react.py 的 streaming_react_loop()
 
 2. **Pure LLM Agent** — 直接 LLM 推理
    - 节点：itinerary_planner, synthesizer, fast_answer

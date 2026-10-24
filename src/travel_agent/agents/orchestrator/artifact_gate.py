@@ -30,7 +30,7 @@ from ...entities.state import TravelAgentState
 from ...workflows.composition_repair import apply_composition_repair_budget
 from travel_agent.planning.nodes import RESEARCH_WORKER_NODES as _RESEARCH_WORKERS
 from travel_agent.runtime.deadlines import observe_run_deadline
-from ..utils import strip_round_suffix
+from travel_agent.planning.assignments import strip_round_suffix
 from .candidate_gate import (
     _latest_packets,
     worker_research_satisfied_by_a_later_round,

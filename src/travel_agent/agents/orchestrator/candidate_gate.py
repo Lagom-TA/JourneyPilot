@@ -84,7 +84,7 @@ from ...workflows.composition_repair import apply_composition_repair_budget
 from travel_agent.planning.nodes import RESEARCH_WORKER_NODES as _RESEARCH_WORKERS
 from travel_agent.planning.execution import is_structural_connector_round
 from travel_agent.runtime.deadlines import DeadlineObservation, observe_run_deadline
-from ..utils import strip_round_suffix
+from travel_agent.planning.assignments import strip_round_suffix
 from .provider_failure import classify_provider_failure, is_provider_or_model_failure
 
 logger = logging.getLogger(__name__)

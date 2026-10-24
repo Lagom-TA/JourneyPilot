@@ -462,7 +462,7 @@ Tests:
 ## 资源边界
 
 ### INV-TOOL-001：日期能力先于运行预算、重试和 Provider 网络调用
-Owner: `tools/temporal.py`、`tools/gateway.py`、`agents/utils.execute_tool`、
+Owner: `tools/temporal.py`、`tools/gateway.py`、`tools/execution.execute_tool`、
 `integrations/weather.py`
 Enforced by: 12306 只把上海时区 today 至 today+14 当作目标日实时余票；更远日期只查询
 窗口末日并标记 reference-only、不可作为证据。正式天气只在目的地本地 16 日窗口内请求
@@ -522,7 +522,7 @@ Tests:
 - `test_run_budget.py::test_a_tool_that_keeps_succeeding_never_runs_out_of_retries`
 
 ### INV-BUDGET-002：预算耗尽是可解释的降级，不是一次 Run 失败
-Owner: `agents/utils.execute_tool`、`runtime/budget.RunBudgetExhausted`
+Owner: `tools/execution.execute_tool`、`runtime/budget.RunBudgetExhausted`
 Enforced by: 工具侧返回带 `run_budget_exhausted.<维度>` 的 failed envelope，
 交给 Candidate Gate；不抛异常、不记成 CANCELLED
 Tests:

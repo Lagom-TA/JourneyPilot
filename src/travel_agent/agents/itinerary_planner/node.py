@@ -81,11 +81,9 @@ from ...tools.registry import get_tool_registry
 from ...utils.brief_helpers import build_assignment_context
 from travel_agent.runtime.operations import ModelWindowClosed, await_model_operation
 from travel_agent.runtime.deadlines import observe_run_deadline
-from travel_agent.agents.utils import (
-    append_recent_history,
-    build_tool_context_from_state,
-    execute_tool,
-)
+from travel_agent.conversation.history import append_recent_history
+from travel_agent.planning.tool_context import build_tool_context_from_state
+from travel_agent.tools.execution import execute_tool
 from travel_agent.planning.assignments import resolve_agent_assignment
 
 logger = logging.getLogger(__name__)
@@ -718,18 +716,9 @@ def _build_composition_prompt(
     required_long_distance_legs: Optional[list] = None,
     strict_wire_schema: bool = True,
 ) -> CompositionPrompt:
-    """Assemble the composition prompt.
+    """Assemble the prompt; render_agent_context supplies 【规划前天气事实】.
 
-    There is no ``Weather Context`` line in ``<context>`` any more.  This
-    prompt used to render ``WeatherContext.model_dump_json()`` there *and* then
-    get ``format_weather_context_for_planning``'s block appended by
-    ``inject_agent_context`` — the same day records twice, 36% of the prompt
-    measured, paid on every call and every repair round.  The injected block is
-    the survivor, so the hard contract points at 【规划前天气事实】 by name.  The
-    line it used to point at, "已有 Weather Impact", named a field that is empty
-    in all 200 measured runs — ``WeatherContext.impacts`` is never populated; the
-    impacts live in ``state.weather_impacts`` and reach the composer as
-    ``weather_fit`` on Placement Capabilities.
+    Placement Capabilities carry weather_fit from state.weather_impacts.
     """
     if state.recommendation_catalog is None:
         raise ValueError("itinerary composition requires an admitted Recommendation Catalog")

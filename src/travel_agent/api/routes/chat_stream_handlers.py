@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
-from ...services.research_progress import public_text, result_preview, worker_result
+from travel_agent.tools.display import public_text, result_preview
+from travel_agent.planning.research.progress import worker_result
 from ...tools.governance import (
     CAPABILITY_DECLARATION_STATUSES,
     ToolExecutionStatus,

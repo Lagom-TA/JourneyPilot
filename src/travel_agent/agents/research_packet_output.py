@@ -42,11 +42,9 @@ from ..entities.provider_evidence import (
     ProviderEvidenceScope,
 )
 from ..knowledge.place_mentions import PlaceLookup, ProviderIdentity
-from ..knowledge.source_records import (
-    is_rag_chunk_source_id,
-    knowledge_tool_documents,
-    rag_chunk_source_records,
-)
+from travel_agent.knowledge.fragments import is_rag_chunk_source_id
+from travel_agent.tools.knowledge_results import knowledge_tool_documents
+from travel_agent.knowledge.source_records import rag_chunk_source_records
 from ..llm.strict_json_schema import as_strict_schema
 from ..llm.task_routing import QualityFeedback, TaskKind, TaskLLM
 from ..services.candidate_admission import (
@@ -1809,7 +1807,7 @@ def provider_round_answered_empty(
     All three facts must hold, so the answer stays a statement about reality:
 
     * at least one Gateway envelope carries the honest ``empty_success``
-      Provider outcome stamped by ``agents.utils.execute_tool``;
+      Provider outcome stamped by ``tools.execution.execute_tool``;
     * every envelope in the round is a plain success — nothing failed,
       degraded, or fell back, which is exactly the state in which no failed
       SourceRecord exists to classify;
