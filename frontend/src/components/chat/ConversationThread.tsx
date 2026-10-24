@@ -17,7 +17,7 @@ import { Neatline } from '../ui/Neatline';
 
 /**
  * 空态 hero — Jet-Age Chartroom「Sheet No.1 · 行程图」。图纸家具（经纬网格 / 等高线 /
- * 图廓 / 航点图钉）静默环绕左对齐的 720px 图纸栏，一次性图纸绘制入场。蓝色只有登记条
+ * 图廓 / 航点图钉）静默环绕左对齐的旅行规划栏，一次性图纸绘制入场。蓝色只有登记条
  * 一个交互声部，朱砂只做航点标记。首屏仍只做一件事——让用户开始（渐进披露第 0 步）。
  */
 export const HeroEmptyState: React.FC = () => {
@@ -46,12 +46,11 @@ export const HeroEmptyState: React.FC = () => {
      * **手机上首页的下半截会直接消失**。写上 `min-h-0`，图纸回到窗口高度，滚动重新落在
      * `.hero-scroll` 上。
      *
-     * 顶部留白在 `lg` 以下由外壳的 `pt-14` 给（那 56px 是给悬浮的「打开导航」让位的），
-     * 所以这一屏自己只在 `lg` 及以上补上 —— 两处相加会把标题推到屏幕三分之一处。
+     * 小屏导航独占外壳的 56px 顶栏；内容的天头由 hero-scroll 按视口控制。
      */
     <div className="hero-sheet relative flex min-h-0 flex-1 flex-col overflow-clip">
       {/* Drafting furniture — non-interactive, behind the sheet content. */}
-      <svg className="hero-contours hidden sm:block" width="320" height="320" viewBox="0 0 320 320" fill="none">
+      <svg aria-hidden="true" className="hero-contours hidden sm:block" width="320" height="320" viewBox="0 0 320 320" fill="none">
         <circle className="hero-contour" cx="320" cy="0" r="90" />
         <circle className="hero-contour" cx="320" cy="0" r="140" />
         <circle className="hero-contour" cx="320" cy="0" r="190" />
@@ -60,8 +59,8 @@ export const HeroEmptyState: React.FC = () => {
       <Neatline inset="20px" enter className="hidden sm:block" />
 
       {/* Sheet content — left-aligned 720px column. */}
-      <div className="hero-scroll relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-4 pb-8 pt-2 sm:px-8 sm:pb-10 lg:pt-10">
-        <div className="w-full max-w-[900px]">
+      <div className="hero-scroll relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-4 pb-8 pt-6 sm:px-10 sm:pb-12 lg:pt-12">
+        <div className="hero-column w-full max-w-[1040px]">
           {/**
            * 产品最大的一句话。
            *
@@ -75,8 +74,14 @@ export const HeroEmptyState: React.FC = () => {
            *
            * 判据钉在 `homepage-layout.spec.ts`：这一句的每一个字都必须在子集的字符表里。
            */}
-          <h1 className="hero-h1 font-display text-[30px] font-semibold leading-[1.3] text-ink sm:text-[36px]">把一句想法，<br className="hidden sm:block" />变成可执行的<span className="text-chart">旅程</span></h1>
-          <div className="mt-6">
+          <header className="hero-heading">
+            <div>
+              <p className="hero-eyebrow"><span aria-hidden="true" />旅行，从这里开始</p>
+              <h1 className="hero-h1 font-display font-semibold text-ink">把一句想法，<br />变成可执行的<span className="text-chart">旅程</span></h1>
+            </div>
+            <p className="hero-intro">把时间留给期待。<br />路线、住宿与每一天的安排，<br className="hidden sm:block" />在这里慢慢成形。</p>
+          </header>
+          <div className="mt-7 sm:mt-9">
             <TripPlanner />
           </div>
         </div>

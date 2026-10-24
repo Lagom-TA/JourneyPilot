@@ -64,6 +64,7 @@ from ...services.run_lease import RunLeaseKeeper
 from .chat_stream_handlers import (
     SSEContext,
     _SSE_HANDLERS,
+    _handle_node_activity,
     _trace_event_payload,
 )
 
@@ -1110,6 +1111,8 @@ async def chat_stream(
                         status=str(payload.get("status") or ""),
                         payload=payload,
                     )
+                    async for progress_event in _handle_node_activity(payload, ctx):
+                        yield sse_event(progress_event)
                     continue
                 if kind == "state_snapshot":
                     _, state_snapshot = item

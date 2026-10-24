@@ -124,18 +124,14 @@ export const PageShell: React.FC<PageShellProps> = ({
     >
       <div className={cn('flex-shrink-0 pb-4 pt-6', PAGE_GUTTER)}>
         <div className={PAGE_COLUMN}>
-          {/**
-           * 标题行。`pl-14 lg:pl-0`：小屏上 `MainLayout` 那枚 44px 的导航开关是
-           * `fixed left-3 top-3`，会盖住标题（四屏 × 每一个手机宽度都撞，约 32×28px）。
-           * 净空由壳统一留出，三屏同享。
-           */}
+          {/* Mobile navigation has its own row in MainLayout; headings share the content gutter. */}
           <m.div
             variants={staggerItem}
-            className="flex min-w-0 items-start justify-between gap-4 pl-14 lg:pl-0"
+            className="flex min-w-0 flex-wrap items-start justify-between gap-3"
           >
             <div className="min-w-0">
               {/* 副标题不放进 h1：`page-column.spec` 按 level 1 的可及名字找它。 */}
-              <h1 className="text-2xl font-bold leading-tight text-ink">{title}</h1>
+              <h1 className="font-display text-[28px] font-semibold leading-tight text-ink">{title}</h1>
               {purpose && <p className="mt-1.5 text-[13px] text-ink-secondary">{purpose}</p>}
             </div>
             <div className="flex flex-shrink-0 items-center gap-3">

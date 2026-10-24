@@ -13,9 +13,11 @@ from ..workflows.run_control import (
 )
 
 
-FALLBACK_QUERY_POLICY_VERSION = "fallback_query_policy.v1"
+FALLBACK_QUERY_POLICY_VERSION = "fallback_query_policy.v2"
 _FALLBACK_CATEGORY_TOKENS: Mapping[ResearchDomain, tuple[str, ...]] = {
-    ResearchDomain.VISIT: ("museum", "博物馆", "美术馆"),
+    # Visit discovery is broad and carries exclusions through the Query Plan;
+    # it must not silently turn an unconstrained trip into a museum itinerary.
+    ResearchDomain.VISIT: (),
     ResearchDomain.DINING: ("restaurant", "餐厅", "餐馆"),
     ResearchDomain.LODGING: ("hotel", "酒店", "宾馆"),
 }
@@ -72,7 +74,7 @@ def fallback_template(
 ) -> str | None:
     excluded = " ".join(excluded_categories).casefold()
     templates: Mapping[ResearchDomain, str] = {
-        ResearchDomain.VISIT: (f"museum in {destination_name}"),
+        ResearchDomain.VISIT: (f"{destination_name} official visitor guide local experiences specific places"),
         ResearchDomain.DINING: (f"restaurant in {destination_name}"),
         ResearchDomain.LODGING: (f"hotel in {destination_name}"),
     }

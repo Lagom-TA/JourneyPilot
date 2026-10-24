@@ -248,13 +248,14 @@ export type AppAction =
   | { type: 'REMAP_MESSAGE_ID'; payload: { fromId: string; toId: string } }
   | { type: 'SET_THINKING_STEPS'; payload: ThinkingStep[] }
   | { type: 'ADD_THINKING_STEP'; payload: ThinkingStep }
-  | { type: 'FINISH_LAST_THINKING_STEP'; payload: { endTime: Date; tsMs?: number } }
+  | { type: 'FINISH_LAST_THINKING_STEP'; payload: { endTime: Date; tsMs?: number; agentName?: string } }
   | { type: 'APPEND_THINKING_CONTENT'; payload: { agentName: string; content: string } }
   | { type: 'UPDATE_LAST_TOOL_STEP'; payload: {
       toolCallId?: string;
       agentName?: string;
       toolName?: string;
       toolResult?: string;
+      resultPreview?: ThinkingStep['resultPreview'];
       toolStatus?: ThinkingStep['toolStatus'];
       toolCategory?: ThinkingStep['toolCategory'];
       fromCache?: boolean;
@@ -532,7 +533,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'FINISH_LAST_THINKING_STEP': {
       if (state.thinkingSteps.length === 0) return state;
       const newSteps = [...state.thinkingSteps];
-      const lastIdx = newSteps.length - 1;
+      let lastIdx = newSteps.length - 1;
+      if (action.payload.agentName) {
+        while (lastIdx >= 0 && (newSteps[lastIdx].agentName !== action.payload.agentName || newSteps[lastIdx].isToolCall)) lastIdx -= 1;
+      }
+      if (lastIdx < 0 || newSteps[lastIdx].isToolCall || newSteps[lastIdx].progressStatus === 'running') return state;
       const last = newSteps[lastIdx];
       const { endTime, tsMs: nextTsMs } = action.payload;
 
@@ -558,49 +563,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         currentMessages: msgs,
       };
     }
-    case 'APPEND_THINKING_CONTENT': {
-      // 向最后一个 thinking step 追加推理文本（ReAct 流式推理）
-      if (state.thinkingSteps.length === 0) {
-        // 尚无 step，先创建一个
-        const newStep: ThinkingStep = {
-          id: `step-${Date.now()}`,
-          agentName: action.payload.agentName,
-          content: action.payload.content,
-          stepName: '推理中',
-          timestamp: new Date(),
-        };
-        const newSteps = [newStep];
-        const msgs = [...state.currentMessages];
-        if (msgs.length > 0) {
-          const lastMsg = msgs[msgs.length - 1];
-          if (lastMsg.role === 'assistant') {
-            msgs[msgs.length - 1] = { ...lastMsg, thinkingSteps: newSteps };
-          }
-        }
-        return { ...state, thinkingSteps: newSteps, currentMessages: msgs };
-      }
-      const newSteps = [...state.thinkingSteps];
-      const lastIdx = newSteps.length - 1;
-      const lastStep = newSteps[lastIdx];
-      // 只有非工具调用步骤才追加内容
-      if (!lastStep.isToolCall) {
-        newSteps[lastIdx] = {
-          ...lastStep,
-          agentName: action.payload.agentName,
-          content: lastStep.content + action.payload.content,
-          stepName: '推理中',
-        };
-        const msgs = [...state.currentMessages];
-        if (msgs.length > 0) {
-          const lastMsg = msgs[msgs.length - 1];
-          if (lastMsg.role === 'assistant' && lastMsg.thinkingSteps) {
-            msgs[msgs.length - 1] = { ...lastMsg, thinkingSteps: newSteps };
-          }
-        }
-        return { ...state, thinkingSteps: newSteps, currentMessages: msgs };
-      }
+    case 'APPEND_THINKING_CONTENT':
+      // Retired raw-delta path: keep old callers from publishing internal packets.
       return state;
-    }
     case 'UPDATE_LAST_TOOL_STEP': {
       // 更新工具调用步骤的状态（tool_result 事件触发）。并行 worker 可能同时调用
       // 同名工具，必须优先按 toolCallId 精确归因，不能只改“最后一步”。
@@ -609,7 +574,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const lastIdx = (() => {
         if (action.payload.toolCallId) {
           const byId = newSteps.findIndex((step) => step.toolCallId === action.payload.toolCallId || step.id === action.payload.toolCallId);
-          if (byId >= 0) return byId;
+          return byId;
         }
         for (let i = newSteps.length - 1; i >= 0; i -= 1) {
           const step = newSteps[i];
@@ -622,8 +587,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             return i;
           }
         }
-        return newSteps.length - 1;
+        return -1;
       })();
+      if (lastIdx < 0) return state;
       const lastStep = newSteps[lastIdx];
       if (lastStep.isToolCall) {
         newSteps[lastIdx] = {
@@ -632,6 +598,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
           ...(action.payload.toolCallId !== undefined && { toolCallId: action.payload.toolCallId }),
           toolStatus: action.payload.toolStatus ?? 'completed',
           toolResult: action.payload.toolResult,
+          resultPreview: action.payload.resultPreview,
           ...(action.payload.toolCategory !== undefined && { toolCategory: action.payload.toolCategory }),
           ...(action.payload.fromCache !== undefined && { fromCache: action.payload.fromCache }),
           // 服务端实测耗时定格：tool_result.duration_ms 一到即为

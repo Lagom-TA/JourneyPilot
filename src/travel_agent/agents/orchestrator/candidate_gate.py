@@ -38,6 +38,7 @@ from ...entities.delivery_bundle import (
 )
 from ...entities.state import TravelAgentState, bounded_repair_context
 from ...entities.intent_spec import IntentStrength, IntentTarget
+from ...entities.research_query_plan import ResearchQueryKind
 from ...entities.candidate_intent import IntentMatchStatus
 from ...entities.provider_evidence import (
     build_provider_evidence_assignments,
@@ -62,6 +63,7 @@ from ...services.candidate_admission import (
 )
 from ...services.candidate_intent_evaluation import evaluate_candidate_intents
 from ...services.candidate_ranking import rank_candidates
+from ...services.day_planning import daily_planning_windows, default_walking_days
 from ...services.candidate_selection import (
     build_candidate_selection_plan,
     selection_policy_from_intent_spec,
@@ -1998,6 +2000,19 @@ async def candidate_gate_node(
         ),
     )
 
+    windows = daily_planning_windows(state, catalog, selection_plan)
+    if len(windows) == _trip_duration_days(state) and all(window["apply_capacity"] for window in windows):
+        selection_plan = build_candidate_selection_plan(
+            catalog=catalog,
+            intent_spec=state.intent_spec,
+            ranking_scores=ranking_scores,
+            duration_days=len(windows),
+            destination_count=destination_count,
+            selection_policy=selection_plan.selection_policy,
+            daily_visit_minutes=[window["visit_minutes"] for window in windows],
+            daily_destination_ids=[window["destination_id"] for window in windows],
+        )
+
     packet_workers = {
         candidate.candidate_id: packet.worker_kind
         for packet in catalog.research_packets
@@ -2218,11 +2233,13 @@ async def candidate_gate_node(
                 connector_mode_requests_from_constraint_pack(
                     state.placement_skeleton,
                     state.constraint_pack,
+                    catalog,
                 )
             )
             connector_gaps = extract_local_connector_gaps(
                 state.placement_skeleton,
                 catalog,
+                default_walk_day_ids=default_walking_days(state, state.placement_skeleton),
                 weather_data_revision=catalog.weather_data_revision,
                 flexible_mode_requests=flexible_requests,
                 required_flexible_mode_pairs=required_flexible_pairs,
@@ -2244,6 +2261,7 @@ async def candidate_gate_node(
                 connector_gaps = extract_local_connector_gaps(
                     aligned_skeleton,
                     catalog,
+                    default_walk_day_ids=default_walking_days(state, aligned_skeleton),
                     weather_data_revision=catalog.weather_data_revision,
                     flexible_mode_requests=flexible_requests,
                     required_flexible_mode_pairs=required_flexible_pairs,
@@ -2596,6 +2614,16 @@ async def candidate_gate_node(
                 for gap in scoped_gaps
             ]
             repair_query_ids = [targeted_query.query_id]
+            if domain in {ResearchDomain.VISIT, ResearchDomain.DINING} and targeted_query.provider_route == "web_discovery":
+                # A thematic search discovers names before identity resolution.
+                # Authorize the matching discovery query, preserving its own
+                # lineage instead of pretending a name is an exact theme alias.
+                repair_query_ids.extend(
+                    query.query_id for query in updated_query_plan.queries
+                    if query.query_kind == ResearchQueryKind.STRUCTURAL
+                    and query.domain == domain
+                    and query.destination_id == primary_gap.destination_id
+                )
             base_update["research_query_plan"] = updated_query_plan
     gap_summary = [gap.model_dump(mode="json") for gap in scoped_gaps]
     long_distance_instruction = _long_distance_instruction(long_distance_legs)
@@ -2624,6 +2652,7 @@ async def candidate_gate_node(
             if gap.preferred_transport_class == "flexible"
             else "public_transit"
         )
+        payload["comparison_modes"] = ["walk"] if gap.compare_default_walk else []
         connector_payloads.append(payload)
     assignments = dict(state.agent_assignments)
     assignments[worker] = {

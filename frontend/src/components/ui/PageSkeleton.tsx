@@ -21,7 +21,7 @@ import { Skeleton } from './Skeleton';
 export const PageSkeleton: React.FC = () => (
   <div data-testid="page-skeleton" className="flex h-full flex-col overflow-hidden">
     <div className={cn('flex-shrink-0 pb-4 pt-6', PAGE_GUTTER)}>
-      <div className={cn(PAGE_COLUMN, 'pl-14 lg:pl-0')}>
+      <div className={PAGE_COLUMN}>
         <Skeleton radius="label" tone="surface" className="h-6 w-40" />
         <Skeleton radius="label" tone="surface" className="mt-2 h-3 w-56" />
         {/* 搜索那一条线：骨架也是一条线，不是一口井。 */}

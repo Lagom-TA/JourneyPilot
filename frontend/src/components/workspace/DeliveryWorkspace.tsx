@@ -745,6 +745,12 @@ function FullReport({ bundle, readOnly = false }: { bundle: PublicDeliveryBundle
 
 export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle, variant = 'docked' }) => {
   const { state, dispatch } = useApp();
+  const tabsId = React.useId();
+  const viewTabs = React.useMemo(() => DELIVERABLE_VIEW_TABS.map((tab) => ({
+    ...tab,
+    domId: `${tabsId}-${tab.id}-tab`,
+    panelId: `${tabsId}-${tab.id}-panel`,
+  })), [tabsId]);
   const [sourceDetail, setSourceDetail] = React.useState<BundleSourceDetail | null>(null);
   const undo = useDeliveryBundleUndo(bundle);
   const sourceIndexes = React.useMemo(() => {
@@ -782,12 +788,12 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle, va
       <Neatline />
       {sourceDetail && <BundleSourceDetailView detail={sourceDetail} onClose={closeSourceDetail} />}
       <div className={cn('flex h-full min-h-0 flex-col', sourceDetail && 'hidden')}>
-      <div className="flex flex-none items-center justify-between gap-3 border-b border-stroke px-3 py-2 sm:px-4">
+      <div className="flex flex-none items-center justify-between gap-2 border-b border-stroke bg-panel px-3 py-3 sm:px-4">
         {/* 两种结果形态之间是**同一个选择在移动**，所以托只有一枚、在两项之间流过去
             （`ui/SegmentedTabs`），而不是两枚底色各自开关。 */}
         <SegmentedTabs
           aria-label="结果形态"
-          tabs={DELIVERABLE_VIEW_TABS}
+          tabs={viewTabs}
           value={state.deliverableView}
           onChange={(view) => dispatch({ type: 'SET_DELIVERABLE_VIEW', payload: view })}
         />
@@ -810,7 +816,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle, va
           {/* `h-7 w-7`：44px 命中区必须落在盒子内 —— 没有盒子时宽高就是那枚 17px 字形，
               中心离面板右缘只有 8.5px，命中区会向右越界被面板裁掉。28px 见方与旁边那两枚
               页签同高，所以天头高度不变（32 会把 `py-2` 那一行顶高 4px）。 */}
-          <button type="button" onClick={close} aria-label="关闭正式结果" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-card text-ink-muted transition-colors hover:bg-surface hover:text-ink">
+          <button type="button" onClick={close} aria-label="关闭正式结果" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-card text-ink-muted transition-colors hover:bg-surface hover:text-ink">
             <X size={17} />
           </button>
         </div>
@@ -831,7 +837,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle, va
           )}
         </div>
       )}
-      <div role="tabpanel" className={cn('min-h-0 flex-1', state.deliverableView === 'interactive_itinerary' ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain')}>
+      <div role="tabpanel" id={`${tabsId}-${state.deliverableView}-panel`} aria-labelledby={`${tabsId}-${state.deliverableView}-tab`} tabIndex={0} className={cn('min-h-0 flex-1', state.deliverableView === 'interactive_itinerary' ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain')}>
         {state.deliverableView === 'interactive_itinerary'
           ? <InteractiveItinerary bundle={bundle} />
           : <FullReport bundle={bundle} />}

@@ -10,9 +10,10 @@ from ..entities.candidate_ranking import (
 )
 from ..entities.delivery_bundle import RecommendationCatalog
 from ..entities.intent_spec import IntentKind, IntentSpec, IntentStrength
+from .candidate_combination import CandidateCombinationContext
 
 
-CANDIDATE_RANKING_POLICY_VERSION = "candidate_ranking.v1"
+CANDIDATE_RANKING_POLICY_VERSION = "candidate_ranking.v2"
 
 
 def rank_candidates(
@@ -33,6 +34,22 @@ def rank_candidates(
     discovery = {
         record.candidate_id: record for record in catalog.candidate_discovery_records
     }
+    blocked = {
+        match.candidate_id
+        for match in matches
+        if match.status is IntentMatchStatus.VIOLATED
+        and match.intent_id in intent_index
+        and intent_index[match.intent_id].strength is IntentStrength.HARD
+    }
+    combination = CandidateCombinationContext(
+        catalog,
+        intent_spec,
+        (
+            candidate_id
+            for candidate_id, admission in admissions.items()
+            if admission.status == "passed" and candidate_id not in blocked
+        ),
+    )
     scores: list[CandidateRankingScore] = []
     for candidate_id in sorted(catalog.candidate_index()):
         admission = admissions.get(candidate_id)
@@ -118,6 +135,9 @@ def rank_candidates(
         budget_fit = fit.budget_fit if fit is not None else 0.0
         weather_fit = fit.weather_fit if fit is not None else 0.0
         constraint_fit = fit.constraint_fit if fit is not None else 0.0
+        regional_fit, diversity, redundancy, travel_cost = combination.ranking_features(
+            candidate_id
+        )
         ranking_tuple = [
             1.0 if hard_eligible else 0.0,
             float(
@@ -136,11 +156,11 @@ def rank_candidates(
             weather_fit,
             constraint_fit,
             evidence_confidence,
-            1.0,
-            1.0,
+            regional_fit,
+            diversity,
             -fallback_penalty,
-            0.0,
-            0.0,
+            -redundancy,
+            -travel_cost,
         ]
         scores.append(
             CandidateRankingScore(
@@ -156,11 +176,11 @@ def rank_candidates(
                 budget_fit=budget_fit,
                 weather_fit=weather_fit,
                 constraint_fit=constraint_fit,
-                regional_fit=1.0,
-                diversity_potential=1.0,
+                regional_fit=regional_fit,
+                diversity_potential=diversity,
                 generic_fallback_penalty=fallback_penalty,
-                redundancy_penalty=0.0,
-                travel_cost_penalty=0.0,
+                redundancy_penalty=redundancy,
+                travel_cost_penalty=travel_cost,
                 ranking_tuple=ranking_tuple,
                 policy_version=CANDIDATE_RANKING_POLICY_VERSION,
             )

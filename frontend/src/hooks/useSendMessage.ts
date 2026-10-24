@@ -132,7 +132,6 @@ export function useSendMessage() {
       // 本次流式调用归属的 run（chat_start 落定）；in-flight 账本按此 runId 记账防串账。
       let activeRunId = initialRunId;
       let frameId: number | null = null;
-      const pendingThinking: Array<{ agentName: string; content: string }> = [];
       const pendingUsage: UsageUpdateEvent[] = [];
       // In-flight 估算：本次流式输出累计字符数，随 chat_chunk
       // 的同一 rAF 批处理下发，不新增高频 setState。usage_update 到达时由 reducer 归零校准。
@@ -187,12 +186,6 @@ export function useSendMessage() {
 
       const flushFrame = () => {
         frameId = null;
-        if (pendingThinking.length > 0) {
-          const chunks = pendingThinking.splice(0);
-          for (const chunk of chunks) {
-            scopedDispatch({ type: 'APPEND_THINKING_CONTENT', payload: chunk });
-          }
-        }
         if (pendingUsage.length > 0) {
           const usageEvents = pendingUsage.splice(0);
           for (const usage of usageEvents) {
@@ -441,7 +434,7 @@ export function useSendMessage() {
                 const now = new Date();
                 // 服务端定格前一步：本步边界的 ts_ms 供 reducer 与
                 // 上一步 ts_ms 求差，定格上一思考步的 serverDurationMs。
-                scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: now, tsMs: event.ts_ms } });
+                scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: now, tsMs: event.ts_ms, agentName: event.agent_name } });
 
                 const step: ThinkingStep = {
                   id: generateId(),
@@ -462,29 +455,25 @@ export function useSendMessage() {
                 }
                 // 深度模式 Worker 中间结果（批量）→ 添加到调研步骤展示区，不追加到主消息
                 const now = new Date();
-                scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: now, tsMs: event.ts_ms } });
+                scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: now, tsMs: event.ts_ms, agentName: event.agent_name } });
                 const progressStep: ThinkingStep = {
                   id: generateId(),
                   agentName: event.agent_name || '',
                   content: event.content || '',
                   stepName: event.step_name || '',
                   timestamp: now,
-                  endTime: now,
+                  endTime: event.progress_status === 'running' ? undefined : now,
+                  progressStatus: event.progress_status || 'completed',
+                  resultPreview: event.result_preview,
                   tsMs: event.ts_ms,
                 };
                 scopedDispatch({ type: 'ADD_THINKING_STEP', payload: progressStep });
                 break;
               }
 
-              case 'agent_thinking': {
-                // Worker ReAct 推理文本流式 token → 追加到当前 thinking step
-                pendingThinking.push({
-                  agentName: event.agent_name || '',
-                  content: event.content || '',
-                });
-                scheduleFrame();
+              case 'agent_thinking':
+                // Older servers may still emit raw model deltas. Never render them.
                 break;
-              }
 
               case 'tool_start': {
                 if (!pendingStatusCleared) {
@@ -493,7 +482,7 @@ export function useSendMessage() {
                 }
                 // 工具调用开始 → 结束当前推理步骤，添加工具调用步骤
                 const now = new Date();
-                scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: now, tsMs: event.ts_ms } });
+                scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: now, tsMs: event.ts_ms, agentName: event.agent_name } });
                 const toolStep: ThinkingStep = {
                   id: event.tool_call_id || generateId(),
                   agentName: event.agent_name || '',
@@ -528,6 +517,7 @@ export function useSendMessage() {
                     agentName: event.agent_name,
                     toolName: event.tool_name,
                     toolResult: event.summary,
+                    resultPreview: event.result_preview,
                     toolStatus,
                     toolCategory: (event.category as ThinkingStep['toolCategory']) || 'other',
                     fromCache: event.from_cache || false,

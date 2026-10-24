@@ -9,6 +9,7 @@ import { BrandMark, BrandWordmark } from '../ui/BrandMark';
 import { Tooltip } from '../ui/Tooltip';
 import { cn } from '../../lib/utils';
 import { useSessionManager } from '../../hooks/useSessionManager';
+import { useIsMobileViewport } from '../../hooks/useMediaQuery';
 import { RAIL_GUTTER, RAIL_LABEL, RAIL_SLOT, RAIL_SLOT_INDENT } from './rail';
 
 export const Sidebar: React.FC = () => {
@@ -16,6 +17,7 @@ export const Sidebar: React.FC = () => {
   const { setLastSession } = useSessionManager();
   const [searchQuery, setSearchQuery] = useState('');
   const collapsed = state.sidebarCollapsed;
+  const isMobile = useIsMobileViewport();
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleNewChat = () => {
@@ -26,6 +28,7 @@ export const Sidebar: React.FC = () => {
     dispatch({ type: 'CLEAR_CHAT' });
     setLastSession(null);
     dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'chat' });
+    if (isMobile) dispatch({ type: 'SET_SIDEBAR_COLLAPSED', payload: true });
   };
 
   /** 折叠开关的名字 = 它此刻会做的那件事。tooltip 与 `aria-label` 消费同一份值。 */
@@ -33,6 +36,7 @@ export const Sidebar: React.FC = () => {
 
   const handleNavChange = (view: ActiveView) => {
     dispatch({ type: 'SET_ACTIVE_VIEW', payload: view });
+    if (isMobile) dispatch({ type: 'SET_SIDEBAR_COLLAPSED', payload: true });
   };
 
   // 折叠态搜索钮 = 展开侧栏 + 聚焦搜索框。输入框始终在 DOM 内（折叠仅是 CSS

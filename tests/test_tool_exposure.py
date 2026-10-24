@@ -217,6 +217,7 @@ async def test_search_execution_and_replay_preserve_worker_transcript_and_gatewa
     assert len(records) == 1 and records[0].audit_id == envelope["audit_id"]
     events = [queue.get_nowait() for _ in range(queue.qsize())]
     assert [event[0] for event in events] == [
+        "agent_activity",
         "tool_start",
         "tool_done",
         "tool_start",

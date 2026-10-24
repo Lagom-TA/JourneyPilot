@@ -22,7 +22,7 @@ from ..entities.intent_spec import canonical_json_hash
 from .fallback_query_policy import fallback_template
 
 
-RESEARCH_QUERY_POLICY_VERSION = "research_query_planner.v1"
+RESEARCH_QUERY_POLICY_VERSION = "research_query_planner.v2"
 PER_DOMAIN_QUERY_LIMITS = {
     ResearchQueryKind.INTENT_PRIMARY: 2,
     ResearchQueryKind.STRUCTURAL: 1,
@@ -79,7 +79,7 @@ def _query_text(
 
 def _structural_query(destination_name: str, domain: ResearchDomain) -> str:
     suffix = {
-        ResearchDomain.VISIT: "specific attractions and experiences",
+        ResearchDomain.VISIT: "official tourism itineraries neighbourhood experiences named places",
         ResearchDomain.DINING: "specific dining venues",
         ResearchDomain.LODGING: "lodging properties",
         ResearchDomain.LOCAL_TRANSPORT: "local route options",
@@ -93,7 +93,7 @@ def _provider_route(domain: ResearchDomain) -> str:
         return "rail_provider"
     if domain is ResearchDomain.LOCAL_TRANSPORT:
         return "route_provider"
-    return "mixed"
+    return "web_discovery" if domain in {ResearchDomain.VISIT, ResearchDomain.DINING} else "mixed"
 
 
 def _query_id(material: Mapping[str, object]) -> str:

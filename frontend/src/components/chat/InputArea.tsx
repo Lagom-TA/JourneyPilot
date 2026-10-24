@@ -1,5 +1,4 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { BorderBeam } from 'border-beam';
 import { cn } from '../../lib/utils';
 import { isTripRunCancellable } from '../../types/api';
 import { useApp } from '../../context/AppContext';
@@ -197,29 +196,11 @@ export const InputArea: React.FC<{ showCompaction?: boolean }> = ({ showCompacti
     state.currentTripRunId && isTripRunCancellable(state.currentTripRunStatus)
   );
   const showStop = runInFlight && (state.isStreaming || !input.trim());
-  /* 底边一道游走的光（BorderBeam `line`）：composer 可见、但后台还有事在做的那几种情况 ——
-     运行挂起等你决定（发送键此刻是停止键）、或「补全行程描述」正在请求模型。
-     流式期间 composer 整块不渲染（`ConversationThread`），所以这里**不用**读 `isStreaming`。 */
-  const beamActive = showStop || isOptimizing;
 
   return (
     <div className="w-full">
       {/* ── 主容器（登记条皮：暖纸面板 + 静态多层暖阴影，全站同款；内容按模式变形） ── */}
-      {/* 阴影挂在 BorderBeam 这一层：它的容器 `overflow: hidden`，`shadow-md` 留在里面会被剪掉。
-          阴影按 focus-within **直接切换，不做过渡**：§Motion Rules 点名「never animate
-          box-shadow」，而 `transition-shadow duration-300` 那种写法既动了被点名的属性、
-          又用了一个表外的时长。注意这一处躲得过只跑单屏的判据 —— composer 在那些屏上
-          根本没挂载，所以它得靠这条注释守着。 */}
-      <BorderBeam
-        size="line"
-        colorVariant="ocean"
-        theme="light"
-        /* 与票根同一处理由：关掉库默认的 30° 色相漂移，边光只许是产品那只交互蓝。 */
-        staticColors
-        strength={1}
-        active={beamActive}
-        className="rounded-card shadow-md"
-      >
+      <div className="rounded-card shadow-sm">
         {/* 边框走 token（`border-stroke` 是暖色描边），不写字面 rgba。 */}
         <div className="overflow-hidden rounded-card border border-stroke bg-panel">
           <div className="input-normal-row">
@@ -306,7 +287,7 @@ export const InputArea: React.FC<{ showCompaction?: boolean }> = ({ showCompacti
             </div>
           </div>
         </div>
-      </BorderBeam>
+      </div>
 
       {/* ── 工具栏（仅 normal 模式显示，放在输入框下方） ── */}
       <div

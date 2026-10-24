@@ -408,4 +408,10 @@ dev_docs/
 
 backups/
 
-docs/
+# 内部审查、设计草稿与阶段记录；正式 docs 文档正常纳入版本控制。
+/docs/review/
+/docs/design/
+/docs/pending.md
+/harness_review_*.md
+/harness_handoff_*.md
+/e2e_review_*.md

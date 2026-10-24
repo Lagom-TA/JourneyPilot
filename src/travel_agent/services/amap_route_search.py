@@ -36,10 +36,12 @@ import hashlib
 import math
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import httpx
 
 from ..config import get_settings
+from ..entities.transport_semantics import nominal_service_day_conflict
 from ..utils.coordinates import gcj02_to_wgs84, wgs84_to_gcj02
 from ..utils.log_redaction import install_query_secret_redaction
 from ..utils.rate_gate import rate_gate_for
@@ -398,6 +400,7 @@ async def search_amap_route_raw(
     to_latitude: float,
     to_longitude: float,
     mode: AmapRouteMode,
+    departure_time: Optional[str] = None,
     client: Optional[httpx.AsyncClient] = None,
 ) -> Dict[str, Any]:
     """Return the complete response for one bounded amap Directions query."""
@@ -418,6 +421,10 @@ async def search_amap_route_raw(
         # v3 transit endpoint answers the same five plans with it, with an adcode,
         # and with nothing. Omitting it saves a reverse-geocode call per gap.
         params["strategy"] = 0
+        if departure_time:
+            local_departure = datetime.fromisoformat(departure_time).astimezone(ZoneInfo("Asia/Shanghai"))
+            params["date"] = local_departure.strftime("%Y-%m-%d")
+            params["time"] = local_departure.strftime("%H:%M")
     owns_client = client is None
     resolved_client = client or httpx.AsyncClient(
         timeout=settings.timeout_seconds,
@@ -446,6 +453,23 @@ async def search_amap_route_raw(
             raise AmapRouteSearchError("amap route provider refused the query")
     elif str(payload.get("status") or "") != "1":
         raise AmapRouteSearchError("amap route provider refused the query")
+    if mode == "public_transit" and departure_time:
+        # Check every returned alternative before keeping one. The first result
+        # can name a weekday-only line even for a Sunday departure request.
+        route = payload.get("route")
+        if isinstance(route, dict) and isinstance(route.get("transits"), list):
+            route["transits"] = [
+                transit for transit in route["transits"]
+                if isinstance(transit, dict) and not nominal_service_day_conflict(
+                    (
+                        line.get("name")
+                        for segment in transit.get("segments", [])
+                        for line in (segment.get("bus") or {}).get("buslines", [])
+                        if isinstance(line, dict)
+                    ),
+                    local_departure.date(),
+                )
+            ]
     # Bounded here rather than at the normalizer: the snapshot, the evidence record
     # and the worker's context all read this one value, so there is one shape.
     return _bounded_payload(payload, mode=mode)
@@ -471,6 +495,7 @@ async def amap_route_search(
         to_latitude=to_latitude,
         to_longitude=to_longitude,
         mode=mode,
+        departure_time=departure_time,
     )
     route = _normalize_route(
         raw,

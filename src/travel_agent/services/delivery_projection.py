@@ -58,6 +58,7 @@ from ..entities.controlled_place_name import (
 )
 from ..entities.cost_coverage import cost_coverage_statement
 from ..entities.delivery_presentation import block_presentation
+from ..entities.travel_content import candidate_reason_fallback, preparation_actions, public_selection_text, selection_reason
 from ..entities.provider_evidence import (
     build_required_long_distance_legs,
     missing_long_distance_leg_roles,
@@ -68,18 +69,6 @@ from .geo_dispersion import entity_coordinates
 
 class DeliveryProjectionError(ValueError):
     """Raised when immutable v2 facts cannot produce a truthful projection."""
-
-
-_INTERNAL_SELECTION_MARKERS = (
-    "eligible_place_options",
-    "candidate_id",
-    "place_id",
-    "provider_",
-    "selection_slot",
-    "fact_assertion",
-    "source_record",
-    "research_packet",
-)
 
 
 def _reportable_selection_options(
@@ -145,11 +134,7 @@ _BOOKING_CONFIRMATION_TITLE_MARKERS = (
 
 def _public_selection_text(value: str) -> str:
     """Keep model planning rationale while hiding orchestration vocabulary."""
-
-    lowered = value.lower()
-    if any(marker in lowered for marker in _INTERNAL_SELECTION_MARKERS):
-        return "已核验为真实具体实体，并满足本次行程的硬约束"
-    return value
+    return public_selection_text(value)
 
 
 def _public_comparison_facts(field_paths: Sequence[str]) -> list[str]:
@@ -835,17 +820,17 @@ def _entity_block(
     if isinstance(entity, VisitStop):
         ref = EntityRef(entity_type=EntityType.VISIT_STOP, entity_id=entity.item_id)
         kind = "visit"
-        summary = entity.selection_reason
+        summary = selection_reason(entity)
         day_id = entity.day_id
     elif isinstance(entity, DiningStop):
         ref = EntityRef(entity_type=EntityType.DINING_STOP, entity_id=entity.item_id)
         kind = "dining"
-        summary = entity.selection_reason
+        summary = selection_reason(entity)
         day_id = entity.day_id
     elif isinstance(entity, LodgingStay):
         ref = EntityRef(entity_type=EntityType.LODGING_STAY, entity_id=entity.stay_id)
         kind = "lodging"
-        summary = entity.selection_reason
+        summary = selection_reason(entity)
         day_id = None
     elif isinstance(entity, TransportLeg):
         ref = EntityRef(
@@ -864,6 +849,8 @@ def _entity_block(
             f"unsupported report entity: {type(entity).__name__}"
         )
     payload = entity.model_dump(mode="json", exclude={"lineage", "type"})
+    if "selection_reason" in payload:
+        payload["selection_reason"] = selection_reason(entity)
     if "intent_explanations" in payload:
         payload["intent_explanations"] = [
             {
@@ -912,6 +899,28 @@ def _entity_block(
             else []
         ),
     )
+
+
+def _preparation_notes(itinerary: StructuredItineraryV2) -> list[str]:
+    """Name unresolved preparations without claiming the trip has been booked."""
+    notes: list[str] = []
+    for entity in [*itinerary.visit_stops, *itinerary.dining_stops, *itinerary.lodging_stays, *itinerary.transport_legs]:
+        name = (
+            f"{entity.from_endpoint.name} → {entity.to_endpoint.name}"
+            if isinstance(entity, TransportLeg) else entity.name
+        )
+        notes.extend(f"{name}：{action}" for action in preparation_actions(entity))
+    missing = [
+        *(stop.name for stop in itinerary.visit_stops if stop.estimated_cost_cny is None),
+        *(stop.name for stop in itinerary.dining_stops if stop.estimated_cost_cny is None),
+        *(stay.name for stay in itinerary.lodging_stays if stay.total_price_cny is None),
+        *(f"{leg.from_endpoint.name} → {leg.to_endpoint.name}" for leg in itinerary.transport_legs if leg.total_cost_cny is None),
+    ]
+    if missing:
+        notes.append(f"费用尚未计入：{'、'.join(dict.fromkeys(missing))}。请取得相应票价、餐费或住宿报价后再核对总预算；未知价格不代表免费。")
+    if any(stay.price_kind == "reference_estimate" and stay.total_price_cny is not None for stay in itinerary.lodging_stays):
+        notes.append("费用小计包含住宿参考估价，实际支付金额需按入住日期、人数和房型重新核对。")
+    return notes
 
 
 def candidate_display_name(candidate: object) -> str:
@@ -1035,8 +1044,11 @@ def project_report(
                     selected=is_selected,
                     recommended=option.option_id == slot.recommended_option_id,
                     selection_reasons=[
-                        _public_selection_text(reason)
-                        for reason in option.selection_reasons
+                        public_selection_text(
+                            reason,
+                            fallback=candidate_reason_fallback(candidates[option.candidate_id], index),
+                        )
+                        for index, reason in enumerate(option.selection_reasons)
                     ],
                     tradeoff=(
                         _public_selection_text(option.tradeoff)
@@ -1094,10 +1106,13 @@ def project_report(
         title=_public_report_title(
             f"{destination_text} {itinerary.duration_days} 日旅行计划"
         ),
-        overview=f"{date_text}，前往{destination_text}的可执行旅行方案。",
+        overview=f"{date_text}，前往{destination_text}的旅行计划。" + (
+            "出发前请完成下列预约、营业时间及费用核对。"
+            if _preparation_notes(itinerary) else ""
+        ),
         destinations=destinations,
         duration_days=itinerary.duration_days,
-        cost_summary=itinerary.cost_summary,
+        cost_summary=itinerary.cost_summary.model_copy(update={"llm_estimated_total_cny": None}),
         cost_coverage_statement=cost_coverage_statement(itinerary.cost_summary),
         days=days,
         selections=selections,
@@ -1109,6 +1124,7 @@ def project_report(
                     *_trip_level_requirements(workspace),
                     *_intent_deviation_notes(workspace),
                     *_long_distance_path_notes(workspace, generated_at),
+                    *_preparation_notes(itinerary),
                     *itinerary.important_notes,
                 ]
             )

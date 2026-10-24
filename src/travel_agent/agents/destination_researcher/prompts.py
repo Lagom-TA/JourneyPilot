@@ -7,6 +7,15 @@ Original user request: {user_query}
 
 {rag_context_section}
 
+Research what the traveller can actually do at each place, why it fits their
+interests, and any supported timing or access constraints. Prefer current venue
+information for opening hours, last admission, reservation rules and closures.
+Do not infer "no reservation needed" from missing information. Distinguish an
+optional nearby experience from a required stop; do not copy every stop from a
+sample itinerary. Describe only supported experiences and dishes; leave missing
+facts null or empty. Write selection reasons in traveller language, not candidate
+admission, provider verification or internal constraint vocabulary.
+
 Use the available external tools where current facts are required. Return only
 the ResearchPacket JSON object required by the system prompt.
 """

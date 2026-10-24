@@ -30,6 +30,7 @@ from .intent_coverage import (
     IntentCoverageReport,
 )
 from .research_domain import ResearchDomain
+from .transport_semantics import count_service_transfers
 
 
 DELIVERY_BUNDLE_CONTRACT_VERSION = "journeypilot.delivery_bundle.v10"
@@ -613,9 +614,9 @@ class TransportLeg(StrictModel):
 
     @model_validator(mode="after")
     def validate_route(self) -> "TransportLeg":
-        expected = max(len(self.segments) - 1, 0)
-        if self.transfer_count != expected:
-            raise ValueError(f"transfer_count must equal {expected}")
+        # This is derived presentation data. Recompute on reads as well as new
+        # writes so saved routes using segment-boundary counts remain editable.
+        object.__setattr__(self, "transfer_count", count_service_transfers(self.segments))
         if self.route_status == "ready" and not self.segments:
             raise ValueError("ready transport leg requires at least one segment")
         if self.segments:
@@ -1739,6 +1740,28 @@ def _has_raw_source_value(
     )
 
 
+def _source_supports_operational_value(source: SourceRecord, field: str, value: Any) -> bool:
+    # Text can be quoted inside a retrieved page. Booleans must be attached to
+    # the actual field: an unrelated `success: true` is not a reservation rule.
+    if isinstance(value, str):
+        return _source_snapshot_contains_value(source, value)
+    if isinstance(value, list):
+        return bool(value) and all(
+            _source_snapshot_contains_value(source, item) for item in value
+        )
+
+    def contains(item: Any) -> bool:
+        if isinstance(item, dict):
+            return (field in item and type(item[field]) is type(value) and item[field] == value) or any(
+                contains(child) for child in item.values()
+            )
+        if isinstance(item, list):
+            return any(contains(child) for child in item)
+        return False
+
+    return contains(source.snapshot)
+
+
 def _can_verify_stable_identity_fact(
     fact: FactAssertion,
     *,
@@ -2053,6 +2076,38 @@ class ResearchPacket(StrictModel):
                 for fact in self.fact_assertions
                 if fact.entity_ref.entity_id == candidate.candidate_id
             ]
+            # Place identity does not establish opening/booking or room rules.
+            # Keep unknown operational details unknown even if a model supplies
+            # plausible values. This also repairs saved pre-policy packets.
+            operational_fields = (
+                ("opening_window", "reservation_required")
+                if candidate.candidate_kind in {"visit", "dining"}
+                else ("room_type", "facilities")
+                if candidate.candidate_kind == "lodging"
+                else ()
+            )
+            unsupported = {}
+            for field in operational_fields:
+                value = getattr(candidate, field, None)
+                if value is None or value == []:
+                    continue
+                supported = any(
+                    fact.field_path == field
+                    and fact.status == "verified"
+                    and fact.asserted_value == value
+                    and any(
+                        link.relation == "supports"
+                        and (source := source_index.get(link.source_record_id)) is not None
+                        and not _is_failed_source(source)
+                        and _source_supports_operational_value(source, field, value)
+                        for link in fact.source_links
+                    )
+                    for fact in candidate_facts
+                )
+                if not supported:
+                    unsupported[field] = [] if isinstance(value, list) else None
+            if unsupported:
+                candidate = candidate.model_copy(update=unsupported)
             if not candidate_facts:
                 raise ValueError(
                     "candidate requires at least one identity-bound fact assertion"

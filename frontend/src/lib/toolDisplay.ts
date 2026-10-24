@@ -1,3 +1,4 @@
+import { publicProgressText } from './researchProgress';
 import type { SSEEvent, ThinkingStep, ToolCategory, ToolExecutionStatus } from '../types/chat';
 import { truncate } from './utils';
 
@@ -228,8 +229,8 @@ function hostFromUrl(value: string | null): string | null {
 }
 
 function routeSubject(args: ArgsMap): string | null {
-  const origin = firstArg(args, ['origin', 'from', 'from_city', 'departure', 'departure_city', 'source']);
-  const destination = firstArg(args, ['destination', 'to', 'to_city', 'arrival', 'arrival_city', 'target']);
+  const origin = firstArg(args, ['from_name', 'origin', 'from', 'from_city', 'departure', 'departure_city', 'source']);
+  const destination = firstArg(args, ['to_name', 'destination', 'to', 'to_city', 'arrival', 'arrival_city', 'target']);
   const date = firstArg(args, ['date', 'departure_date', 'travel_date']);
   if (origin && destination) return [truncate(origin, 18), '->', truncate(destination, 18), date ? `· ${date}` : ''].join(' ').trim();
   return firstArg(args, ['route', 'query', 'q']);
@@ -243,7 +244,7 @@ function classifyTool(toolName: string | undefined, category: ToolCategory | und
   if (/maps?_weather|forecast|weather/.test(name)) return 'weather';
   if (/maps?_(geo|geocode)|geocode/.test(name)) return 'geocode';
   if (/direction|route|transit|driving|walking|directions/.test(name)) return 'route';
-  if (/maps?_(text|around|search|place|poi)|amap|poi/.test(name)) return 'place_search';
+  if (/global_place_search|maps?_(text|around|search|place|poi)|amap|poi/.test(name)) return 'place_search';
   if (/flight|duffel|offer/.test(name)) return 'flight';
   if (/train|rail|station|12306/.test(name)) return 'train';
   if (/currency|exchange|forex|frankfurter/.test(name)) return 'currency';
@@ -286,7 +287,7 @@ function statusForStep(step: ThinkingStep): ToolStatus {
   if (step.toolStatus === 'failed') return 'failed';
   // 能力判定是终态：它在任何 Provider 调用之前就已确定，不会再变成成功。
   if (step.toolStatus === 'capability_declared') return 'capability_declared';
-  if (step.toolStatus === 'running' || !step.endTime) return 'running';
+  if (step.toolStatus === 'running' || (!step.toolStatus && !step.endTime)) return 'running';
   if (step.toolStatus === 'degraded' || step.toolDegraded) return 'degraded';
   return 'completed';
 }
@@ -320,18 +321,10 @@ export function describeToolStep(step: ThinkingStep): ToolDisplay {
   };
 }
 
-/**
- * 这一行摘要读起来是**载荷**而不是话吗 —— 后端 `tools/governance.looks_like_machine_payload`
- * 同一条判据的镜像（INV-UI-003）。
- *
- * 判据只有一条、也只能有一条：以 `{` 或 `[` 开头。它不是在这里第二次决定「该说什么」——
- * 该说什么只有后端一个 owner（`result_summary`）——它决定的是**不该印什么**：屏幕上永远
- * 不出现一坨 provider JSON。两件事分开的理由是这道闸挡的东西后端已经挡不到了：历史会话里
- * 存着的 `tool_result` 是当时那版摘要器留下的，翻回去照样会把 JSON 铺在思维链上。
- */
+/** Reject raw or prose-prefixed machine packets, including historical records. */
 function looksLikeMachinePayload(text: string): boolean {
   const trimmed = text.trimStart();
-  return trimmed.startsWith('{') || trimmed.startsWith('[');
+  return !publicProgressText(trimmed);
 }
 
 /**

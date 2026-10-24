@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from ..entities.candidate_discovery import CandidateDiscoveryOrigin
 from ..entities.candidate_ranking import CandidateRankingScore
@@ -22,16 +22,19 @@ from ..entities.delivery_bundle import (
 )
 from ..entities.intent_spec import (
     AlternativeIntentValue,
+    CountIntentValue,
     IntentKind,
     IntentSpec,
     IntentTarget,
+    IntentStrength,
     ScalarIntentValue,
     canonical_json_hash,
 )
 from ..entities.research_domain import ResearchDomain
+from .candidate_combination import CandidateCombinationContext, candidate_coordinates
 
 
-CANDIDATE_SELECTION_POLICY_VERSION = "candidate_selection.v1"
+CANDIDATE_SELECTION_POLICY_VERSION = "candidate_selection.v2"
 
 
 def rebind_candidate_selection_catalog_revision(
@@ -127,16 +130,27 @@ def _apply_explore_order(
     if policy.mode != "explore" or policy.selection_seed is None:
         return candidate_ids
     previous = set(policy.avoid_previous_candidate_ids)
-    leader_quality: dict[tuple[ResearchDomain, str], float] = {}
+    leader_quality: dict[tuple, float] = {}
     for candidate_id in candidate_ids:
         candidate = candidates[candidate_id]
-        key = (_domain(candidate), candidate.destination_id)
-        leader_quality.setdefault(key, _ranking_quality(rankings[candidate_id]))
+        key = (
+            _domain(candidate),
+            candidate.destination_id,
+            tuple(rankings[candidate_id].ranking_tuple[:3]),
+        )
+        leader_quality[key] = max(
+            leader_quality.get(key, float("-inf")),
+            _ranking_quality(rankings[candidate_id]),
+        )
     threshold = 0.2 * policy.diversity_strength
 
     def key(candidate_id: str):
         candidate = candidates[candidate_id]
-        group = (_domain(candidate), candidate.destination_id)
+        group = (
+            _domain(candidate),
+            candidate.destination_id,
+            tuple(rankings[candidate_id].ranking_tuple[:3]),
+        )
         score = rankings[candidate_id]
         quality = _ranking_quality(score)
         close_to_leader = leader_quality[group] - quality <= threshold
@@ -150,8 +164,9 @@ def _apply_explore_order(
         return (
             group[0].value,
             group[1],
-            candidate_id in previous,
+            tuple(-value for value in group[2]),
             not close_to_leader,
+            candidate_id in previous if close_to_leader else False,
             seeded_order if close_to_leader else "",
             tuple(-value for value in score.ranking_tuple),
             candidate_id,
@@ -226,7 +241,29 @@ def build_candidate_selection_plan(
     duration_days: int,
     destination_count: int,
     selection_policy: SelectionPolicy | None = None,
+    daily_visit_minutes: Sequence[int] | None = None,
+    daily_destination_ids: Sequence[str] | None = None,
 ) -> CandidateSelectionPlan:
+    if daily_visit_minutes is not None and (
+        len(daily_visit_minutes) != duration_days
+        or any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+            for value in daily_visit_minutes
+        )
+    ):
+        raise ValueError(
+            "daily visit budgets must contain one nonnegative integer per trip day"
+        )
+    if daily_destination_ids is not None and (
+        daily_visit_minutes is None
+        or len(daily_destination_ids) != duration_days
+        or any(
+            not isinstance(value, str) or not value for value in daily_destination_ids
+        )
+    ):
+        raise ValueError(
+            "daily destinations require a visit budget and one destination id per trip day"
+        )
     candidates = catalog.candidate_index()
     rankings = {score.candidate_id: score for score in ranking_scores}
     discovery = {
@@ -253,6 +290,8 @@ def build_candidate_selection_plan(
         rankings=rankings,
         policy=policy,
     )
+    combination = CandidateCombinationContext(catalog, intent_spec, eligible)
+    order = {candidate_id: index for index, candidate_id in enumerate(eligible)}
     positive_intents = _positive_intent_ids(intent_spec)
     required_intents = {
         intent.intent_id
@@ -264,19 +303,172 @@ def build_candidate_selection_plan(
     roles: dict[str, CandidateSelectionRole] = {}
     covered: set[str] = set()
     counts: dict[ResearchDomain, int] = defaultdict(int)
+    remaining_minutes = (
+        list(daily_visit_minutes) if daily_visit_minutes is not None else None
+    )
+    exploration_leaders: dict[tuple, float] = {}
+    if policy.mode == "explore":
+        for candidate_id in eligible:
+            candidate = candidates[candidate_id]
+            group = (
+                _domain(candidate),
+                candidate.destination_id,
+                tuple(rankings[candidate_id].ranking_tuple[:3]),
+            )
+            exploration_leaders[group] = max(
+                exploration_leaders.get(group, float("-inf")),
+                _ranking_quality(rankings[candidate_id]),
+            )
+
+    def destination_bins(candidate_id: str) -> list[int]:
+        if remaining_minutes is None:
+            return []
+        return [
+            index
+            for index in range(len(remaining_minutes))
+            if daily_destination_ids is None
+            or daily_destination_ids[index] == candidates[candidate_id].destination_id
+        ]
+
+    def visit_bin(candidate_id: str) -> int | None:
+        candidate = candidates[candidate_id]
+        if candidate.candidate_kind != "visit" or remaining_minutes is None:
+            return None
+        fitting = [
+            index
+            for index in destination_bins(candidate_id)
+            if remaining_minutes[index] >= candidate.recommended_duration_minutes
+        ]
+        return (
+            min(fitting, key=lambda index: remaining_minutes[index])
+            if fitting
+            else None
+        )
+
+    def fits_budget(candidate_id: str) -> bool:
+        return (
+            candidates[candidate_id].candidate_kind != "visit"
+            or remaining_minutes is None
+            or visit_bin(candidate_id) is not None
+        )
+
+    def combination_key(candidate_id: str) -> tuple:
+        score = rankings[candidate_id]
+        # Admission and intent priority retain their non-compensable tiers.
+        # Within those tiers, compare actual marginal location/experience,
+        # rather than ranking every place against the same static centre.
+        tier = tuple(-value for value in score.ranking_tuple[:3])
+        candidate = candidates[candidate_id]
+        group = (
+            _domain(candidate),
+            candidate.destination_id,
+            tuple(score.ranking_tuple[:3]),
+        )
+        close = (
+            policy.mode == "explore"
+            and exploration_leaders[group] - _ranking_quality(score)
+            <= 0.2 * policy.diversity_strength
+        )
+        soft_order = (
+            (0.0,)
+            if close
+            else (
+                1.0,
+                -score.semantic_fit,
+                -score.budget_fit,
+                -score.weather_fit,
+                -score.constraint_fit,
+                -score.evidence_confidence,
+                score.generic_fallback_penalty,
+            )
+        )
+        return (
+            tier,
+            soft_order,
+            combination.marginal_key(candidate_id, selected),
+            order[candidate_id],
+        )
+
+    capacities = {
+        domain: _capacity(domain, duration_days, destination_count)
+        for domain in ResearchDomain
+    }
+    explicit_visit_capacity = False
+    hard_visit_minimum = 0
+    for intent in intent_spec.active_items:
+        if (
+            not isinstance(intent.value, CountIntentValue)
+            or intent.target is not IntentTarget.VISIT
+        ):
+            continue
+        value = intent.value
+        count = (
+            value.count
+            * (
+                {
+                    "trip": 1,
+                    "day": duration_days,
+                    "destination": max(destination_count, 1),
+                }[value.unit]
+            )
+        )
+        if value.operator in {"at_most", "exactly"}:
+            capacities[ResearchDomain.VISIT] = (
+                min(capacities[ResearchDomain.VISIT], count)
+                if explicit_visit_capacity
+                else count
+            )
+            explicit_visit_capacity = True
+        elif not explicit_visit_capacity:
+            capacities[ResearchDomain.VISIT] = max(
+                capacities[ResearchDomain.VISIT], count
+            )
+        if (
+            value.operator in {"at_least", "exactly"}
+            and intent.strength is IntentStrength.HARD
+        ):
+            hard_visit_minimum = max(hard_visit_minimum, count)
+
+    def optional_allowed(candidate_id: str) -> bool:
+        domain = _domain(candidates[candidate_id])
+        if (
+            domain is ResearchDomain.VISIT
+            and explicit_visit_capacity
+            and counts[domain] >= capacities[domain]
+        ):
+            return False
+        if combination.repeats_place(candidate_id, selected):
+            return False
+        return fits_budget(candidate_id) or (
+            domain is ResearchDomain.VISIT and counts[domain] < hard_visit_minimum
+        )
 
     def add(candidate_id: str, role: CandidateSelectionRole) -> None:
         if candidate_id in selected:
             if role is CandidateSelectionRole.REQUIRED_PRIMARY:
                 roles[candidate_id] = role
             return
-        domain = _domain(candidates[candidate_id])
+        candidate = candidates[candidate_id]
+        domain = _domain(candidate)
         selected.append(candidate_id)
         roles[candidate_id] = role
         counts[domain] += 1
-        covered.update(
-            set(rankings[candidate_id].matched_intent_ids) & positive_intents
-        )
+        if candidate.candidate_kind == "visit" and remaining_minutes is not None:
+            index = visit_bin(candidate_id)
+            bins = destination_bins(candidate_id)
+            if index is None and bins:
+                # Required obligations survive insufficient time and leave no
+                # imaginary free time for optional additions. Composer checks
+                # their actual feasibility and exposes unresolved conflicts.
+                index = max(bins, key=lambda i: remaining_minutes[i])
+            if index is not None:
+                remaining_minutes[index] = max(
+                    0, remaining_minutes[index] - candidate.recommended_duration_minutes
+                )
+        if role is not CandidateSelectionRole.ALTERNATIVE:
+            covered.update(
+                set(rankings[candidate_id].matched_intent_ids) & positive_intents
+            )
 
     selected_slot_ids = {
         result.candidate_id
@@ -287,9 +479,31 @@ def build_candidate_selection_plan(
         if candidate_id in selected_slot_ids:
             add(candidate_id, CandidateSelectionRole.REQUIRED_PRIMARY)
 
-    lodging_periods: set[tuple[str, object, object]] = set()
-    transport_scopes: set[str] = set()
-    local_connector_scopes: set[tuple[str, str, str, str, str]] = set()
+    lodging_periods: set[tuple[str, object, object]] = {
+        (candidate.destination_id, candidate.check_in_date, candidate.check_out_date)
+        for candidate_id in selected
+        if (candidate := candidates[candidate_id]).candidate_kind == "lodging"
+    }
+    transport_scopes: set[str] = {
+        candidate.provider_evidence_scope_id or candidate.route_id
+        for candidate_id in selected
+        if (candidate := candidates[candidate_id]).candidate_kind == "transport"
+        and candidate.transport_class == "long_distance"
+    }
+    local_connector_scopes: set[tuple[str, str, str, str, str]] = {
+        (
+            candidate.destination_id,
+            candidate.from_endpoint.place_id,
+            candidate.to_endpoint.place_id,
+            candidate.transport_class,
+            candidate.selected_mode.value
+            if candidate.transport_class == "flexible"
+            else "",
+        )
+        for candidate_id in selected
+        if (candidate := candidates[candidate_id]).candidate_kind == "transport"
+        and candidate.transport_class in {"public_transit", "flexible"}
+    }
     for candidate_id in eligible:
         candidate = candidates[candidate_id]
         matched = set(rankings[candidate_id].matched_intent_ids)
@@ -348,26 +562,32 @@ def build_candidate_selection_plan(
             for candidate_id in eligible
             if candidate_id not in selected
             and set(rankings[candidate_id].matched_intent_ids) & uncovered
+            and optional_allowed(candidate_id)
         ]
         if not options:
             break
         options.sort(
             key=lambda candidate_id: (
                 -len(set(rankings[candidate_id].matched_intent_ids) & uncovered),
-                tuple(-value for value in rankings[candidate_id].ranking_tuple),
-                candidate_id,
+                combination_key(candidate_id),
             )
         )
         add(options[0], CandidateSelectionRole.PRIMARY)
 
-    for candidate_id in eligible:
-        candidate = candidates[candidate_id]
-        domain = _domain(candidate)
-        if candidate_id in selected or counts[domain] >= _capacity(
-            domain, duration_days, destination_count
-        ):
-            continue
-        add(candidate_id, CandidateSelectionRole.PRIMARY)
+    while True:
+        options = [
+            candidate_id
+            for candidate_id in eligible
+            if candidate_id not in selected
+            and optional_allowed(candidate_id)
+            and (
+                counts[_domain(candidates[candidate_id])]
+                < capacities[_domain(candidates[candidate_id])]
+            )
+        ]
+        if not options:
+            break
+        add(min(options, key=combination_key), CandidateSelectionRole.PRIMARY)
 
     for domain in ResearchDomain:
         alternative_limit = max(policy.alternative_count - 1, 1)
@@ -387,7 +607,7 @@ def build_candidate_selection_plan(
         domain = _domain(candidate)
         rank_by_domain[domain] += 1
         covered_ids = sorted(
-            set(rankings[candidate_id].matched_intent_ids) & positive_intents
+            set(rankings[candidate_id].matched_intent_ids) & positive_intents & covered
         )
         is_fallback = (
             CandidateDiscoveryOrigin.GENERIC_FALLBACK in discovery[candidate_id].origins
@@ -398,6 +618,11 @@ def build_candidate_selection_plan(
         reasons = [f"覆盖用户要求 {intent_id}" for intent_id in covered_ids[:2]]
         if not reasons:
             reasons = ["满足当前行程的结构性候选需求"]
+        if candidate.candidate_kind in {"visit", "dining", "lodging"}:
+            if combination.coordinates[candidate_id] is None:
+                reasons.append("位置坐标尚待核实，转场耗时需另行确认")
+            elif role is not CandidateSelectionRole.ALTERNATIVE:
+                reasons.append("参考已核实位置比较顺路程度，实际交通仍需查证")
         entries.append(
             CandidateSelectionEntry(
                 candidate_id=candidate_id,
@@ -527,6 +752,7 @@ def selected_candidate_capabilities(
 ) -> tuple[list[SelectedCandidateCapability], list[SelectedCandidateCapability]]:
     candidates = catalog.candidate_index()
     rankings = {score.candidate_id: score for score in catalog.candidate_ranking_scores}
+    coordinates = candidate_coordinates(catalog)
     selected: list[SelectedCandidateCapability] = []
     alternatives: list[SelectedCandidateCapability] = []
     for entry in selection_plan.entries:
@@ -550,6 +776,12 @@ def selected_candidate_capabilities(
             weather_fit=ranking.weather_fit,
             constraint_fit=ranking.constraint_fit,
             place_id=place_id,
+            latitude=coordinates[entry.candidate_id][0]
+            if coordinates[entry.candidate_id] is not None
+            else None,
+            longitude=coordinates[entry.candidate_id][1]
+            if coordinates[entry.candidate_id] is not None
+            else None,
             schedule_capabilities=_schedule_capabilities(candidate),
         )
         if entry.role is CandidateSelectionRole.ALTERNATIVE:

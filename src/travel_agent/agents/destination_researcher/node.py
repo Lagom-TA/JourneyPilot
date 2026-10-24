@@ -1092,8 +1092,6 @@ async def discover_and_resolve_required_places(
         tool.get("schema", {}).get("function", {}).get("name", "")
         for tool in available_tools
     }
-    if "global_place_search" not in available_names:
-        return
     discovery_name = next(
         (name for name in _SCOPED_DISCOVERY_TOOLS if name in available_names),
         None,
@@ -1105,6 +1103,41 @@ async def discover_and_resolve_required_places(
     }
     country_code = next(iter(country_codes)) if len(country_codes) == 1 else None
     fallback_policy = FallbackQueryPolicy()
+    discovered_domains: set[ResearchDomain] = set()
+
+    async def discover_semantic_query(query: ResearchQuery) -> bool:
+        """Discovery text nominates names; it is never an identity lookup.
+
+        Web envelopes remain web evidence. The following ReAct stage extracts
+        concrete, supported names and resolves them with the identity provider.
+        """
+        name = discovery_name
+        arguments: Dict[str, Any] = {"query": query.query_text, "max_results": 5}
+        if name is None and _cn_only_destination_boundaries(destination_boundaries) and "maps_text_search" in available_names:
+            name = "maps_text_search"
+            boundary = next((row for row in destination_boundaries if row.get("destination_id") == query.destination_id), None)
+            if boundary is None:
+                return False
+            # This tool explicitly supports category/keyword discovery. Its
+            # raw POIs nominate names; no web result becomes an identity.
+            arguments = {"keywords": " ".join(query.aliases) or ("景点" if query.domain is ResearchDomain.VISIT else "餐饮"),
+                         "city": str(boundary.get("name") or "")}
+        if name is None:
+            return False
+        envelope = await execute_tool(
+            name,
+            arguments,
+            available_tools=available_tools,
+            node_name=_NODE_NAME,
+            activation_source=f"research_query:{query.query_id}",
+            **tool_context,
+        )
+        executed_query_ids.append(query.query_id)
+        messages.append({"role": "tool", "content": compact_tool_content_for_model(envelope)})
+        authoritative_tool_results.append(envelope)
+        if envelope.get("status") == "success" and _web_search_entries(envelope.get("sanitized_result")):
+            discovered_domains.add(query.domain)
+        return True
 
     def domain_queries(domain: ResearchDomain, destination_id: str) -> List[ResearchQuery]:
         scoped = [
@@ -1134,6 +1167,8 @@ async def discover_and_resolve_required_places(
         destination_id = boundary.get("destination_id")
         for query in domain_queries(ResearchDomain.VISIT, str(destination_id or "")):
             if query.query_kind is ResearchQueryKind.GENERIC_FALLBACK:
+                if query.domain in discovered_domains:
+                    continue
                 research_window_open, run_budget_available = runtime_fallback_capacity()
                 if not fallback_policy.is_allowed(
                     query,
@@ -1144,6 +1179,11 @@ async def discover_and_resolve_required_places(
                     run_budget_available=run_budget_available,
                 ):
                     continue
+            if query.provider_route != "global_place_search":
+                await discover_semantic_query(query)
+                continue
+            if "global_place_search" not in available_names:
+                continue
             visit_arguments: Dict[str, Any] = {
                 "query": query.query_text,
                 "country_code": country_code,
@@ -1203,7 +1243,7 @@ async def discover_and_resolve_required_places(
             destination_boundaries=destination_boundaries,
             tool_context=tool_context,
             authoritative_tool_results=authoritative_tool_results,
-            query_text=amap_query.query_text,
+            query_text=" ".join(amap_query.aliases) or "餐饮",
         ):
             return
 
@@ -1217,6 +1257,8 @@ async def discover_and_resolve_required_places(
         identity_envelope: Dict[str, Any] = {}
         for query in domain_queries(ResearchDomain.DINING, str(destination_id or "")):
             if query.query_kind is ResearchQueryKind.GENERIC_FALLBACK:
+                if query.domain in discovered_domains:
+                    continue
                 research_window_open, run_budget_available = runtime_fallback_capacity()
                 if not fallback_policy.is_allowed(
                     query,
@@ -1227,6 +1269,11 @@ async def discover_and_resolve_required_places(
                     run_budget_available=run_budget_available,
                 ):
                     continue
+            if query.provider_route != "global_place_search":
+                await discover_semantic_query(query)
+                continue
+            if "global_place_search" not in available_names:
+                continue
             identity_arguments: Dict[str, Any] = {
                 "query": query.query_text,
                 "country_code": country_code,
@@ -1342,6 +1389,41 @@ async def discover_and_resolve_required_places(
                 }
             )
             authoritative_tool_results.append(identity_envelope)
+
+
+async def collect_place_operating_information(
+    *, available_tools: List[Dict[str, Any]], tool_context: Dict[str, Any],
+    authoritative_tool_results: List[Dict[str, Any]], messages: List[Dict[str, Any]],
+) -> None:
+    """Look up venue operations after names are resolved, with real tools only."""
+    names = {tool.get("schema", {}).get("function", {}).get("name") for tool in available_tools}
+    search_name = next((name for name in _SCOPED_DISCOVERY_TOOLS if name in names), None)
+    if search_name is None:
+        return
+    places: dict[str, Dict[str, Any]] = {}
+    for envelope in authoritative_tool_results:
+        if envelope.get("tool_name") != "global_place_search" or envelope.get("status") != "success":
+            continue
+        result = envelope.get("sanitized_result")
+        for place in result.get("results", []) if isinstance(result, dict) else []:
+            if isinstance(place, dict) and place.get("place_id") and place.get("name") and provider_place_type_matches_candidate_kind(str(place.get("provider_place_type") or ""), "visit"):
+                places.setdefault(str(place["place_id"]), place)
+    for place in list(places.values())[:packet_candidate_limit(_NODE_NAME)]:
+        country = str(place.get("provider_country_code") or "").casefold()
+        terms = "官网 开放时间 最后入场 预约 闭馆" if country == "cn" else "official opening hours last admission reservation closure"
+        try:
+            envelope = await execute_tool(
+                search_name, {"query": f'"{place["name"]}" {terms}', "max_results": 3},
+                available_tools=available_tools, node_name=_NODE_NAME,
+                activation_source="place_operating_information", **tool_context,
+            )
+        except RunCancelled:
+            raise
+        except Exception:
+            logger.warning("Operating information unavailable for %s; retain unknown", place["name"], exc_info=True)
+            break
+        authoritative_tool_results.append(envelope)
+        messages.append({"role": "tool", "content": compact_tool_content_for_model(envelope)})
 
 
 async def destination_researcher_node(
@@ -1591,6 +1673,17 @@ async def destination_researcher_node(
             ),
         })
         messages.extend(preflight_messages)
+        discovery_tools = [name for name in _SCOPED_DISCOVERY_TOOLS
+                           if any(tool.get("schema", {}).get("function", {}).get("name") == name
+                                  for tool in available_tools)]
+        messages.append({"role": "user", "content": (
+            "发现与身份解析分两步：先从本轮知识库或刚注入的探索结果中提名具体地点，再用原名调用 global_place_search，必要时只补城市名。"
+            "不要把主题、区域体验、旅游线路或类别探索句送入名称解析。网页结果只支持名称提名及其实际内容，不支持place_id。"
+            "先利用已有探索结果并核实具体地点，避免重复检索同一主题；按用户原意研究区域体验，不默认限定为博物馆。"
+            f"本轮已注册的网页工具：{', '.join(discovery_tools) or '无'}。"
+            "只能激活本轮目录中真实存在的工具，不反复查找search_web/tavily/brave等未注册名称。"
+            "网页工具缺失时可用现有知识库提名；仅在目录有maps_text_search且目的地在中国时，可用其类别关键词能力发现地点。"
+        )})
         # 判据用 discovery 集：它问的是「这一轮预检要绑的身份都绑上了吗」。scoped 补研轮
         # （唯一消费者，见下面的 require_current_candidate）两集恒等，因为 assignment 一到
         # 就短路。
@@ -1648,6 +1741,10 @@ async def destination_researcher_node(
             }
 
         finalize_started_at = time.perf_counter()
+        await collect_place_operating_information(
+            available_tools=available_tools, tool_context=tool_context,
+            authoritative_tool_results=authoritative_tool_results, messages=messages,
+        )
         packet = await parse_or_repair_research_packet_output(
             raw_response or "",
             expected_worker=_NODE_NAME,

@@ -21,6 +21,7 @@ import uuid
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Set, Tuple
 
+from travel_agent.services.research_progress import result_preview
 from ..config import AgentToolPolicy
 from ..memory.agent_context import render_agent_context
 from ..tools.exposure import ToolExposureSession, attach_tool_catalog
@@ -1666,7 +1667,7 @@ async def streaming_react_loop(
     通用流式 ReAct 循环。
 
     每轮迭代：
-    1. 调用 llm.astream_with_tools，实时推送 react_thinking 事件
+    1. 调用 llm.astream_with_tools，仅发布离散的公开工作状态
     2. 若检测到 tool_calls：推送 tool_start → 执行（优先命中缓存）→ 推送 tool_done
     3. 将工具结果注入 messages，进入下一轮
 
@@ -1674,6 +1675,8 @@ async def streaming_react_loop(
     authoritative_tool_results)。最后一项保留完整 Tool Gateway envelope，
     不受 model-facing message budget 影响。
     """
+    if stream_queue is not None:
+        await stream_queue.put(("agent_activity", node_name, None))
     tool_results_summary: List[str] = []
     authoritative_tool_results: List[Dict[str, Any]] = []
     last_text_content = ""
@@ -1761,11 +1764,9 @@ async def streaming_react_loop(
                 async for event in llm.astream_with_tools(messages, exposure.tool_schemas):
                     if event["type"] == "text_delta":
                         content += event["content"]
-                        if stream_queue is not None:
-                            await stream_queue.put(("react_thinking", node_name, event["content"]))
                     elif event["type"] == "reasoning_delta":
-                        if stream_queue is not None:
-                            await stream_queue.put(("react_thinking", node_name, event["content"]))
+                        # Internal reasoning and final JSON packets are not public progress.
+                        pass
                     elif event["type"] == "finish":
                         finished = True
                         finish_content = event.get("content")
@@ -1976,6 +1977,7 @@ async def streaming_react_loop(
                     "name": tc_name,
                     "tool_call_id": tc_id,
                     "summary": summary,
+                    "result_preview": result_preview(tool_result),
                     # ``status`` 是工具轮次结论的**唯一权威**。不许在旁边再下发一个布尔
                     # ``success``：它把上面的三值真相（成功 / 失败 / 能力判定）压回两值，
                     # 于是 Tool Gateway 明确写下的「能力判定刻意不是 error」这条不变量，

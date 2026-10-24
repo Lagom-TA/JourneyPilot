@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict, List, Optional, Set
 
+from ...services.research_progress import public_text, result_preview, worker_result
 from ...tools.governance import (
     CAPABILITY_DECLARATION_STATUSES,
     ToolExecutionStatus,
@@ -194,14 +195,35 @@ async def _handle_token(item: tuple, ctx: SSEContext) -> AsyncIterator[Dict[str,
 
 
 async def _handle_react_thinking(item: tuple, ctx: SSEContext) -> AsyncIterator[Dict[str, Any]]:
-    """'react_thinking' kind: Worker Agent ReAct 推理文本(流式)。"""
-    _, node_name, text_chunk = item
-    yield {
-        "type": "agent_thinking",
-        "message_id": ctx.message_id,
-        "agent_name": get_agent_display_name(node_name),
-        "content": text_chunk,
-    }
+    """Discard legacy raw model deltas, including JSON split across arbitrary chunks."""
+    return
+    yield  # Keep the handler's async-iterator contract.
+
+
+async def _handle_agent_activity(item: tuple, ctx: SSEContext) -> AsyncIterator[Dict[str, Any]]:
+    _, node_name, _ = item
+    name = get_agent_display_name(node_name)
+    previous = next((step for step in reversed(ctx.thinking_steps)
+                     if step.get("agent_name") == name and step.get("progress_status")), None)
+    if previous and previous.get("progress_status") == "running" and not previous.get("end_time"):
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    content = "正在整理需求并查询相关资料"
+    ctx.thinking_steps.append({
+        "step_id": str(uuid.uuid4()), "agent_name": name,
+        "step_name": name, "content": content, "timestamp": now,
+        "progress_status": "running",
+    })
+    yield {"type": "agent_progress", "message_id": ctx.message_id,
+           "agent_name": name, "step_name": name, "content": content,
+           "progress_status": "running", "ts_ms": run_ts_ms()}
+
+
+async def _handle_node_activity(payload: Dict[str, Any], ctx: SSEContext) -> AsyncIterator[Dict[str, Any]]:
+    node = str(payload.get("node") or "")
+    if payload.get("status") == "started" and node in _DEEP_WORKER_NODES:
+        async for event in _handle_agent_activity(("agent_activity", node, None), ctx):
+            yield event
 
 
 async def _handle_tool_start(item: tuple, ctx: SSEContext) -> AsyncIterator[Dict[str, Any]]:
@@ -259,7 +281,8 @@ async def _handle_tool_done(item: tuple, ctx: SSEContext) -> AsyncIterator[Dict[
     _, node_name, tool_info = item
     tool_name = tool_info.get("name", "")
     tool_call_id = tool_info.get("tool_call_id")
-    tool_summary = tool_info.get("summary", "")
+    tool_summary = public_text(tool_info.get("summary", "")) or "查询已结束"
+    preview = result_preview(tool_info.get("result_preview", []))
     tool_category = tool_info.get("category", "other")
     tool_from_cache = tool_info.get("from_cache", False)
     tool_status = str(tool_info.get("status") or "")
@@ -277,6 +300,7 @@ async def _handle_tool_done(item: tuple, ctx: SSEContext) -> AsyncIterator[Dict[
         "tool_name": tool_name,
         "tool_call_id": tool_call_id,
         "summary": tool_summary,
+        "result_preview": preview,
         # 唯一权威：ToolExecutionStatus 值。消费者据此推导四态展示
         # （completed / degraded / failed / capability_declared）。
         "status": tool_status,
@@ -334,6 +358,7 @@ async def _handle_tool_done(item: tuple, ctx: SSEContext) -> AsyncIterator[Dict[
             # 落库的展示态与实时态同源：恢复会话看到的第四态与直播一致。
             _ts["tool_status"] = tool_outcome
             _ts["tool_result"] = tool_summary
+            _ts["result_preview"] = preview
             _ts["end_time"] = now_iso
             _ts["duration_ms"] = duration_ms
             break
@@ -520,35 +545,23 @@ async def _handle_state_update(item: tuple, ctx: SSEContext) -> AsyncIterator[Di
     else:
         # 阶段 3: 其他节点
         if ctx.use_deep_research and node_name in _DEEP_WORKER_NODES:
-            # 深度模式 Worker 中间结果 → agent_progress(不追加到主消息)
-            messages_list = state_update.get("messages", [])
-            if messages_list:
-                last_msg = messages_list[-1]
-                raw_content = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
-                content = raw_content if isinstance(raw_content, str) else str(raw_content)
-                display_content = strip_non_display_blocks(
-                    strip_thinking_text(strip_think_blocks(content))
-                )
-                if display_content:
-                    ctx.final_agent_name = get_agent_display_name(node_name)
-                    ctx.final_step_name = get_step_display_name(node_name)
-                    yield {
-                        "type": "agent_progress",
-                        "message_id": ctx.message_id,
-                        "agent_name": get_agent_display_name(node_name),
-                        "step_name": get_step_display_name(node_name),
-                        "content": display_content,
-                        "ts_ms": run_ts_ms(),
-                    }
-                    now_iso = datetime.now(timezone.utc).isoformat()
-                    ctx.thinking_steps.append({
-                        "step_id": str(uuid.uuid4()),
-                        "agent_name": get_agent_display_name(node_name),
-                        "step_name": get_step_display_name(node_name),
-                        "content": display_content,
-                        "timestamp": now_iso,
-                        "end_time": now_iso,
-                    })
+            # Node completion is a lifecycle fact, not an invitation to publish its packet.
+            name = get_agent_display_name(node_name)
+            ctx.final_agent_name = name
+            ctx.final_step_name = get_step_display_name(node_name)
+            now = datetime.now(timezone.utc).isoformat()
+            progress_status, content, preview = worker_result(node_name, state_update)
+            for step in ctx.thinking_steps:
+                if step.get("agent_name") == name and step.get("progress_status") == "running":
+                    step["end_time"] = now
+            yield {"type": "agent_progress", "message_id": ctx.message_id,
+                   "agent_name": name, "step_name": get_step_display_name(node_name),
+                   "content": content, "progress_status": progress_status, "result_preview": preview, "ts_ms": run_ts_ms()}
+            ctx.thinking_steps.append({
+                "step_id": str(uuid.uuid4()), "agent_name": name,
+                "step_name": get_step_display_name(node_name), "content": content,
+                "timestamp": now, "end_time": now, "progress_status": progress_status, "result_preview": preview,
+            })
         elif node_name not in ctx.streamed_nodes and not ctx.use_deep_research:
             # 最终输出节点(非流式): 发送 chat_chunk
             messages_list = state_update.get("messages", [])
@@ -597,6 +610,7 @@ async def _handle_state_update(item: tuple, ctx: SSEContext) -> AsyncIterator[Di
 _SSE_HANDLERS = {
     "token": _handle_token,
     "react_thinking": _handle_react_thinking,
+    "agent_activity": _handle_agent_activity,
     "tool_start": _handle_tool_start,
     "tool_done": _handle_tool_done,
     "synthesis_start": _handle_synthesis_start,

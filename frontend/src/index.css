@@ -563,533 +563,6 @@ body {
 .waiting-dot:nth-child(2) { animation-delay: 0.16s; }
 .waiting-dot:nth-child(3) { animation-delay: 0.32s; }
 
-/* ─── Thinking chain: warm operational trace ─── */
-
-.thinking-chain-shell {
-  --thinking-surface: var(--color-bg);
-  --thinking-line: color-mix(in srgb, var(--color-ink-secondary) 17%, transparent);
-  position: relative;
-  isolation: isolate;
-  margin: 0.55rem 0 0.7rem;
-  padding: 0.12rem 0 0.42rem;
-  overflow: visible;
-  background: transparent;
-}
-
-.thinking-chain-shell::before {
-  display: none;
-}
-
-.thinking-chain-shell:hover,
-.thinking-chain-shell:focus-within {
-  transform: none;
-}
-
-.thinking-chain-shell.is-live {
-  --thinking-line: color-mix(in srgb, var(--color-accent) 34%, transparent);
-}
-
-.thinking-chain-shell.is-interrupted {
-  --thinking-line: color-mix(in srgb, var(--color-warning) 31%, transparent);
-}
-
-/* 首个运行事件到达前只是对话流中的状态提示，不应被误读为一条空消息气泡。 */
-.thinking-chain-shell.is-transient {
-  min-height: 34px;
-  margin: 0.55rem 0 0.45rem;
-  padding: 0.16rem 0;
-  overflow: visible;
-}
-
-.thinking-chain-shell.is-transient::before {
-  display: none;
-}
-
-.thinking-chain-shell.is-transient:hover,
-.thinking-chain-shell.is-transient:focus-within {
-  transform: none;
-}
-
-.thinking-chain-shell.is-transient .thinking-chain-summary-row {
-  min-height: 30px;
-}
-
-.thinking-chain-shell.is-transient .thinking-chain-summary-content {
-  gap: 0.6rem;
-}
-
-.thinking-chain-shell.is-transient .thinking-chain-summary-content::before {
-  width: 9px;
-  height: 9px;
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-accent) 11%, transparent);
-}
-
-.thinking-chain-shell.is-transient .thinking-chain-flight {
-  display: none;
-}
-
-.thinking-chain-summary-row {
-  min-height: 28px;
-  transition: color var(--dur-base) var(--ease-standard);
-}
-
-button.thinking-chain-summary-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
-  gap: 0.35rem;
-  padding: 2px 0;
-}
-
-button.thinking-chain-summary-row:hover {
-  color: var(--color-ink);
-}
-
-/* 这里曾经有一条 `button.thinking-chain-summary-row:focus-visible`：`outline: none` +
-   `box-shadow: var(--focus-ring-soft)` —— 全站第 8 种焦点环配方，而且是唯一用样式表
-   （而不是类名）写的那一种，所以任何按类名做的清点都数不到它。它现在由上面那条唯一的
-   `:focus-visible` 承担。 */
-
-.thinking-chain-summary-content {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  /* 0.4rem → 0.55rem：节点离标题太近，读起来像标题上长了个点，而不是一条时间轴的
-     起点。这一档同时是整条链「略微宽松」的基调。 */
-  gap: 0.55rem;
-  /* 节点的外扩光晕不能被摘要容器裁掉；文字自身仍在下一条规则中省略。 */
-  overflow: visible;
-  padding: 3px;
-  margin: -3px;
-}
-
-.thinking-chain-summary-content::before {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
-  content: '';
-  border: 1px solid color-mix(in srgb, var(--color-ink-secondary) 34%, transparent);
-  border-radius: 999px;
-  background: var(--thinking-surface);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--thinking-surface) 86%, transparent);
-}
-
-.thinking-chain-shell.is-live .thinking-chain-summary-content::before {
-  border-color: color-mix(in srgb, var(--color-accent) 66%, transparent);
-  background: var(--color-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 11%, var(--thinking-surface));
-  animation: thinking-chain-beacon var(--dur-loop) var(--ease-standard) infinite;
-}
-
-.thinking-chain-shell.is-live .thinking-chain-summary-content .text-shimmer {
-  color: transparent;
-  /* Seamless left-to-right sheen (issue 4): both gradient ends are the base
-     accent so the repeated tile has no visible seam, and the keyframe travels
-     exactly one tile width (200%), so the highlight makes one clean pass and the
-     loop restart is invisible — no mid-sweep jump back to the left. */
-  background-image: linear-gradient(
-    100deg,
-    var(--color-accent) 0%,
-    var(--color-accent) 30%,
-    #9dcbff 50%,
-    var(--color-accent) 70%,
-    var(--color-accent) 100%
-  );
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  animation: thinking-chain-title-sheen var(--dur-loop-drift) linear infinite;
-}
-
-.thinking-chain-shell.is-interrupted .thinking-chain-summary-content::before {
-  border-color: color-mix(in srgb, var(--color-warning) 60%, transparent);
-  background: color-mix(in srgb, var(--color-warning) 68%, var(--thinking-surface));
-}
-
-.thinking-chain-summary-content > :first-child {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  letter-spacing: -0.01em;
-}
-
-.thinking-chain-summary-content > :not(:first-child) {
-  flex: 0 0 auto;
-  /* 颜色**不在这里给**。它此前是 `color-mix(ink-secondary 70%, transparent)`，
-     实测对比度 3.56 —— 而调用点自己已经在 className 上写了 `text-ink-muted`。
-     两处负责同一件事，而这一条按选择器权重（0-2-0）赢过 Tailwind 的工具类：
-     顺带把「· 已中断」那枚 `text-warning` 也一起吃掉了，琥珀色从来没出现在屏幕上。 */
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.015em;
-  white-space: nowrap;
-}
-
-.thinking-chain-metric {
-  letter-spacing: 0.015em;
-  font-variant-numeric: tabular-nums;
-}
-
-.thinking-chain-summary-row .thinking-chain-chevron {
-  width: 28px;
-  height: 28px;
-  padding: 7px;
-  color: var(--color-ink-muted);
-  background: transparent;
-}
-
-button.thinking-chain-summary-row:hover .thinking-chain-chevron {
-  color: var(--color-accent);
-}
-
-/* 运行中：标题前那枚 7px 信标让位给 20px 的活动球（`ui/AgentOrb`）。球是第一个子元素，
-   所以上面按 `:first-child` / `:not(:first-child)` 分派的两组 flex 角色要各右移一位：
-   球不伸缩，球后面那一个（标题）接过 `flex: 1` 与省略号。三条都比原规则多一级权重
-   （.is-live），只在 live 态生效；settled 后 DOM 里没有球，原规则原样接管。 */
-.thinking-chain-shell.is-live .thinking-chain-summary-content::before {
-  content: none;
-}
-.thinking-chain-shell.is-live .thinking-chain-summary-content > .agent-orb {
-  flex: 0 0 auto;
-  overflow: visible;
-}
-.thinking-chain-shell.is-live .thinking-chain-summary-content > .agent-orb + * {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  letter-spacing: -0.01em;
-}
-
-@keyframes thinking-chain-beacon {
-  0%, 100% { transform: scale(1); opacity: 0.94; }
-  48% { transform: scale(1.16); opacity: 0.68; }
-}
-
-@keyframes thinking-chain-title-sheen {
-  from { background-position: 100% 0; }
-  to { background-position: -100% 0; }
-}
-
-.thinking-chain-toggle {
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows var(--dur-slow) var(--ease-standard);
-}
-
-.thinking-chain-toggle.expanded {
-  grid-template-rows: 1fr;
-}
-
-.thinking-chain-toggle > .thinking-chain-content {
-  overflow: hidden;
-  opacity: 0;
-  transform: translateY(-8px);
-  transition:
-    opacity var(--dur-slow) var(--ease-standard),
-    transform var(--dur-slow) var(--ease-standard);
-}
-
-.thinking-chain-toggle.expanded > .thinking-chain-content {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.thinking-chain-chevron {
-  transition: transform var(--dur-base) var(--ease-decelerate);
-}
-
-.thinking-scroll-max {
-  /* 展开态完整容纳至少 3 条工具调用条目（含合并组条目高度）。 */
-  max-height: min(48vh, 420px);
-}
-
-/* 运行中的思维链是这一阶段的页面主体（issue 6）：给它一个下限高度，避免只有一两条
-   条目时下方大片留白，读起来像一块正在推进的调研控制台，而非一个孤零零的加载点。 */
-.thinking-chain-shell.is-live .thinking-chain-actions {
-  min-height: 150px;
-}
-
-.thinking-chain-rail::before {
-  position: absolute;
-  top: 6px;
-  bottom: 9px;
-  left: 8px;
-  width: 1px;
-  content: '';
-  background: var(--thinking-line);
-}
-
-.thinking-chain-actions {
-  padding-top: 0.35rem;
-  padding-bottom: 0.2rem;
-}
-
-/* 步与步之间的节奏。**大步骤头上的空气比小步骤多**，这是「大步骤 / 小步骤」这层
-   关系除字号之外的另一半表达 —— 用户要的「通过行距和字体大小体现层级」。
-
-   这一份此前写在 TSX 上（`space-y-3`，一律 0.75rem）。移过来的原因不是好看：Tailwind 的
-   `space-y-*` 选择器是 `.space-y-3 > :not([hidden]) ~ :not([hidden])`，权重比这里任何按类名
-   写的规则都高，**留着它就没法在 CSS 里表达「哪一档该多留白」** —— 只能每个调用点自己算，
-   而那正是同一件事多了一个定义处的入口。节奏由结构决定，一处定义。 */
-.thinking-chain-actions > * + * {
-  margin-top: 0.62rem;
-}
-
-.thinking-chain-actions > * + .thinking-chain-action--agent {
-  margin-top: 1.15rem;
-}
-
-/* 背景步骤（读站表、命中缓存这类）挨着上一条，它们是上一步的脚注而不是新的一步。 */
-.thinking-chain-actions > * + .thinking-chain-action--internal {
-  margin-top: 0.4rem;
-}
-
-.thinking-chain-action {
-  padding: 0.18rem 0.35rem 0.24rem 0.16rem;
-  border-radius: 4px;
-  transition:
-    background-color var(--dur-base) var(--ease-standard),
-    opacity var(--dur-base) var(--ease-standard),
-    transform var(--dur-base) var(--ease-standard);
-}
-
-.thinking-chain-action:hover {
-  background: color-mix(in srgb, var(--color-accent) 4%, transparent);
-}
-
-.thinking-chain-action.is-active {
-  background: color-mix(in srgb, var(--color-accent) 5%, transparent);
-}
-
-/* 背景步骤的「退到后面」由**墨色档位**表达，不由 opacity 表达。
-   这里此前是 `opacity: 0.72`：它把已经是第三档的墨色再乘一次，实测对比度掉到 3.2 —— 而
-   opacity 乘出来的颜色不在调色板里，也没有名字，所以没有任何一处能说出它该是多少。
-   规则是：**文字的颜色是一只有名字的 token，浓度只有 100%。** 想更淡就换档，不是加透明度。 */
-.thinking-chain-action--internal .thinking-chain-action-title,
-.thinking-chain-action--internal {
-  color: var(--color-ink-muted);
-}
-
-.thinking-chain-action--internal:hover {
-  background: color-mix(in srgb, var(--color-ink) 2.5%, transparent);
-}
-
-/* 节点几何只有一处定义。这四条此前带 `!important`，而它要压的不是别人 ——
-   是**四个调用点自己写在 className 上的另一套值**（`-left-[17px] top-[3.5px] h-2 w-2` /
-   `h-2.5 w-2.5`，两种尺寸）。也就是说：TSX 里写着两种节点大小，屏幕上一直是同一种 13px，
-   而那两个值一个都没生效过。删掉调用点的死值之后，`!important` 也就没有要压的东西了。 */
-.thinking-chain-marker {
-  display: grid;
-  width: 13px;
-  height: 13px;
-  place-items: center;
-  left: -18px;
-  /* 顶部对齐随大步骤字号变化：14px/1.5 的行盒比原来的 11px 行盒高，节点要跟着下移，
-     否则它会顶在标题第一行的上缘之上。 */
-  top: 4px;
-  border: 1.5px solid color-mix(in srgb, var(--color-ink-secondary) 26%, var(--thinking-surface));
-  border-radius: 999px;
-  background: var(--thinking-surface);
-  transition:
-    border-color var(--dur-base) var(--ease-standard),
-    background-color var(--dur-base) var(--ease-standard),
-    transform var(--dur-base) var(--ease-standard);
-}
-
-.thinking-chain-marker::after {
-  color: color-mix(in srgb, var(--color-ink) 80%, var(--color-ink-secondary));
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.thinking-chain-action.is-complete .thinking-chain-marker {
-  border-color: color-mix(in srgb, var(--color-ink-secondary) 38%, var(--thinking-surface));
-}
-
-.thinking-chain-action.is-complete .thinking-chain-marker::after {
-  content: '✓';
-}
-
-.thinking-chain-action.is-active .thinking-chain-marker {
-  border-color: color-mix(in srgb, var(--color-accent) 76%, transparent);
-  background: var(--thinking-surface);
-  transform: none;
-}
-
-.thinking-chain-action.is-active .thinking-chain-marker::before {
-  position: absolute;
-  inset: -4px;
-  content: '';
-  border: 1.5px solid color-mix(in srgb, var(--color-accent) 16%, transparent);
-  border-top-color: var(--color-accent);
-  border-right-color: color-mix(in srgb, var(--color-accent) 72%, transparent);
-  border-radius: inherit;
-  animation: thinking-chain-running-ring var(--dur-loop) linear infinite;
-}
-
-.thinking-chain-action.is-active .thinking-chain-marker::after {
-  width: 5px;
-  height: 5px;
-  content: '';
-  border-radius: 999px;
-  background: var(--color-accent);
-}
-
-.thinking-chain-action.is-failed .thinking-chain-marker::after {
-  content: '×';
-  color: var(--color-error);
-}
-
-@keyframes thinking-chain-running-ring {
-  to { transform: rotate(360deg); }
-}
-
-.thinking-chain-action.is-failed .thinking-chain-marker {
-  border-color: color-mix(in srgb, var(--color-error) 62%, transparent);
-  background: color-mix(in srgb, var(--color-error) 30%, var(--thinking-surface));
-}
-
-/* 日期能力判定（服务端在调用前声明该数据源答不了这个日期）：中性态。
-   刻意不用 error / warning 色——它是设计内的结果，不是错误；但也不复用
-   is-complete 的 ✓，否则用户看不出这一轮只拿到参考资料。 */
-.thinking-chain-action.is-capability .thinking-chain-marker {
-  border-color: color-mix(in srgb, var(--color-ink-secondary) 46%, var(--thinking-surface));
-}
-
-.thinking-chain-action.is-capability .thinking-chain-marker::after {
-  content: '–';
-  color: var(--color-ink-secondary);
-}
-
-.thinking-chain-action.is-capability .thinking-chain-action-title {
-  color: color-mix(in srgb, var(--color-ink) 62%, var(--color-ink-secondary));
-}
-
-.thinking-chain-action.is-capability .thinking-chain-duration {
-  color: var(--color-ink-muted);
-}
-
-.thinking-chain-action:hover .thinking-chain-marker {
-  transform: scale(1.08);
-}
-
-.thinking-chain-inline-status {
-  display: none;
-}
-
-.thinking-chain-action.is-complete .thinking-chain-action-title {
-  color: var(--color-ink);
-}
-
-.thinking-chain-action.is-complete .thinking-chain-category-icon {
-  color: color-mix(in srgb, var(--color-ink) 70%, var(--color-ink-secondary)) !important;
-}
-
-.thinking-chain-action.is-complete .thinking-chain-duration {
-  color: var(--color-ink-muted);
-}
-
-.thinking-chain-duration {
-  min-width: 3.75rem;
-  color: color-mix(in srgb, var(--color-accent) 68%, var(--color-ink-secondary));
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.015em;
-  text-align: right;
-  white-space: nowrap;
-}
-
-/* `.thinking-chain-developer-detail` 已删：零消费方，而它是整张样式表里
-   唯一一个表外半径（7px —— §Shape 只有 0 / 4 / 8 / full 四档）。 */
-
-.thinking-scroll {
-  scroll-behavior: smooth;
-}
-
-/* 顶部渐隐只在「上方有被裁剪内容」时出现（容器滚动后由 JS 加 has-clip-top）；
-   底部永不渐隐——最新条目在底部，必须始终清晰完整。 */
-.thinking-scroll.has-clip-top {
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black 24px
-  );
-  mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    black 24px
-  );
-}
-
-.thinking-scroll::-webkit-scrollbar {
-  width: 3px;
-}
-.thinking-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.thinking-scroll::-webkit-scrollbar-thumb {
-  background: var(--accent);
-  opacity: 0.2;
-  border-radius: 3px;
-}
-
-/* ─── 工具调用内容切换动画（相同工具连续调用合并展示时内容切换） ─── */
-
-@keyframes tool-content-in {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.tool-content-animate {
-  animation: tool-content-in var(--dur-slow) var(--ease-decelerate) both;
-}
-
-.thinking-chain-flight {
-  margin: 0.18rem 0 0.02rem 1.2rem;
-}
-
-@media (max-width: 640px) {
-  .thinking-chain-shell {
-    margin: 0.25rem 0 0.45rem;
-    padding: 0.48rem 0.45rem 0.5rem;
-    border-radius: 11px 12px 11px 8px;
-  }
-
-  .thinking-chain-summary-content {
-    gap: 0.3rem;
-  }
-
-  .thinking-chain-summary-content > :not(:first-child) {
-    font-size: 9px;
-  }
-
-  .thinking-chain-rail {
-    margin-left: 0.35rem;
-  }
-
-  .thinking-chain-actions {
-    padding-left: 1.05rem;
-    row-gap: 0.55rem;
-  }
-
-  .thinking-chain-action {
-    padding-right: 0.16rem;
-  }
-
-  .thinking-chain-duration {
-    min-width: 3.3rem;
-    font-size: 9px;
-  }
-}
-
 /* ─── Research Summary（调研执行阶段置顶摘要） ─── */
 
 .research-ticket {
@@ -1183,7 +656,86 @@ button.thinking-chain-summary-row:hover .thinking-chain-chevron {
   background-image:
     repeating-linear-gradient(to right, color-mix(in srgb, var(--color-chart) 8%, transparent) 0 1px, transparent 1px 48px),
     repeating-linear-gradient(to bottom, color-mix(in srgb, var(--color-chart) 8%, transparent) 0 1px, transparent 1px 48px);
-  animation: hero-fade var(--dur-slow) var(--ease-decelerate) both;
+  mask-image: linear-gradient(to bottom, #000, transparent 82%);
+  opacity: 0.55;
+}
+
+.hero-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+}
+.hero-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+  color: var(--color-ink-secondary);
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+.hero-eyebrow > span {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-vermilion);
+}
+.hero-h1 {
+  font-size: clamp(28px, 3.2vw, 44px);
+  line-height: 1.4;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+.hero-intro {
+  padding-bottom: 4px;
+  color: var(--color-ink-secondary);
+  font-size: 13px;
+  line-height: 1.9;
+}
+.origin-setup { max-width: 680px; }
+.planner-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+.planner-primary { box-shadow: var(--shadow-md); }
+.planner-section-heading { margin-bottom: 24px; }
+.planner-kicker {
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: var(--color-ink-muted);
+}
+.planner-submit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-stroke);
+}
+.planner-submit-button { flex-shrink: 0; min-height: 44px; }
+.planner-inspiration { background: color-mix(in srgb, var(--color-panel) 65%, var(--color-bg)); }
+.planner-party > div { flex-wrap: wrap; }
+.inspiration-composer:focus-within { outline: var(--focus-outline); outline-offset: 3px; }
+.inspiration-composer textarea:focus-visible { outline: none; }
+
+@media (min-width: 1320px) {
+  .planner-layout:not(.planner-layout-compact) { grid-template-columns: minmax(0, 1fr) 252px; gap: 24px; }
+  .planner-inspiration { padding: 24px 20px; }
+  .inspiration-composer { flex-direction: column; align-items: stretch; gap: 12px; }
+  .inspiration-composer textarea { min-height: 154px; width: 100%; }
+  .inspiration-composer > button { align-self: flex-end; }
+}
+
+@media (max-width: 639px) {
+  .hero-heading { display: block; }
+  .hero-eyebrow { margin-bottom: 12px; }
+  .hero-intro { margin-top: 16px; font-size: 12px; }
+  .hero-intro br { display: none; }
+  .hero-sheet::before { opacity: 0.3; }
+  .planner-primary { padding: 20px 16px; }
+  .planner-submit { align-items: stretch; flex-direction: column; gap: 12px; }
+  .planner-submit-button { width: 100%; }
 }
 
 /* Contours — four concentric arcs in the top-right, drawn once via dashoffset. */
@@ -1472,4 +1024,53 @@ button.thinking-chain-summary-row:hover .thinking-chain-chevron {
 .hero-sheet section > *:nth-child(6) { animation-delay: 760ms; }
 .hero-sheet section > *:nth-child(n+7) { animation-delay: 800ms; }
 
+/* Research activity: paper, ink and a single restrained blue accent. */
+.research-panel { width: 100%; margin: 12px 0; border: 1px solid var(--color-stroke); border-radius: 8px; background: var(--color-panel); overflow: hidden; }
+.research-panel-heading { display: flex; align-items: center; gap: 12px; width: 100%; padding: 18px 20px; color: var(--color-ink); }
+.research-panel-title { display: block; font-size: 14px; font-weight: 600; letter-spacing: .02em; }
+.research-panel-subtitle { display: block; margin-top: 4px; font-size: 11px; color: var(--color-ink-muted); line-height: 1.6; }
+.research-elapsed { font-size: 11px; color: var(--color-ink-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.research-panel-body { padding: 0 12px 12px; }
+.research-agent-list { display: grid; gap: 8px; }
+.research-agent { border: 1px solid var(--color-stroke); border-radius: 8px; background: var(--color-bg); }
+.research-agent.is-active { border-color: color-mix(in srgb, var(--color-accent) 28%, var(--color-stroke)); background: var(--color-panel); }
+.research-agent-heading { display: flex; align-items: flex-start; gap: 12px; padding: 16px; width: 100%; text-align: left; }
+.research-agent-icon { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex-shrink: 0; border-radius: 8px; background: var(--color-surface); color: var(--color-ink-secondary); }
+.research-agent.is-active .research-agent-icon { color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-panel)); }
+.research-agent-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.research-agent-state { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 400; color: var(--color-ink-muted); }
+.research-agent-state.is-active { color: var(--color-accent); }
+.research-status-dot { height: 5px; width: 5px; background: currentColor; border-radius: 50%; }
+.research-agent-description { display: block; margin-top: 3px; color: var(--color-ink-muted); font-size: 11px; line-height: 1.6; }
+.research-agent-update { display: block; margin-top: 10px; font-size: 12px; line-height: 1.75; color: var(--color-ink-secondary); overflow-wrap: anywhere; }
+.research-agent-meta { display: block; margin-top: 7px; font-size: 11px; color: var(--color-ink-muted); }
+.research-agent-chevron { flex-shrink: 0; margin-top: 2px; color: var(--color-ink-muted); transition: transform 200ms ease; }
+.research-agent-body { border-top: 1px solid var(--color-stroke); padding: 4px 16px 12px; }
+.research-milestone { font-size: 12px; line-height: 1.8; margin: 10px 0; color: var(--color-ink-secondary); overflow-wrap: anywhere; }
+.research-queries { list-style: none; padding: 0; margin: 0; }
+.research-query + .research-query { border-top: 1px solid var(--color-stroke); }
+.research-query-summary { display: flex; gap: 8px; align-items: center; padding: 12px 0; list-style: none; }
+summary.research-query-summary { cursor: pointer; }
+.research-query-summary::-webkit-details-marker { display: none; }
+.research-query-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--color-ink-muted); flex-shrink: 0; }
+.research-query-dot.is-active { background: var(--color-accent); }
+.research-query-dot.is-warning { background: var(--color-warning); }
+.research-query-kind { display: block; color: var(--color-ink-muted); font-size: 11px; margin-bottom: 4px; }
+.research-query-title { display: block; font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+.research-query-status { max-width: 84px; font-size: 11px; color: var(--color-ink-muted); text-align: right; flex-shrink: 0; }
+.research-query-detail { margin: 0 0 12px 13px; padding-left: 12px; border-left: 2px solid var(--color-stroke); }
+.research-query-context { font-size: 11px; line-height: 1.6; color: var(--color-ink-muted); margin-bottom: 10px; overflow-wrap: anywhere; }
+.research-source + .research-source { margin-top: 12px; }
+.research-source-title { font-size: 12px; font-weight: 500; line-height: 1.7; overflow-wrap: anywhere; }
+.research-source-title a { color: var(--color-accent); display: inline-flex; align-items: baseline; gap: 4px; }
+.research-source p { font-size: 11px; line-height: 1.8; color: var(--color-ink-secondary); overflow-wrap: anywhere; margin-top: 3px; }
+.research-source-domain { font-size: 11px; color: var(--color-ink-muted); overflow-wrap: anywhere; }
+.research-query details[open] .research-disclosure-icon { transform: rotate(180deg); }
+.research-panel-note { font-size: 11px; color: var(--color-ink-muted); line-height: 1.7; padding: 12px 8px 0; }
+.research-empty { display: flex; gap: 12px; align-items: center; padding: 24px 12px; color: var(--color-ink-muted); font-size: 12px; line-height: 1.8; }
+.research-panel button:focus-visible, .research-panel summary:focus-visible, .research-panel a:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; border-radius: 4px; }
+@media (max-width: 480px) { .research-panel-heading { padding: 14px 12px; gap: 8px; } .research-panel-body { padding: 0 8px 8px; } .research-agent-heading { padding: 12px; gap: 9px; } .research-agent-body { padding: 4px 12px 10px; } .research-elapsed { display: none; } }
+@media (prefers-reduced-motion: reduce) { .research-agent-chevron { transition: none; } }
 
+.research-candidates { margin: 12px 0; padding: 12px; border-left: 2px solid var(--color-stroke); background: var(--color-panel); }
+.research-agent.is-failed .research-agent-state { color: var(--color-warning); }

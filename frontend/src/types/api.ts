@@ -211,6 +211,8 @@ export interface SessionDetail extends SessionSummary {
       tool_status?: 'running' | 'completed' | 'failed' | 'degraded' | 'capability_declared';
       tool_args?: string;
       tool_result?: string;
+      result_preview?: Array<{ title: string; detail?: string; url?: string }>;
+      progress_status?: 'running' | 'completed' | 'failed';
       tool_category?: string;
       from_cache?: boolean;
       /** 工具步服务端实测耗时（ms）；M1 后端持久化，会话回放时映射为 serverDurationMs。 */

@@ -32,6 +32,10 @@ export default defineConfig({
           // 注意：motion 的 domMax 拆分由 LazyMotion + CanvasMotion 动态 import
           // 自动完成（motion-features chunk），此处不触碰，避免把 domMax 拉回主包。
           if (id.includes('node_modules')) {
+            // Keep the interaction libraries independently cacheable after UI changes.
+            if (/[/\\]node_modules[/\\](thinking-orbs|liquid-gooey)[/\\]/.test(id)) {
+              return 'interaction-vendor';
+            }
             // react / react-dom / scheduler：全站最稳定的框架内核，独立成
             // react-vendor chunk——长缓存命中率最高，且把它从 app 入口移出后
             // 入口 minified raw 降到 500kb 阈值下，消除体积警告。

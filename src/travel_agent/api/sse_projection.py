@@ -14,6 +14,7 @@ from ..entities.trip_run import TripRunStatus
 from ..entities.trip_summary_card import TripSummaryCard
 from ..services.public_delivery import public_event_manifest
 from .audit_projection import audit_safe_value
+from ..services.research_progress import public_text, result_preview
 
 # Product lifecycle + user-visible run boundaries.
 _NORMAL_SSE_EVENT_TYPES = frozenset(
@@ -202,6 +203,8 @@ def _project_answer_annotations(value: Any) -> List[Dict[str, Any]]:
 def project_sse_payload(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Return the single scrubbed projection for one SSE payload, or None to drop."""
     event_type = str(payload.get("type") or "")
+    if event_type == "agent_thinking":
+        return None
     if event_type in _RESEARCH_TRACE_EVENT_TYPES:
         return _project_research_trace(event_type, payload)
     if event_type in _INSPECT_SSE_EVENT_TYPES:
@@ -226,7 +229,11 @@ def _project_research_trace(event_type: str, payload: Dict[str, Any]) -> Dict[st
             projected[key] = payload[key]
 
     if event_type in {"thinking", "agent_thinking", "agent_progress"}:
-        projected["content"] = payload.get("content", "")
+        projected["content"] = public_text(payload.get("content", ""))
+        if payload.get("progress_status") in {"running", "completed", "failed"}:
+            projected["progress_status"] = payload["progress_status"]
+        if event_type == "agent_progress":
+            projected["result_preview"] = result_preview(payload.get("result_preview", []))
         return projected
 
     projected.update(
@@ -249,7 +256,8 @@ def _project_research_trace(event_type: str, payload: Dict[str, Any]) -> Dict[st
         # ``status`` (``lib/toolDisplay.ts::thinkingStepStatusFromToolResult``).
         projected.update(
             {
-                "summary": payload.get("summary", ""),
+                "summary": public_text(payload.get("summary", "")),
+                "result_preview": result_preview(payload.get("result_preview", [])),
                 "status": payload.get("status"),
                 "duration_ms": payload.get("duration_ms"),
             }

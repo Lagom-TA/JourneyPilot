@@ -51,6 +51,7 @@ from travel_agent.entities.intent_spec import (
     VerificationMode,
     canonical_json_hash,
 )
+
 from travel_agent.entities.research_brief import (
     DomainResearchObjective,
     ResearchBriefV2,
@@ -257,7 +258,12 @@ def _packet(
         public_excerpt=name,
         retrieved_at=datetime.now(timezone.utc),
         content_hash=canonical_json_hash({"name": name}),
-        snapshot={"name": name},
+        snapshot={
+            "name": name,
+            **(
+                {"opening_window": opening_window} if opening_window is not None else {}
+            ),
+        },
         tool_audit_id=f"audit_{candidate_id}",
     )
     fact = FactAssertion(
@@ -278,13 +284,32 @@ def _packet(
             )
         ],
     )
+    facts = [fact]
+    if opening_window is not None:
+        facts.append(
+            FactAssertion(
+                fact_assertion_id=f"{fact_id}_opening_window",
+                entity_ref=fact.entity_ref,
+                field_path="opening_window",
+                asserted_value=opening_window,
+                criticality="decision_critical",
+                status="verified",
+                source_links=[
+                    FactSourceLink(
+                        source_record_id=source_id,
+                        relation="supports",
+                        source_locator="fixture.opening_window",
+                    )
+                ],
+            )
+        )
     candidate = VisitCandidate(
         candidate_id=candidate_id,
         research_packet_id=f"packet_{candidate_id}",
         destination_id="destination_tokyo",
-        fact_assertion_ids=[fact_id],
+        fact_assertion_ids=[item.fact_assertion_id for item in facts],
         source_record_ids=[source_id],
-        field_paths=["name"],
+        field_paths=[item.field_path for item in facts],
         weather_sensitivity=WeatherSensitivity(
             exposure="mixed",
             rain_sensitivity="low",
@@ -329,14 +354,15 @@ def _packet(
         query_context={},
         candidates=[candidate],
         source_records=[source],
-        fact_assertions=[fact],
+        fact_assertions=facts,
         field_provenance=[
             FieldProvenance(
                 origin="external_fact",
-                entity_ref=fact.entity_ref,
-                field_path="name",
-                reference_ids=[fact_id],
+                entity_ref=item.entity_ref,
+                field_path=item.field_path,
+                reference_ids=[item.fact_assertion_id],
             )
+            for item in facts
         ],
         generated_at=datetime.now(timezone.utc),
     )
@@ -847,7 +873,7 @@ def test_json_object_composition_schema_keeps_semantics_without_null_branches():
     } <= strict_required
 
 
-def test_theme_changes_query_plan_and_museum_exclusion_blocks_fallback():
+def test_theme_changes_query_plan_and_museum_exclusion_keeps_broad_discovery():
     architecture = _spec(_intent("intent_arch", "contemporary architecture"))
     temple = _spec(_intent("intent_temple", "traditional temple garden"))
     architecture_plan = build_research_query_plan(
@@ -880,10 +906,7 @@ def test_theme_changes_query_plan_and_museum_exclusion_blocks_fallback():
     assert all(
         "museum" not in query.query_text.casefold() for query in excluded_plan.queries
     )
-    assert all(
-        query.query_kind is not ResearchQueryKind.GENERIC_FALLBACK
-        for query in excluded_plan.queries
-    )
+    assert all("不要博物馆" in query.excluded_categories for query in excluded_plan.queries)
 
 
 def test_admission_is_stable_while_ranking_and_selection_change_with_theme():
@@ -1344,7 +1367,7 @@ def test_explore_selection_is_seeded_reproducible_and_diverse():
             candidate_id=f"candidate_{index}",
             intent_id=intent.intent_id,
             status=IntentMatchStatus.MATCHED,
-            score=1,
+            score=1 - index * 0.005,
             method="semantic_batch_evaluation",
             supporting_fact_assertion_ids=[f"fact_candidate_{index}"],
             supporting_source_record_ids=[f"source_candidate_{index}"],
@@ -1448,7 +1471,7 @@ def test_fallback_candidate_is_penalized_and_targeted_repair_is_stable():
     excluded_fallback = fallback.model_copy(
         update={"excluded_categories": ["不要博物馆"]}
     )
-    assert not policy.is_allowed(
+    assert policy.is_allowed(
         excluded_fallback,
         executed_query_ids=set(excluded_fallback.fallback_after_query_ids),
         admitted_candidate_count=0,
@@ -1533,9 +1556,7 @@ def test_generic_fallback_origin_lands_in_the_ranking_tuple():
     ]
     by_id = {
         score.candidate_id: score
-        for score in rank_candidates(
-            catalog=catalog, intent_spec=spec, matches=matches
-        )
+        for score in rank_candidates(catalog=catalog, intent_spec=spec, matches=matches)
     }
     # ranking_tuple 的第 11 位（下标 10）是 fallback 扣分位，见 candidate_ranking.py
     # 里构造 ranking_tuple 的那段。
@@ -1719,18 +1740,15 @@ async def test_worker_executes_intent_and_structural_queries_before_fallback(
     calls = []
 
     async def fake_execute_tool(_name, arguments, **_kwargs):
-        calls.append(arguments["query"])
+        calls.append((_name, arguments["query"]))
         results = (
             [
                 {
-                    "place_id": "osm:node:1",
-                    "name": "Museum Place",
-                    "provider_place_type": "tourism;museum",
-                    "provider_country_code": "JP",
-                    "address": "Tokyo",
+                    "title": "Tokyo International Forum — visitor information",
+                    "snippet": "A contemporary architectural landmark open to visitors.",
                 }
             ]
-            if arguments["query"].startswith("museum in")
+            if "official visitor guide" in arguments["query"]
             else []
         )
         return {
@@ -1744,7 +1762,7 @@ async def test_worker_executes_intent_and_structural_queries_before_fallback(
     executed = []
     await destination_node.discover_and_resolve_required_places(
         messages=[],
-        available_tools=[{"schema": {"function": {"name": "global_place_search"}}}],
+        available_tools=[{"schema": {"function": {"name": name}}} for name in ("global_place_search", "free_web_search")],
         required_candidate_kinds=["visit"],
         destination_boundaries=[
             {
@@ -1766,8 +1784,9 @@ async def test_worker_executes_intent_and_structural_queries_before_fallback(
         ResearchQueryKind.STRUCTURAL,
         ResearchQueryKind.GENERIC_FALLBACK,
     ]
-    assert "contemporary architecture" in calls[0]
-    assert calls[-1].startswith("museum in")
+    assert "contemporary architecture" in calls[0][1]
+    assert all(name == "free_web_search" for name, _query in calls)
+    assert all("museum" not in query.casefold() for _name, query in calls)
 
 
 def test_packet_compiler_owns_and_merges_candidate_discovery_lineage():
@@ -1910,9 +1929,9 @@ def test_targeted_packet_keeps_traced_candidate_and_prunes_unrelated_extras():
     assert payload["candidate_discovery_records"][0]["intent_ids"] == [
         "intent_required"
     ]
-    assert [
-        fact["entity_ref"]["entity_id"] for fact in payload["fact_assertions"]
-    ] == ["candidate_required"]
+    assert [fact["entity_ref"]["entity_id"] for fact in payload["fact_assertions"]] == [
+        "candidate_required"
+    ]
     assert [source["source_record_id"] for source in payload["source_records"]] == [
         "source_candidate_required"
     ]
@@ -2314,12 +2333,8 @@ async def test_unparsed_score_is_logged_and_the_score_is_still_dropped(caplog):
                             "intent_id": intent.intent_id,
                             "status": "matched",
                             "score": "很高",
-                            "supporting_fact_assertion_ids": [
-                                "fact_candidate_one"
-                            ],
-                            "supporting_source_record_ids": [
-                                "source_candidate_one"
-                            ],
+                            "supporting_fact_assertion_ids": ["fact_candidate_one"],
+                            "supporting_source_record_ids": ["source_candidate_one"],
                         }
                     ]
                 }
@@ -2377,9 +2392,7 @@ async def test_deferral_to_semantic_evaluator_leaves_a_debug_trace(caplog):
         )
 
     messages = [
-        record.getMessage()
-        for record in caplog.records
-        if record.name == _EVAL_LOGGER
+        record.getMessage() for record in caplog.records if record.name == _EVAL_LOGGER
     ]
     # 这条路径不该产生 WARNING：它是正常移交，不是降级。
     assert _warnings(caplog) == []
@@ -2432,3 +2445,199 @@ async def test_trace_scope_reads_the_ambient_run_and_node(caplog):
     lines = _warnings(caplog)
     assert len(lines) == 1
     assert "run=run_under_test node=candidate_gate" in lines[0]
+
+
+def _quality_packet(
+    candidate_id,
+    *,
+    longitude=None,
+    minutes=90,
+    visit_type="culture",
+    provider_type="museum",
+):
+    packet = _packet(
+        candidate_id,
+        candidate_id,
+        origin=CandidateDiscoveryOrigin.INTENT_QUERY,
+        query_id=f"query_{candidate_id}",
+        intent_id="intent_theme",
+    )
+    candidate = packet.candidates[0].model_copy(
+        update={
+            "recommended_duration_minutes": minutes,
+            "visit_type": visit_type,
+            "provider_place_type": provider_type,
+        }
+    )
+    facts = list(packet.fact_assertions)
+    if longitude is not None:
+        for field, value in (("latitude", 35.68), ("longitude", longitude)):
+            facts.append(
+                packet.fact_assertions[0].model_copy(
+                    update={
+                        "fact_assertion_id": f"{candidate_id}_{field}",
+                        "field_path": field,
+                        "asserted_value": value,
+                    }
+                )
+            )
+        candidate = candidate.model_copy(
+            update={
+                "fact_assertion_ids": [fact.fact_assertion_id for fact in facts],
+                "field_paths": ["name", "latitude", "longitude"],
+            }
+        )
+    provenance = [
+        FieldProvenance(
+            origin="external_fact",
+            entity_ref=fact.entity_ref,
+            field_path=fact.field_path,
+            reference_ids=[fact.fact_assertion_id],
+        )
+        for fact in facts
+    ]
+    return packet.model_copy(
+        update={
+            "candidates": [candidate],
+            "fact_assertions": facts,
+            "field_provenance": provenance,
+        }
+    )
+
+
+def _quality_selection(spec, *packets, budgets=None, destinations=None):
+    catalog = _catalog(*packets)
+    matches = [
+        CandidateIntentMatch(
+            candidate_id=packet.candidates[0].candidate_id,
+            intent_id=intent.intent_id,
+            status=IntentMatchStatus.MATCHED,
+            score=1,
+            method="semantic_batch_evaluation",
+            supporting_fact_assertion_ids=[packet.fact_assertions[0].fact_assertion_id],
+            supporting_source_record_ids=[packet.source_records[0].source_record_id],
+            reason_code="semantic_match",
+        )
+        for packet in packets
+        for intent in spec.active_items
+        if intent.kind in {IntentKind.THEME, IntentKind.MUST_INCLUDE}
+    ]
+    rankings = rank_candidates(catalog=catalog, intent_spec=spec, matches=matches)
+    plan = build_candidate_selection_plan(
+        catalog=catalog,
+        intent_spec=spec,
+        ranking_scores=rankings,
+        duration_days=len(budgets) if budgets is not None else 1,
+        destination_count=len(set(destinations)) if destinations else 1,
+        daily_visit_minutes=budgets,
+        daily_destination_ids=destinations,
+    )
+    return plan, {score.candidate_id: score for score in rankings}
+
+
+def test_selection_uses_verified_nearby_places_without_forcing_culture_diversity():
+    spec = _spec(_intent("intent_theme", "museums and opera"))
+    plan, scores = _quality_selection(
+        spec,
+        _quality_packet("a_remote", longitude=140.1),
+        _quality_packet("b_museum", longitude=139.760),
+        _quality_packet("c_opera_museum", longitude=139.761),
+        _quality_packet("d_unknown"),
+    )
+    assert plan.composition_candidate_ids() == {"b_museum", "c_opera_museum"}
+    assert (
+        scores["a_remote"].travel_cost_penalty > scores["b_museum"].travel_cost_penalty
+    )
+    assert scores["d_unknown"].travel_cost_penalty > 0
+    unknown_plan, _ = _quality_selection(spec, _quality_packet("d_unknown"))
+    assert any(
+        "坐标尚待核实" in reason
+        for entry in unknown_plan.entries
+        for reason in entry.selection_reasons
+    )
+
+    diversity = _intent(
+        "intent_variety", "different experiences", kind=IntentKind.DIVERSITY
+    )
+    diverse_plan, _ = _quality_selection(
+        _spec(*spec.active_items, diversity),
+        _quality_packet("a_museum", longitude=139.760),
+        _quality_packet("b_museum", longitude=139.761),
+        _quality_packet(
+            "c_garden", longitude=139.762, visit_type="nature", provider_type="garden"
+        ),
+    )
+    assert "c_garden" in diverse_plan.composition_candidate_ids()
+
+
+def test_selection_uses_time_budget_and_keeps_required_candidates_when_time_is_short():
+    theme = _intent("intent_theme", "culture")
+    packets = [
+        _quality_packet(
+            f"candidate_{index}", longitude=139.76 + index / 1000, minutes=90
+        )
+        for index in range(5)
+    ]
+    brief, _ = _quality_selection(_spec(theme), *packets, budgets=[90, 0])
+    full, _ = _quality_selection(_spec(theme), *packets, budgets=[270, 0])
+    assert len(brief.composition_candidate_ids()) == 1
+    assert len(full.composition_candidate_ids()) == 3
+    kyoto = _quality_packet("kyoto_visit", longitude=135.77)
+    kyoto = kyoto.model_copy(
+        update={
+            "candidates": [
+                kyoto.candidates[0].model_copy(
+                    update={"destination_id": "destination_kyoto"}
+                )
+            ]
+        }
+    )
+    multi_city, _ = _quality_selection(
+        _spec(theme),
+        *packets,
+        kyoto,
+        budgets=[90, 270],
+        destinations=["destination_tokyo", "destination_kyoto"],
+    )
+    assert "kyoto_visit" in multi_city.composition_candidate_ids()
+    assert len(multi_city.composition_candidate_ids()) == 2
+
+    required = theme.model_copy(
+        update={"kind": IntentKind.MUST_INCLUDE, "strength": IntentStrength.HARD}
+    )
+    required_plan, _ = _quality_selection(_spec(required), packets[0], budgets=[0])
+    assert required_plan.composition_candidate_ids() == {"candidate_0"}
+    assert required_plan.entries[0].role is CandidateSelectionRole.REQUIRED_PRIMARY
+
+    unavailable, _ = _quality_selection(_spec(theme), packets[0], budgets=[0])
+    assert unavailable.composition_candidate_ids() == set()
+    assert unavailable.uncovered_intent_ids == ["intent_theme"]
+
+
+def test_selection_respects_explicit_counts_and_does_not_duplicate_places():
+    quantity = _intent(
+        "intent_count", "one visit", kind=IntentKind.QUANTITY
+    ).model_copy(
+        update={
+            "value": CountIntentValue(operator="exactly", count=1, unit="trip"),
+            "strength": IntentStrength.HARD,
+        }
+    )
+    first = _quality_packet("a_museum", longitude=139.760)
+    duplicate = _quality_packet("b_duplicate", longitude=139.760)
+    duplicate = duplicate.model_copy(
+        update={
+            "candidates": [
+                duplicate.candidates[0].model_copy(
+                    update={"place_id": first.candidates[0].place_id}
+                )
+            ]
+        }
+    )
+    distinct = _quality_packet("c_museum", longitude=139.761)
+    plan, _ = _quality_selection(
+        _spec(quantity), first, duplicate, distinct, budgets=[500]
+    )
+    assert len(plan.composition_candidate_ids()) == 1
+    plan, _ = _quality_selection(_spec(), first, duplicate, distinct)
+    assert plan.composition_candidate_ids() == {"a_museum", "c_museum"}

@@ -147,6 +147,7 @@ export const PresetCard: React.FC<PresetCardProps> = ({
               <ConfirmAction
                 onConfirm={() => onDelete(preset)}
                 confirmLabel="删除"
+                triggerLabel="删除这个风格"
                 className="border-transparent bg-transparent px-0 py-0"
               >
                 <Trash2 size={13} />

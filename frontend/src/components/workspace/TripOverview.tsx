@@ -57,9 +57,10 @@ export const TripOverview: React.FC<TripOverviewProps> = ({
 
   return (
     <section data-testid="trip-overview" aria-labelledby="trip-overview-title" className="mx-auto w-full max-w-3xl py-1 sm:py-2">
-      <header className="border-b border-stroke pb-5 sm:pb-6">
-        <h2 id="trip-overview-title" className="break-words text-2xl font-semibold tracking-tight text-ink">{itinerary.title}</h2>
-        <dl className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+      <header className="trip-overview-heading border-b border-stroke pb-5 sm:pb-6">
+        <p className="mb-3 text-[11px] font-medium tracking-[0.12em] text-chart">你的旅行手册</p>
+        <h2 id="trip-overview-title" className="break-words font-display text-[28px] font-semibold leading-snug tracking-tight text-ink">{itinerary.title}</h2>
+        <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4">
           {readouts.map((entry) => <TripFactReadout key={entry.label} {...entry} />)}
         </dl>
         {highlights.length > 0 && (
@@ -77,7 +78,7 @@ export const TripOverview: React.FC<TripOverviewProps> = ({
         >
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 id="requirement-fulfillment-heading" className="text-sm font-semibold text-ink">你的要求</h3>
-            <p className="text-xs text-ink-tertiary">
+            <p className="text-xs text-ink-muted">
               已满足 {fulfillmentSummary.fulfilled.length} 项
               {fulfillmentSummary.deviations.length > 0 && ` · 待留意 ${fulfillmentSummary.deviations.length} 项`}
             </p>

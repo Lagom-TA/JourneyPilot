@@ -112,7 +112,9 @@ def build_research_packet_prompt(
 - TransportCandidate.from_endpoint 必须与首个 segment.from_endpoint 完全一致，to_endpoint 必须与末个 segment.to_endpoint 完全一致；多段换乘按真实顺序完整保留。
 - 必须填写 WeatherSensitivity；天气影响由确定性引擎计算，不要自行生成 WeatherImpact id。
 - 酒店/餐馆只输出真实具体实体；关键价格、营业、无障碍、饮食等事实不足时如实保留 unknown，不用低质量候选凑满 candidate_limit 个。
-- 描述性字段（VisitCandidate 的 highlights/opening_window/reservation_required，DiningCandidate 的 cuisine_types/recommended_dishes/opening_window/reservation_required，LodgingCandidate 的 room_type/facilities）不是身份字段，地点 Provider 不返回它们，所以它们靠你来填，而且**尽量都填满**：旅行者看到的卡片就靠这几行才不至于只剩一个名字和一个地址。优先用本轮真检索到的 external_web 页面或提示词里印过「引用标识」的 rag_chunk 里的内容来写，能配来源就为该 (candidate_id, field_path) 配一条同 entity_id 的 FactAssertion；确实没有检索依据时，按该类型场所的常识给出合理值即可，此时**不要**为它编造 FactAssertion 或 SourceRecord，也不要把它写进 field_paths——留空的字段才是白花的 token。{nomination_clause}
+- 内容字段也必须有依据：VisitCandidate 的 highlights/opening_window/reservation_required，DiningCandidate 的 cuisine_types/recommended_dishes/opening_window/reservation_required，LodgingCandidate 的 room_type/facilities 只写本轮 external_web 或有引用标识的 rag_chunk 直接支持的实体事实，并为该字段建立同 entity_id 的 FactAssertion 与来源链接。查不到时用 null 或空数组；禁止按场所类型常识猜营业时间、无需预约、菜品、房型或设施。地点身份已核验不等于这些内容已核验。{nomination_clause}
+- 优先补查影响到访的具体信息：本次日期的开放时间、最晚入场、预约要求、临时关闭，以及与用户兴趣相关的真实体验。区分常规规则与日期例外，运营方当前公告优先于旧攻略；参考路线的推荐停留时间不等于排队、用餐和交通总耗时。
+- selection_reasons、tradeoff 面向旅行者，解释有依据的体验、位置、节奏和费用取舍。不写“受控目的地一致”“承担住宿责任”“满足准入/硬约束”“Provider 已核验”等内部工作语言；身份核验不能替代推荐理由。缺少交通或设施依据时，不宣称交通便利、步行可达、亲子友好或无障碍。
 - 本轮候选上限、推荐工具与可选的历史/约束/天气背景见 <research_runtime>；优先使用 recommended_tools 中适用于当前查询的工具，工具定义的排列不表示优先级。
 </hard_contract>"""
     metadata = {

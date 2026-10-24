@@ -54,7 +54,7 @@ export const DaySummaryCard: React.FC<DaySummaryCardProps> = ({ day, onOpen, car
       /* 悬停不抬升、不加阴影：校准表在「克制底线 / warm·claude」
          那一行明写「hover 不 scale/lift」，而一个会浮起来的方块读起来像可以拖走。全站可点
          的面（行程行、风格卡、这里）一律「边框着色 + 一层暖底」。 */
-      className="group w-full rounded-card border border-stroke bg-panel px-4 py-4 text-left transition-colors duration-fast ease-standard hover:border-accent/40 hover:bg-accent/[0.02] sm:px-5 sm:py-5"
+      className="day-summary-card group w-full rounded-card border border-stroke bg-panel px-4 py-4 text-left transition-colors duration-fast ease-standard hover:border-accent/40 hover:bg-accent/[0.02] sm:px-5 sm:py-5"
     >
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-5 gap-y-2">
         <div className="min-w-0">
@@ -66,7 +66,7 @@ export const DaySummaryCard: React.FC<DaySummaryCardProps> = ({ day, onOpen, car
         {day.weather && <DayWeather weather={day.weather} />}
       </div>
 
-      <h3 className="mt-3 break-words text-base font-semibold leading-6 text-ink">{day.theme}</h3>
+      <h3 className="mt-4 break-words text-lg font-semibold leading-7 text-ink">{day.theme}</h3>
 
       {day.nodes.length > 0 && (
         <ol className="mt-4" aria-label={`第 ${day.day} 天核心安排`}>
@@ -108,9 +108,9 @@ export const DaySummaryCard: React.FC<DaySummaryCardProps> = ({ day, onOpen, car
       {day.hiddenNodeCount > 0 && <p className="mt-1 text-xs text-ink-muted">另有 {day.hiddenNodeCount} 项安排</p>}
       {day.notice && <p data-testid={`day-summary-notice-${day.dayId}`} className="mt-3 break-words border-t border-stroke pt-3 text-xs font-medium leading-5 text-warning">{day.notice.title}</p>}
 
-      <span className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-accent group-hover:text-[var(--color-accent-hover)]">
+      <span className="mt-4 flex items-center justify-between gap-1 border-t border-stroke/60 pt-3 text-xs font-semibold text-accent group-hover:text-[var(--color-accent-hover)]">
         查看详情
-        <ArrowUpRight size={15} aria-hidden />
+        <ArrowUpRight size={16} aria-hidden className="transition-transform duration-base ease-standard motion-safe:group-hover:translate-x-0.5 motion-safe:group-hover:-translate-y-0.5" />
       </span>
     </button>
   );

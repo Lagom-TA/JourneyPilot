@@ -45,6 +45,8 @@ function mapThinkingSteps(rawSteps: SessionDetail['messages'][number]['thinking_
     toolStatus: step.tool_status,
     toolArgs: step.tool_args,
     toolResult: step.tool_result,
+    resultPreview: step.result_preview,
+    progressStatus: step.progress_status,
     toolCategory: step.tool_category as ThinkingStep['toolCategory'],
     fromCache: step.from_cache,
   }));

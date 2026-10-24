@@ -27,6 +27,7 @@ from datetime import date as Date, datetime
 from typing import Any, Optional, Sequence
 
 from .cost_coverage import format_cny
+from .travel_content import preparation_actions
 from .delivery_bundle import (
     CustomBlock,
     DiningStop,
@@ -292,6 +293,7 @@ def _visit(entity: VisitStop) -> dict[str, Any]:
         ),
         "notes": _rows(
             f"重点体验：{'、'.join(highlights)}" if highlights else None,
+            *preparation_actions(entity),
         ),
         "segment_lines": [],
     }
@@ -319,6 +321,7 @@ def _dining(entity: DiningStop) -> dict[str, Any]:
         "notes": _rows(
             f"推荐菜：{'、'.join(dishes)}" if dishes else None,
             *[f"用餐提醒：{item}" for item in entity.dining_reminders if item.strip()],
+            *preparation_actions(entity),
         ),
         "segment_lines": [],
     }
@@ -363,7 +366,7 @@ def _lodging(entity: LodgingStay, projection_role: str) -> dict[str, Any]:
             _row("状态", _AVAILABILITY_LABELS.get(entity.availability_status)),
             _row("地址", entity.address),
         ),
-        "notes": [],
+        "notes": preparation_actions(entity),
         "segment_lines": [],
     }
 
@@ -402,7 +405,7 @@ def _transport(entity: TransportLeg, projection_role: str) -> dict[str, Any]:
             _row("换乘", _transfer_label(entity.transfer_count)),
             _row("预订", BOOKING_LABELS.get(entity.booking_status)),
         ),
-        "notes": [],
+        "notes": preparation_actions(entity),
         "segment_lines": _segment_lines(entity),
     }
 

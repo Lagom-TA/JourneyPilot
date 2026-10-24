@@ -140,7 +140,11 @@ export type ToolExecutionStatus =
   | 'not_applicable'
   | 'reference_only';
 
+export interface ResultPreview { title: string; detail?: string; url?: string }
+
 export interface ThinkingStep {
+  progressStatus?: 'running' | 'completed' | 'failed';
+  resultPreview?: ResultPreview[];
   id: string;
   agentName: string;
   content: string;
@@ -208,7 +212,7 @@ export interface SSEEvent {
     | 'chat_start'
     | 'thinking'
     | 'agent_progress'   // 深度模式 Worker 中间结果（批量，展示在调研过程区）
-    | 'agent_thinking'   // Worker ReAct 推理文本（流式 token，追加到当前 thinking step）
+    | 'agent_thinking'   // Legacy raw model deltas; discarded by the client
     | 'tool_start'       // Worker 工具调用开始
     | 'tool_result'      // Worker 工具调用完成
     | 'chat_chunk'       // 最终输出增量（仅 synthesizer 或 fast_answer 直接回答）
@@ -245,6 +249,8 @@ export interface SSEEvent {
   tool_call_id?: string;
   args_summary?: string;
   summary?: string;
+  result_preview?: ResultPreview[];
+  progress_status?: 'running' | 'completed' | 'failed';
   category?: string;   // 工具分类（internal/search/data/calculation/other）
   from_cache?: boolean; // 是否来自缓存
   /**

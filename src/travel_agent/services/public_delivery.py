@@ -53,9 +53,11 @@ from ..entities.delivery_bundle import (
     WeatherProposalDecision,
 )
 from ..entities.coverage_disclosure import coverage_disclosure_notes
+from ..entities.cost_coverage import cost_coverage_statement
 from ..entities.intent_coverage import public_requirement_explanation
 from ..entities.evidence_basis import EvidenceBasisView
 from ..entities.provider_environment import ProviderEnvironmentView
+from ..entities.travel_content import public_selection_text, selection_reason
 
 
 def _timestamp(value: Optional[datetime]) -> Optional[str]:
@@ -97,7 +99,9 @@ def _public_entity_ref(entity_ref: Any) -> Dict[str, Any]:
 
 
 def _public_cost_summary(summary: CostCoverageSummary) -> Dict[str, Any]:
-    return summary.model_dump(mode="json")
+    # Legacy bundles may still carry an unsupported model guess. Preserve the
+    # wire schema, but never present that guess as the traveller's budget.
+    return summary.model_copy(update={"llm_estimated_total_cny": None}).model_dump(mode="json")
 
 
 def _public_intent_explanations(items: Sequence[Any]) -> List[Dict[str, Any]]:
@@ -133,7 +137,7 @@ def _public_visit_stop(stop: VisitStop, evidence_basis: str) -> Dict[str, Any]:
         "planned_end": _timestamp(stop.planned_end),
         "duration_minutes": stop.duration_minutes,
         "estimated_cost_cny": stop.estimated_cost_cny,
-        "selection_reason": stop.selection_reason,
+        "selection_reason": selection_reason(stop),
         "visit_type": stop.visit_type,
         "opening_window": stop.opening_window,
         "reservation_required": stop.reservation_required,
@@ -157,7 +161,7 @@ def _public_dining_stop(stop: DiningStop, evidence_basis: str) -> Dict[str, Any]
         "planned_end": _timestamp(stop.planned_end),
         "duration_minutes": stop.duration_minutes,
         "estimated_cost_cny": stop.estimated_cost_cny,
-        "selection_reason": stop.selection_reason,
+        "selection_reason": selection_reason(stop),
         "meal_type": stop.meal_type,
         "cuisine_types": list(stop.cuisine_types),
         "average_spend_cny": stop.average_spend_cny,
@@ -187,7 +191,7 @@ def _public_lodging_stay(stay: LodgingStay, evidence_basis: str) -> Dict[str, An
         "price_kind": stay.price_kind,
         "availability_status": stay.availability_status,
         "address": stay.address,
-        "selection_reason": stay.selection_reason,
+        "selection_reason": selection_reason(stay),
         "intent_explanations": _public_intent_explanations(stay.intent_explanations),
         "evidence_basis": evidence_basis,
     }
@@ -421,8 +425,8 @@ def _public_report_selection(section: ReportSelectionSection) -> Dict[str, Any]:
                 "rank": option.rank,
                 "selected": option.selected,
                 "recommended": option.recommended,
-                "selection_reasons": list(option.selection_reasons),
-                "tradeoff": option.tradeoff,
+                "selection_reasons": [public_selection_text(reason) for reason in option.selection_reasons],
+                "tradeoff": public_selection_text(option.tradeoff) if option.tradeoff else None,
                 "comparison_facts": list(option.comparison_facts),
                 "availability_status": option.availability_status,
                 "citation_ids": list(option.citation_ids),
@@ -466,13 +470,9 @@ def _public_report_document(
         ],
         "duration_days": document.duration_days,
         "cost_summary": _public_cost_summary(document.cost_summary),
-        # The money sentence, computed once during projection
-        # (``entities/cost_coverage.py``).  It was missing from this dict while
-        # both browser surfaces read it and the PDF read the internal model, so
-        # the same plan printed 「已知费用 ¥1,765 · 整趟预算估算 ¥2,788」 in the
-        # exported PDF and nothing at all in the report cover and the workspace
-        # overview — the exact drift centralising it was meant to end.
-        "cost_coverage_statement": document.cost_coverage_statement,
+        # The same formatter also protects old persisted reports carrying a
+        # model-only budget clause, without changing their stored audit record.
+        "cost_coverage_statement": cost_coverage_statement(document.cost_summary),
         "days": [_public_report_day(day, view) for day in document.days],
         "selections": [
             _public_report_selection(section) for section in document.selections
@@ -574,8 +574,8 @@ def _public_selection_slot(slot: SelectionSlot) -> Dict[str, Any]:
                 "rank": option.rank,
                 "selected": option.option_id == slot.selected_option_id,
                 "recommended": option.option_id == slot.recommended_option_id,
-                "selection_reasons": list(option.selection_reasons),
-                "tradeoff": option.tradeoff,
+                "selection_reasons": [public_selection_text(reason) for reason in option.selection_reasons],
+                "tradeoff": public_selection_text(option.tradeoff) if option.tradeoff else None,
                 "comparison_facts": list(option.comparison_facts),
                 "availability_status": option.availability_status,
             }

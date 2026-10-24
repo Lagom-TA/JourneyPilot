@@ -3,6 +3,7 @@ import { AnimatePresence, m } from 'motion/react';
 import { cn, groupByDate } from '../../lib/utils';
 import { useApp } from '../../context/AppContext';
 import { useSessionManager } from '../../hooks/useSessionManager';
+import { useIsMobileViewport } from '../../hooks/useMediaQuery';
 import { MessageSquare, Pencil, Route, Trash2, X } from 'lucide-react';
 import { parseSessionTitle } from '../../lib/sessionTitle';
 import { describeRequestFailure } from '../../lib/requestFailureMessage';
@@ -96,6 +97,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({ searchQuery 
   const { state, dispatch } = useApp();
   const { openSession, deleteSession, renameSession } = useSessionManager();
   const { sessions, currentSessionId } = state;
+  const isMobile = useIsMobileViewport();
 
   // 行内重命名的编辑态：只允许一行同时进入编辑；draft 为空提交 = 取消。
   const [editingId, setEditingId] = React.useState<string | null>(null);
@@ -246,6 +248,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({ searchQuery 
                               onClick={() => {
                                 dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'chat' });
                                 void openSession(session.id);
+                                if (isMobile) dispatch({ type: 'SET_SIDEBAR_COLLAPSED', payload: true });
                               }}
                             >
                               <SessionRecord title={session.title} />

@@ -64,6 +64,8 @@ from ...services.authored_place_resolution import (
     resolve_authored_place,
 )
 from ...services.geo_dispersion import itinerary_dispersion
+from ...services.day_design import apply_day_design
+from ...services.day_planning import daily_planning_windows, default_walking_days, disclose_default_walking
 from ...services.candidate_selection import (
     catalog_for_candidate_selection,
     catalog_for_workspace_materialization,
@@ -760,8 +762,8 @@ def _build_composition_prompt(
         kind_labels = "、".join(sorted(authoring_kinds))
         authoring_contract = (
             f"\n- 下列领域的已选主方案不足以覆盖整份行程，缺口由你直接撰写具名条目补足：{kind_labels}。"
-            "这些领域里已选的主方案必须先全部用上，撰写条目只用来补足剩下的天数与时段，"
-            "不得用撰写条目替换任何一个已选主方案。"
+            "优先使用其中符合当天区域、兴趣与可用时间的已选主方案；除用户必去义务外，"
+            "不要求全部用上，不得为了用完候选而牺牲节奏。撰写条目仅补真实体验缺口。"
             "撰写条目必须是真实存在、可被地图检索到的地点，"
             "并同时给出 local_name、name、address（街道级地址）、city（所在城市），"
             "以及一句 selection_reason 说明为什么放在这一天这个时段。"
@@ -785,8 +787,21 @@ def _build_composition_prompt(
             "同理 visit 也必须至少出现一个。宁可减少同日停留点，也不得整类缺席。"
         )
     system = f"""<role>
-你是 JourneyPilot 的行程组合器。你做已选主方案的日期、顺序、当地时间与停留时长决策；已选主方案不足以覆盖行程的领域由你直接撰写具名条目补足。
+你是 JourneyPilot 的旅行规划师。先设计每一天的区域、核心体验、取舍与节奏，再决定已选主方案的日期、顺序、当地时间与停留时长；事实不足的条目不能编造营业、预约或价格。
 </role>
+
+<daily_design>
+- 每个Day填写day_design：focus用一行说当天主要区域和体验；rationale说明为什么这样走、怎样适合用户、取舍了什么。说明只能引用实际placements里的地点；不写候选ID、责任锚点、准入、合同等内部词。
+- 按已选候选坐标/区域把邻近体验放在同一天，餐馆顺路嵌入，住宿作为每日出入基地；优先有价值的核心体验，不按候选顺序或分数简单填满。用户明确文化专题时允许多个不同主题场馆；一般慢游不能因下雨就机械全部变为同类馆。
+- 根据Daily Planning Windows的可用时段和固定交通安排首尾日；这些是默认规划假设，用户时段、真实路线和预约优先。预留进出站/机场、行李、用餐、步行与休息，交通窗口必须足够容纳真实门到门路线。
+- 长途抵达后，先预留下车出站时间（飞机45分钟，其他长途15分钟，均为规划假设），再加真实市内接驳时长；不能把到站时刻直接当成开始市内接驳的时刻。
+- 主动休息填写day_design.free_time，仅给出带时区的起止时间；系统将其明确定位在上一站所在区域。必须在已完成的Visit/Dining之后、离开该站的交通之前，不能与活动或交通重叠。返回酒店、取行李、跨区移动不能算作free_time；需在实际路线中安排。rationale里的休息地点也必须与此一致，不能假定可在店内长坐或退房后使用客房。无主动留白时输出空数组。
+- 非美食专题的可用游玩日应有符合兴趣的核心体验；不能只安排一顿饭便视为一整天已规划。较长空白应说明具体用途和时段，慢游留白不等于漏项，也不必为填时间强加景点。
+- 不为迎合模板压缩核心游览时长。行程太满时删可选项或换近处候选，保留用户必去、固定订单和已核验开放条件。用餐时间应合理且与店家营业事实一致。
+- 除用户明确另有饮食作息外，先为午餐留出当地11:30–13:30之间的开始时间，再排其他可选活动。不要为了塞进第二个景点把午餐推到14点以后；必要时把景点移到午餐后或删去。
+- rationale必须逐项对照placements和真实路线：只有实际经过酒店的交通才可写“回酒店取行李”。退房后默认随身携带行李，寄存条件未知时列为待确认，不能凭空插入取行李旅程。当天无酒店中途停靠的路线，不得在说明中暗示已安排。
+- 每个Visit/Dining placement填写selection_reason，解释它在实际当天时段、顺序和区域中的作用。候选调研理由只是备选推荐，不要原样复制其中“第一站”“午后”等与最终排程冲突的说法；不要用“消磨时间”替代具体体验价值。
+</daily_design>
 
 <hard_contract>
 - 只输出一个可直接 json.loads 的 ItineraryCompositionDraft JSON 对象；禁止 Markdown、解释、旧通用信封或 activities[]。
@@ -817,6 +832,7 @@ def _build_composition_prompt(
 Intent Contract Snapshot：{intent_contract}
 Composition Rules：{rules}
 Minimum Delivery Day Shell：{minimum_delivery}
+Daily Planning Windows（默认假设，非实测交通）：{json.dumps(daily_planning_windows(state, state.recommendation_catalog, state.candidate_selection_plan), ensure_ascii=False)}
 Previous Composition Mutations：{previous_mutations}
 {brief}
 Selected Candidate Facts：{catalog}
@@ -1027,6 +1043,13 @@ async def _locate_authored_places(
             continue
         located[key] = place.model_copy(
             update={
+                "name": resolved["name"],
+                "local_name": resolved["name"],
+                "selection_reason": (
+                    place.selection_reason
+                    if resolved["name"] == place.name
+                    else f"计划前往{resolved['name']}，地址：{resolved['address']}；到访前核对当天营业与接待安排。"
+                ),
                 "resolved_place_id": resolved["place_id"],
                 "resolved_address": resolved["address"],
                 "resolved_latitude": resolved["latitude"],
@@ -1289,10 +1312,25 @@ async def _author_connector_routes(
             "to_place_id": gap.to_place_id,
             "leave_after": gap.departure_time.isoformat(),
             "arrive_before": gap.latest_arrival_time.isoformat(),
-            "requested_modes": gap.requested_flexible_modes,
+            "requested_modes": [] if gap.compare_default_walk else gap.requested_flexible_modes,
+            "forbidden_modes": ["walk"] if gap.compare_default_walk else [],
         }
         for gap in gaps
     ]
+    schema = _authored_connector_schema(gap_ids)
+    # Do not expose a comparison-only walk request as authorization to invent a
+    # walking route. Enforce this per gap even in mixed explicit-mode batches.
+    item_schema = schema["properties"]["connectors"]["items"]
+    variants = []
+    for gap in gaps:
+        variant = json.loads(json.dumps(item_schema))
+        variant["properties"]["gap_id"]["enum"] = [gap.gap_id]
+        if gap.compare_default_walk:
+            variant["properties"]["mode"]["enum"] = [
+                mode for mode in variant["properties"]["mode"]["enum"] if mode != "walk"
+            ]
+        variants.append(variant)
+    schema["properties"]["connectors"]["items"] = {"anyOf": variants}
     response = await llm.ainvoke(
         [
             {
@@ -1301,6 +1339,7 @@ async def _author_connector_routes(
                     "你是 JourneyPilot 的行程组合器。为下列相邻停留点之间各写一段市内交通："
                     "选一个出行方式，并给出门到门分钟数与一句选择理由。"
                     "分钟数必须落在给定的出发与到达时间窗内。"
+                    "必须遵守每段forbidden_modes；步行比较没有实测结果时不能猜测步行。"
                     "端点由服务器按前后两个停留点填写，你不要写地点、线路号或票价。"
                 ),
             },
@@ -1314,7 +1353,7 @@ async def _author_connector_routes(
             "json_schema": {
                 "name": "authored_local_connectors",
                 "strict": True,
-                "schema": _authored_connector_schema(gap_ids),
+                "schema": schema,
             },
         },
         temperature=0,
@@ -1351,6 +1390,21 @@ def parse_itinerary_composition(raw: str) -> ItineraryCompositionDraft:
         raise ValueError("itinerary composition must be one exact JSON object") from exc
     if not isinstance(payload, dict):
         raise ValueError("itinerary composition must be one JSON object")
+    # Removing a repeated meal used to silently delete the next day's lunch
+    # while retaining prose describing it. Let the existing bounded repair
+    # choose a different concrete restaurant and repair its daily explanation.
+    seen_meals = set()
+    for day in payload.get("days", []):
+        if not isinstance(day, dict):
+            continue
+        for placement in day.get("placements", []):
+            if not isinstance(placement, dict) or placement.get("placement_kind") != "dining":
+                continue
+            key = _payload_placement_key(placement)
+            if key and key in seen_meals:
+                raise ValueError("Repeated dining place would remove a planned meal; choose a different concrete restaurant and update day_design to match the final placements")
+            if key:
+                seen_meals.add(key)
     _normalize_duplicate_placements(payload)
     _normalize_empty_placements(payload)
     _normalize_time_structure(payload)
@@ -2416,6 +2470,17 @@ def _apply_skeleton_backfill(
         rules,
         selection_plan,
     )
+    def meal_count(day):
+        return sum(isinstance(item, dict) and item.get("placement_kind") == "dining"
+                   for item in day.get("placements", []))
+    final_days = {day.get("day_id"): day for day in payload.get("days", []) if isinstance(day, dict)}
+    if any(
+        meal_count(day) > meal_count(final_days.get(day.get("day_id"), {}))
+        for day in before.get("days", []) if isinstance(day, dict)
+    ):
+        # Route the original defective meal through the existing semantic
+        # repair. Silent pruning must not turn a planned lunch into no lunch.
+        return content, []
     selected, _alternatives = selected_candidate_capabilities(
         catalog=catalog,
         selection_plan=selection_plan,
@@ -2691,54 +2756,6 @@ def _draft_user_input_anchors(state: TravelAgentState) -> List[UserInputAnchor]:
     if draft is None:
         return []
     return list(draft.user_input_anchors)
-
-
-def _drop_day_boundary_authored_connectors(
-    composition: ItineraryCompositionDraft,
-) -> ItineraryCompositionDraft:
-    """Remove authored connectors that sit outside any stop-to-stop adjacency.
-
-    An authored route carries no endpoints of its own — the server fills them
-    from the two stops around it.  A Day opens and closes at the traveller's
-    lodging, which is not a composition placement, so a leading or trailing
-    authored connector has only one adjacent stop and no derivable route.  It is
-    dropped rather than failing the Day: no candidate, stop, time, or source fact
-    changes.  Candidate-backed routes keep their provider endpoints and stay.
-    """
-    updated_days = []
-    changed = False
-    for day in composition.days:
-        physical_indexes = [
-            index
-            for index, placement in enumerate(day.placements)
-            if placement.placement_kind in {"visit", "dining"}
-        ]
-        if not physical_indexes:
-            updated_days.append(day)
-            continue
-        first, last = physical_indexes[0], physical_indexes[-1]
-        retained = [
-            placement
-            for index, placement in enumerate(day.placements)
-            if not (
-                (index < first or index > last)
-                and placement.placement_kind == "transport"
-                and placement.authored_route is not None
-            )
-        ]
-        if len(retained) != len(day.placements):
-            changed = True
-            logger.info(
-                "ItineraryPlanner dropped %d day-boundary authored connector(s) day=%s",
-                len(day.placements) - len(retained),
-                day.day_id,
-            )
-            updated_days.append(day.model_copy(update={"placements": retained}))
-            continue
-        updated_days.append(day)
-    if not changed:
-        return composition
-    return composition.model_copy(update={"days": updated_days})
 
 
 def _isolate_incompatible_long_distance_days(
@@ -3091,11 +3108,13 @@ async def itinerary_planner_node(
                 connector_mode_requests_from_constraint_pack(
                     skeleton,
                     state.constraint_pack,
+                    state.recommendation_catalog,
                 )
             )
             gaps = extract_local_connector_gaps(
                 skeleton,
                 state.recommendation_catalog,
+                default_walk_day_ids=default_walking_days(state, skeleton),
                 weather_data_revision=state.recommendation_catalog.weather_data_revision,
                 flexible_mode_requests=flexible_requests,
                 required_flexible_mode_pairs=required_flexible_pairs,
@@ -3128,11 +3147,13 @@ async def itinerary_planner_node(
                 connector_mode_requests_from_constraint_pack(
                     state.placement_skeleton,
                     state.constraint_pack,
+                    state.recommendation_catalog,
                 )
             )
             gaps = extract_local_connector_gaps(
                 state.placement_skeleton,
                 state.recommendation_catalog,
+                default_walk_day_ids=default_walking_days(state, state.placement_skeleton),
                 weather_data_revision=state.recommendation_catalog.weather_data_revision,
                 flexible_mode_requests=flexible_requests,
                 required_flexible_mode_pairs=required_flexible_pairs,
@@ -3193,6 +3214,8 @@ async def itinerary_planner_node(
                 reference_services=list(state.provider_reference_services),
             )
             workspace = _restore_full_catalog(workspace, full_catalog)
+            workspace = apply_day_design(workspace, composition)
+            workspace = disclose_default_walking(workspace, gaps)
             _log_composition_dispersion(workspace)
             return {
                 "messages": [AIMessage(content="精确相邻路线已物化为正式行程")],
@@ -3252,7 +3275,6 @@ async def itinerary_planner_node(
                 composition, llm, state, unlocatable
             )
             before_postprocessing = composition.model_dump(mode="json")
-            composition = _drop_day_boundary_authored_connectors(composition)
             composition = _isolate_incompatible_long_distance_days(
                 composition,
                 state.recommendation_catalog,
@@ -3513,7 +3535,6 @@ async def itinerary_planner_node(
                     composition, llm, state, unlocatable
                 )
                 before_postprocessing = composition.model_dump(mode="json")
-                composition = _drop_day_boundary_authored_connectors(composition)
                 composition = _isolate_incompatible_long_distance_days(
                     composition,
                     state.recommendation_catalog,
@@ -3565,6 +3586,7 @@ async def itinerary_planner_node(
             reference_services=list(state.provider_reference_services),
         )
         workspace = _restore_full_catalog(workspace, full_catalog)
+        workspace = apply_day_design(workspace, composition)
         _log_composition_dispersion(workspace)
         logger.info(
             "ItineraryPlanner v2 complete key=%s days=%d entities=%d slots=%d",

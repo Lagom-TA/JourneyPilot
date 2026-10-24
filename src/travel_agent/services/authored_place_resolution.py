@@ -80,8 +80,7 @@ _OSM_ALIAS_QUERIES = 3
 # ``destination_scope.MAX_DESTINATION_DISTANCE_KM`` — shared, because this rung is not
 # the only one that enforces it.
 
-# Branch qualifiers a planner appends to a place's own name. Stripping them
-# yields the shorter alias Overpass and amap actually carry.
+# Explicit branch qualifiers remain part of the requested identity.
 _BRANCH_SUFFIXES = (
     "総本店",
     "本店",
@@ -131,22 +130,11 @@ def _normalized(value: Optional[str]) -> str:
     return " ".join(str(value or "").split())
 
 
-def _strip_branch_qualifier(name: str) -> str:
-    stripped = _BRANCH_PARENTHETICAL.sub("", name).strip()
-    for suffix in _BRANCH_SUFFIXES:
-        if stripped.endswith(suffix) and len(stripped) > len(suffix):
-            stripped = stripped[: -len(suffix)].strip()
-            break
-    return stripped
-
-
 def _search_aliases(local_name: str, name: str) -> List[str]:
     """Bounded alias set for one entry, most specific first."""
     values = [
         local_name,
         name,
-        _strip_branch_qualifier(local_name),
-        _strip_branch_qualifier(name),
     ]
     return list(
         dict.fromkeys(alias for alias in (_normalized(value) for value in values) if alias)
@@ -156,11 +144,8 @@ def _search_aliases(local_name: str, name: str) -> List[str]:
 def _brand_segment(value: str) -> str:
     """The leading segment of a spaced local-language signage name: its brand.
 
-    ``すしざんまい 道頓堀店`` is written brand-then-branch, and OSM frequently
-    carries only the brand on the node.  Matching it can bind a different branch
-    of the same chain inside the same destination — the same trade
-    :func:`_strip_branch_qualifier` already makes, and the alternative is having
-    no location for a real place.
+    This identifies spaced signage for branch validation. It must never become
+    a brand-only search alias, which could bind a different branch.
 
     Only local-language names split this way.  The leading word of a romanization
     is an ordinary short word (``Kani``, ``Sushi``) that would match anything.
@@ -175,10 +160,8 @@ def _brand_segment(value: str) -> str:
 def _osm_recall_aliases(local_name: str, name: str) -> List[str]:
     """Alias set for the OSM rungs, which match structured name tags.
 
-    Wider than :func:`_search_aliases`: Overpass matches localized/alternate tags
-    inside one bounded destination, so a space-free spelling or the brand alone is
-    still the same place.  amap ranks by relevance instead and keeps the narrow
-    set, where a loose alias would bind a neighbour.
+    Space-free spelling preserves the complete signage. Branch qualifiers and
+    trailing signage segments stay intact even inside one destination.
 
     Ordered most-specific-first because each alias is one Overpass query and the
     first accepted match wins.
@@ -189,7 +172,6 @@ def _osm_recall_aliases(local_name: str, name: str) -> List[str]:
         local,
         # OSM carries 松阪牛焼肉M for a sign that reads 松阪牛焼肉 M.
         local.replace(" ", ""),
-        _brand_segment(local_name),
         *conservative,
     ]
     return list(dict.fromkeys(alias for alias in widened if alias))[:_OSM_ALIAS_QUERIES]
@@ -204,9 +186,6 @@ def _nominatim_queries(local_name: str, name: str, city: str, address: str) -> L
         local_name.replace(" ", ""),
         f"{name} {city}",
         name,
-        # A brand written without its branch still narrows to the right chain
-        # inside the city, which the bare branch qualifier does not.
-        f"{_brand_segment(local_name)} {city}".strip(),
     ]
     return list(
         dict.fromkeys(query for query in (_normalized(value) for value in candidates) if query)
@@ -292,7 +271,9 @@ async def _resolve_via_nominatim(
             continue
         for item in observation.items:
             place = normalize_nominatim_place(item)
-            if place is not None and _accepts(
+            if place is not None and _matches_requested_branch(
+                local_name, name, str(place["name"])
+            ) and _accepts(
                 place, kind=kind, country_code=country_code, scope=scope
             ):
                 return place
@@ -347,8 +328,30 @@ def _names_the_same_place(alias: str, poi_name: str) -> bool:
     restaurants around it. Binding one of those to an authored entry would
     deliver a different place under the planner's name.
     """
-    left, right = alias.casefold(), poi_name.casefold()
+    left, right = (_identity_name(value) for value in (alias, poi_name))
     return left in right or right in left
+
+
+def _identity_name(value: str) -> str:
+    return re.sub(r"[\s（()）·・]", "", value.casefold())
+
+
+def _matches_requested_branch(local_name: str, name: str, provider_name: str) -> bool:
+    """A brand-only recall query cannot erase the authored branch identity."""
+    provider = _identity_name(provider_name)
+    # Local signage is authoritative for matching; an English translation may
+    # spell the same branch differently from the provider's local name.
+    for requested in dict.fromkeys((local_name, name)):
+        qualifier = _BRANCH_PARENTHETICAL.search(requested)
+        if qualifier is not None:
+            branch = _identity_name(qualifier.group(0))
+            # “店” is signage formatting; the location qualifier remains required.
+            if branch.endswith("店"):
+                branch = branch[:-1]
+            return bool(branch) and branch in provider
+        if any(requested.endswith(suffix) for suffix in _BRANCH_SUFFIXES) or _brand_segment(requested):
+            return _identity_name(requested) in provider
+    return True
 
 
 async def _resolve_via_amap(
@@ -373,7 +376,9 @@ async def _resolve_via_amap(
             place_id = stable_place_id_amap_poi(poi_id)
             if place_id is None or not poi_name:
                 continue
-            if not _names_the_same_place(alias, poi_name):
+            if not _names_the_same_place(alias, poi_name) or not _matches_requested_branch(
+                local_name, name, poi_name
+            ):
                 continue
             latitude, longitude = record.get("latitude"), record.get("longitude")
             if not isinstance(latitude, float) or not isinstance(longitude, float):
@@ -432,7 +437,9 @@ async def _resolve_via_overpass(
             continue
         for item in items:
             place = normalize_nominatim_place(item)
-            if place is not None and _accepts(
+            if place is not None and _matches_requested_branch(
+                local_name, name, str(place["name"])
+            ) and _accepts(
                 place, kind=kind, country_code=scope.country_code, scope=scope
             ):
                 return place

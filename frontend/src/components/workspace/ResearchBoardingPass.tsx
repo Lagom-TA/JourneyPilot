@@ -1,6 +1,5 @@
 import React from 'react';
 import { AnimatePresence, m } from 'motion/react';
-import { BorderBeam } from 'border-beam';
 import { CircleAlert, CheckCircle2, ChevronDown, Loader2, Play, Route, Square } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { useSendMessage } from '../../hooks/useSendMessage';
@@ -92,7 +91,6 @@ export const ResearchBoardingPass: React.FC = () => {
     awaitingInput: awaiting,
   });
   /* 边光只在真的有东西在跑时呼吸。`cancel_requested` 也算：那一刻后端还没停。 */
-  const beamActive = state.isStreaming || runStatus === 'cancel_requested';
   /* 流式期间票根说的是**此刻在做什么**，不是上一次的结果：在已交付的行程上追加要求时，
      `runStatus` 仍是上一次的 `completed`，若让结果句子赢，票根会一边呼吸一边写着「已生成」。
      结果句子只在没有东西在跑时接管。 */
@@ -163,31 +161,7 @@ export const ResearchBoardingPass: React.FC = () => {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: duration.base, ease: easing.decelerate }}
     >
-      {/**
-       * 三层壳，各管一件事：
-       * - `m.div`：入场位移与列宽。位移不能落在 BorderBeam 上 —— 它的容器是 `overflow: hidden`
-       *   + `isolation: isolate`，自己动会把光晕的绘制边界一起带走。
-       * - `BorderBeam`：运行中沿票边呼吸的一圈光（`pulse-inner`，蓝紫 `ocean`，浅色调校）。
-       *   **阴影与闪一下的外圈都挂在这一层**：它裁掉子元素溢出的一切，`shadow-lg` 留在里面
-       *   的 section 上会被剪成没有。圆角由它从第一个子元素读（8px 卡档），不另写。
-       * - `section`：描边、底色、内容裁切 —— 和以前一样。
-       *
-       * 阴影与闪环的注释原样搬过来：过渡里**没有** box-shadow（「never animate `box-shadow`」），
-       * 时长只取 token 四挡；`--flash-ring` 与 `--shadow-lg` 都是登记过的 token，**不要**在这里
-       * 手写等价值 —— 带兜底的 `var(--x, …)` 会在变量缺失时静默取兜底色，手抄一份数值则是
-       * 同一个角色的第二个值。
-       */}
-      <BorderBeam
-        size="pulse-inner"
-        colorVariant="ocean"
-        theme="light"
-        /* `staticColors`：库默认会让色相来回漂 30°，ocean 在浅纸上就漂成了粉紫。产品只有一只
-           交互蓝，光晕也只许是它的邻色 —— 关掉漂移，蓝就一直是蓝。 */
-        staticColors
-        strength={1}
-        active={beamActive}
-        className={cn('rounded-card', flashing ? 'shadow-[var(--flash-ring),var(--shadow-lg)]' : 'shadow-lg')}
-      >
+      <div className="rounded-card shadow-sm">
         <section
           aria-label="旅行简报"
           data-flashing={flashing ? 'true' : undefined}
@@ -303,8 +277,8 @@ export const ResearchBoardingPass: React.FC = () => {
                     </div>
                   </div>
 
-                  <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-                    <TicketField label="日期 · DATE" value={`${identity.start_date} → ${identity.end_date}`} />
+                  <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4">
+                    <TicketField className="col-span-2" label="日期 · DATE" value={`${identity.start_date} → ${identity.end_date}`} />
                     <TicketField label="同行 · PARTY" value={party} />
                     <TicketField label="风格 · STYLE" value={style} />
                   </dl>
@@ -366,15 +340,15 @@ export const ResearchBoardingPass: React.FC = () => {
             )}
           </AnimatePresence>
         </section>
-      </BorderBeam>
+      </div>
     </m.div>
   );
 };
 
 /* 票面字段是这趟行程的事实印刷件：窄栏里宁可折行也不能截断——`2026-08-05 → 2026-08-08`
    被裁成 `2026-08-05 → 20…` 等于把返程日期藏了。栏宽由 dl 的网格决定，折行只往下长。 */
-const TicketField: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div className="min-w-0">
+const TicketField: React.FC<{ label: string; value: string; className?: string }> = ({ label, value, className }) => (
+  <div className={cn('min-w-0', className)}>
     <dt className={cn(READOUT_LABEL, 'text-ink-muted')}>{label}</dt>
     <dd className="mt-0.5 break-words font-mono text-sm font-medium tabular-nums text-ink">{value}</dd>
   </div>

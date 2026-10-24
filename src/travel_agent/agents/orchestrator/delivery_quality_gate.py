@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Mapping
+from types import SimpleNamespace
 
 from ...entities.delivery_bundle import (
     SelectionSlot,
@@ -28,7 +29,9 @@ from ...entities.delivery_bundle import (
     GateFailureAttribution,
     RecommendationQualityState,
     ResearchDomain,
+    TimelineEntryRef,
 )
+from ...entities.lodging_routing import day_lodging_bases
 from ...entities.state import TravelAgentState
 from ...workflows.composition_repair import (
     apply_composition_repair_budget,
@@ -304,31 +307,63 @@ def _itinerary_gaps(state: TravelAgentState) -> list[DeliveryQualityGap]:
     for day in itinerary.day_plans:
         previous_physical: tuple[EntityType, Any] | None = None
         local_connectors = []
-        for ref in day.timeline:
+        morning_base, evening_base = day_lodging_bases(itinerary, day)
+        refs = list(day.timeline)
+        present_stays = {
+            ref.entity_id for ref in refs if ref.entity_type == EntityType.LODGING_STAY
+        }
+        if morning_base is not None and morning_base.stay_id not in present_stays:
+            refs.insert(0, TimelineEntryRef(
+                entry_id=f"implicit_morning_{morning_base.stay_id}_{day.day_id}",
+                entity_type=EntityType.LODGING_STAY,
+                entity_id=morning_base.stay_id,
+                projection_role="check_out",
+            ))
+        if evening_base is not None and evening_base.stay_id not in present_stays:
+            refs.append(TimelineEntryRef(
+                entry_id=f"implicit_evening_{evening_base.stay_id}_{day.day_id}",
+                entity_type=EntityType.LODGING_STAY,
+                entity_id=evening_base.stay_id,
+                projection_role="check_in",
+            ))
+        for ref in refs:
             if ref.entity_type == EntityType.TRANSPORT_LEG:
                 leg = transport_index.get(ref.entity_id)
                 if leg and leg.transport_class in {"public_transit", "flexible"}:
                     local_connectors.append(leg)
+                elif leg and leg.transport_class == "long_distance":
+                    if ref.projection_role != "arrival" and previous_physical is not None:
+                        previous_entity = previous_physical[1]
+                        if previous_entity.place_id != leg.from_endpoint.place_id and not any(
+                            route.route_status == "ready"
+                            and route.from_endpoint.place_id == previous_entity.place_id
+                            and route.to_endpoint.place_id == leg.from_endpoint.place_id
+                            for route in local_connectors
+                        ):
+                            gaps.append(_gap(
+                                gate="itinerary", reason="route_infeasible",
+                                field_path=f"itinerary.day_plans.{day.day_id}.timeline",
+                                retry_target="composition_repair", entity_id=ref.entity_id,
+                                gate_class=GateClass.COMPOSITION,
+                                research_domain=ResearchDomain.LOCAL_TRANSPORT,
+                            ))
+                    previous_physical = None if ref.projection_role == "departure" else (
+                        EntityType.TRANSPORT_LEG,
+                        SimpleNamespace(place_id=leg.to_endpoint.place_id,
+                                        name=leg.to_endpoint.name, lineage=leg.lineage),
+                    )
+                    local_connectors = []
             elif ref.entity_type in physical_types:
                 current_physical = physical_entities.get((ref.entity_type, ref.entity_id))
                 if previous_physical is not None and current_physical is not None:
-                    previous_type, previous_entity = previous_physical
-                    # "How does the traveller get from dinner to the hotel" is a
-                    # real routing question, so a lodging endpoint stays in the
-                    # adjacency walk and its missing connector stays in the gap
-                    # list. It must not block, though: a lodging stay is not a
-                    # composition placement, so the composer never plans a
-                    # connector to it and no repair round can produce one. A
-                    # blocking gap here would burn the run's single composition
-                    # repair on work that cannot be done, on nearly every run.
-                    # A stop-to-stop adjacency is different: both ends are
-                    # placements the composer owns, so a missing connector there
-                    # is a defect the repair round can actually fix, and it
-                    # keeps blocking.
-                    lodging_endpoint = EntityType.LODGING_STAY in {
-                        previous_type,
-                        ref.entity_type,
-                    }
+                    _, previous_entity = previous_physical
+                    # Hotel boundaries now participate in the same route query
+                    # and repair path as visits and meals. A shared location
+                    # needs no artificial zero-distance connector.
+                    if previous_entity.place_id == current_physical.place_id:
+                        previous_physical = (ref.entity_type, current_physical)
+                        local_connectors = []
+                        continue
                     has_ready_exact_connector = any(
                         leg.route_status == "ready"
                         and leg.from_endpoint.place_id == previous_entity.place_id
@@ -356,7 +391,7 @@ def _itinerary_gaps(state: TravelAgentState) -> list[DeliveryQualityGap]:
                                     "to_place_id": current_physical.place_id,
                                     "to_name": getattr(current_physical, "name", getattr(current_physical, "property_name", None)),
                                 },
-                                blocking=not lodging_endpoint,
+                                blocking=True,
                                 gate_class=GateClass.COMPOSITION,
                                 research_domain=ResearchDomain.LOCAL_TRANSPORT,
                             )
@@ -369,7 +404,7 @@ def _itinerary_gaps(state: TravelAgentState) -> list[DeliveryQualityGap]:
                                 field_path=f"itinerary.day_plans.{day.day_id}.timeline",
                                 retry_target="composition_repair",
                                 entity_id=ref.entity_id,
-                                blocking=not lodging_endpoint,
+                                blocking=True,
                                 gate_class=GateClass.COMPOSITION,
                                 research_domain=ResearchDomain.LOCAL_TRANSPORT,
                             )

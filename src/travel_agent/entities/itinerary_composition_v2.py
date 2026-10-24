@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import (
@@ -64,10 +63,14 @@ from .delivery_bundle import (
 from .candidate_options import candidate_option_availability
 from .candidate_selection import CandidateSelectionPlan
 from .composition_mutation import CompositionMutation
+from .day_design import DayDesign
 from .controlled_place_name import (
     CONTROLLED_DESTINATION_ANCHOR_PREFIX,
     controlled_public_place_name,
 )
+from .opening_hours import latest_opening_window, opening_window_violation
+from .planning_time_buffers import planned_alighting_buffer_minutes, planned_boarding_buffer_minutes
+from .transport_semantics import count_service_transfers, nominal_service_day_conflict
 from .day_theme import derive_day_theme
 from .trip_highlights import derive_trip_highlights
 from .intent_coverage import IntentContractSnapshot
@@ -75,75 +78,29 @@ from .intent_coverage import IntentContractSnapshot
 logger = logging.getLogger(__name__)
 
 
-_OPENING_INTERVAL_RE = re.compile(
-    r"(?<!\d)(\d{1,2}):(\d{2})\s*(?:-|–|—|至|~|～)\s*"
-    r"(\d{1,2}):(\d{2})(?!\d)"
-)
-_WEEKDAY_INDEX = {
-    "一": 0,
-    "二": 1,
-    "三": 2,
-    "四": 3,
-    "五": 4,
-    "六": 5,
-    "日": 6,
-    "天": 6,
-}
-
-
-def _opening_intervals_minutes(value: Optional[str]) -> list[tuple[int, int]]:
-    intervals: list[tuple[int, int]] = []
-    for match in _OPENING_INTERVAL_RE.finditer(value or ""):
-        start_hour, start_minute, end_hour, end_minute = map(int, match.groups())
-        if (
-            start_hour > 23
-            or start_minute > 59
-            or end_hour > 24
-            or end_minute > 59
-            or (end_hour == 24 and end_minute != 0)
-        ):
-            continue
-        start = start_hour * 60 + start_minute
-        end = end_hour * 60 + end_minute
-        if end > start:
-            intervals.append((start, end))
-    return intervals
-
-
-def _closed_weekdays(value: Optional[str]) -> set[int]:
-    return {
-        _WEEKDAY_INDEX[weekday]
-        for weekday in re.findall(
-            r"(?:周|星期)([一二三四五六日天])\s*(?:闭馆|闭园|休息|不开放)",
-            value or "",
-        )
-    }
-
-
-def _validate_visit_opening_window(
-    *, day: "DayComposition", placement: "VisitPlacement", candidate: VisitCandidate
+def _validate_stop_opening_window(
+    *,
+    day: "DayComposition",
+    placement: "PhysicalPlacement",
+    candidate: VisitCandidate | DiningCandidate,
 ) -> None:
-    opening_window = candidate.opening_window
-    if not opening_window or placement.planned_start is None or placement.planned_end is None:
-        return
-    if day.date.weekday() in _closed_weekdays(opening_window):
-        raise ItineraryCompositionError(
-            f"day {day.day_id} places {candidate.name} on a published closed day "
-            f"({opening_window}); move it to an open day or choose another candidate"
-        )
-    intervals = _opening_intervals_minutes(opening_window)
-    if not intervals:
-        return
-    start = placement.planned_start.hour * 60 + placement.planned_start.minute
-    end = placement.planned_end.hour * 60 + placement.planned_end.minute
-    if any(start >= opens and end <= closes for opens, closes in intervals):
-        return
-    raise ItineraryCompositionError(
-        f"day {day.day_id} places {candidate.name} at "
-        f"{placement.planned_start:%H:%M}-{placement.planned_end:%H:%M}, outside "
-        f"the published opening window {opening_window}; move the whole visit inside "
-        "one published interval or choose another candidate"
+    violation = opening_window_violation(
+        candidate.opening_window,
+        day.date,
+        placement.planned_start,
+        placement.planned_end,
     )
+    if violation:
+        name = (
+            candidate.name
+            if isinstance(candidate, VisitCandidate)
+            else candidate.branch_name
+        )
+        raise ItineraryCompositionError(
+            f"day {day.day_id} places {name} {violation} "
+            f"({candidate.opening_window}); move the whole stay inside an open interval "
+            "before last entry, or choose another candidate"
+        )
 
 
 def _total_budget_cap_cny(anchors: Optional[list[UserInputAnchor]]) -> Optional[float]:
@@ -295,6 +252,7 @@ class VisitPlacement(StrictModel):
     planned_start: Optional[datetime] = None
     planned_end: Optional[datetime] = None
     duration_minutes: int = Field(ge=1)
+    selection_reason: Optional[str] = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def validate_origin(self) -> "VisitPlacement":
@@ -309,6 +267,7 @@ class DiningPlacement(StrictModel):
     planned_start: Optional[datetime] = None
     planned_end: Optional[datetime] = None
     duration_minutes: int = Field(ge=1)
+    selection_reason: Optional[str] = Field(default=None, min_length=1)
     meal_type: Literal["breakfast", "lunch", "dinner", "snack", "other"]
 
     @model_validator(mode="after")
@@ -336,6 +295,20 @@ CompositionPlacement = Annotated[
 PhysicalPlacement = Union[VisitPlacement, DiningPlacement]
 
 
+@dataclass(frozen=True)
+class LodgingBoundary:
+    """A dated routing endpoint derived from the selected overnight stay."""
+
+    candidate_id: str
+    role: Literal["morning", "evening"]
+    planned_start: datetime
+    planned_end: datetime
+    placement_kind: Literal["lodging"] = "lodging"
+
+
+ChainNode = Union[CompositionPlacement, LodgingBoundary]
+
+
 def is_authored_placement(placement: CompositionPlacement) -> bool:
     if placement.placement_kind in {"visit", "dining"}:
         return placement.authored_place is not None
@@ -344,12 +317,14 @@ def is_authored_placement(placement: CompositionPlacement) -> bool:
     return False
 
 
-def placement_identity(placement: CompositionPlacement) -> Optional[str]:
+def placement_identity(placement: ChainNode) -> Optional[str]:
     """Return the key that makes one placement unique, or None when unbounded.
 
     Authored connectors are unbounded: the same short walk may legitimately
     appear between several different pairs of stops.
     """
+    if isinstance(placement, LodgingBoundary):
+        return f"lodging:{placement.candidate_id}:{placement.role}"
     if placement.candidate_id:
         return f"candidate:{placement.candidate_id}"
     if placement.placement_kind == "transport":
@@ -363,6 +338,7 @@ class DayComposition(StrictModel):
     day: int = Field(ge=1)
     date: date
     destination_id: str = Field(min_length=1)
+    day_design: Optional[DayDesign] = None
     # No ``theme``: the Day's title is derived from its placements at
     # materialization (``entities/day_theme.py``).  It was free text the composing
     # model wrote with no guidance and nothing ever reconciled it against the Day.
@@ -475,6 +451,7 @@ class LocalConnectorGap(StrictModel):
     requested_flexible_modes: list[FlexibleRouteMode] = Field(default_factory=list)
     preferred_transport_class: Literal["public_transit", "flexible"]
     weather_data_revision: int = Field(ge=0)
+    compare_default_walk: bool = False
 
     @model_validator(mode="after")
     def validate_gap(self) -> "LocalConnectorGap":
@@ -1006,7 +983,7 @@ def validate_placement_skeleton(
                     raise ItineraryCompositionError(
                         "placement skeleton visit references another candidate kind"
                     )
-                _validate_visit_opening_window(
+                _validate_stop_opening_window(
                     day=day,
                     placement=placement,
                     candidate=candidate,
@@ -1029,6 +1006,9 @@ def validate_placement_skeleton(
                 # — which is why the message names the branch and the meals it does
                 # serve rather than just saying no: it is quoted verbatim into that
                 # repair prompt.
+                _validate_stop_opening_window(
+                    day=day, placement=placement, candidate=candidate
+                )
                 if placement.meal_type not in candidate.meal_types:
                     raise ItineraryCompositionError(
                         "placement skeleton dining places a meal the candidate does "
@@ -1156,7 +1136,9 @@ def _long_distance_anchor(
 
 def day_chain_node_pairs(
     day: DayComposition,
-) -> list[tuple[CompositionPlacement, CompositionPlacement]]:
+    candidates: Optional[Mapping[str, ResearchCandidate]] = None,
+    composition: Optional[ItineraryCompositionDraft] = None,
+) -> list[tuple[ChainNode, ChainNode]]:
     """The adjacent pairs on one Day that owe a local connector, in placement order.
 
     A Day's *chain nodes* are its physical stops **and** its long-distance anchor.
@@ -1171,11 +1153,24 @@ def day_chain_node_pairs(
     :func:`day_connector_adjacencies`, which adds the endpoints and times.
     """
 
-    nodes = [
+    nodes: list[ChainNode] = [
         placement
         for placement in day.placements
-        if placement.placement_kind in {"visit", "dining", "transport"}
+        if placement.placement_kind in {"visit", "dining"}
+        or (
+            placement.placement_kind == "transport"
+            and (
+                candidates is None
+                or _long_distance_anchor(placement, candidates) is not None
+            )
+        )
     ]
+    if composition is not None and candidates is not None:
+        morning, evening = day_lodging_boundaries(day, composition, candidates)
+        if morning is not None:
+            nodes.insert(0, morning)
+        if evening is not None:
+            nodes.append(evening)
     return [
         (left, right)
         for left, right in zip(nodes, nodes[1:])
@@ -1185,9 +1180,111 @@ def day_chain_node_pairs(
     ]
 
 
+def selected_lodging_by_night(
+    composition: ItineraryCompositionDraft,
+    candidates: Mapping[str, ResearchCandidate],
+) -> dict[date, LodgingCandidate]:
+    """Use the same stay-window selection as workspace materialization."""
+    nights: dict[date, LodgingCandidate] = {}
+    selected_windows: set[tuple[str, date, date]] = set()
+    for candidate_id in composition.lodging_candidate_ids:
+        candidate = candidates.get(candidate_id)
+        if not isinstance(candidate, LodgingCandidate):
+            continue
+        window = _destination_stay_window(
+            composition,
+            candidate.destination_id,
+            candidate.check_in_date,
+            candidate.check_out_date,
+        )
+        if window is None:
+            continue
+        identity = (candidate.destination_id, *window)
+        if identity in selected_windows:
+            continue
+        selected_windows.add(identity)
+        night = window[0]
+        while night < window[1]:
+            if night in nights and nights[night].place_id != candidate.place_id:
+                raise ItineraryCompositionError(
+                    f"multiple lodging bases selected for night {night}"
+                )
+            nights[night] = candidate
+            night += timedelta(days=1)
+    return nights
+
+
+def day_lodging_boundaries(
+    day: DayComposition,
+    composition: ItineraryCompositionDraft,
+    candidates: Mapping[str, ResearchCandidate],
+) -> tuple[Optional[LodgingBoundary], Optional[LodgingBoundary]]:
+    """Route from last night's base and to tonight's base on their actual dates.
+
+    The 90-minute local search window is a planning allowance, not hotel opening
+    or check-in policy. A provider duration must fit it; it is never shortened to
+    make an unsupported connection appear possible.
+    """
+    nodes = [
+        item
+        for item in day.placements
+        if item.placement_kind in {"visit", "dining"}
+        or _long_distance_anchor(item, candidates) is not None
+    ]
+    if not nodes:
+        return None, None
+    nights = selected_lodging_by_night(composition, candidates)
+    morning_candidate = nights.get(day.date - timedelta(days=1))
+    evening_candidate = nights.get(day.date)
+    first, last = nodes[0], nodes[-1]
+    first_anchor = _long_distance_anchor(first, candidates)
+    last_anchor = _long_distance_anchor(last, candidates)
+    if first_anchor is not None:
+        if long_distance_anchor_day_role(
+            first_anchor, day, composition.days
+        ) == "arrives" and (
+            morning_candidate is None
+            or morning_candidate.destination_id == day.destination_id
+        ):
+            morning_candidate = None
+        first_at = first_anchor.departure_at - timedelta(
+            minutes=planned_boarding_buffer_minutes(first_anchor.selected_mode)
+        )
+    else:
+        first_at = getattr(first, "planned_start", None)
+    if last_anchor is not None:
+        if (
+            long_distance_anchor_day_role(last_anchor, day, composition.days)
+            == "departs"
+        ):
+            evening_candidate = None
+        last_at = last_anchor.arrival_at
+    else:
+        last_at = getattr(last, "planned_end", None)
+    morning = evening = None
+    if morning_candidate is not None and first_at is not None:
+        departure = max(
+            first_at.replace(hour=0, minute=0, second=0, microsecond=0),
+            first_at - timedelta(minutes=90),
+        )
+        morning = LodgingBoundary(
+            morning_candidate.candidate_id, "morning", departure, departure
+        )
+    if evening_candidate is not None and last_at is not None:
+        deadline = min(
+            last_at.replace(hour=23, minute=59, second=0, microsecond=0),
+            last_at + timedelta(minutes=90),
+        )
+        evening = LodgingBoundary(
+            evening_candidate.candidate_id, "evening", deadline, deadline
+        )
+    return morning, evening
+
+
 def day_connector_adjacencies(
     day: DayComposition,
     candidates: Mapping[str, ResearchCandidate],
+    composition: Optional[ItineraryCompositionDraft] = None,
 ) -> list[
     tuple[CompositionPlacement, CompositionPlacement, str, str, datetime, datetime]
 ]:
@@ -1215,18 +1312,28 @@ def day_connector_adjacencies(
     adjacencies: list[
         tuple[CompositionPlacement, CompositionPlacement, str, str, datetime, datetime]
     ] = []
-    for left, right in day_chain_node_pairs(day):
+    for left, right in day_chain_node_pairs(day, candidates, composition):
         left_anchor = _long_distance_anchor(left, candidates)
         right_anchor = _long_distance_anchor(right, candidates)
         if left_anchor is not None:
             from_place_id = left_anchor.to_endpoint.place_id
-            departure_time = left_anchor.arrival_at
+            departure_time = left_anchor.arrival_at + timedelta(
+                minutes=planned_alighting_buffer_minutes(left_anchor.selected_mode)
+            )
+        elif isinstance(left, LodgingBoundary):
+            from_place_id = candidates[left.candidate_id].place_id
+            departure_time = left.planned_end
         else:
             from_place_id = placement_place_id(left, candidates)
             departure_time = getattr(left, "planned_end", None)
         if right_anchor is not None:
             to_place_id = right_anchor.from_endpoint.place_id
-            latest_arrival_time = right_anchor.departure_at
+            latest_arrival_time = right_anchor.departure_at - timedelta(
+                minutes=planned_boarding_buffer_minutes(right_anchor.selected_mode)
+            )
+        elif isinstance(right, LodgingBoundary):
+            to_place_id = candidates[right.candidate_id].place_id
+            latest_arrival_time = right.planned_start
         else:
             to_place_id = placement_place_id(right, candidates)
             latest_arrival_time = getattr(right, "planned_start", None)
@@ -1239,7 +1346,10 @@ def day_connector_adjacencies(
                 f"day {day.day_id} adjacency requires stable endpoint place ids"
             )
         if from_place_id == to_place_id and (
-            left_anchor is not None or right_anchor is not None
+            left_anchor is not None
+            or right_anchor is not None
+            or isinstance(left, LodgingBoundary)
+            or isinstance(right, LodgingBoundary)
         ):
             # The stop is at the station — dinner in the departure hall before
             # boarding.  There is no journey to route, so there is no gap, and the
@@ -1270,6 +1380,7 @@ def extract_local_connector_gaps(
     ] = None,
     required_flexible_mode_pairs: Optional[set[tuple[str, str]]] = None,
     required_candidate_kinds: Optional[set[str]] = None,
+    default_walk_day_ids: Optional[set[str]] = None,
 ) -> list[LocalConnectorGap]:
     """Derive exact ordered adjacency gaps from a validated placement skeleton."""
     validate_placement_skeleton(
@@ -1289,7 +1400,7 @@ def extract_local_connector_gaps(
             to_place_id,
             departure_time,
             latest_arrival_time,
-        ) in day_connector_adjacencies(day, candidates):
+        ) in day_connector_adjacencies(day, candidates, skeleton):
             left_key = placement_identity(left)
             right_key = placement_identity(right)
             if latest_arrival_time - departure_time < timedelta(
@@ -1307,6 +1418,9 @@ def extract_local_connector_gaps(
             requested_modes = list(
                 dict.fromkeys(requests.get((left_key, right_key), []))
             )
+            compare_walk = day.day_id in (default_walk_day_ids or set()) and not requested_modes and (left_key, right_key) not in required_pairs
+            if compare_walk:
+                requested_modes = ["walk"]
             pair = (left_key, right_key)
             flexible_required = pair in required_pairs
             if flexible_required and not requested_modes:
@@ -1329,7 +1443,11 @@ def extract_local_connector_gaps(
                     gap_id=gap_id,
                     day_id=day.day_id,
                     day_date=day.date,
-                    destination_id=day.destination_id,
+                    destination_id=candidates[left.candidate_id].destination_id
+                    if isinstance(left, LodgingBoundary)
+                    else candidates[right.candidate_id].destination_id
+                    if isinstance(right, LodgingBoundary)
+                    else day.destination_id,
                     from_entry_key=left_key,
                     from_place_id=from_place_id,
                     to_entry_key=right_key,
@@ -1339,9 +1457,10 @@ def extract_local_connector_gaps(
                     allowed_transport_classes=allowed_classes,
                     requested_flexible_modes=requested_modes,
                     preferred_transport_class=(
-                        "flexible" if requested_modes else "public_transit"
+                        "flexible" if requested_modes and not compare_walk else "public_transit"
                     ),
                     weather_data_revision=weather_data_revision,
+                    compare_default_walk=compare_walk,
                 )
             )
     return gaps
@@ -1350,6 +1469,7 @@ def extract_local_connector_gaps(
 def connector_mode_requests_from_constraint_pack(
     skeleton: ItineraryCompositionDraft,
     constraint_pack: Mapping[str, Any] | None,
+    catalog: Optional[RecommendationCatalog] = None,
 ) -> tuple[
     dict[tuple[str, str], list[FlexibleRouteMode]],
     set[tuple[str, str]],
@@ -1359,7 +1479,11 @@ def connector_mode_requests_from_constraint_pack(
     for day in skeleton.days:
         actual_pairs.extend(
             (placement_identity(left), placement_identity(right))
-            for left, right in day_chain_node_pairs(day)
+            for left, right in day_chain_node_pairs(
+                day,
+                _passed_candidates(catalog) if catalog is not None else None,
+                skeleton if catalog is not None else None,
+            )
         )
     if not actual_pairs or not isinstance(constraint_pack, Mapping):
         return {}, set()
@@ -1508,6 +1632,10 @@ def connector_candidate_quality_error(
         return "transport_class_not_requested"
     if candidate.destination_id != gap.destination_id:
         return "destination_mismatch"
+    if nominal_service_day_conflict(
+        (segment.line_name for segment in candidate.segments), gap.departure_time.date()
+    ):
+        return "route_service_day_unverified"
     if (
         candidate.from_endpoint.place_id != gap.from_place_id
         or candidate.to_endpoint.place_id != gap.to_place_id
@@ -1518,6 +1646,12 @@ def connector_candidate_quality_error(
         and candidate.selected_mode.value not in set(gap.requested_flexible_modes)
     ):
         return "flexible_mode_not_requested"
+    if gap.compare_default_walk and candidate.selected_mode.value == "walk" and (
+        candidate.distance_meters is None
+        or not 0 < candidate.distance_meters <= 1000
+        or not 0 < candidate.duration_minutes <= 15
+    ):
+        return "outside_default_short_walk_limits"
     # Route-intrinsic plausibility comes before anything about *this* gap: the
     # duration is what the window check below is computed from, so an implausible
     # one has to be named as implausible rather than surfacing as "arrives late"
@@ -1713,45 +1847,6 @@ def _duration_only_route_minutes(
     return min(candidate.duration_minutes for candidate in matching)
 
 
-def _latest_visit_window(
-    *,
-    day: DayComposition,
-    candidate: VisitCandidate,
-    latest_end: datetime,
-    duration: timedelta,
-) -> Optional[tuple[datetime, datetime]]:
-    """Latest whole opening interval placement ending no later than a boundary."""
-
-    opening_window = candidate.opening_window
-    if opening_window and day.date.weekday() in _closed_weekdays(opening_window):
-        return None
-    intervals = _opening_intervals_minutes(opening_window)
-    if not intervals:
-        start = latest_end - duration
-        return (start, latest_end) if start.date() == day.date else None
-    for opens, closes in reversed(intervals):
-        opened_at = latest_end.replace(
-            hour=opens // 60,
-            minute=opens % 60,
-            second=0,
-            microsecond=0,
-        )
-        if closes == 24 * 60:
-            closed_at = opened_at.replace(hour=0, minute=0) + timedelta(days=1)
-        else:
-            closed_at = latest_end.replace(
-                hour=closes // 60,
-                minute=closes % 60,
-                second=0,
-                microsecond=0,
-            )
-        end = min(latest_end, closed_at)
-        start = end - duration
-        if start >= opened_at and start.date() == day.date:
-            return start, end
-    return None
-
-
 def _compact_day_for_provider_routes(
     skeleton: ItineraryCompositionDraft,
     catalog: RecommendationCatalog,
@@ -1831,14 +1926,19 @@ def _compact_day_for_provider_routes(
                 index
                 for index in after_last
                 if placements[index].placement_kind == "transport"
-                and isinstance(candidates.get(placements[index].candidate_id), TransportCandidate)
-                and candidates[placements[index].candidate_id].transport_class == "long_distance"
+                and isinstance(
+                    candidates.get(placements[index].candidate_id), TransportCandidate
+                )
+                and candidates[placements[index].candidate_id].transport_class
+                == "long_distance"
             ),
             None,
         )
         if outgoing_index is not None:
             outgoing = candidates[placements[outgoing_index].candidate_id]
-            successor_start = outgoing.departure_at
+            successor_start = outgoing.departure_at - timedelta(
+                minutes=planned_boarding_buffer_minutes(outgoing.selected_mode)
+            )
             successor_index = outgoing_index
 
         for index in reversed(physical_indices):
@@ -1855,12 +1955,9 @@ def _compact_day_for_provider_routes(
                     - timedelta(minutes=edge_minutes(index, successor_index)),
                 )
             candidate = candidates.get(placement.candidate_id)
-            if isinstance(candidate, VisitCandidate):
-                window = _latest_visit_window(
-                    day=day,
-                    candidate=candidate,
-                    latest_end=latest_end,
-                    duration=duration,
+            if isinstance(candidate, (VisitCandidate, DiningCandidate)):
+                window = latest_opening_window(
+                    candidate.opening_window, day.date, latest_end, duration
                 )
                 if window is None:
                     return None
@@ -1874,9 +1971,7 @@ def _compact_day_for_provider_routes(
                 update={
                     "planned_start": shifted_start,
                     "planned_end": shifted_end,
-                    "duration_minutes": max(
-                        1, round(duration.total_seconds() / 60)
-                    ),
+                    "duration_minutes": max(1, round(duration.total_seconds() / 60)),
                 }
             )
             successor_start = shifted_start
@@ -1891,8 +1986,11 @@ def _compact_day_for_provider_routes(
                 index
                 for index in before_first
                 if placements[index].placement_kind == "transport"
-                and isinstance(candidates.get(placements[index].candidate_id), TransportCandidate)
-                and candidates[placements[index].candidate_id].transport_class == "long_distance"
+                and isinstance(
+                    candidates.get(placements[index].candidate_id), TransportCandidate
+                )
+                and candidates[placements[index].candidate_id].transport_class
+                == "long_distance"
             ),
             None,
         )
@@ -1900,7 +1998,9 @@ def _compact_day_for_provider_routes(
         predecessor_index: Optional[int] = None
         if incoming_index is not None:
             incoming = candidates[placements[incoming_index].candidate_id]
-            predecessor_end = incoming.arrival_at
+            predecessor_end = incoming.arrival_at + timedelta(
+                minutes=planned_alighting_buffer_minutes(incoming.selected_mode)
+            )
             predecessor_index = incoming_index
         for index in physical_indices:
             placement = placements[index]
@@ -1924,7 +2024,9 @@ def _compact_day_for_provider_routes(
         return None
 
     updated_day = day.model_copy(update={"placements": placements})
-    updated_days = [updated_day if item.day_id == day_id else item for item in skeleton.days]
+    updated_days = [
+        updated_day if item.day_id == day_id else item for item in skeleton.days
+    ]
     return skeleton.model_copy(update={"days": updated_days})
 
 
@@ -1963,6 +2065,7 @@ def unfilled_connector_gaps(
         if any(
             isinstance(candidate, TransportCandidate)
             and connector_candidate_quality_error(candidate, gap) is None
+            and (not gap.compare_default_walk or candidate.transport_class == "public_transit")
             for candidate in candidates.values()
         ):
             continue
@@ -1999,6 +2102,7 @@ def materialize_skeleton_connectors(
             "connector gaps must be unique per Day adjacency"
         )
     selected: dict[str, TransportCandidate | AuthoredRoute] = {}
+    walking_minutes_by_day: dict[str, int] = {}
     for gap in gaps:
         options = [
             candidate
@@ -2006,17 +2110,38 @@ def materialize_skeleton_connectors(
             if isinstance(candidate, TransportCandidate)
             and connector_candidate_quality_error(candidate, gap) is None
         ]
+        # Default walking is a comparison against a measured transit option,
+        # never a substitute for a failed transit lookup or unknown duration.
+        if gap.compare_default_walk:
+            transit = [option for option in options if option.transport_class == "public_transit"]
+            fastest = min((option.duration_minutes for option in transit), default=None)
+            options = [option for option in options if option.selected_mode.value != "walk" or (
+                fastest is not None and option.duration_minutes <= fastest
+                and walking_minutes_by_day.get(gap.day_id, 0) + option.duration_minutes <= 30
+            )]
         if not options:
             authored = authored_routes.get(gap.gap_id)
             if authored is None:
                 raise ItineraryCompositionError(
                     f"connector gap {gap.gap_id} has neither a Provider route nor an authored route"
                 )
+            if gap.compare_default_walk and authored.mode == "walk":
+                raise ItineraryCompositionError(
+                    f"connector {gap.gap_id} default walking requires measured walking and transit evidence"
+                )
+            if (
+                gap.departure_time + timedelta(minutes=authored.duration_minutes)
+                > gap.latest_arrival_time
+            ):
+                raise ItineraryCompositionError(
+                    f"authored connector {gap.gap_id} cannot fit its planning window"
+                )
             selected[gap.gap_id] = authored
             continue
         options.sort(
             key=lambda candidate: (
-                candidate.transport_class != gap.preferred_transport_class,
+                (candidate.selected_mode.value != "walk") if gap.compare_default_walk
+                else candidate.transport_class != gap.preferred_transport_class,
                 candidate.duration_minutes,
                 candidate.total_cost_cny is None,
                 candidate.total_cost_cny or 0,
@@ -2024,6 +2149,8 @@ def materialize_skeleton_connectors(
             )
         )
         selected[gap.gap_id] = options[0]
+        if gap.compare_default_walk and options[0].selected_mode.value == "walk":
+            walking_minutes_by_day[gap.day_id] = walking_minutes_by_day.get(gap.day_id, 0) + options[0].duration_minutes
 
     updated_days: list[DayComposition] = []
     consumed: set[str] = set()
@@ -2031,22 +2158,16 @@ def materialize_skeleton_connectors(
         # The connector goes in front of the node it leads to, which is what makes
         # a stop→anchor hop land between the stop and the platform rather than
         # after the leg.
+        adjacencies = day_connector_adjacencies(day, candidates, skeleton)
         successor = {
-            id(left): right
-            for left, right, *_endpoints in day_connector_adjacencies(day, candidates)
+            placement_identity(left): right for left, right, *_endpoints in adjacencies
         }
         updated: list[CompositionPlacement] = []
-        for placement in day.placements:
-            updated.append(placement)
-            next_node = successor.get(id(placement))
-            if next_node is None:
-                continue
-            key = (
-                day.day_id,
-                placement_identity(placement),
-                placement_identity(next_node),
+
+        def append_connector(left: ChainNode, right: ChainNode) -> None:
+            gap = gaps_by_pair.get(
+                (day.day_id, placement_identity(left), placement_identity(right))
             )
-            gap = gaps_by_pair.get(key)
             if gap is None:
                 raise ItineraryCompositionError(
                     f"day {day.day_id} adjacency has no connector gap"
@@ -2058,6 +2179,16 @@ def materialize_skeleton_connectors(
                 else TransportPlacement(candidate_id=route.candidate_id)
             )
             consumed.add(gap.gap_id)
+
+        for left, right, *_endpoints in adjacencies:
+            if isinstance(left, LodgingBoundary):
+                append_connector(left, right)
+        for placement in day.placements:
+            updated.append(placement)
+            next_node = successor.get(placement_identity(placement))
+            if next_node is None:
+                continue
+            append_connector(placement, next_node)
         updated_days.append(day.model_copy(update={"placements": updated}))
     if consumed != set(selected):
         raise ItineraryCompositionError("connector gaps do not match the skeleton")
@@ -2154,6 +2285,11 @@ def validate_itinerary_transport_topology(
         anchors: list[tuple[int, TransportCandidate]] = []
         for position, placement in enumerate(day.placements):
             if placement.placement_kind in {"visit", "dining"}:
+                candidate = candidates.get(placement.candidate_id)
+                if isinstance(candidate, (VisitCandidate, DiningCandidate)):
+                    _validate_stop_opening_window(
+                        day=day, placement=placement, candidate=candidate
+                    )
                 physical_placements.append((position, placement))
                 continue
             anchor = _long_distance_anchor(placement, candidates)
@@ -2242,6 +2378,7 @@ def validate_itinerary_transport_topology(
         # ended, is unsatisfiable on a mixed Day — a leg departs from a station and a
         # stop is a temple, so the hop between them (a real journey) reads as a
         # contradiction instead of as work to do.  One definition, or they disagree.
+        morning, evening = day_lodging_boundaries(day, composition, candidates)
         node_indexes = [
             index
             for index, placement in enumerate(day.placements)
@@ -2276,22 +2413,27 @@ def validate_itinerary_transport_topology(
             )
             continue
 
-        if not any(
-            day.placements[index].placement_kind in {"visit", "dining"}
-            for index in node_indexes
-        ) and any(
-            placement.placement_kind == "transport"
-            and (
-                placement.authored_route is not None
-                or (
-                    isinstance(
-                        candidates.get(placement.candidate_id), TransportCandidate
-                    )
-                    and candidates[placement.candidate_id].transport_class
-                    != "long_distance"
-                )
+        if (
+            not any(
+                day.placements[index].placement_kind in {"visit", "dining"}
+                for index in node_indexes
             )
-            for placement in day.placements
+            and morning is None
+            and evening is None
+            and any(
+                placement.placement_kind == "transport"
+                and (
+                    placement.authored_route is not None
+                    or (
+                        isinstance(
+                            candidates.get(placement.candidate_id), TransportCandidate
+                        )
+                        and candidates[placement.candidate_id].transport_class
+                        != "long_distance"
+                    )
+                )
+                for placement in day.placements
+            )
         ):
             raise ItineraryCompositionError(
                 f"day {day.day_id} local transport requires a physical itinerary stop"
@@ -2318,9 +2460,12 @@ def validate_itinerary_transport_topology(
             day_id=day.day_id,
             candidates=candidates,
             placements=list(day.placements[:first_index]),
-            start_place_id=None,
+            start_place_id=candidates[morning.candidate_id].place_id
+            if morning is not None
+            else None,
             end_place_id=_inbound(first_index),
-            require_local_connector=False,
+            require_local_connector=morning is not None
+            and candidates[morning.candidate_id].place_id != _inbound(first_index),
         )
 
         for left_index, right_index in zip(node_indexes, node_indexes[1:]):
@@ -2364,9 +2509,43 @@ def validate_itinerary_transport_topology(
             candidates=candidates,
             placements=list(day.placements[last_index + 1 :]),
             start_place_id=_outbound(last_index),
-            end_place_id=None,
-            require_local_connector=False,
+            end_place_id=candidates[evening.candidate_id].place_id
+            if evening is not None
+            else None,
+            require_local_connector=evening is not None
+            and candidates[evening.candidate_id].place_id != _outbound(last_index),
         )
+        positions = {id(item): index for index, item in enumerate(day.placements)}
+        for left, right, _from, _to, departure, deadline in day_connector_adjacencies(
+            day, candidates, composition
+        ):
+            left_index = (
+                -1 if isinstance(left, LodgingBoundary) else positions[id(left)]
+            )
+            right_index = (
+                len(day.placements)
+                if isinstance(right, LodgingBoundary)
+                else positions[id(right)]
+            )
+            at = departure
+            for connector in day.placements[left_index + 1 : right_index]:
+                if connector.authored_route is not None:
+                    at += timedelta(minutes=connector.authored_route.duration_minutes)
+                else:
+                    route = candidates.get(connector.candidate_id)
+                    if not isinstance(route, TransportCandidate):
+                        continue
+                    if route.departure_at is not None and route.departure_at < at:
+                        raise ItineraryCompositionError(
+                            f"day {day.day_id} connector departs before its preceding activity ends"
+                        )
+                    at = route.arrival_at or (route.departure_at or at) + timedelta(
+                        minutes=route.duration_minutes
+                    )
+            if at > deadline:
+                raise ItineraryCompositionError(
+                    f"day {day.day_id} connector reaches its next stop after the planning arrival deadline {deadline.isoformat()}; preserve long-distance boarding buffers"
+                )
 
 
 def _authored_transport_leg(
@@ -2374,6 +2553,7 @@ def _authored_transport_leg(
     day: DayComposition,
     index: int,
     candidates: Mapping[str, ResearchCandidate],
+    composition: ItineraryCompositionDraft,
 ) -> TransportLeg:
     """Build the leg for an authored connector from the nodes it sits between.
 
@@ -2400,13 +2580,21 @@ def _authored_transport_leg(
 
     previous = _node(list(reversed(day.placements[:index])))
     following = _node(list(day.placements[index + 1 :]))
+    morning, evening = day_lodging_boundaries(day, composition, candidates)
+    previous = previous or morning
+    following = following or evening
     if previous is None or following is None:
         raise ItineraryCompositionError(
             f"day {day.day_id} authored connector needs a stop on both sides"
         )
     route = placement.authored_route
 
-    def _endpoint(node: CompositionPlacement, *, leaving: bool) -> TransportEndpoint:
+    def _endpoint(node: ChainNode, *, leaving: bool) -> TransportEndpoint:
+        if isinstance(node, LodgingBoundary):
+            lodging = candidates[node.candidate_id]
+            return TransportEndpoint(
+                name=lodging.property_name, place_id=lodging.place_id
+            )
         anchor = _long_distance_anchor(node, candidates)
         if anchor is not None:
             return anchor.to_endpoint if leaving else anchor.from_endpoint
@@ -2797,6 +2985,7 @@ def materialize_trip_workspace(
                         day=day,
                         index=placement_index,
                         candidates=candidates,
+                        composition=composition,
                     )
                     transport.append(leg)
                     timeline.append(
@@ -2916,7 +3105,7 @@ def materialize_trip_workspace(
                         planned_end=placement.planned_end,
                         duration_minutes=placement.duration_minutes,
                         estimated_cost_cny=candidate.estimated_cost_cny,
-                        selection_reason=candidate.selection_reasons[0],
+                        selection_reason=placement.selection_reason or candidate.selection_reasons[0],
                         lineage=_lineage(candidate, slot_id),
                         visit_type=candidate.visit_type,
                         opening_window=candidate.opening_window,
@@ -2975,7 +3164,7 @@ def materialize_trip_workspace(
                         planned_end=placement.planned_end,
                         duration_minutes=placement.duration_minutes,
                         estimated_cost_cny=candidate.average_spend_cny,
-                        selection_reason=candidate.selection_reasons[0],
+                        selection_reason=placement.selection_reason or candidate.selection_reasons[0],
                         lineage=_lineage(candidate, slot_id),
                         meal_type=placement.meal_type,
                         cuisine_types=candidate.cuisine_types,
@@ -3014,7 +3203,7 @@ def materialize_trip_workspace(
                         duration_minutes=candidate.duration_minutes,
                         distance_meters=candidate.distance_meters,
                         total_cost_cny=candidate.total_cost_cny,
-                        transfer_count=max(len(candidate.segments) - 1, 0),
+                        transfer_count=count_service_transfers(candidate.segments),
                         segments=candidate.segments,
                         booking_status=candidate.booking_status,
                         route_status="ready",

@@ -40,6 +40,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({ activeView, onChange, co
         >
           <a
             href={`?view=${encodeURIComponent(view)}`}
+            aria-current={activeView === view ? 'page' : undefined}
             onClick={(e) => {
               e.preventDefault();
               onChange(view);

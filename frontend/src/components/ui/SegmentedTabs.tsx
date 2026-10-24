@@ -8,6 +8,8 @@ export interface SegmentedTab<T extends string> {
   label: React.ReactNode;
   /** 透传给 `<button role="tab">`，e2e 判据按它找。 */
   testId?: string;
+  domId?: string;
+  panelId?: string;
 }
 
 interface SegmentedTabsProps<T extends string> {
@@ -74,16 +76,17 @@ export function SegmentedTabs<T extends string>({
     });
   }, [value]);
 
-  /* 选中项变了就量一次；字体晚到、容器换宽也要重量 —— 观察整条轨道即可，
-     任何一项的宽度变化都会改变轨道内的布局。 */
+  // Observe the buttons as well: fonts can change their widths while the track
+  // remains constrained to the same width.
   useLayoutEffect(() => {
     measure();
     const group = groupRef.current;
     if (!group || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => measure());
     observer.observe(group);
+    buttonRefs.current.forEach((button) => observer.observe(button));
     return () => observer.disconnect();
-  }, [measure, tabs.length]);
+  }, [measure, tabs.length, reducedMotion]);
 
   const focusAndSelect = (index: number) => {
     const wrapped = (index + tabs.length) % tabs.length;
@@ -117,7 +120,7 @@ export function SegmentedTabs<T extends string>({
     }
   };
 
-  const trackClass = cn('relative flex min-w-0 items-center rounded-card bg-surface p-1', className);
+  const trackClass = cn('relative isolate flex min-w-0 items-center rounded-card bg-surface/65 p-1', className);
 
   /* 托的几何：`top` 对齐轨道内边距（p-1 = 4px），x / width 跟选中项。第一次量到之前
      `visibility: hidden`，useLayoutEffect 在绘制前就量完，用户看不到那一帧。
@@ -146,14 +149,16 @@ export function SegmentedTabs<T extends string>({
         }}
         type="button"
         role="tab"
+        id={tab.domId}
+        aria-controls={tab.panelId}
         aria-selected={selected}
         tabIndex={selected ? 0 : -1}
         data-testid={tab.testId}
         onClick={() => onChange(tab.id)}
         onKeyDown={(event) => onKeyDown(event, index)}
         className={cn(
-          'relative z-[1] rounded-label px-3 py-1.5 text-xs font-semibold transition-colors',
-          selected ? 'text-ink' : 'text-ink-secondary hover:text-ink'
+          'relative z-[1] min-h-10 whitespace-nowrap rounded-label px-3 py-2 text-xs font-semibold transition-colors',
+          selected ? 'text-accent' : 'text-ink-secondary hover:text-ink'
         )}
       >
         {tab.label}

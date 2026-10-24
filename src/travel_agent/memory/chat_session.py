@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import bindparam, text
 
+from ..services.research_progress import public_text, result_preview
 from ..entities.session_title import TITLE_MAX_LEN, derive_session_title
 from ..infrastructure.database import get_db_session
 
@@ -251,7 +252,9 @@ def _project_events_to_messages(rows: List[Dict[str, Any]]) -> List[Dict[str, An
         step_record: Dict[str, Any] = {
             "id": payload.get("step_id", ""),
             "agent_name": payload.get("agent_name", ""),
-            "content": payload.get("content", ""),
+            "content": public_text(payload.get("content", "")),
+            "progress_status": payload.get("progress_status"),
+            "result_preview": result_preview(payload.get("result_preview", [])),
             "step_name": payload.get("step_name", ""),
             "timestamp": payload.get("timestamp") or _utc_now_iso(),
             "end_time": payload.get("end_time"),
@@ -263,7 +266,7 @@ def _project_events_to_messages(rows: List[Dict[str, Any]]) -> List[Dict[str, An
             step_record["tool_call_id"] = payload.get("tool_call_id", "")
             step_record["tool_status"] = payload.get("tool_status", "completed")
             step_record["tool_args"] = payload.get("tool_args", "")
-            step_record["tool_result"] = payload.get("tool_result", "")
+            step_record["tool_result"] = public_text(payload.get("tool_result", ""))
             step_record["tool_category"] = payload.get("tool_category", "other")
             step_record["from_cache"] = payload.get("from_cache", False)
             step_record["duration_ms"] = payload.get("duration_ms")
@@ -559,7 +562,9 @@ class ChatSessionMemory:
                         "tool_call_id": step.get("tool_call_id", ""),
                         "tool_status": step.get("tool_status", ""),
                         "tool_args": step.get("tool_args", ""),
-                        "tool_result": step.get("tool_result", ""),
+                        "tool_result": public_text(step.get("tool_result", "")),
+                        "result_preview": result_preview(step.get("result_preview", [])),
+                        "progress_status": step.get("progress_status"),
                         "tool_category": step.get("tool_category", ""),
                         "from_cache": step.get("from_cache", False),
                         "duration_ms": step.get("duration_ms"),

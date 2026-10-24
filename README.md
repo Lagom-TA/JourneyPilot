@@ -48,6 +48,7 @@ The current product interface is in Simplified Chinese. Code, configuration, and
 - **Weather-aware planning** — forecasts are considered while the itinerary is being built, with practical alternatives for affected days.
 - **Control over long-running plans** — review the research plan, resume interrupted work, make bounded edits, undo recent changes, or cancel a run cleanly.
 - **Personal context** — remember common departure points and travel preferences, and search uploaded guides through the built-in knowledge base.
+- **A responsive travel desk** — use a structured planner or describe an idea, browse daily plans and reports with keyboard-accessible tabs, and navigate on mobile with reduced-motion support.
 
 ## Who it is for
 
@@ -329,6 +330,7 @@ scheduled nightly or release workflow; source builds are verified locally when n
 
 ### Design documents
 
+- [`docs/README.md`](docs/README.md) — documentation index, including development and testing guides
 - [`docs/adr/`](docs/adr/) — the decisions, and what was rejected instead
 - [`docs/invariants.md`](docs/invariants.md) — the runtime guarantees the code must preserve
 - [`docs/architecture/overview.md`](docs/architecture/overview.md) — how one request

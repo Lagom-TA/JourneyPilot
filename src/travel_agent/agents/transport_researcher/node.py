@@ -274,7 +274,7 @@ def _routable_connector_endpoints(
             continue
         if (
             candidate.candidate_id not in passed_ids
-            or candidate.candidate_kind not in {"visit", "dining"}
+            or candidate.candidate_kind not in {"visit", "dining", "lodging"}
         ):
             continue
         place_id = str(getattr(candidate, "place_id", "") or "").strip()
@@ -282,6 +282,7 @@ def _routable_connector_endpoints(
         name = str(
             getattr(candidate, "name", None)
             or getattr(candidate, "branch_name", None)
+            or getattr(candidate, "property_name", None)
             or ""
         ).strip()
         if (
@@ -1594,6 +1595,7 @@ async def discover_required_local_route(
     for endpoint in _routable_connector_endpoints(state):
         endpoint_index.setdefault(endpoint["place_id"], endpoint)
     routable: List[Dict[str, Any]] = []
+    comparisons: List[Dict[str, Any]] = []
     unroutable: List[str] = []
     for gap in connector_gaps:
         from_place_id = str(gap.get("from_place_id") or "").strip()
@@ -1640,6 +1642,8 @@ async def discover_required_local_route(
                 "mode": requested_mode,
             }
         )
+        if gap.get("compare_default_walk") and requested_mode == "public_transit":
+            comparisons.append({**routable[-1], "mode": "walk"})
     if unroutable:
         logger.warning(
             "[transport_researcher] %d of %d connector gaps are not routable: %s",
@@ -1649,7 +1653,16 @@ async def discover_required_local_route(
         )
     if not routable:
         return False
-    queried = routable[:_MAX_CONNECTOR_ROUTE_QUERIES_PER_ROUND]
+    # Cover every base adjacency first; optional comparisons share the same
+    # bounded provider-call allowance and cannot displace a necessary route.
+    # Coordinate proximity only prioritizes provider queries. It never supplies
+    # a walking time or proves that a pedestrian path exists.
+    from ...services.geo_dispersion import haversine_km
+    comparisons.sort(key=lambda request: haversine_km(
+        request["from_latitude"], request["from_longitude"],
+        request["to_latitude"], request["to_longitude"],
+    ))
+    queried = (routable + comparisons)[:_MAX_CONNECTOR_ROUTE_QUERIES_PER_ROUND]
     if len(routable) > len(queried):
         # A bound that is not announced reads as full coverage in the delivered
         # itinerary, where a dropped adjacency is indistinguishable from one no

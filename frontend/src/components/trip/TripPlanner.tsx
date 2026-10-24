@@ -1,6 +1,6 @@
 import React from 'react';
 import { useReducedMotion } from 'motion/react';
-import { ArrowDown, ArrowUp, ChevronDown, MapPin, Minus, Plus, Send, Users, X } from 'lucide-react';
+import { ArrowDown, ArrowRight, ArrowUp, ChevronDown, MapPin, Minus, Plus, Send, Users, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { createPlaceSearchRunner, type PlaceSearchCandidate } from '../../lib/placeSearch';
 import { describeRequestFailure, type RequestFailure } from '../../lib/requestFailureMessage';
@@ -250,9 +250,8 @@ export const TripPlanner: React.FC<{ guidedText?: string; compact?: boolean; ini
   }
   if (!originReady) {
     return (
-      // 图纸上**不套卡**：这一支和下面那张规划表一样，直接坐在首页那张图纸上，边界由图纸
-      // 自己的 neatline 给出（图纸档）。
-      <section aria-labelledby="origin-setup-title">
+      <section aria-labelledby="origin-setup-title" className="origin-setup rounded-card border border-stroke bg-panel p-6 sm:p-8">
+        <p className="mb-3 text-xs font-medium text-chart">先从熟悉的地方出发</p>
         <h2 id="origin-setup-title" className="text-xl font-semibold text-ink">选择你的常用出发地</h2>
         {/* 常用出发地的唯一修改入口是「我的偏好」视图（UserPreferencesPage 的同名区块）；本产品没有「设置」视图。 */}
         <p className="mt-1 text-sm text-ink-secondary">之后可以在「我的偏好」里改。</p>
@@ -273,7 +272,7 @@ export const TripPlanner: React.FC<{ guidedText?: string; compact?: boolean; ini
   }
 
   return (
-    <div className={cn('flex flex-col gap-8', compact && 'gap-6')}>
+    <div className={cn('planner-layout', compact && 'planner-layout-compact')}>
       {/**
        * 结构化规划表 —— **字段是线**。
        *
@@ -285,8 +284,11 @@ export const TripPlanner: React.FC<{ guidedText?: string; compact?: boolean; ini
         * 图纸上，而卡套卡被明禁 —— 唯一的可见症状是 `.rounded-card .rounded-card` 把井
         * 静默降到 4px，也就是说合同写的档位根本没生效。
        */}
-      <section aria-label="结构化旅行规划器" className={PANEL}>
-        <h2 className="text-xl font-semibold text-ink">规划一趟确定的旅行</h2>
+      <section aria-label="结构化旅行规划器" className={cn(PANEL, 'planner-primary')}>
+        <header className="planner-section-heading">
+          <p className="planner-kicker">目的地已在心里</p>
+          <h2 className="text-xl font-semibold text-ink">规划一趟确定的旅行</h2>
+        </header>
         <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-start">
           <PlaceField role="origin" value={origin} onChange={setOrigin} label="从哪里出发" frequent={!extracted.origin} initialQuery={extracted.origin} />
           {/* 出发地 → 目的地之间那一枚箭头走图纸墨蓝：它是路线符号，不是可点的东西。 */}
@@ -307,12 +309,12 @@ export const TripPlanner: React.FC<{ guidedText?: string; compact?: boolean; ini
             {destinations.length < 3 && <button type="button" className="mt-0.5 self-start text-[13px] font-medium text-accent hover:underline" onClick={() => setDestinations((items) => [...items, null])}>+ 添加目的地</button>}
           </div>
         </div>
-        <div className="mt-5 flex flex-col gap-4 sm:flex-row">
+        <div className="planner-date-party mt-5 flex flex-col gap-4 sm:flex-row">
           <DateRangePicker start={startDate} end={endDate} onChange={(nextStart, nextEnd) => { setStartDate(nextStart); setEndDate(nextEnd); setError(''); }} />
           {/* 同行：一条刻线上的两组 ± 读数，hover **只动墨色**。不要做成填色井、也不要给
               ± 钮铺 hover 底色：一个 32px 的方块顶着和祖父辈卡面同色的底，读起来像一块被
               挖空的地方。 */}
-          <Field label="同行" className="sm:flex-none sm:w-[300px]">
+          <Field label="同行" className="planner-party sm:flex-none sm:w-[300px]">
             <Users size={16} className="shrink-0 text-chart" />
             {([['成人', adults, setAdults, 1], ['儿童', children, setChildren, 0]] as const).map(([label, value, setter, min]) => (
               <div key={label} className="flex items-center gap-0.5">
@@ -339,7 +341,7 @@ export const TripPlanner: React.FC<{ guidedText?: string; compact?: boolean; ini
             ))}
           </Field>
         </div>
-        <button type="button" data-testid="planner-party-advanced" className="mt-4 flex items-center gap-1 text-[13px] text-ink-secondary transition-colors duration-fast ease-standard hover:text-ink" onClick={() => setAdvanced(!advanced)}>其他同行需求 <ChevronDown size={13} className={cn('transition-transform duration-base ease-standard', advanced && 'rotate-180')} /></button>
+        <button type="button" data-testid="planner-party-advanced" aria-expanded={advanced} className="mt-4 flex items-center gap-1 text-[13px] text-ink-secondary transition-colors duration-fast ease-standard hover:text-ink" onClick={() => setAdvanced(!advanced)}>其他同行需求 <ChevronDown size={13} className={cn('transition-transform duration-base ease-standard', advanced && 'rotate-180')} /></button>
         {/**
          * 其他同行需求 —— **和这一屏其余的布尔选择同一套芯片**（`CHIP` / `CHIP_ON` /
          * `CHIP_OFF`）。
@@ -381,7 +383,7 @@ export const TripPlanner: React.FC<{ guidedText?: string; compact?: boolean; ini
          * （`rounded-full` ——「A container is never a circle」明禁一个装着文字的
          * 圆容器）；给选中态再印一枚 `Check` 字形 —— 「被选中」已经由满面暖底说过了。
          */}
-        <div className="mt-6">
+        <div className="mt-6 border-t border-stroke/60 pt-5">
           <p className={FIELD_LABEL}>这次想要</p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
             {config.primary_styles.map((style) => (
@@ -395,7 +397,7 @@ export const TripPlanner: React.FC<{ guidedText?: string; compact?: boolean; ini
                 {style.label}{style.is_default && !primaryTouched && ' · 建议'}
               </button>
             ))}
-            <button type="button" className="ml-1 text-[13px] font-medium text-accent transition-colors duration-fast ease-standard hover:underline" onClick={() => setMore(!more)}>更多偏好</button>
+            <button type="button" aria-expanded={more} className="ml-1 text-[13px] font-medium text-accent transition-colors duration-fast ease-standard hover:underline" onClick={() => setMore(!more)}>更多偏好</button>
           </div>
           {more && (
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -414,7 +416,13 @@ export const TripPlanner: React.FC<{ guidedText?: string; compact?: boolean; ini
             </div>
           )}
         </div>
-        <div className="mt-7 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center"><p className="text-sm text-error" role="status">{error}</p><Button variant="primary" onClick={() => void submitStructured()} disabled={state.isStreaming}>开始规划</Button></div>
+        <div className="planner-submit">
+          <div className="min-w-0">
+            <p className="text-xs leading-5 text-ink-secondary">先生成调研计划，由你确认后继续。</p>
+            {error && <p className="mt-1 text-sm text-error" role="alert">{error}</p>}
+          </div>
+          <Button variant="primary" className="planner-submit-button" onClick={() => void submitStructured()} disabled={state.isStreaming}>开始规划 <ArrowRight size={16} aria-hidden="true" /></Button>
+        </div>
       </section>
 
       {/**
@@ -428,9 +436,11 @@ export const TripPlanner: React.FC<{ guidedText?: string; compact?: boolean; ini
        * 各自的标题），两处必须同一挡。
        */}
       {!compact && (
-        <section className={PANEL} aria-label="自然语言旅行输入">
+        <section className={cn(PANEL, 'planner-inspiration')} aria-label="自然语言旅行输入">
+          <p className="planner-kicker">也可以，从灵感开始</p>
           <h2 className="text-xl font-semibold text-ink">还没完全想好？</h2>
-          <div className="mt-3 flex items-end gap-2 rounded-card border border-stroke bg-surface p-2 transition-colors duration-base ease-standard focus-within:border-accent">
+          <p className="mt-2 text-[13px] leading-6 text-ink-secondary">一个想去的地方，一件想做的事，<br className="hidden xl:block" />都可以是出发的理由。</p>
+          <div className="inspiration-composer mt-5 flex items-end gap-2 rounded-card border border-stroke bg-panel p-2 transition-colors duration-base ease-standard focus-within:border-accent">
             <textarea
               aria-label="描述旅行想法"
               value={naturalText}
@@ -438,11 +448,12 @@ export const TripPlanner: React.FC<{ guidedText?: string; compact?: boolean; ini
               onBlur={() => setNaturalFocused(false)}
               onChange={(event) => setNaturalText(event.target.value)}
               rows={2}
-              className="min-h-14 flex-1 resize-none bg-transparent px-2 py-1 text-[15px] text-ink placeholder:text-ink-muted"
+              className="min-h-14 min-w-0 flex-1 resize-none bg-transparent px-2 py-1 text-[15px] leading-7 text-ink placeholder:text-ink-muted"
               placeholder={`例如：${config.inspiration_prompts[promptIndex]}`}
             />
             <Button aria-label="发送旅行想法" variant="primary" disabled={!naturalText.trim() || state.isStreaming} onClick={() => void sendMessage(naturalText, undefined, { assistantPendingLabel: '正在判断任务' })}><Send size={15} /></Button>
           </div>
+          <p className="mt-3 text-xs leading-5 text-ink-muted">说说你的想法，一起找到旅行的方向。</p>
         </section>
       )}
     </div>
