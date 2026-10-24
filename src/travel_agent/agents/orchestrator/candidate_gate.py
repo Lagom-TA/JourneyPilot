@@ -18,6 +18,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from langchain_core.runnables import RunnableConfig
 
+from travel_agent.planning.itinerary.connectors import (
+    LocalConnectorGap,
+    connector_candidate_quality_error,
+    connector_mode_requests_from_constraint_pack,
+    extract_local_connector_gaps,
+)
+from travel_agent.planning.itinerary.draft import ItineraryCompositionError
 from travel_agent.planning.outcomes import (
     CandidateResearchGap,
     GateClass,
@@ -36,13 +43,6 @@ from travel_agent.planning.weather.models import WeatherDayContext, WeatherImpac
 
 from ...entities.candidate_intent import IntentMatchStatus
 from ...entities.intent_spec import IntentStrength, IntentTarget
-from ...entities.itinerary_composition_v2 import (
-    ItineraryCompositionError,
-    LocalConnectorGap,
-    connector_candidate_quality_error,
-    connector_mode_requests_from_constraint_pack,
-    extract_local_connector_gaps,
-)
 from ...entities.provider_evidence import (
     ProviderRouteLegScope,
     build_provider_evidence_assignments,

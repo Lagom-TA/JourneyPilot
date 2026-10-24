@@ -3,7 +3,7 @@
 Two layers need this string and they need it for the same reason — it becomes the
 subject of a sentence a traveller reads:
 
-* ``entities/itinerary_composition_v2.py`` names each Day with it (「深圳市 · 交通日」).
+* ``planning/itinerary/materialize.py`` names each Day with it (「深圳市 · 交通日」).
 * ``services/delivery_projection.py`` puts it on the report cover and every
   weather row.
 

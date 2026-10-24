@@ -2167,7 +2167,7 @@ def format_constraint_pack_for_prompt(pack: Any) -> str:
       「参考级」这个档，只有「印」和「不印」。这一节就是那个档，它必须在 prompt 里
       **明说自己不是约束**，否则「参考级」会变成一条模型分不清的硬要求。
 
-    参考级永不升 hard、门永不据它拦截：``entities/itinerary_composition_v2.py`` 那个
+    参考级永不升 hard、门永不据它拦截：``planning/itinerary/connectors.py`` 那个
     把 transport_constraint 投影成 connector mode request 的读取点仍然只认
     ``user_visible``，本函数没有改动那条线。
     """

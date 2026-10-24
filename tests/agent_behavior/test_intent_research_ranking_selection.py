@@ -48,15 +48,6 @@ from travel_agent.entities.intent_spec import (
     VerificationMode,
     canonical_json_hash,
 )
-from travel_agent.entities.itinerary_composition_v2 import (
-    DayComposition,
-    ItineraryCompositionDraft,
-    ItineraryCompositionError,
-    LocalConnectorGap,
-    VisitPlacement,
-    _transport_alternatives,
-    validate_placement_skeleton,
-)
 from travel_agent.entities.research_brief import (
     DomainResearchObjective,
     ResearchBriefV2,
@@ -64,8 +55,17 @@ from travel_agent.entities.research_brief import (
 from travel_agent.entities.research_query_plan import ResearchQueryKind
 from travel_agent.entities.state import TravelAgentState
 from travel_agent.entities.trip_input import ControlledTripIdentity
+from travel_agent.planning.itinerary.checks import validate_placement_skeleton
+from travel_agent.planning.itinerary.connectors import LocalConnectorGap
+from travel_agent.planning.itinerary.draft import (
+    DayComposition,
+    ItineraryCompositionDraft,
+    ItineraryCompositionError,
+    VisitPlacement,
+)
 from travel_agent.planning.itinerary.models import TransportLeg
 from travel_agent.planning.itinerary.options import SelectionOption, SelectionSlot
+from travel_agent.planning.itinerary.selection import _transport_alternatives
 from travel_agent.planning.outcomes import CandidateResearchGap
 from travel_agent.planning.references import EntityLineage, EntityRef, EntityType
 from travel_agent.planning.research.candidates import (
@@ -731,7 +731,8 @@ def test_visit_rejects_published_weekday_closure():
 
 def test_provider_duration_conflict_is_reported_without_changing_the_draft(monkeypatch):
 
-    import travel_agent.entities.itinerary_composition_v2 as composition_module
+    import travel_agent.planning.itinerary.checks as checks_module
+    import travel_agent.planning.itinerary.connectors as connectors_module
 
     local_tz = ZoneInfo("Asia/Shanghai")
     garden = _packet(
@@ -794,8 +795,9 @@ def test_provider_duration_conflict_is_reported_without_changing_the_draft(monke
         route.candidate_id: route,
     }
     monkeypatch.setattr(
-        composition_module, "_passed_candidates", lambda _catalog: passed
+        connectors_module, "_passed_candidates", lambda _catalog: passed
     )
+    monkeypatch.setattr(checks_module, "_passed_candidates", lambda _catalog: passed)
     skeleton = ItineraryCompositionDraft(
         itinerary_id="itinerary_provider_alignment",
         title="Provider alignment fixture",
@@ -840,12 +842,12 @@ def test_provider_duration_conflict_is_reported_without_changing_the_draft(monke
     )
 
     before = skeleton.model_dump()
-    assert composition_module.connector_candidate_quality_error(route, gap) == "route_arrives_after_following_stop"
-    assert composition_module.connector_gap_rejection_reasons(object(), gap) == {
+    assert connectors_module.connector_candidate_quality_error(route, gap) == "route_arrives_after_following_stop"
+    assert connectors_module.connector_gap_rejection_reasons(object(), gap) == {
         route.candidate_id: "route_arrives_after_following_stop",
     }
     with pytest.raises(ItineraryCompositionError, match="candidate_local_bus.*duration=66min"):
-        composition_module.materialize_skeleton_connectors(skeleton, object(), [gap], {})
+        connectors_module.materialize_skeleton_connectors(skeleton, object(), [gap], {})
     assert skeleton.model_dump() == before
 
 

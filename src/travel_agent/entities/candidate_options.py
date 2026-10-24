@@ -1,7 +1,7 @@
 """What a selection option says about being able to actually use a candidate.
 
 Its own module because two layers have to agree on it exactly.  Composition mints
-the option (``entities/itinerary_composition_v2._option``) and the selection
+the option (``planning/itinerary/selection._option``) and the selection
 mutation re-derives it to check the option was not tampered with
 (``entities/workspace_v2_mutations._apply_selection``); if the two spelled the
 rule separately, every visit option would fail that check — which is what

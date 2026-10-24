@@ -14,6 +14,26 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import ValidationError
 
+from travel_agent.planning.itinerary.checks import validate_placement_skeleton
+from travel_agent.planning.itinerary.connectors import (
+    LocalConnectorGap,
+    connector_mode_requests_from_constraint_pack,
+    extract_local_connector_gaps,
+    materialize_skeleton_connectors,
+    unfilled_connector_gaps,
+)
+from travel_agent.planning.itinerary.draft import (
+    AUTHORED_ROUTE_CLASS_BY_MODE,
+    AuthoredPlaceBase,
+    AuthoredRoute,
+    ItineraryCompositionDraft,
+    ItineraryCompositionError,
+    authored_place_key,
+    authored_places,
+    map_authored_places,
+)
+from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
+from travel_agent.planning.itinerary.parsing import parse_itinerary_composition
 from travel_agent.planning.requirements.inputs import UserInputAnchor
 from travel_agent.planning.research.candidates import (
     DiningCandidate,
@@ -28,23 +48,6 @@ from travel_agent.planning.workspace import TripWorkspaceV2
 from ...entities.candidate_selection import CandidateSelectionPlan
 from ...entities.composition_rules import COMPOSITION_PROMPT_VERSION, CompositionRule
 from ...entities.intent_coverage import IntentContractSnapshot
-from ...entities.itinerary_composition_v2 import (
-    AUTHORED_ROUTE_CLASS_BY_MODE,
-    AuthoredPlaceBase,
-    AuthoredRoute,
-    ItineraryCompositionDraft,
-    ItineraryCompositionError,
-    LocalConnectorGap,
-    authored_place_key,
-    authored_places,
-    connector_mode_requests_from_constraint_pack,
-    extract_local_connector_gaps,
-    map_authored_places,
-    materialize_skeleton_connectors,
-    materialize_trip_workspace,
-    unfilled_connector_gaps,
-    validate_placement_skeleton,
-)
 from ...entities.provider_evidence import (
     build_required_long_distance_legs,
     explicit_cross_day_return_required,
@@ -1403,20 +1406,6 @@ async def _author_connector_routes(
     return routes
 
 
-def parse_itinerary_composition(raw: str) -> ItineraryCompositionDraft:
-    try:
-        payload = json.loads(raw)
-    except (TypeError, json.JSONDecodeError) as exc:
-        raise ValueError("itinerary composition must be one exact JSON object") from exc
-    if not isinstance(payload, dict):
-        raise ValueError("itinerary composition must be one JSON object")
-    _normalize_time_structure(payload)
-    try:
-        return ItineraryCompositionDraft.model_validate(payload)
-    except ValidationError as exc:
-        raise ValueError(f"itinerary composition failed schema gate: {exc}") from exc
-
-
 def _parse_exact_llm_composition(
     raw: str,
     state: TravelAgentState,
@@ -1434,23 +1423,6 @@ def _parse_exact_llm_composition(
                     for field in _SERVER_OWNED_PLACE_FIELDS:
                         place.pop(field, None)
     return _verify_day_window(parse_itinerary_composition(json.dumps(payload)), state)
-
-
-def _normalize_time_structure(payload: dict[str, Any]) -> None:
-    """Force the fixed four-block day scaffold; the model must not author it.
-
-    ``DayComposition.time_structure`` must equal the four canonical blocks and is
-    pure display scaffolding — no placement references it.  Models (even primary)
-    routinely emit a truncated subset covering only the blocks they filled, which
-    the strict validator rejects, discarding an otherwise complete, well-placed
-    itinerary over scaffold formatting.  Overwrite it deterministically instead.
-    """
-    days = payload.get("days")
-    if not isinstance(days, list):
-        return
-    for day in days:
-        if isinstance(day, dict):
-            day["time_structure"] = ["morning", "lunch", "afternoon", "evening"]
 
 
 def _log_composition_dispersion(workspace: TripWorkspaceV2) -> None:

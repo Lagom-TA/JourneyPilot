@@ -12,22 +12,26 @@ from tests.test_composition_context import state
 from travel_agent.agents.itinerary_planner.node import (
     _build_composition_prompt,
     _composition_phase,
-    parse_itinerary_composition,
 )
 from travel_agent.entities.candidate_discovery import CandidateDiscoveryOrigin
 from travel_agent.entities.intent_coverage import IntentContractSnapshot
-from travel_agent.entities.itinerary_composition_v2 import (
-    AuthoredRoute,
-    ItineraryCompositionDraft,
-    ItineraryCompositionError,
-    extract_local_connector_gaps,
-    materialize_skeleton_connectors,
-    materialize_trip_workspace,
-    placement_occurrence_key,
+from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.itinerary.checks import (
     validate_itinerary_transport_topology,
     validate_placement_skeleton,
 )
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.itinerary.connectors import (
+    extract_local_connector_gaps,
+    materialize_skeleton_connectors,
+)
+from travel_agent.planning.itinerary.draft import (
+    AuthoredRoute,
+    ItineraryCompositionDraft,
+    ItineraryCompositionError,
+    placement_occurrence_key,
+)
+from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
+from travel_agent.planning.itinerary.parsing import parse_itinerary_composition
 from travel_agent.planning.research.candidates import DiningCandidate
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.services.candidate_ranking import rank_candidates
@@ -614,7 +618,7 @@ async def test_located_retry_keeps_new_reasons_and_reuses_provider_identity(
     monkeypatch,
 ):
     from travel_agent.agents.itinerary_planner import node
-    from travel_agent.entities.itinerary_composition_v2 import authored_places
+    from travel_agent.planning.itinerary.draft import authored_places
 
     entry = visit_entry()
     entry.pop("candidate_id")
@@ -785,7 +789,7 @@ async def test_existing_revision_budget_stops_reopening_the_broken_draft():
 @pytest.mark.asyncio
 async def test_changed_authored_identity_resolves_again_and_internal_parse_keeps_trusted_location(monkeypatch):
     from travel_agent.agents.itinerary_planner import node
-    from travel_agent.entities.itinerary_composition_v2 import authored_places
+    from travel_agent.planning.itinerary.draft import authored_places
 
     entry = visit_entry()
     entry.pop("candidate_id")
@@ -837,7 +841,7 @@ def route_packet(candidate_id="candidate_slow", duration=60, **updates):
 
 @pytest.mark.parametrize("scheduled", [False, True])
 def test_known_provider_conflict_cannot_be_replaced_by_short_estimate(scheduled):
-    from travel_agent.entities.itinerary_composition_v2 import unfilled_connector_gaps
+    from travel_agent.planning.itinerary.connectors import unfilled_connector_gaps
 
     timing = {
         "departure_at": "2026-10-10T09:00:00+09:00",
@@ -860,7 +864,7 @@ def test_known_provider_conflict_cannot_be_replaced_by_short_estimate(scheduled)
 
 @pytest.mark.parametrize("irrelevant", ["missing", "endpoint", "class", "destination", "date", "duration", "schedule"])
 def test_only_same_scope_intrinsically_credible_route_is_conflict_evidence(irrelevant):
-    from travel_agent.entities.itinerary_composition_v2 import unfilled_connector_gaps
+    from travel_agent.planning.itinerary.connectors import unfilled_connector_gaps
 
     changes = {
         "endpoint": {"from_endpoint": {"name": "Other", "place_id": "other"}},
@@ -1046,7 +1050,7 @@ async def test_connector_estimator_receives_real_names_and_cannot_shrink_time_wi
 
 @pytest.mark.parametrize("partial", [False, True])
 def test_candidate_scoped_mode_lock_targets_actual_occurrences_only(partial):
-    from travel_agent.entities.itinerary_composition_v2 import (
+    from travel_agent.planning.itinerary.connectors import (
         connector_mode_requests_from_constraint_pack,
     )
 

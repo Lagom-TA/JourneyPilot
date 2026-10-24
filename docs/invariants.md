@@ -281,7 +281,7 @@ Tests:
 - `agent_behavior/test_intent_composition_fidelity.py::test_slot_backfill_prefers_pending_intent_and_respects_daily_maximum`
 
 ### INV-COMPOSITION-002：可解析的开放时间是 Placement 硬边界
-Owner: `entities/itinerary_composition_v2.py`
+Owner: `planning/itinerary/checks.py`
 Enforced by: 有正式起止时间的景点必须完整落在一个 Provider 开放时段内；命中明确闭馆日
 时拒绝 Skeleton 并把可操作错误交给组合修复。无法可靠解析的自由文本不伪装成确定事实
 Tests:

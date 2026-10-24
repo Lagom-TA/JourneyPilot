@@ -18,6 +18,8 @@ from travel_agent.planning.delivery.projections import (
     SourceIndexProjection,
     TripReportProjection,
 )
+from travel_agent.planning.itinerary.connectors import LocalConnectorGap
+from travel_agent.planning.itinerary.draft import ItineraryCompositionDraft
 from travel_agent.planning.outcomes import (
     CandidateResearchGap,
     DeliveryFailureRecord,
@@ -46,7 +48,6 @@ from .capability_plan import CapabilityPlan
 from .composition_mutation import CompositionMutation
 from .intent_coverage import IntentCoverageReport, IntentFidelityGap
 from .intent_spec import IntentSpec
-from .itinerary_composition_v2 import ItineraryCompositionDraft, LocalConnectorGap
 from .planning_generation import PlanningGeneration
 from .provider_evidence import (
     ProviderEvidenceOutcome,

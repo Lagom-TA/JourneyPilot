@@ -23,10 +23,8 @@ from travel_agent.entities.intent_spec import (
     IntentTarget,
     VerificationMode,
 )
-from travel_agent.entities.itinerary_composition_v2 import (
-    ItineraryCompositionDraft,
-    materialize_trip_workspace,
-)
+from travel_agent.planning.itinerary.draft import ItineraryCompositionDraft
+from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
 from travel_agent.planning.outcomes import DeliveryContractViolation
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.planning.workspace import TripWorkspaceV2

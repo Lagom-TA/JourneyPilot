@@ -421,7 +421,7 @@ def _replace_transport_leg(
     """Bind one journey in the plan to a different admitted route.
 
     The eligibility rules live in ``_check_transport_replacement`` rather than
-    inline, so the offering side (``itinerary_composition_v2``) has one named
+    inline, so the offering side (``planning.itinerary.selection``) has one named
     thing to restate.  ``lineage.selection_slot_id`` is carried over from the leg
     the slot points at, because the workspace contract requires a slot's target
     to name it.
@@ -1243,7 +1243,7 @@ def _check_transport_replacement(
     """Refuse a transport candidate that cannot lawfully stand in for this leg.
 
     The composition asks the same questions when it decides which candidates to
-    *offer* (``itinerary_composition_v2._transport_alternatives``), so a slot
+    *offer* (``planning.itinerary.selection._transport_alternatives``), so a slot
     normally never presents an option this function would then reject.  The check
     still has to run at apply time: a slot is built once, and a mode preference
     set afterwards can make an already-offered option unusable.
