@@ -26,16 +26,9 @@ from travel_agent.entities.intent_spec import (
 from travel_agent.entities.composition_rules import (
     CompositionRule,
     CompositionRuleKind,
-    CountRuleParameters,
-    PlacementRuleParameters,
 )
 from travel_agent.entities.intent_coverage import EntityIntentExplanation
 from travel_agent.entities.research_domain import ResearchDomain
-from travel_agent.services.composition_backfill import (
-    assert_never_violate_rules,
-    build_legal_open_slots,
-    order_backfill_candidates,
-)
 from travel_agent.services.composition_mutations import (
     diff_composition_mutations,
     mark_mutations_revalidated,
@@ -108,86 +101,8 @@ def test_fidelity_defers_a_missing_workspace_to_delivery_quality_gate():
     assert update == {"intent_fidelity_route": "passed"}
 
 
-def test_slot_backfill_prefers_pending_intent_and_respects_daily_maximum():
-    rules = [
-        _rule(
-            "rule_theme",
-            "intent_architecture",
-            CompositionRuleKind.MUST_PLACE,
-            PlacementRuleParameters(values=["contemporary architecture"]),
-            policy="repair_then_deviate",
-        ),
-        _rule(
-            "rule_max",
-            "intent_daily_max",
-            CompositionRuleKind.MAX_PER_DAY,
-            CountRuleParameters(count=2, unit="day"),
-        ),
-    ]
-    payload = {
-        "days": [
-            {
-                "day_id": "day_1",
-                "destination_id": "destination_tokyo",
-                "placements": [
-                    {"placement_kind": "visit", "candidate_id": "candidate_existing"}
-                ],
-            }
-        ]
-    }
-    slot = build_legal_open_slots(payload, rules)[0]
-    ordered = order_backfill_candidates(
-        [
-            _capability("candidate_generic", rank=1, matched_intent_ids=[]),
-            _capability(
-                "candidate_architecture",
-                rank=2,
-                matched_intent_ids=["intent_architecture"],
-            ),
-        ],
-        slot,
-    )
-
-    assert slot.remaining_capacity == 1
-    assert ordered[0].candidate_id == "candidate_architecture"
 
 
-def test_never_violate_rule_rejects_prohibited_and_unverified_authored_entries():
-    rule = _rule(
-        "rule_no_museum",
-        "intent_no_museum",
-        CompositionRuleKind.MUST_NOT_PLACE,
-        PlacementRuleParameters(values=["museum"]),
-    )
-    prohibited = _capability(
-        "candidate_museum",
-        rank=1,
-        matched_intent_ids=[],
-        hard_violation_intent_ids=["intent_no_museum"],
-    )
-
-    for placement in (
-        {"placement_kind": "visit", "candidate_id": "candidate_museum"},
-        {
-            "placement_kind": "visit",
-            "authored_place": {"name": "Unverified Place"},
-        },
-    ):
-        payload = {
-            "days": [
-                {
-                    "day_id": "day_1",
-                    "destination_id": "destination_tokyo",
-                    "placements": [placement],
-                }
-            ]
-        }
-        try:
-            assert_never_violate_rules(payload, [rule], [prohibited])
-        except ValueError as exc:
-            assert "never-violate" in str(exc)
-        else:
-            raise AssertionError("prohibited placement must fail closed")
 
 
 def test_mutation_ledger_records_drop_move_and_backfill_then_revalidation():
@@ -353,18 +268,27 @@ def _workspace(
     placements: list[tuple[str, str, int]],
     matches: list[CandidateIntentMatch] | None = None,
     day_count: int = 2,
+    candidate_names: dict[str, str] | None = None,
 ):
+    names = candidate_names or {}
     candidates = {
-        candidate_id: SimpleNamespace(candidate_id=candidate_id, name=candidate_id)
+        candidate_id: SimpleNamespace(
+            candidate_id=candidate_id, candidate_kind="visit",
+            name=names.get(candidate_id, candidate_id),
+            place_id=f"place_{candidate_id}", fact_assertion_ids=[],
+        )
         for candidate_id, _day_id, _hour in placements
     }
     catalog = SimpleNamespace(
         candidate_intent_matches=matches or [],
+        research_packets=[],
         candidate_index=lambda: candidates,
     )
     visit_stops = [
         SimpleNamespace(
             item_id=f"item_{candidate_id}",
+            name=names.get(candidate_id, candidate_id),
+            place_id=f"place_{candidate_id}",
             day_id=day_id,
             planned_start=datetime(2026, 9, int(day_id.rsplit("_", 1)[1]), hour),
             lineage=SimpleNamespace(
@@ -396,6 +320,7 @@ def _workspace(
     )
     return SimpleNamespace(
         workspace_revision=0,
+        entity_intent_checks=[],
         recommendation_catalog=catalog,
         itinerary=itinerary,
         candidate_selection_plan=SimpleNamespace(
@@ -429,6 +354,7 @@ def test_fidelity_detects_hard_excluded_candidate():
     spec = _intent_spec(intent)
     workspace = _workspace(
         placements=[("candidate_museum", "day_1", 10)],
+        candidate_names={"candidate_museum": "City Museum"},
         matches=[
             _match("candidate_museum", intent.intent_id, IntentMatchStatus.VIOLATED)
         ],

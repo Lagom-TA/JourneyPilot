@@ -124,7 +124,9 @@ def bind_intent_context(
                 label=intent.public_summary[:160],
                 explanation=explanation,
                 evidence_basis=(
-                    "verified_fact"
+                    "planning_judgment"
+                    if match.reason_code == "candidate_category_classification"
+                    else "verified_fact"
                     if match.supporting_fact_assertion_ids
                     else "supported_description"
                 ),

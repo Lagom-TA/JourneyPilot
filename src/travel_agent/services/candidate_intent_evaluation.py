@@ -24,6 +24,7 @@ from ..entities.intent_spec import (
     canonical_json_hash,
 )
 from ..workflows.run_control import current_node, current_run_id
+from .intent_requirement_check import check_attributes, explicit_category_match
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ def _trace_scope() -> str:
     return f"run={current_run_id.get() or '-'} node={current_node.get() or '-'}"
 
 
-INTENT_EVALUATION_POLICY_VERSION = "candidate_intent_evaluation.v1"
+INTENT_EVALUATION_POLICY_VERSION = "candidate_intent_evaluation.v2"
 INTENT_EVALUATION_PROMPT_VERSION = "candidate_intent_evaluation.prompt.v1"
 
 
@@ -90,7 +91,7 @@ def _terms(intent: IntentItem) -> list[str]:
 def _candidate_evidence(
     catalog: RecommendationCatalog,
     candidate: ResearchCandidate,
-) -> tuple[list[FactAssertion], list[str], str]:
+) -> tuple[list[FactAssertion], list[str]]:
     facts = [
         fact
         for packet in catalog.research_packets
@@ -99,22 +100,7 @@ def _candidate_evidence(
         and fact.status == "verified"
     ]
     source_ids = list(candidate.source_record_ids)
-    searchable = json.dumps(
-        {
-            "candidate": candidate.model_dump(mode="json"),
-            "facts": [
-                {
-                    "field_path": fact.field_path,
-                    "asserted_value": fact.asserted_value,
-                }
-                for fact in facts
-            ],
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-        default=str,
-    ).casefold()
-    return facts, source_ids, searchable
+    return facts, source_ids
 
 
 def _not_applicable(candidate: ResearchCandidate, intent: IntentItem) -> bool:
@@ -127,7 +113,6 @@ def _deterministic_match(
     intent: IntentItem,
     facts: Sequence[FactAssertion],
     source_ids: Sequence[str],
-    searchable: str,
 ) -> CandidateIntentMatch | None:
     if _not_applicable(candidate, intent):
         return CandidateIntentMatch(
@@ -149,7 +134,10 @@ def _deterministic_match(
         or intent.verification_mode is VerificationMode.SEMANTIC
     ):
         return None
-    matched_terms = [term for term in _terms(intent) if term in searchable]
+    name = (getattr(candidate, "name", None) or getattr(candidate, "branch_name", None)
+            or getattr(candidate, "property_name", ""))
+    present = explicit_category_match(name, check_attributes(candidate), intent)
+    matched_terms = _terms(intent) if present is True else []
     if not matched_terms:
         # Exact evidence matching is a cheap proof, not a semantic parser.  The
         # IntentSpec has already been authored by the LLM; when its canonical
@@ -184,14 +172,8 @@ def _deterministic_match(
         method="deterministic",
         supporting_fact_assertion_ids=[fact.fact_assertion_id for fact in facts],
         supporting_source_record_ids=list(source_ids),
-        reason_code=(
-            "excluded_category_present"
-            if status is IntentMatchStatus.VIOLATED
-            else "verified_candidate_attribute_match"
-        ),
-        public_reason=(
-            f"已验证信息包含：{matched_terms[0]}" if matched_terms else None
-        ),
+        reason_code="candidate_category_classification",
+        public_reason=f"依据地点名称或明确类别判断：{matched_terms[0]}",
     )
 
 
@@ -251,14 +233,13 @@ async def evaluate_candidate_intents(
         for source in packet.source_records
     }
     for candidate in candidates.values():
-        facts, source_ids, searchable = _candidate_evidence(catalog, candidate)
+        facts, source_ids = _candidate_evidence(catalog, candidate)
         for intent in intent_spec.active_items:
             deterministic = _deterministic_match(
                 candidate=candidate,
                 intent=intent,
                 facts=facts,
                 source_ids=source_ids,
-                searchable=searchable,
             )
             if deterministic is not None:
                 matches.append(deterministic)

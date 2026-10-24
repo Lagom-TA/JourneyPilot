@@ -67,7 +67,6 @@ from travel_agent.entities.itinerary_composition_v2 import (
     LocalConnectorGap,
     VisitPlacement,
     _transport_alternatives,
-    align_skeleton_to_provider_routes,
     validate_placement_skeleton,
 )
 from travel_agent.services.candidate_intent_evaluation import (
@@ -730,8 +729,7 @@ def test_visit_rejects_published_weekday_closure():
         )
 
 
-def test_provider_duration_compacts_existing_slack_before_closing(monkeypatch):
-    """Measured route time may move stops, but must not drop or shorten them."""
+def test_provider_duration_conflict_is_reported_without_changing_the_draft(monkeypatch):
 
     import travel_agent.entities.itinerary_composition_v2 as composition_module
 
@@ -841,17 +839,14 @@ def test_provider_duration_compacts_existing_slack_before_closing(monkeypatch):
         weather_data_revision=0,
     )
 
-    aligned = align_skeleton_to_provider_routes(skeleton, object(), [gap])
-    placements = aligned.days[0].placements
-
-    assert [item.candidate_id for item in placements] == [
-        garden.candidate_id,
-        museum.candidate_id,
-    ]
-    assert [item.duration_minutes for item in placements] == [90, 60]
-    assert placements[0].planned_end == datetime(2026, 8, 28, 14, 24, tzinfo=local_tz)
-    assert placements[1].planned_end == datetime(2026, 8, 28, 16, 30, tzinfo=local_tz)
-    validate_placement_skeleton(aligned, object())
+    before = skeleton.model_dump()
+    assert composition_module.connector_candidate_quality_error(route, gap) == "route_arrives_after_following_stop"
+    assert composition_module.connector_gap_rejection_reasons(object(), gap) == {
+        route.candidate_id: "route_arrives_after_following_stop",
+    }
+    with pytest.raises(ItineraryCompositionError, match="neither a Provider route nor an authored route"):
+        composition_module.materialize_skeleton_connectors(skeleton, object(), [gap], {})
+    assert skeleton.model_dump() == before
 
 
 def test_json_object_composition_schema_keeps_semantics_without_null_branches():

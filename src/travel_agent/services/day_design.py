@@ -10,11 +10,7 @@ from ..entities.travel_content import public_selection_text
 
 
 def _final_day_note(day, stops, blocks):
-    """Describe final entities, after pruning/reordering and route alignment.
-
-    A research/skeleton paragraph is not a reliable account of the final day:
-    a removed lunch used to survive indefinitely in that paragraph.
-    """
+    """Describe the materialized stops and explicit rest windows."""
     parts = []
     for ref in day.timeline:
         stop = stops.get(ref.entity_id)
@@ -73,29 +69,15 @@ def apply_day_design(workspace, composition):
         timeline = list(day.timeline)
         for planned in sorted(design.free_time, key=lambda block: block.planned_start):
             start, end = planned.planned_start, planned.planned_end
-            if start.date() != day.date:
+            if start.date() != day.date or end.date() != day.date:
                 raise ItineraryCompositionError(f"free time must belong to day {day.day_id}")
-            # Provider routes can move a stop after the skeleton proposed its
-            # optional downtime. Fit downtime to the final free interval rather
-            # than retrying the identical stale block until delivery fails.
-            available = [(start, end)]
             for left, right in occupied:
-                remaining = []
-                for a, b in available:
-                    if b <= left or a >= right:
-                        remaining.append((a, b))
-                    else:
-                        if a < left:
-                            remaining.append((a, left))
-                        if b > right:
-                            remaining.append((right, b))
-                available = remaining
-            if not available:
-                notes.append(f"第{day.day}天原建议自由休息时段与最终交通或活动重叠，未单独保留；请按体力减少可选活动后再安排休息。")
-                continue
-            start, end = max(available, key=lambda pair: pair[1] - pair[0])
-            if (end-start).total_seconds() < 60:
-                continue
+                if start < right and end > left:
+                    raise ItineraryCompositionError(
+                        f"day {day.day_id} free time {start.isoformat()}–{end.isoformat()} "
+                        f"overlaps activity or transport {left.isoformat()}–{right.isoformat()}; "
+                        "revise the complete draft while preserving the requested rest"
+                    )
             occupied.append((start, end))
             # Keep existing route order: place downtime before the next timed
             # stop, ahead of its incoming connector, never after that connector.
@@ -136,13 +118,15 @@ def apply_day_design(workspace, composition):
                 if previous_stop is not None:
                     break
             if previous_stop is None or previous_stop.planned_end is None or previous_stop.planned_end > start:
-                notes.append(f"第{day.day}天原建议自由休息无法与最终路线位置衔接，未单独保留；请按体力调整后续可选活动。")
-                continue
+                raise ItineraryCompositionError(
+                    f"day {day.day_id} free time {start.isoformat()}–{end.isoformat()} "
+                    "has no completed preceding stay at its location; revise the complete draft"
+                )
             digest = hashlib.sha256(f"{day.day_id}|{start.isoformat()}".encode()).hexdigest()[:20]
             block = CustomBlock(
                 item_id=f"free_time_{digest}", day_id=day.day_id,
                 title="自由休息",
-                note=f"在{previous_stop.name}所在区域留出休息时间，可按体力调整；如需进入店内休息，请现场确认接待条件。",
+                note=f"在{previous_stop.name}附近休息。",
                 planned_start=start, planned_end=end,
                 duration_minutes=round((end-start).total_seconds()/60),
             )

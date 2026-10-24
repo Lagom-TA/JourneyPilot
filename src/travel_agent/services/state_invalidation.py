@@ -7,8 +7,20 @@ from typing import Any, Dict
 from ..entities.request_contract import AmendmentImpact
 
 
-def invalidation_update(impact: AmendmentImpact) -> Dict[str, Any]:
-    projection = {
+def workspace_acceptance_invalidation() -> Dict[str, Any]:
+    return {
+        "intent_coverage_report": None,
+        "intent_fidelity_gaps": [],
+        "intent_fidelity_route": None,
+        "recommendation_quality": None,
+        "delivery_quality_gaps": [],
+        "delivery_quality_route": None,
+        **_projection_invalidation(),
+    }
+
+
+def _projection_invalidation() -> Dict[str, Any]:
+    return {
         "report_projection": None,
         "map_projection": None,
         "source_index_projection": None,
@@ -17,20 +29,17 @@ def invalidation_update(impact: AmendmentImpact) -> Dict[str, Any]:
         "delivery_persisted": False,
         "is_completed": False,
     }
+
+
+def invalidation_update(impact: AmendmentImpact) -> Dict[str, Any]:
     if impact is AmendmentImpact.PROJECTION_ONLY:
-        return projection
+        return _projection_invalidation()
     composition = {
-        **projection,
+        **workspace_acceptance_invalidation(),
         "candidate_selection_plan": None,
         "placement_skeleton": None,
         "composition_mutations": [],
-        "intent_coverage_report": None,
-        "intent_fidelity_gaps": [],
-        "intent_fidelity_route": None,
         "trip_workspace_v2": None,
-        "recommendation_quality": None,
-        "delivery_quality_gaps": [],
-        "delivery_quality_route": None,
         "composition_failure_context": None,
         "placement_skeleton_failure_context": None,
         "local_connector_gaps": [],

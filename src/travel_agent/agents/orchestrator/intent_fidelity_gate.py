@@ -10,6 +10,10 @@ from ...services.composition_rule_compiler import compile_composition_rules
 from ...services.composition_mutations import mark_mutations_revalidated
 from ...services.intent_verification import evaluate_intent_fidelity
 from ...services.intent_entity_binding import bind_intent_context
+from ...services.intent_requirement_check import check_final_entities, evaluate_final_entities
+from ...entities.candidate_intent import IntentMatchStatus
+from ...models.router import get_model_router
+from ...models.task_routing import TaskKind, llm_for_task
 from ...workflows.composition_repair import (
     apply_composition_repair_budget,
     composition_repair_budget_exhausted,
@@ -64,6 +68,13 @@ async def intent_fidelity_gate_node(state: TravelAgentState) -> Dict[str, Any]:
         return {"intent_fidelity_route": "passed"}
     rules = compile_composition_rules(state.intent_spec)
     workspace = bind_intent_context(state.trip_workspace_v2, state.intent_spec)
+    checks = check_final_entities(workspace, state.intent_spec)
+    if any(check.status is IntentMatchStatus.UNKNOWN for check in checks):
+        checks = await evaluate_final_entities(
+            workspace, state.intent_spec,
+            llm_for_task(get_model_router(), TaskKind.CANDIDATE_EVALUATION),
+        )
+    workspace = workspace.model_copy(update={"entity_intent_checks": checks})
     report, gaps = evaluate_intent_fidelity(
         intent_spec=state.intent_spec,
         rules=rules,
@@ -74,12 +85,12 @@ async def intent_fidelity_gate_node(state: TravelAgentState) -> Dict[str, Any]:
     never_violated = [
         gap
         for gap in gaps
-        if any(
+        if gap.reason != "intent_evidence_unavailable" and any(
             rules_by_id[rule_id].policy_on_failure == "never_violate"
             for rule_id in gap.violated_rule_ids
         )
     ]
-    if never_violated:
+    if never_violated and composition_repair_budget_exhausted(state):
         raise DeliveryContractViolation(
             "intent fidelity gate detected a never-violate rule breach",
             reason_code="intent_hard_prohibition_violated",

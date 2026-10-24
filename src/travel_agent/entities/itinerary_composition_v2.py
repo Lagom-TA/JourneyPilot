@@ -68,7 +68,7 @@ from .controlled_place_name import (
     CONTROLLED_DESTINATION_ANCHOR_PREFIX,
     controlled_public_place_name,
 )
-from .opening_hours import latest_opening_window, opening_window_violation
+from .opening_hours import opening_window_violation
 from .planning_time_buffers import planned_alighting_buffer_minutes, planned_boarding_buffer_minutes
 from .transport_semantics import count_service_transfers, nominal_service_day_conflict
 from .day_theme import derive_day_theme
@@ -194,15 +194,6 @@ class AuthoredDiningPlace(AuthoredPlaceBase):
     recommended_dishes: list[str] = Field(min_length=1, max_length=4)
 
 
-# A day is a chain, not a set of independent windows.  Each connector gap is a
-# real trip between two stops, and a provider route only fills it when it can
-# depart at or after the preceding stop ends and arrive at or before the next one
-# starts — so adjacent stops must leave a window a typical local leg fits into.
-MIN_LOCAL_TRANSFER_MINUTES = 30
-# The shortest stay a stop may be compressed to when the chain is pushed forward
-# to open those windows.
-MIN_PHYSICAL_STAY_MINUTES = 30
-
 AUTHORED_ROUTE_CLASS_BY_MODE: dict[str, str] = {
     "walk": "flexible",
     "bike": "flexible",
@@ -280,6 +271,7 @@ class TransportPlacement(StrictModel):
     placement_kind: Literal["transport"] = "transport"
     candidate_id: Optional[str] = Field(default=None, min_length=1)
     authored_route: Optional[AuthoredRoute] = None
+    connector_gap_id: Optional[str] = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def validate_origin(self) -> "TransportPlacement":
@@ -333,6 +325,17 @@ def placement_identity(placement: ChainNode) -> Optional[str]:
     return f"authored:{authored.city}:{authored.name}"
 
 
+def placement_occurrence_key(day_id: str, placement: ChainNode) -> str:
+    if isinstance(placement, TransportPlacement) and placement.connector_gap_id:
+        return placement.connector_gap_id
+    return _stable_id(
+        "occurrence", day_id, placement_identity(placement),
+        getattr(placement, "meal_type", None),
+        getattr(placement, "planned_start", None),
+        getattr(placement, "planned_end", None),
+    )
+
+
 class DayComposition(StrictModel):
     day_id: str = Field(min_length=1)
     day: int = Field(ge=1)
@@ -372,53 +375,38 @@ class ItineraryCompositionDraft(StrictModel):
         ids = [day.day_id for day in self.days]
         if len(ids) != len(set(ids)):
             raise ValueError("composition day ids must be unique")
-        physical_days: dict[str, list[str]] = {}
         for day in self.days:
-            placement_keys = [
-                key
-                for placement in day.placements
-                if (key := placement_identity(placement)) is not None
-            ]
-            if len(placement_keys) != len(set(placement_keys)):
-                raise ValueError(
-                    "an entry cannot be placed more than once in the same day"
-                )
+            occurrences = set()
+            meals = set()
             for placement in day.placements:
-                if placement.placement_kind in {"visit", "dining"}:
-                    physical_days.setdefault(placement_identity(placement), []).append(
-                        day.day_id
-                    )
                 start = getattr(placement, "planned_start", None)
                 end = getattr(placement, "planned_end", None)
                 if (start is None) != (end is None):
                     raise ValueError("scheduled placement requires both start and end")
-                if start is not None and (
-                    end <= start or start.date() != day.date or end.date() != day.date
-                ):
-                    raise ValueError(
-                        "placement schedule must be ordered within its local day"
-                    )
+                if start is not None:
+                    if start.utcoffset() is None or end.utcoffset() is None:
+                        raise ValueError("placement schedule requires a timezone UTC offset on both ends")
+                    if end <= start or start.date() != day.date or end.date() != day.date:
+                        raise ValueError("placement schedule must be ordered within its local day")
+                key = placement_identity(placement)
+                if key is not None:
+                    occurrence = placement_occurrence_key(day.day_id, placement)
+                    if occurrence in occurrences:
+                        raise ValueError("an entry cannot be placed more than once at the same time")
+                    occurrences.add(occurrence)
+                    if placement.placement_kind == "dining":
+                        meal = (key, placement.meal_type)
+                        if meal in meals:
+                            raise ValueError("duplicate restaurant for the same meal in one day")
+                        meals.add(meal)
             scheduled = [
-                placement
-                for placement in day.placements
+                placement for placement in day.placements
                 if placement.placement_kind in {"visit", "dining"}
-                and getattr(placement, "planned_start", None) is not None
+                and placement.planned_start is not None
             ]
-            transfer = timedelta(minutes=MIN_LOCAL_TRANSFER_MINUTES)
             for left, right in zip(scheduled, scheduled[1:]):
-                if right.planned_start - left.planned_end < transfer:
-                    raise ValueError(
-                        "adjacent scheduled placements must follow itinerary order and "
-                        f"leave a {MIN_LOCAL_TRANSFER_MINUTES}-minute transfer window"
-                    )
-        repeated_physical = {
-            key: day_ids for key, day_ids in physical_days.items() if len(day_ids) > 1
-        }
-        if repeated_physical:
-            raise ValueError(
-                "a visit/dining entry cannot be placed more than once in one itinerary: "
-                f"{repeated_physical}"
-            )
+                if right.planned_start < left.planned_end:
+                    raise ValueError("scheduled placements overlap or do not follow itinerary order")
         return self
 
 
@@ -437,8 +425,6 @@ class LocalConnectorGap(StrictModel):
     day_id: str = Field(min_length=1)
     day_date: date
     destination_id: str = Field(min_length=1)
-    # ``placement_identity`` of the two adjacent stops: ``candidate:{id}`` for an
-    # admitted candidate, ``authored:{city}:{name}`` for an authored entry.
     from_entry_key: str = Field(min_length=1)
     from_place_id: str = Field(min_length=1)
     to_entry_key: str = Field(min_length=1)
@@ -682,79 +668,6 @@ def drop_authored_places(
     return composition.model_copy(update={"days": days})
 
 
-def drop_placements_the_traveller_has_already_left(
-    composition: ItineraryCompositionDraft,
-    catalog: RecommendationCatalog,
-) -> ItineraryCompositionDraft:
-    """Drop a local stop that begins after the traveller has already left the city.
-
-    ``validate_long_distance_anchor_day_order`` refuses a day whose local stop ends
-    after the departing anchor departs, and that refusal costs a whole composition
-    repair round — it is the most frequent single way this shape fails.
-
-    **The boundary between what may be normalized and what must still fail is the
-    whole point of this function**, and it is the same boundary drawn for empty
-    transport entries:
-
-    * ``planned_start >= departure_at`` — the stop lies **entirely** after the
-      train left.  It cannot happen at all; there is nothing inside it to preserve
-      and dropping it invents nothing.  Deterministic, so it is dropped here.
-    * ``planned_start < departure_at < planned_end`` — the stop **straddles** the
-      departure.  Trimming it would author a new ``planned_end`` the model never
-      wrote (turning "an error" into "a wrong itinerary" is worse
-      than the error), and keeping it asserts the traveller is in two places at
-      once.  Genuinely ambiguous, so it still fails the gate.
-
-    **Why this cannot live with the payload normalizers** in
-    ``itinerary_planner.parse_itinerary_composition``: those run on the raw,
-    not-yet-validated dict, and ``departure_at`` is not in that dict — it belongs to
-    the *admitted* ``TransportCandidate`` and is only reachable through the catalog.
-    Written there, the rule would select nothing and read like a guard that isn't
-    one.
-
-    A day left with no placement at all is not an itinerary, so that fails instead —
-    same rule as :func:`drop_authored_places` right above.
-    """
-    index = catalog.candidate_index()
-    days: list[DayComposition] = []
-    changed = False
-    for day in composition.days:
-        departures = [
-            candidate.departure_at
-            for placement in day.placements
-            if placement.placement_kind == "transport" and placement.candidate_id
-            for candidate in [index.get(placement.candidate_id)]
-            if isinstance(candidate, TransportCandidate)
-            and candidate.transport_class == "long_distance"
-            and candidate.departure_at is not None
-            and long_distance_anchor_day_role(candidate, day, composition.days)
-            == "departs"
-        ]
-        if not departures:
-            days.append(day)
-            continue
-        # The earliest departure is the one that ends the traveller's time here.
-        departure_at = min(departures)
-        placements = [
-            placement
-            for placement in day.placements
-            if not (
-                placement.placement_kind in {"visit", "dining"}
-                and placement.planned_start is not None
-                and placement.planned_start >= departure_at
-            )
-        ]
-        if len(placements) != len(day.placements):
-            changed = True
-        if not placements:
-            raise ItineraryCompositionError(
-                f"day {day.day_id} has no placement left once stops beginning after "
-                f"the traveller leaves {departure_at.isoformat()} are dropped"
-            )
-        days.append(day.model_copy(update={"placements": placements}))
-    return composition.model_copy(update={"days": days}) if changed else composition
-
-
 def long_distance_anchor_day_role(
     candidate: TransportCandidate,
     day: DayComposition,
@@ -936,7 +849,23 @@ def validate_placement_skeleton(
     required_long_distance_legs: Optional[list["ProviderRouteLegScope"]] = None,
     required_leg_scope_ids: Optional[dict[str, str]] = None,
 ) -> None:
-    """Validate physical ordering before any local connector research exists."""
+    _validate_placement_content(
+        skeleton, catalog, allow_local_connectors=False,
+        required_candidate_kinds=required_candidate_kinds,
+        required_long_distance_legs=required_long_distance_legs,
+        required_leg_scope_ids=required_leg_scope_ids,
+    )
+
+
+def _validate_placement_content(
+    skeleton: ItineraryCompositionDraft,
+    catalog: RecommendationCatalog,
+    *,
+    allow_local_connectors: bool,
+    required_candidate_kinds: Optional[set[str]] = None,
+    required_long_distance_legs: Optional[list["ProviderRouteLegScope"]] = None,
+    required_leg_scope_ids: Optional[dict[str, str]] = None,
+) -> None:
     candidates = _passed_candidates(catalog)
     expected_dates = [
         skeleton.days[0].date + timedelta(days=index)
@@ -970,6 +899,8 @@ def validate_placement_skeleton(
         for position, placement in enumerate(day.placements):
             if is_authored_placement(placement):
                 if placement.placement_kind == "transport":
+                    if allow_local_connectors:
+                        continue
                     raise ItineraryCompositionError(
                         "placement skeleton cannot contain a local transport connector"
                     )
@@ -1024,6 +955,8 @@ def validate_placement_skeleton(
                         "placement skeleton transport references another candidate kind"
                     )
                 if candidate.transport_class != "long_distance":
+                    if allow_local_connectors:
+                        continue
                     raise ItineraryCompositionError(
                         "placement skeleton cannot contain a local transport candidate"
                     )
@@ -1078,17 +1011,11 @@ def validate_placement_skeleton(
     # date is covered once: the date-only view lets the outbound satisfy the
     # return's service_date and the return never reaches the itinerary.
     if required_long_distance_legs:
-        placed_service_dates: set[date] = set()
-        placed_scope_ids: set[str] = set()
-        for cid in placed_long_distance:
-            c = candidates.get(cid)
-            if isinstance(c, TransportCandidate):
-                if c.provider_evidence_scope_id:
-                    placed_scope_ids.add(c.provider_evidence_scope_id)
-                if c.departure_at is not None:
-                    placed_service_dates.add(c.departure_at.date())
-                    if c.arrival_at is not None:
-                        placed_service_dates.add(c.arrival_at.date())
+        selected_services = [candidates[cid] for cid in placed_long_distance]
+        placed_scope_ids = {
+            candidate.provider_evidence_scope_id for candidate in selected_services
+            if candidate.provider_evidence_scope_id
+        }
         missing_legs: list[str] = []
         for leg in required_long_distance_legs:
             leg_key = f"{leg.leg_role}@{leg.service_date.isoformat()}"
@@ -1100,7 +1027,12 @@ def validate_placement_skeleton(
             if leg_scope_id is not None:
                 if leg_scope_id not in placed_scope_ids:
                     missing_legs.append(leg_key)
-            elif leg.service_date not in placed_service_dates:
+            elif not any(
+                candidate.from_endpoint.place_id == leg.from_place_id
+                and candidate.to_endpoint.place_id == leg.to_place_id
+                and candidate.departure_at.date() == leg.service_date
+                for candidate in selected_services
+            ):
                 missing_legs.append(leg_key)
         if missing_legs:
             raise ItineraryCompositionError(
@@ -1146,9 +1078,6 @@ def day_chain_node_pairs(
     ``validate_placement_skeleton`` rejects a local connector outright — so the
     nodes can be read off ``placement_kind`` alone, with no catalog.
 
-    Two anchors on one Day is already a skeleton contract error, so such a pair is
-    not offered a connector here.
-
     One definition, two readers: this one and
     :func:`day_connector_adjacencies`, which adds the endpoints and times.
     """
@@ -1171,13 +1100,7 @@ def day_chain_node_pairs(
             nodes.insert(0, morning)
         if evening is not None:
             nodes.append(evening)
-    return [
-        (left, right)
-        for left, right in zip(nodes, nodes[1:])
-        if not (
-            left.placement_kind == "transport" and right.placement_kind == "transport"
-        )
-    ]
+    return list(zip(nodes, nodes[1:]))
 
 
 def selected_lodging_by_night(
@@ -1345,17 +1268,11 @@ def day_connector_adjacencies(
             raise ItineraryCompositionError(
                 f"day {day.day_id} adjacency requires stable endpoint place ids"
             )
-        if from_place_id == to_place_id and (
-            left_anchor is not None
-            or right_anchor is not None
-            or isinstance(left, LodgingBoundary)
-            or isinstance(right, LodgingBoundary)
-        ):
-            # The stop is at the station — dinner in the departure hall before
-            # boarding.  There is no journey to route, so there is no gap, and the
-            # chain check is already satisfied because the two endpoints agree.
-            # Two *stops* sharing one place id stays an error: that is a modelling
-            # mistake, not a real shape.
+        if from_place_id == to_place_id:
+            if departure_time > latest_arrival_time:
+                raise ItineraryCompositionError(
+                    f"day {day.day_id} same-place occurrences overlap"
+                )
             continue
         adjacencies.append(
             (
@@ -1380,6 +1297,8 @@ def extract_local_connector_gaps(
     ] = None,
     required_flexible_mode_pairs: Optional[set[tuple[str, str]]] = None,
     required_candidate_kinds: Optional[set[str]] = None,
+    required_long_distance_legs: Optional[list["ProviderRouteLegScope"]] = None,
+    required_leg_scope_ids: Optional[dict[str, str]] = None,
     default_walk_day_ids: Optional[set[str]] = None,
 ) -> list[LocalConnectorGap]:
     """Derive exact ordered adjacency gaps from a validated placement skeleton."""
@@ -1387,6 +1306,8 @@ def extract_local_connector_gaps(
         skeleton,
         catalog,
         required_candidate_kinds=required_candidate_kinds,
+        required_long_distance_legs=required_long_distance_legs,
+        required_leg_scope_ids=required_leg_scope_ids,
     )
     candidates = _passed_candidates(catalog)
     requests = flexible_mode_requests or {}
@@ -1401,19 +1322,15 @@ def extract_local_connector_gaps(
             departure_time,
             latest_arrival_time,
         ) in day_connector_adjacencies(day, candidates, skeleton):
-            left_key = placement_identity(left)
-            right_key = placement_identity(right)
-            if latest_arrival_time - departure_time < timedelta(
-                minutes=MIN_LOCAL_TRANSFER_MINUTES
-            ):
-                # Name the pair and its window: an unordered or back-to-back
-                # chain is the one composition defect a stack trace cannot show.
+            left_key = placement_occurrence_key(day.day_id, left)
+            right_key = placement_occurrence_key(day.day_id, right)
+            if latest_arrival_time <= departure_time:
                 raise ItineraryCompositionError(
                     f"day {day.day_id} connector gap {left_key} -> {right_key} leaves "
                     f"{(latest_arrival_time - departure_time).total_seconds() / 60:.0f}min "
                     f"between {departure_time.isoformat()} and "
                     f"{latest_arrival_time.isoformat()}; "
-                    f"{MIN_LOCAL_TRANSFER_MINUTES}min required"
+                    "a positive transfer window is required"
                 )
             requested_modes = list(
                 dict.fromkeys(requests.get((left_key, right_key), []))
@@ -1478,7 +1395,8 @@ def connector_mode_requests_from_constraint_pack(
     actual_pairs: list[tuple[str, str]] = []
     for day in skeleton.days:
         actual_pairs.extend(
-            (placement_identity(left), placement_identity(right))
+            (placement_occurrence_key(day.day_id, left),
+             placement_occurrence_key(day.day_id, right))
             for left, right in day_chain_node_pairs(
                 day,
                 _passed_candidates(catalog) if catalog is not None else None,
@@ -1700,334 +1618,9 @@ def connector_candidate_quality_error(
             return "route_day_or_timezone_mismatch"
         if candidate.departure_at < gap.departure_time:
             return "route_departs_before_preceding_stop"
-    # Same code for both shapes, because it is the same journey fact: this route
-    # reaches the far end after the following stop was due to start.
-    # ``align_skeleton_to_provider_routes`` reads that code to decide whether the
-    # tentative downstream times may move, so splitting it in two would have hidden
-    # the duration-only half from the aligner.
     if connector_route_arrival(candidate, gap) > gap.latest_arrival_time:
         return "route_arrives_after_following_stop"
     return None
-
-
-def align_skeleton_to_provider_routes(
-    skeleton: ItineraryCompositionDraft,
-    catalog: RecommendationCatalog,
-    gaps: list[LocalConnectorGap],
-) -> ItineraryCompositionDraft:
-    """Shift tentative downstream times once an exact Provider route is known.
-
-    The skeleton is pre-delivery planning state, not a user mutation.  Only a
-    passed route whose sole topology error is arriving after the tentative next
-    stop may move that stop and the remaining scheduled placements.  One shift
-    per call keeps downstream connector gaps subject to a fresh deterministic
-    extraction and Provider check.
-    """
-    candidates = _passed_candidates(catalog)
-    routes = [
-        candidate
-        for candidate in candidates.values()
-        if isinstance(candidate, TransportCandidate)
-    ]
-    for gap in gaps:
-        options = [
-            candidate
-            for candidate in routes
-            if connector_candidate_quality_error(candidate, gap)
-            == "route_arrives_after_following_stop"
-        ]
-        if not options:
-            continue
-        options.sort(
-            key=lambda candidate: (
-                connector_route_arrival(candidate, gap),
-                candidate.duration_minutes,
-                candidate.candidate_id,
-            )
-        )
-        route = options[0]
-        route_arrival = connector_route_arrival(route, gap)
-        updated_days: list[DayComposition] = []
-        shifted = False
-        for day in skeleton.days:
-            if day.day_id != gap.day_id:
-                updated_days.append(day)
-                continue
-            placements = list(day.placements)
-            right_index = next(
-                (
-                    index
-                    for index, placement in enumerate(placements)
-                    if placement.placement_kind in {"visit", "dining"}
-                    and placement_identity(placement) == gap.to_entry_key
-                ),
-                None,
-            )
-            if right_index is None:
-                updated_days.append(day)
-                continue
-            right_start = getattr(placements[right_index], "planned_start", None)
-            if right_start is None or route_arrival <= right_start:
-                updated_days.append(day)
-                continue
-            delay = route_arrival - right_start
-            for index in range(right_index, len(placements)):
-                placement = placements[index]
-                if placement.placement_kind not in {"visit", "dining"}:
-                    continue
-                start = getattr(placement, "planned_start", None)
-                end = getattr(placement, "planned_end", None)
-                if start is None or end is None:
-                    continue
-                shifted_start = start + delay
-                shifted_end = end + delay
-                if shifted_start.date() != day.date or shifted_end.date() != day.date:
-                    return skeleton
-                placements[index] = placement.model_copy(
-                    update={
-                        "planned_start": shifted_start,
-                        "planned_end": shifted_end,
-                    }
-                )
-            updated_days.append(day.model_copy(update={"placements": placements}))
-            shifted = True
-        if shifted:
-            aligned = skeleton.model_copy(update={"days": updated_days})
-            try:
-                validate_placement_skeleton(aligned, catalog)
-            except ItineraryCompositionError:
-                # A measured route may consume slack that the model left between
-                # earlier stops and push a later visit past closing time.  Before
-                # spending another full model round, redistribute that *existing*
-                # slack across the whole Day while preserving order, durations,
-                # candidates and every published opening window.  This is a
-                # generic interval-scheduling operation; it authors no place or
-                # duration and refuses scheduled (timetable) local routes whose
-                # fixed departure cannot be shifted safely.
-                compacted = _compact_day_for_provider_routes(
-                    aligned,
-                    catalog,
-                    gaps,
-                    day_id=gap.day_id,
-                )
-                if compacted is None:
-                    raise
-                validate_placement_skeleton(compacted, catalog)
-                return compacted
-            return aligned
-    return skeleton
-
-
-def _duration_only_route_minutes(
-    gap: LocalConnectorGap,
-    candidates: Mapping[str, ResearchCandidate],
-) -> int:
-    """Smallest measured duration for an adjacency, or the contract minimum.
-
-    Fixed-timetable local routes are deliberately excluded: moving a stop around
-    one would also need to honor that route's departure clock, which is not a
-    duration-only compaction.  The caller treats their presence as non-compactable
-    instead of silently rewriting a timetable.
-    """
-
-    matching = [
-        candidate
-        for candidate in candidates.values()
-        if isinstance(candidate, TransportCandidate)
-        and candidate.transport_class != "long_distance"
-        and candidate.from_endpoint.place_id == gap.from_place_id
-        and candidate.to_endpoint.place_id == gap.to_place_id
-        and candidate.departure_at is None
-        and candidate.arrival_at is None
-        and connector_candidate_quality_error(candidate, gap)
-        in {None, "route_arrives_after_following_stop"}
-    ]
-    if not matching:
-        return MIN_LOCAL_TRANSFER_MINUTES
-    return min(candidate.duration_minutes for candidate in matching)
-
-
-def _compact_day_for_provider_routes(
-    skeleton: ItineraryCompositionDraft,
-    catalog: RecommendationCatalog,
-    gaps: list[LocalConnectorGap],
-    *,
-    day_id: str,
-) -> Optional[ItineraryCompositionDraft]:
-    """Fit one ordered Day around measured route durations and opening windows.
-
-    The model owns *what* is visited and for how long.  This function only moves
-    those existing windows: first pack backward from closing/departure limits,
-    then forward from an arrival anchor.  Returning ``None`` means the same set
-    of decisions is genuinely infeasible and must go back to semantic repair.
-    """
-
-    candidates = _passed_candidates(catalog)
-    day = next((item for item in skeleton.days if item.day_id == day_id), None)
-    if day is None:
-        return None
-    placements = list(day.placements)
-    physical_indices = [
-        index
-        for index, placement in enumerate(placements)
-        if placement.placement_kind in {"visit", "dining"}
-    ]
-    if not physical_indices:
-        return None
-    if any(
-        getattr(placements[index], "planned_start", None) is None
-        or getattr(placements[index], "planned_end", None) is None
-        for index in physical_indices
-    ):
-        return None
-
-    gap_by_pair = {
-        (gap.from_entry_key, gap.to_entry_key): gap
-        for gap in gaps
-        if gap.day_id == day_id
-    }
-
-    def entry_key(index: int) -> str:
-        placement = placements[index]
-        if placement.placement_kind == "transport":
-            return f"candidate:{placement.candidate_id}"
-        return placement_identity(placement)
-
-    def edge_minutes(left_index: int, right_index: int) -> int:
-        edge_gap = gap_by_pair.get((entry_key(left_index), entry_key(right_index)))
-        if edge_gap is None:
-            return MIN_LOCAL_TRANSFER_MINUTES
-        # A fixed local timetable cannot be compacted as a duration-only edge.
-        scheduled = [
-            candidate
-            for candidate in candidates.values()
-            if isinstance(candidate, TransportCandidate)
-            and candidate.transport_class != "long_distance"
-            and candidate.from_endpoint.place_id == edge_gap.from_place_id
-            and candidate.to_endpoint.place_id == edge_gap.to_place_id
-            and candidate.departure_at is not None
-            and candidate.arrival_at is not None
-        ]
-        if scheduled:
-            raise ItineraryCompositionError(
-                "fixed-timetable local connector requires semantic rescheduling"
-            )
-        return _duration_only_route_minutes(edge_gap, candidates)
-
-    try:
-        # Preserve the model's last end unless a closing/departure boundary is
-        # earlier.  Each preceding stop is then moved only as far back as the
-        # measured route to its successor requires.
-        successor_start: Optional[datetime] = None
-        successor_index: Optional[int] = None
-        after_last = range(physical_indices[-1] + 1, len(placements))
-        outgoing_index = next(
-            (
-                index
-                for index in after_last
-                if placements[index].placement_kind == "transport"
-                and isinstance(
-                    candidates.get(placements[index].candidate_id), TransportCandidate
-                )
-                and candidates[placements[index].candidate_id].transport_class
-                == "long_distance"
-            ),
-            None,
-        )
-        if outgoing_index is not None:
-            outgoing = candidates[placements[outgoing_index].candidate_id]
-            successor_start = outgoing.departure_at - timedelta(
-                minutes=planned_boarding_buffer_minutes(outgoing.selected_mode)
-            )
-            successor_index = outgoing_index
-
-        for index in reversed(physical_indices):
-            placement = placements[index]
-            start = placement.planned_start
-            end = placement.planned_end
-            assert start is not None and end is not None
-            duration = end - start
-            latest_end = end
-            if successor_start is not None and successor_index is not None:
-                latest_end = min(
-                    latest_end,
-                    successor_start
-                    - timedelta(minutes=edge_minutes(index, successor_index)),
-                )
-            candidate = candidates.get(placement.candidate_id)
-            if isinstance(candidate, (VisitCandidate, DiningCandidate)):
-                window = latest_opening_window(
-                    candidate.opening_window, day.date, latest_end, duration
-                )
-                if window is None:
-                    return None
-                shifted_start, shifted_end = window
-            else:
-                shifted_end = latest_end
-                shifted_start = shifted_end - duration
-                if shifted_start.date() != day.date:
-                    return None
-            placements[index] = placement.model_copy(
-                update={
-                    "planned_start": shifted_start,
-                    "planned_end": shifted_end,
-                    "duration_minutes": max(1, round(duration.total_seconds() / 60)),
-                }
-            )
-            successor_start = shifted_start
-            successor_index = index
-
-        # The backward pass can borrow too much time before an arriving anchor.
-        # Push forward from that fixed arrival just enough to restore every
-        # measured edge; subsequent opening-window validation remains authoritative.
-        before_first = range(physical_indices[0] - 1, -1, -1)
-        incoming_index = next(
-            (
-                index
-                for index in before_first
-                if placements[index].placement_kind == "transport"
-                and isinstance(
-                    candidates.get(placements[index].candidate_id), TransportCandidate
-                )
-                and candidates[placements[index].candidate_id].transport_class
-                == "long_distance"
-            ),
-            None,
-        )
-        predecessor_end: Optional[datetime] = None
-        predecessor_index: Optional[int] = None
-        if incoming_index is not None:
-            incoming = candidates[placements[incoming_index].candidate_id]
-            predecessor_end = incoming.arrival_at + timedelta(
-                minutes=planned_alighting_buffer_minutes(incoming.selected_mode)
-            )
-            predecessor_index = incoming_index
-        for index in physical_indices:
-            placement = placements[index]
-            start = placement.planned_start
-            end = placement.planned_end
-            assert start is not None and end is not None
-            if predecessor_end is not None and predecessor_index is not None:
-                earliest_start = predecessor_end + timedelta(
-                    minutes=edge_minutes(predecessor_index, index)
-                )
-                if start < earliest_start:
-                    delay = earliest_start - start
-                    start += delay
-                    end += delay
-                    placements[index] = placement.model_copy(
-                        update={"planned_start": start, "planned_end": end}
-                    )
-            predecessor_end = end
-            predecessor_index = index
-    except ItineraryCompositionError:
-        return None
-
-    updated_day = day.model_copy(update={"placements": placements})
-    updated_days = [
-        updated_day if item.day_id == day_id else item for item in skeleton.days
-    ]
-    return skeleton.model_copy(update={"days": updated_days})
 
 
 def connector_gap_rejection_reasons(
@@ -2086,13 +1679,22 @@ def materialize_skeleton_connectors(
     catalog: RecommendationCatalog,
     gaps: list[LocalConnectorGap],
     authored_routes: Mapping[str, AuthoredRoute],
+    *,
+    required_candidate_kinds: Optional[set[str]] = None,
+    required_long_distance_legs: Optional[list["ProviderRouteLegScope"]] = None,
+    required_leg_scope_ids: Optional[dict[str, str]] = None,
 ) -> ItineraryCompositionDraft:
     """Insert one connector per skeleton adjacency.
 
     A quality-passed Provider route always wins.  Where the catalog has none,
     the adjacency takes the authored route supplied for that gap id.
     """
-    validate_placement_skeleton(skeleton, catalog)
+    validate_placement_skeleton(
+        skeleton, catalog,
+        required_candidate_kinds=required_candidate_kinds,
+        required_long_distance_legs=required_long_distance_legs,
+        required_leg_scope_ids=required_leg_scope_ids,
+    )
     candidates = _passed_candidates(catalog)
     gaps_by_pair = {
         (gap.day_id, gap.from_entry_key, gap.to_entry_key): gap for gap in gaps
@@ -2160,13 +1762,15 @@ def materialize_skeleton_connectors(
         # after the leg.
         adjacencies = day_connector_adjacencies(day, candidates, skeleton)
         successor = {
-            placement_identity(left): right for left, right, *_endpoints in adjacencies
+            placement_occurrence_key(day.day_id, left): right
+            for left, right, *_endpoints in adjacencies
         }
         updated: list[CompositionPlacement] = []
 
         def append_connector(left: ChainNode, right: ChainNode) -> None:
             gap = gaps_by_pair.get(
-                (day.day_id, placement_identity(left), placement_identity(right))
+                (day.day_id, placement_occurrence_key(day.day_id, left),
+                 placement_occurrence_key(day.day_id, right))
             )
             if gap is None:
                 raise ItineraryCompositionError(
@@ -2174,9 +1778,9 @@ def materialize_skeleton_connectors(
                 )
             route = selected[gap.gap_id]
             updated.append(
-                TransportPlacement(authored_route=route)
+                TransportPlacement(authored_route=route, connector_gap_id=gap.gap_id)
                 if isinstance(route, AuthoredRoute)
-                else TransportPlacement(candidate_id=route.candidate_id)
+                else TransportPlacement(candidate_id=route.candidate_id, connector_gap_id=gap.gap_id)
             )
             consumed.add(gap.gap_id)
 
@@ -2185,7 +1789,7 @@ def materialize_skeleton_connectors(
                 append_connector(left, right)
         for placement in day.placements:
             updated.append(placement)
-            next_node = successor.get(placement_identity(placement))
+            next_node = successor.get(placement_occurrence_key(day.day_id, placement))
             if next_node is None:
                 continue
             append_connector(placement, next_node)
@@ -2193,7 +1797,12 @@ def materialize_skeleton_connectors(
     if consumed != set(selected):
         raise ItineraryCompositionError("connector gaps do not match the skeleton")
     composition = skeleton.model_copy(update={"days": updated_days})
-    validate_itinerary_transport_topology(composition, catalog)
+    validate_itinerary_transport_topology(
+        composition, catalog,
+        required_candidate_kinds=required_candidate_kinds,
+        required_long_distance_legs=required_long_distance_legs,
+        required_leg_scope_ids=required_leg_scope_ids,
+    )
     return composition
 
 
@@ -2270,56 +1879,22 @@ def _validate_transport_chain(
 def validate_itinerary_transport_topology(
     composition: ItineraryCompositionDraft,
     catalog: RecommendationCatalog,
+    *,
+    required_candidate_kinds: Optional[set[str]] = None,
+    required_long_distance_legs: Optional[list["ProviderRouteLegScope"]] = None,
+    required_leg_scope_ids: Optional[dict[str, str]] = None,
 ) -> None:
-    """Require executable typed transport chains around physical itinerary stops.
-
-    This also re-checks the travel-day rule (a stop sits on exactly one side of
-    the long-distance anchor).  Every path that produces a composition ends up
-    here, which the skeleton validator cannot claim: the composition-repair pass
-    rewrites a whole composition and only ever called this function, so the rule
-    had a door standing open on it.
-    """
+    """Validate required content and executable adjacent transport chains."""
+    _validate_placement_content(
+        composition, catalog, allow_local_connectors=True,
+        required_candidate_kinds=required_candidate_kinds,
+        required_long_distance_legs=required_long_distance_legs,
+        required_leg_scope_ids=required_leg_scope_ids,
+    )
     candidates = _passed_candidates(catalog)
-    for day in composition.days:
-        physical_placements: list[tuple[int, PhysicalPlacement]] = []
-        anchors: list[tuple[int, TransportCandidate]] = []
-        for position, placement in enumerate(day.placements):
-            if placement.placement_kind in {"visit", "dining"}:
-                candidate = candidates.get(placement.candidate_id)
-                if isinstance(candidate, (VisitCandidate, DiningCandidate)):
-                    _validate_stop_opening_window(
-                        day=day, placement=placement, candidate=candidate
-                    )
-                physical_placements.append((position, placement))
-                continue
-            anchor = _long_distance_anchor(placement, candidates)
-            if anchor is not None:
-                anchors.append((position, anchor))
-        if physical_placements and anchors:
-            validate_long_distance_anchor_day_order(
-                day, anchors, physical_placements, composition.days
-            )
-    admitted_long_distance_ids = {
-        candidate_id
-        for candidate_id, candidate in candidates.items()
-        if isinstance(candidate, TransportCandidate)
-        and candidate.transport_class == "long_distance"
-    }
-    placed_transport_ids = {
-        placement.candidate_id
-        for day in composition.days
-        for placement in day.placements
-        if placement.placement_kind == "transport" and placement.candidate_id
-    }
-    if admitted_long_distance_ids and not (
-        admitted_long_distance_ids & placed_transport_ids
-    ):
-        raise ItineraryCompositionError(
-            "itinerary must include one admitted long-distance transport anchor"
-        )
 
     long_distance_service_groups: dict[
-        tuple[str, Optional[date], Optional[date]], list[str]
+        tuple[str, Optional[date], Optional[date]], set[str]
     ] = {}
     for day in composition.days:
         for placement in day.placements:
@@ -2356,9 +1931,7 @@ def validate_itinerary_transport_topology(
                 departure_date,
                 arrival_date,
             )
-            long_distance_service_groups.setdefault(group, []).append(
-                candidate.candidate_id
-            )
+            long_distance_service_groups.setdefault(group, set()).add(candidate.candidate_id)
     competing_groups = {
         group: candidate_ids
         for group, candidate_ids in long_distance_service_groups.items()
@@ -2412,32 +1985,6 @@ def validate_itinerary_transport_topology(
                 require_local_connector=False,
             )
             continue
-
-        if (
-            not any(
-                day.placements[index].placement_kind in {"visit", "dining"}
-                for index in node_indexes
-            )
-            and morning is None
-            and evening is None
-            and any(
-                placement.placement_kind == "transport"
-                and (
-                    placement.authored_route is not None
-                    or (
-                        isinstance(
-                            candidates.get(placement.candidate_id), TransportCandidate
-                        )
-                        and candidates[placement.candidate_id].transport_class
-                        != "long_distance"
-                    )
-                )
-                for placement in day.placements
-            )
-        ):
-            raise ItineraryCompositionError(
-                f"day {day.day_id} local transport requires a physical itinerary stop"
-            )
 
         def _inbound(index: int) -> str:
             """Where the traveller arrives at this node."""
@@ -2606,11 +2153,10 @@ def _authored_transport_leg(
     from_endpoint = _endpoint(previous, leaving=True)
     to_endpoint = _endpoint(following, leaving=False)
     leg_id = _stable_id(
-        "transport",
-        day.day_id,
-        from_endpoint.place_id,
-        to_endpoint.place_id,
-        route.mode,
+        "transport", placement.connector_gap_id or (
+            placement_occurrence_key(day.day_id, previous),
+            placement_occurrence_key(day.day_id, following),
+        ), route.mode,
     )
     return TransportLeg(
         transport_leg_id=leg_id,
@@ -2934,6 +2480,9 @@ def materialize_trip_workspace(
     composition_mutations: list[CompositionMutation],
     user_input_anchors: Optional[list[UserInputAnchor]] = None,
     reference_services: Optional[list[ProviderReferenceService]] = None,
+    required_candidate_kinds: Optional[set[str]] = None,
+    required_long_distance_legs: Optional[list["ProviderRouteLegScope"]] = None,
+    required_leg_scope_ids: Optional[dict[str, str]] = None,
 ) -> TripWorkspaceV2:
     candidates = _passed_candidates(catalog)
     used_ids = {
@@ -2947,7 +2496,12 @@ def materialize_trip_workspace(
         raise ItineraryCompositionError(
             f"composition references candidates that did not pass admission: {sorted(missing)}"
         )
-    validate_itinerary_transport_topology(composition, catalog)
+    validate_itinerary_transport_topology(
+        composition, catalog,
+        required_candidate_kinds=required_candidate_kinds,
+        required_long_distance_legs=required_long_distance_legs,
+        required_leg_scope_ids=required_leg_scope_ids,
+    )
 
     visits: list[VisitStop] = []
     dining: list[DiningStop] = []
@@ -2957,6 +2511,7 @@ def materialize_trip_workspace(
     composition_day_dates = {day.date for day in composition.days}
     deferred_transport_projections: dict[date, list[TimelineEntryRef]] = {}
     slots: list[SelectionSlot] = []
+    materialized_long_distance: set[str] = set()
     destination_names = _controlled_destination_names(user_input_anchors)
     # Every visit candidate this composition already stands a stop on, collected
     # before the loop because a Day's alternatives must exclude stops placed on
@@ -2999,7 +2554,7 @@ def materialize_trip_workspace(
                 authored = _located_authored_place(placement)
                 if placement.placement_kind == "visit":
                     item_id = _stable_id(
-                        "visit", day.day_id, authored.resolved_place_id
+                        "visit", placement_occurrence_key(day.day_id, placement)
                     )
                     visits.append(
                         VisitStop(
@@ -3028,10 +2583,7 @@ def materialize_trip_workspace(
                     )
                 else:
                     item_id = _stable_id(
-                        "dining",
-                        day.day_id,
-                        placement.meal_type,
-                        authored.resolved_place_id,
+                        "dining", placement_occurrence_key(day.day_id, placement),
                     )
                     dining.append(
                         DiningStop(
@@ -3066,13 +2618,11 @@ def materialize_trip_workspace(
                     raise ItineraryCompositionError(
                         "visit placement references another candidate kind"
                     )
-                item_id = _stable_id("visit", day.day_id, candidate.candidate_id)
-                # The slot id names the *place in the plan*, not the candidate
-                # standing in it, so swapping the candidate leaves the slot
-                # identity alone — the same reason a dining slot keys on
-                # ``(day_id, meal_type)``.  Here the plan position is the Day plus
-                # the placement index.
-                slot_id = _stable_id("slot_visit", day.day_id, str(placement_index))
+                item_id = _stable_id("visit", placement_occurrence_key(day.day_id, placement))
+                visit_position = sum(
+                    item.placement_kind == "visit" for item in day.placements[:placement_index]
+                )
+                slot_id = _stable_id("slot_visit", day.day_id, visit_position)
                 eligible = [
                     item
                     for item in candidates.values()
@@ -3129,7 +2679,7 @@ def materialize_trip_workspace(
                         "dining placement does not match candidate meal domain"
                     )
                 item_id = _stable_id(
-                    "dining", day.day_id, placement.meal_type, candidate.candidate_id
+                    "dining", placement_occurrence_key(day.day_id, placement)
                 )
                 slot_id = _stable_id("slot_dining", day.day_id, placement.meal_type)
                 eligible = [
@@ -3186,10 +2736,14 @@ def materialize_trip_workspace(
                     raise ItineraryCompositionError(
                         "transport placement references another candidate kind"
                     )
+                if candidate.transport_class == "long_distance":
+                    if candidate.candidate_id in materialized_long_distance:
+                        continue
+                    materialized_long_distance.add(candidate.candidate_id)
                 leg_id = (
                     _stable_id("transport", candidate.candidate_id)
                     if candidate.transport_class == "long_distance"
-                    else _stable_id("transport", day.day_id, candidate.candidate_id)
+                    else _stable_id("transport", placement_occurrence_key(day.day_id, placement))
                 )
                 transport.append(
                     TransportLeg(

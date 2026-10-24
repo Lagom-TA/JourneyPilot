@@ -20,6 +20,7 @@ from pydantic_core import PydanticCustomError
 
 from .candidate_discovery import CandidateDiscoveryRecord
 from .candidate_intent import CandidateIntentMatch
+from .intent_check import EntityIntentCheck
 from .candidate_ranking import CandidateRankingScore
 from .candidate_selection import CandidateSelectionPlan
 from .composition_mutation import CompositionMutation
@@ -2643,6 +2644,7 @@ class TripWorkspaceV2(StrictModel):
     recommendation_catalog: RecommendationCatalog
     intent_contract_snapshot: IntentContractSnapshot
     intent_coverage_report: Optional[IntentCoverageReport] = None
+    entity_intent_checks: List[EntityIntentCheck] = Field(default_factory=list)
     composition_mutations: List[CompositionMutation] = Field(default_factory=list)
     candidate_selection_plan: CandidateSelectionPlan
     user_input_anchors: List[UserInputAnchor] = Field(default_factory=list)

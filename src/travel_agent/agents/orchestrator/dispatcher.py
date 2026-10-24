@@ -19,6 +19,7 @@ from langchain_core.runnables import RunnableConfig
 
 from ...entities.state import TravelAgentState
 from ...workflows.run_deadline import observe_run_deadline
+from ...workflows.composition_repair import composition_repair_budget_exhausted
 from ..utils import strip_round_suffix
 
 logger = logging.getLogger(__name__)
@@ -74,8 +75,18 @@ async def dispatcher_node(
     # hard promise that no new research Worker starts after minute six.
     # Candidate Gate still owns scoped content classification.
     deadline = state.run_deadline
-    if deadline is not None:
-        observed_deadline, observation = observe_run_deadline(deadline)
+    observed_deadline, observation = observe_run_deadline(deadline) if deadline is not None else (None, None)
+    if (
+        state.composition_failure_context
+        and any(
+            strip_round_suffix(agent) == "itinerary_planner" and status == "failed"
+            for agent, status in state.agent_status.items()
+        )
+        and not composition_repair_budget_exhausted(state)
+        and (observation is None or not observation.composition_closed)
+    ):
+        return {"next_agent": "candidate_gate"}
+    if observation is not None:
         deadline_update: Dict[str, Any] = {"run_deadline": observed_deadline}
         if observation.research_closed:
             composition_step = _composition_step(plan, step)

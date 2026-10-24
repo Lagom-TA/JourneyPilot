@@ -15,6 +15,8 @@ from ..entities.composition_rules import (
 )
 from ..entities.delivery_bundle import TripWorkspaceV2
 from ..entities.candidate_selection import CandidateSelectionRole
+from ..entities.candidate_intent import IntentMatchStatus
+from .intent_requirement_check import check_final_entities, requirement_check_objects
 from ..entities.intent_coverage import (
     CoverageEntityRef,
     IntentCoverageItem,
@@ -35,6 +37,7 @@ from ..entities.intent_spec import (
 
 def _entity_rows(workspace: TripWorkspaceV2) -> list[dict]:
     candidate_index = workspace.recommendation_catalog.candidate_index()
+    objects = {obj.entity_id: obj for obj in requirement_check_objects(workspace)}
     day_context = {
         day.day_id: (day.day, day.destination_id)
         for day in workspace.itinerary.day_plans
@@ -62,6 +65,7 @@ def _entity_rows(workspace: TripWorkspaceV2) -> list[dict]:
             candidate = candidate_index.get(entity.lineage.candidate_id)
             rows.append(
                 {
+                    **objects[entity_id].model_dump(),
                     "kind": kind,
                     "entity_id": entity_id,
                     "day_id": day_id,
@@ -214,6 +218,7 @@ def _evaluate_rule(
     day_number: dict[str, int],
     destination_ids: set[str],
     candidate_labels: dict[str, str],
+    entity_checks: dict[str, IntentMatchStatus],
 ) -> tuple[IntentCoverageStatus, list[dict], list[int], list[int]]:
     kind = _domain_kind(rule)
     scoped = [row for row in rows if kind is None or row["kind"] == kind]
@@ -221,12 +226,16 @@ def _evaluate_rule(
     unknown = [row for row in scoped if row["candidate_id"] in unknown_candidates]
     all_days = sorted(day_number.values())
     if rule.rule_kind is CompositionRuleKind.MUST_NOT_PLACE:
-        violated = [row for row in scoped if row["candidate_id"] in violated_candidates]
+        violated = [row for row in scoped
+                    if entity_checks.get(row["entity_id"]) is IntentMatchStatus.VIOLATED]
+        unchecked = [row for row in scoped
+                     if entity_checks.get(row["entity_id"], IntentMatchStatus.UNKNOWN)
+                     is IntentMatchStatus.UNKNOWN]
         return (
-            IntentCoverageStatus.UNSATISFIED
-            if violated
+            IntentCoverageStatus.UNSATISFIED if violated
+            else IntentCoverageStatus.UNVERIFIABLE if unchecked
             else IntentCoverageStatus.SATISFIED,
-            violated,
+            violated or unchecked,
             [],
             [],
         )
@@ -451,6 +460,7 @@ def evaluate_intent_fidelity(
     for rule in rules:
         rules_by_intent[rule.intent_id].append(rule)
     rows = _entity_rows(workspace)
+    entity_checks = check_final_entities(workspace, intent_spec)
     selected_candidate_ids = (
         workspace.candidate_selection_plan.composition_candidate_ids()
     )
@@ -510,6 +520,8 @@ def evaluate_intent_fidelity(
                     day_number=day_number,
                     destination_ids=destination_ids,
                     candidate_labels=candidate_labels,
+                    entity_checks={check.entity_id: check.status for check in entity_checks
+                                   if check.intent_id == intent.intent_id},
                 ),
             )
             for rule in intent_rules
@@ -603,7 +615,7 @@ def evaluate_intent_fidelity(
             }
         )
         hard = intent.strength is IntentStrength.HARD
-        never_violate = any(
+        never_violate = status is IntentCoverageStatus.UNSATISFIED and any(
             rule.policy_on_failure == "never_violate" for rule in failed_rules
         )
         blocking = (
@@ -653,7 +665,8 @@ def evaluate_intent_fidelity(
             if failed_rules
             else (intent_rules[0] if intent_rules else None)
         )
-        reason = _gap_reason(primary_rule, status)
+        reason = ("intent_evidence_unavailable" if status is IntentCoverageStatus.UNVERIFIABLE
+                  else _gap_reason(primary_rule, status))
         retry_target = _retry_target(
             primary_rule,
             any_catalog_match=bool(matched_by_intent[intent.intent_id]),
@@ -758,6 +771,7 @@ def revalidate_workspace_intent(
     rules_by_id = {rule.rule_id: rule for rule in rules}
     if any(
         rules_by_id[rule_id].policy_on_failure == "never_violate"
+        and gap.reason != "intent_evidence_unavailable"
         for gap in gaps
         for rule_id in gap.violated_rule_ids
     ):

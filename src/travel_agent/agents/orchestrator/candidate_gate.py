@@ -51,7 +51,6 @@ from ...entities.provider_evidence import (
 from ...entities.itinerary_composition_v2 import (
     ItineraryCompositionError,
     LocalConnectorGap,
-    align_skeleton_to_provider_routes,
     connector_mode_requests_from_constraint_pack,
     connector_candidate_quality_error,
     extract_local_connector_gaps,
@@ -1301,7 +1300,7 @@ def _composition_repair_update(
     state: TravelAgentState,
     update: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Spend the run's one composition repair, or release the current catalog."""
+    """Spend the existing bounded composition budget, or release the catalog."""
 
     out = apply_composition_repair_budget(
         state,
@@ -1939,6 +1938,17 @@ async def candidate_gate_node(
     state: TravelAgentState,
     config: Optional[RunnableConfig] = None,
 ) -> Dict[str, Any]:
+    if state.composition_failure_context and any(
+        strip_round_suffix(agent) == "itinerary_planner" and status == "failed"
+        for agent, status in state.agent_status.items()
+    ):
+        _deadline, observation = _observe_deadline(state)
+        if observation is not None and observation.composition_closed:
+            return {"candidate_gate_status": "passed", "candidate_gate_route": "passed"}
+        return _composition_repair_update(state, {
+            "candidate_gate_status": "composition_repair",
+            "candidate_gate_route": "composition_repair",
+        })
     try:
         catalog, impacts, gaps = build_candidate_catalog(state)
     except CandidateGateIntegrityError as exc:
@@ -2247,38 +2257,13 @@ async def candidate_gate_node(
                     "destination_researcher", set()
                 ),
             )
-            # Provider 路线会用真实交通时长重排后续 placement。重排后的骨架必须和
-            # 初始骨架走同一个可恢复校验边界：若真实路程把景点推到开放时间之外，
-            # 应回到 itinerary_planner 重排，而不是让 ItineraryCompositionError
-            # 逃出 Candidate Gate、把整条 Run 标成失败。
-            aligned_skeleton = align_skeleton_to_provider_routes(
-                state.placement_skeleton,
-                catalog,
-                connector_gaps,
-            )
-            if aligned_skeleton != state.placement_skeleton:
-                base_update["placement_skeleton"] = aligned_skeleton
-                connector_gaps = extract_local_connector_gaps(
-                    aligned_skeleton,
-                    catalog,
-                    default_walk_day_ids=default_walking_days(state, aligned_skeleton),
-                    weather_data_revision=catalog.weather_data_revision,
-                    flexible_mode_requests=flexible_requests,
-                    required_flexible_mode_pairs=required_flexible_pairs,
-                    required_candidate_kinds=required_candidate_kinds.get(
-                        "destination_researcher", set()
-                    ),
-                )
         except ItineraryCompositionError as exc:
             return _composition_repair_update(
                 state,
                 {
                     **base_update,
                     "candidate_gate_failure_signatures": failure_ledger,
-                    # A skeleton no connector can be extracted from is not a
-                    # skeleton; dropping it sends the repair back to the first
-                    # pass instead of materializing a shape that just failed.
-                    "placement_skeleton": None,
+                    "local_connector_gaps": [],
                     # The planner composed that skeleton successfully, so its own
                     # failure channel is empty and this verdict is the only thing
                     # standing between the repair round and a verbatim retry.
@@ -2818,11 +2803,12 @@ def route_after_candidate_gate(state: TravelAgentState) -> str:
         # repair draw on the later composition window.
         if (
             not observation.composition_closed
-            and route == "transport_researcher"
-            and is_structural_connector_round(state, route)
+            and (
+                route == "composition_repair"
+                or (route == "transport_researcher" and is_structural_connector_round(state, route))
+            )
         ):
             return route
-        # Legal non-model exits past the boundary; discovery workers and semantic
-        # repair routes hand the current catalog straight to composition instead.
+        # Closed composition and ordinary discovery cannot open another model path.
         return route if route == "passed" else "passed"
     return route
