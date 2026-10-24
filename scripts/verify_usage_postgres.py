@@ -20,9 +20,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.engine import URL
 
 from travel_agent.config import ModelPricingItem
-from travel_agent.db.fingerprint import fingerprint_sync
-from travel_agent.infrastructure.cost_ledger_store import CostLedgerConflict, CostLedgerStore
-from travel_agent.models.usage import LLMCallRecord, UsageRecorder
+from travel_agent.storage.maintenance.fingerprint import fingerprint_sync
+from travel_agent.storage.cost_ledger_store import CostLedgerConflict, CostLedgerStore
+from travel_agent.llm.usage import LLMCallRecord, UsageRecorder
 
 ROOT = Path(__file__).resolve().parents[1]
 BIN = Path('/usr/lib/postgresql/14/bin')
@@ -65,7 +65,7 @@ async def check_store(sock_dir):
     price = ModelPricingItem(pattern='test', input_per_1m=2, cached_input_per_1m=0.1,
                              cache_write_per_1m=2.5, output_per_1m=10)
     try:
-        with patch('travel_agent.infrastructure.cost_ledger_store.get_db_session', session), patch('travel_agent.models.usage.get_usage_recorder', lambda: recorder):
+        with patch('travel_agent.storage.cost_ledger_store.get_db_session', session), patch('travel_agent.llm.usage.get_usage_recorder', lambda: recorder):
             store = CostLedgerStore()
             await store.record_calls([record], pricing=[price])
             await store.record_calls([record], pricing=[price])

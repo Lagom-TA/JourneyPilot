@@ -44,12 +44,12 @@ from ..agents.orchestrator.intent_amendment_router import (
     intent_amendment_router_node,
 )
 from ..entities.trip_run import generate_trip_run_id
-from ..infrastructure.cost_ledger_store import get_cost_ledger_store
+from ..storage.cost_ledger_store import get_cost_ledger_store
 from ..local_profile import LOCAL_USER_ID
-from ..infrastructure.delivery_bundle_store import DeliveryBundleStore
-from ..infrastructure.trip_run_store import TripRunStore, get_trip_run_store
-from ..infrastructure.tool_audit_store import get_tool_audit_store
-from ..models.usage import get_usage_recorder
+from ..storage.delivery_bundle_store import DeliveryBundleStore
+from ..storage.trip_run_store import TripRunStore, get_trip_run_store
+from ..storage.tool_audit_store import get_tool_audit_store
+from ..llm.usage import get_usage_recorder
 from ..agents.scope.node import clarifier_node
 from ..agents.scope.request_contract_normalizer import (
     request_contract_normalizer_node,

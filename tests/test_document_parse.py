@@ -8,7 +8,7 @@ import zipfile
 import pytest
 
 from travel_agent.config import get_settings
-from travel_agent.rag.sources.document_parse import (
+from travel_agent.knowledge.sources.document_parse import (
     DocumentRejected,
     inspect_upload,
     parse_upload,

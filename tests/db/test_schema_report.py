@@ -5,10 +5,10 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from travel_agent.db import migrate
-from travel_agent.db.connection import connect
-from travel_agent.db.fingerprint import fingerprint_sync
-from travel_agent.db.report import verify_database_contract
+from travel_agent.storage.maintenance import migrate
+from travel_agent.storage.maintenance.connection import connect
+from travel_agent.storage.maintenance.fingerprint import fingerprint_sync
+from travel_agent.storage.maintenance.report import verify_database_contract
 
 pytestmark = pytest.mark.postgres
 

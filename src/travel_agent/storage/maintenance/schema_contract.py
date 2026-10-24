@@ -70,7 +70,7 @@ MANAGED_TABLES: tuple[str, ...] = (
 PROBE_TABLES: tuple[str, ...] = ("user_profiles", "chat_sessions", "trip_runs")
 
 # LangGraph checkpointer 的表。不进我们的迁移（langgraph 自带 `checkpoint_migrations`
-# 版本表，两个 owner 会撞车），建立点在 `db/checkpoint_schema.py`。
+# 版本表，两个 owner 会撞车），建立点在 `storage/maintenance/checkpoint_schema.py`。
 LANGGRAPH_CHECKPOINT_TABLES: tuple[str, ...] = (
     "checkpoints",
     "checkpoint_blobs",

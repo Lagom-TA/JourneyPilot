@@ -13,7 +13,7 @@ Create Date: 2026-08-17
 
 - **影响面**：只有 DB。
 - **旧数据路径**：只在空库上执行。有核心表但无 `alembic_version` 的库走 adoption
-  （先比指纹，一致才 `stamp 0001`），指纹不一致则拒绝（`db/migrate.py::plan`）。
+  （先比指纹，一致才 `stamp 0001`），指纹不一致则拒绝（`storage/maintenance/migrate.py::plan`）。
 - **失败注入**：单条迁移一个事务，中途失败整体回滚，`alembic_version` 不前进。
 - **幂等**：全部 `IF NOT EXISTS`。
 - **观察信号**：CLI 非零退出；API 侧 `GET /api/health/ready` 的 `database_schema`。
@@ -682,7 +682,7 @@ def downgrade() -> None:
     别人的东西用着，而且重装它们不丢数据。
     """
 
-    from travel_agent.db.schema_contract import MANAGED_TABLES
+    from travel_agent.storage.maintenance.schema_contract import MANAGED_TABLES
 
     for table in reversed(MANAGED_TABLES):
         op.execute(f'DROP TABLE IF EXISTS "{table}" CASCADE')

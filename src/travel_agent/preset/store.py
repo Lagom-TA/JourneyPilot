@@ -21,7 +21,7 @@ from ..entities.preset import (
     PresetConstraints,
     TravelPreset,
 )
-from ..infrastructure.database import get_db_session
+from ..storage.database import get_db_session
 
 logger = logging.getLogger(__name__)
 

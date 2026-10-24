@@ -40,7 +40,7 @@ class PreferenceOptionGroup(BaseModel):
 
 #: 六组偏好的选项表。**加一项 / 改一个字都只改这里**，界面与校验都从这里出发。
 #:
-#: 表外的存量值在启动时被清掉（``infrastructure/database.py`` 的收敛语句），
+#: 表外的存量值在启动时被清掉（``storage/database.py`` 的收敛语句），
 #: 用户重新点选。
 TRAVEL_PREFERENCE_GROUPS: Tuple[PreferenceOptionGroup, ...] = (
     PreferenceOptionGroup(

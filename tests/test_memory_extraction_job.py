@@ -102,7 +102,7 @@ async def test_disabled_vectors_do_not_enqueue_or_wake_worker(monkeypatch):
 
     from travel_agent.api.routes import chat_helpers
     from travel_agent.config import Settings
-    from travel_agent.infrastructure import background_job_store
+    from travel_agent.storage import background_job_store
 
     settings = Settings(embedding={"enabled": False})
     monkeypatch.setattr(chat_helpers, "get_settings", lambda: settings)

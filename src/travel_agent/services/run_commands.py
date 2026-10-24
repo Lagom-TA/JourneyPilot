@@ -20,7 +20,7 @@ from ..entities.trip_run import (
     RunCommandType,
     TripRunStatus,
 )
-from ..infrastructure.run_command_store import RunCommandStore
+from ..storage.run_command_store import RunCommandStore
 from ..workflows.run_control import RunControlHandle
 from ..utils.concurrency import PeriodicTask, run_forever
 

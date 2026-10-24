@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from travel_agent.db import migrate
-from travel_agent.db.checkpoint_schema import (
+from travel_agent.storage.maintenance import migrate
+from travel_agent.storage.maintenance.checkpoint_schema import (
     create_checkpoint_schema,
     missing_checkpoint_tables,
 )
-from travel_agent.db.connection import connect
-from travel_agent.db.schema_contract import LANGGRAPH_CHECKPOINT_TABLES
+from travel_agent.storage.maintenance.connection import connect
+from travel_agent.storage.maintenance.schema_contract import LANGGRAPH_CHECKPOINT_TABLES
 
 pytestmark = pytest.mark.postgres
 
@@ -38,7 +38,7 @@ def test_create_checkpoint_schema_is_idempotent(temp_database):
 async def test_checkpointer_refuses_a_database_without_its_tables(temp_database, settings):
     """缺表时 `build_checkpointer` 抛错并指出下一步，而不是等第一次 interrupt。"""
 
-    from travel_agent.infrastructure.checkpointer import build_checkpointer
+    from travel_agent.storage.checkpointer import build_checkpointer
 
     migrate.upgrade(temp_database)
     original = settings.database.name

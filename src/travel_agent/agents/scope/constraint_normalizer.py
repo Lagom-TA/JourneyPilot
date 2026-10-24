@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from ...models.task_routing import TaskKind, llm_for_task
+from ...llm.task_routing import TaskKind, llm_for_task
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -14,7 +14,7 @@ from ...local_profile import LOCAL_USER_ID
 from ...memory.context_builder import ContextBudget
 from ...memory.memory_store import MemoryStore
 from ...memory.user_profile import UserProfileMemory
-from ...models.router import get_model_router
+from ...llm.router import get_model_router
 from ...panels.constraint import ConstraintSourceLoader
 
 logger = logging.getLogger(__name__)

@@ -90,7 +90,7 @@ def _application_version() -> str:
 
     import tomllib
 
-    pyproject = Path(__file__).resolve().parents[3] / "pyproject.toml"
+    pyproject = Path(__file__).resolve().parents[4] / "pyproject.toml"
     try:
         with pyproject.open("rb") as handle:
             return str(tomllib.load(handle)["project"]["version"])
@@ -108,7 +108,7 @@ def _write_redacted_config(directory: Path) -> str | None:
 
     import yaml
 
-    from ..config import find_config_yaml, load_yaml, redact
+    from ...config import find_config_yaml, load_yaml, redact
 
     path = find_config_yaml()
     if path is None:

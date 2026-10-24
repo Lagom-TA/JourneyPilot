@@ -17,8 +17,8 @@ from travel_agent.entities.background_job import (
     memory_extraction_dedupe_key,
     retry_delay_seconds,
 )
-from travel_agent.infrastructure.background_job_store import BackgroundJobStore
-from travel_agent.infrastructure.database import get_db_session
+from travel_agent.storage.background_job_store import BackgroundJobStore
+from travel_agent.storage.database import get_db_session
 
 pytestmark = pytest.mark.postgres
 

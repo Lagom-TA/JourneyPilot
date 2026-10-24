@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from travel_agent.models.task_routing import QualityFeedback, TaskKind, TaskLLM, select_task_route
+from travel_agent.llm.task_routing import QualityFeedback, TaskKind, TaskLLM, select_task_route
 
 PRIMARY, FAST = "openai/gpt-6.1-sol", "deepseek/deepseek-v4.1-flash"
 

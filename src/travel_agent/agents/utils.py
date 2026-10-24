@@ -609,7 +609,7 @@ async def _execute_tool_once(
     snapshot_scope = None
     snapshot_cache = provider_snapshot_cache
     try:
-        from ..infrastructure.provider_snapshot_cache import (
+        from ..storage.provider_snapshot_cache import (
             get_provider_snapshot_cache,
             provider_snapshot_scope_for_tool,
         )
@@ -656,7 +656,7 @@ async def _execute_tool_once(
     async def persist_provider_snapshot(envelope: Dict[str, Any]) -> None:
         if snapshot_scope is None or snapshot_cache is None:
             return
-        from ..infrastructure.provider_snapshot_cache import build_provider_snapshot_record
+        from ..storage.provider_snapshot_cache import build_provider_snapshot_record
 
         record = build_provider_snapshot_record(scope=snapshot_scope, envelope=envelope)
         if record is None:
@@ -1448,7 +1448,7 @@ def _compact_sanitized_result(result: Any) -> Any:
     compact: Dict[str, Any] = {}
     for key, value in result.items():
         if key == "documents" and isinstance(value, list):
-            from ..rag.source_records import rag_chunk_source_id
+            from ..knowledge.source_records import rag_chunk_source_id
             documents = []
             for item in value[:5]:
                 if not isinstance(item, dict) or not item.get("content"):

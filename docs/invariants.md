@@ -24,7 +24,7 @@ Tests:
 - `test_local_identity_api.py::*`
 
 ### INV-DB-001：API 进程不执行 DDL
-Owner: `db/migrate.py`（唯一 DDL 执行者）、`infrastructure/database.py`
+Owner: `storage/maintenance/migrate.py`（唯一 DDL 执行者）、`storage/database.py`
 Storage: `alembic_version` + 结构指纹存档 `migrations/fingerprints/*.json`
 Enforced by: 启动只做只读合同校验；容器 entrypoint 迁移失败即不启动 API
 ADR: [ADR-0002](adr/ADR-0002-versioned-migrations.md)
@@ -34,7 +34,7 @@ Tests:
 - `db/test_schema_report.py::*`
 
 ### INV-DB-002：结构指纹与 revision 必须同时匹配
-Owner: `db/fingerprint.py`、`db/report.py`
+Owner: `storage/maintenance/fingerprint.py`、`storage/maintenance/report.py`
 Storage: `migrations/fingerprints/<revision>.json`
 Enforced by: readiness 的 `database_schema` 一项拦门禁
 Tests:
@@ -42,7 +42,7 @@ Tests:
 - `db/test_migration_gates.py::*`
 
 ### INV-BACKUP-001：备份必须能被校验出损坏
-Owner: `db/backup.py`
+Owner: `storage/maintenance/backup.py`
 Storage: 备份目录里的 `manifest.json` + 每个文件的 SHA-256
 Enforced by: `verify_backup` 比对大小与摘要，不只看 `pg_dump` 的退出码
 Tests:
@@ -63,7 +63,7 @@ Tests:
 ## 长任务与控制
 
 ### INV-RUN-001：每个 running Run 都有有效租约
-Owner: `services/run_lease.py`、`infrastructure/run_execution_store.py`
+Owner: `services/run_lease.py`、`storage/run_execution_store.py`
 Storage: `run_execution`（executor / lease / heartbeat）
 Enforced by: 心跳周期显著小于租约；连续失败达阈值后停止发起新的外部调用
 ADR: [ADR-0005](adr/ADR-0005-restart-does-not-resume-spending.md)
@@ -72,7 +72,7 @@ Tests:
 - `test_run_execution_contract.py::*`
 
 ### INV-RUN-004：同一个 Run 不会有两个执行器
-Owner: `infrastructure/run_execution_store.claim`、`services/run_lease.py`、
+Owner: `storage/run_execution_store.claim`、`services/run_lease.py`、
 `api/routes/chat.py` 的 `cleanup_stream_exit`
 Storage: `trip_run_executions.lease_token` / `lease_expires_at`
 Enforced by: 只接管没主的行（租约已释放或已过期），**不认 executor_id** —— 它是进程
@@ -134,7 +134,7 @@ Tests:
 
 ### INV-CMD-004：没有命令停在 claimed 上出不来
 Owner: `services/run_commands.py`（协调器停下时归还未生效的 claim）、
-`infrastructure/run_command_store.claim_pending`（也取走上一个进程留下的 claimed 行）
+`storage/run_command_store.claim_pending`（也取走上一个进程留下的 claimed 行）
 Storage: `trip_run_commands.status` / `claimed_by`
 Enforced by: claimed 的定义是「取走了但还没落到效果上」，所以它必须有回头路 ——
 Run 停在门上时终态收口按设计不跑，不归还就等于既不生效也不被拒绝，而用户已经被告知
@@ -155,13 +155,13 @@ Tests:
 
 ### INV-JOB-002：丢了租约的 worker 不写结果
 Owner: `services/background_jobs.py` 的 `_renew_lease`、
-`infrastructure/background_job_store.py` 的 `complete` / `fail`
+`storage/background_job_store.py` 的 `complete` / `fail`
 Enforced by: 续不上租约就取消处理器；写结果时认 `lease_owner`，丢了租约的那个写不进去
 Tests:
 - `db/test_background_jobs.py::*`
 
 ### INV-JOB-001：后台任务可重试、去重、恢复
-Owner: `services/background_jobs.py`、`infrastructure/background_job_store.py`
+Owner: `services/background_jobs.py`、`storage/background_job_store.py`
 Storage: `background_jobs`（lease / attempt / backoff / dedupe key）
 Enforced by: claim 一次只给一个消费者；租约过期后重新可领；耗尽 attempt 进 dead
 ADR: [ADR-0004](adr/ADR-0004-durable-local-jobs.md)
@@ -463,7 +463,7 @@ Tests:
 
 ### INV-TOOL-001：日期能力先于运行预算、重试和 Provider 网络调用
 Owner: `tools/temporal.py`、`tools/gateway.py`、`agents/utils.execute_tool`、
-`infrastructure/weather_provider.py`
+`integrations/weather.py`
 Enforced by: 12306 只把上海时区 today 至 today+14 当作目标日实时余票；更远日期只查询
 窗口末日并标记 reference-only、不可作为证据。正式天气只在目的地本地 16 日窗口内请求
 精确预报；更远日期跳过预报端点，改用十个完整年份的同月历史季节基线，且不得生成
@@ -483,7 +483,7 @@ Tests:
 - `test_blocking_work.py::test_queue_wait_has_an_upper_bound`
 
 ### INV-INGEST-001：不可信文档先过输入边界，再进受限解析单元
-Owner: `rag/sources/document_parse.py` + `rag/sources/document_parser_worker.py`
+Owner: `knowledge/sources/document_parse.py` + `knowledge/sources/document_parser_worker.py`
 Storage: 上限在 `Settings.ingest`
 Enforced by: 类型（magic bytes + OOXML 必要条目）→ 规模（字节 / 展开量 / 压缩比 /
 条目数）→ 解析（子进程 + RLIMIT + 超时杀进程组）。**不靠超时当唯一保护**
@@ -553,7 +553,7 @@ Tests:
 - `test_run_budget.py::test_remaining_budget_reports_every_dimension_and_nothing_else`
 
 ### INV-CHAN-001：入库不许把在线请求排到队尾
-Owner: `utils/concurrency.py`、`models/router.llm_channel`
+Owner: `utils/concurrency.py`、`llm/router.llm_channel`
 Storage: 进程内通道，配额在 `Settings.provider_channels`
 Enforced by: contextual 分块走 `ingest_contextual_llm`，与 `online_fast_llm` 分开计
 ADR: [ADR-0006](adr/ADR-0006-resource-budgets-and-isolation.md)

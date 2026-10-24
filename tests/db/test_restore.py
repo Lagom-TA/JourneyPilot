@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import pytest
 
-from travel_agent.db import migrate
-from travel_agent.db.backup import DUMP_FILENAME, create_backup
-from travel_agent.db.connection import connect, connect_maintenance
-from travel_agent.db.restore import RestoreError, drop_retained, list_retained, restore
+from travel_agent.storage.maintenance import migrate
+from travel_agent.storage.maintenance.backup import DUMP_FILENAME, create_backup
+from travel_agent.storage.maintenance.connection import connect, connect_maintenance
+from travel_agent.storage.maintenance.restore import RestoreError, drop_retained, list_retained, restore
 
 pytestmark = pytest.mark.postgres
 

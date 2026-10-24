@@ -16,7 +16,7 @@ import logging
 import re
 import time
 import uuid
-from ...models.task_routing import TaskKind, llm_for_task
+from ...llm.task_routing import TaskKind, llm_for_task
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -24,10 +24,10 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
 from ...entities.state import TravelAgentState
-from ...models.router import get_model_router
+from ...llm.router import get_model_router
 from ...guardrails.output_guard import OutputGuard
 from ...tools.governance import tool_envelope_to_evidence_candidate
-from ...rag.source_records import knowledge_tool_documents, knowledge_tool_summaries
+from ...knowledge.source_records import knowledge_tool_documents, knowledge_tool_summaries
 from ...memory.context_builder import ContextBuilder, ContextBudget
 from ...panels.constraint import (
     format_constraint_pack_for_prompt,

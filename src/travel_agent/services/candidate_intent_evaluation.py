@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from ..models.task_routing import TaskLLM, QualityFeedback, with_quality_feedback
+from ..llm.task_routing import TaskLLM, QualityFeedback, with_quality_feedback
 
 from collections import defaultdict
 from typing import Any, Mapping, Sequence

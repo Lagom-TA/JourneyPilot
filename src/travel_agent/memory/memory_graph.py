@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 
-from ..infrastructure.database import get_db_session
+from ..storage.database import get_db_session
 
 logger = logging.getLogger(__name__)
 

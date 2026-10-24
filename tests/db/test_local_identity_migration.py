@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from travel_agent.db import migrate
-from travel_agent.db.connection import connect
+from travel_agent.storage.maintenance import migrate
+from travel_agent.storage.maintenance.connection import connect
 from travel_agent.local_profile import LOCAL_USER_ID
 
 pytestmark = pytest.mark.postgres

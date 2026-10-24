@@ -8,16 +8,16 @@ import httpx
 import pytest
 
 from travel_agent.config import Settings
-from travel_agent.models.chat_client import ReasoningChatOpenAI
-from travel_agent.models.router import ModelRouter
-from travel_agent.models.task_routing import TaskKind
-from travel_agent.models.usage import UsageRecorder
+from travel_agent.llm.chat_client import ReasoningChatOpenAI
+from travel_agent.llm.router import ModelRouter
+from travel_agent.llm.task_routing import TaskKind
+from travel_agent.llm.usage import UsageRecorder
 from travel_agent.workflows.run_control import current_run_id
 
 
 @pytest.fixture
 def gateway_settings(monkeypatch):
-    import travel_agent.models.router as router_module
+    import travel_agent.llm.router as router_module
 
     settings = Settings(
         primary_model={
@@ -39,7 +39,7 @@ def gateway_settings(monkeypatch):
 async def test_deadline_rejection_before_provider_admission_has_no_usage_attempt(
     gateway_settings, monkeypatch, tmp_path, stream,
 ):
-    import travel_agent.models.router as router_module
+    import travel_agent.llm.router as router_module
     import travel_agent.workflows.run_control as control_module
     from travel_agent.workflows.run_deadline import DeadlineObservation
     from travel_agent.workflows.run_control import ModelWindowClosed
@@ -80,7 +80,7 @@ async def test_deadline_rejection_before_provider_admission_has_no_usage_attempt
 
 @pytest.mark.parametrize("stream,aggregate", [(False, False), (True, False), (False, True)])
 async def test_primary_responses_roundtrip_and_usage(gateway_settings, monkeypatch, stream, aggregate):
-    import travel_agent.models.router as router_module
+    import travel_agent.llm.router as router_module
 
     requests = []
     response = {
@@ -155,7 +155,7 @@ async def test_primary_responses_roundtrip_and_usage(gateway_settings, monkeypat
 
 @pytest.mark.parametrize("output_limit", [None, 4096])
 async def test_fast_keeps_chat_tool_transport(gateway_settings, monkeypatch, output_limit):
-    import travel_agent.models.router as router_module
+    import travel_agent.llm.router as router_module
 
     requests = []
 
@@ -198,7 +198,7 @@ async def test_fast_keeps_chat_tool_transport(gateway_settings, monkeypatch, out
 
 @pytest.mark.parametrize("stream,terminal", [(False, "incomplete"), (True, "incomplete"), (True, None)])
 async def test_incomplete_responses_fail_without_losing_reported_usage(gateway_settings, monkeypatch, stream, terminal):
-    import travel_agent.models.router as router_module
+    import travel_agent.llm.router as router_module
 
     response = {
         "id": "resp_incomplete", "object": "response", "created_at": 0,

@@ -217,8 +217,8 @@ async def verify_database_contract(engine: Any, *, embedding_dimensions: int) ->
 async def require_database_contract() -> SchemaReport:
     """同一份校验的「不通过就抛」版本，给没有 readiness 探针的一次性脚本用。"""
 
-    from ..config import get_settings
-    from ..infrastructure.database import get_engine
+    from ...config import get_settings
+    from ..database import get_engine
 
     settings = get_settings()
     report = await verify_database_contract(

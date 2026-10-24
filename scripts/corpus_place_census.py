@@ -62,12 +62,12 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
 from travel_agent.config import get_settings  # noqa: E402
-from travel_agent.infrastructure.database import get_session_factory  # noqa: E402
-from travel_agent.rag.place_mentions import (  # noqa: E402
+from travel_agent.storage.database import get_session_factory  # noqa: E402
+from travel_agent.knowledge.place_mentions import (  # noqa: E402
     mention_matches_name,
     propose_place_mentions,
 )
-from travel_agent.rag.collections import FACTORY_KNOWLEDGE_COLLECTIONS  # noqa: E402
+from travel_agent.knowledge.collections import FACTORY_KNOWLEDGE_COLLECTIONS  # noqa: E402
 from travel_agent.services.nominatim_place_search import (  # noqa: E402
     NominatimPlaceSearchError,
     is_concrete_dining_place,

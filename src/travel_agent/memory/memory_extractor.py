@@ -460,7 +460,7 @@ class MemoryExtractor:
 
         调用异常原样抛出：job 层要凭它区分「Provider 超时」与「答非所问」。
         """
-        from ..models.router import get_model_router
+        from ..llm.router import get_model_router
         router = get_model_router()
         llm = router.get_fast()
 

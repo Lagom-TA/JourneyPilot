@@ -24,8 +24,8 @@ from ..entities.trip_run import (
     TripRunStatus,
     is_terminal_status,
 )
-from ..infrastructure.run_command_store import RunCommandStore
-from ..infrastructure.run_execution_store import (
+from ..storage.run_command_store import RunCommandStore
+from ..storage.run_execution_store import (
     RunExecutionStore,
     RunRecoveryCandidate,
 )

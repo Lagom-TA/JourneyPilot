@@ -161,7 +161,7 @@ class LLMReranker(Reranker):
             return docs
 
         try:
-            from ..models.router import get_model_router
+            from ..llm.router import get_model_router
             router = get_model_router()
             llm = router.get_fast()
 

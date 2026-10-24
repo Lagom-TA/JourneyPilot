@@ -69,7 +69,7 @@ def test_resume_available_keeps_resume() -> None:
 def test_executor_id_is_not_just_a_pid() -> None:
     """PID 会被复用；复用的 PID 不能让新进程冒充上一个租约持有者。"""
 
-    from travel_agent.infrastructure.run_execution_store import _build_executor_id
+    from travel_agent.storage.run_execution_store import _build_executor_id
 
     first = _build_executor_id()
     second = _build_executor_id()

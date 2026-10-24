@@ -45,7 +45,7 @@ from ..entities.workspace_v2_mutations import (
     apply_workspace_v2_inverse,
     apply_workspace_v2_mutation,
 )
-from ..infrastructure.delivery_bundle_store import (
+from ..storage.delivery_bundle_store import (
     BundleCommitKind,
     BundleIdempotencyMismatch,
     BundleCommitResult,

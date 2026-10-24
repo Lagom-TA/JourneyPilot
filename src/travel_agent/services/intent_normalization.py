@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import re
-from ..models.task_routing import QualityFeedback, with_quality_feedback
+from ..llm.task_routing import QualityFeedback, with_quality_feedback
 
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Literal, Optional
@@ -30,7 +30,7 @@ from ..entities.intent_spec import (
     VerificationMode,
 )
 from ..entities.request_contract import ClauseDisposition
-from ..models.strict_json_schema import as_strict_schema
+from ..llm.strict_json_schema import as_strict_schema
 from ..panels.constraint import deterministic_budget_constraints
 from ..utils.json_helpers import safe_parse_json
 

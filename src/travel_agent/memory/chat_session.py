@@ -15,7 +15,7 @@ from sqlalchemy import bindparam, text
 
 from ..services.research_progress import public_text, result_preview
 from ..entities.session_title import TITLE_MAX_LEN, derive_session_title
-from ..infrastructure.database import get_db_session
+from ..storage.database import get_db_session
 
 logger = logging.getLogger(__name__)
 
@@ -1011,7 +1011,7 @@ class ChatSessionMemory:
                 {"sid": session_id},
             )
 
-        from ..infrastructure.background_job_store import get_background_job_store
+        from ..storage.background_job_store import get_background_job_store
 
         await get_background_job_store().cancel_for_session(session_id)
         return True

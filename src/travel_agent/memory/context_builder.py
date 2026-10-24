@@ -36,7 +36,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from ..models.token_counting import estimate_message_tokens
+from ..llm.token_counting import estimate_message_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ _TRIM_SAFETY_RATIO = 0.9             # 裁剪时预留 10% 安全余量
 
 def count_tokens(text: str, model: str = "gpt-4o") -> int:
     """Shared offline estimate; authoritative billing comes from API usage."""
-    from ..models.token_counting import estimate_tokens
+    from ..llm.token_counting import estimate_tokens
 
     return estimate_tokens(text, model)
 

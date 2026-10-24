@@ -17,7 +17,7 @@ import httpx
 
 from ..config import get_settings
 from ..entities.place_identity import stable_place_id_osm
-from ..infrastructure.redis_client import get_redis
+from ..storage.redis_client import get_redis
 from ..utils.rate_gate import RateGate, rate_gate_for
 from .destination_scope import annotate_destination_distance
 from .candidate_admission import (

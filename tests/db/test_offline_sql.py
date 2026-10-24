@@ -14,8 +14,8 @@ import io
 import contextlib
 import re
 
-from travel_agent.db import migrate
-from travel_agent.db.connection import DatabaseTarget
+from travel_agent.storage.maintenance import migrate
+from travel_agent.storage.maintenance.connection import DatabaseTarget
 
 _TARGET = DatabaseTarget(
     host="localhost", port=5432, user="u", password="p", database="offline_only"
@@ -39,7 +39,7 @@ def test_offline_sql_covers_every_revision():
 
 
 def test_offline_sql_creates_every_managed_table():
-    from travel_agent.db.schema_contract import MANAGED_TABLES
+    from travel_agent.storage.maintenance.schema_contract import MANAGED_TABLES
 
     sql = _offline_sql()
     for table in MANAGED_TABLES:
@@ -72,7 +72,7 @@ def test_readiness_blocks_on_the_schema_contract():
     """
 
     from travel_agent.api.routes.system import _NON_BLOCKING_COMPONENTS, _probe_schema_report
-    from travel_agent.db.report import GATES_READINESS
+    from travel_agent.storage.maintenance.report import GATES_READINESS
 
     assert GATES_READINESS is True
     assert ("database_schema" in _NON_BLOCKING_COMPONENTS) is (not GATES_READINESS)

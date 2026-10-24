@@ -18,7 +18,7 @@ from ..entities.background_job import (
     coerce_job_type,
     retry_delay_seconds,
 )
-from ..infrastructure.background_job_store import BackgroundJobStore
+from ..storage.background_job_store import BackgroundJobStore
 from ..utils.concurrency import PeriodicTask, run_forever
 
 logger = logging.getLogger(__name__)

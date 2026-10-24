@@ -686,7 +686,7 @@ class OpenAICompatibleLLM(BaseLLM):
         if ledger is None or record is None:
             return
         # 延迟 import：台账层要经 `models.usage` 拿 LLMCallRecord，模块级引用会成环。
-        from ..infrastructure.cost_ledger_store import compute_cost_usd
+        from ..storage.cost_ledger_store import compute_cost_usd
 
         price = resolve_price(record.model_request, record.provider)
         ledger.record_llm_call(

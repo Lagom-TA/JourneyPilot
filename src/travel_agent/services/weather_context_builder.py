@@ -22,7 +22,7 @@ from travel_agent.entities.delivery_bundle import (
     WeatherCoverage,
     WeatherDayContext,
 )
-from travel_agent.infrastructure.weather_provider import (
+from travel_agent.integrations.weather import (
     ProviderWeatherDay,
     WeatherProvider,
     WeatherProviderError,

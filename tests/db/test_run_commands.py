@@ -16,10 +16,10 @@ from travel_agent.entities.trip_run import (
     RunCommandType,
     TripRunStatus,
 )
-from travel_agent.infrastructure.database import get_db_session
-from travel_agent.infrastructure.run_command_store import RunCommandStore
-from travel_agent.infrastructure.run_execution_store import EXECUTOR_ID
-from travel_agent.infrastructure.trip_run_store import TripRunStore
+from travel_agent.storage.database import get_db_session
+from travel_agent.storage.run_command_store import RunCommandStore
+from travel_agent.storage.run_execution_store import EXECUTOR_ID
+from travel_agent.storage.trip_run_store import TripRunStore
 
 pytestmark = pytest.mark.postgres
 

@@ -1,6 +1,6 @@
 import pytest
 
-from travel_agent.models.experiments import summarize_trials
+from travel_agent.llm.experiments import summarize_trials
 
 
 def test_unknown_usage_or_no_delivery_never_claims_success_cost():

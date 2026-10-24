@@ -46,14 +46,14 @@ def settings():
 def base_target(settings):
     """配置里那个库的连接参数。**测试只用它来建/删临时库，不读写它的数据。**"""
 
-    from travel_agent.db.connection import DatabaseTarget
+    from travel_agent.storage.maintenance.connection import DatabaseTarget
 
     return DatabaseTarget.from_settings(settings)
 
 
 @pytest.fixture(scope="session")
 def postgres_available(base_target) -> bool:
-    from travel_agent.db.connection import connect_maintenance
+    from travel_agent.storage.maintenance.connection import connect_maintenance
 
     try:
         with connect_maintenance(base_target) as conn:
@@ -79,7 +79,7 @@ def temp_database(base_target, postgres_available) -> Iterator[object]:
     if not postgres_available:
         pytest.skip("需要可达的 PostgreSQL")
 
-    from travel_agent.db.connection import connect_maintenance
+    from travel_agent.storage.maintenance.connection import connect_maintenance
 
     name = f"jp_test_{uuid.uuid4().hex[:12]}"
     with connect_maintenance(base_target) as conn:
@@ -107,9 +107,9 @@ def unmanaged_database(temp_database) -> object:
     纳管判定与「拒绝未纳管的库」两条路径的输入。
     """
 
-    from travel_agent.db import migrate
-    from travel_agent.db.connection import connect
-    from travel_agent.db.schema_contract import BASELINE_REVISION
+    from travel_agent.storage.maintenance import migrate
+    from travel_agent.storage.maintenance.connection import connect
+    from travel_agent.storage.maintenance.schema_contract import BASELINE_REVISION
 
     migrate.upgrade(temp_database, BASELINE_REVISION)
     with connect(temp_database) as conn:
@@ -122,14 +122,14 @@ def unmanaged_database(temp_database) -> object:
 async def migrated_async_database(temp_database, monkeypatch):
     """迁到 head 的临时库，并且**把 API 侧那条异步引擎指向它**。
 
-    异步 store 用的是 `infrastructure/database.py` 里的全局引擎，它从 `get_settings()`
+    异步 store 用的是 `storage/database.py` 里的全局引擎，它从 `get_settings()`
     读 URL。所以要换库就得连着设置缓存和引擎缓存一起换 —— 只设环境变量不够，
     而只 reload 设置不够：引擎已经建好了。漏掉任何一步，测试就会写到开发者自己的库上。
     """
 
     from travel_agent.config import reload_settings
-    from travel_agent.db import migrate
-    from travel_agent.infrastructure.database import close_db
+    from travel_agent.storage.maintenance import migrate
+    from travel_agent.storage.database import close_db
 
     migrate.upgrade(temp_database)
     monkeypatch.setenv("JOURNEYPILOT_DATABASE__HOST", temp_database.host)

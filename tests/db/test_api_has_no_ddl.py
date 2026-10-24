@@ -1,6 +1,6 @@
 """API 进程不改 Schema（ADR-P0-03）。
 
-两条判据，一条静态一条动态：`infrastructure/database.py` 里没有 DDL 语句；
+两条判据，一条静态一条动态：`storage/database.py` 里没有 DDL 语句；
 一个只有 DML 权限的角色能完成 API 的启动校验并正常读写业务表。
 """
 
@@ -13,10 +13,10 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from travel_agent.db import migrate
-from travel_agent.db.connection import connect, connect_maintenance
-from travel_agent.db.report import verify_database_contract
-from travel_agent.db.schema_contract import MANAGED_TABLES
+from travel_agent.storage.maintenance import migrate
+from travel_agent.storage.maintenance.connection import connect, connect_maintenance
+from travel_agent.storage.maintenance.report import verify_database_contract
+from travel_agent.storage.maintenance.schema_contract import MANAGED_TABLES
 
 @pytest.fixture
 def dml_only_role(temp_database):

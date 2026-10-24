@@ -13,7 +13,7 @@ from ..entities.tool_gateway import (
     ToolManifest,
     ToolResultTrustPolicy,
 )
-from ..infrastructure.tool_audit_store import ToolAuditStore
+from ..storage.tool_audit_store import ToolAuditStore
 from .governance import ToolExecutionStatus, build_tool_execution_envelope
 from .registry import ToolRegistry
 from .temporal import TemporalPreflightStatus, evaluate_temporal_request

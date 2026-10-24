@@ -20,7 +20,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from ..entities.trip_input import RouteAlternative, RouteDecision, RouteName
-from ..models.router import BaseLLM, get_model_router
+from ..llm.router import BaseLLM, get_model_router
 from ..utils.json_helpers import safe_parse_json
 
 logger = logging.getLogger(__name__)

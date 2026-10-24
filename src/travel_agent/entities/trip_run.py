@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from ..local_profile import LOCAL_USER_ID
 
-from ..infrastructure.row_values import iso_or_none as _iso_or_none
+from ..storage.row_values import iso_or_none as _iso_or_none
 from .composition_rules import COMPOSITION_PROMPT_VERSION
 from .provider_evidence import (
     ProviderEvidenceOutcome,

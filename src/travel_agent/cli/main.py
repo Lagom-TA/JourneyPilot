@@ -45,7 +45,7 @@ def _settings() -> Any:
 
 
 def _target(settings: Any, database: str | None = None) -> Any:
-    from ..db.connection import DatabaseTarget
+    from ..storage.maintenance.connection import DatabaseTarget
 
     return DatabaseTarget.from_settings(settings, database=database)
 
@@ -71,7 +71,7 @@ def _emit(payload: dict[str, Any], *, as_json: bool, lines: list[str]) -> None:
 
 
 def _plan_lines(plan: Any) -> list[str]:
-    from ..db.migrate import Decision
+    from ..storage.maintenance.migrate import Decision
 
     census = plan.census
     lines = [
@@ -146,11 +146,11 @@ def _background_job_backlog(conn: Any) -> dict[str, Any]:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
-    from ..db.backup import list_backups
-    from ..db.checkpoint_schema import missing_checkpoint_tables
-    from ..db.connection import connect
-    from ..db.lock import release, try_acquire
-    from ..db.migrate import plan
+    from ..storage.maintenance.backup import list_backups
+    from ..storage.maintenance.checkpoint_schema import missing_checkpoint_tables
+    from ..storage.maintenance.connection import connect
+    from ..storage.maintenance.lock import release, try_acquire
+    from ..storage.maintenance.migrate import plan
 
     settings = _settings()
     target = _target(settings)
@@ -264,9 +264,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def cmd_migrate(args: argparse.Namespace) -> int:
-    from ..db.checkpoint_schema import create_checkpoint_schema
-    from ..db.connection import connect
-    from ..db.migrate import Decision, plan, upgrade_sql
+    from ..storage.maintenance.checkpoint_schema import create_checkpoint_schema
+    from ..storage.maintenance.connection import connect
+    from ..storage.maintenance.migrate import Decision, plan, upgrade_sql
 
     settings = _settings()
     target = _target(settings)
@@ -336,10 +336,10 @@ def _run_migration(
 ) -> int:
     """备份闸门 + 持锁执行。已经判定过不拒绝、不是 dry-run、且确有待执行迁移。"""
 
-    from ..db.backup import create_backup
-    from ..db.connection import connect
-    from ..db.lock import MigrationLockTimeout, migration_lock
-    from ..db.migrate import Decision, plan, stamp, upgrade
+    from ..storage.maintenance.backup import create_backup
+    from ..storage.maintenance.connection import connect
+    from ..storage.maintenance.lock import MigrationLockTimeout, migration_lock
+    from ..storage.maintenance.migrate import Decision, plan, stamp, upgrade
 
     # ---- 备份闸门 --------------------------------------------------------- #
     # 非空库必须先有一份**校验通过**的备份才允许自动迁移（dev docs 02 §4.3）。
@@ -427,7 +427,7 @@ def _run_migration(
 
 
 def _baseline_revision() -> str:
-    from ..db.schema_contract import BASELINE_REVISION
+    from ..storage.maintenance.schema_contract import BASELINE_REVISION
 
     return BASELINE_REVISION
 
@@ -438,8 +438,8 @@ def _baseline_revision() -> str:
 
 
 def cmd_backup(args: argparse.Namespace) -> int:
-    from ..db.backup import create_backup, list_backups, prune_automatic_backups, verify_backup
-    from ..db.connection import connect
+    from ..storage.maintenance.backup import create_backup, list_backups, prune_automatic_backups, verify_backup
+    from ..storage.maintenance.connection import connect
 
     settings = _settings()
     target = _target(settings)
@@ -527,7 +527,7 @@ def cmd_backup(args: argparse.Namespace) -> int:
 
 
 def cmd_restore(args: argparse.Namespace) -> int:
-    from ..db.restore import RestoreError, drop_retained, list_retained, restore
+    from ..storage.maintenance.restore import RestoreError, drop_retained, list_retained, restore
 
     settings = _settings()
     target = _target(settings)
@@ -610,10 +610,10 @@ def cmd_db_write_fingerprint(args: argparse.Namespace) -> int:
     从此所有校验都对着错的基准比。
     """
 
-    from ..db.census import take_census
-    from ..db.connection import connect
-    from ..db.fingerprint import fingerprint_digest, fingerprint_sync, normative_only
-    from ..db.migrate import FINGERPRINTS_DIR, revision_line
+    from ..storage.maintenance.census import take_census
+    from ..storage.maintenance.connection import connect
+    from ..storage.maintenance.fingerprint import fingerprint_digest, fingerprint_sync, normative_only
+    from ..storage.maintenance.migrate import FINGERPRINTS_DIR, revision_line
 
     settings = _settings()
     target = _target(settings, database=args.database)

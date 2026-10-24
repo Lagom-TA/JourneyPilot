@@ -17,7 +17,7 @@ import json
 import logging
 import re
 import time
-from ...models.task_routing import TaskKind, llm_for_task
+from ...llm.task_routing import TaskKind, llm_for_task
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
 
@@ -28,14 +28,14 @@ from ...config import get_settings
 from ...entities.state import TravelAgentState
 from ...memory.research_context import format_worker_research_context
 from ...workflows.run_control import RunCancelled
-from ...infrastructure.worker_journal_store import JournalConflict
-from ...models.router import get_model_router
-from ...rag.collections import GroundingCorpus, grounding_corpus
-from ...rag.place_mentions import (
+from ...storage.worker_journal_store import JournalConflict
+from ...llm.router import get_model_router
+from ...knowledge.collections import GroundingCorpus, grounding_corpus
+from ...knowledge.place_mentions import (
     chunk_texts_by_collection,
     measure_place_funnel,
 )
-from ...rag.source_records import (
+from ...knowledge.source_records import (
     knowledge_tool_documents, knowledge_tool_summaries, rag_chunk_source_records,
 )
 from ...entities.place_identity import stable_place_id_amap_poi

@@ -180,7 +180,7 @@ async def enqueue_memory_extraction(
         BackgroundJobType,
         memory_extraction_dedupe_key,
     )
-    from ...infrastructure.background_job_store import get_background_job_store
+    from ...storage.background_job_store import get_background_job_store
 
     try:
         await get_background_job_store().enqueue(

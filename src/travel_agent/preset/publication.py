@@ -6,7 +6,7 @@ import hashlib
 import json
 from typing import Any, Dict
 
-from ..db.report import require_database_contract
+from ..storage.maintenance.report import require_database_contract
 from .product_config import (
     TRIP_PLANNER_CONFIG_KEY,
     ProductConfigurationStore,

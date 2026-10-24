@@ -1,7 +1,7 @@
 # ADR-0002：版本化迁移，API 进程不改 Schema
 
 状态：已采纳
-影响：`migrations/`、`db/migrate.py`、`db/fingerprint.py`、`journeypilot` CLI、
+影响：`migrations/`、`storage/maintenance/migrate.py`、`storage/maintenance/fingerprint.py`、`journeypilot` CLI、
 容器 entrypoint、`run.sh`
 
 ## 决定

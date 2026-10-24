@@ -12,8 +12,8 @@ from ...services.intent_verification import evaluate_intent_fidelity
 from ...services.intent_entity_binding import bind_intent_context
 from ...services.intent_requirement_check import check_final_entities, evaluate_final_entities
 from ...entities.candidate_intent import IntentMatchStatus
-from ...models.router import get_model_router
-from ...models.task_routing import TaskKind, llm_for_task
+from ...llm.router import get_model_router
+from ...llm.task_routing import TaskKind, llm_for_task
 from ...workflows.composition_repair import (
     apply_composition_repair_budget,
     composition_repair_budget_exhausted,

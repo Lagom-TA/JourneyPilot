@@ -6,7 +6,7 @@ PDF 渲染、文档解析、本地 ONNX 推理、大 JSON canonical hash 都是�
 超时只停止*等待*，线程会继续跑到自己结束。所以
 
 - 可信的内部数据（ReportLab 读一份 immutable Bundle）走线程；
-- 不可信的用户上传走子进程（`rag/sources/document_parse.py`），超时杀进程树；
+- 不可信的用户上传走子进程（`knowledge/sources/document_parse.py`），超时杀进程树；
 - 每一路都必须先有输入上限，超时只是最后一道，不是唯一一道。
 """
 

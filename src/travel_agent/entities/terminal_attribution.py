@@ -18,7 +18,7 @@ from .delivery_bundle import InternalFailureClass
 # 读方（``services/run_completion_metrics.py``）拿它做 ``startswith``，所以不带尾下划线。
 DELIVERY_INTEGRITY_REASON_PREFIX = "delivery_integrity"
 
-# ``infrastructure/trip_run_store.py`` 在调用方没给 reason_code 时用的兜底值。
+# ``storage/trip_run_store.py`` 在调用方没给 reason_code 时用的兜底值。
 # 它**不是** ``InternalFailureClass`` 的任何一个值 —— 单数的 ``failure`` 在那个枚举里
 # 不存在。但它以上面那个前缀开头，所以今天会被读方的 ``startswith`` 命中，
 # ``delivery_integrity_failed`` 这个桶里因此混着两类 run：有具体失败分类的，和根本

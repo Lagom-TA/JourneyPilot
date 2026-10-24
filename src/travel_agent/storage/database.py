@@ -3,7 +3,7 @@ PostgreSQL + pgvector 连接管理 (Infrastructure Layer)
 使用 SQLAlchemy 异步引擎 + asyncpg 驱动。
 
 只建连接，不建结构：DDL 与数据收敛属于版本化迁移（`journeypilot migrate`），
-只读的结构校验见 `db/report.py::verify_database_contract`。
+只读的结构校验见 `storage/maintenance/report.py::verify_database_contract`。
 """
 
 from __future__ import annotations

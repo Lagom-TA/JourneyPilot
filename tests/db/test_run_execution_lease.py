@@ -10,12 +10,12 @@ import pytest
 from sqlalchemy import text
 
 from travel_agent.entities.trip_run import RunRecoveryStatus
-from travel_agent.infrastructure.database import get_db_session
-from travel_agent.infrastructure.run_execution_store import (
+from travel_agent.storage.database import get_db_session
+from travel_agent.storage.run_execution_store import (
     EXECUTOR_ID,
     RunExecutionStore,
 )
-from travel_agent.infrastructure.trip_run_store import TripRunStore
+from travel_agent.storage.trip_run_store import TripRunStore
 
 pytestmark = pytest.mark.postgres
 

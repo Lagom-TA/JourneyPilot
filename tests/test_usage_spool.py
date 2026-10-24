@@ -6,9 +6,9 @@ import sys
 
 import pytest
 
-from travel_agent.infrastructure.cost_ledger_store import InMemoryCostLedgerStore
-from travel_agent.models.usage import LLMCallRecord, UsageRecorder
-from travel_agent.models.usage_spool import UsageSpoolConflict
+from travel_agent.storage.cost_ledger_store import InMemoryCostLedgerStore
+from travel_agent.llm.usage import LLMCallRecord, UsageRecorder
+from travel_agent.llm.usage_spool import UsageSpoolConflict
 from travel_agent.services.usage_flush import UsageFlushService
 
 
@@ -72,7 +72,7 @@ def test_admission_survives_process_death_with_unknown_usage(tmp_path):
     path = tmp_path / "spool.sqlite3"
     script = """
 import os,sys
-from travel_agent.models.usage import UsageRecorder,LLMCallRecord
+from travel_agent.llm.usage import UsageRecorder,LLMCallRecord
 r=UsageRecorder(spool_path=sys.argv[1])
 r.admit(LLMCallRecord(id='crashed',run_id='run',node=None,agent=None,tier='fast',provider='test',model_request='test',method='ainvoke',stream=False,start_ts='2026-10-08T00:00:00+00:00'))
 os._exit(0)
@@ -146,7 +146,7 @@ async def test_changed_price_does_not_reprice_idempotent_ledger_capture():
 
 
 def test_pending_capture_is_not_a_complete_zero_bill():
-    from travel_agent.infrastructure.cost_ledger_store import summarize_calls
+    from travel_agent.storage.cost_ledger_store import summarize_calls
     recorder = UsageRecorder()
     recorder.record(record())
     summary = recorder.apply_integrity(summarize_calls("run", []))

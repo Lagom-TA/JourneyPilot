@@ -29,7 +29,7 @@ async def _bootstrap_factory_corpus() -> list[str]:
     """把本地可选的出厂语料种子补进空集合，返回补不上的问题（空 = 没问题）。
 
     自举**只补空集合**：运营者可以用 `scripts/index_knowledge.py` 往出厂集合里继续加
-    东西，开机无条件覆盖会把那些悄悄丢掉。种子本身与判断规则在 `rag/factory_seed.py`。
+    东西，开机无条件覆盖会把那些悄悄丢掉。种子本身与判断规则在 `knowledge/factory_seed.py`。
 
     **返回的问题不进「请勿放行流量」那一行**，理由与 readiness 里 `data_snapshots`
     那条注释同源：空语料降低的是接地质量，它不让服务答不出话 —— 深度规划的候选身份
@@ -45,7 +45,7 @@ async def _bootstrap_factory_corpus() -> list[str]:
     if not get_settings().embedding.enabled:
         return []
 
-    from ..rag.factory_seed import ensure_factory_corpus
+    from ..knowledge.factory_seed import ensure_factory_corpus
 
     try:
         report = await ensure_factory_corpus()

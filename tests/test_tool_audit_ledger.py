@@ -19,8 +19,8 @@ from typing import Any, Dict, Optional
 import pytest
 
 from travel_agent.entities.tool_gateway import ToolManifest
-from travel_agent.infrastructure import tool_audit_store as store_module
-from travel_agent.infrastructure.tool_audit_store import (
+from travel_agent.storage import tool_audit_store as store_module
+from travel_agent.storage.tool_audit_store import (
     InMemoryToolAuditStore,
     ToolAuditConflict,
     ToolAuditStore,

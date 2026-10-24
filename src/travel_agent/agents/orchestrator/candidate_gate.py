@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-from ...models.task_routing import TaskKind, llm_for_task
+from ...llm.task_routing import TaskKind, llm_for_task
 
 from collections import defaultdict
 from dataclasses import dataclass
@@ -67,7 +67,7 @@ from ...services.candidate_selection import (
     build_candidate_selection_plan,
     selection_policy_from_intent_spec,
 )
-from ...models.router import get_model_router
+from ...llm.router import get_model_router
 from ...services.constraint_applicability import (
     bind_candidate_constraint_gate_attestations,
 )

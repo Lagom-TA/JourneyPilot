@@ -54,7 +54,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 from sqlalchemy import text
 
 from ..config import get_settings
-from ..infrastructure.database import get_db_session
+from ..storage.database import get_db_session
 from .collections import FACTORY_KNOWLEDGE_COLLECTIONS
 
 logger = logging.getLogger(__name__)
@@ -254,7 +254,7 @@ def read_manifest(seed_dir: Optional[Path] = None) -> Optional[SeedManifest]:
 def seeded_factory_collections(seed_dir: Optional[Path] = None) -> Tuple[str, ...]:
     """本地种子真的带了正文的出厂集合 —— **「哪个出厂集合有货」在这里回答一次**。
 
-    三个读者：接地探针清单（``rag/collections.py::grounding_corpus``）、开机自举的降级
+    三个读者：接地探针清单（``knowledge/collections.py::grounding_corpus``）、开机自举的降级
     判据（``ensure_factory_corpus``）、``/api/health/ready`` 的 ``knowledge_corpus``。
     此前这三处各写了一份 ``declared > 0``，谁跟谁漂开都不会红；而其中最要紧的那一处
      （探针清单）压根没执行过这条豁免，每次检索都为一个出厂就空的集合发探针，
@@ -263,7 +263,7 @@ def seeded_factory_collections(seed_dir: Optional[Path] = None) -> Tuple[str, ..
     **为什么 manifest 是对的来源。** 它是这台机器上「出厂语料应该有什么」的声明，
     纯文件、不连库，因而在检索热路径上可读；而「库里实际有几段」的定义处是
     ``factory_collection_counts()``。两者对不上有两个方向，都必须看得见，否则探针清单
-    会静默变短（那正是 ``rag/collections.py`` 的 docstring 禁止的读数）：
+    会静默变短（那正是 ``knowledge/collections.py`` 的 docstring 禁止的读数）：
 
       声明有货、库里为空 → 开机自举与 ready 都报降级；
       声明没有、库里有货 → ready 的 ``unprobed_with_content`` 点名报出来。
@@ -435,7 +435,7 @@ async def load_seed(
             current,
             len(rows),
         )
-        from ..models.embedder import get_embedder
+        from ..llm.embedder import get_embedder
 
         embedder = get_embedder()
         vectors = await embedder.embed_batch([row["content"] for row in rows])

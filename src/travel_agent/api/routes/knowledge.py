@@ -16,8 +16,8 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from ...builders import get_components
 from ...config import get_settings
 from ...local_profile import LOCAL_USER_ID
-from ...rag.collections import canonical_logical_collection, user_scoped_collection
-from ...rag.sources.document_parse import (
+from ...knowledge.collections import canonical_logical_collection, user_scoped_collection
+from ...knowledge.sources.document_parse import (
     MIN_INDEXABLE_CHARS,
     SUPPORTED_SUFFIXES,
     DocumentRejected,
@@ -38,7 +38,7 @@ from ..schemas import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
 
-# 阈值与判定在 `rag/sources/document_parse.py`：上传与批量导入两条入口共用一份，
+# 阈值与判定在 `knowledge/sources/document_parse.py`：上传与批量导入两条入口共用一份，
 # 否则扫描版 PDF 在一条路上被拒、在另一条路上变成一次「成功索引 0 个文本块」。
 _MIN_INDEXABLE_CHARS = MIN_INDEXABLE_CHARS
 
@@ -183,7 +183,7 @@ async def upload_file(
     """上传文件并索引到知识库（支持 .txt / .md / .pdf / .docx）。
 
     所有输入边界（类型、字节数、页数、ZIP 展开量与压缩比、解析超时）都在
-    `rag/sources/document_parse.py` 一处判定，这条路只负责把判决投影成 HTTP。
+    `knowledge/sources/document_parse.py` 一处判定，这条路只负责把判决投影成 HTTP。
     """
     _require_vector_knowledge()
     ingest = get_settings().ingest

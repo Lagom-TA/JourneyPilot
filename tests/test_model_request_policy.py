@@ -10,9 +10,9 @@ import pytest
 from langchain_core.messages import HumanMessage
 
 from travel_agent.config import FastModelConfig, PrimaryModelConfig
-from travel_agent.models.chat_client import ReasoningChatOpenAI
-from travel_agent.models.request_policy import is_openai_reasoning_model, model_reasoning_effort
-from travel_agent.models.router import ModelTier, OpenAICompatibleLLM, _to_langchain_messages
+from travel_agent.llm.chat_client import ReasoningChatOpenAI
+from travel_agent.llm.request_policy import is_openai_reasoning_model, model_reasoning_effort
+from travel_agent.llm.router import ModelTier, OpenAICompatibleLLM, _to_langchain_messages
 
 
 @pytest.mark.parametrize("name", ["gpt-6.1-sol", "openai/gpt-6.1-sol", "GPT-6.1-SOL"])
@@ -51,7 +51,7 @@ def test_none_output_overrides_use_the_deployment_default_without_sending_null_k
 
 @pytest.mark.asyncio
 async def test_reasoning_replays_across_a_complete_tool_call_round(monkeypatch):
-    import travel_agent.models.router as router_module
+    import travel_agent.llm.router as router_module
 
     requests = []
 
@@ -102,6 +102,6 @@ async def test_reasoning_replays_across_a_complete_tool_call_round(monkeypatch):
 
 def test_snapshot_tools_never_replay_local_envelopes():
     from travel_agent.agents.utils import _NO_CACHE_TOOLS
-    from travel_agent.infrastructure.provider_snapshot_cache import _SUPPORTED_TOOLS
+    from travel_agent.storage.provider_snapshot_cache import _SUPPORTED_TOOLS
 
     assert _SUPPORTED_TOOLS <= _NO_CACHE_TOOLS

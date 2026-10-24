@@ -14,7 +14,7 @@ async def test_compaction_keeps_prior_constraints_and_rejects_assistant_inventio
     class LLM:
         async def ainvoke(self, messages):
             return '{"summary":"杭州旅行，预算300元", "key_constraints":["必须住五星酒店", "每晚预算不超过300元", 3]}'
-    monkeypatch.setattr("travel_agent.models.router.get_model_router", lambda: SimpleNamespace(get_fast=lambda: LLM()))
+    monkeypatch.setattr("travel_agent.llm.router.get_model_router", lambda: SimpleNamespace(get_fast=lambda: LLM()))
     result = await ContextCompressor().compress([
         {"role": "user", "content": "每晚预算不超过300元"},
         {"role": "assistant", "content": "必须住五星酒店"},
@@ -30,7 +30,7 @@ async def test_invalid_summary_never_advances_compaction_by_degraded_excerpt(mon
     class LLM:
         async def ainvoke(self, messages):
             return output
-    monkeypatch.setattr("travel_agent.models.router.get_model_router", lambda: SimpleNamespace(get_fast=lambda: LLM()))
+    monkeypatch.setattr("travel_agent.llm.router.get_model_router", lambda: SimpleNamespace(get_fast=lambda: LLM()))
     with pytest.raises(ValueError):
         await ContextCompressor().compress([{"role": "user", "content": "后面的约束不能丢"}])
 

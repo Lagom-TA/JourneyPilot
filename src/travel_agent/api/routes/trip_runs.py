@@ -29,13 +29,13 @@ from ...entities.trip_run import (
 from ...local_profile import LOCAL_USER_ID
 from ...entities.workspace_v2_mutations import WorkspaceV2MutationError
 from ...entities.trip_input import classify_locked_identity_intent
-from ...infrastructure.delivery_bundle_store import (
+from ...storage.delivery_bundle_store import (
     BundleContractSuperseded,
     BundleIdempotencyMismatch,
     BundleRevisionConflict,
     BundleRevisionVector,
 )
-from ...infrastructure.weather_provider import default_weather_providers
+from ...integrations.weather import default_weather_providers
 from ...services.workspace_v2_service import WorkspaceV2Service
 from ...services.weather_bundle_refresh import (
     WeatherBundleRefreshService,

@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import unicodedata
-from ...models.task_routing import TaskKind, llm_for_task
+from ...llm.task_routing import TaskKind, llm_for_task
 
 from datetime import date, timedelta
 from dataclasses import dataclass
@@ -65,8 +65,8 @@ from ...services.candidate_selection import (
 )
 from ...services.composition_rule_compiler import compile_composition_rules
 from ...entities.state import TravelAgentState, bounded_repair_context
-from ...models.router import get_model_router
-from ...models.strict_json_schema import as_strict_schema
+from ...llm.router import get_model_router
+from ...llm.strict_json_schema import as_strict_schema
 from ...tools.registry import get_tool_registry
 from ...utils.brief_helpers import build_assignment_context
 from ...workflows.run_control import ModelWindowClosed, await_model_operation

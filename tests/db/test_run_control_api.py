@@ -17,9 +17,9 @@ from travel_agent.entities.trip_run import (
     RunCommandType,
     TripRunStatus,
 )
-from travel_agent.infrastructure.run_command_store import RunCommandStore
-from travel_agent.infrastructure.run_execution_store import RunExecutionStore
-from travel_agent.infrastructure.trip_run_store import TripRunStore
+from travel_agent.storage.run_command_store import RunCommandStore
+from travel_agent.storage.run_execution_store import RunExecutionStore
+from travel_agent.storage.trip_run_store import TripRunStore
 from travel_agent.services.run_commands import RunCommandCoordinator
 from travel_agent.workflows.run_control import run_control_registry
 

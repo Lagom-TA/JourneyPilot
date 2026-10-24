@@ -5,7 +5,7 @@ import pytest
 
 from travel_agent.agents import utils
 from travel_agent.config import Settings
-from travel_agent.rag.source_records import knowledge_tool_documents, rag_chunk_source_records
+from travel_agent.knowledge.source_records import knowledge_tool_documents, rag_chunk_source_records
 from travel_agent.tools import builtin_tools
 from travel_agent.tools.governance import build_tool_execution_envelope
 from travel_agent.tools.registry import ToolRegistry
@@ -24,7 +24,7 @@ class ScriptedLLM:
 @pytest.fixture
 def knowledge(monkeypatch):
     from travel_agent.config import loader
-    from travel_agent.rag import retriever
+    from travel_agent.knowledge import retriever
 
     monkeypatch.setattr(loader, "_effective", type("Effective", (), {
         "settings": Settings(embedding={"enabled": True}, rerank={"enabled": False}),
@@ -124,7 +124,7 @@ async def test_disabled_tool_not_exposed_and_direct_call_denied(knowledge, monke
 
 async def test_checkpoint_replay_keeps_fragments_and_rechecks_authorization(knowledge, monkeypatch):
     from travel_agent.config import loader
-    from travel_agent.infrastructure.worker_journal_store import InMemoryWorkerJournalStore
+    from travel_agent.storage.worker_journal_store import InMemoryWorkerJournalStore
     from travel_agent.workflows.worker_recovery import WorkerJournal, current_worker_journal
 
     search, tools = knowledge
@@ -220,7 +220,7 @@ async def test_fast_answer_never_completes_a_nonfinal_real_loop(knowledge, monke
 
 
 async def test_hybrid_failure_is_distinct_from_empty_and_does_not_leak(knowledge, monkeypatch):
-    from travel_agent.rag.retriever import HybridRetriever
+    from travel_agent.knowledge.retriever import HybridRetriever
 
     _, tools = knowledge
     vector = AsyncMock(side_effect=RuntimeError("u_private__secret credential"))
@@ -238,8 +238,8 @@ async def test_hybrid_failure_is_distinct_from_empty_and_does_not_leak(knowledge
 
 
 async def test_single_query_and_one_rerank_across_collections(knowledge, monkeypatch):
-    from travel_agent.rag import retrieval_pipeline
-    from travel_agent.rag.retriever import RetrievalDocuments
+    from travel_agent.knowledge import retrieval_pipeline
+    from travel_agent.knowledge.retriever import RetrievalDocuments
 
     _, _tools = knowledge
     retrieve = AsyncMock(side_effect=[

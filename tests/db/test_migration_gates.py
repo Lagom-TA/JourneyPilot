@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import pytest
 
-from travel_agent.db import migrate
-from travel_agent.db.census import take_census
-from travel_agent.db.connection import connect
-from travel_agent.db.lock import (
+from travel_agent.storage.maintenance import migrate
+from travel_agent.storage.maintenance.census import take_census
+from travel_agent.storage.maintenance.connection import connect
+from travel_agent.storage.maintenance.lock import (
     MigrationLockTimeout,
     migration_lock,
     release,

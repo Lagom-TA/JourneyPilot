@@ -44,7 +44,7 @@ from ...entities.delivery_bundle import (
 )
 from ...entities.terminal_attribution import delivery_integrity_reason_code
 from ...entities.evidence_basis import PublicProjectionContractViolation
-from ...infrastructure.cost_ledger_store import cost_event_summary
+from ...storage.cost_ledger_store import cost_event_summary
 from ...tools.exposure_ledger import get_tool_exposure_ledger
 from ...workflows.delivery_finalizer import DeliveryFinalizationError
 from ...workflows.node_names import CHECKPOINT_GATE_NODES

@@ -1,6 +1,6 @@
 """CLI / 迁移侧的同步数据库连接。
 
-**与 `infrastructure/database.py` 的引擎刻意分开**：那个是 API 进程的 asyncpg 连接池，
+**与 `storage/database.py` 的引擎刻意分开**：那个是 API 进程的 asyncpg 连接池，
 生命周期绑在 ASGI 应用上。这里的连接属于一个短命的维护进程，而且要能连**不是配置里
 那个库**（restore 会先恢复到一个临时库再切换），所以库名是参数而不是全局单例。
 """

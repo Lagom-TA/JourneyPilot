@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ...models.task_routing import TaskKind, llm_for_task
+from ...llm.task_routing import TaskKind, llm_for_task
 
 from typing import Any, Dict, List, Optional
 
@@ -10,7 +10,7 @@ from langchain_core.runnables import RunnableConfig
 
 from ...entities.state import TravelAgentState
 from ...memory.context_builder import build_context_report
-from ...models.router import get_model_router
+from ...llm.router import get_model_router
 from ...panels.constraint import (
     constraint_free_text_sources,
     referenced_context_sections,

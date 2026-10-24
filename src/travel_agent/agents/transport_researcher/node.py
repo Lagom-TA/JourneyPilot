@@ -17,7 +17,7 @@ import json
 import logging
 import re
 import time
-from ...models.task_routing import TaskKind, llm_for_task
+from ...llm.task_routing import TaskKind, llm_for_task
 
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional
@@ -29,8 +29,8 @@ from ...entities.state import TravelAgentState
 from ...entities.research_domain import ResearchDomain
 from ...entities.research_query_plan import ResearchQueryKind
 from ...workflows.run_control import RunCancelled
-from ...infrastructure.worker_journal_store import JournalConflict
-from ...models.router import get_model_router
+from ...storage.worker_journal_store import JournalConflict
+from ...llm.router import get_model_router
 from ...memory.research_context import format_worker_research_context
 from ..utils import (
     append_recent_history,

@@ -10,7 +10,7 @@ from langchain_core.runnables import RunnableConfig
 from travel_agent.entities.state import TravelAgentState
 from travel_agent.entities.trip_input import ControlledTripIdentity
 from travel_agent.entities.weather_planning import DestinationGeoPoint
-from travel_agent.infrastructure.weather_provider import (
+from travel_agent.integrations.weather import (
     WeatherProviderRequest,
     default_weather_providers,
 )

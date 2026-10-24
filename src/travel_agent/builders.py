@@ -10,42 +10,42 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from .config import Settings, get_settings
-from .db.report import SchemaReport, verify_database_contract
-from .infrastructure.background_job_store import (
+from .storage.maintenance.report import SchemaReport, verify_database_contract
+from .storage.background_job_store import (
     BackgroundJobStore,
     get_background_job_store,
 )
-from .infrastructure.cost_ledger_store import CostLedgerStore, get_cost_ledger_store
-from .infrastructure.delivery_bundle_store import DeliveryBundleStore
-from .infrastructure.memory_lifecycle_store import (
+from .storage.cost_ledger_store import CostLedgerStore, get_cost_ledger_store
+from .storage.delivery_bundle_store import DeliveryBundleStore
+from .storage.memory_lifecycle_store import (
     MemoryLifecycleStore,
     get_memory_lifecycle_store,
 )
-from .infrastructure.provider_snapshot_cache import (
+from .storage.provider_snapshot_cache import (
     ProviderSnapshotCache,
     get_provider_snapshot_cache,
 )
-from .infrastructure.run_command_store import (
+from .storage.run_command_store import (
     RunCommandStore,
     get_run_command_store,
 )
-from .infrastructure.run_execution_store import (
+from .storage.run_execution_store import (
     RunExecutionStore,
     get_run_execution_store,
 )
-from .infrastructure.trip_run_store import TripRunStore, get_trip_run_store
-from .infrastructure.tool_audit_store import ToolAuditStore, get_tool_audit_store
-from .infrastructure.worker_journal_store import WorkerJournalStore
-from .infrastructure.weather_provider import default_weather_providers
+from .storage.trip_run_store import TripRunStore, get_trip_run_store
+from .storage.tool_audit_store import ToolAuditStore, get_tool_audit_store
+from .storage.worker_journal_store import WorkerJournalStore
+from .integrations.weather import default_weather_providers
 from .memory.chat_session import ChatSessionMemory
 from .memory.memory_extractor import MemoryExtractor
 from .memory.user_profile import UserProfileMemory
-from .models.router import ModelRouter, get_model_router
-from .models.usage import UsageRecorder, get_usage_recorder
+from .llm.router import ModelRouter, get_model_router
+from .llm.usage import UsageRecorder, get_usage_recorder
 from .preset.store import PresetStore
 from .preset.product_config import ProductConfigurationStore
-from .rag.indexer import KnowledgeIndexer
-from .rag.retriever import HybridRetriever
+from .knowledge.indexer import KnowledgeIndexer
+from .knowledge.retriever import HybridRetriever
 from .tools.mcp_manager import MCPManager, get_mcp_manager
 from .tools.registry import ToolRegistry, get_tool_registry
 from .services.background_jobs import BackgroundJobWorker, build_job_handlers
@@ -160,7 +160,7 @@ class AppBuilder:
 
         # 只读合同校验。结构由 `journeypilot migrate` 在启动 API 之前建好；
         # 校验不通过不抛异常，进程仍要启动到 readiness 可读。
-        from .infrastructure.database import get_engine
+        from .storage.database import get_engine
 
         schema_report = await verify_database_contract(
             get_engine(), embedding_dimensions=self.settings.embedding.dimensions
@@ -175,7 +175,7 @@ class AppBuilder:
             getattr(self.settings.checkpoint_retention, "require_on_startup", False)
         )
         try:
-            from .infrastructure.checkpointer import build_checkpointer
+            from .storage.checkpointer import build_checkpointer
 
             checkpointer, checkpointer_pool = await build_checkpointer(self.settings)
             checkpointer_available = checkpointer is not None
@@ -307,13 +307,13 @@ class AppBuilder:
                 logger.warning(f"LangGraph checkpointer 连接池关闭失败: {e}")
 
         try:
-            from .infrastructure.database import close_db
+            from .storage.database import close_db
             await close_db()
         except Exception as e:
             logger.warning(f"数据库关闭失败: {e}")
 
         try:
-            from .infrastructure.redis_client import close_redis
+            from .storage.redis_client import close_redis
             await close_redis()
         except Exception as e:
             logger.warning(f"Redis 关闭失败: {e}")

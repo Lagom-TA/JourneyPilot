@@ -21,8 +21,8 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
 from psycopg.conninfo import make_conninfo
 from travel_agent.entities.state import TravelAgentState
-from travel_agent.db.fingerprint import fingerprint_sync
-from travel_agent.infrastructure.worker_journal_store import (
+from travel_agent.storage.maintenance.fingerprint import fingerprint_sync
+from travel_agent.storage.worker_journal_store import (
     WorkerJournalStore,
     JournalConflict,
 )
@@ -125,7 +125,7 @@ async def check(sock):
 
     try:
         with patch(
-            "travel_agent.infrastructure.worker_journal_store.get_db_session", session
+            "travel_agent.storage.worker_journal_store.get_db_session", session
         ):
             store = WorkerJournalStore()
             version = await store.save(

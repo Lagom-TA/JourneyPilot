@@ -2,7 +2,7 @@
 """出厂语料种子的三个动作：导出、自检、灌库。
 
 种子是什么、为什么本地种子可以包含向量、为什么身份不符要重算 —— 都写在
-`src/travel_agent/rag/factory_seed.py` 的模块 docstring 里，**那里是定义处**，
+`src/travel_agent/knowledge/factory_seed.py` 的模块 docstring 里，**那里是定义处**，
 这个文件只是它的命令行入口。
 
     python scripts/factory_corpus_seed.py --export          # 从当前库导出成 data/corpus/seed/
@@ -27,8 +27,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 
 async def do_export() -> int:
-    from travel_agent.db.report import require_database_contract
-    from travel_agent.rag.factory_seed import DEFAULT_SEED_DIR, export_seed
+    from travel_agent.storage.maintenance.report import require_database_contract
+    from travel_agent.knowledge.factory_seed import DEFAULT_SEED_DIR, export_seed
 
     await require_database_contract()
     manifest = await export_seed()
@@ -43,7 +43,7 @@ async def do_export() -> int:
 
 
 def do_verify() -> int:
-    from travel_agent.rag.factory_seed import DEFAULT_SEED_DIR, read_manifest, verify_seed
+    from travel_agent.knowledge.factory_seed import DEFAULT_SEED_DIR, read_manifest, verify_seed
 
     problems = verify_seed()
     manifest = read_manifest()
@@ -61,8 +61,8 @@ def do_verify() -> int:
 
 
 async def do_load(force: bool) -> int:
-    from travel_agent.db.report import require_database_contract
-    from travel_agent.rag.factory_seed import load_seed
+    from travel_agent.storage.maintenance.report import require_database_contract
+    from travel_agent.knowledge.factory_seed import load_seed
 
     await require_database_contract()
     report = await load_seed(force=force)

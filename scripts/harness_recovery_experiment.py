@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 from travel_agent.agents import utils
 from travel_agent.config import ToolExposureConfig
-from travel_agent.infrastructure.tool_audit_store import InMemoryToolAuditStore
-from travel_agent.infrastructure.worker_journal_store import InMemoryWorkerJournalStore
+from travel_agent.storage.tool_audit_store import InMemoryToolAuditStore
+from travel_agent.storage.worker_journal_store import InMemoryWorkerJournalStore
 from travel_agent.tools.exposure import apply_tool_exposure
 from travel_agent.tools.gateway import ToolGateway
 from travel_agent.tools.registry import ToolRegistry

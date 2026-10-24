@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from travel_agent.agents import utils as agent_utils
-from travel_agent.infrastructure.weather_provider import (
+from travel_agent.integrations.weather import (
     OpenMeteoSeasonalBaselineProvider,
     OpenMeteoWeatherProvider,
     WeatherProviderNotApplicable,

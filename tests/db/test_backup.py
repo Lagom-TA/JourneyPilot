@@ -10,8 +10,8 @@ import json
 
 import pytest
 
-from travel_agent.db import migrate
-from travel_agent.db.backup import (
+from travel_agent.storage.maintenance import migrate
+from travel_agent.storage.maintenance.backup import (
     BACKUP_FORMAT_VERSION,
     DUMP_FILENAME,
     MANIFEST_FILENAME,
@@ -21,7 +21,7 @@ from travel_agent.db.backup import (
     prune_automatic_backups,
     verify_backup,
 )
-from travel_agent.db.connection import connect
+from travel_agent.storage.maintenance.connection import connect
 
 pytestmark = pytest.mark.postgres
 

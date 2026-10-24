@@ -45,10 +45,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from travel_agent.rag.collections import FACTORY_KNOWLEDGE_COLLECTIONS  # noqa: E402
+from travel_agent.knowledge.collections import FACTORY_KNOWLEDGE_COLLECTIONS  # noqa: E402
 
 # 出厂集合名只有一处定义。这里此前抄了一份写死的四集合清单（--stats 用），
-# 与 `rag/collections.py` 靠上面那段 docstring 手工同步 —— 清单一漂，运维照着
+# 与 `knowledge/collections.py` 靠上面那段 docstring 手工同步 —— 清单一漂，运维照着
 # `--stats` 读到的「知识库统计」就少一个集合。这个常量直接复用唯一定义处。
 #
 # 注意这里用的是**全部**出厂集合名，不是 `seeded_factory_collections()`：
@@ -57,8 +57,8 @@ COLLECTIONS = FACTORY_KNOWLEDGE_COLLECTIONS
 
 
 async def index_wikipedia(titles: list, collection: str) -> None:
-    from travel_agent.db.report import require_database_contract
-    from travel_agent.rag.sources.wikipedia_fetcher import WikipediaFetcher
+    from travel_agent.storage.maintenance.report import require_database_contract
+    from travel_agent.knowledge.sources.wikipedia_fetcher import WikipediaFetcher
 
     await require_database_contract()
 
@@ -74,8 +74,8 @@ async def index_wikipedia(titles: list, collection: str) -> None:
 
 
 async def index_wikipedia_popular(collection: str) -> None:
-    from travel_agent.db.report import require_database_contract
-    from travel_agent.rag.sources.wikipedia_fetcher import (
+    from travel_agent.storage.maintenance.report import require_database_contract
+    from travel_agent.knowledge.sources.wikipedia_fetcher import (
         WikipediaFetcher,
         POPULAR_DESTINATIONS_ZH,
     )
@@ -97,8 +97,8 @@ async def index_wikipedia_popular(collection: str) -> None:
 
 
 async def index_urls(urls: list, collection: str) -> None:
-    from travel_agent.db.report import require_database_contract
-    from travel_agent.rag.sources.web_crawler import WebCrawler
+    from travel_agent.storage.maintenance.report import require_database_contract
+    from travel_agent.knowledge.sources.web_crawler import WebCrawler
 
     await require_database_contract()
 
@@ -110,8 +110,8 @@ async def index_urls(urls: list, collection: str) -> None:
 
 
 async def index_directory(directory: str, collection: str) -> None:
-    from travel_agent.db.report import require_database_contract
-    from travel_agent.rag.sources.document_loader import DocumentLoader
+    from travel_agent.storage.maintenance.report import require_database_contract
+    from travel_agent.knowledge.sources.document_loader import DocumentLoader
 
     await require_database_contract()
 
@@ -122,8 +122,8 @@ async def index_directory(directory: str, collection: str) -> None:
 
 
 async def index_file(file_path: str, collection: str) -> None:
-    from travel_agent.db.report import require_database_contract
-    from travel_agent.rag.sources.document_loader import DocumentLoader
+    from travel_agent.storage.maintenance.report import require_database_contract
+    from travel_agent.knowledge.sources.document_loader import DocumentLoader
 
     await require_database_contract()
 
@@ -156,8 +156,8 @@ async def index_from_jsondirs(
     chunker 由 --chunker-type 指定（text/semantic/contextual），
     collection 由 --collection 指定（建议 knowledge_text/semantic/contextual）。
     """
-    from travel_agent.db.report import require_database_contract
-    from travel_agent.rag.indexer import KnowledgeIndexer
+    from travel_agent.storage.maintenance.report import require_database_contract
+    from travel_agent.knowledge.indexer import KnowledgeIndexer
 
     await require_database_contract()
     indexer = KnowledgeIndexer(chunker_type=chunker_type)
@@ -213,8 +213,8 @@ async def index_from_jsondirs(
 
 
 async def show_stats() -> None:
-    from travel_agent.db.report import require_database_contract
-    from travel_agent.rag.indexer import KnowledgeIndexer
+    from travel_agent.storage.maintenance.report import require_database_contract
+    from travel_agent.knowledge.indexer import KnowledgeIndexer
 
     await require_database_contract()
     indexer = KnowledgeIndexer()

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
-from ..models.task_routing import TaskKind, llm_for_task
+from ..llm.task_routing import TaskKind, llm_for_task
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -139,7 +139,7 @@ def build_context_compaction_event(
 
 def _count_tokens(text: str, model: str = "gpt-4o") -> int:
     """Shared offline estimate; authoritative billing comes from API usage."""
-    from ..models.token_counting import estimate_tokens
+    from ..llm.token_counting import estimate_tokens
 
     return estimate_tokens(text, model)
 
@@ -251,7 +251,7 @@ class ContextCompressor:
         Returns:
             AnchorSummary 压缩摘要
         """
-        from ..models.router import get_model_router
+        from ..llm.router import get_model_router
 
         if not messages:
             if existing_anchor:

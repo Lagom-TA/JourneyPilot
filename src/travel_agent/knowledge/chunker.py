@@ -16,7 +16,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..config import get_settings
-from ..models.router import llm_channel
+from ..llm.router import llm_channel
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +224,7 @@ class SemanticChunker:
 
     def _get_embedder(self):
         if self._embedder is None:
-            from ..models.embedder import get_embedder
+            from ..llm.embedder import get_embedder
             self._embedder = get_embedder()
         return self._embedder
 
@@ -413,7 +413,7 @@ class ContextualChunker:
     1. 规模 —— 正文超过 ``RAGConfig.model_chunking_max_chars`` 就一次模型都不调
        （见 ``_exceeded_model_chunking_budget``）；
     2. 并发 —— 走 ``ingest_contextual_llm`` 通道
-       （``ProviderChannelConfig``，`models/router.llm_channel`）。这一档共用的是
+       （``ProviderChannelConfig``，`llm/router.llm_channel`）。这一档共用的是
        **全站 fast 档那一个 httpx 连接池**（``langchain_openai`` 按
        (base_url, timeout) lru_cache 一个 AsyncClient），所以「一次入库排出上万条
        并发请求」的后果不是这次入库慢，是**所有人的模型调用排到队尾**；
@@ -436,7 +436,7 @@ class ContextualChunker:
 
     def _get_llm(self):
         if self._llm is None:
-            from ..models.router import get_model_router
+            from ..llm.router import get_model_router
             router = get_model_router()
             self._llm = router.get_fast()  # fast model：低延迟低成本
         return self._llm

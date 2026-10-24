@@ -25,7 +25,7 @@ from .schema_contract import BASELINE_REVISION
 
 logger = logging.getLogger(__name__)
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 ALEMBIC_INI = _REPO_ROOT / "alembic.ini"
 MIGRATIONS_DIR = _REPO_ROOT / "migrations"
 #: 每个**改变了受管结构**的 revision 在这里存一份指纹。adoption 判定与 API 只读校验

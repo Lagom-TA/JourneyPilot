@@ -16,7 +16,7 @@ from sqlalchemy import text
 from ...builders import get_components
 from ...capabilities import capability_report
 from ...config import get_settings, persist_model_config
-from ...models.router import ModelTier, get_model_router
+from ...llm.router import ModelTier, get_model_router
 from ..schemas import ModelConfigRequest, SystemStatus
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ async def _probe_database() -> Tuple[bool, str]:
     """
 
     try:
-        from ...infrastructure.database import get_engine
+        from ...storage.database import get_engine
 
         async with get_engine().connect() as conn:
             await conn.execute(text("SELECT 1"))
@@ -70,7 +70,7 @@ async def _probe_database() -> Tuple[bool, str]:
 
 async def _probe_redis() -> Tuple[bool, str]:
     try:
-        from ...infrastructure.redis_client import get_redis
+        from ...storage.redis_client import get_redis
 
         await get_redis().ping()
         return True, "ok"
@@ -118,7 +118,7 @@ async def get_status():
 # blocks readiness — the default is the strict one.
 #
 # ``database_schema`` 刻意不在这份名单里 —— 它拦门禁，判据与
-# ``db/report.py::GATES_READINESS`` 同源。
+# ``storage/maintenance/report.py::GATES_READINESS`` 同源。
 _NON_BLOCKING_COMPONENTS = frozenset(
     {
         "mcp",
@@ -259,7 +259,7 @@ async def _probe_knowledge_corpus() -> Dict[str, Any]:
             "collections": {},
         }
 
-    from ...rag import factory_seed
+    from ...knowledge import factory_seed
 
     try:
         counts = await factory_seed.factory_collection_counts()
@@ -339,7 +339,7 @@ def _probe_schema_report(components: Any) -> Dict[str, Any]:
     报告缺失与校验不通过一样按不就绪处理 —— 门禁的默认值只能是关着的。
     """
 
-    from ...db.report import GATES_READINESS
+    from ...storage.maintenance.report import GATES_READINESS
 
     report = getattr(components, "schema_report", None)
     if report is None:

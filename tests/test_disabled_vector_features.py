@@ -49,7 +49,7 @@ async def test_manual_preferences_and_profile_still_load(disabled_vectors, monke
 
 
 async def test_indexing_stops_before_chunking_or_writes(disabled_vectors, monkeypatch):
-    from travel_agent.rag.indexer import KnowledgeIndexer
+    from travel_agent.knowledge.indexer import KnowledgeIndexer
 
     indexer = KnowledgeIndexer()
     split = AsyncMock()
@@ -68,7 +68,7 @@ async def test_indexing_stops_before_chunking_or_writes(disabled_vectors, monkey
 
 
 async def test_retrieval_stops_before_models_and_database(disabled_vectors, monkeypatch):
-    from travel_agent.rag import retriever
+    from travel_agent.knowledge import retriever
 
     search = AsyncMock()
     reranker = Mock()
@@ -83,7 +83,7 @@ async def test_retrieval_stops_before_models_and_database(disabled_vectors, monk
 
 
 def test_disabled_embedding_rejects_a_previously_cached_model(disabled_vectors, monkeypatch):
-    from travel_agent.models import embedder
+    from travel_agent.llm import embedder
 
     cached = Mock()
     build = Mock()
@@ -98,7 +98,7 @@ def test_disabled_embedding_rejects_a_previously_cached_model(disabled_vectors, 
 async def test_bootstrap_and_health_do_not_read_corpus(disabled_vectors, monkeypatch):
     from travel_agent.api.app import _bootstrap_factory_corpus
     from travel_agent.api.routes.system import _probe_knowledge_corpus
-    from travel_agent.rag import factory_seed
+    from travel_agent.knowledge import factory_seed
 
     seed = AsyncMock()
     count = AsyncMock()
@@ -133,7 +133,7 @@ async def test_fast_answer_continues_without_retrieval(disabled_vectors, monkeyp
     monkeypatch.setattr(node, "llm_for_task", Mock(return_value=llm))
     monkeypatch.setattr(node, "build_run_constraint_pack", AsyncMock(return_value={}))
     monkeypatch.setattr(node, "_build_realtime_tool_context", AsyncMock(return_value={}))
-    from travel_agent.rag.retriever import HybridRetriever
+    from travel_agent.knowledge.retriever import HybridRetriever
 
     retrieve = AsyncMock(side_effect=AssertionError("retrieval must not run"))
     monkeypatch.setattr(HybridRetriever, "retrieve", retrieve)

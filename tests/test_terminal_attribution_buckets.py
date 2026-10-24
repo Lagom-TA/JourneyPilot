@@ -70,7 +70,7 @@ def test_a_persisted_delivery_failure_maps_to_the_failure_bucket() -> None:
 def test_store_fallback_reason_lands_in_the_same_bucket() -> None:
     """``delivery_integrity_failure`` 不是任何 InternalFailureClass 的值，却同桶。
 
-    它是 ``infrastructure/trip_run_store.py`` 在调用方没给 reason_code 时写下的兜底。
+    它是 ``storage/trip_run_store.py`` 在调用方没给 reason_code 时写下的兜底。
     读方只做 ``startswith``，所以 ``delivery_integrity_failed`` 桶里混着两类 run。
     这条断言不是在赞同这个设计，是在让它可见：改这个字符串的值会改度量输出。
     """

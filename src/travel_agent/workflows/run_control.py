@@ -511,7 +511,7 @@ async def ensure_budget_baseline() -> Optional[RunBudgetLedger]:
     ledger = ledger_for(run_id, snapshot)
     if ledger.seeded:
         return ledger
-    from ..infrastructure.cost_ledger_store import get_cost_ledger_store
+    from ..storage.cost_ledger_store import get_cost_ledger_store
 
     return await seed_run_budget(
         run_id, snapshot, cost_ledger_store=get_cost_ledger_store()

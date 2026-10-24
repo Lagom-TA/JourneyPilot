@@ -231,9 +231,9 @@ KNOWLEDGE_SEARCH_SCHEMA = {
 
 async def knowledge_search(query: str, collection: str | None = None, limit: int = 3) -> Dict[str, Any]:
     from ..config import get_settings
-    from ..rag.collections import grounding_corpus, relabel_to_logical_collections
-    from ..rag.retrieval_pipeline import retrieve_for_query
-    from ..rag.retriever import HybridRetriever
+    from ..knowledge.collections import grounding_corpus, relabel_to_logical_collections
+    from ..knowledge.retrieval_pipeline import retrieve_for_query
+    from ..knowledge.retriever import HybridRetriever
     from .governance import sanitize_tool_result, utc_now_iso
 
     settings = get_settings()

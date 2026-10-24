@@ -36,7 +36,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import text
 
 from ..config import get_settings
-from ..infrastructure.database import get_db_session
+from ..storage.database import get_db_session
 from .reranker import get_reranker
 
 logger = logging.getLogger(__name__)
@@ -206,7 +206,7 @@ class HybridRetriever:
 
     def _get_embedder(self):
         if self._embedder is None:
-            from ..models.embedder import get_embedder
+            from ..llm.embedder import get_embedder
             self._embedder = get_embedder()
         return self._embedder
 

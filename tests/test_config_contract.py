@@ -276,7 +276,7 @@ def test_a_preset_section_never_contains_an_api_key():
 
 
 def test_reasoning_dialects_follow_the_declaration():
-    from travel_agent.models.router import _provider_extra_body
+    from travel_agent.llm.router import _provider_extra_body
 
     direct = _provider_extra_body(capabilities_for("https://api.deepseek.com"), max_tokens=99)
     proxied = _provider_extra_body(
@@ -295,7 +295,7 @@ def test_reasoning_dialects_follow_the_declaration():
 
 
 def test_json_object_downgrade_does_not_duplicate_an_embedded_schema():
-    from travel_agent.models.router import _satisfy_json_object_prompt_requirement
+    from travel_agent.llm.router import _satisfy_json_object_prompt_requirement
 
     schema = {
         "type": "object",
@@ -322,7 +322,7 @@ def test_json_object_downgrade_does_not_duplicate_an_embedded_schema():
 def test_task_scoped_output_limit_replaces_both_openrouter_token_fields():
     from langchain_core.messages import HumanMessage
 
-    from travel_agent.models.router import ModelTier, OpenAICompatibleLLM
+    from travel_agent.llm.router import ModelTier, OpenAICompatibleLLM
 
     llm = OpenAICompatibleLLM(
         api_key="test-key",

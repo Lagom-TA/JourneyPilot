@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import pytest
 
-from travel_agent.db import migrate
-from travel_agent.db.connection import connect
-from travel_agent.db.fingerprint import (
+from travel_agent.storage.maintenance import migrate
+from travel_agent.storage.maintenance.connection import connect
+from travel_agent.storage.maintenance.fingerprint import (
     EMBEDDING_DIM_PLACEHOLDER,
     TEXT_SEARCH_CONFIG_PLACEHOLDER,
     build_fingerprint,

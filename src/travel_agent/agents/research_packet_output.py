@@ -7,7 +7,7 @@ import hashlib
 import json
 import logging
 import re
-from ..models.task_routing import TaskKind, QualityFeedback, TaskLLM
+from ..llm.task_routing import TaskKind, QualityFeedback, TaskLLM
 
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -33,7 +33,7 @@ from ..entities.delivery_bundle import (
     WeatherSensitivity,
 )
 from ..entities.provider_environment import snapshot_data_environment
-from ..models.strict_json_schema import as_strict_schema
+from ..llm.strict_json_schema import as_strict_schema
 from ..entities.provider_evidence import (
     TIMETABLED_TRANSPORT_CLASSES,
     ProviderEvidenceAssignment,
@@ -48,12 +48,12 @@ from ..services.candidate_admission import (
 from ..services.constraint_applicability import (
     active_hard_constraint_ids as active_hard_constraint_ids,
 )
-from ..rag.place_mentions import PlaceLookup, ProviderIdentity
+from ..knowledge.place_mentions import PlaceLookup, ProviderIdentity
 from ..services.destination_scope import (
     DESTINATION_DISTANCE_KEY,
     MAX_DESTINATION_DISTANCE_KM,
 )
-from ..rag.source_records import (
+from ..knowledge.source_records import (
     is_rag_chunk_source_id, knowledge_tool_documents, rag_chunk_source_records,
 )
 from ..workflows.run_control import ModelWindowClosed
@@ -3131,7 +3131,7 @@ def _closed_definitions(
     ``ResearchPacket.model_json_schema()`` carries the whole packet graph.  A
     bounded selection contract that ships all of it is not merely verbose: the
     configured provider does not enforce this schema at all — direct DeepSeek
-    rejects ``response_format=json_schema``, so ``models/router.py`` downgrades
+    rejects ``response_format=json_schema``, so ``llm/router.py`` downgrades
     it to ``json_object`` and restates the schema as prose.  The schema *text*
     is therefore the entire contract the model reads, and the unreachable
     definitions state, in that contract, that a lodging check-in date, a

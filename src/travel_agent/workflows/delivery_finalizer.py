@@ -25,13 +25,13 @@ from ..entities.evidence_basis import PublicProjectionContractViolation
 from ..entities.state import TravelAgentState
 from ..entities.terminal_attribution import delivery_integrity_reason_code
 from ..entities.trip_run import TripRunStatus, build_trip_run_completion_audit
-from ..infrastructure.database import get_db_session
-from ..infrastructure.delivery_bundle_store import (
+from ..storage.database import get_db_session
+from ..storage.delivery_bundle_store import (
     BundleCommitKind,
     DeliveryBundleStore,
     InMemoryDeliveryBundleStore,
 )
-from ..infrastructure.trip_run_store import InMemoryTripRunStore, TripRunStore
+from ..storage.trip_run_store import InMemoryTripRunStore, TripRunStore
 from ..services.public_delivery import public_delivery_bundle
 from ..services.weather_adjustment import build_weather_adjustment_proposals
 from .run_control import (

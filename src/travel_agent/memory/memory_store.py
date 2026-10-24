@@ -26,8 +26,8 @@ from sqlalchemy import text
 from ..config import get_settings
 from ..entities.background_job import memory_fact_digest
 from ..entities.memory_lifecycle import MemoryRetentionPolicy, MemoryRetentionStatus
-from ..infrastructure.database import get_db_session
-from ..infrastructure.row_values import iso_or_empty as _iso
+from ..storage.database import get_db_session
+from ..storage.row_values import iso_or_empty as _iso
 
 logger = logging.getLogger(__name__)
 
@@ -503,7 +503,7 @@ class MemoryStore:
 
     async def _compute_embedding(self, text_content: str) -> List[float]:
         """通过 models.embedder.get_embedder() 计算向量（provider 由 config.embedding 决定）。"""
-        from ..models.embedder import get_embedder
+        from ..llm.embedder import get_embedder
         embedder = get_embedder()
         return await embedder.embed(text_content)
 

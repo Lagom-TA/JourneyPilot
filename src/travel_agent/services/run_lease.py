@@ -11,7 +11,7 @@ import logging
 from typing import Awaitable, Callable, Optional
 
 from ..entities.trip_run import RunRecoveryStatus
-from ..infrastructure.run_execution_store import RunExecutionStore
+from ..storage.run_execution_store import RunExecutionStore
 
 logger = logging.getLogger(__name__)
 

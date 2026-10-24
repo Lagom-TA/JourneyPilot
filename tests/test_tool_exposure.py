@@ -10,7 +10,7 @@ import pytest
 
 from travel_agent.agents import utils
 from travel_agent.config import ToolExposureConfig
-from travel_agent.infrastructure.tool_audit_store import InMemoryToolAuditStore
+from travel_agent.storage.tool_audit_store import InMemoryToolAuditStore
 from travel_agent.tools.exposure import (
     ToolExposureSession,
     apply_tool_exposure,

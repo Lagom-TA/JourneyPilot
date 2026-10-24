@@ -13,7 +13,7 @@ from typing import Any, Dict, Optional
 from sqlalchemy import text
 
 from ..entities.user import TravelPreference, UserProfile
-from ..infrastructure.database import get_db_session
+from ..storage.database import get_db_session
 
 logger = logging.getLogger(__name__)
 

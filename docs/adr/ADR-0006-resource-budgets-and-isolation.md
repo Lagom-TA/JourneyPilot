@@ -2,7 +2,7 @@
 
 状态：已采纳
 影响：`api/sse_buffer.py`、`services/blocking_work.py`、`utils/concurrency.py`、
-`rag/sources/document_parse.py`、`entities/run_budget.py`、`workflows/run_budget.py`
+`knowledge/sources/document_parse.py`、`entities/run_budget.py`、`workflows/run_budget.py`
 
 ## 决定
 

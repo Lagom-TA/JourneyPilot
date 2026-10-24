@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import text
 
 from ..config import ModelPricingItem, resolve_price
-from ..models.usage import LLMCallRecord
+from ..llm.usage import LLMCallRecord
 from .database import get_db_session
 from .row_values import iso_or_none as _iso
 
@@ -630,7 +630,7 @@ class CostLedgerStore:
             )
             calls = [_call_from_row(dict(row)) for row in result.mappings().all()]
         summary = summarize_calls(run_id, calls)
-        from ..models.usage import get_usage_recorder
+        from ..llm.usage import get_usage_recorder
         return get_usage_recorder().apply_integrity(summary)
 
     async def count_calls(self, run_id: str) -> int:

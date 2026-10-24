@@ -24,14 +24,14 @@ from ..entities.delivery_bundle import (
     WeatherDayContext,
     bundle_content_hashes,
 )
-from ..infrastructure.delivery_bundle_store import (
+from ..storage.delivery_bundle_store import (
     BundleCommitKind,
     BundleIdempotencyMismatch,
     BundleRevisionConflict,
     BundleRevisionVector,
     DeliveryBundleStore,
 )
-from ..infrastructure.weather_provider import WeatherProviderRequest
+from ..integrations.weather import WeatherProviderRequest
 from .delivery_projection import build_delivery_projections
 from .candidate_readmission import (
     CandidateReadmissionError,

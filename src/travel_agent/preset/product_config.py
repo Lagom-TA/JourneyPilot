@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import text
 
-from ..infrastructure.database import get_db_session
+from ..storage.database import get_db_session
 
 
 class PlannerOption(BaseModel):

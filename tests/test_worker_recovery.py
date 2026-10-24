@@ -9,7 +9,7 @@ from langgraph.graph import END, START, StateGraph
 
 from travel_agent.agents import utils
 from travel_agent.entities.state import TravelAgentState
-from travel_agent.infrastructure.worker_journal_store import InMemoryWorkerJournalStore, JournalConflict
+from travel_agent.storage.worker_journal_store import InMemoryWorkerJournalStore, JournalConflict
 from travel_agent.tools.exposure import ToolExposurePlan
 from travel_agent.workflows.worker_recovery import WorkerJournal, current_worker_journal, with_worker_recovery
 
@@ -276,7 +276,7 @@ async def test_new_langgraph_dispatch_does_not_replay_previous_failed_attempt():
 
 async def test_repeated_side_effecting_tool_calls_are_never_locally_cached(monkeypatch):
     from travel_agent.entities.tool_gateway import ToolManifest
-    from travel_agent.infrastructure.tool_audit_store import InMemoryToolAuditStore
+    from travel_agent.storage.tool_audit_store import InMemoryToolAuditStore
     from travel_agent.tools.registry import ToolRegistry
 
     registry, calls, audit = ToolRegistry(), [], InMemoryToolAuditStore()

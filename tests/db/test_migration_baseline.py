@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import pytest
 
-from travel_agent.db import migrate
-from travel_agent.db.connection import connect
-from travel_agent.db.fingerprint import diff_fingerprints, fingerprint_sync
-from travel_agent.db.schema_contract import BASELINE_REVISION, MANAGED_TABLES
+from travel_agent.storage.maintenance import migrate
+from travel_agent.storage.maintenance.connection import connect
+from travel_agent.storage.maintenance.fingerprint import diff_fingerprints, fingerprint_sync
+from travel_agent.storage.maintenance.schema_contract import BASELINE_REVISION, MANAGED_TABLES
 
 pytestmark = pytest.mark.postgres
 
@@ -26,7 +26,7 @@ def test_empty_database_upgrades_to_head(temp_database, settings):
     migrate.upgrade(temp_database)
 
     with connect(temp_database) as conn:
-        from travel_agent.db.census import take_census
+        from travel_agent.storage.maintenance.census import take_census
 
         census = take_census(conn)
 
@@ -106,14 +106,14 @@ def test_baseline_downgrade_removes_managed_tables(temp_database, settings):
 
     migrate.upgrade(temp_database, BASELINE_REVISION)
     with connect(temp_database) as conn:
-        from travel_agent.db.census import take_census
+        from travel_agent.storage.maintenance.census import take_census
 
         assert take_census(conn).alembic_revision == BASELINE_REVISION
 
     migrate.downgrade(temp_database, "base")
 
     with connect(temp_database) as conn:
-        from travel_agent.db.census import take_census
+        from travel_agent.storage.maintenance.census import take_census
 
         census = take_census(conn)
     assert census.present_managed_tables == (), (

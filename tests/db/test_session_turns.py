@@ -8,7 +8,7 @@ from sqlalchemy import text
 from travel_agent.memory.chat_session import ChatSessionMemory
 from travel_agent.memory.compaction import CompactionService
 from travel_agent.memory.compressor import AnchorSummary
-from travel_agent.infrastructure.database import get_db_session
+from travel_agent.storage.database import get_db_session
 
 pytestmark = pytest.mark.postgres
 
