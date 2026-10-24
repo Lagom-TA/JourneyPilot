@@ -63,30 +63,29 @@ from ..entities.request_contract import AmendmentImpact, IntentAmendment
 from ..services.state_invalidation import invalidation_update
 from ..utils.display_names import get_agent_display_name
 from ..utils.message_helpers import build_messages
-from .node_names import (
-    NODE_ACCOMMODATION as NODE_ACCOMMODATION,
-    NODE_ARTIFACT_GATE as NODE_ARTIFACT_GATE,
-    NODE_BUDGET_ESTIMATE as NODE_BUDGET_ESTIMATE,
-    NODE_CANDIDATE_GATE as NODE_CANDIDATE_GATE,
-    NODE_CLARIFIER as NODE_CLARIFIER,
-    NODE_DELIVERY_FINALIZER as NODE_DELIVERY_FINALIZER,
-    NODE_DELIVERY_PROJECTOR as NODE_DELIVERY_PROJECTOR,
-    NODE_DELIVERY_QUALITY_GATE as NODE_DELIVERY_QUALITY_GATE,
-    NODE_DESTINATION as NODE_DESTINATION,
-    NODE_DESTINATION_GEO_RESOLVER as NODE_DESTINATION_GEO_RESOLVER,
-    NODE_DISPATCHER as NODE_DISPATCHER,
-    NODE_INTENT_AMENDMENT_ROUTER as NODE_INTENT_AMENDMENT_ROUTER,
-    NODE_INTENT_FIDELITY_GATE as NODE_INTENT_FIDELITY_GATE,
-    NODE_ITINERARY as NODE_ITINERARY,
-    NODE_MINIMUM_DELIVERY_DRAFT as NODE_MINIMUM_DELIVERY_DRAFT,
-    NODE_PLAN_GATE as NODE_PLAN_GATE,
-    NODE_PLANNER as NODE_PLANNER,
-    NODE_REQUEST_CONTRACT_NORMALIZER as NODE_REQUEST_CONTRACT_NORMALIZER,
-    NODE_RESEARCH_BRIEF_BUILDER as NODE_RESEARCH_BRIEF_BUILDER,
-    NODE_SUMMARY_CARD_BRIEF as NODE_SUMMARY_CARD_BRIEF,
-    NODE_TRANSPORT as NODE_TRANSPORT,
-    NODE_WEATHER_CONTEXT_BUILDER as NODE_WEATHER_CONTEXT_BUILDER,
-    WORKER_NODES as WORKER_NODES,
+from ..planning.nodes import (
+    NODE_ACCOMMODATION,
+    NODE_ARTIFACT_GATE,
+    NODE_BUDGET_ESTIMATE,
+    NODE_CANDIDATE_GATE,
+    NODE_CLARIFIER,
+    NODE_DELIVERY_FINALIZER,
+    NODE_DELIVERY_PROJECTOR,
+    NODE_DELIVERY_QUALITY_GATE,
+    NODE_DESTINATION,
+    NODE_DESTINATION_GEO_RESOLVER,
+    NODE_DISPATCHER,
+    NODE_INTENT_AMENDMENT_ROUTER,
+    NODE_INTENT_FIDELITY_GATE,
+    NODE_ITINERARY,
+    NODE_MINIMUM_DELIVERY_DRAFT,
+    NODE_PLAN_GATE,
+    NODE_PLANNER,
+    NODE_REQUEST_CONTRACT_NORMALIZER,
+    NODE_RESEARCH_BRIEF_BUILDER,
+    NODE_SUMMARY_CARD_BRIEF,
+    NODE_TRANSPORT,
+    NODE_WEATHER_CONTEXT_BUILDER,
 )
 from .budget_estimate import budget_estimate_node
 from .delivery_projection import delivery_projection_node
@@ -96,7 +95,9 @@ from .minimum_delivery_draft import (
     seal_minimum_delivery_draft,
 )
 from .weather_context import destination_geo_resolver_node, weather_context_builder_node
-from .run_control import RunCancelled, run_attribution, with_run_control
+from travel_agent.runtime.cancellation import RunCancelled
+from travel_agent.runtime.context import run_attribution
+from travel_agent.planning.execution import with_run_control
 
 logger = logging.getLogger(__name__)
 
@@ -132,10 +133,6 @@ def _reject_checkpoint_contract(
 if not hasattr(langchain, "debug"):
     langchain.debug = False
 
-
-# ── 节点名称常量 ──────────────────────────────────────────────────────────────
-# 真源在 `node_names.py`（零依赖叶子模块，下游可直接导入不成环）；
-# 上方以 `as` 形式逐个显式 re-export，保持本模块对外符号不变。
 
 # 计划批准门：唯一一次修改（编辑全文 / 补充要求），用满后二轮只接受 approve/cancel。
 _MAX_PLAN_GATE_REVISIONS = 1
@@ -591,7 +588,7 @@ def build_travel_workflow() -> StateGraph:
         NODE_DELIVERY_QUALITY_GATE,
         with_run_control(NODE_DELIVERY_QUALITY_GATE, delivery_quality_gate_node),
     )
-    from .worker_recovery import with_worker_recovery
+    from travel_agent.planning.recovery import with_worker_recovery
     graph.add_node(NODE_DESTINATION, with_run_control(NODE_DESTINATION, with_worker_recovery(NODE_DESTINATION, destination_researcher_node)))
     graph.add_node(NODE_TRANSPORT, with_run_control(NODE_TRANSPORT, with_worker_recovery(NODE_TRANSPORT, transport_researcher_node)))
     graph.add_node(NODE_ACCOMMODATION, with_run_control(NODE_ACCOMMODATION, with_worker_recovery(NODE_ACCOMMODATION, accommodation_researcher_node)))

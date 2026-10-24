@@ -1,0 +1,86 @@
+from __future__ import annotations
+
+import re
+from typing import Any, Dict, List, Tuple
+
+
+def make_round_name(base_name: str, round_num: int) -> str:
+    """生成带轮次后缀的 Agent 名称。
+
+    命名约定：``{base_name}_r{round_num}``。
+    round_num 从 2 开始（首轮无后缀，第一次补充为 _r2）。
+
+    示例：
+        >>> make_round_name("destination_researcher", 2)
+        'destination_researcher_r2'
+    """
+    return f"{base_name}_r{round_num}"
+
+
+def resolve_agent_assignment(
+    agent_assignments: Dict[str, Any],
+    base_name: str,
+) -> Tuple[str, Dict[str, Any]]:
+    """
+    为 Worker 节点查找正确的任务分配。
+
+    精炼/补研轮次中，Candidate Gate 写入的 assignment key 带有 round suffix
+    （如 destination_researcher_r2）。Worker 节点用 base_name 注册，需要找到
+    当前轮次对应的 assignment。
+
+    返回 (output_key, assignment_dict)：
+    - output_key: 存储输出时使用的 key（base_name 或 base_name_rN）
+    - assignment_dict: 完整的 capability assignment 合同
+    """
+
+    def require_assignment(key: str) -> Tuple[str, Dict[str, Any]]:
+        assignment = agent_assignments.get(key)
+        if (
+            not isinstance(assignment, dict)
+            or not str(assignment.get("objective") or "").strip()
+        ):
+            raise ValueError(f"missing capability assignment for {key}")
+        return key, assignment
+
+    matching_keys_with_round = []
+    for key in agent_assignments:
+        m = re.match(rf"^{re.escape(base_name)}_r(\d+)$", key)
+        if m:
+            matching_keys_with_round.append((int(m.group(1)), key))
+
+    if matching_keys_with_round:
+        matching_keys_with_round.sort(key=lambda x: x[0], reverse=True)
+        latest_key = matching_keys_with_round[0][1]
+        return require_assignment(latest_key)
+
+    return require_assignment(base_name)
+
+
+def assignment_research_round(assignment_key: str) -> int:
+    match = re.fullmatch(r".+_r(\d+)", assignment_key)
+    return max(int(match.group(1)) - 1, 0) if match else 0
+
+
+def resolve_scoped_research_output_key(
+    research_packets: Dict[str, Any],
+    base_name: str,
+    resolved_key: str,
+    *,
+    scoped_retry: bool,
+) -> str:
+    """Give every Candidate Gate retry an immutable worker-round key."""
+    if not scoped_retry:
+        return resolved_key
+    resolved_match = re.fullmatch(rf"{re.escape(base_name)}_r(\d+)", resolved_key)
+    if resolved_match and resolved_key not in research_packets:
+        return resolved_key
+    rounds: List[int] = []
+    for key in research_packets:
+        task_key = key.split("@", 1)[0]
+        if task_key == base_name:
+            rounds.append(1)
+            continue
+        match = re.fullmatch(rf"{re.escape(base_name)}_r(\d+)", task_key)
+        if match:
+            rounds.append(int(match.group(1)))
+    return make_round_name(base_name, max(rounds, default=1) + 1)

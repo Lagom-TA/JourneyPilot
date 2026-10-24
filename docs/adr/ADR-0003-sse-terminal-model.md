@@ -1,7 +1,7 @@
 # ADR-0003：每个请求恰好一个终态帧
 
 状态：已采纳
-影响：`api/sse_buffer.py`、`api/routes/chat.py`、`chat_requests` 表、前端 `lib/sse.ts`
+影响：`runtime/events.py`、`api/routes/chat.py`、`chat_requests` 表、前端 `lib/sse.ts`
 
 ## 决定
 
@@ -22,5 +22,5 @@
 ## 后果
 
 - 生产者侧只有一个终态发布点（`cleanup_stream_exit` 收敛所有退出路径）。
-- 背压不允许丢终态：`SSEBuffer` 的 critical 队列满时生产者**等待**，不丢
+- 背压不允许丢终态：`EventBuffer` 的 critical 队列满时生产者**等待**，不丢
   （见 [ADR-0006](ADR-0006-resource-budgets-and-isolation.md)）。

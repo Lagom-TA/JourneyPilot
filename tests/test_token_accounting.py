@@ -8,7 +8,12 @@ import pytest
 from langchain_core.messages import AIMessageChunk
 
 from travel_agent.config import ModelPricingItem, RunBudgetConfig
-from travel_agent.entities.run_budget import RunBudgetSnapshot, RunBudgetUsage, exhausted_dimension, remaining_budget
+from travel_agent.runtime.budget import (
+    RunBudgetSnapshot,
+    RunBudgetUsage,
+    exhausted_dimension,
+    remaining_budget,
+)
 from travel_agent.storage.cost_ledger_store import (
     CostLedgerConflict, InMemoryCostLedgerStore, build_ledger_call, compute_cost_usd, summarize_calls,
 )
@@ -16,8 +21,8 @@ from travel_agent.llm.chat_client import ReasoningChatOpenAI
 from travel_agent.llm.router import ModelTier, OpenAICompatibleLLM
 from travel_agent.llm.token_counting import estimate_message_tokens, estimate_request_tokens, estimate_tokens
 from travel_agent.llm.usage import LLMCallRecord, UsageRecorder, error_usage_message, extract_usage, response_finish_reason
-from travel_agent.workflows.run_budget import RunBudgetLedger
-from travel_agent.workflows.run_control import current_run_id
+from travel_agent.runtime.budget import RunBudgetLedger
+from travel_agent.runtime.context import current_run_id
 
 
 @pytest.mark.parametrize("raw, expected", [

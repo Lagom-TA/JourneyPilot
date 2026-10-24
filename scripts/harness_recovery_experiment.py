@@ -18,7 +18,7 @@ from travel_agent.storage.worker_journal_store import InMemoryWorkerJournalStore
 from travel_agent.tools.exposure import apply_tool_exposure
 from travel_agent.tools.gateway import ToolGateway
 from travel_agent.tools.registry import ToolRegistry
-from travel_agent.workflows.worker_recovery import WorkerJournal, current_worker_journal
+from travel_agent.runtime.journal import WorkerJournal, current_worker_journal
 
 
 class FixtureLLM:

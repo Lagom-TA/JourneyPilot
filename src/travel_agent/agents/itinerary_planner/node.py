@@ -79,14 +79,14 @@ from ...services.day_planning import (
 from ...services.geo_dispersion import itinerary_dispersion
 from ...tools.registry import get_tool_registry
 from ...utils.brief_helpers import build_assignment_context
-from ...workflows.run_control import ModelWindowClosed, await_model_operation
-from ...workflows.run_deadline import observe_run_deadline
-from ..utils import (
+from travel_agent.runtime.operations import ModelWindowClosed, await_model_operation
+from travel_agent.runtime.deadlines import observe_run_deadline
+from travel_agent.agents.utils import (
     append_recent_history,
     build_tool_context_from_state,
     execute_tool,
-    resolve_agent_assignment,
 )
+from travel_agent.planning.assignments import resolve_agent_assignment
 
 logger = logging.getLogger(__name__)
 

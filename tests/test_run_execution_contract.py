@@ -93,7 +93,7 @@ def test_unregister_only_removes_its_own_handle():
     盲删按 run_id 摘，摘掉的是接管者 —— 此后用户的取消在任何节点边界上都观察不到。
     """
 
-    from travel_agent.workflows.run_control import RunControlRegistry
+    from travel_agent.runtime.cancellation import RunControlRegistry
 
     registry = RunControlRegistry()
     losing = registry.register("run-1")
@@ -129,34 +129,23 @@ def test_a_superseded_lease_keeper_does_not_evict_the_active_one():
 
 
 def test_the_node_window_table_covers_every_worker_the_graph_fans_out_to():
-    """`run_control` 按节点名字面量分窗，而名字的主人是 `travel_planning`。
+    """每个已声明的 worker 都必须受窗口和交付完成守卫约束。"""
 
-    它导不进那些常量（travel_planning 反过来导 run_control），所以那五个名字在第二个
-    文件里被重新敲了一遍。加一个第四个调研 worker 或改一个名字，代码照样跑：那个节点
-    静默落进 research 默认档，窗口关了不拦它，交付之后也不丢它的更新 —— 它能在自己被
-    审计的 closeout 之后发起模型调用，并覆盖一份已经落库的 Bundle。
+    from travel_agent.planning import execution
+    from travel_agent.planning.nodes import NODE_DELIVERY_FINALIZER, WORKER_NODES
 
-    这一条把「静默」换成「红灯」。
-    """
-
-    from travel_agent.workflows import run_control
-    from travel_agent.workflows.travel_planning import (
-        NODE_DELIVERY_FINALIZER,
-        WORKER_NODES,
-    )
-
-    declared = run_control._DEADLINE_BLOCKED_WORKER_NODES
+    declared = execution._DEADLINE_BLOCKED_WORKER_NODES
     assert declared == set(WORKER_NODES), (
-        "dispatcher 扇出的 worker 与 run_control 的分窗表不一致：\n"
+        "dispatcher 扇出的 worker 与 execution 的分窗表不一致：\n"
         f"  只在图里：{sorted(set(WORKER_NODES) - declared)}\n"
         f"  只在表里：{sorted(declared - set(WORKER_NODES))}"
     )
 
-    research = run_control._RESEARCH_WORKER_NODES
-    composition = run_control._COMPOSITION_WORKER_NODES
+    research = execution._RESEARCH_WORKER_NODES
+    composition = execution._COMPOSITION_WORKER_NODES
     assert research | composition == declared, "每个 worker 都要恰好属于一个窗口"
     assert not research & composition, "一个 worker 不能同时属于两个窗口"
-    assert run_control._COMPOSITION_MODEL_WINDOW_NODES == {
+    assert execution._COMPOSITION_MODEL_WINDOW_NODES == {
         "itinerary_planner",
         "budget_estimate",
     }
@@ -169,7 +158,7 @@ def test_exact_connector_lookup_uses_the_composition_window():
     """A skeleton-derived route lookup is composition, not late discovery."""
 
     from travel_agent.entities.state import TravelAgentState
-    from travel_agent.workflows import run_control
+    from travel_agent.planning import execution
 
     state = TravelAgentState.model_construct(
         placement_skeleton=object(),
@@ -183,16 +172,16 @@ def test_exact_connector_lookup_uses_the_composition_window():
         },
     )
 
-    assert run_control.is_structural_connector_round(state, "transport_researcher")
+    assert execution.is_structural_connector_round(state, "transport_researcher")
     assert (
-        run_control._model_window_for_node("transport_researcher", state)
+        execution._model_window_for_node("transport_researcher", state)
         == "composition"
     )
 
 
 def test_ordinary_transport_research_stays_in_the_research_window():
     from travel_agent.entities.state import TravelAgentState
-    from travel_agent.workflows import run_control
+    from travel_agent.planning import execution
 
     state = TravelAgentState.model_construct(
         placement_skeleton=object(),
@@ -206,7 +195,53 @@ def test_ordinary_transport_research_stays_in_the_research_window():
         },
     )
 
-    assert not run_control.is_structural_connector_round(
+    assert not execution.is_structural_connector_round(
         state, "transport_researcher"
     )
-    assert run_control._model_window_for_node("transport_researcher", state) == "research"
+    assert execution._model_window_for_node("transport_researcher", state) == "research"
+
+
+async def test_node_scope_shares_budget_attribution_and_lifecycle_with_low_level_calls():
+    from types import SimpleNamespace
+
+    from travel_agent.agents import utils
+    from travel_agent.llm import router, usage
+    from travel_agent.planning import execution
+    from travel_agent.runtime import budget, context, events
+
+    run_id = "run_shared_execution_context"
+    snapshot = budget.RunBudgetSnapshot(enforce_limits=True, max_llm_calls=1)
+    ledger = budget.ledger_for(run_id, snapshot)
+    ledger.seeded = True  # This test has no durable spend to restore.
+    facts = []
+
+    async def sink(payload):
+        facts.append(payload)
+
+    async def node(_state):
+        assert usage.read_attribution() == (run_id, "planner", "planner")
+        assert utils.current_budget_ledger() is router.current_budget_ledger() is ledger
+        router.guard_run_budget("model.fixture", llm_calls=1)
+        ledger.record_llm_call(input_tokens=2, output_tokens=3, cost_usd=None)
+        with pytest.raises(budget.RunBudgetExhausted):
+            utils.guard_run_budget("model.fixture", llm_calls=1)
+        return {"ok": True}
+
+    before = (context.current_run_id.get(), context.current_run_budget.get())
+    try:
+        with context.run_attribution(run_id, lifecycle_sink=sink):
+            anchor_token = context.run_ts_anchor.set(None)
+            events.set_run_ts_anchor()
+            try:
+                assert await execution.with_run_control("planner", node)(
+                    SimpleNamespace(run_id=run_id, run_budget=snapshot)
+                ) == {"ok": True}
+            finally:
+                context.run_ts_anchor.reset(anchor_token)
+        assert [fact["status"] for fact in facts] == ["started", "completed"]
+        assert all(fact["node"] == "planner" for fact in facts)
+        assert all(fact["ts_ms"] is not None for fact in facts)
+        assert (context.current_run_id.get(), context.current_run_budget.get()) == before
+    finally:
+        events.node_timing_registry.clear(run_id)
+        budget.release_ledger(run_id)

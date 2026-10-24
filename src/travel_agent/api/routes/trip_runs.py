@@ -86,7 +86,7 @@ from ...services.public_delivery import (
     public_event_manifest,
 )
 from ...services.run_commands import RUN_ENDED_BEFORE_CONSUMPTION
-from ...workflows.run_control import run_control_registry
+from travel_agent.runtime.cancellation import run_control_registry
 
 logger = logging.getLogger(__name__)
 

@@ -106,7 +106,7 @@ from travel_agent.services.research_query_planner import (
     append_targeted_repair_query,
     build_research_query_plan,
 )
-from travel_agent.workflows.run_control import current_node, current_run_id
+from travel_agent.runtime.context import current_node, current_run_id
 
 
 def _identity() -> ControlledTripIdentity:
@@ -2410,7 +2410,7 @@ async def test_deferral_to_semantic_evaluator_leaves_a_debug_trace(caplog):
 
 @pytest.mark.asyncio
 async def test_trace_scope_reads_the_ambient_run_and_node(caplog):
-    """归因串取自 run_control 的 contextvar，不是新加的参数穿透。"""
+    """归因串取自 runtime.context 的 contextvar，不是新加的参数穿透。"""
 
     intent = _intent("intent_arch", "contemporary architecture")
     spec = _spec(intent)

@@ -1,7 +1,7 @@
 # ADR-0005：重启后不自动继续花费额度
 
 状态：已采纳
-影响：`services/run_recovery.py`、`services/run_lease.py`、`workflows/run_budget.py`
+影响：`services/run_recovery.py`、`services/run_lease.py`、`runtime/budget.py`
 
 ## 决定
 

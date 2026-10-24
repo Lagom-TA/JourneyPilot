@@ -28,8 +28,8 @@ from travel_agent.planning.workspace import TripWorkspaceV2
 
 from ...entities.state import TravelAgentState
 from ...workflows.composition_repair import apply_composition_repair_budget
-from ...workflows.node_names import RESEARCH_WORKER_NODES as _RESEARCH_WORKERS
-from ...workflows.run_deadline import observe_run_deadline
+from travel_agent.planning.nodes import RESEARCH_WORKER_NODES as _RESEARCH_WORKERS
+from travel_agent.runtime.deadlines import observe_run_deadline
 from ..utils import strip_round_suffix
 from .candidate_gate import (
     _latest_packets,

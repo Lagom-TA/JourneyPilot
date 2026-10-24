@@ -18,7 +18,7 @@ from typing import Any, Dict, Optional, Set, Union
 from langchain_core.runnables import RunnableConfig
 
 from ...entities.state import TravelAgentState
-from ...workflows.run_deadline import observe_run_deadline
+from travel_agent.runtime.deadlines import observe_run_deadline
 from ...workflows.composition_repair import composition_repair_budget_exhausted
 from ..utils import strip_round_suffix
 

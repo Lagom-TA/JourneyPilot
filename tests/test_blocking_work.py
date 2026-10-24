@@ -108,7 +108,7 @@ async def test_blocking_call_does_not_stall_the_event_loop(limits):
 async def test_a_thread_call_keeps_its_contextvars():
     """run 归因要能进线程：否则线程里的记账与日志全部落在 unknown 上。"""
 
-    from travel_agent.workflows.run_control import current_run_id
+    from travel_agent.runtime.context import current_run_id
 
     token = current_run_id.set("run_blocking_ctx")
     try:

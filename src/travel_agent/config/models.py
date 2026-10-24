@@ -293,7 +293,7 @@ class RunDeadlineConfig(StrictConfig):
 
 
 class StreamingConfig(StrictConfig):
-    """SSE 缓冲的内存预算。**全仓唯一定义处**，`api/sse_buffer.py` 读它。"""
+    """SSE 缓冲的内存预算。**全仓唯一定义处**，`runtime/events.py` 读它。"""
 
     #: 不可丢事件的队列长度。满了生产者等待，不丢。
     critical_queue_size: int = Field(default=128, ge=1)
@@ -352,7 +352,7 @@ class IngestConfig(StrictConfig):
 class RunBudgetConfig(StrictConfig):
     """一次 Run 允许花掉多少。
 
-    Run 被授权时按这些值封存一份快照（``entities/run_budget.py``），之后改配置
+    Run 被授权时按这些值封存一份快照（``runtime/budget.py``），之后改配置
     不影响在跑的 Run —— 与 Deadline 同一条规矩。墙钟**不在这里**：它由
     ``RunDeadlineSnapshot`` 一处拥有，在这里再写一个 max_wall_seconds 就是让
     同一件事有两个 owner。

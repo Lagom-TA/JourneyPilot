@@ -12,7 +12,7 @@ from travel_agent.llm.chat_client import ReasoningChatOpenAI
 from travel_agent.llm.router import ModelRouter
 from travel_agent.llm.task_routing import TaskKind
 from travel_agent.llm.usage import UsageRecorder
-from travel_agent.workflows.run_control import current_run_id
+from travel_agent.runtime.context import current_run_id
 
 
 @pytest.fixture
@@ -40,9 +40,9 @@ async def test_deadline_rejection_before_provider_admission_has_no_usage_attempt
     gateway_settings, monkeypatch, tmp_path, stream,
 ):
     import travel_agent.llm.router as router_module
-    import travel_agent.workflows.run_control as control_module
-    from travel_agent.workflows.run_deadline import DeadlineObservation
-    from travel_agent.workflows.run_control import ModelWindowClosed
+    import travel_agent.runtime.operations as control_module
+    from travel_agent.runtime.deadlines import DeadlineObservation
+    from travel_agent.runtime.operations import ModelWindowClosed
 
     requests = []
     recorder = UsageRecorder(spool_path=tmp_path / "usage.sqlite3")

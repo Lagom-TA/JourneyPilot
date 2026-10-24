@@ -12,7 +12,7 @@ import re
 from typing import Any
 
 from ..config import ToolExposureConfig, get_settings
-from ..workflows.node_names import WORKER_NODES
+from travel_agent.planning.nodes import WORKER_NODES
 from .builtin_tools import SEARCH_TOOLS_NAME, build_search_tools_item
 from .exposure_ledger import estimate_schema_tokens, estimate_text_tokens
 from .registry import compact_catalog_items, search_tool_items

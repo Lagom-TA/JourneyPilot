@@ -5,10 +5,7 @@ from types import SimpleNamespace
 from travel_agent.agents.orchestrator.intent_fidelity_gate import (
     intent_fidelity_gate_node,
 )
-from travel_agent.agents.utils import (
-    assignment_research_round,
-    resolve_agent_assignment,
-)
+from travel_agent.planning.assignments import assignment_research_round, resolve_agent_assignment
 from travel_agent.api.schemas import PublicBundleWorkspaceResponse
 from travel_agent.entities.candidate_intent import (
     CandidateIntentMatch,

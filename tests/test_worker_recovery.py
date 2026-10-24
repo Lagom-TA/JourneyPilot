@@ -11,7 +11,8 @@ from travel_agent.agents import utils
 from travel_agent.entities.state import TravelAgentState
 from travel_agent.storage.worker_journal_store import InMemoryWorkerJournalStore, JournalConflict
 from travel_agent.tools.exposure import ToolExposurePlan
-from travel_agent.workflows.worker_recovery import WorkerJournal, current_worker_journal, with_worker_recovery
+from travel_agent.runtime.journal import WorkerJournal, current_worker_journal
+from travel_agent.planning.recovery import with_worker_recovery
 
 
 @pytest.fixture
@@ -309,7 +310,7 @@ async def test_repeated_side_effecting_tool_calls_are_never_locally_cached(monke
 ])
 async def test_terminal_outcomes_and_journal_replay_are_identical(monkeypatch, tools, scenario, expected):
     from travel_agent.tools.result import ReactOutcome
-    from travel_agent.workflows.run_control import ModelWindowClosed
+    from travel_agent.runtime.operations import ModelWindowClosed
 
     calls = []
     executed = []
@@ -402,7 +403,7 @@ async def test_worker_recovery_never_records_a_completed_fast_answer_after_loop_
     for _ in range(2):
         with pytest.raises(RuntimeError, match="iteration_limit" if limit else "model_failed"):
             await recovered(current, config)
-    from travel_agent.workflows.worker_recovery import invocation_scope
+    from travel_agent.planning.recovery import invocation_scope
     _, payload = await store.load(current.run_id, invocation_scope(current, "worker", config))
     assert "worker_result" not in payload
     assert payload["react"]["outcome"] == ("iteration_limit" if limit else "model_failed")

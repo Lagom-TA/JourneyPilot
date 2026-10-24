@@ -61,7 +61,7 @@ from .request_contract import (
 )
 from .research_brief import ResearchBriefV2
 from .research_query_plan import ResearchQueryPlan
-from .run_budget import RunBudgetSnapshot
+from travel_agent.runtime.budget import RunBudgetSnapshot
 from .weather_planning import DestinationGeoPoint
 
 

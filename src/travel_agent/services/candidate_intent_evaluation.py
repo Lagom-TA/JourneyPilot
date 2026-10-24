@@ -21,7 +21,7 @@ from ..entities.intent_spec import (
     canonical_json_hash,
 )
 from ..llm.task_routing import QualityFeedback, TaskLLM, with_quality_feedback
-from ..workflows.run_control import current_node, current_run_id
+from travel_agent.runtime.context import current_node, current_run_id
 from .intent_requirement_check import check_attributes, explicit_category_match
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 #
 # 为什么必须带轮次/身份而不只是打一句「解析失败」：这张图有修复回边、有并发扇出，
 # 一条 backend.log 里三个 worker 的输出会交织。run_id 与 node 从
-# `workflows/run_control` 的 contextvar 取（低层调用点拿不到 TravelAgentState，
+# `runtime/context` 的 contextvar 取（低层调用点拿不到 TravelAgentState，
 # 这两个 contextvar 就是为此存在的），domain 与本轮规模从本地作用域取。
 #
 # 缺口，写在这里而不是留给下一个人猜：**每个域的 attempt 计数拿不到**。它在

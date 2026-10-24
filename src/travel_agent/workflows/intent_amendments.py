@@ -12,7 +12,7 @@ from ..entities.request_contract import (
 from ..entities.state import TravelAgentState
 from ..entities.trip_input import classify_locked_identity_intent
 from ..services.state_invalidation import invalidation_update
-from .run_deadline import observe_run_deadline
+from travel_agent.runtime.deadlines import observe_run_deadline
 
 
 _PROJECTION_CUES = (

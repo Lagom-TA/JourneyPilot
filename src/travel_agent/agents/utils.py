@@ -5,7 +5,6 @@ Agent 节点通用工具函数。
 - get_available_tools / filter_tools_for_agent: Agent 工具策略过滤
 - streaming_react_loop: 所有 Worker 共用的流式 ReAct 循环
 - inject_agent_context: 系统提示词注入 Anchor、Preset 与统一 Constraint Pack
-- resolve_agent_assignment: Worker 任务查找
 """
 
 from __future__ import annotations
@@ -48,19 +47,18 @@ from ..tools.result import ReactOutcome, ReactResult
 from ..tools.registry import (
     get_tool_registry,
 )
-from ..workflows.run_budget import RunBudgetExhausted
-from ..workflows.run_control import (
+from travel_agent.runtime.budget import RunBudgetExhausted
+from travel_agent.runtime.operations import (
     ModelWindowClosed,
     await_model_operation,
-    check_cancel_requested,
-    current_budget_ledger,
-    guard_run_budget,
     remaining_model_seconds,
-    run_ts_ms,
 )
+from travel_agent.runtime.cancellation import check_cancel_requested
+from travel_agent.runtime.budget import current_budget_ledger, guard_run_budget
+from travel_agent.runtime.events import run_ts_ms
 
 if TYPE_CHECKING:
-    from ..api.sse_buffer import SSEBuffer
+    from travel_agent.runtime.events import EventBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -187,19 +185,6 @@ def strip_round_suffix(agent_name: str) -> str:
     return re.sub(r"_r\d+$", "", agent_name)
 
 
-def make_round_name(base_name: str, round_num: int) -> str:
-    """生成带轮次后缀的 Agent 名称。
-
-    命名约定：``{base_name}_r{round_num}``。
-    round_num 从 2 开始（首轮无后缀，第一次补充为 _r2）。
-
-    示例：
-        >>> make_round_name("destination_researcher", 2)
-        'destination_researcher_r2'
-    """
-    return f"{base_name}_r{round_num}"
-
-
 # ---------------------------------------------------------------------------
 # 工具获取与过滤
 # ---------------------------------------------------------------------------
@@ -285,73 +270,6 @@ async def get_available_tools(selected_mcp_servers: List[str]) -> List[Dict[str,
     except Exception as e:
         logger.warning(f"获取工具列表失败: {e}")
         return []
-
-
-def resolve_agent_assignment(
-    agent_assignments: Dict[str, Any],
-    base_name: str,
-) -> Tuple[str, Dict[str, Any]]:
-    """
-    为 Worker 节点查找正确的任务分配。
-
-    精炼/补研轮次中，Candidate Gate 写入的 assignment key 带有 round suffix
-    （如 destination_researcher_r2）。Worker 节点用 base_name 注册，需要找到
-    当前轮次对应的 assignment。
-
-    返回 (output_key, assignment_dict)：
-    - output_key: 存储输出时使用的 key（base_name 或 base_name_rN）
-    - assignment_dict: 完整的 capability assignment 合同
-    """
-    def require_assignment(key: str) -> Tuple[str, Dict[str, Any]]:
-        assignment = agent_assignments.get(key)
-        if not isinstance(assignment, dict) or not str(
-            assignment.get("objective") or ""
-        ).strip():
-            raise ValueError(f"missing capability assignment for {key}")
-        return key, assignment
-
-    matching_keys_with_round = []
-    for key in agent_assignments:
-        m = re.match(rf"^{re.escape(base_name)}_r(\d+)$", key)
-        if m:
-            matching_keys_with_round.append((int(m.group(1)), key))
-
-    if matching_keys_with_round:
-        matching_keys_with_round.sort(key=lambda x: x[0], reverse=True)
-        latest_key = matching_keys_with_round[0][1]
-        return require_assignment(latest_key)
-
-    return require_assignment(base_name)
-
-
-def assignment_research_round(assignment_key: str) -> int:
-    match = re.fullmatch(r".+_r(\d+)", assignment_key)
-    return max(int(match.group(1)) - 1, 0) if match else 0
-
-
-def resolve_scoped_research_output_key(
-    research_packets: Dict[str, Any],
-    base_name: str,
-    resolved_key: str,
-    *,
-    scoped_retry: bool,
-) -> str:
-    """Give every Candidate Gate retry an immutable worker-round key."""
-    if not scoped_retry:
-        return resolved_key
-    resolved_match = re.fullmatch(rf"{re.escape(base_name)}_r(\d+)", resolved_key)
-    if resolved_match and resolved_key not in research_packets:
-        return resolved_key
-    rounds: List[int] = []
-    for key in research_packets:
-        task_key = key.split("@", 1)[0]
-        if task_key == base_name:
-            rounds.append(1)
-            continue
-        match = re.fullmatch(rf"{re.escape(base_name)}_r(\d+)", task_key)
-        if match:
-            rounds.append(int(match.group(1)))
-    return make_round_name(base_name, max(rounds, default=1) + 1)
 
 
 def filter_tools_for_agent(
@@ -442,7 +360,7 @@ def filter_tools_for_agent(
 # ---------------------------------------------------------------------------
 
 async def execute_tool(tool_name, arguments, *args, **kwargs):
-    from ..workflows.worker_recovery import current_worker_journal
+    from travel_agent.runtime.journal import current_worker_journal
     from ..tools.gateway import _manifest_from_metadata
     from copy import deepcopy
 
@@ -1697,7 +1615,7 @@ async def streaming_react_loop(
     llm: Any,
     messages: List[Dict[str, Any]],
     available_tools: List[Dict[str, Any]],
-    stream_queue: Optional["SSEBuffer"],
+    stream_queue: Optional["EventBuffer"],
     node_name: str,
     max_iterations: int = 5,
     can_ask_user: bool = False,
@@ -1748,7 +1666,7 @@ async def streaming_react_loop(
     effective_max_iterations = max_iterations + (1 if exposure_plan.deferred else 0)
 
     from copy import deepcopy
-    from ..workflows.worker_recovery import current_worker_journal
+    from travel_agent.runtime.journal import current_worker_journal
     journal = current_worker_journal.get()
     saved = journal.payload.get("react", {}) if journal else {}
     if saved:

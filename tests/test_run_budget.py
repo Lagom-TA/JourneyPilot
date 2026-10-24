@@ -7,14 +7,14 @@ from typing import get_args
 import pytest
 
 from travel_agent.config import get_settings
-from travel_agent.entities.run_budget import (
+from travel_agent.runtime.budget import (
     BudgetDimension,
     RunBudgetSnapshot,
     RunBudgetUsage,
     exhausted_dimension,
     remaining_budget,
 )
-from travel_agent.workflows.run_budget import (
+from travel_agent.runtime.budget import (
     RunBudgetExhausted,
     build_run_budget_snapshot,
     ledger_for,
@@ -23,11 +23,8 @@ from travel_agent.workflows.run_budget import (
     reset_ledgers,
     seed_run_budget,
 )
-from travel_agent.workflows.run_control import (
-    current_run_budget,
-    current_run_id,
-    guard_run_budget,
-)
+from travel_agent.runtime.context import current_run_budget, current_run_id
+from travel_agent.runtime.budget import guard_run_budget
 
 
 @pytest.fixture(autouse=True)

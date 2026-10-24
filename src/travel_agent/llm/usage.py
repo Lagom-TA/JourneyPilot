@@ -46,14 +46,14 @@ def generate_call_id() -> str:
 
 
 # --------------------------------------------------------------------------- #
-# 归因：读取 run 控制层的 contextvars（懒导入，避免 models -> workflows 的硬依赖环）
+# 归因：读取 runtime.context 中共享的执行上下文。
 # --------------------------------------------------------------------------- #
 
 def read_attribution() -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """返回 (run_id, node, agent)。任一读取失败时退化为全 None（静默跳过记账）。"""
     try:
-        from ..workflows.run_control import current_agent, current_node, current_run_id
-    except Exception:  # pragma: no cover - run_control 恒可用，仅作防御
+        from travel_agent.runtime.context import current_agent, current_node, current_run_id
+    except Exception:  # pragma: no cover - context 恒可用，仅作防御
         return None, None, None
     return current_run_id.get(), current_node.get(), current_agent.get()
 

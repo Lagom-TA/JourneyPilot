@@ -18,8 +18,9 @@ from travel_agent.planning.requirements.inputs import (
 
 from ..entities.intent_spec import IntentItem, IntentStrength
 from ..entities.trip_input import ControlledTripIdentity
-from .run_budget import build_run_budget_snapshot
-from .run_deadline import build_run_deadline_snapshot, utc_now
+from travel_agent.runtime.budget import build_run_budget_snapshot
+from travel_agent.planning.deadlines import build_run_deadline_snapshot
+from travel_agent.runtime.deadlines import utc_now
 
 MINIMUM_DELIVERY_POLICY_VERSION = "minimum_delivery.v2"
 

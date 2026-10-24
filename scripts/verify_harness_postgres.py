@@ -26,8 +26,9 @@ from travel_agent.storage.worker_journal_store import (
     WorkerJournalStore,
     JournalConflict,
 )
-from travel_agent.workflows.run_control import with_run_control
-from travel_agent.workflows.worker_recovery import current_execution_lease, with_worker_recovery
+from travel_agent.planning.execution import with_run_control
+from travel_agent.runtime.journal import current_execution_lease
+from travel_agent.planning.recovery import with_worker_recovery
 
 ROOT = Path.cwd()
 BIN = Path("/usr/lib/postgresql/14/bin")

@@ -5,13 +5,9 @@ from __future__ import annotations
 import pytest
 
 from travel_agent.agents.utils import execute_tool
-from travel_agent.entities.run_budget import RunBudgetSnapshot
-from travel_agent.workflows.run_budget import (
-    RunBudgetExhausted,
-    ledger_for,
-    reset_ledgers,
-)
-from travel_agent.workflows.run_control import current_run_budget, current_run_id
+from travel_agent.runtime.budget import RunBudgetSnapshot
+from travel_agent.runtime.budget import RunBudgetExhausted, ledger_for, reset_ledgers
+from travel_agent.runtime.context import current_run_budget, current_run_id
 
 
 @pytest.fixture(autouse=True)

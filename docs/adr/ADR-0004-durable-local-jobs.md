@@ -2,7 +2,7 @@
 
 状态：已采纳
 影响：`trip_run_commands`、`background_jobs`、`run_execution`、
-`services/run_commands.py`、`services/background_jobs.py`、`workflows/run_control.py`
+`services/run_commands.py`、`services/background_jobs.py`、`runtime/cancellation.py`、`planning/execution.py`
 
 ## 决定
 

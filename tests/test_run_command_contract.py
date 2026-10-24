@@ -30,9 +30,9 @@ from travel_agent.services.run_commands import (
     RUN_ENDED_BEFORE_CONSUMPTION,
     RunCommandCoordinator,
 )
-from travel_agent.workflows import run_control
-from travel_agent.workflows.run_control import (
-    RunCancelled,
+from travel_agent.planning import execution
+from travel_agent.runtime.cancellation import RunCancelled, run_control_registry
+from travel_agent.runtime.context import (
     current_agent,
     current_model_window,
     current_node,
@@ -40,10 +40,9 @@ from travel_agent.workflows.run_control import (
     current_run_deadline,
     current_run_id,
     node_lifecycle_sink,
-    run_control_registry,
-    with_run_control,
 )
-from travel_agent.workflows.run_deadline import DeadlineObservation
+from travel_agent.planning.execution import with_run_control
+from travel_agent.runtime.deadlines import DeadlineObservation
 
 
 def _capture_lifecycle() -> tuple[List[Dict[str, Any]], Any]:
@@ -332,7 +331,7 @@ async def test_divert_boundary_defers_every_read_command_without_touching_the_st
     async def diverted(_state: TravelAgentState) -> Dict[str, Any]:  # pragma: no cover
         raise AssertionError("合同已建立且带新鲜 supplement 时应 divert，节点体不该执行")
 
-    with caplog.at_level(logging.INFO, logger="travel_agent.workflows.run_control"):
+    with caplog.at_level(logging.INFO, logger="travel_agent.planning.execution"):
         update = await with_run_control("planner", diverted)(
             TravelAgentState.model_construct(request_contract=object(), run_id=run_id)
         )
@@ -579,7 +578,7 @@ async def test_wrapped_node_restores_attribution_when_binding_fails(
         ("run_ts_ms", exploded_ts),
     ):
         before = _attribution_values()
-        monkeypatch.setattr(run_control, target, exploded)
+        monkeypatch.setattr(execution, target, exploded)
         with pytest.raises(RuntimeError):
             await with_run_control("planner", lambda state: {})(
                 TravelAgentState(run_id=run_id, user_message="x")
@@ -712,7 +711,7 @@ def test_blocked_research_worker_update_shape() -> None:
         elapsed_seconds=100.0, remaining_seconds=0.0, phase="closeout"
     )
 
-    blocked = run_control._blocked_research_worker_update(
+    blocked = execution._blocked_research_worker_update(
         node_name="transport_researcher",
         observed_deadline=observed,
         observation=research_phase,
@@ -725,7 +724,7 @@ def test_blocked_research_worker_update_shape() -> None:
     expired_research = DeadlineObservation(
         elapsed_seconds=500.0, remaining_seconds=-10.0, phase="expired"
     )
-    failed = run_control._blocked_research_worker_update(
+    failed = execution._blocked_research_worker_update(
         node_name="transport_researcher",
         observed_deadline=observed,
         observation=expired_research,
@@ -736,7 +735,7 @@ def test_blocked_research_worker_update_shape() -> None:
         "delivery deadline elapsed before research worker could start"
     )
 
-    expired_composition = run_control._blocked_research_worker_update(
+    expired_composition = execution._blocked_research_worker_update(
         node_name="itinerary_planner",
         observed_deadline=observed,
         observation=expired_research,

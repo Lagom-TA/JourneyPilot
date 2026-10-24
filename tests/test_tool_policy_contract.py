@@ -8,7 +8,7 @@ import pytest
 
 from travel_agent.agents import utils as agent_utils
 from travel_agent.agents.utils import _SCOPED_NON_MCP_TOOLS, filter_tools_for_agent
-from travel_agent.workflows.node_names import WORKER_NODES
+from travel_agent.planning.nodes import WORKER_NODES
 
 
 def _local(name: str) -> Dict[str, Any]:

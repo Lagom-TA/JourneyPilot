@@ -37,20 +37,18 @@ from ...storage.cost_ledger_store import cost_event_summary
 from ...tools.exposure_ledger import get_tool_exposure_ledger
 from ...utils.json_helpers import strip_think_blocks
 from ...workflows.delivery_finalizer import DeliveryFinalizationError
-from ...workflows.node_names import CHECKPOINT_GATE_NODES
-from ...workflows.run_budget import peek_ledger, release_ledger
-from ...workflows.run_control import (
+from travel_agent.planning.nodes import CHECKPOINT_GATE_NODES
+from travel_agent.runtime.budget import peek_ledger, release_ledger
+from travel_agent.runtime.cancellation import (
     RunCancelled,
     RunControlHandle,
-    node_timing_registry,
     run_control_registry,
-    run_ts_ms,
-    set_run_ts_anchor,
     stop_verdict,
 )
+from travel_agent.runtime.events import node_timing_registry, run_ts_ms, set_run_ts_anchor
 from ...workflows.travel_planning import CheckpointContractError
 from ..schemas import ChatRequest
-from ..sse_buffer import build_sse_buffer
+from travel_agent.runtime.events import build_event_buffer
 from ..sse_projection import project_sse_payload
 from ..streaming import strip_non_display_blocks
 from .chat_helpers import (
@@ -511,7 +509,7 @@ async def chat_stream(
         #   ("error", exception)
         #   ("done",)
         # 有界、分类的缓冲，不是无界 Queue：慢客户端不该让内存无限增长。
-        event_queue = build_sse_buffer(get_settings().streaming)
+        event_queue = build_event_buffer(get_settings().streaming)
         heartbeat_seconds = get_settings().streaming.heartbeat_seconds
 
         _stream_profile = await load_user_profile(
@@ -752,7 +750,7 @@ async def chat_stream(
 
         async def run_workflow() -> None:
             """在后台任务中运行工作流，将 state events 写入 event_queue。"""
-            from ...workflows.worker_recovery import current_execution_lease
+            from travel_agent.runtime.journal import current_execution_lease
             lease_context = current_execution_lease.set(lease_keeper.lease_token)
             try:
                 # 这个 dict 同时喂两个工作流，所以**只放两边都接的键**；

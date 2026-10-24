@@ -85,7 +85,7 @@ Tests:
 - `test_run_execution_contract.py::test_a_superseded_lease_keeper_does_not_evict_the_active_one`
 
 ### INV-RUN-005：分窗表覆盖图上每一个 worker
-Owner: `workflows/run_control.py` 的分窗表、`workflows/travel_planning.WORKER_NODES`
+Owner: `planning/execution.py` 的分窗表、`planning/nodes.WORKER_NODES`
 Enforced by: 表必须恰好覆盖 dispatcher 的扇出目标，每个 worker 恰好属于一个窗口 ——
 漏一个的后果是它静默落进 research 默认档，能在自己被审计的 closeout 之后发起调用
 Tests:
@@ -100,7 +100,7 @@ Tests:
 - `db/test_run_recovery.py::*`
 
 ### INV-RUN-003：重启后不自动继续花费
-Owner: `services/run_recovery.py`、`workflows/run_budget.seed_run_budget`
+Owner: `services/run_recovery.py`、`runtime/budget.seed_run_budget`
 Storage: `trip_runs.status` = interrupted / resume_available；`run_llm_calls`（已花量）
 Enforced by: 恢复只改状态不发调用；恢复的 Run 从台账读回已花量而不是拿满额预算
 ADR: [ADR-0005](adr/ADR-0005-restart-does-not-resume-spending.md)
@@ -109,7 +109,7 @@ Tests:
 - `test_run_budget.py::test_an_unreadable_ledger_starts_at_zero_instead_of_blocking`
 
 ### INV-CMD-001：cancel/supplement 不依赖发请求命中的那个进程
-Owner: `services/run_commands.py`、`workflows/run_control.RunControlRegistry`
+Owner: `services/run_commands.py`、`runtime/cancellation.RunControlRegistry`
 Storage: `trip_run_commands`（最终事实）；registry 只是唤醒通道
 Enforced by: 先落库再通知；执行器在协作边界轮询并幂等消费
 ADR: [ADR-0004](adr/ADR-0004-durable-local-jobs.md)
@@ -126,7 +126,7 @@ Tests:
 - `db/test_run_control_api.py::test_clicking_stop_again_returns_the_same_receipt`
 
 ### INV-CMD-003：终态不因取消而说谎
-Owner: `services/run_commands.py`、`workflows/run_control.RunStopReason`
+Owner: `services/run_commands.py`、`runtime/cancellation.RunStopReason`
 Enforced by: 用户取消→CANCELLED；失去租约/响应流退出→INTERRUPTED，两者不混
 Tests:
 - `test_run_command_contract.py::test_a_completed_run_does_not_pretend_the_cancel_was_carried_out`
@@ -199,7 +199,7 @@ Tests:
 
 ### INV-INTENT-004：supplement 不得绕过 Request Contract Normalizer
 Owner: `workflows/intent_amendments.py`、`agents/orchestrator/intent_amendment_router.py`、
-`workflows/run_control.py`
+`planning/execution.py`
 Enforced by: plan gate 与运行中 supplement 都先转为 `IntentAmendment`；研究相关
 修改失效当前代产物并返回同一归一化节点，身份变更必须新建 Run
 Tests:
@@ -411,7 +411,7 @@ Tests:
 - `test_sse_buffer.py::test_a_full_critical_queue_makes_the_producer_wait`
 
 ### INV-SSE-002：慢客户端不让内存无界增长，且不丢一个字符
-Owner: `api/sse_buffer.py`
+Owner: `runtime/events.py`
 Storage: 进程内，上限在 `Settings.streaming`
 Enforced by: critical 队列有界且不丢；token 合并成更大 chunk 而不是丢弃；
 待发正文超上限即强制 flush；消费者卡住则结束传输交给 durable 恢复
@@ -496,7 +496,7 @@ Tests:
 - `test_document_parse.py::test_parser_timeout_kills_the_subprocess`
 
 ### INV-BUDGET-001：预算在调用之前判，快照不受配置热更新影响
-Owner: `entities/run_budget.py`（判据）、`workflows/run_budget.py`（账本与守卫）
+Owner: `runtime/budget.py`（快照、判据、账本与守卫）
 Storage: `RunBudgetSnapshot` 随 checkpoint；已花量的最终事实在 `run_llm_calls`
 Enforced by: 按最坏开销在调用前判；快照在 Draft 授权时封存，与 Deadline 同进同出
 ADR: [ADR-0006](adr/ADR-0006-resource-budgets-and-isolation.md)
@@ -507,14 +507,14 @@ Tests:
 - `test_run_budget_boundaries.py::test_a_replay_of_a_sealed_draft_never_refills_the_budget`
 
 ### INV-BUDGET-004：判和记是一步，重试不能超支
-Owner: `workflows/run_budget.RunBudgetLedger.reserve_tool_call`
+Owner: `runtime/budget.RunBudgetLedger.reserve_tool_call`
 Enforced by: 判一次记一次一步完成 —— 判和记分成两个可分别调用的函数时，漏掉判的那一半
 不会报错，只是让上限失效（入口判一次「还剩一次调用」，循环里能花掉四次）
 Tests:
 - `test_run_budget_boundaries.py::test_the_retry_loop_cannot_outspend_the_tool_call_budget`
 
 ### INV-BUDGET-005：重试上限管的是重试轮数，不是调用次数
-Owner: `workflows/run_budget.py` 的 `tool_retries` / `record_tool_retry`
+Owner: `runtime/budget.py` 的 `tool_retries` / `record_tool_retry`
 Enforced by: 首发不计入 `max_tool_retries_per_target` —— 计入的后果是任何工具调满几次
 就永久短路成 FAILED，此后所有调研静默返回空证据，而 `max_tool_calls` 永远够不到
 Tests:
@@ -522,7 +522,7 @@ Tests:
 - `test_run_budget.py::test_a_tool_that_keeps_succeeding_never_runs_out_of_retries`
 
 ### INV-BUDGET-002：预算耗尽是可解释的降级，不是一次 Run 失败
-Owner: `agents/utils.execute_tool`、`workflows/run_budget.RunBudgetExhausted`
+Owner: `agents/utils.execute_tool`、`runtime/budget.RunBudgetExhausted`
 Enforced by: 工具侧返回带 `run_budget_exhausted.<维度>` 的 failed envelope，
 交给 Candidate Gate；不抛异常、不记成 CANCELLED
 Tests:
@@ -530,14 +530,14 @@ Tests:
 - `test_run_budget_boundaries.py::test_a_tool_that_used_up_its_retries_is_not_called_again`
 
 ### INV-BUDGET-003：低报的费用不许当上限用
-Owner: `entities/run_budget.exhausted_dimension`
+Owner: `runtime/budget.exhausted_dimension`
 Enforced by: 价格表未命中时 `cost_complete=false`，费用维不参与判定；
 低报本身随成本摘要报出去
 Tests:
 - `test_run_budget.py::test_an_unpriced_call_never_lets_cost_reject_a_call`
 
 ### INV-BUDGET-006：预算维度只有一份清单，而且每一维都落得到字段上
-Owner: `entities/run_budget.py` 的 `BudgetDimension`（唯一来源）、
+Owner: `runtime/budget.py` 的 `BudgetDimension`（唯一来源）、
 `BUDGET_DIMENSIONS`（从它 `get_args` 派生）、`RunBudgetSnapshot.limit`、
 `RunBudgetUsage.spent`
 Enforced by: 派生保证清单不会写两遍写歪，`get_args` 保留 Literal 的书写顺序 ——

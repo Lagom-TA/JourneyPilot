@@ -1,8 +1,8 @@
 # ADR-0006：每条高成本通道都有显式预算与隔离
 
 状态：已采纳
-影响：`api/sse_buffer.py`、`services/blocking_work.py`、`utils/concurrency.py`、
-`knowledge/sources/document_parse.py`、`entities/run_budget.py`、`workflows/run_budget.py`
+影响：`runtime/events.py`、`services/blocking_work.py`、`utils/concurrency.py`、
+`knowledge/sources/document_parse.py`、`runtime/budget.py`
 
 ## 决定
 
@@ -10,7 +10,7 @@
 
 | 边界 | 谁持有 |
 |---|---|
-| 容量 | `SSEBuffer`（分类缓冲）、`IngestConfig`（字节/页/条目/展开量） |
+| 容量 | `EventBuffer`（分类缓冲）、`IngestConfig`（字节/页/条目/展开量） |
 | 并发 | `BlockingWorkConfig`（线程通道）、`ProviderChannelConfig`（上游通道） |
 | 时间 | `RunDeadlineConfig`（四段窗口）、`IngestConfig.parse_timeout_seconds` |
 | 费用/调用 | `RunBudgetConfig` → `RunBudgetSnapshot`（Run 授权时封存） |

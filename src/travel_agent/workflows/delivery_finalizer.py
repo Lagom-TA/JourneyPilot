@@ -37,7 +37,7 @@ from ..storage.delivery_bundle_store import (
     InMemoryDeliveryBundleStore,
 )
 from ..storage.trip_run_store import InMemoryTripRunStore, TripRunStore
-from .run_control import (
+from travel_agent.runtime.operations import (
     DeliveryDeadlineExceeded,
     await_delivery_operation,
     remaining_delivery_seconds,

@@ -17,7 +17,7 @@ from ...utils.json_helpers import strip_think_blocks
 from ...services.public_delivery import public_event_manifest
 from ..streaming import StreamingStripper, strip_non_display_blocks
 from ...workflows.trace import make_trace_event, summarize_state_update
-from ...workflows.run_control import node_timing_registry, run_ts_ms
+from travel_agent.runtime.events import node_timing_registry, run_ts_ms
 from .chat_helpers import strip_thinking_text
 
 # Node sets used by handlers.

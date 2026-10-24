@@ -71,7 +71,7 @@ from ..tools.governance import (
     compiled_tool_source_id,
     compiled_tool_source_id_is_about,
 )
-from ..workflows.run_control import ModelWindowClosed
+from travel_agent.runtime.operations import ModelWindowClosed
 from .orchestrator.provider_failure import classify_provider_failure
 
 logger = logging.getLogger(__name__)

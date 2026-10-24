@@ -21,7 +21,7 @@ from ..entities.trip_run import (
     TripRunStatus,
 )
 from ..storage.run_command_store import RunCommandStore
-from ..workflows.run_control import RunControlHandle
+from travel_agent.runtime.cancellation import RunControlHandle
 from ..utils.concurrency import PeriodicTask, run_forever
 
 logger = logging.getLogger(__name__)

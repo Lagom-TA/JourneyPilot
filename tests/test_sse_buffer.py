@@ -1,4 +1,4 @@
-"""SSEBuffer：顺序、合并、不可丢、慢客户端下的内存边界。"""
+"""EventBuffer：顺序、合并、不可丢、慢客户端下的内存边界。"""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ import asyncio
 
 import pytest
 
-from travel_agent.api.sse_buffer import SSEBuffer
+from travel_agent.runtime.events import EventBuffer
 
 
-def _buffer(**kwargs) -> SSEBuffer:
+def _buffer(**kwargs) -> EventBuffer:
     defaults = dict(
         critical_queue_size=4,
         max_coalesced_chunk_chars=8,
@@ -17,10 +17,10 @@ def _buffer(**kwargs) -> SSEBuffer:
         stalled_consumer_seconds=0.05,
     )
     defaults.update(kwargs)
-    return SSEBuffer(**defaults)
+    return EventBuffer(**defaults)
 
 
-async def _drain(buffer: SSEBuffer) -> list:
+async def _drain(buffer: EventBuffer) -> list:
     items = []
     while True:
         try:

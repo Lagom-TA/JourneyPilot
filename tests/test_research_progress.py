@@ -66,7 +66,7 @@ async def test_parallel_workers_and_tool_detail_survive_public_projection():
 
 async def test_worker_packet_still_reaches_internal_consumer():
     from travel_agent.agents.utils import streaming_react_loop
-    from travel_agent.api.sse_buffer import SSEBuffer
+    from travel_agent.runtime.events import EventBuffer
 
     class LLM:
         async def astream_with_tools(self, messages, schemas):
@@ -75,7 +75,7 @@ async def test_worker_packet_still_reaches_internal_consumer():
                 yield {'type': 'text_delta', 'content': char}
             yield {'type': 'finish', 'content': PACKET, 'tool_calls': []}
 
-    queue = SSEBuffer()
+    queue = EventBuffer()
     result = await streaming_react_loop(LLM(), [], [], queue, 'destination_researcher', max_iterations=1)
     assert result.content == PACKET
     assert await queue.get(timeout=0.1) == ('agent_activity', 'destination_researcher', None)

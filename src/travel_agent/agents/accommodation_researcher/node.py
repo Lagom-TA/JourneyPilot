@@ -47,7 +47,7 @@ from ...services.state_invalidation import generation_packet_key
 from ...storage.worker_journal_store import JournalConflict
 from ...utils.brief_helpers import build_assignment_context
 from ...utils.coordinates import amap_location_to_wgs84
-from ...workflows.run_control import RunCancelled
+from travel_agent.runtime.cancellation import RunCancelled
 from ..research_packet_output import (
     authoritative_retry_source_records,
     authoritative_tool_messages,
@@ -61,24 +61,26 @@ from ..research_packet_output import (
     provider_round_capability_declared,
 )
 from ..research_packet_prompt import build_research_packet_prompt
-from ..utils import (
+from travel_agent.agents.utils import (
     append_recent_history,
-    assignment_research_round,
     build_tool_context_from_state,
     compact_tool_content_for_model,
     exclude_tools,
     execute_tool,
     filter_tools_for_agent,
     get_available_tools,
+    streaming_react_loop,
+)
+from travel_agent.planning.assignments import (
+    assignment_research_round,
     resolve_agent_assignment,
     resolve_scoped_research_output_key,
-    streaming_react_loop,
 )
 from ..worker_errors import format_worker_last_error
 from .prompts import TASK_TEMPLATE
 
 if TYPE_CHECKING:
-    from ...api.sse_buffer import SSEBuffer
+    from travel_agent.runtime.events import EventBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -795,7 +797,7 @@ async def accommodation_researcher_node(
     """住宿研究员节点：查询具体 property 并输出 Research Packet。"""
     router = get_model_router()
     llm = llm_for_task(router, TaskKind.RESEARCH_TOOLS, has_tools=True)
-    stream_queue: Optional["SSEBuffer"] = config.get("configurable", {}).get("stream_queue")
+    stream_queue: Optional["EventBuffer"] = config.get("configurable", {}).get("stream_queue")
 
     current_time = state.current_time or datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     user_query = state.user_query or ""

@@ -39,7 +39,7 @@ from ...workflows.composition_repair import (
     composition_repair_attempts,
     composition_repair_budget_exhausted,
 )
-from ...workflows.run_deadline import observe_run_deadline
+from travel_agent.runtime.deadlines import observe_run_deadline
 
 
 def _gap_id(reason: str, field_path: str, entity_id: str | None) -> str:

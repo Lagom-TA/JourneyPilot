@@ -1,31 +1,108 @@
-"""SSE 生产者与消费者之间的有界缓冲。
-
-替代无界 `asyncio.Queue`。事件分三类，各自的边界不同：
-
-- **critical**：状态边界、工具结论、门、终态。绝不丢，队列满时生产者等待。
-- **coalescible**：正文 token 与推理文本。相邻的同源片段合并成更大的块，
-  字符不丢，但不为每个 Provider token 单独排一个位置。
-- **ephemeral**：心跳。不进这条通道。
-
-**入队顺序就是出队顺序**：合并只发生在队尾同源片段之间。
-"""
-
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+from .context import (
+    NodeLifecycleStatus,
+    current_node,
+    node_lifecycle_sink,
+    run_ts_anchor,
+)
 
-#: 可合并的文本流。键取 (kind, node)：两个节点的正文不能拼成一段。
+
+def set_run_ts_anchor() -> None:
+    """在 run 起点建立单调钟锚点。"""
+    run_ts_anchor.set(time.perf_counter())
+
+
+def run_ts_ms() -> Optional[float]:
+    """相对本 run 起点的毫秒数（单调钟）；无锚点时返回 None。"""
+    anchor = run_ts_anchor.get()
+    if anchor is None:
+        return None
+    return round((time.perf_counter() - anchor) * 1000.0, 3)
+
+
+class NodeTimingRegistry:
+    """节点计时暂存：node wrapper 落表，SSE 层建 trace_event 时读走并附到 payload。
+
+    并发 fan-out 下同名节点可能多次完成（worker 精炼轮次），故每个 (run_id, node) 存一
+    FIFO 队列，读侧按到达序 pop 对齐各次 completed 事件。进程内瞬态，run 结束时 clear。
+    """
+
+    def __init__(self) -> None:
+        self._timings: Dict[str, Dict[str, List[Dict[str, float]]]] = {}
+        self._lock = threading.Lock()
+
+    def record(
+        self, run_id: Optional[str], node: str, timing: Dict[str, float]
+    ) -> None:
+        if not run_id or not node:
+            return
+        with self._lock:
+            self._timings.setdefault(run_id, {}).setdefault(node, []).append(timing)
+
+    def pop(self, run_id: Optional[str], node: str) -> Optional[Dict[str, float]]:
+        if not run_id or not node:
+            return None
+        with self._lock:
+            queue = self._timings.get(run_id, {}).get(node)
+            if not queue:
+                return None
+            return queue.pop(0)
+
+    def clear(self, run_id: Optional[str]) -> None:
+        if not run_id:
+            return
+        with self._lock:
+            self._timings.pop(run_id, None)
+
+
+node_timing_registry = NodeTimingRegistry()
+
+
+async def emit_node_lifecycle(
+    status: NodeLifecycleStatus,
+    *,
+    node: Optional[str] = None,
+    attempt: Optional[int] = None,
+    max_attempts: Optional[int] = None,
+    duration_ms: Optional[float] = None,
+    error_type: Optional[str] = None,
+) -> None:
+    """Emit an audit-safe node execution fact to the active workflow sink."""
+    sink = node_lifecycle_sink.get()
+    node_name = node or current_node.get()
+    if sink is None or not node_name:
+        return
+    payload: Dict[str, Any] = {
+        "node": node_name,
+        "status": status,
+        "ts_ms": run_ts_ms(),
+    }
+    if attempt is not None:
+        payload["attempt"] = attempt
+    if max_attempts is not None:
+        payload["max_attempts"] = max_attempts
+    if duration_ms is not None:
+        payload["duration_ms"] = duration_ms
+    if error_type:
+        payload["error_type"] = error_type
+    await sink(payload)
+
+
 COALESCIBLE_KINDS = frozenset({"token", "react_thinking"})
 
-#: 终态与错误。它们不受容量约束 —— 一个被丢掉的终态会让客户端永远等下去。
+
 TERMINAL_KINDS = frozenset({"done", "error"})
 
 
 @dataclass
-class SSEBufferStats:
+class EventBufferStats:
     """只留水位与计数。当前深度直接读缓冲自己的计数器，不在这里存第二份。"""
 
     max_critical_size: int = 0
@@ -52,7 +129,7 @@ class _Entry:
         return self.payload
 
 
-class SSEBuffer:
+class EventBuffer:
     """有类别的事件缓冲。`put` / `get` 是这条通道的全部接口。"""
 
     def __init__(
@@ -73,7 +150,7 @@ class SSEBuffer:
         self._arrived = asyncio.Event()
         self._space = asyncio.Event()
         self._space.set()
-        self.stats = SSEBufferStats()
+        self.stats = EventBufferStats()
         self.stalled = False
 
     async def put(self, item: Tuple) -> None:
@@ -142,7 +219,9 @@ class SSEBuffer:
 
     def _after_append(self) -> None:
         self._arrived.set()
-        self.stats.max_critical_size = max(self.stats.max_critical_size, self._critical_count)
+        self.stats.max_critical_size = max(
+            self.stats.max_critical_size, self._critical_count
+        )
         self.stats.max_pending_text_chars = max(
             self.stats.max_pending_text_chars, self._pending_text_chars
         )
@@ -199,12 +278,12 @@ class SSEBuffer:
         }
 
 
-def build_sse_buffer(streaming_config: Optional[Any] = None) -> SSEBuffer:
+def build_event_buffer(streaming_config: Optional[Any] = None) -> EventBuffer:
     if streaming_config is None:
         from ..config import get_settings
 
         streaming_config = get_settings().streaming
-    return SSEBuffer(
+    return EventBuffer(
         critical_queue_size=streaming_config.critical_queue_size,
         max_coalesced_chunk_chars=streaming_config.max_coalesced_chunk_chars,
         max_pending_text_chars=streaming_config.max_pending_text_chars,

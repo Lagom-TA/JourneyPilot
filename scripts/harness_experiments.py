@@ -25,7 +25,7 @@ from travel_agent.llm.router import ModelTier, OpenAICompatibleLLM
 from travel_agent.llm.usage import UsageRecorder
 from travel_agent.llm.token_counting import estimate_request_tokens
 from travel_agent.tools.exposure import apply_tool_exposure, attach_tool_catalog
-from travel_agent.workflows.run_control import current_run_id, current_node
+from travel_agent.runtime.context import current_run_id, current_node
 
 
 def write_rows(path, rows):

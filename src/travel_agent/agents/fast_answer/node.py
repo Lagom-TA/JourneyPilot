@@ -41,7 +41,7 @@ from ..utils import (
 from .prompts import DISCOVERY_OBJECTIVE_INSTRUCTION, SYSTEM_PROMPT
 
 if TYPE_CHECKING:
-    from ...api.sse_buffer import SSEBuffer
+    from travel_agent.runtime.events import EventBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -263,7 +263,7 @@ def _build_exchange_realtime_context(
 async def _build_realtime_tool_context(
     *,
     state: TravelAgentState,
-    stream_queue: Optional["SSEBuffer"],
+    stream_queue: Optional["EventBuffer"],
 ) -> Dict[str, Any]:
     pair = _detect_currency_pair(state.user_query or "")
     if not pair:
@@ -280,7 +280,7 @@ async def _build_realtime_tool_context(
         from ..utils import execute_tool
         from ...builders import get_components
         from ...tools.registry import get_tool_registry
-        from ...workflows.run_control import run_ts_ms
+        from travel_agent.runtime.events import run_ts_ms
 
         registry = get_tool_registry()
         if not registry.has_tool(_CURRENCY_TOOL_NAME):
@@ -360,7 +360,7 @@ async def fast_answer_node(state: TravelAgentState, config: RunnableConfig) -> D
     """
     router = get_model_router()
 
-    stream_queue: Optional["SSEBuffer"] = config.get("configurable", {}).get("stream_queue")
+    stream_queue: Optional["EventBuffer"] = config.get("configurable", {}).get("stream_queue")
 
     llm = llm_for_task(router, TaskKind.QUICK_ANSWER)
     user_query = state.user_query or ""
