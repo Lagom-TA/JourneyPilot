@@ -53,7 +53,9 @@ from ..services.destination_scope import (
     DESTINATION_DISTANCE_KEY,
     MAX_DESTINATION_DISTANCE_KM,
 )
-from ..rag.source_records import is_rag_chunk_source_id
+from ..rag.source_records import (
+    is_rag_chunk_source_id, knowledge_tool_documents, rag_chunk_source_records,
+)
 from ..workflows.run_control import ModelWindowClosed
 from ..tools.governance import (
     CAPABILITY_DECLARATION_STATUSES,
@@ -656,11 +658,8 @@ def _ground_retrieved_sources_in_the_transcript(
     strict structured-output provider cannot express out of the Research Packet
     contract.
 
-    ``rag_chunk`` is *not* judged here.  It obeys the same principle — a retrieved
-    source the server did not watch come back is not evidence — but its transcript
-    is a different one: RAG content reaches a worker through prompt injection, so
-    it is never in the Tool Gateway messages.  :func:`_ground_rag_chunk_sources`
-    grounds it against the chunks this round actually injected.
+    ``rag_chunk`` is grounded separately from authorized knowledge-tool receipts,
+    using only the fragments retained by the model-facing message budget.
     """
 
     sources = payload.get("source_records")
@@ -718,28 +717,7 @@ def _ground_rag_chunk_sources(
     *,
     expected_worker: str,
 ) -> None:
-    """Make the knowledge-base evidence channel server-owned, end to end.
-
-    RAG content reaches a worker by prompt injection, so it never enters the Tool
-    Gateway transcript the grounding guard reads.  A model-authored ``rag_chunk``
-    SourceRecord therefore has no transcript to be grounded against, and gets dropped
-    along with the facts leaning on it.
-
-    **The answer is not to loosen the guard.**  It is to give the channel the
-    transcript it needs: the server knows exactly which chunks it injected this
-    round, so it mints their ids, prints them in the prompt, and writes the records
-    itself.  The model's only job is to cite an id it was shown.
-
-    Consequences, all deliberate:
-
-    - every model-authored ``rag_chunk`` record is discarded, whatever it says.  The
-      model is not a source of provenance here any more than it is for
-      ``external_tool``;
-    - a fact citing an id the server did not inject loses that link and, if the link
-      was load-bearing, the fact goes with it — same disposal as an uncorroborated
-      web source, so the candidate lands in the ordinary "not enough evidence" path;
-    - an id the server did inject is materialized from the server's own record.
-    """
+    """Ground knowledge citations only in authorized tool fragments shown to the model."""
 
     facts = payload.get("fact_assertions")
     sources = payload.get("source_records")
@@ -4573,7 +4551,6 @@ def parse_research_packet_output(
     authoritative_source_records: Sequence[SourceRecord] = (),
     required_route_scopes: Sequence[ProviderEvidenceScope] = (),
     server_composed_candidate_limit: int | None = None,
-    injected_rag_sources: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> ResearchPacket:
     """Parse exact JSON only; no Markdown extraction, repair, or envelope fallback.
 
@@ -4637,7 +4614,7 @@ def parse_research_packet_output(
     _ground_retrieved_sources_in_the_transcript(
         payload, evidence_messages, expected_worker=expected_worker
     )
-    rag_sources = dict(injected_rag_sources or {})
+    rag_sources = rag_chunk_source_records(knowledge_tool_documents(authoritative_tool_results))
     _ground_rag_chunk_sources(payload, rag_sources, expected_worker=expected_worker)
     authoritative_sources.update(rag_sources)
     # After identity binding, which rewrites a returned place's identity facts
@@ -4847,7 +4824,6 @@ async def parse_or_repair_research_packet_output(
     required_candidate_kinds: Sequence[str] | None = None,
     authoritative_source_records: Sequence[SourceRecord] = (),
     required_route_scopes: Sequence[ProviderEvidenceScope] = (),
-    injected_rag_sources: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> ResearchPacket:
     """Parse once, then perform one bounded schema-only model repair.
 
@@ -4872,7 +4848,6 @@ async def parse_or_repair_research_packet_output(
             required_candidate_kinds=required_candidate_kinds,
             authoritative_source_records=authoritative_source_records,
             required_route_scopes=required_route_scopes,
-            injected_rag_sources=injected_rag_sources,
         )
         return _merge_failed_tool_sources(packet, evidence_messages)
     except ResearchPacketOutputError as initial_error:
@@ -5217,8 +5192,7 @@ async def parse_or_repair_research_packet_output(
                 required_candidate_kinds=required_candidate_kinds,
                 authoritative_source_records=authoritative_source_records,
                 required_route_scopes=required_route_scopes,
-                injected_rag_sources=injected_rag_sources,
-            )
+                )
             logger.info(
                 "Research Packet schema repair parsed | worker=%s repaired_len=%d "
                 "candidates=%d facts=%d sources=%d",

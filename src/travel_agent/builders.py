@@ -264,14 +264,15 @@ class AppBuilder:
             memory_lifecycle_store=get_memory_lifecycle_store(),
         )
         # worker 的 handler 需要已经装配好的组件，所以在容器建好之后再挂上去。
-        components.background_job_worker = BackgroundJobWorker(
-            background_job_store,
-            build_job_handlers(components),
-            poll_seconds=self.settings.background_jobs.poll_seconds,
-            lease_seconds=self.settings.background_jobs.lease_seconds,
-            batch_size=self.settings.background_jobs.batch_size,
-            completed_retention_days=self.settings.background_jobs.completed_retention_days,
-        )
+        if self.settings.embedding.enabled:
+            components.background_job_worker = BackgroundJobWorker(
+                background_job_store,
+                build_job_handlers(components),
+                poll_seconds=self.settings.background_jobs.poll_seconds,
+                lease_seconds=self.settings.background_jobs.lease_seconds,
+                batch_size=self.settings.background_jobs.batch_size,
+                completed_retention_days=self.settings.background_jobs.completed_retention_days,
+            )
         components.usage_flush_service = UsageFlushService(
             components.usage_recorder, components.cost_ledger_store,
             self.settings.usage.flush_seconds,

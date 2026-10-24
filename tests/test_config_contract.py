@@ -24,6 +24,18 @@ from travel_agent.config.loader import build_settings
 from travel_agent.config.schema_export import field_reference_markdown, json_schema_text
 
 
+def test_embedding_can_be_disabled_by_yaml_and_overridden_by_environment(monkeypatch):
+    assert Settings().embedding.enabled is True
+    settings = build_settings({"embedding": {"enabled": False}})
+    assert settings.embedding.enabled is False
+    monkeypatch.setenv("JOURNEYPILOT_EMBEDDING__ENABLED", "true")
+    apply_env_overrides(settings)
+    assert settings.embedding.enabled is True
+    monkeypatch.setenv("JOURNEYPILOT_EMBEDDING__ENABLED", "false")
+    apply_env_overrides(settings)
+    assert settings.embedding.enabled is False
+
+
 # --- 严格校验 ------------------------------------------------------------- #
 
 

@@ -8,6 +8,7 @@ from ...models.task_routing import TaskKind, llm_for_task
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from ...config import get_settings
 from ...entities.state import TravelAgentState
 from ...local_profile import LOCAL_USER_ID
 from ...memory.context_builder import ContextBudget
@@ -108,16 +109,19 @@ async def load_constraint_sources(state: TravelAgentState) -> LoadedConstraintSo
         missing_layers.append("manual_memory")
         partial_reasons.append("manual_memory_list_failed")
 
-    try:
-        memory_facts = await MemoryStore().search_facts(
-            user_id,
-            _memory_fact_query(state),
-            top_k=8,
-        )
-    except Exception as exc:
-        logger.warning("ConstraintNormalizer: memory facts unavailable: %s", exc)
-        missing_layers.append("memory_fact")
-        partial_reasons.append("memory_fact_search_failed")
+    if get_settings().embedding.enabled:
+        try:
+            memory_facts = await MemoryStore().search_facts(
+                user_id,
+                _memory_fact_query(state),
+                top_k=8,
+            )
+        except Exception as exc:
+            logger.warning("ConstraintNormalizer: memory facts unavailable: %s", exc)
+            missing_layers.append("memory_fact")
+            partial_reasons.append("memory_fact_search_failed")
+    else:
+        memory_facts = []
 
     if manual_memory_facts and memory_facts is not None:
         carried = {

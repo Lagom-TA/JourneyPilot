@@ -14,6 +14,7 @@ from typing import Dict, Optional
 
 from fastapi import HTTPException
 
+from ...config import get_settings
 from ...guardrails.input_guard import InputGuard
 from ...memory.context_builder import ContextBudget
 
@@ -171,6 +172,8 @@ async def enqueue_memory_extraction(
     在聊天保存事务之后调用：任务只带引用，正文由 worker 从会话记录读回。画像基线随
     payload 固定，延迟几小时才执行的抽取不会改用另一版画像去判「这条已经知道了」。
     """
+    if not get_settings().embedding.enabled:
+        return
     if not user_message or not user_message_id:
         return
     from ...entities.background_job import (

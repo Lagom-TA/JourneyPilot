@@ -187,8 +187,9 @@ async def test_search_execution_and_replay_preserve_worker_transcript_and_gatewa
             "tool_gateway": ToolGateway(),
         },
     )
-    content, summaries, pending, authoritative = result
-    assert content == "finished" and pending is None
+    summaries = result.summaries
+    authoritative = result.tool_results
+    assert result.content == "finished" and result.pending_choice is None
     assert calls == ["lookup"]
     assert len(summaries) == len(authoritative) == 1
     assert _names(llm.requests[0][1]) == ["search_tools"]

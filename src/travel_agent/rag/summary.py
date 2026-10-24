@@ -13,8 +13,6 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 from urllib.parse import urlparse
 
-from .policy import RAGModeDecision
-
 _SNIPPET_MAX = 180
 
 
@@ -161,7 +159,7 @@ def build_retrieval_summary(
     *,
     selected_docs: Optional[List[Dict[str, Any]]] = None,
     rewritten_queries: Optional[List[str]] = None,
-    mode_decision: Optional[RAGModeDecision | Dict[str, Any]] = None,
+    mode_decision: Optional[Dict[str, Any]] = None,
     grade_result: Any = None,
     collections: Optional[Iterable[str]] = None,
     top_n: int = 5,

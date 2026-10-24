@@ -24,26 +24,20 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
+from ...config import get_settings
 from ...entities.state import TravelAgentState
 from ...memory.research_context import format_worker_research_context
 from ...workflows.run_control import RunCancelled
 from ...infrastructure.worker_journal_store import JournalConflict
 from ...models.router import get_model_router
-from ...rag.retriever import HybridRetriever
-from ...rag.retrieval_pipeline import retrieve_for_query
-from ...rag.collections import (
-    GroundingCorpus,
-    grounding_corpus,
-    relabel_to_logical_collections,
-)
+from ...rag.collections import GroundingCorpus, grounding_corpus
 from ...rag.place_mentions import (
     chunk_texts_by_collection,
     measure_place_funnel,
 )
-from ...rag.source_records import rag_chunk_source_id, rag_chunk_source_records
-from ...rag.retrieval_grader import RetrievalGrader, GradeRoute
-from ...rag.policy import RAGModePolicy, RAGPolicyInput
-from ...rag.summary import build_retrieval_summary
+from ...rag.source_records import (
+    knowledge_tool_documents, knowledge_tool_summaries, rag_chunk_source_records,
+)
 from ...entities.place_identity import stable_place_id_amap_poi
 from ...entities.research_domain import ResearchDomain
 from ...entities.research_query_plan import ResearchQuery, ResearchQueryKind
@@ -114,18 +108,7 @@ _NODE_NAME = "destination_researcher"
 # 失败日志里 last_error 的单行上限：供应商偶尔把整个响应体塞进异常消息，
 # 分类前缀在开头，截断尾部不影响门的取证。
 _LAST_ERROR_LOG_LIMIT = 600
-# 查哪几个集合不写在这里：出厂四个 + 这个用户自己上传的那一个，由
-# ``rag.collections.grounding_corpus`` 一处给出。此前这里有一份裸的出厂集合名清单，
-# 而 ``scripts/corpus_place_census.py`` 又抄了一份、靠一句「keep in step with」维持 ——
-# 那是这个仓的老形状：同一张表两处各写一份。
-# 交给分级器评判的候选条数（分级器再往下过滤）。
-_RAG_CANDIDATE_TOP_K = 8
-# 注入 prompt 的知识库正文预算（字符）。每段占多少不在这里估：那是
-# ``HybridRetriever.format_docs_for_prompt`` 说了算的，见 ``_format_rag_context``。
-_RAG_CONTEXT_CHAR_BUDGET = 5000
-# 块间分隔符，与 ``format_docs_for_prompt`` 的 ``"\n\n---\n\n"`` 同一个东西。
-_RAG_CONTEXT_BLOCK_SEPARATOR = "\n\n---\n\n"
-# 目的地调研：RAG 主导，工具调用较少，3 轮即可覆盖大部分场景
+# Tool discovery and follow-up queries share the same bounded loop.
 _MAX_TOOL_ITERATIONS = 3
 _SCOPED_DISCOVERY_TOOLS = (
     "free_web_search",
@@ -1436,7 +1419,6 @@ async def destination_researcher_node(
     # reasoning-model timeouts that starved provider grounding.  Orchestration
     # (planner/synthesizer) keeps the primary tier.
     llm = llm_for_task(router, TaskKind.RESEARCH_TOOLS, has_tools=True)
-    retriever = HybridRetriever()
     stream_queue: Optional["SSEBuffer"] = config.get("configurable", {}).get("stream_queue")
 
     current_time = state.current_time or datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -1465,7 +1447,6 @@ async def destination_researcher_node(
         for query in planned_queries
         if query.domain in {ResearchDomain.VISIT, ResearchDomain.DINING}
     ]
-    rag_executed_query_ids: List[str] = []
     recommended_tools = assignment.get("recommended_tools", [])
     excluded_tools = assignment.get("excluded_tools", [])
     excluded_candidate_ids = assignment.get("excluded_candidate_ids")
@@ -1483,47 +1464,6 @@ async def destination_researcher_node(
         output_key,
         scoped_retry=require_current_candidate,
     )
-
-    # ── RAG 检索（多集合 + CRAG）─────────────────────────────────────────
-    # 定向身份补研轮**不检索**。``build_destination_task_prompt`` 在这条分支上提前返回、
-    # 从不打印知识库段落 —— 那一轮的合同就是「只补 Provider 身份字段，不新增描述性断言」。
-    # 文本进不了 prompt，检索、精排、分级那几次调用就是白花；而 ``injected_rag_sources``
-    # 若照旧交给解析器，接地守卫「模型只能引用它被展示过的那一段」这个前提就恰好在什么都
-    # 没展示的那一轮失效。这个决定只写在一处。
-    corpus = grounding_corpus()
-    if require_current_candidate:
-        rag_docs: List[Dict[str, Any]] = []
-        retrieval_summary = None
-        rag_context_section, injected_rag_sources = "", {}
-    else:
-        rag_queries = [
-            query
-            for query in planned_queries
-            if query.query_kind
-            in {
-                ResearchQueryKind.INTENT_PRIMARY,
-                ResearchQueryKind.STRUCTURAL,
-                ResearchQueryKind.TARGETED_REPAIR,
-            }
-        ]
-        rag_results = [
-            await _run_rag(retriever, query.query_text, corpus)
-            for query in rag_queries
-        ]
-        rag_executed_query_ids = [query.query_id for query in rag_queries]
-        rag_docs = []
-        seen_docs: set[str] = set()
-        for docs, _summary in rag_results:
-            for doc in docs:
-                key = json.dumps(doc, ensure_ascii=False, sort_keys=True, default=str)
-                if key not in seen_docs:
-                    seen_docs.add(key)
-                    rag_docs.append(doc)
-        retrieval_summary = next(
-            (summary for _docs, summary in rag_results if summary is not None),
-            None,
-        )
-        rag_context_section, injected_rag_sources = _format_rag_context(retriever, rag_docs)
 
     if state.planning_generation is None:
         raise ValueError("destination research requires a planning generation")
@@ -1564,7 +1504,7 @@ async def destination_researcher_node(
         bool(state.constraint_pack),
         bool(state.session_anchor),
         bool(state.preset_context),
-        "user+factory",
+        "on_demand" if get_settings().embedding.enabled else "disabled",
     )
 
     history: List[Dict[str, Any]] = []
@@ -1594,7 +1534,7 @@ async def destination_researcher_node(
 
     tool_cache = dict(state.tool_cache) if state.tool_cache else {}
     tool_context = build_tool_context_from_state(state)
-    executed_query_ids = list(rag_executed_query_ids)
+    executed_query_ids: List[str] = []
     executed_queries = [
         query.model_dump(mode="json")
         for query in planned_queries
@@ -1664,7 +1604,7 @@ async def destination_researcher_node(
             "content": build_destination_task_prompt(
                 task_desc=task_desc,
                 user_query=user_query,
-                rag_context_section=rag_context_section,
+                rag_context_section="",
                 require_current_candidate=require_current_candidate,
                 offered_dining_place_ids=collect_offered_dining_place_ids(
                     authoritative_tool_results
@@ -1698,12 +1638,7 @@ async def destination_researcher_node(
             raw_response = ""
             pending_choice = None
         else:
-            (
-                raw_response,
-                _tool_summaries,
-                pending_choice,
-                react_tool_results,
-            ) = await streaming_react_loop(
+            react = await streaming_react_loop(
                 llm=llm,
                 messages=messages,
                 available_tools=available_tools,
@@ -1714,7 +1649,9 @@ async def destination_researcher_node(
                 tool_cache=tool_cache,
                 tool_context=tool_context,
             )
-            authoritative_tool_results.extend(react_tool_results)
+            raw_response = react.content
+            pending_choice = react.pending_choice
+            authoritative_tool_results.extend(react.tool_results)
 
         # HITL: 若 LLM 触发 ask_user，立即中断并等待用户回答
         if pending_choice:
@@ -1766,7 +1703,6 @@ async def destination_researcher_node(
             )
             if require_current_candidate
             else (),
-            injected_rag_sources=injected_rag_sources,
         )
 
         logger.info(
@@ -1774,19 +1710,21 @@ async def destination_researcher_node(
             output_key, len(packet.candidates), len(packet.fact_assertions), len(packet.source_records),
             (time.perf_counter() - finalize_started_at) * 1000.0,
         )
-        _log_rag_place_funnel(
-            injected_rag_sources,
-            authoritative_tool_results=authoritative_tool_results,
-            candidates=packet.candidates,
-            corpus=corpus,
-        )
+        rag_docs = knowledge_tool_documents(authoritative_tool_results)
+        if any(env.get("tool_name") == "knowledge_search" for env in authoritative_tool_results):
+            _log_rag_place_funnel(
+                rag_chunk_source_records(rag_docs),
+                authoritative_tool_results=authoritative_tool_results,
+                candidates=packet.candidates,
+                corpus=grounding_corpus(),
+            )
 
         result: Dict[str, Any] = {
             "messages": [AIMessage(content=f"已核验 {len(packet.candidates)} 个目的地候选")],
             "research_packets": {packet_state_key: packet},
             "agent_status": {output_key: "completed"},
             "retrieved_docs": rag_docs,
-            "retrieval_summaries": [retrieval_summary] if retrieval_summary else [],
+            "retrieval_summaries": knowledge_tool_summaries(authoritative_tool_results),
             "tool_cache": tool_cache,
             "provider_evidence_outcomes": provider_evidence_outcomes(
                 authoritative_tool_messages(authoritative_tool_results),
@@ -1848,112 +1786,6 @@ async def destination_researcher_node(
 # 辅助函数
 # ---------------------------------------------------------------------------
 
-
-
-async def _run_rag(
-    retriever: HybridRetriever, query: str, corpus: GroundingCorpus
-) -> tuple[List[Dict[str, Any]], Optional[Dict[str, Any]]]:
-    """多集合 RAG 检索 + CRAG 质量过滤。
-
-    检索本体在 ``rag.retrieval_pipeline``：一条 query 扩写一次、跨
-    (集合 × 变体) 检索、融合成一个候选池、精排一次。本函数只负责 CRAG 那一层
-    ——分级、以及首轮低质量时的一次纠正性重检。
-
-    ``corpus`` 决定查哪几个集合，**用户自己上传的资料库就在里面**，和出厂语料一起
-    进同一个候选池（「平等竞争」）。这条路径此前只查四个裸的
-    出厂集合名，于是资料库页上传的东西在规划里结构上不可能被读到——而快问快答那条
-    路一直在读它，所以缺陷的形状是「两条执行路径对同一个问题给了两套答案」。
-    """
-    try:
-        policy = RAGModePolicy()
-        decision = policy.decide(
-            RAGPolicyInput(
-                query=query,
-                execution_path="deep_research",
-                source_condition="knowledge_base",
-                candidate_count=8,
-                latency_budget_ms=1500,
-            )
-        )
-        outcome = await retrieve_for_query(
-            query,
-            retriever=retriever,
-            collections=corpus.probe_collections,
-            top_k=_RAG_CANDIDATE_TOP_K,
-            use_rewrite=decision.use_rewrite,
-            use_multi_query=decision.use_multi_query,
-            use_hyde=decision.use_hyde,
-            use_rerank=decision.use_rerank,
-        )
-        relabel_to_logical_collections((*outcome.docs, *outcome.pool), corpus)
-        candidates = outcome.docs
-
-        grade_result = None
-        filtered_docs = candidates
-        grader = RetrievalGrader()
-        if decision.use_grader and candidates:
-            grade_result = await grader.grade(query=query, docs=candidates)
-            filtered_docs = grade_result.filtered_docs
-            logger.info(
-                "DestinationResearcher RAG 首轮: query=%s, candidates=%d, filtered=%d, route=%s, avg=%.2f",
-                query[:60],
-                len(candidates),
-                len(grade_result.filtered_docs),
-                grade_result.route.value,
-                grade_result.avg_score,
-            )
-
-        if grade_result and grade_result.route == GradeRoute.LOW_QUALITY and candidates:
-            # 纠正性重检：首轮整批被判为无关，所以它**被替换**而不是并进来。
-            # 把判过是垃圾的一批留在候选池里，只会稀释重检拿回来的东西，而且
-            # 两批各自的精排顺序本来就没法互相比较。
-            logger.info("DestinationResearcher RAG 首轮低质量，触发重检")
-            retry = await retrieve_for_query(
-                query,
-                retriever=retriever,
-                collections=corpus.probe_collections,
-                top_k=_RAG_CANDIDATE_TOP_K,
-                use_rewrite=True,
-                use_multi_query=True,
-                use_hyde=decision.use_hyde,
-                use_rerank=decision.use_rerank,
-            )
-            relabel_to_logical_collections((*retry.docs, *retry.pool), corpus)
-            outcome = retry
-            candidates = retry.docs
-            grade_result = await grader.grade(query=query, docs=candidates)
-            filtered_docs = grade_result.filtered_docs
-            logger.info(
-                "DestinationResearcher RAG 重检: candidates=%d, filtered=%d, route=%s, avg=%.2f",
-                len(candidates),
-                len(grade_result.filtered_docs),
-                grade_result.route.value,
-                grade_result.avg_score,
-            )
-
-        summary = build_retrieval_summary(
-            query,
-            outcome.pool,
-            selected_docs=filtered_docs,
-            rewritten_queries=outcome.query_variants,
-            mode_decision=decision,
-            grade_result=grade_result,
-            collections=corpus.logical_collections,
-        ).to_dict()
-        return filtered_docs, summary
-    except Exception as e:
-        logger.warning(f"DestinationResearcher RAG 检索失败: {e}")
-        summary = build_retrieval_summary(
-            query,
-            [],
-            mode_decision={
-                "retrieval_mode": "unavailable",
-                "enabled_features": [],
-                "limitations": ["rag_retrieval_failed"],
-            },
-            collections=corpus.logical_collections,
-        ).to_dict()
-        return [], summary
 
 
 def _log_rag_place_funnel(
@@ -2018,51 +1850,3 @@ def _log_rag_place_funnel(
             admitted_place_ids=admitted_place_ids,
         )
         logger.info("RAG place funnel [origin=%s]: %s", origin, funnel.as_log_line())
-
-
-def _format_rag_context(
-    retriever: HybridRetriever, docs: List[Dict[str, Any]]
-) -> tuple[str, Dict[str, Dict[str, Any]]]:
-    """注入知识库上下文，并交出**这一轮模型真的读到了哪几段**。
-
-    返回 (注入文本, 引用标识 → 服务端 SourceRecord)。第二个返回值就是这条证据
-    通道的抄本：模型只能引用它读到过的那几段，服务端据此接地并写记录。
-
-    **截断只能整条地发生。** 不许先把全部拼好再 ``[:2000]``：最后一段会被拦腰截断，而服务端
-    手里是完整快照，模型引用的和它读到的就不是同一段文字了。装不下的那一段不打印、也不进抄本。
-
-     **一段占多少字符，由渲染它的那个函数说了算 —— 直接量，不许估。** 手抄一个开销常量
-     （比如按 ``正文长度 + 160`` 估，而 ``format_docs_for_prompt`` 实测只花约 107：标注头 100 +
-     块间分隔 7）会每段虚报约 53 字符，累起来足以把一段**真的装得下**的正文挡在 prompt 外 ——
-     语料中位数 264 字符时，记账认为只装得下 4 段，而实际 5 段才 1913 字符，还在预算里；被丢掉
-     的那一段已经吃过精排与分级两次模型判断。更要紧的是那种常量是**派生量的手抄本**：格式化
-     那边一改标注格式，它就静默失准，不会有任何东西把它暴露出来。
-    """
-
-    if not docs:
-        return "", {}
-
-    records = rag_chunk_source_records(docs)
-    selected: List[Dict[str, Any]] = []
-    used = 0
-    for doc in docs:
-        source_id = rag_chunk_source_id(doc)
-        if source_id not in records:
-            continue
-        # 带上引用标识再渲染：标识本身也占预算，它是这段正文能被引用的前提。
-        block = retriever.format_docs_for_prompt([{**doc, "source_record_id": source_id}])
-        cost = len(block) + (len(_RAG_CONTEXT_BLOCK_SEPARATOR) if selected else 0)
-        if used + cost > _RAG_CONTEXT_CHAR_BUDGET:
-            break
-        doc["source_record_id"] = source_id
-        selected.append(doc)
-        used += cost
-
-    if not selected:
-        return "", {}
-
-    rag_text = retriever.format_docs_for_prompt(selected)
-    injected = {
-        doc["source_record_id"]: records[doc["source_record_id"]] for doc in selected
-    }
-    return f"\n\n参考知识库：\n{rag_text}", injected

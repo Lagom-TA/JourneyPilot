@@ -16,6 +16,19 @@ def _settings(**overrides) -> Settings:
     return settings
 
 
+def test_disabled_embedding_does_not_probe_optional_dependencies(monkeypatch):
+    from unittest.mock import Mock
+
+    probe = Mock()
+    monkeypatch.setattr("travel_agent.capabilities._missing", probe)
+    settings = _settings(**{
+        "embedding.enabled": False,
+        "rerank.provider": "cross_encoder",
+    })
+    assert capability_report(settings)["ready"] is True
+    probe.assert_not_called()
+
+
 def test_a_configuration_matching_the_install_has_no_gaps(monkeypatch):
     """依赖齐了就没有缺口。
 

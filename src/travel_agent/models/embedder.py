@@ -309,6 +309,8 @@ def _build_embedder() -> BaseEmbedder:
 
 def get_embedder() -> BaseEmbedder:
     global _embedder
+    if not get_settings().embedding.enabled:
+        raise RuntimeError("向量功能已由 embedding.enabled=false 关闭")
     if _embedder is None:
         _embedder = _build_embedder()
     return _embedder

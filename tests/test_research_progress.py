@@ -76,8 +76,8 @@ async def test_worker_packet_still_reaches_internal_consumer():
             yield {'type': 'finish', 'content': PACKET, 'tool_calls': []}
 
     queue = SSEBuffer()
-    content, _, _, _ = await streaming_react_loop(LLM(), [], [], queue, 'destination_researcher', max_iterations=1)
-    assert content == PACKET
+    result = await streaming_react_loop(LLM(), [], [], queue, 'destination_researcher', max_iterations=1)
+    assert result.content == PACKET
     assert await queue.get(timeout=0.1) == ('agent_activity', 'destination_researcher', None)
     with pytest.raises(TimeoutError):
         await queue.get(timeout=0.01)

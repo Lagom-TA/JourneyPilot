@@ -293,6 +293,9 @@ def _summarize_structured_collection(value: Any) -> Optional[str]:
     if not isinstance(data, dict):
         return None
     try:
+        documents = data.get("documents")
+        if isinstance(documents, list):
+            return f"读到 {len(documents)} 段知识库资料" if documents else _EMPTY_RESULT_SUMMARY
         results = data.get("results")
         if isinstance(results, list):
             if not results:
@@ -573,7 +576,7 @@ def _sanitize_value(
     depth: int,
     max_depth: int = 4,
 ) -> Any:
-    if key == "routes":
+    if key in {"routes", "documents", "results"}:
         max_depth = max(max_depth, 8)
     if _SENSITIVE_KEY_RE.search(str(key or "")):
         return _REDACTED

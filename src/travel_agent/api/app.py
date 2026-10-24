@@ -42,6 +42,9 @@ async def _bootstrap_factory_corpus() -> list[str]:
     两句话不矛盾 —— 服务能跑，知识库是空的，开演之前去修。
     """
 
+    if not get_settings().embedding.enabled:
+        return []
+
     from ..rag.factory_seed import ensure_factory_corpus
 
     try:

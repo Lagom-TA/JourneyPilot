@@ -1,19 +1,4 @@
-"""知识库 chunk 的服务端所有接地通道。
-
-**`rag_chunk` 记录整条由服务端所有**，与 `external_tool` 同形：服务端知道自己这一轮把哪
-几个 chunk 注进了 prompt，所以它自己铸 id、自己写 title/摘录/快照/哈希；模型只做一件事 ——
-引用打印在提示词里的那个 id。这样「逐字」这个属性不依赖模型重打一遍。
-
-**不许让模型自己写 `rag_chunk` SourceRecord。** RAG 内容进 worker 走的是 prompt 注入，
-**永远不在工具抄本里**，而接地守卫只认工具抄本
-（`evidence_messages = authoritative_tool_messages(...)`）—— 模型写的每一条 `rag_chunk`
-都会连同依赖它的 fact 一起被丢弃，而提示词邀请它写、投影层与 PDF 层都有渲染分支在等，
-三层在等、一层全丢，且全程无声。
-
-id 不能借 `tools/governance.py::compiled_tool_source_id`：那是「一次 Tool Gateway
-审计 × 一个实体」的绑定，而 RAG chunk 没有审计 id 也没有实体 id，硬套会让两种来源
-在 `compiled_tool_source_id_is_about` 眼里长得一样。这里另立前缀，互不相认。
-"""
+"""Server-owned citations for the exact knowledge fragments shown by tool calls."""
 
 from __future__ import annotations
 
@@ -26,6 +11,52 @@ from urllib.parse import urlsplit
 RAG_CHUNK_SOURCE_ID_PREFIX = "rag_"
 _RAG_CHUNK_DIGEST_LENGTH = 16
 _PUBLIC_EXCERPT_LIMIT = 400
+
+
+def knowledge_tool_documents(envelopes: Sequence[Mapping[str, Any]]) -> list[Dict[str, Any]]:
+    from ..agents.utils import compact_tool_content_for_model
+    from ..tools.governance import is_tool_execution_envelope
+
+    documents: Dict[str, Dict[str, Any]] = {}
+    for envelope in envelopes:
+        if not is_tool_execution_envelope(envelope) or envelope.get("tool_name") != "knowledge_search":
+            continue
+        if envelope.get("status") != "success":
+            continue
+        metadata = envelope.get("metadata") or {}
+        if metadata.get("evidence_allowed") is not True or metadata.get("quarantine_result"):
+            continue
+        shown = json.loads(compact_tool_content_for_model(dict(envelope)))
+        result = shown.get("sanitized_result") or {}
+        if not isinstance(result, dict) or result.get("success") is not True:
+            continue
+        for doc in result.get("documents") or []:
+            if isinstance(doc, dict) and doc.get("content") and doc.get("source_record_id"):
+                documents[doc["source_record_id"]] = doc
+    return list(documents.values())
+
+
+def knowledge_tool_summaries(envelopes: Sequence[Mapping[str, Any]]) -> list[Dict[str, Any]]:
+    from .summary import build_retrieval_summary
+
+    summaries = []
+    for envelope in envelopes:
+        if envelope.get("tool_name") != "knowledge_search":
+            continue
+        docs = knowledge_tool_documents([envelope])
+        result = envelope.get("sanitized_result") or {}
+        if not isinstance(result, dict):
+            result = {}
+        summary = build_retrieval_summary(
+            str(result.get("query") or ""), docs,
+            collections=result.get("collections") or [],
+            mode_decision={"retrieval_mode": "agentic_knowledge_search", "enabled_features": ["hybrid", "rrf"]},
+        ).to_dict()
+        summary["status"] = result.get("retrieval_status") or envelope.get("status")
+        summary["failures"] = result.get("failures") or []
+        summary["audit_id"] = envelope.get("audit_id")
+        summaries.append(summary)
+    return summaries
 
 
 def rag_chunk_source_id(doc: Mapping[str, Any]) -> str:
@@ -51,11 +82,7 @@ def rag_chunk_source_records(
     *,
     default_retrieved_at: Optional[datetime] = None,
 ) -> Dict[str, Dict[str, Any]]:
-    """本轮注入 prompt 的 chunk → 它们各自的完整 SourceRecord 载荷。
-
-    只收本轮**真的注进 prompt** 的那几条。模型看不见的 chunk 不构成它可引用的
-    证据，收进来只会让守卫放过一条模型其实没读到的东西。
-    """
+    """Build citations from the exact fragments retained in model-facing tool receipts."""
 
     records: Dict[str, Dict[str, Any]] = {}
     for doc in docs:

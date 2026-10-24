@@ -2149,12 +2149,7 @@ async def transport_researcher_node(
         if provider_route_ready:
             raw_response = ""
         else:
-            (
-                raw_response,
-                _tool_summaries,
-                _pending,
-                react_tool_results,
-            ) = await streaming_react_loop(
+            react = await streaming_react_loop(
                 llm=llm,
                 messages=messages,
                 available_tools=available_tools,
@@ -2165,7 +2160,8 @@ async def transport_researcher_node(
                 tool_cache=tool_cache,
                 tool_context=tool_context,
             )
-            authoritative_tool_results.extend(react_tool_results)
+            raw_response = react.content
+            authoritative_tool_results.extend(react.tool_results)
 
         finalize_started_at = time.perf_counter()
         packet = await parse_or_repair_research_packet_output(

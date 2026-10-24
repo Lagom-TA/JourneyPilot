@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 
+from ..config import get_settings
 from ..infrastructure.database import get_db_session
 from .chunker import get_chunker
 
@@ -87,6 +88,8 @@ class KnowledgeIndexer:
         分块（可能要调 embedding 与 fast 模型）在事务之外先做完 —— 一次失败不该让
         用户的资料只剩半份。
         """
+        if not get_settings().embedding.enabled:
+            raise RuntimeError("向量知识库已由 embedding.enabled=false 关闭")
         normalized_source = _normalize_source(source)
         chunks = await self._split_chunks(
             text, source=normalized_source, metadata=metadata
@@ -210,6 +213,8 @@ class KnowledgeIndexer:
         与 `index_text` 是同一条写入路径（正文一行、段一批、同名即替换），只是把整批
         文档的段**合成一次向量化调用** —— 语料入库一次几千段，逐篇 embed 是几千次往返。
         """
+        if not get_settings().embedding.enabled:
+            raise RuntimeError("向量知识库已由 embedding.enabled=false 关闭")
         prepared: List[Dict[str, Any]] = []
         for doc in documents:
             content = doc.get("content", "")

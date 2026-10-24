@@ -251,6 +251,14 @@ async def _probe_knowledge_corpus() -> Dict[str, Any]:
         那批语料在这台机器上**永远不会被检索到**，而每一处读数都显示一切正常。
     """
 
+    if not get_settings().embedding.enabled:
+        return {
+            "enabled": False,
+            "ready": False,
+            "message": "向量知识库已由配置关闭",
+            "collections": {},
+        }
+
     from ...rag import factory_seed
 
     try:

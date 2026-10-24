@@ -79,24 +79,9 @@ class GroundingCorpus:
 
 
 def grounding_corpus() -> GroundingCorpus:
-    """出厂语料 + 本机用户上传的资料库，作为一份平等竞争的探针清单。
+    """Search every allowed collection, regardless of the optional seed manifest."""
 
-    出厂集合清单里的
-    ``visa_policies`` 出厂就是空的（签证正文不含可安排的停留点，见
-    本地种子说明里），却一直在被探针查 —— 每轮多印一行
-    「向量 0 + lexical 0 → 融合 0」，而一次真正的接线断裂印出来的是同一行。
-    所以探针清单只收**种子声称有货的**出厂集合（``factory_seed
-    .seeded_factory_collections()`` 是这句话的唯一定义处，那里写了为什么是种子说了算、
-    以及种子与库不一致时从哪儿看得见）。名字仍留在 ``FACTORY_KNOWLEDGE_COLLECTIONS``
-    里作为逻辑语汇 —— 那张表回答的是「哪些集合名属于出厂语料」，不是「哪些有货」。
-
-    这里的 import 写在函数体内：``factory_seed`` 依赖本模块的
-    ``FACTORY_KNOWLEDGE_COLLECTIONS``，模块级互相 import 会成环。
-    """
-
-    from .factory_seed import seeded_factory_collections
-
-    probes = list(seeded_factory_collections())
+    probes = list(FACTORY_KNOWLEDGE_COLLECTIONS)
     user_probe = user_scoped_collection(USER_KNOWLEDGE_COLLECTION)
     probes.append(user_probe)
     return GroundingCorpus(

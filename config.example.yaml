@@ -33,6 +33,7 @@ fast_model:
 # 向量模型：qwen3 使用本地模型；openai 需要 api_key 和 base_url；hash 仅用于本地 smoke。
 # dimensions 必须与数据库 pgvector 列一致，调整后需要重新索引。
 embedding:
+  enabled: true  # false 关闭向量知识库与自动记忆抽取，保留手动偏好读写
   provider: "qwen3"
   api_key: ""                                          # provider=openai 时填写
   model_name: "n24q02m/Qwen3-Embedding-0.6B-ONNX"      # provider=openai 时填写模型名

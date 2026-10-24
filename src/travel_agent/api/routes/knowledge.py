@@ -73,6 +73,14 @@ _REJECTION_MESSAGE = {
 }
 
 
+def _require_vector_knowledge() -> None:
+    if not get_settings().embedding.enabled:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "knowledge_disabled", "message": "向量知识库已由配置关闭"},
+        )
+
+
 def _logical_collection_name(collection: str) -> str:
     """Project the shared collection contract to an HTTP 400 boundary."""
 
@@ -143,6 +151,7 @@ def _rejection_to_http(rejection: DocumentRejected) -> HTTPException:
 @router.post("/index", response_model=KnowledgeUploadResponse)
 async def index_text(request: KnowledgeUploadRequest):
     """将文本内容索引到知识库（用户作用域集合）。"""
+    _require_vector_knowledge()
     logical_collection = _logical_collection_name(request.collection)
     collection = scope_collection(logical_collection)
     # 手输那一路和上传文件走同一道界：空内容不许换来一句「成功索引 0 个文本块」。
@@ -176,6 +185,7 @@ async def upload_file(
     所有输入边界（类型、字节数、页数、ZIP 展开量与压缩比、解析超时）都在
     `rag/sources/document_parse.py` 一处判定，这条路只负责把判决投影成 HTTP。
     """
+    _require_vector_knowledge()
     ingest = get_settings().ingest
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in SUPPORTED_SUFFIXES:
@@ -241,6 +251,7 @@ async def upload_file(
 @router.post("/query", response_model=KnowledgeQueryResponse)
 async def query_knowledge(request: KnowledgeQueryRequest):
     """语义查询知识库（仅当前用户作用域集合）。"""
+    _require_vector_knowledge()
     collection = scope_collection(request.collection)
     components = get_components()
     try:
@@ -341,6 +352,7 @@ async def update_source_document(
     先确认这一篇存在再写：这个接口是「改」不是「建」，让它顺手建一篇会让一个打错的
     来源名静默变成一篇新资料。
     """
+    _require_vector_knowledge()
     logical_collection = _logical_collection_name(collection_name)
     scoped = scope_collection(logical_collection)
     await _require_source_document(scoped, source)

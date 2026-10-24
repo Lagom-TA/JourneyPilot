@@ -44,6 +44,7 @@ from ..tools.governance import (
 )
 from ..entities.tool_gateway import ToolGatewayDecision
 from ..tools.gateway import get_tool_gateway
+from ..tools.result import ReactOutcome, ReactResult
 from ..tools.registry import (
     get_tool_registry,
 )
@@ -218,6 +219,7 @@ _AGENT_TOOL_POLICY: Dict[str, AgentToolPolicy] = {
         # 地图/天气工具不在其 server 白名单中，无需额外 deny。
         extra_tools={
             "free_web_search",
+            "knowledge_search",
             "global_place_search",
             "maps_text_search",
             "maps_around_search",
@@ -230,7 +232,7 @@ _AGENT_TOOL_POLICY: Dict[str, AgentToolPolicy] = {
         servers={"12306-train", "duffel-flights", "amap-maps"},
         # 地图投影只消费 typed entity/place identity；天气由前置正式 Provider 获取。
         deny_tools={"maps_geo", "maps_geocode", "maps_weather", "ask_user"},
-        extra_tools={"free_web_search", "global_route_search"},
+        extra_tools={"free_web_search", "global_route_search", "knowledge_search"},
     ),
     "accommodation_researcher": AgentToolPolicy(
         # 住宿：Nominatim 核验海外 property identity；Tavily/Brave 检索价格与可订性；汇率（Frankfurter）；
@@ -239,6 +241,7 @@ _AGENT_TOOL_POLICY: Dict[str, AgentToolPolicy] = {
         deny_tools={"ask_user"},
         extra_tools={
             "free_web_search",
+            "knowledge_search",
             "global_place_search",
             "maps_text_search",
             "maps_around_search",
@@ -253,7 +256,7 @@ _AGENT_TOOL_POLICY: Dict[str, AgentToolPolicy] = {
     ),
 }
 
-_SCOPED_NON_MCP_TOOLS = {"global_place_search", "global_route_search"}
+_SCOPED_NON_MCP_TOOLS = {"global_place_search", "global_route_search", "knowledge_search"}
 
 
 async def get_available_tools(selected_mcp_servers: List[str]) -> List[Dict[str, Any]]:
@@ -263,7 +266,11 @@ async def get_available_tools(selected_mcp_servers: List[str]) -> List[Dict[str,
     """
     try:
         registry = get_tool_registry()
+        from ..config import get_settings
         tools = registry.get_tools_as_schemas()
+        if not get_settings().embedding.enabled:
+            tools = [tool for tool in tools
+                     if tool["schema"]["function"]["name"] != "knowledge_search"]
         if not selected_mcp_servers:
             return tools
 
@@ -366,7 +373,17 @@ def filter_tools_for_agent(
     4. 本地工具（source != "mcp"）：保留（除非在 deny_tools 中）
     5. 未在策略中的 agent：只保留本地工具
     """
-    policy = _AGENT_TOOL_POLICY.get(agent_name)
+    from ..config import get_settings
+
+    if not get_settings().embedding.enabled:
+        tools = [item for item in tools
+                 if item.get("schema", {}).get("function", {}).get("name") != "knowledge_search"]
+    policy = (
+        AgentToolPolicy(servers=set(), deny_tools={"ask_user"}, extra_tools={
+            "knowledge_search", "free_web_search", "tavily_search", "brave_web_search",
+            "latest_exchange_rates",
+        }) if agent_name == "fast_answer_agent" else _AGENT_TOOL_POLICY.get(agent_name)
+    )
 
     if policy is None:
         # 未知 agent：只保留本地工具
@@ -391,6 +408,8 @@ def filter_tools_for_agent(
     for t in tools:
         tool_name = t.get("schema", {}).get("function", {}).get("name", "")
 
+        if agent_name == "fast_answer_agent" and tool_name not in extra_tools:
+            continue
         # deny_tools 过滤（同时适用于 MCP 和本地工具）
         if tool_name in deny_tools:
             continue
@@ -428,6 +447,14 @@ async def execute_tool(tool_name, arguments, *args, **kwargs):
     from copy import deepcopy
 
     journal = current_worker_journal.get()
+    if tool_name == "knowledge_search":
+        from ..config import get_settings
+
+        if not get_settings().embedding.enabled:
+            return build_tool_execution_envelope(
+                tool_name=tool_name, arguments=arguments, status="blocked",
+                error="向量知识库已由 embedding.enabled=false 关闭", source="builtin",
+            )
     if journal is None:
         return await _execute_tool_once(tool_name, arguments, *args, **kwargs)
     allowed = kwargs.get("allowed_tool_names")
@@ -519,7 +546,7 @@ async def _execute_tool_once(
             logger.warning("工具 [%s] 被 ToolGateway 阻断: %s", tool_name, before.reason)
         return before.envelope
     main_manifest = before.manifest
-    if main_manifest.side_effecting:
+    if main_manifest.side_effecting or tool_name == "knowledge_search":
         max_retries = 0
         allow_fallback = False
 
@@ -1420,14 +1447,22 @@ def _compact_sanitized_result(result: Any) -> Any:
 
     compact: Dict[str, Any] = {}
     for key, value in result.items():
-        if key == "results" and isinstance(value, list):
-            places: List[Any] = []
-            for item in value[:_PLACE_RESULT_CAP]:
-                if isinstance(item, dict):
-                    places.append(_compact_mapping_fields(item, _PLACE_IDENTITY_KEYS))
-                else:
-                    places.append(item)
-            compact[key] = places
+        if key == "documents" and isinstance(value, list):
+            from ..rag.source_records import rag_chunk_source_id
+            documents = []
+            for item in value[:5]:
+                if not isinstance(item, dict) or not item.get("content"):
+                    continue
+                doc = {field: item[field] for field in (
+                    "content", "source", "collection", "published_at", "retrieved_at", "retrieval_method",
+                ) if field in item}
+                doc["source_record_id"] = rag_chunk_source_id(doc)
+                documents.append(doc)
+            compact[key] = documents
+        elif key == "results" and isinstance(value, list):
+            compact[key] = [
+                _compact_sanitized_result(item) for item in value[:_PLACE_RESULT_CAP]
+            ]
         elif key == "routes" and isinstance(value, list):
             routes: List[Any] = []
             for item in value[:_ROUTE_RESULT_CAP]:
@@ -1531,6 +1566,16 @@ def compact_tool_content_for_model(tool_result: Any) -> str:
     if len(text) <= _TOOL_CONTENT_CHAR_LIMIT:
         return text
 
+    if isinstance(compact, dict):
+        payload = compact.get("sanitized_result", compact)
+        if isinstance(payload, dict) and isinstance(payload.get("documents"), list):
+            payload["truncated"] = True
+            while payload["documents"] and len(text) > _TOOL_CONTENT_CHAR_LIMIT:
+                payload["documents"].pop()
+                text = json.dumps(compact, ensure_ascii=False, default=str)
+            if len(text) <= _TOOL_CONTENT_CHAR_LIMIT:
+                return text
+
     # Hard ceiling: drop bulky nested result first, keep audit/status/summary.
     if isinstance(compact, dict):
         reduced = dict(compact)
@@ -1616,6 +1661,7 @@ def _make_cache_key(tool_name: str, arguments: Dict[str, Any]) -> str:
 
 
 _NO_CACHE_TOOLS: Set[str] = {
+    "knowledge_search",
     "ask_user",
     # These use Redis-backed ProviderSnapshotCache at the Gateway boundary.
     # Replaying their old workflow-local Envelope would bypass TTL/provenance
@@ -1657,12 +1703,7 @@ async def streaming_react_loop(
     can_ask_user: bool = False,
     tool_cache: Optional[Dict[str, Any]] = None,
     tool_context: Optional[Dict[str, Any]] = None,
-) -> Tuple[
-    str,
-    List[str],
-    Optional[Dict[str, Any]],
-    List[Dict[str, Any]],
-]:
+) -> ReactResult:
     """
     通用流式 ReAct 循环。
 
@@ -1671,9 +1712,7 @@ async def streaming_react_loop(
     2. 若检测到 tool_calls：推送 tool_start → 执行（优先命中缓存）→ 推送 tool_done
     3. 将工具结果注入 messages，进入下一轮
 
-    返回：(final_content, tool_results_summary, pending_choice,
-    authoritative_tool_results)。最后一项保留完整 Tool Gateway envelope，
-    不受 model-facing message budget 影响。
+    返回具名终结结果；tool_results 保留完整 Tool Gateway envelope。
     """
     if stream_queue is not None:
         await stream_queue.put(("agent_activity", node_name, None))
@@ -1713,6 +1752,15 @@ async def streaming_react_loop(
     journal = current_worker_journal.get()
     saved = journal.payload.get("react", {}) if journal else {}
     if saved:
+        if any(item.get("tool_name") == "knowledge_search" for item in saved.get("results", [])):
+            from ..config import get_settings
+            from ..tools.gateway import _manifest_from_metadata
+
+            manifest = _manifest_from_metadata(
+                "knowledge_search", get_tool_registry().get_tool_metadata("knowledge_search"),
+            )
+            if not get_settings().embedding.enabled or "knowledge_search" not in allowed_names or manifest.disabled:
+                raise RuntimeError("knowledge_search recovery is not authorized")
         messages[:] = deepcopy(saved["messages"])
         tool_results_summary[:] = saved["summaries"]
         authoritative_tool_results[:] = deepcopy(saved["results"])
@@ -1720,7 +1768,11 @@ async def streaming_react_loop(
         exposure.restore(saved["activated"])
         journal.tool_cursor = saved["tool_cursor"]
         if saved.get("done"):
-            return saved["content"], tool_results_summary, saved.get("pending_choice"), authoritative_tool_results
+            return ReactResult(
+                outcome=ReactOutcome(saved["outcome"]), content=saved["content"],
+                summaries=tool_results_summary, pending_choice=saved.get("pending_choice"),
+                tool_results=authoritative_tool_results, error=saved.get("error"),
+            )
 
     round_counts = {"fail": 0, "success": 0, "capabilities": []}
     async def save_round(iteration, **phase):
@@ -1733,6 +1785,13 @@ async def streaming_react_loop(
             }
             await journal.commit()
 
+    async def terminate(iteration, outcome, *, content="", pending_choice=None, error=None):
+        await save_round(iteration, done=True, outcome=outcome.value,
+                         content=content, pending_choice=pending_choice, error=error)
+        return ReactResult(outcome=outcome, content=content, summaries=tool_results_summary,
+                           pending_choice=pending_choice, tool_results=authoritative_tool_results,
+                           error=error)
+
     start_iteration = saved.get("iteration", 0)
     content = last_text_content
     for iteration in range(start_iteration, effective_max_iterations):
@@ -1742,14 +1801,13 @@ async def streaming_react_loop(
             # six.  The caller will return its typed partial packet and the
             # graph moves into Candidate Gate's deterministic closeout path.
             remaining_model_seconds(f"react.{node_name}.iteration_{iteration + 1}")
-        except ModelWindowClosed as exc:
+        except (ModelWindowClosed, RunBudgetExhausted) as exc:
             logger.info("[%s] research window closed: %s", node_name, exc)
             if iteration == start_iteration and saved.get("response"):
                 for skipped in saved["response"][1][saved.get("next_tool", 0):]:
                     messages.append({"role": "tool", "tool_call_id": skipped["id"],
                                      "content": '{"status":"not_executed","reason":"research_window_closed"}'})
-            await save_round(iteration, done=True, content=last_text_content)
-            return last_text_content, tool_results_summary, None, authoritative_tool_results
+            return await terminate(iteration, ReactOutcome.BUDGET_LIMIT, error=str(exc))
         content = ""
         tool_calls: List[Dict[str, Any]] = []
         assistant_replay: Dict[str, Any] = {}
@@ -1770,16 +1828,24 @@ async def streaming_react_loop(
                     elif event["type"] == "finish":
                         finished = True
                         finish_content = event.get("content")
-                        if finish_content:
+                        if finish_content is not None:
                             content = finish_content
                         tool_calls = event.get("tool_calls", [])
                         assistant_replay = event.get("assistant_replay") or {}
+            except (ModelWindowClosed, RunBudgetExhausted) as exc:
+                return await terminate(iteration, ReactOutcome.BUDGET_LIMIT, error=str(exc))
             except Exception as e:
                 logger.error(f"[{node_name}] 流式 LLM 调用失败 (迭代 {iteration}): {e}")
-                return "", tool_results_summary, None, authoritative_tool_results
+                return await terminate(
+                    iteration, ReactOutcome.MODEL_FAILED,
+                    error=f"{node_name} iteration {iteration + 1}: {type(e).__name__}: {e}",
+                )
 
             if not finished:
-                return "", tool_results_summary, None, authoritative_tool_results
+                return await terminate(
+                    iteration, ReactOutcome.INCOMPLETE_STREAM,
+                    error=f"{node_name} iteration {iteration + 1}: stream ended without finish",
+                )
             # Persist exactly the IDs used by the assistant/tool pairing.
             for tc in tool_calls:
                 tc["id"] = tc.get("id") or f"tool_{uuid.uuid4().hex}"
@@ -1788,8 +1854,10 @@ async def streaming_react_loop(
             last_text_content = content
 
         if not tool_calls:
-            await save_round(iteration, done=True, content=content)
-            return content, tool_results_summary, None, authoritative_tool_results
+            if not content.strip():
+                return await terminate(iteration, ReactOutcome.INCOMPLETE_STREAM,
+                                       error=f"{node_name} iteration {iteration + 1}: empty final answer")
+            return await terminate(iteration, ReactOutcome.FINAL_ANSWER, content=content)
 
         round_counts = deepcopy(saved.get("round_counts", round_counts)) if recovered_response else {"fail": 0, "success": 0, "capabilities": []}
         if not recovered_response:
@@ -1821,18 +1889,12 @@ async def streaming_react_loop(
 
             try:
                 remaining_model_seconds(f"react.{node_name}.tool.{tc_name}")
-            except ModelWindowClosed as exc:
+            except (ModelWindowClosed, RunBudgetExhausted) as exc:
                 logger.info("[%s] suppressing tool after research cutoff: %s", node_name, exc)
                 for skipped in tool_calls[tool_index:]:
                     messages.append({"role": "tool", "tool_call_id": skipped["id"],
                                      "content": '{"status":"not_executed","reason":"research_window_closed"}'})
-                await save_round(iteration, done=True, content=content or last_text_content)
-                return (
-                    content or last_text_content,
-                    tool_results_summary,
-                    None,
-                    authoritative_tool_results,
-                )
+                return await terminate(iteration, ReactOutcome.BUDGET_LIMIT, error=str(exc))
 
             # ── search_tools 元工具：就地激活白名单内工具的完整 schema ─────────────
             # 不经 registry/gateway 执行——检索范围恒为 available_tools（该 agent 白名单），
@@ -1945,7 +2007,9 @@ async def streaming_react_loop(
                 for skipped in tool_calls[tool_index + 1:]:
                     messages.append({"role": "tool", "tool_call_id": skipped["id"],
                                      "content": '{"status":"not_executed","reason":"awaiting_user_input"}'})
-                await save_round(iteration, done=True, content=content, pending_choice=pending_choice)
+                if pending_choice is not None:
+                    return await terminate(iteration, ReactOutcome.AWAITING_USER,
+                                           pending_choice=pending_choice)
                 break
 
             tool_status = str(tool_result.get("status") or "")
@@ -2000,22 +2064,15 @@ async def streaming_react_loop(
             await save_round(iteration, response=[content, tool_calls, assistant_replay], next_tool=tool_index + 1)
             check_cancel_requested(node_name)
 
-        if pending_choice is not None:
-            return (
-                content,
-                tool_results_summary,
-                pending_choice,
-                authoritative_tool_results,
-            )
-
         # 断路器只看真正执行过的工具：能力判定不进分子也不进分母。
         executed_count = total_count - len(capability_tool_names)
         notices: List[str] = []
         if fail_count > 0 and fail_count == executed_count:
             logger.warning(f"[{node_name}] 本轮 {executed_count} 个工具全部失败，注入断路提示")
             notices.append(
-                "注意：本轮所有工具调用均失败，无法获取实时数据。"
-                "请用一到两句话简要告知用户工具暂不可用，不要基于推测生成详细内容。"
+                "本轮调用的工具未取得资料；这不代表其他来源或已有知识不可用。"
+                "可在剩余轮数内换来源或换查询；如仍未核实，请准确说明缺少哪类资料，"
+                "并继续提供明确、有用的建议，区分一般建议与必须核实的实时事实，不要编造。"
             )
         if capability_tool_names and success_count == 0:
             # 这不是失败，是该数据源对该日期没有可查数据。模型需要的是换模态，
@@ -2034,10 +2091,5 @@ async def streaming_react_loop(
 
         await save_round(iteration + 1)
 
-    await save_round(effective_max_iterations, done=True, content=content or last_text_content)
-    return (
-        content or last_text_content,
-        tool_results_summary,
-        None,
-        authoritative_tool_results,
-    )
+    return await terminate(effective_max_iterations, ReactOutcome.ITERATION_LIMIT,
+                           error=f"{node_name}: iteration limit {effective_max_iterations}")

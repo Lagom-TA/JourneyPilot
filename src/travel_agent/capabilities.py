@@ -61,6 +61,8 @@ def capability_gaps(settings: Any) -> List[CapabilityGap]:
     """按当前配置检查增强依赖，返回缺口（空 = 配置与安装一致）。"""
 
     gaps: List[CapabilityGap] = []
+    if not settings.embedding.enabled:
+        return gaps
 
     if settings.embedding.provider == "qwen3":
         missing = _missing("onnxruntime", "tokenizers", "huggingface_hub", "numpy")

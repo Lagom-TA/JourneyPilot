@@ -18,7 +18,7 @@ import time
 import uuid
 from ...models.task_routing import TaskKind, llm_for_task
 
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
@@ -26,23 +26,18 @@ from langchain_core.runnables import RunnableConfig
 from ...entities.state import TravelAgentState
 from ...models.router import get_model_router
 from ...guardrails.output_guard import OutputGuard
-from ...rag.retriever import HybridRetriever
-from ...rag.retrieval_pipeline import retrieve_for_query
-from ...rag.retrieval_grader import GradeResult, RetrievalGrader
-from ...rag.policy import RAGModePolicy, RAGPolicyInput
-from ...rag.summary import build_retrieval_summary
-from ...rag.collections import (
-    GroundingCorpus,
-    grounding_corpus,
-    relabel_to_logical_collections,
-)
+from ...tools.governance import tool_envelope_to_evidence_candidate
+from ...rag.source_records import knowledge_tool_documents, knowledge_tool_summaries
 from ...memory.context_builder import ContextBuilder, ContextBudget
 from ...panels.constraint import (
     format_constraint_pack_for_prompt,
     referenced_context_sections,
 )
 from ..scope.constraint_normalizer import build_run_constraint_pack
-from ..utils import session_history_for_context_builder
+from ..utils import (
+    build_tool_context_from_state, filter_tools_for_agent, get_available_tools,
+    session_history_for_context_builder, streaming_react_loop,
+)
 from .prompts import DISCOVERY_OBJECTIVE_INSTRUCTION, SYSTEM_PROMPT
 
 if TYPE_CHECKING:
@@ -51,9 +46,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _NODE_NAME = "fast_answer_agent"
-
-_RAG_TOP_K = 3
-_ADVANCED_FAST_MODE = False
 
 _CURRENCY_TOOL_NAME = "latest_exchange_rates"
 _CURRENCY_CODES = {
@@ -90,205 +82,6 @@ _EXCHANGE_RATE_QUERY_RE = re.compile(
 )
 _ISO_DATE_RE = re.compile(r"(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)")
 _CN_DATE_RE = re.compile(r"(?<!\d)(\d{4})年(\d{1,2})月(\d{1,2})日")
-
-
-def _log_corpus_reach(
-    corpus: GroundingCorpus,
-    pool: List[Dict[str, Any]],
-    injected: List[Dict[str, Any]],
-) -> None:
-    """按语料出身分两行报「这一问读到了什么」。
-
-    合成一行的话，「知识库有没有贡献」有答案而**「他自己传的东西有没有被读到」没有答案**
-    ——后者才是用户能看见、能改、也可能弄错的那一半。这一条与深度规划那两行
-     `RAG place funnel [origin=…]` 同源。
-
-    和那两行的一处**故意的不同**：`origin=factory` 这里**零段也印**。funnel 的规矩是
-    「注入 0 段就整行不印」，因为那条链上没有提名可丢、一行全零会被读成有；而这里
-    零段恰恰是要看的东西 —— 快问快答路径此前根本没查过出厂语料，
-    如果零段不印，接线断没断在读数上又是没有答案。
-
-    `origin=user` 沿用原规矩：查过就印（含 0 段），解析不出用户身份则整行没有 ——
-    「问过了没拿到」与「没有库可问」必须分得开。
-    """
-
-    def _count(docs: List[Dict[str, Any]], user_owned: bool) -> int:
-        return sum(
-            1
-            for doc in docs
-            if corpus.is_user_owned(str(doc.get("collection") or "")) is user_owned
-        )
-
-    factory_collections = [
-        name for name in corpus.logical_collections if not corpus.is_user_owned(name)
-    ]
-    logger.info(
-        "FastAnswer RAG reach [origin=factory]: pool=%d injected=%d | collections=%s",
-        _count(pool, False),
-        _count(injected, False),
-        ",".join(factory_collections),
-    )
-    logger.info(
-        "FastAnswer RAG reach [origin=user]:    pool=%d injected=%d",
-        _count(pool, True),
-        _count(injected, True),
-    )
-
-
-class FastAnswerRagResult(NamedTuple):
-    """快问快答那一次检索的全部产出。"""
-
-    prompt_prefix: str
-    summary: Optional[Dict[str, Any]]
-    injected_docs: List[Dict[str, Any]]
-
-
-async def _run_rag(
-    retriever: HybridRetriever,
-    user_query: str,
-    corpus: GroundingCorpus,
-    *,
-    advanced_fast_mode: bool,
-) -> FastAnswerRagResult:
-    """快问快答的知识库检索：查哪几个集合、注入哪几段、报什么。
-
-    与 ``destination_researcher._run_rag`` 对称，**而且这份对称是判据要求的**：
-    两条执行路径对「知识库在哪」必须给同一个答案。另一条路径此前不查用户上传的
-    资料库，而这一半的问题是：快问快答此前只查用户自己那一个集合，出厂语料
-    **结构上不可能**被读到。它单独成一个函数，是为了让检查落在真实检索链上，
-    而不是落在「清单里有没有这个字符串」上 —— 后者在一条从不执行检索的分支上
-    也一样成立。
-
-    这条路径关掉 HyDE / 多路改写 / 精排（保低延迟），但**不**关分级器：
-    检索到的文本会直接注进用户看到的答案，分级器是它唯一的相关性防线 ——
-    向量臂的下限低于当前 embedder 的噪声地板（无关文本余弦实测 0.44–0.54），
-    咬不住任何东西，所以「问汇率也把绍兴夜游文档注进去」。
-    """
-
-    try:
-        decision = RAGModePolicy().decide(
-            RAGPolicyInput(
-                query=user_query,
-                execution_path="deep_research" if advanced_fast_mode else "fast_answer",
-                source_condition="knowledge_base",
-                candidate_count=10 if advanced_fast_mode else _RAG_TOP_K,
-                latency_budget_ms=1200 if advanced_fast_mode else 350,
-            )
-        )
-        # 送去相关性判断的候选必须**至少覆盖每个被查集合的头一条**，否则截断发生在
-        # 判断之前，而这条路径上「谁进 prompt」就由集合顺序决定了：跨集合的 RRF
-        # 融合退化成按名次轮流取（同一段正文只属于一个集合，所以任何一段都只被一条
-        # 列表排过名，融合分恒等于 1/(60+名次)），候选池因此是一份完美的轮询表 ——
-        # 取前 3 就是「前三个探针各自的第 1 名」。用户自己上传的资料库排在探针清单
-        # 末位、四个出厂集合在它前面，**它的头一条结构上永远进不了前 3**。
-        # 实测那一句「杭州西湖边有哪些本地人常去的小吃店」：被判的三段是无锡小笼 /
-        # 上海茶馆 / 无锡夜生活（分级器全判 1 分，判得对），而池子里第 4 条是这个用户
-        # 自己写的杭州文档（向量分 0.7406，全池最高）、第 5 条是出厂语料里逐字回答
-        # 这个问题的那段杭州小吃清单。
-        grading_k = max(_RAG_TOP_K, len(corpus.probe_collections))
-        outcome = await retrieve_for_query(
-            user_query,
-            retriever=retriever,
-            collections=corpus.probe_collections,
-            top_k=grading_k,
-            use_rewrite=decision.use_rewrite,
-            use_multi_query=decision.use_multi_query,
-            use_hyde=decision.use_hyde,
-            use_rerank=decision.use_rerank,
-        )
-        pool = outcome.pool
-        # 物理名不许越过接地边界；翻译只在这里做一次（定义处在 rag.collections）。
-        relabel_to_logical_collections((*outcome.docs, *pool), corpus)
-
-        grade_result = None
-        if outcome.docs and decision.use_grader:
-            grade_result = await RetrievalGrader().grade(query=user_query, docs=outcome.docs)
-        # 判过之后才按 prompt 预算截；分级器交出的清单已按分数降序（见那里的注释），
-        # 所以这一刀切掉的是分最低的那几段，不是「排在后面的集合」。
-        docs = knowledge_docs_cleared_for_injection(outcome.docs, grade_result)[:_RAG_TOP_K]
-
-        summary = build_retrieval_summary(
-            user_query,
-            pool,
-            selected_docs=docs,
-            rewritten_queries=outcome.query_variants,
-            mode_decision=decision,
-            grade_result=grade_result,
-            collections=corpus.logical_collections,
-        ).to_dict()
-        _log_corpus_reach(corpus, pool, docs)
-
-        if not docs:
-            return FastAnswerRagResult("", summary, [])
-        rag_text = retriever.format_docs_for_prompt(docs)
-        logger.info(
-            "FastAnswer RAG (Hybrid+Rewrite) 注入 %d 个文档块（候选 %d），advanced=%s，rerank=%s",
-            len(docs),
-            len(pool),
-            advanced_fast_mode,
-            decision.use_rerank,
-        )
-        return FastAnswerRagResult(f"参考知识库信息：\n{rag_text}\n\n", summary, docs)
-    except Exception as exc:
-        logger.warning("FastAnswer RAG 检索失败: %s", exc)
-        # 失败这一支也要报「本轮查的是哪几个集合」：它是「问过了没拿到」与
-        # 「压根没问」的唯一区分处，退化成空清单就把两件事画成了同一件。
-        summary = build_retrieval_summary(
-            user_query,
-            [],
-            mode_decision={
-                "retrieval_mode": "unavailable",
-                "enabled_features": [],
-                "limitations": ["rag_retrieval_failed"],
-            },
-            collections=corpus.logical_collections,
-        ).to_dict()
-        return FastAnswerRagResult("", summary, [])
-
-
-def knowledge_docs_cleared_for_injection(
-    docs: List[Dict[str, Any]],
-    grade_result: Optional[GradeResult],
-) -> List[Dict[str, Any]]:
-    """快速路径唯一的相关性防线：**没判过就不注入**。
-
-    这条路径把检索到的文本直接拼进用户看到的答案，后面没有准入、没有出处校验、
-    没有第二个判官。所以它的合同只有一句：一段知识库文本要出现在答案里，必须
-    有人判过它跟这个问题相关。
-
-    两种"没判过"都算没判过，一视同仁 fail closed：
-    - 压根没跑分级器（``grade_result is None``）；
-    - 跑了但没判成（``graded=False``——分级器为深度路径保留了"评分失败就全部
-      使用"的降级，那对深度路径是对的，对这里不是）。
-
-    判过之后**逐段说话**：``filtered_docs`` 就是逐段判定相关的那几段，一段都没过
-    就是空表。不能只按整批平均分低（``LOW_QUALITY``）丢弃：「四个出厂集合各回
-    一段无关的 + 用户自己那段逐字回答问题的」平均分 1.8，于是那段 5 分的正文会跟
-    垃圾一起被丢掉，而候选放得越宽越容易触发。
-    逐段过滤给的保证更强也更好说：**答案里的每一段知识库文本，都有人判过它相关。**
-
-    向量臂的下限救不了这件事：当前 embedder 的噪声地板实测 0.44–0.54，完全无关
-    的文本也能越过任何咬得住的取值——实测一句"100 美元等于多少人民币"把只装了
-    绍兴夜游文档的用户库检索了出来，4/4 轮次都注入了它。那种批次里每一段都是 1 分，
-    逐段过滤之后一样是空表。
-    """
-
-    if not docs:
-        return []
-    if grade_result is None:
-        logger.warning("FastAnswer RAG 无相关性判定结果，本轮不注入知识库内容")
-        return []
-    if not grade_result.graded:
-        logger.warning("FastAnswer RAG 分级器未能评分，本轮不注入知识库内容")
-        return []
-    cleared = list(grade_result.filtered_docs)
-    if not cleared:
-        logger.info(
-            "FastAnswer RAG 逐段判定后无相关内容（avg=%.2f，档=%s），本轮不注入",
-            grade_result.avg_score,
-            grade_result.route.value,
-        )
-    return cleared
 
 
 def _detect_currency_pair(query: str) -> Optional[tuple[str, str]]:
@@ -694,24 +487,6 @@ async def fast_answer_node(state: TravelAgentState, config: RunnableConfig) -> D
     # 下面已经发过的 ``context_report``（连同持久化用的 ``context_compaction`` 事件），
     # 新 Anchor 本身由 ``CompactionService`` 落库，下一轮由载入器读回来。
 
-    # 轻量 RAG（Hybrid Search + Query Rewriting，单路改写保持低延迟）
-    # 设计取舍：fast_answer 关闭 HyDE / 多路改写 / 精排，但**不**关闭分级器。
-    # 这条路径把检索到的文本直接注进用户看到的答案，分级器是它唯一的相关性防线：
-    # 向量臂的下限低于当前 embedder 的噪声地板（无关文本余弦实测 0.44–0.54），
-    # 咬不住任何东西，所以「问汇率也把绍兴夜游文档注进去」。
-    advanced_fast_mode = bool(
-        config.get("configurable", {}).get("advanced_fast_mode", _ADVANCED_FAST_MODE)
-    )
-    rag = await _run_rag(
-        HybridRetriever(),
-        user_query,
-        grounding_corpus(),
-        advanced_fast_mode=advanced_fast_mode,
-    )
-    rag_prefix = rag.prompt_prefix
-    retrieval_summary = rag.summary
-    docs = rag.injected_docs
-
     realtime_context = await _build_realtime_tool_context(state=state, stream_queue=stream_queue)
     realtime_prompt = str(realtime_context.get("prompt") or "")
     realtime_evidence = [
@@ -722,8 +497,8 @@ async def fast_answer_node(state: TravelAgentState, config: RunnableConfig) -> D
         wire_tail.append({"role": "system", "content": DISCOVERY_OBJECTIVE_INSTRUCTION})
     if realtime_prompt:
         wire_tail.append({"role": "user", "content": realtime_prompt})
-    wire_tail.append({"role": "user", "content": f"{rag_prefix}用户问题：{user_query}"})
-    # Measure the next wire request after RAG/tool context is known. Cumulative
+    wire_tail.append({"role": "user", "content": f"用户问题：{user_query}"})
+    # Measure the next wire request after tool context is known. Cumulative
     # billed tokens never decide whether a context window needs compaction.
     built_ctx = await ctx_builder.build_context(
         session_id=state.session_id or "", system_prompt=base_system,
@@ -733,24 +508,35 @@ async def fast_answer_node(state: TravelAgentState, config: RunnableConfig) -> D
     messages = [{"role": "system", "content": built_ctx.system_prompt}, *built_ctx.messages, *wire_tail]
 
     try:
-        # 直接流式交付。OutputGuard 只在终态生成来源/标签增强，不以文风审查
-        # 阻塞 token；chat_complete 的 final_content 会补上可成功绑定的局部标签。
-        if stream_queue is not None:
-            response = ""
-            async for chunk in llm.astream(messages):
-                response += chunk
-                await stream_queue.put(("token", _NODE_NAME, chunk))
-        else:
-            response = await llm.ainvoke(messages)
-
+        available_tools = filter_tools_for_agent(
+            await get_available_tools(state.selected_mcp_servers or []), _NODE_NAME,
+        )
+        react = await streaming_react_loop(
+            llm=llm, messages=messages, available_tools=available_tools,
+            stream_queue=stream_queue, node_name=_NODE_NAME, max_iterations=3,
+            tool_context=build_tool_context_from_state(state),
+        )
+        response = react.require_final_answer()
+        tool_results = react.tool_results
+        docs = knowledge_tool_documents(tool_results)
         logger.info(f"FastAnswer 生成回答，长度: {len(response)}")
+        tool_evidence = []
+        for envelope in tool_results:
+            candidate = tool_envelope_to_evidence_candidate(envelope)
+            if candidate is not None:
+                candidate["source_type"] = envelope.get("source_type") or "tool"
+                tool_evidence.append(candidate)
         grounding = OutputGuard().check(
             output_text=response,
             retrieved_docs=docs,
-            evidence_records=realtime_evidence,
+            evidence_records=[*realtime_evidence, *tool_evidence],
         )
         response = grounding.processed_output
-        retrieval_summaries = [retrieval_summary] if retrieval_summary else []
+        if not response.strip():
+            raise RuntimeError("FastAnswer final answer is empty after output validation")
+        if stream_queue is not None:
+            await stream_queue.put(("token", _NODE_NAME, response))
+        retrieval_summaries = knowledge_tool_summaries(tool_results)
         if realtime_evidence:
             retrieval_summaries.append({
                 "query": user_query,

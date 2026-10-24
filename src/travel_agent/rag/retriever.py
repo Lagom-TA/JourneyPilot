@@ -183,6 +183,14 @@ def _build_filter_sql(filters: Optional[Dict[str, Any]]) -> tuple[str, Dict[str,
     return (" AND " + " AND ".join(clauses)) if clauses else "", params
 
 
+class RetrievalDocuments(list):
+    """Documents and bounded retrieval-arm failure information, including empty hits."""
+
+    def __init__(self, docs=(), *, failures=()):
+        super().__init__(docs)
+        self.failures = list(failures)
+
+
 class HybridRetriever:
     """
     Hybrid Search 检索器：向量检索 + PostgreSQL lexical full-text 检索 + RRF 融合。
@@ -228,6 +236,8 @@ class HybridRetriever:
                 就是最终顺序。
         """
         settings = get_settings()
+        if not settings.embedding.enabled:
+            raise RuntimeError("向量知识库已由 embedding.enabled=false 关闭")
         rerank_cfg = settings.rerank
 
         # 确定是否开启 reranking
@@ -372,8 +382,7 @@ class HybridRetriever:
         settings = get_settings()
         k = top_k or settings.rag.top_k
 
-        # 两路并行；单路失败隔离为 []，保留另一路结果。
-        # 双路皆挂 → 返回 []（与空检索一致；上层可标 retrieval_mode=unavailable）。
+        # Keep arm failures distinct from a successful empty search.
         vector_raw, lexical_raw = await asyncio.gather(
             self._vector_retrieve(
                 query, collection, top_k=k * 2, score_threshold=score_threshold, filters=filters
@@ -416,7 +425,16 @@ class HybridRetriever:
                 type(vector_raw).__name__,
                 type(lexical_raw).__name__,
             )
-            return []
+            raise RuntimeError("知识查询向量与关键词检索均失败") from vector_raw
+
+        for raw in (vector_raw, lexical_raw):
+            if isinstance(raw, BaseException) and not isinstance(raw, Exception):
+                raise raw
+        failures = [
+            {"scope": arm, "error": type(raw).__name__}
+            for arm, raw in (("vector", vector_raw), ("lexical", lexical_raw))
+            if isinstance(raw, Exception)
+        ]
 
         # RRF 融合（单路非空时 rrf_fuse 仍合法）
         fused = rrf_fuse([vector_results, lexical_results], top_k=k)
@@ -426,7 +444,7 @@ class HybridRetriever:
             f"Hybrid 检索 [{collection}]: '{query[:30]}' → "
             f"向量 {len(vector_results)} + lexical {len(lexical_results)} → 融合 {len(fused)} 个, best_rrf={best_score:.4f}"
         )
-        return fused
+        return RetrievalDocuments(fused, failures=failures)
 
     def format_docs_for_prompt(self, docs: List[Dict[str, Any]]) -> str:
         """将检索结果格式化为 Prompt 可用的字符串。

@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 
+from ..config import get_settings
 from ..entities.background_job import memory_fact_digest
 from ..entities.memory_lifecycle import MemoryRetentionPolicy, MemoryRetentionStatus
 from ..infrastructure.database import get_db_session
@@ -121,8 +122,10 @@ class MemoryStore:
                 if source_message_id
                 else None
             )
-            embedding = await self._compute_embedding(content)
-            vec_str = f"[{','.join(str(v) for v in embedding)}]"
+            vec_str = None
+            if get_settings().embedding.enabled:
+                embedding = await self._compute_embedding(content)
+                vec_str = f"[{','.join(str(v) for v in embedding)}]"
 
             async with get_db_session() as session:
                 result = await session.execute(
@@ -202,6 +205,8 @@ class MemoryStore:
         Returns:
             按综合分降序排列的事实列表，每条包含 content / category / importance / score / created_at
         """
+        if not get_settings().embedding.enabled:
+            return []
         if not query_text or not user_id:
             return []
         try:

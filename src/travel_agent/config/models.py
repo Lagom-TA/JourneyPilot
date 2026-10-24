@@ -92,6 +92,7 @@ class EmbeddingConfig(StrictConfig):
     provider = "openai" → OpenAI 兼容 Embedding API（需 api_key + base_url）
     provider = "hash"   → 内置确定性哈希向量（零依赖，仅供 RAG 链路跑通，语义质量低）
     """
+    enabled: bool = Field(default=True, description="启用向量知识检索与自动记忆抽取；关闭后仍可读写手动偏好。")
     provider: str = "qwen3"
     api_key: str = ""
     model_name: str = "n24q02m/Qwen3-Embedding-0.6B-ONNX"
