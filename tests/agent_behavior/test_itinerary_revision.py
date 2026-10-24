@@ -298,6 +298,10 @@ def test_occurrences_reach_connectors_workspace_and_checkpoint(provider):
     assert len(result.itinerary.transport_legs) == 4
     assert len(result.selection_slots) == (10 if provider else 6)
     assert skeleton.model_dump() == before
+    from travel_agent.agents.orchestrator.delivery_quality_gate import evaluate_delivery_quality
+
+    quality, issues = evaluate_delivery_quality(restored)
+    assert quality.itinerary_gate == "passed", [(issue.reason, issue.field_path) for issue in issues]
 
 
 @pytest.mark.parametrize("scoped", [False, True])
@@ -615,6 +619,10 @@ async def test_located_retry_keeps_new_reasons_and_reuses_provider_identity(
         "selection_reason": "建筑与摄影需求",
         "visit_type": "culture",
         "highlights": ["建筑空间"],
+        "resolved_place_id": "forged_but_valid",
+        "resolved_address": "forged address",
+        "resolved_latitude": 40.0,
+        "resolved_longitude": 120.0,
     }
     payload = draft([entry, meal("dinner", "18:00", "19:00")])
     payload["days"][0]["placements"][1]["planned_start"] = "2026-10-10T11:00:00+09:00"
@@ -765,3 +773,345 @@ async def test_existing_revision_budget_stops_reopening_the_broken_draft():
     exhausted = checkpoint(current, **await candidate_gate.candidate_gate_node(current))
     assert candidate_gate.route_after_candidate_gate(exhausted) == "passed"
     assert exhausted.composition_repair_attempts == MAXIMUM_COMPOSITION_REPAIR_ATTEMPTS
+
+
+@pytest.mark.asyncio
+async def test_changed_authored_identity_resolves_again_and_internal_parse_keeps_trusted_location(monkeypatch):
+    from travel_agent.agents.itinerary_planner import node
+    from travel_agent.entities.itinerary_composition_v2 import authored_places
+
+    entry = visit_entry()
+    entry.pop("candidate_id")
+    entry["authored_place"] = {
+        "name": "Museum A", "local_name": "Museum A", "city": "Tokyo", "address": "Address A",
+        "highlights": ["Museum collection"],
+        "selection_reason": "原位置", "visit_type": "culture",
+        "resolved_place_id": "trusted_a", "resolved_address": "Provider A",
+        "resolved_latitude": 35.6, "resolved_longitude": 139.7,
+    }
+    previous = parse_itinerary_composition(json.dumps(draft([entry])))
+    restored = checkpoint(state(), placement_skeleton=previous)
+    assert authored_places(restored.placement_skeleton)[0].place.resolved_place_id == "trusted_a"
+    response = previous.model_dump(mode="json")
+    place = response["days"][0]["placements"][0]["authored_place"]
+    place.update(name="Museum B", local_name="Museum B", address="Address B", selection_reason="新位置")
+    calls = []
+    async def resolve(**kwargs):
+        calls.append(kwargs["name"])
+        return {"name": "Museum B", "place_id": "trusted_b", "address": "Provider B", "latitude": 35.7, "longitude": 139.8}
+    monkeypatch.setattr(node, "resolve_authored_place", resolve)
+    monkeypatch.setattr(node, "_authored_place_tool_access", lambda state: None)
+    class Model:
+        async def ainvoke(self, messages, **kwargs):
+            return json.dumps(response)
+    current = checkpoint(restored, recommendation_catalog=_catalog())
+    result = await node._compose_draft(current, "revise", Model(), set(), [], set())
+    located = authored_places(result)[0].place
+    assert calls == ["Museum B"]
+    assert located.resolved_place_id == "trusted_b" and located.resolved_latitude == 35.7
+    assert located.selection_reason == "新位置"
+
+
+def route_packet(candidate_id="candidate_slow", duration=60, **updates):
+    packet = _local_transport_packet(
+        candidate_id,
+        origin_place_id="place_candidate_dining",
+        destination_place_id="place_candidate_visit",
+    )
+    payload = packet.model_dump()
+    payload["candidates"][0].update(duration_minutes=duration, **updates)
+    segment = payload["candidates"][0]["segments"][0]
+    segment["duration_minutes"] = duration
+    for field in ("from_endpoint", "to_endpoint"):
+        if field in updates:
+            segment[field] = updates[field]
+    return ResearchPacket.model_validate(payload)
+
+
+@pytest.mark.parametrize("scheduled", [False, True])
+def test_known_provider_conflict_cannot_be_replaced_by_short_estimate(scheduled):
+    from travel_agent.entities.itinerary_composition_v2 import unfilled_connector_gaps
+
+    timing = {
+        "departure_at": "2026-10-10T09:00:00+09:00",
+        "arrival_at": "2026-10-10T10:00:00+09:00",
+    } if scheduled else {}
+    catalog = _catalog(restaurant_packet(), visit_packet(), route_packet(**timing))
+    skeleton = parse_itinerary_composition(json.dumps(draft([meal(), visit_entry("09:10", "10:10")])))
+    gaps = extract_local_connector_gaps(skeleton, catalog, weather_data_revision=0)
+    for entry in (
+        lambda: unfilled_connector_gaps(catalog, gaps),
+        lambda: materialize_skeleton_connectors(
+            skeleton, catalog, gaps,
+            {gaps[0].gap_id: AuthoredRoute(mode="bus", duration_minutes=2, selection_reason="estimate")},
+        ),
+    ):
+        with pytest.raises(ItineraryCompositionError, match="candidate_slow.*duration=60min"):
+            entry()
+    assert skeleton.days[0].placements[1].planned_start.hour == 9
+
+
+@pytest.mark.parametrize("irrelevant", ["missing", "endpoint", "class", "destination", "date", "duration", "schedule"])
+def test_only_same_scope_intrinsically_credible_route_is_conflict_evidence(irrelevant):
+    from travel_agent.entities.itinerary_composition_v2 import unfilled_connector_gaps
+
+    changes = {
+        "endpoint": {"from_endpoint": {"name": "Other", "place_id": "other"}},
+        "class": {"transport_class": "flexible", "selected_mode": "taxi"},
+        "destination": {"destination_id": "destination_elsewhere"},
+        "date": {"departure_at": "2026-10-11T09:00:00+09:00", "arrival_at": "2026-10-11T10:00:00+09:00"},
+        "duration": {"duration_minutes": 400},
+        "schedule": {"departure_at": "2026-10-10T10:00:00+09:00", "arrival_at": "2026-10-10T09:00:00+09:00"},
+    }
+    updates = changes.get(irrelevant, {}).copy()
+    duration = updates.pop("duration_minutes", 60)
+    routes = [] if irrelevant == "missing" else [route_packet(duration=duration, **updates)]
+    catalog = _catalog(restaurant_packet(), visit_packet(), *routes)
+    skeleton = parse_itinerary_composition(json.dumps(draft([meal(), visit_entry("09:10", "10:10")])))
+    gaps = extract_local_connector_gaps(skeleton, catalog, weather_data_revision=0)
+    assert unfilled_connector_gaps(catalog, gaps) == gaps
+    _, composition = connect(skeleton, catalog)
+    assert composition.days[0].placements[1].authored_route.duration_minutes == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scheduled", [False, True])
+@pytest.mark.parametrize("fast_access", ["eligible", "unadmitted", "hard_ineligible"])
+async def test_feasible_provider_alternative_wins_despite_another_route_conflict(
+    monkeypatch, scheduled, fast_access,
+):
+    from travel_agent.agents.itinerary_planner import node
+    from travel_agent.entities.candidate_ranking import CandidateRankingScore
+
+    def timing(arrival):
+        return {
+            "departure_at": "2026-10-10T09:00:00+09:00",
+            "arrival_at": f"2026-10-10T{arrival}:00+09:00",
+        } if scheduled else {}
+
+    catalog = _catalog(
+        restaurant_packet(), visit_packet(),
+        route_packet(**timing("10:00")),
+        route_packet("candidate_fast", 5, **timing("09:05")),
+    )
+    skeleton = parse_itinerary_composition(json.dumps(
+        draft([meal(), visit_entry("09:10", "10:10")])
+    ))
+    spec = state().intent_spec
+    scores = []
+    for score in rank_candidates(catalog=catalog, intent_spec=spec, matches=[]):
+        payload = score.model_dump()
+        if score.candidate_id in {"candidate_slow", "candidate_fast"}:
+            assert score.hard_eligible
+            payload["ranking_tuple"] = [2.0 if score.candidate_id == "candidate_slow" else 1.0]
+        if score.candidate_id == "candidate_fast" and fast_access == "hard_ineligible":
+            payload.update(hard_eligible=False, hard_violation_intent_ids=["intent_test"])
+        scores.append(CandidateRankingScore.model_validate(payload))
+    if fast_access == "unadmitted":
+        catalog = catalog.model_copy(update={"admission_results": [
+            result for result in catalog.admission_results
+            if result.candidate_id != "candidate_fast"
+        ]})
+    catalog = catalog.model_copy(update={"candidate_ranking_scores": scores})
+    selection = build_candidate_selection_plan(
+        catalog=catalog, intent_spec=spec, ranking_scores=scores,
+        duration_days=1, destination_count=1,
+    )
+    composition_ids = selection.composition_candidate_ids()
+    assert "candidate_slow" in composition_ids
+    assert ("candidate_fast" in composition_ids) == (fast_access == "eligible")
+    current = checkpoint(
+        state(), recommendation_catalog=catalog, candidate_selection_plan=selection,
+        placement_skeleton=skeleton, candidate_gate_status="passed",
+        execution_plan=[["itinerary_planner"]], agent_status={"itinerary_planner": "pending"},
+    )
+
+    def no_model(*args, **kwargs):
+        pytest.fail("provider alternatives must not invoke a model")
+
+    async def no_authoring(*args, **kwargs):
+        pytest.fail("provider alternatives must not be replaced by authored routes")
+
+    monkeypatch.setattr(node, "get_model_router", no_model)
+    monkeypatch.setattr(node, "llm_for_task", no_model)
+    monkeypatch.setattr(node, "_author_connector_routes", no_authoring)
+    completed = checkpoint(current, **await node.itinerary_planner_node(current, {}))
+    assert completed.placement_skeleton == skeleton
+    assert completed.composition_repair_attempts == current.composition_repair_attempts
+    if fast_access != "eligible":
+        assert completed.trip_workspace_v2 is None
+        assert completed.agent_status["itinerary_planner"] == "failed"
+        assert "candidate_slow" in completed.composition_failure_context
+        assert "duration=60min" in completed.composition_failure_context
+        return
+
+    assert completed.agent_status["itinerary_planner"] == "completed"
+    assert completed.composition_failure_context is None
+    result = completed.trip_workspace_v2
+    itinerary = result.itinerary
+    assert len(itinerary.transport_legs) == 1
+    assert itinerary.transport_legs[0].lineage.candidate_id == "candidate_fast"
+    assert itinerary.transport_legs[0].duration_minutes == 5
+    for stop, placement in (
+        (itinerary.dining_stops[0], skeleton.days[0].placements[0]),
+        (itinerary.visit_stops[0], skeleton.days[0].placements[1]),
+    ):
+        assert stop.lineage.candidate_id == placement.candidate_id
+        assert stop.planned_start == placement.planned_start
+        assert stop.planned_end == placement.planned_end
+    assert len(result.selection_slots) == 3
+    checkpoint(completed, trip_workspace_v2=result)
+
+
+@pytest.mark.asyncio
+async def test_provider_time_conflict_returns_to_existing_bounded_revision(monkeypatch):
+    from travel_agent.agents.itinerary_planner import node
+    from travel_agent.agents.orchestrator import candidate_gate
+
+    catalog = _catalog(restaurant_packet(), visit_packet(), route_packet())
+    skeleton = parse_itinerary_composition(json.dumps(draft([meal(), visit_entry("09:10", "10:10")])))
+    spec = state().intent_spec
+    catalog = catalog.model_copy(update={"candidate_ranking_scores": rank_candidates(
+        catalog=catalog, intent_spec=spec, matches=[],
+    )})
+    selection = build_candidate_selection_plan(
+        catalog=catalog, intent_spec=spec,
+        ranking_scores=rank_candidates(catalog=catalog, intent_spec=spec, matches=[]),
+        duration_days=1, destination_count=1,
+    )
+    current = checkpoint(
+        state(), recommendation_catalog=catalog, candidate_selection_plan=selection,
+        placement_skeleton=skeleton, candidate_gate_status="passed",
+        execution_plan=[["itinerary_planner"]], agent_status={"itinerary_planner": "pending"},
+    )
+    async def no_authoring(*args, **kwargs):
+        pytest.fail("known provider conflict must not be replaced by an estimate")
+
+    monkeypatch.setattr(node, "_author_connector_routes", no_authoring)
+    failed = checkpoint(current, **await node.itinerary_planner_node(current, {}))
+    assert failed.trip_workspace_v2 is None
+    assert failed.placement_skeleton == skeleton
+    assert "duration=60min" in failed.composition_failure_context
+    assert failed.agent_status["itinerary_planner"] == "failed"
+    repairing = checkpoint(failed, **await candidate_gate.candidate_gate_node(failed))
+    assert repairing.composition_repair_attempts == 1
+    assert candidate_gate.route_after_candidate_gate(repairing) == "composition_repair"
+    fixed = draft([meal(), visit_entry("10:00", "11:00")])
+
+    class Model:
+        async def ainvoke(self, messages, **kwargs):
+            assert "duration=60min" in messages[-1]["content"]
+            return json.dumps(fixed)
+
+    monkeypatch.setattr(node, "get_model_router", lambda: None)
+    monkeypatch.setattr(node, "llm_for_task", lambda *args: Model())
+    revised = checkpoint(repairing, **await node.itinerary_planner_node(repairing, {}))
+    assert revised.placement_skeleton.days[0].placements[1].planned_start.hour == 10
+    ready = checkpoint(revised, candidate_gate_status="passed")
+    completed = checkpoint(ready, **await node.itinerary_planner_node(ready, {}))
+    assert completed.agent_status["itinerary_planner"] == "completed"
+    itinerary = completed.trip_workspace_v2.itinerary
+    assert itinerary.transport_legs[0].duration_minutes == 60
+    assert [stop.lineage.candidate_id for stop in itinerary.dining_stops] == ["candidate_dining"]
+    assert [stop.lineage.candidate_id for stop in itinerary.visit_stops] == ["candidate_visit"]
+    assert completed.placement_skeleton.days[0].placements[0] == skeleton.days[0].placements[0]
+
+
+@pytest.mark.asyncio
+async def test_connector_estimator_receives_real_names_and_cannot_shrink_time_window():
+    from travel_agent.agents.itinerary_planner import node
+
+    catalog = _catalog(restaurant_packet(), visit_packet())
+    skeleton = parse_itinerary_composition(json.dumps(draft([meal(), visit_entry("09:10", "10:10")])))
+    gaps = extract_local_connector_gaps(skeleton, catalog, weather_data_revision=0)
+
+    class Model:
+        async def ainvoke(self, messages, **kwargs):
+            described = json.loads(messages[-1]["content"].split("：", 1)[1])[0]
+            assert described["from_endpoint"]["name"] == "Cafe"
+            assert described["to_endpoint"]["name"] == "candidate_visit"
+            return json.dumps({"connectors": [{"gap_id": gaps[0].gap_id, "mode": "bus", "duration_minutes": 60, "selection_reason": "honest estimate"}]})
+
+    authored = await node._author_connector_routes(Model(), gaps)
+    with pytest.raises(ItineraryCompositionError, match="cannot fit"):
+        materialize_skeleton_connectors(skeleton, catalog, gaps, authored)
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_candidate_scoped_mode_lock_targets_actual_occurrences_only(partial):
+    from travel_agent.entities.itinerary_composition_v2 import connector_mode_requests_from_constraint_pack
+
+    catalog = _catalog(restaurant_packet(), visit_packet())
+    payload = draft([meal(), visit_entry(), meal("lunch", "12:00", "13:00"), visit_entry("14:00", "15:00")])
+    next_day = json.loads(json.dumps(payload["days"][0]))
+    next_day.update(day_id="day_2", day=2, date="2026-10-11")
+    for placement in next_day["placements"]:
+        for field in ("planned_start", "planned_end"):
+            placement[field] = placement[field].replace("2026-10-10", "2026-10-11")
+    payload["days"].append(next_day)
+    payload["duration_days"] = 2
+    skeleton = parse_itinerary_composition(json.dumps(payload))
+    params = {"from_candidate_id": "candidate_dining", "locked_local_mode": "taxi"}
+    if not partial:
+        params["to_candidate_id"] = "candidate_visit"
+    pack = {"hard_constraints": [{"status": "active", "visibility": "user_visible", "category": "transport_constraint", "source_refs": [{"source": "current_query"}], "params": params}]}
+    requested, required = connector_mode_requests_from_constraint_pack(skeleton, pack, catalog)
+    expected = set() if partial else {
+        (placement_occurrence_key(day.day_id, day.placements[index]),
+         placement_occurrence_key(day.day_id, day.placements[index + 1]))
+        for day in skeleton.days for index in (0, 2)
+    }
+    assert required == expected
+    assert requested == {pair: ["taxi"] for pair in expected}
+    gaps = extract_local_connector_gaps(
+        skeleton, catalog, weather_data_revision=0,
+        flexible_mode_requests=requested, required_flexible_mode_pairs=required,
+    )
+    assert sum(gap.allowed_transport_classes == ["flexible"] for gap in gaps) == len(expected)
+
+
+@pytest.mark.parametrize("meal_type", ["snack", "lunch"])
+def test_multiple_same_meal_occurrences_have_distinct_targeted_slots_after_checkpoint(meal_type):
+    from travel_agent.agents.orchestrator.delivery_quality_gate import evaluate_delivery_quality
+
+    packets = []
+    for candidate_id in ("cafe_first", "cafe_second"):
+        packet = visit_packet(candidate_id)
+        data = {key: value for key, value in packet.candidates[0].model_dump().items() if key in DiningCandidate.model_fields}
+        data.update(candidate_kind="dining", branch_name=candidate_id, meal_types=[meal_type], availability_status="needs_confirmation", provider_place_type="restaurant")
+        payload = packet.model_dump()
+        payload["candidates"] = [DiningCandidate.model_validate(data).model_dump()]
+        packets.append(ResearchPacket.model_validate(payload))
+    first = {**meal(meal_type, "11:00", "12:00"), "candidate_id": "cafe_first"}
+    second = {**meal(meal_type, "13:00", "14:00"), "candidate_id": "cafe_second"}
+    catalog = _catalog(*packets)
+    skeleton = parse_itinerary_composition(json.dumps(draft([first, second])))
+    _, composition = connect(skeleton, catalog)
+    result = workspace(composition, catalog)
+    restored = checkpoint(state(), trip_workspace_v2=result, recommendation_catalog=result.recommendation_catalog)
+    result = restored.trip_workspace_v2
+    assert len(result.selection_slots) == len(result.itinerary.dining_stops) == 2
+    assert len({slot.selection_slot_id for slot in result.selection_slots}) == 2
+    for stop in result.itinerary.dining_stops:
+        slot = next(slot for slot in result.selection_slots if slot.selection_slot_id == stop.lineage.selection_slot_id)
+        selected = next(option for option in slot.options if option.option_id == slot.selected_option_id)
+        assert selected.candidate_entity_ref.entity_id == stop.item_id
+        assert selected.candidate_id == stop.lineage.candidate_id
+        assert any(admission.candidate_id == selected.candidate_id and admission.selection_slot_id == slot.selection_slot_id for admission in result.recommendation_catalog.admission_results)
+    quality, issues = evaluate_delivery_quality(restored)
+    assert quality.itinerary_gate == "passed", [issue.reason for issue in issues]
+
+
+def test_real_duplicate_occurrence_and_overlapping_repeat_still_fail():
+    with pytest.raises(ValueError, match="duplicate|more than once"):
+        parse_itinerary_composition(json.dumps(draft([visit_entry(), visit_entry()])))
+    with pytest.raises(ValueError, match="overlap"):
+        parse_itinerary_composition(json.dumps(draft([visit_entry(), visit_entry("10:30", "11:30")])))
+    catalog = _catalog(restaurant_packet())
+    skeleton = parse_itinerary_composition(json.dumps(draft()))
+    result = workspace(skeleton, catalog)
+    payload = result.model_dump()
+    payload["itinerary"].pop("cost_summary")
+    payload["itinerary"]["dining_stops"].append(payload["itinerary"]["dining_stops"][0])
+    with pytest.raises(ValueError, match="dining stop ids must be unique"):
+        checkpoint(state(), trip_workspace_v2=payload)

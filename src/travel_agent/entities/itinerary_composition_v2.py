@@ -438,6 +438,8 @@ class LocalConnectorGap(StrictModel):
     preferred_transport_class: Literal["public_transit", "flexible"]
     weather_data_revision: int = Field(ge=0)
     compare_default_walk: bool = False
+    from_endpoint: Optional[TransportEndpoint] = None
+    to_endpoint: Optional[TransportEndpoint] = None
 
     @model_validator(mode="after")
     def validate_gap(self) -> "LocalConnectorGap":
@@ -1287,6 +1289,26 @@ def day_connector_adjacencies(
     return adjacencies
 
 
+def _chain_endpoint(
+    node: ChainNode, candidates: Mapping[str, ResearchCandidate], *, leaving: bool,
+) -> TransportEndpoint:
+    if isinstance(node, LodgingBoundary):
+        lodging = candidates[node.candidate_id]
+        return TransportEndpoint(
+            name=lodging.property_name, place_id=lodging.place_id,
+        )
+    anchor = _long_distance_anchor(node, candidates)
+    if anchor is not None:
+        return anchor.to_endpoint if leaving else anchor.from_endpoint
+    place = node.authored_place
+    return TransportEndpoint(
+        name=placement_display_name(node, candidates),
+        place_id=placement_place_id(node, candidates),
+        latitude=place.resolved_latitude if place else None,
+        longitude=place.resolved_longitude if place else None,
+    )
+
+
 def extract_local_connector_gaps(
     skeleton: ItineraryCompositionDraft,
     catalog: RecommendationCatalog,
@@ -1367,6 +1389,8 @@ def extract_local_connector_gaps(
                     else day.destination_id,
                     from_entry_key=left_key,
                     from_place_id=from_place_id,
+                    from_endpoint=_chain_endpoint(left, candidates, leaving=True),
+                    to_endpoint=_chain_endpoint(right, candidates, leaving=False),
                     to_entry_key=right_key,
                     to_place_id=to_place_id,
                     departure_time=departure_time,
@@ -1392,17 +1416,19 @@ def connector_mode_requests_from_constraint_pack(
     set[tuple[str, str]],
 ]:
     """Project normalized explicit user intent onto actual skeleton adjacency only."""
-    actual_pairs: list[tuple[str, str]] = []
+    adjacent_resources = {}
     for day in skeleton.days:
-        actual_pairs.extend(
-            (placement_occurrence_key(day.day_id, left),
-             placement_occurrence_key(day.day_id, right))
+        adjacent_resources.update(
+            ((placement_occurrence_key(day.day_id, left),
+              placement_occurrence_key(day.day_id, right)),
+             (getattr(left, "candidate_id", None), getattr(right, "candidate_id", None)))
             for left, right in day_chain_node_pairs(
                 day,
                 _passed_candidates(catalog) if catalog is not None else None,
                 skeleton if catalog is not None else None,
             )
         )
+    actual_pairs = list(adjacent_resources)
     if not actual_pairs or not isinstance(constraint_pack, Mapping):
         return {}, set()
     items = [
@@ -1413,13 +1439,7 @@ def connector_mode_requests_from_constraint_pack(
         and item.get("status") == "active"
         and item.get("visibility") == "user_visible"
         and item.get("category") == "transport_constraint"
-        # 来源白名单。``manual_memory``（「个性记忆」里手写的那几条）**刻意不在**里面：
-        # 那一层进 prompt 的身份是「用户可见的偏好」，不产生新的硬性要求。一条
-        # 「我只坐出租车」若能从这里投影出 required connector pair，就会连锁出
-        # gap → 定向补研 → 顶掉 ``workflows/run_deadline.py`` 那份写死的墙钟预算。
-        # 它在 pack 里落在 ``other`` 这一档（``panels/constraint.py::
-        # _map_manual_memory_facts``），所以今天连 category 这一关都过不来 ——
-        # 这两道闸都不该被拆：拆掉任何一道，来源白名单就会放它进来。
+        # Manual memory is a preference, not authorization to require a route.
         and any(
             isinstance(ref, Mapping)
             and ref.get("source")
@@ -1427,10 +1447,7 @@ def connector_mode_requests_from_constraint_pack(
             for ref in item.get("source_refs") or []
         )
     ]
-    # 这是**第二张**来源优先级表（第一张在 ``panels/constraint.py::
-    # _SINGULAR_SOURCE_PRECEDENCE``）。两张表管的不是同一件事 —— 那张裁单值类冲突，
-    # 这张定这里的应用顺序（大者后应用、后应用者胜）—— 但它们对「谁比谁更算数」
-    # 必须给同一个答案，共有来源上的相对次序不许在这两处互相打架。
+    # Apply higher-priority sources last, consistent with constraint normalization.
     source_priority = {
         "memory_fact": 0,
         "manual_profile": 1,
@@ -1463,15 +1480,11 @@ def connector_mode_requests_from_constraint_pack(
             str(params.get("from_candidate_id") or ""),
             str(params.get("to_candidate_id") or ""),
         )
-        explicit_pair = tuple(
-            f"candidate:{value}" if value else "" for value in raw_pair
-        )
+        # A partial endpoint is not a complete adjacency scope.
         target_pairs = (
-            [explicit_pair]
-            if all(explicit_pair) and explicit_pair in actual_pairs
-            else actual_pairs
-            if not any(explicit_pair)
-            else []
+            [pair for pair, resources in adjacent_resources.items() if resources == raw_pair]
+            if all(raw_pair)
+            else actual_pairs if not any(raw_pair) else []
         )
         raw_preferred_modes = params.get("preferred_local_modes")
         if not isinstance(raw_preferred_modes, list):
@@ -1570,11 +1583,7 @@ def connector_candidate_quality_error(
         or not 0 < candidate.duration_minutes <= 15
     ):
         return "outside_default_short_walk_limits"
-    # Route-intrinsic plausibility comes before anything about *this* gap: the
-    # duration is what the window check below is computed from, so an implausible
-    # one has to be named as implausible rather than surfacing as "arrives late"
-    # — the aligner acts on that second code and would otherwise try to shift the
-    # rest of the Day by a nonsense delay.
+    # Only intrinsically credible routes can establish a planning-window conflict.
     if candidate.duration_minutes <= 0 or candidate.duration_minutes > 360:
         return "local_route_duration_implausible"
     if candidate.distance_meters is not None:
@@ -1616,6 +1625,8 @@ def connector_candidate_quality_error(
             or candidate.arrival_at.utcoffset() != gap.latest_arrival_time.utcoffset()
         ):
             return "route_day_or_timezone_mismatch"
+        if candidate.arrival_at <= candidate.departure_at:
+            return "route_schedule_implausible"
         if candidate.departure_at < gap.departure_time:
             return "route_departs_before_preceding_stop"
     if connector_route_arrival(candidate, gap) > gap.latest_arrival_time:
@@ -1647,6 +1658,34 @@ def connector_gap_rejection_reasons(
     return reasons
 
 
+def _connector_options(
+    candidates: Mapping[str, ResearchCandidate], gap: LocalConnectorGap,
+) -> list[TransportCandidate]:
+    options = []
+    conflicts = {}
+    for candidate in candidates.values():
+        if not isinstance(candidate, TransportCandidate):
+            continue
+        reason = connector_candidate_quality_error(candidate, gap)
+        if reason is None:
+            options.append(candidate)
+        elif reason in {
+            "route_departs_before_preceding_stop", "route_arrives_after_following_stop",
+        }:
+            conflicts[candidate.candidate_id] = (
+                f"{reason}, duration={candidate.duration_minutes}min"
+            )
+    usable = [option for option in options if not gap.compare_default_walk
+              or option.transport_class == "public_transit"]
+    if not usable and conflicts:
+        raise ItineraryCompositionError(
+            f"connector {gap.gap_id} {gap.from_place_id} -> {gap.to_place_id} "
+            f"window {gap.departure_time.isoformat()} -> "
+            f"{gap.latest_arrival_time.isoformat()} conflicts with Provider routes: {conflicts}"
+        )
+    return options
+
+
 def unfilled_connector_gaps(
     catalog: RecommendationCatalog,
     gaps: list[LocalConnectorGap],
@@ -1656,10 +1695,8 @@ def unfilled_connector_gaps(
     unfilled: list[LocalConnectorGap] = []
     for gap in gaps:
         if any(
-            isinstance(candidate, TransportCandidate)
-            and connector_candidate_quality_error(candidate, gap) is None
-            and (not gap.compare_default_walk or candidate.transport_class == "public_transit")
-            for candidate in candidates.values()
+            not gap.compare_default_walk or candidate.transport_class == "public_transit"
+            for candidate in _connector_options(candidates, gap)
         ):
             continue
         unfilled.append(gap)
@@ -1706,12 +1743,7 @@ def materialize_skeleton_connectors(
     selected: dict[str, TransportCandidate | AuthoredRoute] = {}
     walking_minutes_by_day: dict[str, int] = {}
     for gap in gaps:
-        options = [
-            candidate
-            for candidate in candidates.values()
-            if isinstance(candidate, TransportCandidate)
-            and connector_candidate_quality_error(candidate, gap) is None
-        ]
+        options = _connector_options(candidates, gap)
         # Default walking is a comparison against a measured transit option,
         # never a substitute for a failed transit lookup or unknown duration.
         if gap.compare_default_walk:
@@ -2136,22 +2168,8 @@ def _authored_transport_leg(
         )
     route = placement.authored_route
 
-    def _endpoint(node: ChainNode, *, leaving: bool) -> TransportEndpoint:
-        if isinstance(node, LodgingBoundary):
-            lodging = candidates[node.candidate_id]
-            return TransportEndpoint(
-                name=lodging.property_name, place_id=lodging.place_id
-            )
-        anchor = _long_distance_anchor(node, candidates)
-        if anchor is not None:
-            return anchor.to_endpoint if leaving else anchor.from_endpoint
-        return TransportEndpoint(
-            name=placement_display_name(node, candidates),
-            place_id=placement_place_id(node, candidates),
-        )
-
-    from_endpoint = _endpoint(previous, leaving=True)
-    to_endpoint = _endpoint(following, leaving=False)
+    from_endpoint = _chain_endpoint(previous, candidates, leaving=True)
+    to_endpoint = _chain_endpoint(following, candidates, leaving=False)
     leg_id = _stable_id(
         "transport", placement.connector_gap_id or (
             placement_occurrence_key(day.day_id, previous),
@@ -2681,7 +2699,9 @@ def materialize_trip_workspace(
                 item_id = _stable_id(
                     "dining", placement_occurrence_key(day.day_id, placement)
                 )
-                slot_id = _stable_id("slot_dining", day.day_id, placement.meal_type)
+                slot_id = _stable_id(
+                    "slot_dining", placement_occurrence_key(day.day_id, placement)
+                )
                 eligible = [
                     item
                     for item in candidates.values()

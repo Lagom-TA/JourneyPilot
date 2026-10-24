@@ -86,7 +86,7 @@ async def scenario(cache, mode, complexity, tool_mode):
             current_worker_journal.reset(token)
     assert provider_calls == [1, 2]
     assert len(audit.records) == 2
-    assert result[0] == raw and len(result[3]) == 2
+    assert result.require_final_answer() == raw and len(result.tool_results) == 2
     paired = {m["tool_call_id"] for m in messages if m["role"] == "tool"}
     expected = {tc["id"] for m in messages for tc in m.get("tool_calls", [])}
     assert paired == expected

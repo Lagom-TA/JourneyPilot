@@ -187,8 +187,8 @@ def _itinerary_gaps(state: TravelAgentState) -> list[DeliveryQualityGap]:
 
     Blocking gaps are the ones the deterministic projection cannot render: a
     broken day chain, a connector bound to the wrong endpoints, an adjacency
-    with no connector, a city change with no long-distance leg, one candidate
-    materialized as two entities. Coverage gaps are recorded and shipped.
+    with no connector, or a city change with no long-distance leg.
+    Coverage gaps are recorded and shipped.
     """
 
     workspace = state.trip_workspace_v2
@@ -274,30 +274,6 @@ def _itinerary_gaps(state: TravelAgentState) -> list[DeliveryQualityGap]:
             for item in itinerary.lodging_stays
         },
     }
-    candidate_entities: dict[str, list[str]] = {}
-    for (entity_type, entity_id), entity in physical_entities.items():
-        # A lodging stay intentionally projects on both check-in and check-out
-        # Days; it is not the visit/dining reuse invariant this gate owns.
-        if entity_type == EntityType.LODGING_STAY:
-            continue
-        if entity.lineage.lineage_kind != "candidate_entity":
-            continue
-        candidate_entities.setdefault(entity.lineage.candidate_id, []).append(entity_id)
-    for candidate_id, entity_ids in candidate_entities.items():
-        if len(entity_ids) > 1:
-            gaps.append(
-                _gap(
-                    gate="itinerary",
-                    reason="physical_candidate_reused",
-                    field_path=f"itinerary.physical_candidates.{candidate_id}",
-                    retry_target="composition_repair",
-                    entity_id=entity_ids[-1],
-                    candidate_id=candidate_id,
-                    repair_context={"occurrence_entity_ids": entity_ids},
-                    gate_class=GateClass.COMPOSITION,
-                )
-            )
-
     transport_index = {item.transport_leg_id: item for item in itinerary.transport_legs}
     physical_types = {
         EntityType.VISIT_STOP,

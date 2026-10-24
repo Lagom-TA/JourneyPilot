@@ -844,7 +844,7 @@ def test_provider_duration_conflict_is_reported_without_changing_the_draft(monke
     assert composition_module.connector_gap_rejection_reasons(object(), gap) == {
         route.candidate_id: "route_arrives_after_following_stop",
     }
-    with pytest.raises(ItineraryCompositionError, match="neither a Provider route nor an authored route"):
+    with pytest.raises(ItineraryCompositionError, match="candidate_local_bus.*duration=66min"):
         composition_module.materialize_skeleton_connectors(skeleton, object(), [gap], {})
     assert skeleton.model_dump() == before
 

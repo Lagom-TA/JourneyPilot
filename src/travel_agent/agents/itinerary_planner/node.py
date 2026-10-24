@@ -1325,6 +1325,8 @@ async def _author_connector_routes(
             "day_date": gap.day_date.isoformat(),
             "from_place_id": gap.from_place_id,
             "to_place_id": gap.to_place_id,
+            "from_endpoint": gap.from_endpoint.model_dump(mode="json") if gap.from_endpoint else None,
+            "to_endpoint": gap.to_endpoint.model_dump(mode="json") if gap.to_endpoint else None,
             "leave_after": gap.departure_time.isoformat(),
             "arrive_before": gap.latest_arrival_time.isoformat(),
             "requested_modes": [] if gap.compare_default_walk else gap.requested_flexible_modes,
@@ -1353,7 +1355,8 @@ async def _author_connector_routes(
                 "content": (
                     "你是 JourneyPilot 的行程组合器。为下列相邻停留点之间各写一段市内交通："
                     "选一个出行方式，并给出门到门分钟数与一句选择理由。"
-                    "分钟数必须落在给定的出发与到达时间窗内。"
+                    "根据真实端点名称和位置信息估算合理门到门耗时，不得为了装进时间窗压缩分钟数。"
+                    "若合理耗时超过时间窗，仍返回真实估算，由草稿修订调整安排。"
                     "必须遵守每段forbidden_modes；步行比较没有实测结果时不能猜测步行。"
                     "端点由服务器按前后两个停留点填写，你不要写地点、线路号或票价。"
                 ),
@@ -1416,7 +1419,19 @@ def _parse_exact_llm_composition(
     raw: str,
     state: TravelAgentState,
 ) -> ItineraryCompositionDraft:
-    return _verify_day_window(parse_itinerary_composition(raw), state)
+    payload = json.loads(raw)
+    if isinstance(payload, dict):
+        for day in payload.get("days", []) or []:
+            if not isinstance(day, dict):
+                continue
+            for placement in day.get("placements", []) or []:
+                if not isinstance(placement, dict):
+                    continue
+                place = placement.get("authored_place")
+                if isinstance(place, dict):
+                    for field in _SERVER_OWNED_PLACE_FIELDS:
+                        place.pop(field, None)
+    return _verify_day_window(parse_itinerary_composition(json.dumps(payload)), state)
 
 
 def _normalize_time_structure(payload: dict[str, Any]) -> None:
