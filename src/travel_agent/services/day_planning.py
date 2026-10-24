@@ -6,7 +6,9 @@ facts or new hard constraints. They prune optional choices, not must-includes.
 
 import re
 
-from ..entities.delivery_bundle import ResearchDomain, TransportCandidate
+from travel_agent.planning.research.candidates import TransportCandidate
+from travel_agent.planning.research.domains import ResearchDomain
+
 from ..entities.intent_spec import IntentKind, IntentTarget, TimeWindowIntentValue
 from ..entities.provider_evidence import (
     build_required_long_distance_legs,

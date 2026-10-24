@@ -10,16 +10,16 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, Optional
 
-from ..entities.delivery_bundle import (
+from travel_agent.planning.requirements.inputs import (
     MinimumDeliveryDayShell,
     MinimumDeliveryDraft,
     UserInputAnchor,
 )
-from ..entities.trip_input import ControlledTripIdentity
+
 from ..entities.intent_spec import IntentItem, IntentStrength
+from ..entities.trip_input import ControlledTripIdentity
 from .run_budget import build_run_budget_snapshot
 from .run_deadline import build_run_deadline_snapshot, utc_now
-
 
 MINIMUM_DELIVERY_POLICY_VERSION = "minimum_delivery.v2"
 

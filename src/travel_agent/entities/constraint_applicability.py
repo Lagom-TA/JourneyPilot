@@ -6,13 +6,12 @@ import hashlib
 import json
 from typing import Mapping, Sequence
 
-from .delivery_bundle import (
+from travel_agent.planning.research.candidates import (
     CandidateConstraintGateAttestation,
-    FactAssertion,
     ResearchCandidate,
-    ResearchPacket,
-    SourceRecord,
 )
+from travel_agent.planning.research.evidence import FactAssertion, SourceRecord
+from travel_agent.planning.research.packets import ResearchPacket
 
 
 def _scoped_active_constraints(

@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping
 
-from ..entities.research_domain import ResearchDomain
+from travel_agent.planning.research.domains import ResearchDomain
+
 from ..entities.research_query_plan import ResearchQuery
 from ..workflows.run_budget import RunBudgetExhausted
 from ..workflows.run_control import (
@@ -11,7 +12,6 @@ from ..workflows.run_control import (
     current_budget_ledger,
     remaining_model_seconds,
 )
-
 
 FALLBACK_QUERY_POLICY_VERSION = "fallback_query_policy.v2"
 _FALLBACK_CATEGORY_TOKENS: Mapping[ResearchDomain, tuple[str, ...]] = {

@@ -12,18 +12,21 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
-from ..entities.delivery_bundle import (
+from travel_agent.planning.delivery.bundle import (
     DeliveryBundle,
     DeliveryRevisionManifest,
-    EntityRef,
-    EntityType,
-    FactStoreSnapshot,
-    TripWorkspaceV2,
+    bundle_content_hashes,
+)
+from travel_agent.planning.references import EntityRef, EntityType
+from travel_agent.planning.research.evidence import FactStoreSnapshot
+from travel_agent.planning.weather.models import (
     WeatherContextSnapshot,
     WeatherCoverage,
     WeatherDayContext,
-    bundle_content_hashes,
 )
+from travel_agent.planning.workspace import TripWorkspaceV2
+
+from ..integrations.weather import WeatherProviderRequest
 from ..storage.delivery_bundle_store import (
     BundleCommitKind,
     BundleIdempotencyMismatch,
@@ -31,20 +34,18 @@ from ..storage.delivery_bundle_store import (
     BundleRevisionVector,
     DeliveryBundleStore,
 )
-from ..integrations.weather import WeatherProviderRequest
-from .delivery_projection import build_delivery_projections
 from .candidate_readmission import (
     CandidateReadmissionError,
     readmit_current_catalog_candidates,
     workspace_destination_country_codes,
     workspace_hard_constraint_pack,
 )
-from .weather_adjustment import build_weather_adjustment_proposals
 from .candidate_selection import rebind_candidate_selection_catalog_revision
+from .delivery_projection import build_delivery_projections
 from .intent_verification import revalidate_workspace_intent
-from .weather_context_builder import WeatherContextBuildResult, WeatherContextBuilder
+from .weather_adjustment import build_weather_adjustment_proposals
+from .weather_context_builder import WeatherContextBuilder, WeatherContextBuildResult
 from .weather_impact_engine import WeatherImpactEngine
-
 
 logger = logging.getLogger(__name__)
 

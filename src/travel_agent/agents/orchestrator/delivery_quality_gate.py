@@ -16,21 +16,22 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Mapping
 from types import SimpleNamespace
+from typing import Any, Dict, Mapping
 
-from ...entities.delivery_bundle import (
-    SelectionSlot,
+from travel_agent.planning.itinerary.models import TimelineEntryRef
+from travel_agent.planning.itinerary.options import SelectionSlot
+from travel_agent.planning.outcomes import (
     DeliveryContractViolation,
     DeliveryQualityGap,
-    EntityType,
     GateClass,
     GateDisposition,
     GateFailureAttribution,
     RecommendationQualityState,
-    ResearchDomain,
-    TimelineEntryRef,
 )
+from travel_agent.planning.references import EntityType
+from travel_agent.planning.research.domains import ResearchDomain
+
 from ...entities.lodging_routing import day_lodging_bases
 from ...entities.state import TravelAgentState
 from ...workflows.composition_repair import (

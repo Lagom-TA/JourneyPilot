@@ -6,7 +6,11 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .delivery_bundle import DayPlanV2, LodgingStay, StructuredItineraryV2
+    from travel_agent.planning.itinerary.models import (
+        DayPlanV2,
+        LodgingStay,
+        StructuredItineraryV2,
+    )
 
 
 def day_lodging_bases(

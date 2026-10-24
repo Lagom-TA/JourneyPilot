@@ -20,8 +20,7 @@ from __future__ import annotations
 
 from typing import Optional, Sequence
 
-from .delivery_bundle import DiningStop, TransportLeg, VisitStop
-
+from travel_agent.planning.itinerary.models import DiningStop, TransportLeg, VisitStop
 
 _MAX_LEAD_LENGTH = 24
 

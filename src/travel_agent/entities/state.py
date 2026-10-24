@@ -12,35 +12,47 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field, model_validator
 
-from ..local_profile import LOCAL_USER_ID
-
-from .delivery_bundle import (
-    FactAssertion,
-    FactStoreSnapshot,
-    DeliveryBundle,
-    DeliveryFailureRecord,
-    FieldProvenance,
+from travel_agent.planning.delivery.bundle import DeliveryBundle
+from travel_agent.planning.delivery.projections import (
     MapProjection,
-    CandidateResearchGap,
-    DeliveryQualityGap,
-    RecommendationQualityState,
-    RecommendationCatalog,
-    ResearchPacket,
-    SourceRecord,
     SourceIndexProjection,
     TripReportProjection,
-    WeatherImpact,
-    TripWorkspaceV2,
-    WeatherContextSnapshot,
+)
+from travel_agent.planning.outcomes import (
+    CandidateResearchGap,
+    DeliveryFailureRecord,
+    DeliveryQualityGap,
     GateFailureAttribution,
-    MinimumDeliveryDraft,
-    RunDeadlineSnapshot,
+    RecommendationQualityState,
     TerminalAttribution,
 )
-from .run_budget import RunBudgetSnapshot
+from travel_agent.planning.requirements.inputs import MinimumDeliveryDraft
+from travel_agent.planning.research.catalog import RecommendationCatalog
+from travel_agent.planning.research.evidence import (
+    FactAssertion,
+    FactStoreSnapshot,
+    FieldProvenance,
+    SourceRecord,
+)
+from travel_agent.planning.research.packets import ResearchPacket
+from travel_agent.planning.weather.models import WeatherContextSnapshot, WeatherImpact
+from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.runtime.deadlines import RunDeadlineSnapshot
+
+from ..local_profile import LOCAL_USER_ID
+from .candidate_intent import CandidateIntentMatch
+from .candidate_selection import CandidateSelectionPlan
 from .capability_plan import CapabilityPlan
+from .composition_mutation import CompositionMutation
+from .intent_coverage import IntentCoverageReport, IntentFidelityGap
 from .intent_spec import IntentSpec
+from .itinerary_composition_v2 import ItineraryCompositionDraft, LocalConnectorGap
 from .planning_generation import PlanningGeneration
+from .provider_evidence import (
+    ProviderEvidenceOutcome,
+    merge_provider_evidence_outcomes,
+)
+from .provider_reference_service import ProviderReferenceService
 from .request_contract import (
     IntentAmendment,
     IntentAmendmentRejection,
@@ -48,17 +60,8 @@ from .request_contract import (
 )
 from .research_brief import ResearchBriefV2
 from .research_query_plan import ResearchQueryPlan
-from .candidate_intent import CandidateIntentMatch
-from .candidate_selection import CandidateSelectionPlan
-from .composition_mutation import CompositionMutation
-from .intent_coverage import IntentCoverageReport, IntentFidelityGap
+from .run_budget import RunBudgetSnapshot
 from .weather_planning import DestinationGeoPoint
-from .itinerary_composition_v2 import ItineraryCompositionDraft, LocalConnectorGap
-from .provider_evidence import (
-    ProviderEvidenceOutcome,
-    merge_provider_evidence_outcomes,
-)
-from .provider_reference_service import ProviderReferenceService
 
 
 def _merge_dicts(a: Dict, b: Dict) -> Dict:

@@ -11,7 +11,9 @@ from collections import Counter, defaultdict
 from statistics import median
 from typing import Iterable
 
-from ..entities.delivery_bundle import RecommendationCatalog, ResearchCandidate
+from travel_agent.planning.research.candidates import ResearchCandidate
+from travel_agent.planning.research.catalog import RecommendationCatalog
+
 from ..entities.intent_spec import IntentKind, IntentSpec, IntentTarget
 from .geo_dispersion import haversine_km, verified_coordinate_pair
 

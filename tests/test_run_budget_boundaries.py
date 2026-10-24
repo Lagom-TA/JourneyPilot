@@ -77,7 +77,7 @@ async def test_a_tool_that_used_up_its_retries_is_not_called_again():
 def _draft(*, authorized_at=None):
     from datetime import date
 
-    from travel_agent.entities.delivery_bundle import (
+    from travel_agent.planning.requirements.inputs import (
         MinimumDeliveryDayShell,
         MinimumDeliveryDraft,
     )
@@ -162,7 +162,9 @@ def test_budget_and_deadline_must_be_sealed_together():
 
 
 def test_sealing_a_draft_produces_a_budget_alongside_the_deadline():
-    from travel_agent.workflows.minimum_delivery_draft import seal_minimum_delivery_draft
+    from travel_agent.workflows.minimum_delivery_draft import (
+        seal_minimum_delivery_draft,
+    )
 
     class _State:
         minimum_delivery_draft = _draft()
@@ -178,7 +180,9 @@ def test_sealing_a_draft_produces_a_budget_alongside_the_deadline():
 def test_a_replay_of_a_sealed_draft_never_refills_the_budget():
     """重放已封存的一代不许换来一份新预算 —— 那等于给 Run 续一次费。"""
 
-    from travel_agent.workflows.minimum_delivery_draft import seal_minimum_delivery_draft
+    from travel_agent.workflows.minimum_delivery_draft import (
+        seal_minimum_delivery_draft,
+    )
 
     class _State:
         minimum_delivery_draft = _draft()

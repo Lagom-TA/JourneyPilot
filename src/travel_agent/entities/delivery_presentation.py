@@ -23,21 +23,25 @@ prose, so the two do not overlap.
 
 from __future__ import annotations
 
-from datetime import date as Date, datetime
+from datetime import date as Date
+from datetime import datetime
 from typing import Any, Optional, Sequence
 
-from .cost_coverage import format_cny
-from .travel_content import preparation_actions
-from .delivery_bundle import (
+from travel_agent.planning.itinerary.models import (
     CustomBlock,
     DiningStop,
     LodgingStay,
     TransportLeg,
-    TransportSegment,
-    TransportEndpoint,
-    TransportMode,
     VisitStop,
 )
+from travel_agent.planning.transport import (
+    TransportEndpoint,
+    TransportMode,
+    TransportSegment,
+)
+
+from .cost_coverage import format_cny
+from .travel_content import preparation_actions
 
 
 class DeliveryPresentationError(ValueError):

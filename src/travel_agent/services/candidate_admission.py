@@ -6,23 +6,22 @@ import re
 from datetime import date, datetime
 from typing import Any, Iterable, Mapping, Optional, Sequence
 
-from ..entities.delivery_bundle import (
+from travel_agent.planning.research.candidates import (
     CandidateAdmissionResult,
     CandidateFitScores,
     DiningCandidate,
-    FactAssertion,
     LodgingCandidate,
     ResearchCandidate,
-    SourceRecord,
     TransportCandidate,
     VisitCandidate,
-    WeatherImpact,
 )
+from travel_agent.planning.research.evidence import FactAssertion, SourceRecord
+from travel_agent.planning.weather.models import WeatherImpact
+
 from ..entities.provider_evidence import TIMETABLED_TRANSPORT_CLASSES
 from ..tools.governance import compiled_tool_source_id_is_about
 from .destination_scope import is_within_destination
 from .weather_impact_engine import day_weather_fit
-
 
 _UNKNOWN_IDENTITY_MARKERS = (
     "unknown",

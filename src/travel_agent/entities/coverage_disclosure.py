@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from typing import List
 
-from .delivery_bundle import ResearchDomain, RunCoverageDisclosure
-
+from travel_agent.planning.delivery.bundle import RunCoverageDisclosure
+from travel_agent.planning.research.domains import ResearchDomain
 
 _DOMAIN_NAMES = {
     ResearchDomain.VISIT: "景点与体验",

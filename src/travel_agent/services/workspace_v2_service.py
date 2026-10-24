@@ -9,51 +9,50 @@ from uuid import uuid4
 
 from pydantic import TypeAdapter
 
-from ..entities.delivery_bundle import (
+from travel_agent.planning.delivery.bundle import (
     DeliveryBundle,
     DeliveryRevisionManifest,
-    FactStoreSnapshot,
-    TripWorkspaceV2,
-    WeatherContextSnapshot,
-    WeatherImpact,
     bundle_content_hashes,
 )
-from .delivery_projection import build_delivery_projections
+from travel_agent.planning.research.evidence import FactStoreSnapshot
+from travel_agent.planning.weather.models import WeatherContextSnapshot, WeatherImpact
+from travel_agent.planning.workspace import TripWorkspaceV2
+
+from ..entities.workspace_v2_mutations import (
+    ApplyWeatherAdjustmentMutation,
+    DeleteCustomBlockMutation,
+    DeleteLodgingStayMutation,
+    DeleteTransportLegMutation,
+    WorkspaceSnapshotInversePatch,
+    WorkspaceV2InversePatch,
+    WorkspaceV2Mutation,
+    WorkspaceV2MutationApplication,
+    WorkspaceV2MutationError,
+    apply_workspace_v2_inverse,
+    apply_workspace_v2_mutation,
+)
+from ..storage.delivery_bundle_store import (
+    BundleCommitKind,
+    BundleCommitResult,
+    BundleIdempotencyMismatch,
+    BundleRevisionConflict,
+    BundleRevisionVector,
+    DeliveryBundleStore,
+)
 from .candidate_readmission import (
     CandidateReadmissionError,
     readmit_current_candidates,
     workspace_destination_country_codes,
     workspace_hard_constraint_pack,
 )
-from .weather_adjustment import build_weather_adjustment_proposals
 from .composition_mutations import (
     mark_mutations_revalidated,
     user_workspace_mutation,
 )
 from .composition_rule_compiler import compile_composition_rules
+from .delivery_projection import build_delivery_projections
 from .intent_verification import revalidate_workspace_intent
-from ..entities.workspace_v2_mutations import (
-    ApplyWeatherAdjustmentMutation,
-    DeleteCustomBlockMutation,
-    DeleteLodgingStayMutation,
-    DeleteTransportLegMutation,
-    WorkspaceV2InversePatch,
-    WorkspaceV2Mutation,
-    WorkspaceV2MutationApplication,
-    WorkspaceV2MutationError,
-    WorkspaceSnapshotInversePatch,
-    apply_workspace_v2_inverse,
-    apply_workspace_v2_mutation,
-)
-from ..storage.delivery_bundle_store import (
-    BundleCommitKind,
-    BundleIdempotencyMismatch,
-    BundleCommitResult,
-    BundleRevisionConflict,
-    BundleRevisionVector,
-    DeliveryBundleStore,
-)
-
+from .weather_adjustment import build_weather_adjustment_proposals
 
 Clock = Callable[[], datetime]
 IdFactory = Callable[[], str]

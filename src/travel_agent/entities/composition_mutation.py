@@ -5,7 +5,7 @@ from typing import Dict, List, Literal
 
 from pydantic import Field
 
-from .contract_base import StrictModel
+from travel_agent.schema import StrictModel
 
 
 class CompositionMutationType(str, Enum):

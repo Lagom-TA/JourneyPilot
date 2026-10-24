@@ -2,37 +2,36 @@ import json
 from datetime import date, datetime, timedelta
 
 import pytest
+from tests.agent_behavior.test_intent_research_ranking_selection import (
+    _catalog,
+    _local_transport_packet,
+    _packet,
+)
+from tests.test_composition_context import state
 
 from travel_agent.agents.itinerary_planner.node import (
     _build_composition_prompt,
     _composition_phase,
     parse_itinerary_composition,
 )
-from travel_agent.entities.itinerary_composition_v2 import (
-    ItineraryCompositionDraft,
-    materialize_trip_workspace,
-)
-from travel_agent.entities.intent_coverage import IntentContractSnapshot
-from travel_agent.entities.state import TravelAgentState
-from tests.test_composition_context import state
-from tests.agent_behavior.test_intent_research_ranking_selection import (
-    _catalog,
-    _packet,
-    _local_transport_packet,
-)
 from travel_agent.entities.candidate_discovery import CandidateDiscoveryOrigin
-from travel_agent.entities.delivery_bundle import DiningCandidate, ResearchPacket
+from travel_agent.entities.intent_coverage import IntentContractSnapshot
 from travel_agent.entities.itinerary_composition_v2 import (
     AuthoredRoute,
+    ItineraryCompositionDraft,
     ItineraryCompositionError,
     extract_local_connector_gaps,
     materialize_skeleton_connectors,
+    materialize_trip_workspace,
     placement_occurrence_key,
     validate_itinerary_transport_topology,
     validate_placement_skeleton,
 )
-from travel_agent.services.candidate_selection import build_candidate_selection_plan
+from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.research.candidates import DiningCandidate
+from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.services.candidate_ranking import rank_candidates
+from travel_agent.services.candidate_selection import build_candidate_selection_plan
 
 
 def checkpoint(current, **update):
@@ -298,7 +297,9 @@ def test_occurrences_reach_connectors_workspace_and_checkpoint(provider):
     assert len(result.itinerary.transport_legs) == 4
     assert len(result.selection_slots) == (10 if provider else 6)
     assert skeleton.model_dump() == before
-    from travel_agent.agents.orchestrator.delivery_quality_gate import evaluate_delivery_quality
+    from travel_agent.agents.orchestrator.delivery_quality_gate import (
+        evaluate_delivery_quality,
+    )
 
     quality, issues = evaluate_delivery_quality(restored)
     assert quality.itinerary_gate == "passed", [(issue.reason, issue.field_path) for issue in issues]
@@ -386,11 +387,14 @@ def test_pure_transport_station_change_and_return_requirements(scoped):
 async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
     monkeypatch,
 ):
+    from tests.agent_behavior.test_intent_research_ranking_selection import (
+        _intent,
+        _spec,
+    )
+
     from travel_agent.agents.itinerary_planner import node
     from travel_agent.agents.orchestrator import candidate_gate, dispatcher
-
     from travel_agent.entities.intent_spec import IntentKind, IntentTarget
-    from tests.agent_behavior.test_intent_research_ranking_selection import _intent, _spec
 
     objective = _intent("intent_trip", "Tokyo day trip", kind=IntentKind.OBJECTIVE)
     spec = _spec(objective.model_copy(update={"target": IntentTarget.TRIP, "impact_stages": ["composition"]}))
@@ -446,8 +450,10 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
     repairing = checkpoint(routed, **await candidate_gate.candidate_gate_node(routed))
     assert candidate_gate.route_after_candidate_gate(repairing) == "composition_repair"
     assert repairing.composition_repair_attempts == 1
+    from travel_agent.services.composition_rule_compiler import (
+        compile_composition_rules,
+    )
     from travel_agent.services.intent_verification import evaluate_intent_fidelity
-    from travel_agent.services.composition_rule_compiler import compile_composition_rules
 
     prior_workspace = workspace(skeleton, catalog, intent_spec=spec)
     report, gaps = evaluate_intent_fidelity(
@@ -545,10 +551,11 @@ async def test_revision_model_receives_distinct_actual_drafts(monkeypatch):
 async def test_new_draft_researches_connectors_then_uses_the_same_materializer(
     monkeypatch,
 ):
+    from tests.agent_behavior.test_intent_research_ranking_selection import _brief
+
     from travel_agent.agents.itinerary_planner import node
     from travel_agent.agents.orchestrator import candidate_gate, dispatcher
     from travel_agent.services.research_query_planner import build_research_query_plan
-    from tests.agent_behavior.test_intent_research_ranking_selection import _brief
 
     catalog = _catalog(visit_packet(), restaurant_packet())
     skeleton = ItineraryCompositionDraft.model_validate(
@@ -704,7 +711,7 @@ def test_overnight_display_reuses_one_billed_transport_entity():
 
 
 def test_lodging_morning_and_evening_are_distinct_occurrences():
-    from travel_agent.entities.delivery_bundle import LodgingCandidate
+    from travel_agent.planning.research.candidates import LodgingCandidate
 
     packet = visit_packet("candidate_hotel")
     original = packet.candidates[0].model_dump()
@@ -1039,7 +1046,9 @@ async def test_connector_estimator_receives_real_names_and_cannot_shrink_time_wi
 
 @pytest.mark.parametrize("partial", [False, True])
 def test_candidate_scoped_mode_lock_targets_actual_occurrences_only(partial):
-    from travel_agent.entities.itinerary_composition_v2 import connector_mode_requests_from_constraint_pack
+    from travel_agent.entities.itinerary_composition_v2 import (
+        connector_mode_requests_from_constraint_pack,
+    )
 
     catalog = _catalog(restaurant_packet(), visit_packet())
     payload = draft([meal(), visit_entry(), meal("lunch", "12:00", "13:00"), visit_entry("14:00", "15:00")])
@@ -1072,7 +1081,9 @@ def test_candidate_scoped_mode_lock_targets_actual_occurrences_only(partial):
 
 @pytest.mark.parametrize("meal_type", ["snack", "lunch"])
 def test_multiple_same_meal_occurrences_have_distinct_targeted_slots_after_checkpoint(meal_type):
-    from travel_agent.agents.orchestrator.delivery_quality_gate import evaluate_delivery_quality
+    from travel_agent.agents.orchestrator.delivery_quality_gate import (
+        evaluate_delivery_quality,
+    )
 
     packets = []
     for candidate_id in ("cafe_first", "cafe_second"):

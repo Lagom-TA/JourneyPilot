@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, Mapping, Optional
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle guard
-    from .delivery_bundle import DeliveryBundle
+    from travel_agent.planning.delivery.bundle import DeliveryBundle
 
 
 DataEnvironment = Literal["production", "sandbox"]

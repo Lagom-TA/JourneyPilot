@@ -20,8 +20,9 @@ from typing import Any, Callable, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from travel_agent.planning.research.evidence import ProviderSnapshotProvenance
+
 from ..config import get_settings
-from ..entities.delivery_bundle import ProviderSnapshotProvenance
 from ..entities.provider_environment import snapshot_data_environment
 from ..utils.coordinates import within_china_coordinate_box
 from .redis_client import get_redis

@@ -7,9 +7,9 @@ same async contract for unit tests and local API contract checks.
 from __future__ import annotations
 
 import json
-from copy import deepcopy
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -17,7 +17,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from sqlalchemy import bindparam, text
 
-from ..entities.delivery_bundle import DeliveryRevisionManifest
+from travel_agent.planning.delivery.bundle import DeliveryRevisionManifest
+
 from ..entities.terminal_attribution import (
     DELIVERY_INTEGRITY_UNCLASSIFIED_FALLBACK_REASON,
 )
@@ -30,12 +31,12 @@ from ..entities.trip_run import (
     TripRunState,
     TripRunStatus,
     assert_status_transition_allowed,
-    build_trip_run_state_summary,
     build_trip_run_completion_audit,
-    completion_audit_from_state_summary,
+    build_trip_run_state_summary,
     coerce_mode,
     coerce_resume_policy,
     coerce_status,
+    completion_audit_from_state_summary,
     generate_trip_run_id,
     is_terminal_status,
     mark_cancelled_pending_choice,
@@ -44,7 +45,8 @@ from ..entities.trip_run import (
 )
 from ..local_profile import LOCAL_USER_ID
 from .database import get_db_session
-from .row_values import iso_or_none as _iso, json_dumps as _json_dumps
+from .row_values import iso_or_none as _iso
+from .row_values import json_dumps as _json_dumps
 
 
 @dataclass(frozen=True)

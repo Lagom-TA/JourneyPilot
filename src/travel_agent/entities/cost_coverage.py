@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from .delivery_bundle import CostCoverageSummary
+from travel_agent.planning.costs.coverage import CostCoverageSummary
 
 
 def format_cny(value: float) -> str:

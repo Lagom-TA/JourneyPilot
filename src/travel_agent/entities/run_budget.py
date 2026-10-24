@@ -14,7 +14,7 @@ from typing import Dict, Literal, Optional, get_args
 
 from pydantic import Field
 
-from .contract_base import StrictModel
+from travel_agent.schema import StrictModel
 
 RUN_BUDGET_POLICY_VERSION = "run_budget.v1"
 

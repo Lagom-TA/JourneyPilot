@@ -16,7 +16,7 @@ from travel_agent.agents.research_packet_prompt import (
     build_research_packet_prompt,
     build_research_packet_system_prompt,
 )
-from travel_agent.entities.delivery_bundle import ResearchPacket
+from travel_agent.planning.research.packets import ResearchPacket
 
 
 @pytest.mark.parametrize(

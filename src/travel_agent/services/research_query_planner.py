@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Iterable, Mapping, Sequence
 
+from travel_agent.planning.research.domains import ResearchDomain
+
 from ..entities.intent_spec import (
     CategoryIntentValue,
     IntentItem,
@@ -10,17 +12,15 @@ from ..entities.intent_spec import (
     IntentSpec,
     IntentTarget,
     ScalarIntentValue,
+    canonical_json_hash,
 )
 from ..entities.research_brief import ResearchBriefV2
-from ..entities.research_domain import ResearchDomain
 from ..entities.research_query_plan import (
     ResearchQuery,
     ResearchQueryKind,
     ResearchQueryPlan,
 )
-from ..entities.intent_spec import canonical_json_hash
 from .fallback_query_policy import fallback_template
-
 
 RESEARCH_QUERY_POLICY_VERSION = "research_query_planner.v2"
 PER_DOMAIN_QUERY_LIMITS = {

@@ -20,8 +20,7 @@ from typing import (
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .delivery_bundle import ResearchDomain
-
+from travel_agent.planning.research.domains import ResearchDomain
 
 ProviderEvidenceWorkerKind = Literal[
     "destination_researcher",

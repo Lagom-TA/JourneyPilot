@@ -1,14 +1,26 @@
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
-from tests.agent_behavior.test_intent_composition_fidelity import _intent, _intent_spec, _workspace
-from travel_agent.entities.candidate_intent import CandidateIntentMatch, IntentMatchStatus
-from travel_agent.entities.delivery_bundle import CostCoverageSummary, ReportDestination
+from tests.agent_behavior.test_intent_composition_fidelity import (
+    _intent,
+    _intent_spec,
+    _workspace,
+)
+from travel_agent.entities.candidate_intent import (
+    CandidateIntentMatch,
+    IntentMatchStatus,
+)
 from travel_agent.entities.intent_coverage import IntentContractSnapshot
-from travel_agent.entities.intent_spec import IntentKind, IntentStrength, ScalarIntentValue
+from travel_agent.entities.intent_spec import (
+    IntentKind,
+    IntentStrength,
+    ScalarIntentValue,
+)
+from travel_agent.planning.costs.coverage import CostCoverageSummary
+from travel_agent.planning.delivery.projections import ReportDestination
+from travel_agent.services import delivery_projection
 from travel_agent.services.composition_rule_compiler import compile_composition_rules
 from travel_agent.services.intent_verification import evaluate_intent_fidelity
-from travel_agent.services import delivery_projection
 
 
 def test_report_keeps_unverifiable_requirement_after_bounded_fidelity_release(monkeypatch):

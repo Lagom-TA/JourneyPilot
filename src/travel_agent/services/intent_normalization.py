@@ -6,15 +6,14 @@ import asyncio
 import json
 import logging
 import re
-from ..llm.task_routing import QualityFeedback, with_quality_feedback
-
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Literal, Optional
 
 from openai import OpenAIError
 from pydantic import Field, ValidationError, model_validator
 
-from ..entities.contract_base import StrictModel
+from travel_agent.schema import StrictModel
+
 from ..entities.intent_spec import (
     AlternativeIntentValue,
     CadenceIntentValue,
@@ -31,9 +30,9 @@ from ..entities.intent_spec import (
 )
 from ..entities.request_contract import ClauseDisposition
 from ..llm.strict_json_schema import as_strict_schema
+from ..llm.task_routing import QualityFeedback, with_quality_feedback
 from ..panels.constraint import deterministic_budget_constraints
 from ..utils.json_helpers import safe_parse_json
-
 
 INTENT_NORMALIZATION_PROMPT_VERSION = "request_contract_normalization.v1"
 # Output length follows the configured model; operation deadlines remain local.

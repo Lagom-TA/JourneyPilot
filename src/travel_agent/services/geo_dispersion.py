@@ -26,7 +26,9 @@ import math
 from dataclasses import dataclass
 from typing import Mapping, Optional, Sequence
 
-from ..entities.delivery_bundle import EntityType, FactAssertion, StructuredItineraryV2
+from travel_agent.planning.itinerary.models import StructuredItineraryV2
+from travel_agent.planning.references import EntityType
+from travel_agent.planning.research.evidence import FactAssertion
 
 # The transport classes that connect two stops *inside* a destination.  The
 # third class, ``long_distance``, moves the traveller between destinations and

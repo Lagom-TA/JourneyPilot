@@ -17,47 +17,15 @@ import json
 import logging
 import re
 import time
-from ...llm.task_routing import TaskKind, llm_for_task
-
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional
 
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
-from ...entities.state import TravelAgentState
-from ...entities.research_domain import ResearchDomain
-from ...entities.research_query_plan import ResearchQueryKind
-from ...workflows.run_control import RunCancelled
-from ...storage.worker_journal_store import JournalConflict
-from ...llm.router import get_model_router
-from ...memory.research_context import format_worker_research_context
-from ..utils import (
-    append_recent_history,
-    assignment_research_round,
-    build_tool_context_from_state,
-    compact_tool_content_for_model,
-    execute_tool,
-    exclude_tools,
-    filter_tools_for_agent,
-    get_available_tools,
-    resolve_agent_assignment,
-    resolve_scoped_research_output_key,
-    streaming_react_loop,
-)
-from ..research_packet_output import (
-    packet_candidate_limit,
-    authoritative_tool_messages,
-    authoritative_retry_source_records,
-    build_authoritative_research_packet_metadata,
-    build_failure_only_research_packet,
-    has_provider_route_selection_option,
-    has_required_provider_route_selection_options,
-    parse_or_repair_research_packet_output,
-    provider_evidence_outcomes,
-    provider_round_answered_empty,
-    provider_round_capability_declared,
-)
+from travel_agent.planning.research.domains import ResearchDomain
+
+from ...entities.place_identity import stable_place_id_12306
 from ...entities.provider_evidence import (
     ProviderEvidenceScope,
     ProviderRouteLegScope,
@@ -66,27 +34,62 @@ from ...entities.provider_evidence import (
     parse_provider_evidence_assignments,
     scope_attempt_numbers,
 )
-from ...entities.trip_input import ControlledTripIdentity
-from ...services.constraint_applicability import active_hard_constraints, active_hard_constraint_ids
-from ...services.state_invalidation import generation_packet_key
-from ...services.research_query_planner import queries_by_ids
-from ..research_packet_prompt import build_research_packet_prompt
-from ..worker_errors import format_worker_last_error
-from ...entities.place_identity import stable_place_id_12306
 from ...entities.provider_reference_service import ProviderReferenceService
+from ...entities.research_query_plan import ResearchQueryKind
+from ...entities.state import TravelAgentState
+from ...entities.trip_input import ControlledTripIdentity
+from ...llm.router import get_model_router
+from ...llm.task_routing import TaskKind, llm_for_task
+from ...memory.research_context import format_worker_research_context
 from ...services.authored_place_resolution import (
     AuthoredPlaceScope,
     AuthoredPlaceToolAccess,
     resolve_station_point,
 )
+from ...services.constraint_applicability import (
+    active_hard_constraint_ids,
+    active_hard_constraints,
+)
 from ...services.destination_scope import destination_points, is_within_destination
 from ...services.rail_12306 import city_station_telecodes
+from ...services.research_query_planner import queries_by_ids
+from ...services.state_invalidation import generation_packet_key
+from ...storage.worker_journal_store import JournalConflict
 from ...tools.registry import get_tool_registry
 from ...tools.temporal import (
     TemporalPreflightStatus,
     evaluate_temporal_request,
 )
 from ...utils.brief_helpers import build_assignment_context
+from ...workflows.run_control import RunCancelled
+from ..research_packet_output import (
+    authoritative_retry_source_records,
+    authoritative_tool_messages,
+    build_authoritative_research_packet_metadata,
+    build_failure_only_research_packet,
+    has_provider_route_selection_option,
+    has_required_provider_route_selection_options,
+    packet_candidate_limit,
+    parse_or_repair_research_packet_output,
+    provider_evidence_outcomes,
+    provider_round_answered_empty,
+    provider_round_capability_declared,
+)
+from ..research_packet_prompt import build_research_packet_prompt
+from ..utils import (
+    append_recent_history,
+    assignment_research_round,
+    build_tool_context_from_state,
+    compact_tool_content_for_model,
+    exclude_tools,
+    execute_tool,
+    filter_tools_for_agent,
+    get_available_tools,
+    resolve_agent_assignment,
+    resolve_scoped_research_output_key,
+    streaming_react_loop,
+)
+from ..worker_errors import format_worker_last_error
 from .prompts import TASK_TEMPLATE
 
 if TYPE_CHECKING:

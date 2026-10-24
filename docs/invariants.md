@@ -191,7 +191,7 @@ Tests:
 
 ### INV-INTENT-003：旧 generation 产物不得进入当前 Catalog
 Owner: `services/state_invalidation.py`、`agents/orchestrator/candidate_gate.py`、
-`entities/delivery_bundle.py`
+`planning/research/catalog.py`、`planning/workspace.py`、`planning/delivery/bundle.py`
 Enforced by: Research Packet key 携带 generation；Candidate Gate 过滤并拒绝旧代 Packet；
 Catalog、Workspace、Manifest 的 generation 必须一致
 Tests:

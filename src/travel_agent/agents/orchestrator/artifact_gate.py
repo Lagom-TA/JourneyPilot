@@ -19,12 +19,13 @@ from typing import Any, Dict
 
 from pydantic import ValidationError
 
-from ...entities.delivery_bundle import (
+from travel_agent.planning.outcomes import (
     GateClass,
     GateDisposition,
     GateFailureAttribution,
-    TripWorkspaceV2,
 )
+from travel_agent.planning.workspace import TripWorkspaceV2
+
 from ...entities.state import TravelAgentState
 from ...workflows.composition_repair import apply_composition_repair_budget
 from ...workflows.node_names import RESEARCH_WORKER_NODES as _RESEARCH_WORKERS

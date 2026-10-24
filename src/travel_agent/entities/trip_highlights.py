@@ -27,13 +27,14 @@ from __future__ import annotations
 
 from typing import Optional, Sequence
 
-from .delivery_bundle import (
+from travel_agent.planning.itinerary.models import (
     DiningStop,
     LodgingStay,
     StructuredItineraryV2,
     TransportLeg,
     VisitStop,
 )
+
 from .delivery_presentation import TRANSPORT_MODE_LABELS, endpoint_label
 
 # Five is what the surfaces were built for: the PDF chapter and the report

@@ -4,8 +4,7 @@ from typing import List
 
 from pydantic import Field, model_validator
 
-from .contract_base import StrictModel
-
+from travel_agent.schema import StrictModel
 
 # generic_fallback 来源的候选要被扣两次分：一次在排名里（ranking_tuple 的
 # fallback 位），一次在选择的加总里（candidate_selection 减掉

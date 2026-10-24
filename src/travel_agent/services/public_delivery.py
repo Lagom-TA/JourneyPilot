@@ -25,37 +25,41 @@ validates the wire encoding, which is an api concern.
 
 from __future__ import annotations
 
-from datetime import date as Date, datetime
+from datetime import date as Date
+from datetime import datetime
 from typing import Any, Dict, List, Mapping, Optional, Sequence
 
-from ..entities.delivery_bundle import (
-    CostCoverageSummary,
-    CustomBlock,
-    DayPlanV2,
-    DeliveryBundle,
-    DiningStop,
-    EntityType,
-    LodgingStay,
+from travel_agent.planning.costs.coverage import CostCoverageSummary
+from travel_agent.planning.delivery.bundle import DeliveryBundle
+from travel_agent.planning.delivery.projections import (
     MapProjection,
     PublicCitationProjection,
     ReportDaySection,
     ReportEntityBlock,
     ReportSelectionSection,
     ReportWeatherDay,
-    SelectionSlot,
     SourceIndexProjection,
-    StructuredItineraryV2,
-    TransportLeg,
     TripReportDocument,
     TripReportProjection,
-    TripWorkspaceV2,
-    VisitStop,
-    WeatherProposalDecision,
 )
-from ..entities.coverage_disclosure import coverage_disclosure_notes
+from travel_agent.planning.itinerary.models import (
+    CustomBlock,
+    DayPlanV2,
+    DiningStop,
+    LodgingStay,
+    StructuredItineraryV2,
+    TransportLeg,
+    VisitStop,
+)
+from travel_agent.planning.itinerary.options import SelectionSlot
+from travel_agent.planning.references import EntityType
+from travel_agent.planning.weather.models import WeatherProposalDecision
+from travel_agent.planning.workspace import TripWorkspaceV2
+
 from ..entities.cost_coverage import cost_coverage_statement
-from ..entities.intent_coverage import public_requirement_explanation
+from ..entities.coverage_disclosure import coverage_disclosure_notes
 from ..entities.evidence_basis import EvidenceBasisView
+from ..entities.intent_coverage import public_requirement_explanation
 from ..entities.provider_environment import ProviderEnvironmentView
 from ..entities.travel_content import public_selection_text, selection_reason
 

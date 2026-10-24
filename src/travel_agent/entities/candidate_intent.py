@@ -5,7 +5,7 @@ from typing import List, Literal, Optional
 
 from pydantic import Field, model_validator
 
-from .contract_base import StrictModel
+from travel_agent.schema import StrictModel
 
 
 class IntentMatchStatus(str, Enum):

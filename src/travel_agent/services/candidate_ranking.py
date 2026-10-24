@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from travel_agent.planning.research.catalog import RecommendationCatalog
+
 from ..entities.candidate_discovery import CandidateDiscoveryOrigin
 from ..entities.candidate_intent import CandidateIntentMatch, IntentMatchStatus
 from ..entities.candidate_ranking import (
     GENERIC_FALLBACK_PENALTY,
     CandidateRankingScore,
 )
-from ..entities.delivery_bundle import RecommendationCatalog
 from ..entities.intent_spec import IntentKind, IntentSpec, IntentStrength
 from .candidate_combination import CandidateCombinationContext
-
 
 CANDIDATE_RANKING_POLICY_VERSION = "candidate_ranking.v2"
 

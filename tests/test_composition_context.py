@@ -1,11 +1,12 @@
-from travel_agent.agents.itinerary_planner.node import _build_composition_prompt
-from travel_agent.entities.state import TravelAgentState
-from travel_agent.services.candidate_selection import build_candidate_selection_plan
+from datetime import date
+
 from tests.agent_behavior.test_intent_research_ranking_selection import _catalog, _spec
 from tests.test_run_budget_boundaries import _draft
-from travel_agent.entities.delivery_bundle import MinimumDeliveryDraft
+from travel_agent.agents.itinerary_planner.node import _build_composition_prompt
 from travel_agent.entities.planning_generation import PlanningGeneration
-from datetime import date
+from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.requirements.inputs import MinimumDeliveryDraft
+from travel_agent.services.candidate_selection import build_candidate_selection_plan
 
 
 def state():

@@ -3,17 +3,14 @@ from __future__ import annotations
 import json
 import logging
 import re
-from ..llm.task_routing import TaskLLM, QualityFeedback, with_quality_feedback
-
 from collections import defaultdict
 from typing import Any, Mapping, Sequence
 
+from travel_agent.planning.research.candidates import ResearchCandidate
+from travel_agent.planning.research.catalog import RecommendationCatalog
+from travel_agent.planning.research.evidence import FactAssertion
+
 from ..entities.candidate_intent import CandidateIntentMatch, IntentMatchStatus
-from ..entities.delivery_bundle import (
-    FactAssertion,
-    RecommendationCatalog,
-    ResearchCandidate,
-)
 from ..entities.intent_spec import (
     CategoryIntentValue,
     IntentItem,
@@ -23,6 +20,7 @@ from ..entities.intent_spec import (
     VerificationMode,
     canonical_json_hash,
 )
+from ..llm.task_routing import QualityFeedback, TaskLLM, with_quality_feedback
 from ..workflows.run_control import current_node, current_run_id
 from .intent_requirement_check import check_attributes, explicit_category_match
 

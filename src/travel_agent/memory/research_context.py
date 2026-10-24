@@ -13,8 +13,10 @@ from typing import Any, Literal, Mapping, Sequence
 
 from pydantic import Field
 
-from ..entities.contract_base import StrictModel
-from ..entities.delivery_bundle import CandidateResearchGap, ResearchPacket
+from travel_agent.planning.outcomes import CandidateResearchGap
+from travel_agent.planning.research.packets import ResearchPacket
+from travel_agent.schema import StrictModel
+
 from ..entities.research_query_plan import ResearchQuery
 
 _COORDINATION_KINDS = {

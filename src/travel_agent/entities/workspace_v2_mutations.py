@@ -7,28 +7,33 @@ from typing import Annotated, Literal, Optional, Union
 
 from pydantic import Field, model_validator
 
-from .delivery_bundle import (
+from travel_agent.planning.costs.coverage import (
+    build_cost_coverage_summary,
+    itinerary_price_components,
+)
+from travel_agent.planning.itinerary.models import (
     CustomBlock,
-    DiningCandidate,
     DiningStop,
-    EntityLineage,
-    EntityRef,
-    EntityType,
-    LodgingCandidate,
     LodgingStay,
-    SelectionOption,
-    SelectionSlot,
-    StrictModel,
     StructuredItineraryV2,
     TimelineEntryRef,
-    TransportEndpoint,
-    TransportCandidate,
     TransportLeg,
+    VisitStop,
+)
+from travel_agent.planning.itinerary.options import SelectionOption, SelectionSlot
+from travel_agent.planning.references import EntityLineage, EntityRef, EntityType
+from travel_agent.planning.research.candidates import (
+    DiningCandidate,
+    LodgingCandidate,
+    TransportCandidate,
+    VisitCandidate,
+)
+from travel_agent.planning.transport import (
+    TransportEndpoint,
     TransportMode,
     TransportModePreference,
-    TripWorkspaceV2,
-    VisitCandidate,
-    VisitStop,
+)
+from travel_agent.planning.weather.models import (
     WeatherBufferOperation,
     WeatherContextSnapshot,
     WeatherProposalDecision,
@@ -36,13 +41,17 @@ from .delivery_bundle import (
     WeatherSelectionOperation,
     WeatherTransportModeOperation,
     WeatherVisitReplacementOperation,
-    build_cost_coverage_summary,
-    itinerary_price_components,
 )
+from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.schema import StrictModel
+
 from .candidate_options import candidate_option_availability
-from .opening_hours import opening_window_violation
 from .lodging_routing import day_lodging_bases
-from .planning_time_buffers import planned_alighting_buffer_minutes, planned_boarding_buffer_minutes
+from .opening_hours import opening_window_violation
+from .planning_time_buffers import (
+    planned_alighting_buffer_minutes,
+    planned_boarding_buffer_minutes,
+)
 from .transport_semantics import count_service_transfers
 from .trip_highlights import with_derived_highlights
 
@@ -444,17 +453,7 @@ def _replace_transport_leg(
 def _recompute_derived_itinerary_fields(
     itinerary: StructuredItineraryV2,
 ) -> StructuredItineraryV2:
-    """Refresh every field that is a pure function of the four entity lists.
-
-    A mutation rewrites those lists, so anything summarizing them is stale the
-    moment it returns.  ``cost_summary`` had to be refreshed here because
-    ``StructuredItineraryV2.validate_references`` recomputes and rejects a
-    mismatch; ``highlights`` cannot be enforced that way — the derivation reads
-    the transport mode words from ``entities/delivery_presentation.py``, which
-    imports ``delivery_bundle``, so a validator there would close an import
-    cycle.  Both therefore refresh together in this one place, so the
-    round-trip is nailed at the mutation boundary.
-    """
+    # Refresh cost and presentation summaries together after entity-list changes.
 
     return with_derived_highlights(itinerary).model_copy(
         update={

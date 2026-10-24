@@ -21,7 +21,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Literal, Optional, Tuple
 
-from ..entities.delivery_bundle import MinimumDeliveryDraft, RunDeadlineSnapshot
+from travel_agent.planning.requirements.inputs import MinimumDeliveryDraft
+from travel_agent.runtime.deadlines import RunDeadlineSnapshot
+
 from ..entities.run_deadline_policy import (
     RUN_DEADLINE_POLICY_VERSION,
     current_closeout_seconds,

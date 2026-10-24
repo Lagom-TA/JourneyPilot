@@ -1,23 +1,49 @@
 import json
 
 import pytest
+from tests.agent_behavior.test_intent_research_ranking_selection import (
+    _catalog,
+    _intent,
+    _packet,
+    _spec,
+)
+from tests.agent_behavior.test_itinerary_revision import checkpoint, draft, visit_entry
+from tests.test_composition_context import state
 
 from travel_agent.agents.orchestrator import intent_fidelity_gate as gate
-from travel_agent.entities.candidate_intent import CandidateIntentMatch, IntentMatchStatus
 from travel_agent.entities.candidate_discovery import CandidateDiscoveryOrigin
-from travel_agent.entities.delivery_bundle import DeliveryContractViolation, ResearchPacket, TripWorkspaceV2
+from travel_agent.entities.candidate_intent import (
+    CandidateIntentMatch,
+    IntentMatchStatus,
+)
 from travel_agent.entities.intent_coverage import IntentContractSnapshot
-from travel_agent.entities.intent_spec import IntentKind, IntentStrength, VerificationMode, IntentTarget
-from travel_agent.entities.itinerary_composition_v2 import ItineraryCompositionDraft, materialize_trip_workspace
+from travel_agent.entities.intent_spec import (
+    IntentKind,
+    IntentStrength,
+    IntentTarget,
+    VerificationMode,
+)
+from travel_agent.entities.itinerary_composition_v2 import (
+    ItineraryCompositionDraft,
+    materialize_trip_workspace,
+)
+from travel_agent.planning.outcomes import DeliveryContractViolation
+from travel_agent.planning.research.packets import ResearchPacket
+from travel_agent.planning.workspace import TripWorkspaceV2
 from travel_agent.services.candidate_intent_evaluation import evaluate_candidate_intents
 from travel_agent.services.candidate_selection import build_candidate_selection_plan
 from travel_agent.services.composition_rule_compiler import compile_composition_rules
-from travel_agent.services.intent_requirement_check import check_final_entities, requirement_check_objects
-from travel_agent.services.intent_verification import evaluate_intent_fidelity, revalidate_workspace_intent
-from travel_agent.workflows.composition_repair import MAXIMUM_COMPOSITION_REPAIR_ATTEMPTS
-from tests.agent_behavior.test_intent_research_ranking_selection import _catalog, _intent, _packet, _spec
-from tests.agent_behavior.test_itinerary_revision import checkpoint, draft, visit_entry
-from tests.test_composition_context import state
+from travel_agent.services.intent_requirement_check import (
+    check_final_entities,
+    requirement_check_objects,
+)
+from travel_agent.services.intent_verification import (
+    evaluate_intent_fidelity,
+    revalidate_workspace_intent,
+)
+from travel_agent.workflows.composition_repair import (
+    MAXIMUM_COMPOSITION_REPAIR_ATTEMPTS,
+)
 
 
 def make_workspace(name="City Museum", *, candidate_backed=False, category="museum", target=IntentTarget.VISIT):

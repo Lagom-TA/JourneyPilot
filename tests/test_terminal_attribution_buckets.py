@@ -20,11 +20,11 @@ from typing import Any
 
 import pytest
 
-from travel_agent.entities.delivery_bundle import InternalFailureClass
 from travel_agent.entities.terminal_attribution import (
     DELIVERY_INTEGRITY_UNCLASSIFIED_FALLBACK_REASON,
     delivery_integrity_reason_code,
 )
+from travel_agent.planning.outcomes import InternalFailureClass
 from travel_agent.services.run_completion_metrics import (
     _terminal_bucket,
     recompute_completion_metrics,

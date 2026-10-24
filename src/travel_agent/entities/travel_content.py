@@ -9,9 +9,17 @@ from __future__ import annotations
 import re
 from datetime import timedelta
 
-from .delivery_bundle import DiningStop, LodgingStay, TransportLeg, VisitStop
-from .planning_time_buffers import planned_alighting_buffer_minutes, planned_boarding_buffer_minutes
+from travel_agent.planning.itinerary.models import (
+    DiningStop,
+    LodgingStay,
+    TransportLeg,
+    VisitStop,
+)
 
+from .planning_time_buffers import (
+    planned_alighting_buffer_minutes,
+    planned_boarding_buffer_minutes,
+)
 
 _INTERNAL_REASON_MARKERS = (
     "eligible_place_options", "candidate_id", "place_id", "provider",

@@ -6,7 +6,23 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from travel_agent.workflows.run_control import current_node, current_run_id
+from travel_agent.agents.destination_researcher import node as destination_node
+from travel_agent.agents.orchestrator.candidate_gate import (
+    _apply_candidate_caps,
+    _closeout_blocks_targeted_round,
+    _research_closeout_can_skip_connector_pass,
+)
+from travel_agent.agents.orchestrator.intent_fidelity_gate import (
+    _candidate_retry_available,
+)
+from travel_agent.agents.research_packet_output import (
+    _bind_candidate_discovery_lineage,
+    _default_provider_place_selections,
+    _provider_place_selections_or_default,
+    _provider_route_selection_limit,
+    _provider_route_selections_or_default,
+    _provider_selection_response_schema,
+)
 from travel_agent.entities.candidate_discovery import (
     CandidateDiscoveryOrigin,
     CandidateDiscoveryRecord,
@@ -15,31 +31,12 @@ from travel_agent.entities.candidate_intent import (
     CandidateIntentMatch,
     IntentMatchStatus,
 )
+from travel_agent.entities.candidate_ranking import GENERIC_FALLBACK_PENALTY
 from travel_agent.entities.candidate_selection import (
     CandidateSelectionRole,
     SelectionPolicy,
 )
-from travel_agent.entities.delivery_bundle import (
-    CandidateAdmissionResult,
-    EntityRef,
-    EntityLineage,
-    EntityType,
-    FactAssertion,
-    FactSourceLink,
-    FieldProvenance,
-    RecommendationCatalog,
-    ResearchPacket,
-    SelectionOption,
-    SelectionSlot,
-    SourceRecord,
-    TransportCandidate,
-    TransportEndpoint,
-    TransportLeg,
-    TransportMode,
-    TransportSegment,
-    VisitCandidate,
-    WeatherSensitivity,
-)
+from travel_agent.entities.intent_coverage import IntentFidelityGap
 from travel_agent.entities.intent_spec import (
     CategoryIntentValue,
     CountIntentValue,
@@ -51,15 +48,6 @@ from travel_agent.entities.intent_spec import (
     VerificationMode,
     canonical_json_hash,
 )
-
-from travel_agent.entities.research_brief import (
-    DomainResearchObjective,
-    ResearchBriefV2,
-)
-from travel_agent.entities.candidate_ranking import GENERIC_FALLBACK_PENALTY
-from travel_agent.entities.research_domain import ResearchDomain
-from travel_agent.entities.research_query_plan import ResearchQueryKind
-from travel_agent.entities.trip_input import ControlledTripIdentity
 from travel_agent.entities.itinerary_composition_v2 import (
     DayComposition,
     ItineraryCompositionDraft,
@@ -69,6 +57,37 @@ from travel_agent.entities.itinerary_composition_v2 import (
     _transport_alternatives,
     validate_placement_skeleton,
 )
+from travel_agent.entities.research_brief import (
+    DomainResearchObjective,
+    ResearchBriefV2,
+)
+from travel_agent.entities.research_query_plan import ResearchQueryKind
+from travel_agent.entities.state import TravelAgentState
+from travel_agent.entities.trip_input import ControlledTripIdentity
+from travel_agent.planning.itinerary.models import TransportLeg
+from travel_agent.planning.itinerary.options import SelectionOption, SelectionSlot
+from travel_agent.planning.outcomes import CandidateResearchGap
+from travel_agent.planning.references import EntityLineage, EntityRef, EntityType
+from travel_agent.planning.research.candidates import (
+    CandidateAdmissionResult,
+    TransportCandidate,
+    VisitCandidate,
+)
+from travel_agent.planning.research.catalog import RecommendationCatalog
+from travel_agent.planning.research.domains import ResearchDomain
+from travel_agent.planning.research.evidence import (
+    FactAssertion,
+    FactSourceLink,
+    FieldProvenance,
+    SourceRecord,
+)
+from travel_agent.planning.research.packets import ResearchPacket
+from travel_agent.planning.transport import (
+    TransportEndpoint,
+    TransportMode,
+    TransportSegment,
+)
+from travel_agent.planning.weather.models import WeatherSensitivity
 from travel_agent.services.candidate_intent_evaluation import (
     evaluate_candidate_intents,
 )
@@ -80,33 +99,14 @@ from travel_agent.services.candidate_selection import (
     selected_candidate_capabilities,
 )
 from travel_agent.services.composition_rule_compiler import compile_composition_rules
+from travel_agent.services.delivery_projection import _reportable_selection_options
+from travel_agent.services.fallback_query_policy import FallbackQueryPolicy
 from travel_agent.services.research_query_planner import (
     append_structural_connector_query,
     append_targeted_repair_query,
     build_research_query_plan,
 )
-from travel_agent.services.fallback_query_policy import FallbackQueryPolicy
-from travel_agent.services.delivery_projection import _reportable_selection_options
-from travel_agent.agents.destination_researcher import node as destination_node
-from travel_agent.agents.research_packet_output import (
-    _bind_candidate_discovery_lineage,
-    _default_provider_place_selections,
-    _provider_place_selections_or_default,
-    _provider_route_selection_limit,
-    _provider_route_selections_or_default,
-    _provider_selection_response_schema,
-)
-from travel_agent.agents.orchestrator.candidate_gate import (
-    _apply_candidate_caps,
-    _research_closeout_can_skip_connector_pass,
-    _closeout_blocks_targeted_round,
-)
-from travel_agent.agents.orchestrator.intent_fidelity_gate import (
-    _candidate_retry_available,
-)
-from travel_agent.entities.delivery_bundle import CandidateResearchGap
-from travel_agent.entities.intent_coverage import IntentFidelityGap
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.workflows.run_control import current_node, current_run_id
 
 
 def _identity() -> ControlledTripIdentity:

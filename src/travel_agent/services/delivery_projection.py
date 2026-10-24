@@ -12,17 +12,7 @@ import json
 from datetime import date, datetime
 from typing import Any, Iterable, Mapping, Sequence
 
-from ..entities.delivery_bundle import (
-    SELECTION_SLOT_ENTITY_TYPES,
-    DiningCandidate,
-    DiningStop,
-    CustomBlock,
-    EntityRef,
-    EntityType,
-    FactAssertion,
-    FactStoreSnapshot,
-    LodgingCandidate,
-    LodgingStay,
+from travel_agent.planning.delivery.projections import (
     MapPlaceProjection,
     MapProjection,
     MapProjectionContent,
@@ -38,30 +28,55 @@ from ..entities.delivery_bundle import (
     ReportWeatherDay,
     SourceIndexDocument,
     SourceIndexProjection,
-    SourceRecord,
-    SelectionOption,
-    SelectionSlot,
-    StructuredItineraryV2,
-    TransportCandidate,
-    TransportLeg,
     TripReportDocument,
     TripReportProjection,
-    TripWorkspaceV2,
-    VisitCandidate,
+)
+from travel_agent.planning.itinerary.models import (
+    CustomBlock,
+    DiningStop,
+    LodgingStay,
+    StructuredItineraryV2,
+    TransportLeg,
     VisitStop,
+)
+from travel_agent.planning.itinerary.options import (
+    SELECTION_SLOT_ENTITY_TYPES,
+    SelectionOption,
+    SelectionSlot,
+)
+from travel_agent.planning.references import EntityRef, EntityType
+from travel_agent.planning.research.candidates import (
+    DiningCandidate,
+    LodgingCandidate,
+    TransportCandidate,
+    VisitCandidate,
+)
+from travel_agent.planning.research.evidence import (
+    FactAssertion,
+    FactStoreSnapshot,
+    SourceRecord,
+)
+from travel_agent.planning.weather.models import (
     WeatherContextSnapshot,
     WeatherDayContext,
 )
+from travel_agent.planning.workspace import TripWorkspaceV2
+
 from ..entities.controlled_place_name import (
     CONTROLLED_DESTINATION_ANCHOR_PREFIX,
     controlled_public_place_name,
 )
 from ..entities.cost_coverage import cost_coverage_statement
 from ..entities.delivery_presentation import block_presentation
-from ..entities.travel_content import candidate_reason_fallback, preparation_actions, public_selection_text, selection_reason
 from ..entities.provider_evidence import (
     build_required_long_distance_legs,
     missing_long_distance_leg_roles,
+)
+from ..entities.travel_content import (
+    candidate_reason_fallback,
+    preparation_actions,
+    public_selection_text,
+    selection_reason,
 )
 from ..tools.temporal import RAIL_LIVE_INVENTORY_DAYS
 from .geo_dispersion import entity_coordinates
@@ -538,7 +553,10 @@ def _citation_lookup(
 
 
 def _intent_deviation_notes(workspace: TripWorkspaceV2) -> list[str]:
-    from ..entities.intent_coverage import IntentCoverageStatus, public_requirement_explanation
+    from ..entities.intent_coverage import (
+        IntentCoverageStatus,
+        public_requirement_explanation,
+    )
 
     if workspace.intent_coverage_report is None:
         return []

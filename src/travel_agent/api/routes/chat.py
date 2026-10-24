@@ -14,56 +14,59 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
+from travel_agent.planning.outcomes import (
+    DeliveryContractViolation,
+    InternalFailureClass,
+)
+
 from ...builders import get_components
 from ...config import get_settings
-from ...entities.trip_run import RunRecoveryStatus, TripRunResumePolicy, TripRunStatus
+from ...entities.evidence_basis import PublicProjectionContractViolation
+from ...entities.terminal_attribution import delivery_integrity_reason_code
 from ...entities.trip_input import RouteName, classify_locked_identity_intent
+from ...entities.trip_run import RunRecoveryStatus, TripRunResumePolicy, TripRunStatus
 from ...local_profile import LOCAL_USER_ID
-from ...services.route_intent import RouteIntentUnavailable, classify_route
-from ...utils.json_helpers import strip_think_blocks
-from ..schemas import ChatRequest
-from ..streaming import strip_non_display_blocks
-from .chat_helpers import (
-    check_input_guard,
-    enqueue_memory_extraction,
-    load_session_history,
-    load_preset_context,
-    load_user_profile,
-    sse_event as _encode_sse_event,
-    strip_thinking_text,
-)
 from ...services.public_delivery import (
     public_delivery_bundle,
     public_event_manifest,
 )
-from ..sse_buffer import build_sse_buffer
-from ..sse_projection import project_sse_payload
-from ...entities.delivery_bundle import (
-    DeliveryContractViolation,
-    InternalFailureClass,
-)
-from ...entities.terminal_attribution import delivery_integrity_reason_code
-from ...entities.evidence_basis import PublicProjectionContractViolation
+from ...services.route_intent import RouteIntentUnavailable, classify_route
+from ...services.run_commands import RunCommandCoordinator
+from ...services.run_lease import RunLeaseKeeper
 from ...storage.cost_ledger_store import cost_event_summary
 from ...tools.exposure_ledger import get_tool_exposure_ledger
+from ...utils.json_helpers import strip_think_blocks
 from ...workflows.delivery_finalizer import DeliveryFinalizationError
 from ...workflows.node_names import CHECKPOINT_GATE_NODES
-from ...workflows.travel_planning import CheckpointContractError
 from ...workflows.run_budget import peek_ledger, release_ledger
 from ...workflows.run_control import (
     RunCancelled,
     RunControlHandle,
     node_timing_registry,
-    stop_verdict,
     run_control_registry,
     run_ts_ms,
     set_run_ts_anchor,
+    stop_verdict,
 )
-from ...services.run_commands import RunCommandCoordinator
-from ...services.run_lease import RunLeaseKeeper
+from ...workflows.travel_planning import CheckpointContractError
+from ..schemas import ChatRequest
+from ..sse_buffer import build_sse_buffer
+from ..sse_projection import project_sse_payload
+from ..streaming import strip_non_display_blocks
+from .chat_helpers import (
+    check_input_guard,
+    enqueue_memory_extraction,
+    load_preset_context,
+    load_session_history,
+    load_user_profile,
+    strip_thinking_text,
+)
+from .chat_helpers import (
+    sse_event as _encode_sse_event,
+)
 from .chat_stream_handlers import (
-    SSEContext,
     _SSE_HANDLERS,
+    SSEContext,
     _handle_node_activity,
     _trace_event_payload,
 )

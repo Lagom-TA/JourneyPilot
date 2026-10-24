@@ -4,6 +4,10 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Iterable
 
+from travel_agent.planning.workspace import TripWorkspaceV2
+
+from ..entities.candidate_intent import IntentMatchStatus
+from ..entities.candidate_selection import CandidateSelectionRole
 from ..entities.composition_rules import (
     CadenceRuleParameters,
     CompositionRule,
@@ -13,18 +17,14 @@ from ..entities.composition_rules import (
     SequenceRuleParameters,
     TimeWindowRuleParameters,
 )
-from ..entities.delivery_bundle import TripWorkspaceV2
-from ..entities.candidate_selection import CandidateSelectionRole
-from ..entities.candidate_intent import IntentMatchStatus
-from .intent_requirement_check import check_final_entities, requirement_check_objects
 from ..entities.intent_coverage import (
     CoverageEntityRef,
+    IntentContractSnapshot,
     IntentCoverageItem,
     IntentCoverageReport,
     IntentCoverageStatus,
     IntentDeviation,
     IntentFidelityGap,
-    IntentContractSnapshot,
 )
 from ..entities.intent_spec import (
     AlternativeIntentValue,
@@ -33,6 +33,7 @@ from ..entities.intent_spec import (
     IntentStrength,
     canonical_json_hash,
 )
+from .intent_requirement_check import check_final_entities, requirement_check_objects
 
 
 def _entity_rows(workspace: TripWorkspaceV2) -> list[dict]:

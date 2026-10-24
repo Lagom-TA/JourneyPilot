@@ -25,55 +25,65 @@ if TYPE_CHECKING:
     # 不 import 的话那个字符串前向引用指向不存在的名字，读起来像有类型其实没有。
     from .provider_evidence import ProviderRouteLegScope
 
-from .provider_reference_service import (
-    ProviderReferenceService,
-    reference_service_note,
+from travel_agent.planning.costs.coverage import (
+    build_cost_coverage_summary,
+    itinerary_price_components,
 )
-from .delivery_bundle import (
+from travel_agent.planning.itinerary.models import (
     DayPlanV2,
-    DiningCandidate,
     DiningStop,
-    EntityLineage,
-    EntityRef,
-    EntityType,
-    LodgingCandidate,
     LodgingStay,
-    RecommendationCatalog,
-    ResearchCandidate,
+    StructuredItineraryV2,
+    TimelineEntryRef,
+    TransportLeg,
+    VisitStop,
+    classify_transport_projection_shape,
+)
+from travel_agent.planning.itinerary.options import (
     SELECTION_SLOT_ENTITY_TYPES,
     SelectionOption,
     SelectionSlot,
     SelectionSlotType,
-    StrictModel,
-    StructuredItineraryV2,
-    TimelineEntryRef,
+)
+from travel_agent.planning.references import EntityLineage, EntityRef, EntityType
+from travel_agent.planning.requirements.inputs import UserInputAnchor
+from travel_agent.planning.research.candidates import (
+    DiningCandidate,
+    LodgingCandidate,
+    ResearchCandidate,
     TransportCandidate,
+    VisitCandidate,
+)
+from travel_agent.planning.research.catalog import RecommendationCatalog
+from travel_agent.planning.transport import (
     TransportEndpoint,
-    TransportLeg,
     TransportMode,
     TransportSegment,
-    TripWorkspaceV2,
-    UserInputAnchor,
-    VisitCandidate,
-    VisitStop,
-    build_cost_coverage_summary,
-    itinerary_price_components,
-    classify_transport_projection_shape,
 )
+from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.schema import StrictModel
+
 from .candidate_options import candidate_option_availability
 from .candidate_selection import CandidateSelectionPlan
 from .composition_mutation import CompositionMutation
-from .day_design import DayDesign
 from .controlled_place_name import (
     CONTROLLED_DESTINATION_ANCHOR_PREFIX,
     controlled_public_place_name,
 )
-from .opening_hours import opening_window_violation
-from .planning_time_buffers import planned_alighting_buffer_minutes, planned_boarding_buffer_minutes
-from .transport_semantics import count_service_transfers, nominal_service_day_conflict
+from .day_design import DayDesign
 from .day_theme import derive_day_theme
-from .trip_highlights import derive_trip_highlights
 from .intent_coverage import IntentContractSnapshot
+from .opening_hours import opening_window_violation
+from .planning_time_buffers import (
+    planned_alighting_buffer_minutes,
+    planned_boarding_buffer_minutes,
+)
+from .provider_reference_service import (
+    ProviderReferenceService,
+    reference_service_note,
+)
+from .transport_semantics import count_service_transfers, nominal_service_day_conflict
+from .trip_highlights import derive_trip_highlights
 
 logger = logging.getLogger(__name__)
 

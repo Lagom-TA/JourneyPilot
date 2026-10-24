@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from html import escape
 from io import BytesIO
-import os
 from pathlib import Path
 from threading import Lock
 from typing import Any, Iterable
@@ -29,15 +29,13 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-from ..entities.delivery_bundle import (
-    DeliveryBundle,
-    EntityType,
-    PublicCitationProjection,
-    StrictModel,
-)
+from travel_agent.planning.delivery.bundle import DeliveryBundle
+from travel_agent.planning.delivery.projections import PublicCitationProjection
+from travel_agent.planning.references import EntityType
+from travel_agent.schema import StrictModel
+
 from ..entities.coverage_disclosure import coverage_disclosure_notes
 from ..entities.delivery_presentation import weather_freshness_text
-from ..entities.provider_environment import ProviderEnvironmentView
 from ..entities.evidence_basis import (
     PUBLIC_REFERENCE,
     PUBLIC_REFERENCE_LABEL,
@@ -45,6 +43,7 @@ from ..entities.evidence_basis import (
     REFERENCE_SERVICE_LABEL,
     EvidenceBasisView,
 )
+from ..entities.provider_environment import ProviderEnvironmentView
 
 
 class ReportOutOfDateError(RuntimeError):

@@ -12,15 +12,16 @@ from collections import defaultdict
 from datetime import timedelta
 from typing import Optional
 
-from ..entities.delivery_bundle import (
-    SELECTION_SLOT_ENTITY_TYPES,
-    DeliveryBundle,
+from travel_agent.planning.delivery.bundle import DeliveryBundle
+from travel_agent.planning.itinerary.options import SELECTION_SLOT_ENTITY_TYPES
+from travel_agent.planning.references import EntityRef, EntityType
+from travel_agent.planning.research.candidates import (
     DiningCandidate,
-    EntityRef,
-    EntityType,
     LodgingCandidate,
-    TransportMode,
     VisitCandidate,
+)
+from travel_agent.planning.transport import TransportMode
+from travel_agent.planning.weather.models import (
     WeatherAdjustmentOperation,
     WeatherAdjustmentProposal,
     WeatherBufferOperation,
@@ -31,8 +32,8 @@ from ..entities.delivery_bundle import (
     WeatherTransportModeOperation,
     WeatherVisitReplacementOperation,
 )
-from .weather_impact_engine import WeatherImpactEngine, day_weather_fit
 
+from .weather_impact_engine import WeatherImpactEngine, day_weather_fit
 
 _CONDITION_LABELS = {
     "rain": "降雨",

@@ -5,15 +5,13 @@ from types import SimpleNamespace
 import pytest
 from openai import OpenAIError
 
-from travel_agent.agents.orchestrator.candidate_gate import _latest_packets
 from travel_agent.agents.orchestrator.artifact_gate import artifact_gate_node
-from travel_agent.entities.delivery_bundle import ResearchPacket
-from travel_agent.entities.planning_generation import PlanningGeneration
+from travel_agent.agents.orchestrator.candidate_gate import _latest_packets
 from travel_agent.entities.intent_spec import (
     AlternativeIntentValue,
     CategoryIntentValue,
-    IntentItem,
     IntentConflict,
+    IntentItem,
     IntentKind,
     IntentStrength,
     IntentTarget,
@@ -21,10 +19,11 @@ from travel_agent.entities.intent_spec import (
     ScalarIntentValue,
     VerificationMode,
 )
-from travel_agent.entities.request_contract import ClauseDisposition
-from travel_agent.entities.request_contract import IntentAmendment
+from travel_agent.entities.planning_generation import PlanningGeneration
+from travel_agent.entities.request_contract import ClauseDisposition, IntentAmendment
 from travel_agent.entities.state import TravelAgentState
 from travel_agent.panels.constraint import deterministic_budget_constraints
+from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.services.capability_planning import (
     build_capability_plan,
     build_research_brief,
@@ -611,7 +610,9 @@ def test_lodging_exclusion_has_an_owner_without_unneeded_research(stages, overni
 @pytest.mark.parametrize("same_city", [True, False])
 def test_planner_assigns_authoritative_transport_scopes_for_local_and_intercity_trips(same_city):
     from travel_agent.agents.orchestrator.planner import planner_node
-    from travel_agent.entities.provider_evidence import parse_provider_evidence_assignments
+    from travel_agent.entities.provider_evidence import (
+        parse_provider_evidence_assignments,
+    )
 
     contract, generation = _contract()
     identity = _identity()
@@ -658,7 +659,9 @@ def test_planner_assigns_authoritative_transport_scopes_for_local_and_intercity_
     (True, False, None, False),
 ])
 def test_transport_resume_repairs_only_legacy_initial_same_city_scopes(same_city, scoped, raw, repairable):
-    from travel_agent.agents.transport_researcher.node import transport_provider_assignments
+    from travel_agent.agents.transport_researcher.node import (
+        transport_provider_assignments,
+    )
 
     identity = _identity()
     if same_city:

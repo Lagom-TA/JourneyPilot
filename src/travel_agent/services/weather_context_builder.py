@@ -10,18 +10,6 @@ from typing import Awaitable, Callable, Dict, List, Optional, Sequence
 
 from pydantic import Field
 
-from travel_agent.entities.delivery_bundle import (
-    EntityRef,
-    EntityType,
-    FactAssertion,
-    FactSourceLink,
-    FieldProvenance,
-    SourceRecord,
-    StrictModel,
-    WeatherContextSnapshot,
-    WeatherCoverage,
-    WeatherDayContext,
-)
 from travel_agent.integrations.weather import (
     ProviderWeatherDay,
     WeatherProvider,
@@ -29,6 +17,19 @@ from travel_agent.integrations.weather import (
     WeatherProviderRequest,
     WeatherProviderResponse,
 )
+from travel_agent.planning.references import EntityRef, EntityType
+from travel_agent.planning.research.evidence import (
+    FactAssertion,
+    FactSourceLink,
+    FieldProvenance,
+    SourceRecord,
+)
+from travel_agent.planning.weather.models import (
+    WeatherContextSnapshot,
+    WeatherCoverage,
+    WeatherDayContext,
+)
+from travel_agent.schema import StrictModel
 
 
 class WeatherContextBuildResult(StrictModel):

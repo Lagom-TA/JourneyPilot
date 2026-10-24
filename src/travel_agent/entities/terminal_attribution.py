@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from .delivery_bundle import InternalFailureClass
+from travel_agent.planning.outcomes import InternalFailureClass
 
 # 读方（``services/run_completion_metrics.py``）拿它做 ``startswith``，所以不带尾下划线。
 DELIVERY_INTEGRITY_REASON_PREFIX = "delivery_integrity"

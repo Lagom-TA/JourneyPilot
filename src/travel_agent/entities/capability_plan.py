@@ -6,9 +6,9 @@ from typing import Dict, List, Literal
 
 from pydantic import Field, model_validator
 
-from .contract_base import StrictModel
-from .research_brief import SuccessCriterion
+from travel_agent.schema import StrictModel
 
+from .research_brief import SuccessCriterion
 
 AgentName = Literal[
     "destination_researcher",

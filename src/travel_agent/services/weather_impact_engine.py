@@ -6,10 +6,12 @@ import hashlib
 from dataclasses import dataclass
 from typing import Iterable, Mapping
 
-from ..entities.delivery_bundle import (
+from travel_agent.planning.references import (
     EntityRef,
     SelectionSlotRef,
     TransportLegRef,
+)
+from travel_agent.planning.weather.models import (
     WeatherDayContext,
     WeatherImpact,
     WeatherSensitivity,

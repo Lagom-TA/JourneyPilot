@@ -10,8 +10,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import httpx
 from pydantic import Field, model_validator
 
-from travel_agent.entities.contract_base import StrictModel
-from travel_agent.entities.delivery_bundle import WeatherTimeWindow
+from travel_agent.planning.weather.models import WeatherTimeWindow
+from travel_agent.schema import StrictModel
 from travel_agent.tools.temporal import EXACT_WEATHER_FORECAST_DAYS
 
 

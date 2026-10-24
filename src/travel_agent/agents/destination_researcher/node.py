@@ -17,31 +17,42 @@ import json
 import logging
 import re
 import time
-from ...llm.task_routing import TaskKind, llm_for_task
-
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence
 
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
+from travel_agent.planning.research.domains import ResearchDomain
+
 from ...config import get_settings
+from ...entities.place_identity import stable_place_id_amap_poi
+from ...entities.provider_evidence import parse_provider_evidence_assignments
+from ...entities.research_query_plan import ResearchQuery, ResearchQueryKind
 from ...entities.state import TravelAgentState
-from ...memory.research_context import format_worker_research_context
-from ...workflows.run_control import RunCancelled
-from ...storage.worker_journal_store import JournalConflict
-from ...llm.router import get_model_router
 from ...knowledge.collections import GroundingCorpus, grounding_corpus
 from ...knowledge.place_mentions import (
     chunk_texts_by_collection,
     measure_place_funnel,
 )
 from ...knowledge.source_records import (
-    knowledge_tool_documents, knowledge_tool_summaries, rag_chunk_source_records,
+    knowledge_tool_documents,
+    knowledge_tool_summaries,
+    rag_chunk_source_records,
 )
-from ...entities.place_identity import stable_place_id_amap_poi
-from ...entities.research_domain import ResearchDomain
-from ...entities.research_query_plan import ResearchQuery, ResearchQueryKind
-from ...utils.coordinates import amap_location_to_wgs84
+from ...llm.router import get_model_router
+from ...llm.task_routing import TaskKind, llm_for_task
+from ...memory.research_context import format_worker_research_context
+from ...services.candidate_admission import provider_place_type_matches_candidate_kind
+from ...services.constraint_applicability import (
+    active_hard_constraint_ids,
+    active_hard_constraints,
+)
+from ...services.delivery_projection import candidate_place_id
+from ...services.destination_scope import annotate_destination_distance
+from ...services.fallback_query_policy import (
+    FallbackQueryPolicy,
+    runtime_fallback_capacity,
+)
 from ...services.nominatim_place_search import (
     NominatimPlaceSearchError,
     lookup_typed_addresses_bilingual,
@@ -51,47 +62,41 @@ from ...services.product_requirements import (
     discovery_physical_candidate_kinds,
     required_physical_candidate_kinds,
 )
+from ...services.research_query_planner import queries_by_ids
+from ...services.state_invalidation import generation_packet_key
+from ...storage.worker_journal_store import JournalConflict
+from ...tools.governance import QUALITY_VERIFIED_PLACE_IDS_METADATA_KEY
+from ...utils.brief_helpers import build_assignment_context
+from ...utils.coordinates import amap_location_to_wgs84
+from ...workflows.run_control import RunCancelled
+from ..research_packet_output import (
+    authoritative_retry_source_records,
+    authoritative_tool_messages,
+    build_authoritative_research_packet_metadata,
+    build_failure_only_research_packet,
+    has_required_provider_place_selection,
+    observed_place_nominations,
+    packet_candidate_limit,
+    parse_or_repair_research_packet_output,
+    provider_evidence_outcomes,
+    provider_round_answered_empty,
+    provider_round_capability_declared,
+)
+from ..research_packet_prompt import build_research_packet_prompt
 from ..utils import (
     append_recent_history,
     assignment_research_round,
     build_tool_context_from_state,
     compact_tool_content_for_model,
     exclude_tools,
+    execute_tool,
     filter_tools_for_agent,
     get_available_tools,
     resolve_agent_assignment,
     resolve_scoped_research_output_key,
-    execute_tool,
     streaming_react_loop,
 )
-from ..research_packet_output import (
-    packet_candidate_limit,
-    authoritative_tool_messages,
-    authoritative_retry_source_records,
-    build_authoritative_research_packet_metadata,
-    build_failure_only_research_packet,
-    has_required_provider_place_selection,
-    observed_place_nominations,
-    parse_or_repair_research_packet_output,
-    provider_evidence_outcomes,
-    provider_round_answered_empty,
-    provider_round_capability_declared,
-)
-from ...tools.governance import QUALITY_VERIFIED_PLACE_IDS_METADATA_KEY
-from ...entities.provider_evidence import parse_provider_evidence_assignments
-from ...services.candidate_admission import provider_place_type_matches_candidate_kind
-from ...services.delivery_projection import candidate_place_id
-from ...services.destination_scope import annotate_destination_distance
-from ...services.state_invalidation import generation_packet_key
-from ...services.research_query_planner import queries_by_ids
-from ...services.fallback_query_policy import (
-    FallbackQueryPolicy,
-    runtime_fallback_capacity,
-)
-from ...services.constraint_applicability import active_hard_constraints, active_hard_constraint_ids
-from ..research_packet_prompt import build_research_packet_prompt
 from ..worker_errors import format_worker_last_error
-from ...utils.brief_helpers import build_assignment_context
 from .prompts import (
     DINING_OPTIONS_TEMPLATE,
     KNOWLEDGE_BASE_NOMINATION,

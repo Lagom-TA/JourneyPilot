@@ -7,8 +7,6 @@ import hashlib
 import json
 import logging
 import re
-from ..llm.task_routing import TaskKind, QualityFeedback, TaskLLM
-
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Any, Literal, Mapping, Optional, Sequence
@@ -16,30 +14,41 @@ from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 
-from ..entities.delivery_bundle import (
-    EntityRef,
-    EntityType,
+from travel_agent.planning.references import EntityRef, EntityType
+from travel_agent.planning.research.catalog import RecommendationCatalog
+from travel_agent.planning.research.evidence import (
     FactAssertion,
     FactSourceLink,
     FieldProvenance,
     ProviderSnapshotProvenance,
-    RESEARCH_PACKET_IDENTITY_FACTS_MISSING,
-    RecommendationCatalog,
-    ResearchPacket,
     SourceRecord,
+)
+from travel_agent.planning.research.packets import (
+    RESEARCH_PACKET_IDENTITY_FACTS_MISSING,
+    ResearchPacket,
+)
+from travel_agent.planning.transport import (
     TransportEndpoint,
     TransportMode,
     TransportSegment,
-    WeatherSensitivity,
 )
+from travel_agent.planning.weather.models import WeatherSensitivity
+
 from ..entities.provider_environment import snapshot_data_environment
-from ..llm.strict_json_schema import as_strict_schema
 from ..entities.provider_evidence import (
     TIMETABLED_TRANSPORT_CLASSES,
     ProviderEvidenceAssignment,
     ProviderEvidenceOutcome,
     ProviderEvidenceScope,
 )
+from ..knowledge.place_mentions import PlaceLookup, ProviderIdentity
+from ..knowledge.source_records import (
+    is_rag_chunk_source_id,
+    knowledge_tool_documents,
+    rag_chunk_source_records,
+)
+from ..llm.strict_json_schema import as_strict_schema
+from ..llm.task_routing import QualityFeedback, TaskKind, TaskLLM
 from ..services.candidate_admission import (
     provider_place_type_matches_candidate_kind,
 )
@@ -48,15 +57,10 @@ from ..services.candidate_admission import (
 from ..services.constraint_applicability import (
     active_hard_constraint_ids as active_hard_constraint_ids,
 )
-from ..knowledge.place_mentions import PlaceLookup, ProviderIdentity
 from ..services.destination_scope import (
     DESTINATION_DISTANCE_KEY,
     MAX_DESTINATION_DISTANCE_KM,
 )
-from ..knowledge.source_records import (
-    is_rag_chunk_source_id, knowledge_tool_documents, rag_chunk_source_records,
-)
-from ..workflows.run_control import ModelWindowClosed
 from ..tools.governance import (
     CAPABILITY_DECLARATION_STATUSES,
     COMPILED_TOOL_SOURCE_ID_PREFIX,
@@ -67,6 +71,7 @@ from ..tools.governance import (
     compiled_tool_source_id,
     compiled_tool_source_id_is_about,
 )
+from ..workflows.run_control import ModelWindowClosed
 from .orchestrator.provider_failure import classify_provider_failure
 
 logger = logging.getLogger(__name__)

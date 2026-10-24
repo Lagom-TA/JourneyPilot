@@ -11,7 +11,8 @@ happened the moment visits got slots, because a ``VisitCandidate`` has no
 
 from __future__ import annotations
 
-from .delivery_bundle import ResearchCandidate, VisitCandidate
+from travel_agent.planning.research.candidates import ResearchCandidate, VisitCandidate
+
 
 def candidate_option_availability(candidate: ResearchCandidate) -> str:
     """State what a reader still has to check before turning up.

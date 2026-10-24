@@ -6,31 +6,27 @@ import asyncio
 import json
 import logging
 import unicodedata
-from ...llm.task_routing import TaskKind, llm_for_task
-
-from datetime import date, timedelta
 from dataclasses import dataclass
-
-from ...memory.agent_context import render_agent_context
+from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import ValidationError
 
-from ...entities.delivery_bundle import (
+from travel_agent.planning.requirements.inputs import UserInputAnchor
+from travel_agent.planning.research.candidates import (
     DiningCandidate,
     LodgingCandidate,
-    RecommendationCatalog,
-    ResearchDomain,
     TransportCandidate,
-    TripWorkspaceV2,
-    UserInputAnchor,
     VisitCandidate,
 )
+from travel_agent.planning.research.catalog import RecommendationCatalog
+from travel_agent.planning.research.domains import ResearchDomain
+from travel_agent.planning.workspace import TripWorkspaceV2
+
 from ...entities.candidate_selection import CandidateSelectionPlan
-from ...entities.composition_rules import CompositionRule
-from ...entities.composition_rules import COMPOSITION_PROMPT_VERSION
+from ...entities.composition_rules import COMPOSITION_PROMPT_VERSION, CompositionRule
 from ...entities.intent_coverage import IntentContractSnapshot
 from ...entities.itinerary_composition_v2 import (
     AUTHORED_ROUTE_CLASS_BY_MODE,
@@ -49,33 +45,39 @@ from ...entities.itinerary_composition_v2 import (
     unfilled_connector_gaps,
     validate_placement_skeleton,
 )
+from ...entities.provider_evidence import (
+    build_required_long_distance_legs,
+    explicit_cross_day_return_required,
+    provider_evidence_scope_id,
+)
+from ...entities.state import TravelAgentState, bounded_repair_context
+from ...llm.router import get_model_router
+from ...llm.strict_json_schema import as_strict_schema
+from ...llm.task_routing import TaskKind, llm_for_task
+from ...memory.agent_context import render_agent_context
 from ...services.authored_place_resolution import (
     AuthoredPlaceScope,
     AuthoredPlaceToolAccess,
     authored_place_scopes,
     resolve_authored_place,
 )
-from ...services.geo_dispersion import itinerary_dispersion
-from ...services.day_design import apply_day_design
-from ...services.day_planning import daily_planning_windows, default_walking_days, disclose_default_walking
 from ...services.candidate_selection import (
     catalog_for_candidate_selection,
     catalog_for_workspace_materialization,
     selected_candidate_capabilities,
 )
 from ...services.composition_rule_compiler import compile_composition_rules
-from ...entities.state import TravelAgentState, bounded_repair_context
-from ...llm.router import get_model_router
-from ...llm.strict_json_schema import as_strict_schema
+from ...services.day_design import apply_day_design
+from ...services.day_planning import (
+    daily_planning_windows,
+    default_walking_days,
+    disclose_default_walking,
+)
+from ...services.geo_dispersion import itinerary_dispersion
 from ...tools.registry import get_tool_registry
 from ...utils.brief_helpers import build_assignment_context
 from ...workflows.run_control import ModelWindowClosed, await_model_operation
 from ...workflows.run_deadline import observe_run_deadline
-from ...entities.provider_evidence import (
-    build_required_long_distance_legs,
-    explicit_cross_day_return_required,
-    provider_evidence_scope_id,
-)
 from ..utils import (
     append_recent_history,
     build_tool_context_from_state,

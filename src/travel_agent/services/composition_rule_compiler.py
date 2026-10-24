@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from travel_agent.planning.research.domains import ResearchDomain
+
 from ..entities.composition_rules import (
     COMPOSITION_RULE_POLICY_VERSION,
     CadenceRuleParameters,
@@ -12,6 +14,7 @@ from ..entities.composition_rules import (
     SequenceRuleParameters,
     TimeWindowRuleParameters,
 )
+from ..entities.intent_coverage import IntentContractSnapshot
 from ..entities.intent_spec import (
     CadenceIntentValue,
     CategoryIntentValue,
@@ -28,9 +31,6 @@ from ..entities.intent_spec import (
     TimeWindowIntentValue,
     canonical_json_hash,
 )
-from ..entities.intent_coverage import IntentContractSnapshot
-from ..entities.research_domain import ResearchDomain
-
 
 _DOMAIN_BY_TARGET = {
     IntentTarget.VISIT: ResearchDomain.VISIT,

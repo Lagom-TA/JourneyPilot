@@ -6,7 +6,7 @@ Candidate Gate round) only when two conditions hold together: the schema
 failure is the "no eligible identity-bound facts" rejection, and the server's
 own transcript recorded a failed tool source.  These tests pin that the first
 condition is decided by the structured validation error type raised in
-``delivery_bundle.ResearchPacket``.
+``planning.research.packets.ResearchPacket``.
 """
 
 import json
@@ -18,7 +18,8 @@ from travel_agent.agents.research_packet_output import (
     ResearchPacketOutputError,
     parse_research_packet_output,
 )
-from travel_agent.entities.delivery_bundle import ResearchPacket, SourceRecord
+from travel_agent.planning.research.evidence import SourceRecord
+from travel_agent.planning.research.packets import ResearchPacket
 
 _PACKET_LOGGER = "travel_agent.agents.research_packet_output"
 _IDENTITY_FACTS_MESSAGE = "research packet requires external identity-bound facts"

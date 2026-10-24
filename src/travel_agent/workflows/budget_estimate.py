@@ -10,7 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..entities.delivery_bundle import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspaceV2
+
 from ..entities.state import TravelAgentState
 
 

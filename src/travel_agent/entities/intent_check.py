@@ -4,8 +4,9 @@ from typing import Any, Literal
 
 from pydantic import Field
 
+from travel_agent.schema import StrictModel
+
 from .candidate_intent import IntentMatchStatus
-from .contract_base import StrictModel
 
 
 class IntentCheckObject(StrictModel):

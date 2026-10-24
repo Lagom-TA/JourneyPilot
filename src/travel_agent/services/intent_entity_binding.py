@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from ..entities.candidate_intent import IntentMatchStatus
-from ..entities.delivery_bundle import (
+from travel_agent.planning.itinerary.models import (
     DiningStop,
-    EntityRef,
-    EntityType,
     LodgingStay,
-    PersonalizationInfluence,
     TransportLeg,
-    TripWorkspaceV2,
     VisitStop,
 )
+from travel_agent.planning.itinerary.options import PersonalizationInfluence
+from travel_agent.planning.references import EntityRef, EntityType
+from travel_agent.planning.workspace import TripWorkspaceV2
+
+from ..entities.candidate_intent import IntentMatchStatus
 from ..entities.intent_coverage import (
     EntityIntentExplanation,
     IntentContractRequirement,

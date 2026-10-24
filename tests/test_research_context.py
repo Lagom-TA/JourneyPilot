@@ -8,26 +8,27 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from travel_agent.entities.candidate_discovery import CandidateDiscoveryRecord
-from travel_agent.entities.delivery_bundle import (
-    CandidateResearchGap,
-    EntityRef,
-    EntityType,
-    FactAssertion,
-    FactSourceLink,
-    FieldProvenance,
-    LodgingCandidate,
-    ResearchPacket,
-    SourceRecord,
-    TransportCandidate,
-    VisitCandidate,
-    WeatherSensitivity,
-)
 from travel_agent.entities.intent_spec import canonical_json_hash
 from travel_agent.entities.research_query_plan import ResearchQuery
 from travel_agent.memory.research_context import (
     format_worker_research_context,
     project_research_context,
 )
+from travel_agent.planning.outcomes import CandidateResearchGap
+from travel_agent.planning.references import EntityRef, EntityType
+from travel_agent.planning.research.candidates import (
+    LodgingCandidate,
+    TransportCandidate,
+    VisitCandidate,
+)
+from travel_agent.planning.research.evidence import (
+    FactAssertion,
+    FactSourceLink,
+    FieldProvenance,
+    SourceRecord,
+)
+from travel_agent.planning.research.packets import ResearchPacket
+from travel_agent.planning.weather.models import WeatherSensitivity
 
 _NOW = datetime(2026, 10, 5, 10, tzinfo=timezone.utc)
 

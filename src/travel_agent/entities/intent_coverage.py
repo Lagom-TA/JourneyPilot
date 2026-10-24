@@ -5,7 +5,8 @@ from typing import List, Literal
 
 from pydantic import Field, model_validator
 
-from .contract_base import StrictModel
+from travel_agent.schema import StrictModel
+
 from .intent_spec import (
     IntentImpactStage,
     IntentKind,
@@ -16,7 +17,6 @@ from .intent_spec import (
     VerificationMode,
     canonical_json_hash,
 )
-
 
 INTENT_COVERAGE_VERSION = "journeypilot.intent_coverage.v1"
 INTENT_CONTRACT_SNAPSHOT_VERSION = "journeypilot.intent_contract_snapshot.v1"

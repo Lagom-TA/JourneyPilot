@@ -3,6 +3,16 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Iterable, Sequence
 
+from travel_agent.planning.research.candidates import (
+    DiningCandidate,
+    LodgingCandidate,
+    ResearchCandidate,
+    TransportCandidate,
+    VisitCandidate,
+)
+from travel_agent.planning.research.catalog import RecommendationCatalog
+from travel_agent.planning.research.domains import ResearchDomain
+
 from ..entities.candidate_discovery import CandidateDiscoveryOrigin
 from ..entities.candidate_ranking import CandidateRankingScore
 from ..entities.candidate_selection import (
@@ -12,27 +22,17 @@ from ..entities.candidate_selection import (
     SelectedCandidateCapability,
     SelectionPolicy,
 )
-from ..entities.delivery_bundle import (
-    DiningCandidate,
-    LodgingCandidate,
-    RecommendationCatalog,
-    ResearchCandidate,
-    TransportCandidate,
-    VisitCandidate,
-)
 from ..entities.intent_spec import (
     AlternativeIntentValue,
     CountIntentValue,
     IntentKind,
     IntentSpec,
-    IntentTarget,
     IntentStrength,
+    IntentTarget,
     ScalarIntentValue,
     canonical_json_hash,
 )
-from ..entities.research_domain import ResearchDomain
 from .candidate_combination import CandidateCombinationContext, candidate_coordinates
-
 
 CANDIDATE_SELECTION_POLICY_VERSION = "candidate_selection.v2"
 

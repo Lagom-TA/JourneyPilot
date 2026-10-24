@@ -10,8 +10,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
-from ...llm.task_routing import TaskKind, llm_for_task
-
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -20,41 +18,43 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from langchain_core.runnables import RunnableConfig
 
-from ...entities.delivery_bundle import (
+from travel_agent.planning.outcomes import (
     CandidateResearchGap,
-    EntityRef,
-    EntityType,
     GateClass,
     GateDisposition,
     GateFailureAttribution,
-    RecommendationCatalog,
-    ResearchCandidate,
-    ResearchPacket,
-    TransportCandidate,
-    TransportLegRef,
-    WeatherDayContext,
-    WeatherImpact,
-    ResearchDomain,
 )
-from ...entities.state import TravelAgentState, bounded_repair_context
-from ...entities.intent_spec import IntentStrength, IntentTarget
-from ...entities.research_query_plan import ResearchQueryKind
+from travel_agent.planning.references import EntityRef, EntityType, TransportLegRef
+from travel_agent.planning.research.candidates import (
+    ResearchCandidate,
+    TransportCandidate,
+)
+from travel_agent.planning.research.catalog import RecommendationCatalog
+from travel_agent.planning.research.domains import ResearchDomain
+from travel_agent.planning.research.packets import ResearchPacket
+from travel_agent.planning.weather.models import WeatherDayContext, WeatherImpact
+
 from ...entities.candidate_intent import IntentMatchStatus
+from ...entities.intent_spec import IntentStrength, IntentTarget
+from ...entities.itinerary_composition_v2 import (
+    ItineraryCompositionError,
+    LocalConnectorGap,
+    connector_candidate_quality_error,
+    connector_mode_requests_from_constraint_pack,
+    extract_local_connector_gaps,
+)
 from ...entities.provider_evidence import (
+    ProviderRouteLegScope,
     build_provider_evidence_assignments,
     build_required_long_distance_legs,
     dump_provider_evidence_assignments,
     explicit_cross_day_return_required,
-    ProviderRouteLegScope,
     scope_attempt_numbers,
 )
-from ...entities.itinerary_composition_v2 import (
-    ItineraryCompositionError,
-    LocalConnectorGap,
-    connector_mode_requests_from_constraint_pack,
-    connector_candidate_quality_error,
-    extract_local_connector_gaps,
-)
+from ...entities.research_query_plan import ResearchQueryKind
+from ...entities.state import TravelAgentState, bounded_repair_context
+from ...llm.router import get_model_router
+from ...llm.task_routing import TaskKind, llm_for_task
 from ...services.candidate_admission import (
     DETERMINISTIC_IDENTITY_VERDICT_FIELD_PATHS,
     admit_candidate,
@@ -62,15 +62,14 @@ from ...services.candidate_admission import (
 )
 from ...services.candidate_intent_evaluation import evaluate_candidate_intents
 from ...services.candidate_ranking import rank_candidates
-from ...services.day_planning import daily_planning_windows, default_walking_days
 from ...services.candidate_selection import (
     build_candidate_selection_plan,
     selection_policy_from_intent_spec,
 )
-from ...llm.router import get_model_router
 from ...services.constraint_applicability import (
     bind_candidate_constraint_gate_attestations,
 )
+from ...services.day_planning import daily_planning_windows, default_walking_days
 from ...services.destination_scope import destination_points
 from ...services.product_requirements import required_physical_candidate_kinds
 from ...services.research_query_planner import (
@@ -83,14 +82,13 @@ from ...services.weather_impact_engine import (
 )
 from ...workflows.composition_repair import apply_composition_repair_budget
 from ...workflows.node_names import RESEARCH_WORKER_NODES as _RESEARCH_WORKERS
+from ...workflows.run_control import is_structural_connector_round
 from ...workflows.run_deadline import (
     DeadlineObservation,
     observe_run_deadline,
 )
-from ...workflows.run_control import is_structural_connector_round
 from ..utils import strip_round_suffix
 from .provider_failure import classify_provider_failure, is_provider_or_model_failure
-
 
 logger = logging.getLogger(__name__)
 

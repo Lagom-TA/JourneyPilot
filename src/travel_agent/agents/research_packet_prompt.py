@@ -7,12 +7,11 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Sequence
 
-from ..memory.agent_context import render_agent_context
+from travel_agent.planning.research.packets import ResearchPacket
 
-from ..entities.delivery_bundle import ResearchPacket
+from ..memory.agent_context import render_agent_context
 from .destination_researcher.prompts import KNOWLEDGE_BASE_NOMINATION
 from .research_packet_output import ResearchWorkerKind
-
 
 # Static instructions refer to runtime values instead of interpolating them.
 # candidate_limit still comes from the same policy as the response schema.

@@ -3,7 +3,10 @@
 import hashlib
 from datetime import timedelta
 
-from ..entities.delivery_bundle import CustomBlock, EntityType, TimelineEntryRef, TripWorkspaceV2
+from travel_agent.planning.itinerary.models import CustomBlock, TimelineEntryRef
+from travel_agent.planning.references import EntityType
+from travel_agent.planning.workspace import TripWorkspaceV2
+
 from ..entities.itinerary_composition_v2 import ItineraryCompositionError
 from ..entities.planning_time_buffers import planned_boarding_buffer_minutes
 from ..entities.travel_content import public_selection_text

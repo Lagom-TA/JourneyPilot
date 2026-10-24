@@ -10,17 +10,17 @@ from datetime import datetime, timezone
 from typing import Mapping, Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from ..entities.delivery_bundle import (
-    EntityRef,
-    EntityType,
-    FactAssertion,
+from travel_agent.planning.references import EntityRef, EntityType, TransportLegRef
+from travel_agent.planning.research.candidates import (
     ResearchCandidate,
-    SourceRecord,
     TransportCandidate,
-    TransportLegRef,
+)
+from travel_agent.planning.research.evidence import FactAssertion, SourceRecord
+from travel_agent.planning.weather.models import (
     WeatherContextSnapshot,
     WeatherDayContext,
 )
+
 from .candidate_admission import is_dynamic_fact_field
 
 

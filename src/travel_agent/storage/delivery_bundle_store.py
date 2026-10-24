@@ -5,20 +5,20 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from copy import deepcopy
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, Optional
 
 from sqlalchemy import text
 
-from ..entities.delivery_bundle import (
+from travel_agent.planning.delivery.bundle import (
     DELIVERY_BUNDLE_CONTRACT_VERSION,
     DeliveryBundle,
 )
-from .database import get_db_session
 
+from .database import get_db_session
 
 FailureInjector = Callable[[str], None]
 

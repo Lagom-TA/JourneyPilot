@@ -11,7 +11,7 @@ the 30 seconds it holds behind ``COMPOSITION`` is what a delivered run spends
 on projection and the atomic Bundle write.
 
 The *numbers* live in one place only — ``config.RunDeadlineConfig`` — and they
-apply only when *building* a new :class:`~.delivery_bundle.RunDeadlineSnapshot`.
+apply only when *building* a new :class:`~travel_agent.runtime.deadlines.RunDeadlineSnapshot`.
 Everything downstream (validation, phase observation, and the budget handed to
 one model, provider or finalization call) reads the seconds embedded in that
 snapshot, so a later config change can neither invalidate a historical audit row

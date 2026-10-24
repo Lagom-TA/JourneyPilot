@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from typing import Dict, Iterable, List, Mapping
 
-from ..entities.capability_plan import AgentAssignmentContract, AgentName, CapabilityPlan
-from ..entities.delivery_bundle import ResearchDomain
+from travel_agent.planning.research.domains import ResearchDomain
+
+from ..entities.capability_plan import (
+    AgentAssignmentContract,
+    AgentName,
+    CapabilityPlan,
+)
 from ..entities.intent_spec import (
     CategoryIntentValue,
     IntentItem,
@@ -14,8 +19,8 @@ from ..entities.intent_spec import (
     IntentTarget,
     canonical_json_hash,
 )
-from ..entities.request_contract import RequestContract
 from ..entities.provider_evidence import build_required_long_distance_legs
+from ..entities.request_contract import RequestContract
 from ..entities.research_brief import (
     DomainResearchObjective,
     ResearchBriefV2,
@@ -24,7 +29,6 @@ from ..entities.research_brief import (
 from ..entities.research_query_plan import ResearchQueryPlan
 from ..entities.trip_input import ControlledTripIdentity
 from .product_requirements import required_physical_candidate_kinds
-
 
 RESEARCH_BRIEF_POLICY_VERSION = "research_brief_projection.v3"
 CAPABILITY_PLAN_POLICY_VERSION = "capability_plan.v2"

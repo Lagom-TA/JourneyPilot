@@ -1,6 +1,6 @@
 """The single authority for an itinerary entity's stated evidence basis.
 
-The persisted :class:`~travel_agent.entities.delivery_bundle.EntityLineage` never
+The persisted :class:`~travel_agent.planning.references.EntityLineage` never
 reaches a traveller: the public JSON boundary strips it, and the formal PDF is
 rendered from the report projection.  Without a derived statement an entry
 backed by an admitted research candidate and one the Itinerary Planner authored
@@ -22,13 +22,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Mapping, Optional
 
-from .delivery_bundle import (
-    EntityType,
-    StructuredItineraryV2,
-    TransportLeg,
-    TransportMode,
-)
-
+from travel_agent.planning.itinerary.models import StructuredItineraryV2, TransportLeg
+from travel_agent.planning.references import EntityType
+from travel_agent.planning.transport import TransportMode
 
 CITED_SOURCE = "cited_source"
 PUBLIC_REFERENCE = "public_reference"

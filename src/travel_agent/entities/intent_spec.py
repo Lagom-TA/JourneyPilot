@@ -9,8 +9,7 @@ from typing import Annotated, List, Literal, Optional, Union
 
 from pydantic import Field, model_validator
 
-from .contract_base import StrictModel
-
+from travel_agent.schema import StrictModel
 
 INTENT_SPEC_VERSION = "journeypilot.intent_spec.v1"
 
