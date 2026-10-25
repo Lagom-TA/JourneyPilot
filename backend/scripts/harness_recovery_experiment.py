@@ -52,7 +52,7 @@ async def scenario(cache, mode, complexity, tool_mode):
     tools = registry.get_tools_as_schemas()
     config = ToolExposureConfig(mode=tool_mode, min_tools_threshold=1)
     worker = "destination_researcher"
-    from tests.test_research_context import make_packet
+    from tests.fixtures.research_packets import make_packet
     packet = make_packet()
     raw = packet.model_dump_json()
     llm = FixtureLLM(tool_mode == "deferred", raw)

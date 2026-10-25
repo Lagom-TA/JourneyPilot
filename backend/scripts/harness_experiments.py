@@ -36,7 +36,7 @@ def write_rows(path, rows):
 
 
 def matrix():
-    from tests.test_research_context import make_packet, _query
+    from tests.fixtures.research_packets import make_packet, make_research_query
     from travel_agent.memory.research_context import format_worker_research_context
     packet = make_packet(entities=(("visit_a", "tokyo"), ("visit_b", "tokyo")))
     tools = [{"schema": {"type": "function", "function": {"name": f"read_{i}", "description": "Read observed provider facts", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}}}}} for i in range(8)]
@@ -46,7 +46,7 @@ def matrix():
         trial_id = hashlib.sha256(json.dumps(case, sort_keys=True).encode()).hexdigest()[:16]
         assignment = {"excluded_candidate_ids": ["visit_a"]} if run_mode == "supplement" else {}
         projection = format_worker_research_context({packet.research_packet_id: packet}, worker_kind="accommodation_researcher",
-            run_id="run_test", generation_id="generation_test", planned_queries=[_query()], assignment=assignment)
+            run_id="run_test", generation_id="generation_test", planned_queries=[make_research_query()], assignment=assignment)
         prompt = build_research_packet_prompt(worker_kind="accommodation_researcher", run_id="run_test", task_id="task",
             current_time="2026-10-08 12:00", constraint_pack_revision=1, fact_data_revision=1,
             candidate_limit=6,
@@ -57,7 +57,7 @@ def matrix():
         wire = {"messages": messages, "tools": list(exposure.tool_schemas)}
         estimate, schema_estimate = estimate_request_tokens(wire, "deepseek-v4.1-flash")
         rows.append({"call_id": f"offline_{trial_id}", "trial_id": trial_id, "scenario": case,
-            "measurement": "offline_fixture", "fixture": "tests/test_research_context.py; synthetic source padding",
+            "measurement": "offline_fixture", "fixture": "tests/fixtures/research_packets.py; synthetic source padding",
             "request_input_tokens_estimate": estimate, "tool_schema_tokens_estimate": schema_estimate,
             "stable_system_sha256": hashlib.sha256(messages[0]["content"].encode()).hexdigest(),
             "input_tokens": None, "cached_input_tokens": None, "usage_complete": False,

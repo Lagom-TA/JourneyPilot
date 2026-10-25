@@ -38,7 +38,7 @@ BIN = Path("/usr/lib/postgresql/14/bin")
 
 async def check_graph(store, saver, boundary):
     """Real Postgres pending writes + journal, without application admission."""
-    from tests.test_research_context import make_packet
+    from tests.fixtures.research_packets import make_packet
 
     calls, admitted, crash = [], [], [True]
     sibling_committed = asyncio.Event()
