@@ -798,3 +798,381 @@ async def test_terminal_accounting_filters_other_runs_and_unfinished_calls(
     event = resources.trip_run_store.events[run.run_id][-1]
     assert event.event_type == "run.cost_recorded"
     assert event.payload["call_count"] == 2
+
+
+@pytest.mark.parametrize(
+    "flush_path,operation",
+    [
+        ("background", "drain"), ("background", "ack"),
+        ("periodic", "drain"), ("periodic", "ack"),
+        ("terminal", "drain"), ("terminal", "ack"),
+        ("terminal", "apply_integrity"),
+    ],
+)
+async def test_usage_consumers_keep_loop_running_during_spool_operations(
+    resources, monkeypatch, flush_path, operation
+):
+    import threading
+
+    from travel_agent.runtime.usage_flush import UsageFlushService
+
+    recorder = UsageRecorder()
+    recorder.record(usage_call("current", "run"))
+    store = InMemoryCostLedgerStore()
+    accounting = ChatAccounting(
+        run_id="run", message_id="assistant", cost_ledger_store=store,
+        usage_recorder=recorder, trip_run_store=resources.trip_run_store,
+    )
+    loop = asyncio.get_running_loop()
+    entered = asyncio.Event()
+    release = threading.Event()
+    original = getattr(recorder, operation)
+    timed_out = []
+
+    def blocked(*args, **kwargs):
+        loop.call_soon_threadsafe(entered.set)
+        if not release.wait(2):
+            timed_out.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(recorder, operation, blocked)
+    if flush_path == "background":
+        pending = UsageFlushService(recorder, store).flush()
+    elif flush_path == "periodic":
+        pending = accounting.flush_usage_updates()
+    else:
+        pending = accounting.finalize_cost_summary(terminal=False)
+    task = asyncio.create_task(pending)
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        assert not task.done()
+        heartbeat = asyncio.Event()
+        loop.call_soon(heartbeat.set)
+        await asyncio.wait_for(heartbeat.wait(), 1)
+        assert not timed_out
+    finally:
+        release.set()
+        await asyncio.wait_for(task, 3)
+    assert not timed_out
+    assert [call.id for call in store.calls] == ["current"]
+
+
+@pytest.mark.parametrize("flush_path", ["background", "periodic", "terminal"])
+@pytest.mark.parametrize("stage", ["drain", "commit"])
+async def test_cancelled_usage_consumer_never_acks_uncommitted_batch(
+    resources, monkeypatch, flush_path, stage
+):
+    import threading
+
+    from travel_agent.runtime.usage_flush import UsageFlushService
+
+    recorder = UsageRecorder()
+    rec = usage_call("current", "run")
+    recorder.record(rec)
+    store = InMemoryCostLedgerStore()
+    entered = asyncio.Event()
+    release = threading.Event()
+    drained = threading.Event()
+    loop = asyncio.get_running_loop()
+    original = recorder.drain
+
+    def blocked_drain(*args, **kwargs):
+        loop.call_soon_threadsafe(entered.set)
+        try:
+            release.wait(2)
+            return original(*args, **kwargs)
+        finally:
+            drained.set()
+
+    async def blocked_commit(batch):
+        entered.set()
+        await asyncio.Future()
+
+    if stage == "drain":
+        monkeypatch.setattr(recorder, "drain", blocked_drain)
+    else:
+        monkeypatch.setattr(store, "record_calls", blocked_commit)
+    ack = Mock(wraps=recorder.ack)
+    monkeypatch.setattr(recorder, "ack", ack)
+    accounting = ChatAccounting(
+        run_id="run", message_id="assistant", cost_ledger_store=store,
+        usage_recorder=recorder, trip_run_store=resources.trip_run_store,
+    )
+    if flush_path == "background":
+        pending = UsageFlushService(recorder, store).flush()
+    elif flush_path == "periodic":
+        pending = accounting.flush_usage_updates()
+    else:
+        pending = accounting.finalize_cost_summary(terminal=False)
+    task = asyncio.create_task(pending)
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    finally:
+        release.set()
+        if stage == "drain":
+            assert await asyncio.to_thread(drained.wait, 3)
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+    ack.assert_not_called()
+    assert store.calls == []
+    assert original() == [rec]
+
+
+@pytest.mark.parametrize("flush_path", ["background", "periodic", "terminal"])
+@pytest.mark.parametrize("maxlen", [1, 3])
+@pytest.mark.parametrize("write_recovers", [False, True])
+async def test_conflicting_spool_payload_does_not_block_healthy_run_accounting(
+    resources, tmp_path, monkeypatch, flush_path, maxlen, write_recovers
+):
+    from travel_agent.runtime.usage_flush import UsageFlushService
+
+    run = await resources.trip_run_store.create_run(
+        session_id="healthy", user_id="local", mode="fast"
+    )
+    poison_run = await resources.trip_run_store.create_run(
+        session_id="conflicting", user_id="local", mode="fast"
+    )
+    path = tmp_path / "spool.sqlite3"
+    recorder = UsageRecorder(maxlen=maxlen, spool_path=path)
+    put = recorder._spool.put
+
+    def unavailable(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(recorder._spool, "put", unavailable)
+    originals = [usage_call(f"poison-{n}", poison_run.run_id) for n in range(2)]
+    for rec in originals:
+        recorder.record(rec)
+    writer = UsageRecorder(spool_path=path)
+    conflicting = [replace(rec, output_tokens=6, total_tokens=16) for rec in originals]
+    for rec in conflicting:
+        writer.record(rec)
+    healthy = usage_call("healthy", run.run_id)
+    writer.record(healthy)
+    if write_recovers:
+        monkeypatch.setattr(recorder._spool, "put", put)
+    store = InMemoryCostLedgerStore()
+    ack = Mock(wraps=recorder.ack)
+    monkeypatch.setattr(recorder, "ack", ack)
+    accounting = ChatAccounting(
+        run_id=run.run_id, message_id="assistant", cost_ledger_store=store,
+        usage_recorder=recorder, trip_run_store=resources.trip_run_store,
+    )
+    if flush_path == "background":
+        await UsageFlushService(recorder, store).flush()
+    elif flush_path == "periodic":
+        events = await accounting.flush_usage_updates()
+        assert [event["call_id"] for event in events] == [healthy.id]
+    else:
+        summary = await accounting.finalize_cost_summary(terminal=True)
+        assert summary["call_count"] == 1
+        assert summary["pending_call_count"] == 0
+        assert summary["record_failed"] == 0
+    assert [call.id for call in store.calls] == [healthy.id]
+    ack.assert_called_once_with([healthy])
+    assert writer.drain() == conflicting
+
+    accounting.run_id = poison_run.run_id
+    summary = await accounting.finalize_cost_summary(terminal=True)
+    assert summary["record_failed"] > 0 and summary["pending_call_count"] > 0
+    assert summary["total_tokens"] is None and not summary["capture_complete"]
+    assert not summary["token_usage_complete"] and not summary["cost_complete"]
+    event = resources.trip_run_store.events[poison_run.run_id][-1]
+    assert event.event_type == "run.cost_record_failed"
+    assert event.payload["record_failed"] == summary["record_failed"]
+    ack.assert_called_once_with([healthy])
+    for _ in range(2):
+        assert recorder.drain() == []
+    recorder.ack(originals + conflicting)
+    assert writer.drain() == conflicting
+    assert recorder._volatile == {rec.id: ("complete", rec) for rec in originals}
+    assert set(recorder._conflicts) == {rec.id for rec in originals}
+    writer._spool.db.close()
+    recorder._spool.db.close()
+
+
+@pytest.mark.parametrize("flush_path", ["background", "periodic"])
+@pytest.mark.parametrize("maxlen", [1, 3])
+@pytest.mark.parametrize("write_recovers", [False, True])
+async def test_conflicting_capture_is_quarantined_without_blocking_healthy_run(
+    resources, tmp_path, monkeypatch, flush_path, maxlen, write_recovers
+):
+    from travel_agent.runtime.usage_flush import UsageFlushService
+
+    poison_run = await resources.trip_run_store.create_run(
+        session_id="poison-cost", user_id="local", mode="fast"
+    )
+    healthy_run = await resources.trip_run_store.create_run(
+        session_id="healthy-cost", user_id="local", mode="fast"
+    )
+    path = tmp_path / "spool.sqlite3"
+    recorder = UsageRecorder(maxlen=maxlen, spool_path=path)
+    put = recorder._spool.put
+
+    def unavailable(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(recorder._spool, "put", unavailable)
+    volatile = usage_call("poison-'?-id", poison_run.run_id)
+    recorder.record(volatile)
+    other = UsageRecorder(spool_path=path)
+    durable = replace(volatile, input_tokens=99, total_tokens=104)
+    healthy = usage_call("healthy", healthy_run.run_id)
+    other.record(durable)
+    other.record(healthy)
+    if write_recovers:
+        monkeypatch.setattr(recorder._spool, "put", put)
+    ack = Mock(wraps=recorder.ack)
+    monkeypatch.setattr(recorder, "ack", ack)
+    store = InMemoryCostLedgerStore()
+    accounting = ChatAccounting(
+        run_id=healthy_run.run_id, message_id="assistant",
+        cost_ledger_store=store, usage_recorder=recorder,
+        trip_run_store=resources.trip_run_store,
+    )
+
+    if flush_path == "background":
+        await UsageFlushService(recorder, store).flush()
+    else:
+        events = await accounting.flush_usage_updates()
+        assert [event["call_id"] for event in events] == [healthy.id]
+    assert [call.id for call in store.calls] == [healthy.id]
+    ack.assert_called_once_with([healthy])
+    healthy_integrity = recorder.integrity(healthy_run.run_id)
+    assert healthy_integrity["pending_call_count"] == 0
+    assert healthy_integrity["spool_write_failed"] == 0
+    assert other.drain() == [durable]
+    assert recorder.drain() == []
+    assert recorder._volatile[volatile.id] == ("complete", volatile)
+
+    # Even a stale acknowledgement cannot discard either quarantined payload.
+    await asyncio.to_thread(recorder.ack, [volatile, durable])
+    assert recorder._volatile[volatile.id] == ("complete", volatile)
+    assert other.drain() == [durable]
+    accounting.run_id = poison_run.run_id
+    summary = await accounting.finalize_cost_summary(terminal=True)
+    assert summary["call_count"] == 0
+    assert summary["record_failed"] > 0
+    assert summary["pending_call_count"] > 0
+    assert summary["total_tokens"] is None
+    assert not summary["capture_complete"] and not summary["cost_complete"]
+    event = resources.trip_run_store.events[poison_run.run_id][-1]
+    assert event.event_type == "run.cost_record_failed"
+    assert event.payload["record_failed"] == summary["record_failed"]
+    assert other.drain() == [durable]
+    assert recorder._volatile[volatile.id] == ("complete", volatile)
+    assert [call.id for call in store.calls] == [healthy.id]
+    recorder._spool.db.close()
+    other._spool.db.close()
+
+
+@pytest.mark.parametrize(
+    "flush_path,operation",
+    [
+        ("background", "drain"), ("background", "ack"),
+        ("periodic", "drain"), ("periodic", "ack"),
+        ("terminal", "drain"), ("terminal", "ack"),
+        ("terminal", "apply_integrity"),
+    ],
+)
+async def test_async_usage_consumers_leave_event_loop_free_during_spool_io(
+    resources, monkeypatch, flush_path, operation
+):
+    from threading import Event
+    from travel_agent.runtime.usage_flush import UsageFlushService
+
+    recorder = UsageRecorder()
+    recorder.record(usage_call("responsive", "responsive-run"))
+    entered, release, exited = Event(), Event(), Event()
+    expired = []
+    original = getattr(recorder, operation)
+
+    def blocking(*args, **kwargs):
+        entered.set()
+        try:
+            if not release.wait(2):
+                expired.append(operation)
+            return original(*args, **kwargs)
+        finally:
+            exited.set()
+
+    monkeypatch.setattr(recorder, operation, blocking)
+    store = InMemoryCostLedgerStore()
+    accounting = ChatAccounting(
+        run_id="responsive-run", message_id="assistant",
+        cost_ledger_store=store, usage_recorder=recorder,
+        trip_run_store=resources.trip_run_store,
+    )
+    if flush_path == "background":
+        consume = UsageFlushService(recorder, store).flush()
+    elif flush_path == "periodic":
+        consume = accounting.flush_usage_updates()
+    else:
+        consume = accounting.finalize_cost_summary(terminal=False)
+    task = asyncio.create_task(consume)
+    try:
+        assert await asyncio.wait_for(asyncio.to_thread(entered.wait, 1), 1.5)
+        # This coroutine must run before the blocking I/O has been released.
+        await asyncio.sleep(0)
+        assert not expired and not exited.is_set()
+        assert not task.done()
+    finally:
+        release.set()
+        await asyncio.wait_for(task, 3)
+        recorder._spool.db.close()
+    assert [call.id for call in store.calls] == ["responsive"]
+
+
+@pytest.mark.parametrize("flush_path", ["background", "periodic", "terminal"])
+async def test_cancelling_usage_drain_propagates_without_commit_or_ack(
+    resources, monkeypatch, flush_path
+):
+    from threading import Event
+    from travel_agent.runtime.usage_flush import UsageFlushService
+
+    recorder = UsageRecorder()
+    rec = usage_call("cancelled-drain", "cancelled-run")
+    recorder.record(rec)
+    drain = recorder.drain
+    entered, release, exited = Event(), Event(), Event()
+
+    def blocking(**kwargs):
+        entered.set()
+        try:
+            release.wait(2)
+            return drain(**kwargs)
+        finally:
+            exited.set()
+
+    monkeypatch.setattr(recorder, "drain", blocking)
+    ack = Mock(wraps=recorder.ack)
+    monkeypatch.setattr(recorder, "ack", ack)
+    store = InMemoryCostLedgerStore()
+    accounting = ChatAccounting(
+        run_id=rec.run_id, message_id="assistant",
+        cost_ledger_store=store, usage_recorder=recorder,
+        trip_run_store=resources.trip_run_store,
+    )
+    if flush_path == "background":
+        consume = UsageFlushService(recorder, store).flush()
+    elif flush_path == "periodic":
+        consume = accounting.flush_usage_updates()
+    else:
+        consume = accounting.finalize_cost_summary(terminal=True)
+    task = asyncio.create_task(consume)
+    try:
+        assert await asyncio.wait_for(asyncio.to_thread(entered.wait, 1), 1.5)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    finally:
+        release.set()
+        assert await asyncio.wait_for(asyncio.to_thread(exited.wait, 2), 3)
+    assert not store.calls
+    ack.assert_not_called()
+    assert drain() == [rec]
+    recorder._spool.db.close()

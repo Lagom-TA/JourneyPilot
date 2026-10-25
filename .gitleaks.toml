@@ -27,4 +27,6 @@ paths = [
 # Used historically in config/attestation unit tests for Ed25519 fixtures.
 regexes = [
   '''AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8''',
+  # Python attribute expression misidentified as a token in historical routing code.
+  '''^reasoning_effort=self\._reasoning_effort$''',
 ]

@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -632,7 +633,7 @@ class CostLedgerStore:
             calls = [_call_from_row(dict(row)) for row in result.mappings().all()]
         summary = summarize_calls(run_id, calls)
         from ..llm.usage import get_usage_recorder
-        return get_usage_recorder().apply_integrity(summary)
+        return await asyncio.to_thread(get_usage_recorder().apply_integrity, summary)
 
     async def count_calls(self, run_id: str) -> int:
         async with get_db_session() as session:

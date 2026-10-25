@@ -15,12 +15,12 @@ class UsageFlushService:
         self.task = None
 
     async def flush(self):
-        batch = self.recorder.drain()
+        batch = await asyncio.to_thread(self.recorder.drain)
         if not batch:
             return
         try:
             await self.store.record_calls(batch)
-            self.recorder.ack(batch)
+            await asyncio.to_thread(self.recorder.ack, batch)
             return
         except asyncio.CancelledError:
             raise
@@ -30,7 +30,7 @@ class UsageFlushService:
         for rec in batch:
             try:
                 await self.store.record_calls([rec])
-                self.recorder.ack([rec])
+                await asyncio.to_thread(self.recorder.ack, [rec])
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

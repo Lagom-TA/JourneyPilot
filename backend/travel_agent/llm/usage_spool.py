@@ -87,12 +87,20 @@ class UsageSpool:
             self.db.execute("INSERT INTO usage_outbox (id,run_id,phase,pid,payload,owner_token) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET phase=excluded.phase,payload=excluded.payload",
                             (payload["id"], payload["run_id"], phase, os.getpid(), encoded, process_identity(os.getpid())))
 
-    def pending(self, *, run_id=None, limit=500):
+    def pending(self, *, run_id=None, limit=500, exclude_ids=(), include_ids=None):
         sql = "SELECT payload FROM usage_outbox WHERE phase='complete'"
         params = []
         if run_id:
             sql += " AND run_id=?"
             params.append(run_id)
+        if exclude_ids:
+            sql += " AND id NOT IN (" + ",".join("?" for _ in exclude_ids) + ")"
+            params.extend(exclude_ids)
+        if include_ids is not None:
+            if not include_ids:
+                return []
+            sql += " AND id IN (" + ",".join("?" for _ in include_ids) + ")"
+            params.extend(include_ids)
         sql += " ORDER BY rowid LIMIT ?"
         return [json.loads(row[0]) for row in self.db.execute(sql, [*params, limit])]
 

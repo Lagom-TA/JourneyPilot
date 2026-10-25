@@ -48,10 +48,14 @@ def test_same_id_payload_conflict_and_stale_ack_are_rejected(tmp_path):
     recorder = UsageRecorder(spool_path=tmp_path / "spool.sqlite3")
     rec = record()
     recorder.record(rec)
+    recorder.ack([replace(rec, output_tokens=7)])
+    assert recorder.snapshot() == [rec]
     with pytest.raises(UsageSpoolConflict):
         recorder.record(replace(rec, output_tokens=6))
-    recorder.ack([replace(rec, output_tokens=7)])
-    assert len(recorder.snapshot()) == 1
+    recorder.ack([rec])
+    assert recorder.snapshot() == []
+    assert UsageRecorder(spool_path=tmp_path / "spool.sqlite3").snapshot() == [rec]
+    assert not recorder.integrity("run")["capture_complete"]
 
 
 async def test_partial_commit_then_conflict_does_not_block_other_runs():
@@ -190,7 +194,10 @@ def test_conflicting_capture_does_not_replace_volatile_completion(tmp_path, monk
         recorder.record(replace(rec, output_tokens=6))
     recorder.ack([replace(rec, output_tokens=7)])
     monkeypatch.setattr(recorder._spool, "put", put)
-    assert recorder.drain() == [rec]
+    assert recorder.drain() == []
+    recorder.ack([rec])
+    assert recorder._volatile[rec.id] == ("complete", rec)
+    assert not recorder.integrity("run")["capture_complete"]
     assert recorder.integrity("run")["spool_write_failed"] == 1
 
 
@@ -213,8 +220,9 @@ def test_drain_never_hides_conflict_between_volatile_and_durable_capture(
     other.record(conflicting)
     if write_recovers:
         monkeypatch.setattr(recorder._spool, "put", put)
-    with pytest.raises(UsageSpoolConflict):
-        recorder.drain()
+    assert recorder.drain() == []
+    recorder.ack([original, conflicting])
+    assert not recorder.integrity("run")["capture_complete"]
     assert other.drain() == [conflicting]
     assert recorder._volatile[original.id] == ("complete", original)
     assert recorder.integrity("run")["spool_write_failed"] == 1
@@ -267,7 +275,11 @@ def test_concurrent_capture_conflict_is_not_last_writer_wins(tmp_path):
     with ThreadPoolExecutor(2) as pool:
         outcomes = list(pool.map(capture, range(2)))
     assert sorted(outcomes) == ["conflict", "ok"]
-    assert len(recorders[0].snapshot()) == 1
+    saved = UsageRecorder(spool_path=path).snapshot()
+    assert len(saved) == 1 and saved[0].output_tokens in {5, 6}
+    conflicted = recorders[outcomes.index("conflict")]
+    assert conflicted.snapshot() == []
+    assert not conflicted.integrity("run")["capture_complete"]
 
 
 def test_reused_pid_does_not_hide_abandoned_attempt():
@@ -305,38 +317,38 @@ def test_concurrent_process_startup_opens_current_spool_without_volatile_fallbac
 ):
     import json
     from concurrent.futures import ThreadPoolExecutor
-    from threading import Barrier
 
     path = tmp_path / "spool.sqlite3"
     if existing_schema:
         initialized = UsageRecorder(spool_path=path)
         initialized._spool.db.close()
     script = """
-import json,sys
+import json,sys,time
+from pathlib import Path
 from travel_agent.llm.usage import UsageRecorder,LLMCallRecord
-print('ready', flush=True)
-sys.stdin.readline()
+rec = LLMCallRecord(**json.loads(sys.argv[2]))
+directory = Path(sys.argv[1]).parent
+(directory / f'{rec.id}.ready').touch()
+deadline = time.monotonic() + 10
+while len(list(directory.glob('*.ready'))) < 8:
+    if time.monotonic() >= deadline:
+        raise TimeoutError('Concurrent workers did not become ready')
+    time.sleep(0.01)
 r=UsageRecorder(spool_path=sys.argv[1])
 assert r._spool is not None
-r.record(LLMCallRecord(**json.loads(sys.argv[2])))
+r.record(rec)
 assert r.integrity('run')['spool_write_failed'] == 0
 """
     env = {"PATH": os.environ["PATH"], "PYTHONPATH": str(Path(__file__).resolve().parents[2])}
-    barrier = Barrier(8)
-
     def capture(n):
-        with subprocess.Popen(
+        result = subprocess.run(
             [sys.executable, "-c", script, str(path), json.dumps(record(f"call_{n}").to_dict())],
             env=env,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
-        ) as child:
-            assert child.stdout.readline().strip() == "ready"
-            barrier.wait(timeout=15)
-            _, error = child.communicate("start\n", timeout=20)
-            assert child.returncode == 0, error
+            timeout=20,
+        )
+        assert result.returncode == 0, result.stderr
 
     with ThreadPoolExecutor(8) as pool:
         list(pool.map(capture, range(8)))

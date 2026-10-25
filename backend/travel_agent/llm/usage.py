@@ -137,6 +137,7 @@ class UsageRecorder:
         self._lock = threading.Lock()
         self._batch_size = max(1, maxlen)
         self._volatile = {}
+        self._conflicts = {}
         self._failures = {}
         self._spool_error = False
         try:
@@ -146,9 +147,16 @@ class UsageRecorder:
             self._spool = None
             self._spool_error = True
 
-    def _persist(self, rec, phase, *, retry=False):
+    def _mark_conflict(self, *records):
+        for rec in records:
+            self._conflicts.setdefault(rec.id, set()).add(rec.run_id)
+
+    def _persist(self, rec, phase, *, retry=False) -> bool:
         existing = self._volatile.get(rec.id)
-        if existing and existing[0] == "complete" and existing != (phase, rec):
+        if rec.id in self._conflicts or (
+            existing and existing[0] == "complete" and existing != (phase, rec)
+        ):
+            self._mark_conflict(rec, *([existing[1]] if existing else []))
             raise UsageSpoolConflict("call_id has conflicting usage payload")
         try:
             if self._spool is None:
@@ -159,7 +167,10 @@ class UsageRecorder:
                 del self._failures[run_id]
             self._volatile.pop(rec.id, None)
             self._spool_error = False
+            return True
         except UsageSpoolConflict:
+            self._mark_conflict(rec)
+            self._volatile.setdefault(rec.id, (phase, deepcopy(rec)))
             raise
         except Exception as exc:
             self._spool_error = True
@@ -167,6 +178,7 @@ class UsageRecorder:
                 self._failures[rec.run_id] = self._failures.get(rec.run_id, 0) + 1
             self._volatile[rec.id] = (phase, deepcopy(rec))
             logging.getLogger(__name__).error("Usage persistence failed call_id=%s error=%s", rec.id, type(exc).__name__)
+            return False
 
     def _put(self, rec, phase):
         with self._lock:
@@ -181,28 +193,68 @@ class UsageRecorder:
 
     def drain(self, *, run_id=None):
         with self._lock:
+            attempts = 0
+            write_failed = False
             for phase, rec in list(self._volatile.values()):
-                if phase == "complete" and (not run_id or rec.run_id == run_id):
-                    self._persist(rec, phase, retry=True)
+                if (phase != "complete" or rec.id in self._conflicts
+                        or (run_id and rec.run_id != run_id)):
+                    continue
+                if attempts >= self._batch_size:
+                    break
+                attempts += 1
+                try:
+                    if not self._persist(rec, phase, retry=True):
+                        write_failed = True
+                        break
+                except UsageSpoolConflict:
+                    continue
             records = {}
             if self._spool:
                 try:
-                    self._spool.recover_abandoned()
-                    for data in self._spool.pending(run_id=run_id, limit=self._batch_size):
-                        records[data["id"]] = LLMCallRecord(**data)
+                    if not write_failed:
+                        self._spool.recover_abandoned()
+                    # Volatile records can lie beyond the durable batch boundary.
+                    # Check their IDs before returning either side of a conflict.
+                    volatile_ids = [
+                        rec.id for phase, rec in self._volatile.values()
+                        if phase == "complete" and rec.id not in self._conflicts
+                        and (not run_id or rec.run_id == run_id)
+                    ]
+                    for offset in range(0, len(volatile_ids), 500):
+                        ids = volatile_ids[offset:offset + 500]
+                        for data in self._spool.pending(include_ids=ids, limit=len(ids)):
+                            rec = LLMCallRecord(**data)
+                            if self._volatile[rec.id][1] != rec:
+                                self._mark_conflict(rec, self._volatile[rec.id][1])
+                    while True:
+                        records = {}
+                        found_conflict = False
+                        for data in self._spool.pending(
+                            run_id=run_id, limit=self._batch_size,
+                            exclude_ids=self._conflicts,
+                        ):
+                            rec = LLMCallRecord(**data)
+                            existing = self._volatile.get(rec.id)
+                            if existing and existing[0] == "complete" and existing[1] != rec:
+                                self._mark_conflict(rec, existing[1])
+                                found_conflict = True
+                            else:
+                                records[rec.id] = rec
+                        if not found_conflict:
+                            break
                 except Exception as exc:
                     self._spool_error = True
                     logging.getLogger(__name__).error("Usage spool read failed: %s", type(exc).__name__)
             for phase, rec in self._volatile.values():
-                if phase == "complete" and (not run_id or rec.run_id == run_id):
-                    if rec.id in records and records[rec.id] != rec:
-                        raise UsageSpoolConflict("call_id has conflicting usage payload")
+                if (phase == "complete" and rec.id not in self._conflicts
+                        and (not run_id or rec.run_id == run_id)):
                     records[rec.id] = deepcopy(rec)
             return list(records.values())
 
     def ack(self, records):
         with self._lock:
-            if self._spool:
+            records = [rec for rec in records if rec.id not in self._conflicts]
+            if self._spool and records:
                 self._spool.ack([rec.to_dict() for rec in records])
             for rec in records:
                 if self._volatile.get(rec.id) == ("complete", rec):
@@ -219,6 +271,7 @@ class UsageRecorder:
                 pending, failures = 0, 0
                 self._spool_error = True
             pending += sum(1 for _, rec in self._volatile.values() if rec.run_id == run_id)
+            pending = max(pending, sum(run_id in runs for runs in self._conflicts.values()))
             failures += self._failures.get(run_id, 0)
             return {"pending_call_count": pending, "spool_write_failed": failures,
                     "capture_complete": not (pending or failures or self._spool_error),
@@ -243,6 +296,7 @@ class UsageRecorder:
                     self._spool.db.execute("DELETE FROM usage_outbox")
                     self._spool.db.execute("DELETE FROM usage_capture_failures")
             self._volatile.clear()
+            self._conflicts.clear()
             self._failures.clear()
 
     def __len__(self):

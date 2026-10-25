@@ -200,3 +200,167 @@ async def test_the_retry_loop_cannot_outspend_the_tool_call_budget():
         current_run_id.reset(token_run)
 
     assert ledger.usage().tool_calls == 2
+
+
+async def test_usage_flush_stops_volatile_recovery_after_first_io_failure(monkeypatch):
+    from unittest.mock import Mock
+
+    from travel_agent.llm.usage import LLMCallRecord, UsageRecorder
+    from travel_agent.runtime.usage_flush import UsageFlushService
+    from travel_agent.storage.cost_ledger_store import InMemoryCostLedgerStore
+
+    recorder = UsageRecorder(maxlen=2)
+    put = recorder._spool.put
+    failing_put = Mock(side_effect=OSError("disk full"))
+    monkeypatch.setattr(recorder._spool, "put", failing_put)
+    records = [LLMCallRecord(
+        id=f"call-{n}", run_id="run", node=None, agent=None, tier="fast",
+        provider="test", model_request="test", method="ainvoke", stream=False,
+        start_ts="2026-10-08T00:00:00+00:00",
+        input_tokens=10, output_tokens=5, total_tokens=15,
+    ) for n in range(7)]
+    for rec in records:
+        recorder.record(rec)
+    recover = Mock(wraps=recorder._spool.recover_abandoned)
+    monkeypatch.setattr(recorder._spool, "recover_abandoned", recover)
+
+    class Unavailable:
+        async def record_calls(self, batch):
+            raise ConnectionError("cost database unavailable")
+
+    service = UsageFlushService(recorder, Unavailable())
+    for _ in range(3):
+        failing_put.reset_mock()
+        await service.flush()
+        assert failing_put.call_count == 1
+        recover.assert_not_called()
+        assert list(recorder._volatile.values()) == [("complete", rec) for rec in records]
+        assert recorder.integrity("run")["spool_write_failed"] == len(records)
+
+    monkeypatch.setattr(recorder._spool, "put", put)
+    service.store = InMemoryCostLedgerStore()
+    await service.flush()
+    assert [call.id for call in service.store.calls] == [rec.id for rec in records]
+    assert recorder.drain() == [] and recorder._volatile == {}
+    assert recorder.integrity("run")["pending_call_count"] == 0
+    assert recorder.integrity("run")["spool_write_failed"] == len(records)
+
+
+def test_usage_drain_limits_volatile_recovery_to_batch_size(monkeypatch):
+    from unittest.mock import Mock
+
+    from travel_agent.llm.usage import LLMCallRecord, UsageRecorder
+
+    recorder = UsageRecorder(maxlen=2)
+    put = recorder._spool.put
+    monkeypatch.setattr(recorder._spool, "put", Mock(side_effect=OSError("disk full")))
+    for n in range(7):
+        recorder.record(LLMCallRecord(
+            id=f"call-{n}", run_id="run", node=None, agent=None, tier="fast",
+            provider="test", model_request="test", method="ainvoke", stream=False,
+            start_ts="2026-10-08T00:00:00+00:00",
+        ))
+    recovering_put = Mock(wraps=put)
+    monkeypatch.setattr(recorder._spool, "put", recovering_put)
+    for expected_volatile, expected_attempts in [(5, 2), (3, 2), (1, 2), (0, 1)]:
+        recovering_put.reset_mock()
+        recorder.drain()
+        assert recovering_put.call_count == expected_attempts
+        assert len(recorder._volatile) == expected_volatile
+    assert {data["id"] for data in recorder._spool.pending()} == {
+        f"call-{n}" for n in range(7)
+    }
+
+
+def test_usage_spool_excludes_poison_ids_before_applying_limit():
+    from travel_agent.llm.usage import LLMCallRecord, UsageRecorder
+
+    recorder = UsageRecorder(maxlen=1)
+    poison_id = "poison'); DROP TABLE usage_outbox; --"
+    for call_id in [poison_id, "healthy"]:
+        recorder.record(LLMCallRecord(
+            id=call_id, run_id="run", node=None, agent=None, tier="fast",
+            provider="test", model_request="test", method="ainvoke", stream=False,
+            start_ts="2026-10-08T00:00:00+00:00",
+        ))
+    assert [data["id"] for data in recorder._spool.pending(
+        run_id="run", limit=1, exclude_ids={poison_id}
+    )] == ["healthy"]
+    assert recorder._spool.integrity("run") == (2, 0)
+
+
+@pytest.mark.parametrize("batch_size", [1, 3])
+def test_usage_drain_stops_retrying_shared_io_failure_without_losing_records(
+    tmp_path, monkeypatch, batch_size
+):
+    from travel_agent.llm.usage import LLMCallRecord, UsageRecorder
+
+    recorder = UsageRecorder(maxlen=batch_size, spool_path=tmp_path / "spool.sqlite3")
+    attempts = []
+
+    def unavailable(payload, **kwargs):
+        attempts.append(payload["id"])
+        raise OSError("disk full")
+
+    monkeypatch.setattr(recorder._spool, "put", unavailable)
+    records = [
+        LLMCallRecord(
+            id=f"call-{n}", run_id="run", node=None, agent=None, tier="fast",
+            provider="test", model_request="test", method="ainvoke", stream=False,
+            start_ts="2026-10-08T00:00:00+00:00",
+        )
+        for n in range(7)
+    ]
+    for rec in records:
+        recorder.record(rec)
+    monkeypatch.setattr(
+        recorder._spool, "recover_abandoned",
+        lambda: pytest.fail("shared write failure must stop further write attempts"),
+    )
+    for _ in range(3):
+        attempts.clear()
+        assert recorder.drain() == records
+        assert len(attempts) == 1
+        assert len(recorder._volatile) == len(records)
+        integrity = recorder.integrity("run")
+        assert integrity["spool_write_failed"] == len(records)
+        assert integrity["pending_call_count"] == len(records)
+        assert not integrity["capture_complete"]
+    recorder._spool.db.close()
+
+
+@pytest.mark.parametrize("batch_size", [1, 3])
+def test_usage_drain_bounds_successful_local_recovery_attempts(
+    tmp_path, monkeypatch, batch_size
+):
+    from travel_agent.llm.usage import LLMCallRecord, UsageRecorder
+
+    recorder = UsageRecorder(maxlen=batch_size, spool_path=tmp_path / "spool.sqlite3")
+    put = recorder._spool.put
+
+    def unavailable(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(recorder._spool, "put", unavailable)
+    records = [
+        LLMCallRecord(
+            id=f"call-{n}", run_id="run", node=None, agent=None, tier="fast",
+            provider="test", model_request="test", method="ainvoke", stream=False,
+            start_ts="2026-10-08T00:00:00+00:00",
+        )
+        for n in range(7)
+    ]
+    for rec in records:
+        recorder.record(rec)
+    attempts = []
+
+    def recovered(payload, **kwargs):
+        attempts.append(payload["id"])
+        return put(payload, **kwargs)
+
+    monkeypatch.setattr(recorder._spool, "put", recovered)
+    assert {rec.id for rec in recorder.drain()} == {rec.id for rec in records}
+    assert len(attempts) == batch_size
+    assert len(recorder._volatile) == len(records) - batch_size
+    assert len(recorder._spool.pending()) == batch_size
+    recorder._spool.db.close()

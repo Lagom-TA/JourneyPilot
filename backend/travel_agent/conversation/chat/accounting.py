@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 from travel_agent.storage.cost_ledger_store import cost_event_summary
@@ -26,12 +27,12 @@ class ChatAccounting:
         """
         if self.cost_ledger_store is None or self.usage_recorder is None:
             return []
-        batch = self.usage_recorder.drain()
+        batch = await asyncio.to_thread(self.usage_recorder.drain)
         if not batch:
             return []
         try:
             ledger = await self.cost_ledger_store.record_calls(batch)
-            self.usage_recorder.ack(batch)
+            await asyncio.to_thread(self.usage_recorder.ack, batch)
         except Exception as exc:
             logger.warning(f"usage 落库失败（保留 {len(batch)} 条待重试）: {exc}")
             return []
@@ -72,11 +73,11 @@ class ChatAccounting:
         record_failed = 0
         record_error: Optional[str] = None
         if self.usage_recorder is not None:
-            batch = self.usage_recorder.drain(run_id=self.run_id)
+            batch = await asyncio.to_thread(self.usage_recorder.drain, run_id=self.run_id)
             if batch:
                 try:
                     await self.cost_ledger_store.record_calls(batch)
-                    self.usage_recorder.ack(batch)
+                    await asyncio.to_thread(self.usage_recorder.ack, batch)
                 except Exception as exc:
                     record_failed = sum(1 for rec in batch if rec.run_id == self.run_id)
                     record_error = exc.__class__.__name__
@@ -97,7 +98,7 @@ class ChatAccounting:
             logger.debug(f"tool_context_saving 汇总失败（不影响主流）: {exc}")
         summary["record_failed"] = record_failed
         if self.usage_recorder is not None:
-            self.usage_recorder.apply_integrity(summary)
+            await asyncio.to_thread(self.usage_recorder.apply_integrity, summary)
             record_failed = summary["record_failed"]
 
         budget_ledger = peek_ledger(self.run_id)
