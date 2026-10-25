@@ -129,25 +129,6 @@ def _public_comparison_facts(field_paths: Sequence[str]) -> list[str]:
     return labels or ["实体与来源已核验"]
 
 
-def _intent_deviation_notes(workspace: TripWorkspaceV2) -> list[str]:
-    from travel_agent.planning.requirements.coverage_contracts import (
-        IntentCoverageStatus,
-    )
-    from travel_agent.planning.delivery.requirement_presentation import (
-        public_requirement_explanation,
-    )
-
-    if workspace.intent_coverage_report is None:
-        return []
-    coverage = {item.intent_id: item for item in workspace.intent_coverage_report.items}
-    return [
-        public_requirement_explanation(requirement, item)
-        for requirement in workspace.intent_contract_snapshot.requirements
-        if (item := coverage.get(requirement.intent_id)) is not None
-        and item.status is not IntentCoverageStatus.SATISFIED
-    ]
-
-
 def _trip_level_requirements(workspace: TripWorkspaceV2) -> list[str]:
     categories = {
         "budget_cap",
@@ -701,7 +682,6 @@ def project_report(
             dict.fromkeys(
                 [
                     *_trip_level_requirements(workspace),
-                    *_intent_deviation_notes(workspace),
                     *_long_distance_path_notes(workspace, generated_at),
                     *_preparation_notes(itinerary),
                     *itinerary.important_notes,

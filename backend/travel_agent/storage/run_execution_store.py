@@ -68,7 +68,7 @@ def _execution_from_row(row: Dict[str, Any]) -> RunExecution:
 
 @dataclass(frozen=True)
 class RunRecoveryCandidate:
-    """一个需要恢复判定的 run：业务状态 + 执行归属 + 完成审计，一次读齐。"""
+    """一个需要恢复判定的 run：业务状态 + 执行归属，一次读齐。"""
 
     run_id: str
     status: TripRunStatus
@@ -76,7 +76,6 @@ class RunRecoveryCandidate:
     resume_policy: str
     current_node: Optional[str]
     execution: Optional[RunExecution]
-    completion_audit: Dict[str, Any]
 
 
 class RunExecutionStore:
@@ -316,7 +315,6 @@ class RunExecutionStore:
                    r.mode,
                    r.resume_policy,
                    r.current_node,
-                   s.completion_audit,
                    e.run_id AS execution_run_id,
                    e.executor_id,
                    e.lease_token,
@@ -331,7 +329,6 @@ class RunExecutionStore:
             FROM candidates c
             JOIN trip_runs r ON r.run_id = c.run_id
             LEFT JOIN trip_run_executions e ON e.run_id = r.run_id
-            LEFT JOIN trip_run_states s ON s.run_id = r.run_id
             WHERE (e.lease_expires_at IS NULL OR e.lease_expires_at < NOW())
               AND (r.status IN :active_statuses OR e.run_id IS NOT NULL)
               AND NOT (
@@ -364,7 +361,6 @@ class RunExecutionStore:
                 execution = (
                     _execution_from_row(data) if data.get("execution_run_id") else None
                 )
-                audit = data.get("completion_audit")
                 candidates.append(
                     RunRecoveryCandidate(
                         run_id=data["run_id"],
@@ -373,7 +369,6 @@ class RunExecutionStore:
                         resume_policy=str(data["resume_policy"]),
                         current_node=data.get("current_node"),
                         execution=execution,
-                        completion_audit=audit if isinstance(audit, dict) else {},
                     )
                 )
             return candidates

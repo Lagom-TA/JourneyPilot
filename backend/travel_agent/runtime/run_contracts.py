@@ -124,7 +124,6 @@ class TripRunState(BaseModel):
     completed_nodes: List[str] = Field(default_factory=list)
     latest_state_summary: Dict[str, Any] = Field(default_factory=dict)
 
-    completion_audit: Dict[str, Any] = Field(default_factory=dict)
     pending_user_choice: Optional[Dict[str, Any]] = None
     trace_event_count: int = 0
     pending_monitor_trigger_count: int = 0

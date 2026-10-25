@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 from travel_agent.planning.delivery.bundle import DeliveryBundle
-from travel_agent.planning.delivery.coverage_presentation import (
-    coverage_disclosure_notes,
-)
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
 from travel_agent.planning.delivery.provider_environment import ProviderEnvironmentView
 from travel_agent.planning.delivery.public.itinerary import _timestamp
@@ -75,9 +72,6 @@ def public_delivery_bundle(bundle: DeliveryBundle) -> Dict[str, Any]:
         "report_projection": _public_report(bundle.report_projection, view),
         "map_projection": _public_map(bundle.map_projection),
         "source_index": _public_source_index(bundle.source_index),
-        "coverage_disclosure": {
-            "notes": coverage_disclosure_notes(bundle.coverage_disclosure)
-        },
         "provider_environment": {
             "sandbox_note": ProviderEnvironmentView.from_bundle(bundle).sandbox_note
         },

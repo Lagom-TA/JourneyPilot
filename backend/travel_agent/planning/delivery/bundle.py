@@ -15,7 +15,6 @@ from travel_agent.planning.delivery.projections import (
 from travel_agent.planning.itinerary.options import SELECTION_SLOT_ENTITY_TYPES
 from travel_agent.planning.references import EntityType
 from travel_agent.planning.research.candidates import VisitCandidate
-from travel_agent.planning.research.domains import ResearchDomain
 from travel_agent.planning.research.evidence import (
     FactAssertion,
     FactStoreSnapshot,
@@ -47,17 +46,6 @@ class DeliveryRevisionManifest(StrictModel):
     contract_versions: Dict[str, str]
     content_hashes: Dict[str, str]
     created_at: datetime
-
-
-class RunCoverageDisclosure(StrictModel):
-    domains_without_results: List[ResearchDomain] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def validate_domains(self) -> "RunCoverageDisclosure":
-        values = [item.value for item in self.domains_without_results]
-        if len(values) != len(set(values)):
-            raise ValueError("coverage disclosure domains must be unique")
-        return self
 
 
 def _report_entity_kind(entity_type: EntityType) -> str:
@@ -92,9 +80,6 @@ class DeliveryBundle(StrictModel):
     report_projection: TripReportProjection
     map_projection: MapProjection
     source_index: SourceIndexProjection
-
-    # Missing coverage must not silently imply that every domain delivered results.
-    coverage_disclosure: RunCoverageDisclosure
 
     @model_validator(mode="after")
     def validate_manifest(self) -> "DeliveryBundle":
@@ -474,7 +459,6 @@ class DeliveryBundle(StrictModel):
             report_projection=self.report_projection,
             map_projection=self.map_projection,
             source_index=self.source_index,
-            coverage_disclosure=self.coverage_disclosure,
         )
         if self.manifest.content_hashes != expected_hashes:
             raise ValueError("bundle content hashes do not match payload")
@@ -513,9 +497,7 @@ def bundle_content_hashes(
     report_projection: TripReportProjection,
     map_projection: MapProjection,
     source_index: SourceIndexProjection,
-    coverage_disclosure: "RunCoverageDisclosure",
 ) -> Dict[str, str]:
-    # Coverage is immutable bundle content and must be hashed alongside projections.
     return {
         "workspace": canonical_content_hash(workspace),
         "fact_snapshot": canonical_content_hash(fact_snapshot),
@@ -523,5 +505,4 @@ def bundle_content_hashes(
         "report_projection": canonical_content_hash(report_projection),
         "map_projection": canonical_content_hash(map_projection),
         "source_index": canonical_content_hash(source_index),
-        "coverage_disclosure": canonical_content_hash(coverage_disclosure),
     }

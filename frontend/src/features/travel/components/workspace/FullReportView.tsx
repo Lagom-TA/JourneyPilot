@@ -202,10 +202,10 @@ export function FullReportView({ bundle, renderCitations, allowPdf = true }: Ful
         return null;
     const summaries = selectDaySummaries(bundle);
     const summariesByDayId = new Map(summaries.map((summary) => [summary.dayId, summary]));
-    const bottomNotes = [
-        ...bundle.coverage_disclosure.notes,
-        ...(bundle.provider_environment.sandbox_note ? [bundle.provider_environment.sandbox_note] : []),
-    ];
+    // 末尾小节承载环境披露：存在沙箱声明时向用户展示。
+    const bottomNotes = bundle.provider_environment.sandbox_note
+        ? [bundle.provider_environment.sandbox_note]
+        : [];
     const alternatives = document.selections.flatMap((selection) => selection.options
         .filter((option) => !option.selected)
         .map((option) => ({ ...option, slotType: selection.slot_type })));
@@ -247,8 +247,8 @@ export function FullReportView({ bundle, renderCitations, allowPdf = true }: Ful
         </footer>)}
 
 
-      {bottomNotes.length > 0 && (<section className="border-t border-stroke py-6" aria-labelledby="report-coverage-heading" data-testid="report-coverage-disclosure">
-          <h2 id="report-coverage-heading" className="text-sm font-semibold text-ink-secondary">本次规划的覆盖情况</h2>
+      {bottomNotes.length > 0 && (<section className="border-t border-stroke py-6" aria-labelledby="report-environment-heading" data-testid="report-environment-note">
+          <h2 id="report-environment-heading" className="text-sm font-semibold text-ink-secondary">数据说明</h2>
           <ul className="mt-2 space-y-1 text-xs leading-6 text-ink-muted">
             {bottomNotes.map((note) => <li key={note} className="break-words">{note}</li>)}
           </ul>

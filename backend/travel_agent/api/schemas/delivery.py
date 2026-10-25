@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 from typing import Dict
 from typing import List
-from typing import Literal
 from typing import Optional
 from pydantic import BaseModel
 from pydantic import Field
@@ -24,27 +23,6 @@ class PublicBundleManifestResponse(BaseModel):
     created_at: str
 
 
-class PublicRequirementFulfillmentResponse(BaseModel):
-    model_config = {"extra": "forbid"}
-
-    requirement_id: str
-    summary: str
-    status: Literal[
-        "satisfied",
-        "partially_satisfied",
-        "unsatisfied",
-        "unverifiable",
-    ]
-    explanation: str
-
-
-class PublicFulfillmentSummaryResponse(BaseModel):
-    model_config = {"extra": "forbid"}
-
-    fulfilled: List[PublicRequirementFulfillmentResponse] = Field(default_factory=list)
-    deviations: List[PublicRequirementFulfillmentResponse] = Field(default_factory=list)
-
-
 class PublicBundleWorkspaceResponse(BaseModel):
     """Public workspace projection nested under PublicDeliveryBundleResponse."""
 
@@ -55,22 +33,9 @@ class PublicBundleWorkspaceResponse(BaseModel):
     generation_id: str
     workspace_revision: int
     itinerary: Dict[str, Any]
-    fulfillment_summary: PublicFulfillmentSummaryResponse
     selection_slots: List[Dict[str, Any]] = Field(default_factory=list)
     weather_proposal_decisions: List[Dict[str, Any]] = Field(default_factory=list)
     weather_adjustments: List[Dict[str, Any]] = Field(default_factory=list)
-
-
-class PublicCoverageDisclosureResponse(BaseModel):
-    """What this Run could not cover, already turned into sentences.
-
-    Locked shape: the structured domain list stays internal, and the wire carries
-    only the prose the report and the PDF print verbatim.
-    """
-
-    model_config = {"extra": "forbid"}
-
-    notes: List[str] = Field(default_factory=list)
 
 
 class PublicProviderEnvironmentResponse(BaseModel):
@@ -96,7 +61,6 @@ class PublicDeliveryBundleResponse(BaseModel):
     report_projection: Dict[str, Any]
     map_projection: Dict[str, Any]
     source_index: Dict[str, Any]
-    coverage_disclosure: PublicCoverageDisclosureResponse
     provider_environment: PublicProviderEnvironmentResponse
 
 

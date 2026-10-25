@@ -22,9 +22,6 @@ from reportlab.platypus import TableStyle
 from travel_agent.integrations.pdf_readiness import _FONT_NAME
 from travel_agent.integrations.pdf_readiness import _register_pdf_font
 from travel_agent.planning.delivery.bundle import DeliveryBundle
-from travel_agent.planning.delivery.coverage_presentation import (
-    coverage_disclosure_notes,
-)
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
 from travel_agent.planning.delivery.evidence_basis import PUBLIC_REFERENCE
 from travel_agent.planning.delivery.evidence_basis import PUBLIC_REFERENCE_LABEL
@@ -526,14 +523,11 @@ def render_trip_report_pdf(
         for note in document.important_notes:
             story.append(Paragraph(f"• {escape(note)}", styles["body"]))
 
-    coverage_notes = coverage_disclosure_notes(bundle.coverage_disclosure)
+    # 沙箱环境声明独立成节：它披露数据来源环境，与方案内容的覆盖程度无关。
     sandbox_note = ProviderEnvironmentView.from_bundle(bundle).sandbox_note
     if sandbox_note is not None:
-        coverage_notes = [*coverage_notes, sandbox_note]
-    if coverage_notes:
-        story.append(Paragraph("本次规划的覆盖情况", styles["h2"]))
-        for note in coverage_notes:
-            story.append(Paragraph(f"• {escape(note)}", styles["small"]))
+        story.append(Paragraph("数据说明", styles["h2"]))
+        story.append(Paragraph(f"• {escape(sandbox_note)}", styles["small"]))
 
     story.extend(_source_story(citations, citation_numbers, styles))
     pdf.build(story, onFirstPage=footer, onLaterPages=footer)

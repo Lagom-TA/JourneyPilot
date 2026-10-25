@@ -7,12 +7,9 @@ from travel_agent.conversation.chat.errors import (
     PresetNotFound,
     PresetUnavailable,
 )
-from travel_agent.planning.terminal_reasons import delivery_integrity_reason_code
-from travel_agent.planning.outcomes import InternalFailureClass
 
-_PROJECTION_FAILURE_REASON_CODE = delivery_integrity_reason_code(
-    InternalFailureClass.PROJECTION_FAILURE
-)
+# 投影失败拒绝续跑时返回给前端的错误协议值，前端按这个字符串匹配引导文案。
+_PROJECTION_FAILURE_REASON_CODE = "delivery_integrity_projection_failure"
 
 
 def raise_chat_preparation_error(error: Exception) -> None:

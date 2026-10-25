@@ -377,7 +377,7 @@ function ReadyInteractiveItinerary({ bundle, readOnly = false, }: {
       <DayNav days={itinerary.day_plans} activeDay={activeDay} onSelect={selectDay}/>
       <div ref={itineraryScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto w-full max-w-4xl px-4 py-5 sm:px-6 sm:py-7">
-          {activeDay == null && (<TripOverview itinerary={itinerary} summaries={daySummaries} costCoverageStatement={bundle.report_projection.document?.cost_coverage_statement ?? null} importantNotes={bundle.report_projection.document?.important_notes ?? []} fulfillmentSummary={bundle.workspace.fulfillment_summary} onOpenDay={openDay} registerDayCard={registerDayCard}/>)}
+          {activeDay == null && (<TripOverview itinerary={itinerary} summaries={daySummaries} costCoverageStatement={bundle.report_projection.document?.cost_coverage_statement ?? null} importantNotes={bundle.report_projection.document?.important_notes ?? []} onOpenDay={openDay} registerDayCard={registerDayCard}/>)}
 
           {activeDay != null && (<>
               <button type="button" data-testid="day-overview-back" onClick={restoreOverview} className="mb-2 inline-flex items-center gap-1.5 rounded-card px-2 text-sm font-semibold text-accent transition-colors hover:bg-accent-soft hover:text-[var(--color-accent-hover)]">

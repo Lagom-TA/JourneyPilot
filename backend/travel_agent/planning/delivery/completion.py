@@ -3,18 +3,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from travel_agent.planning.completion_audit import build_trip_run_completion_audit
-from travel_agent.planning.delivery.bundle import DeliveryBundle, RunCoverageDisclosure
-from travel_agent.planning.outcomes import (
-    DeliveryFailureRecord,
-    GateClass,
-    TerminalAttribution,
-)
-from travel_agent.planning.research.domains import ResearchDomain
+from travel_agent.planning.delivery.bundle import DeliveryBundle
+from travel_agent.planning.outcomes import DeliveryFailureRecord
 from travel_agent.planning.state import TravelAgentState
-from travel_agent.planning.workspace import TripWorkspaceV2
 
 
 class DeliveryFinalizationError(RuntimeError):
@@ -27,7 +20,7 @@ class DeliveryFinalizationError(RuntimeError):
 def _terminal_recorded_at(
     state: TravelAgentState, bundle: Optional[DeliveryBundle] = None
 ) -> datetime:
-    """Use the durable deadline observation, never a fresh lifecycle clock."""
+    """终态时间取持久化的 deadline 观察时刻，不用新的实时时钟。"""
 
     if state.run_deadline is not None:
         return state.run_deadline.last_observed_at
@@ -38,45 +31,12 @@ def _terminal_recorded_at(
     return datetime.now(timezone.utc)
 
 
-def _completion_audit_with_terminal(
-    state: TravelAgentState,
-    *,
-    closure_status: str,
-    reason_code: str,
-    gate_class: Optional[GateClass] = None,
-    bundle: Optional[DeliveryBundle] = None,
-) -> Dict[str, Any]:
-    """Bind the final lifecycle outcome to the sealed Draft's audit projection."""
-
-    audit = build_trip_run_completion_audit(state)
-    draft = state.minimum_delivery_draft
-    if not audit or draft is None:
-        return audit
-    if bundle is not None:
-        document = bundle.report_projection.document
-        audit["formal_delivery"] = {
-            "bundle_id": bundle.manifest.bundle_id,
-            "has_bundle": True,
-            "report_ready": bundle.report_projection.status == "ready",
-            "report_content_nonempty": bool(
-                document and (document.days or document.overview or document.title)
-            ),
-            "projection_consistent": True,
-        }
-    terminal = TerminalAttribution(
-        draft_id=draft.draft_id,
-        closure_status=closure_status,
-        reason_code=reason_code,
-        recorded_at=_terminal_recorded_at(state, bundle),
-        delivery_bundle_id=(bundle.manifest.bundle_id if bundle is not None else None),
-        gate_class=gate_class,
-    )
-    audit["terminal_attribution"] = terminal.model_dump(mode="json")
-    return audit
-
-
 def _require_sealed_completion_generation(state: TravelAgentState) -> None:
-    """Reject direct finalization that bypasses the authorized 5/6/8 contract."""
+    """交付定稿只接受经计划授权启动的 Run，绕过授权直接定稿一律拒绝。
+
+    三项证据缺一不可：本 Run 的密封 Draft、Draft 的授权时刻、与 Draft 绑定的
+    deadline 快照。任一缺失说明这次定稿没有对应的用户授权来源。
+    """
 
     draft = state.minimum_delivery_draft
     if (
@@ -97,46 +57,3 @@ def _require_sealed_completion_generation(state: TravelAgentState) -> None:
         raise ValueError(
             "delivery finalizer requires the sealed Draft deadline snapshot"
         )
-
-
-def reduce_coverage_disclosure(state: TravelAgentState) -> RunCoverageDisclosure:
-    """Say which research domains this Run finished without usable results for."""
-
-    domains: list[ResearchDomain] = []
-    for gap in state.delivery_quality_gaps:
-        if gap.research_domain is not None and gap.research_domain not in domains:
-            domains.append(gap.research_domain)
-    for attribution in state.gate_failure_attributions.values():
-        domain = attribution.research_domain
-        if domain is not None and domain not in domains:
-            domains.append(domain)
-    delivered = _delivered_research_domains(state.trip_workspace_v2)
-    return RunCoverageDisclosure(
-        domains_without_results=sorted(
-            (domain for domain in domains if domain not in delivered),
-            key=lambda item: item.value,
-        )
-    )
-
-
-def _delivered_research_domains(
-    workspace: Optional[TripWorkspaceV2],
-) -> frozenset[ResearchDomain]:
-    """Which research domains actually put something on the delivered plan."""
-
-    if workspace is None:
-        return frozenset()
-    itinerary = workspace.itinerary
-    delivered: set[ResearchDomain] = set()
-    if itinerary.visit_stops:
-        delivered.add(ResearchDomain.VISIT)
-    if itinerary.dining_stops:
-        delivered.add(ResearchDomain.DINING)
-    if itinerary.lodging_stays:
-        delivered.add(ResearchDomain.LODGING)
-    for leg in itinerary.transport_legs:
-        if leg.transport_class == "long_distance":
-            delivered.add(ResearchDomain.LONG_DISTANCE_TRANSPORT)
-        else:
-            delivered.add(ResearchDomain.LOCAL_TRANSPORT)
-    return frozenset(delivered)

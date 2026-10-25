@@ -9,7 +9,6 @@ import pytest
 
 from tests.fixtures.chat_execution import (
     chat_body,
-    completion_audit,
     decision,
     decode,
     execute,
@@ -176,7 +175,6 @@ async def test_deep_asgi_body_is_backed_by_persisted_bundle_and_ordered_terminal
                 run.run_id,
                 bundle_id=manifest.bundle_id,
                 manifest=manifest.model_dump(mode="json"),
-                completion_audit=completion_audit(run.run_id, manifest.bundle_id),
             )
             if bookkeeping_failure:
                 raise RuntimeError("after durable completion")

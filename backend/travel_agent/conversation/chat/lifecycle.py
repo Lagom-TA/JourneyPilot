@@ -1,7 +1,7 @@
 from __future__ import annotations
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 from travel_agent.runtime.run_contracts import TripRunStatus
 from travel_agent.tools.exposure_ledger import get_tool_exposure_ledger
 from travel_agent.runtime.budget import release_ledger
@@ -48,8 +48,6 @@ class ChatLifecycle:
         pending_user_choice: Dict[str, Any],
         event_type: str,
         payload: Dict[str, Any],
-        terminal_reason_code: Optional[str] = None,
-        terminal_gate_class: Optional[str] = None,
     ) -> None:
         try:
             await self.trip_run_store.transition_status(
@@ -59,8 +57,6 @@ class ChatLifecycle:
                 pending_user_choice=pending_user_choice,
                 event_type=event_type,
                 payload=payload,
-                terminal_reason_code=terminal_reason_code,
-                terminal_gate_class=terminal_gate_class,
             )
         except ValueError:
             current_run = await self.trip_run_store.get_run(self.run_id)

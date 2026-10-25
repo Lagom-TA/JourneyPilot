@@ -5,10 +5,6 @@ from fastapi import APIRouter, HTTPException, Query
 from travel_agent.bootstrap.registry import get_components
 from travel_agent.runtime.run_lifecycle import available_run_actions
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
-from travel_agent.planning.completion_metrics import (
-    RunCompletionMetrics,
-    recompute_completion_metrics,
-)
 from travel_agent.api.schemas.runs import (
     TripRunCreateRequest,
     TripRunDetailResponse,
@@ -80,40 +76,6 @@ async def list_trip_runs(
     return TripRunListResponse(
         runs=[_run_response(run, title=titles.get(run.session_id)) for run in runs],
         total=total,
-    )
-
-
-@router.get("/metrics/completion", response_model=RunCompletionMetrics)
-async def read_completion_metrics(
-    session_id: Optional[str] = Query(default=None),
-    limit: int = Query(default=200, ge=1, le=200),
-) -> RunCompletionMetrics:
-    """Recompute eligible-run completion metrics from durable audit evidence.
-
-    Inspect surface: available to the authorized user for their own runs
-    (bounded window). Not a cross-tenant ops dashboard.
-    """
-    components = get_components()
-    runs = await components.trip_run_store.list_runs(
-        user_id=LOCAL_USER_ID,
-        session_id=session_id,
-        limit=limit,
-    )
-    details = []
-    for run in runs:
-        detail = await components.trip_run_store.get_detail(run.run_id, event_limit=500)
-        if detail is not None:
-            details.append(detail)
-
-    return recompute_completion_metrics(
-        details,
-        observation_scope={
-            "is_complete": False,
-            "run_limit": limit,
-            "events_per_run_limit": 500,
-            "run_population_may_be_truncated": True,
-            "events_may_be_truncated": True,
-        },
     )
 
 
