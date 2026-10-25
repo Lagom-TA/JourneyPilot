@@ -10,7 +10,6 @@ from langchain_core.runnables import RunnableConfig
 from travel_agent.planning.delivery.assembly import assemble_delivery_bundle
 from travel_agent.planning.delivery.completion import (
     DeliveryFinalizationError,
-    _completion_audit_with_terminal,
     _require_sealed_completion_generation,
     _terminal_recorded_at,
 )
@@ -23,12 +22,10 @@ from travel_agent.planning.delivery.persistence import (
 from travel_agent.planning.delivery.public.bundle import public_delivery_bundle
 from travel_agent.planning.outcomes import (
     DeliveryFailureRecord,
-    GateClass,
     InternalFailureClass,
     TerminalAttribution,
 )
 from travel_agent.planning.state import TravelAgentState
-from travel_agent.planning.terminal_reasons import delivery_integrity_reason_code
 from travel_agent.runtime.operations import (
     DeliveryDeadlineExceeded,
     await_delivery_operation,
@@ -74,17 +71,6 @@ async def _mark_failed(
                 error_message=record.public_message,
                 event_type="run.delivery_failed",
                 payload=failure_payload,
-                terminal_reason_code=delivery_integrity_reason_code(
-                    record.failure_class
-                ),
-                terminal_gate_class=GateClass.COMPOSITION.value,
-                completion_audit=_completion_audit_with_terminal(
-                    state,
-                    closure_status="failed",
-                    reason_code=delivery_integrity_reason_code(record.failure_class),
-                    gate_class=GateClass.COMPOSITION,
-                )
-                or None,
             )
     except Exception:
         return

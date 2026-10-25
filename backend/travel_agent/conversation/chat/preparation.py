@@ -2,8 +2,6 @@ from __future__ import annotations
 import logging
 import uuid
 from typing import Any, Dict, Optional
-from travel_agent.planning.outcomes import InternalFailureClass
-from travel_agent.planning.terminal_reasons import delivery_integrity_reason_code
 from travel_agent.conversation.intake_contracts import RouteName
 from travel_agent.planning.requirements.identity_amendments import (
     classify_locked_identity_intent,
@@ -62,32 +60,19 @@ class PreparedChat:
     session_compressed: bool
 
 
-_PROJECTION_FAILURE_REASON_CODE = delivery_integrity_reason_code(
-    InternalFailureClass.PROJECTION_FAILURE
-)
-
-
 def _resume_blocked_by_projection_failure(detail: Any) -> bool:
-    """Whether this Run failed the public projection, read from durable truth.
+    """这个 Run 是否死于公开投影失败，读 durable 的 last_error_code。
 
-    The reason code is composed from the finalizer's own failure class, so the
-    audit's ``terminal_attribution`` is where it lands.  ``last_error_code`` is the
-    same fact recorded one field wider and is checked as well: the audit is only
-    written when a sealed Draft exists, which a finalizer-stage failure always has,
-    but nothing in the resume gate should depend on that.
+    finalizer 落 FAILED 时把失败分类写进 ``last_error_code``；投影失败的
+    Run 的 checkpoint 内容不会变，继续跑只会得到同一个结果，所以在进入
+    恢复流程之前直接拒绝。
     """
 
     run = getattr(detail, "run", None)
-    if (
+    return (
         run is not None
         and getattr(run, "last_error_code", None) == "projection_failure"
-    ):
-        return True
-    audit = getattr(getattr(detail, "state", None), "completion_audit", None) or {}
-    terminal = audit.get("terminal_attribution") if isinstance(audit, dict) else None
-    if not isinstance(terminal, dict):
-        return False
-    return terminal.get("reason_code") == _PROJECTION_FAILURE_REASON_CODE
+    )
 
 
 async def check_input_guard(user_message: str):

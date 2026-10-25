@@ -9,16 +9,6 @@ export interface EntityIntentExplanation {
 export interface IntentExplanationRecord extends EntityIntentExplanation {
     intent_id: string;
 }
-export interface PublicRequirementFulfillment {
-    requirement_id: string;
-    summary: string;
-    status: 'satisfied' | 'partially_satisfied' | 'unsatisfied' | 'unverifiable';
-    explanation: string;
-}
-export interface PublicFulfillmentSummary {
-    fulfilled: PublicRequirementFulfillment[];
-    deviations: PublicRequirementFulfillment[];
-}
 export interface PublicVisitStop {
     type: 'visit_stop';
     item_id: string;

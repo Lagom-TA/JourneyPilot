@@ -6,7 +6,6 @@ from travel_agent.planning.outcomes import DeliveryContractViolation
 from travel_agent.planning.delivery.evidence_basis import (
     PublicProjectionContractViolation,
 )
-from travel_agent.planning.terminal_reasons import delivery_integrity_reason_code
 from travel_agent.runtime.run_contracts import TripRunStatus
 from travel_agent.planning.delivery.public.bundle import (
     public_delivery_bundle,
@@ -199,9 +198,7 @@ async def fail_chat(
     logger.error(f"SSE 流式处理错误: {terminal_failure}", exc_info=terminal_failure)
 
     if isinstance(terminal_failure, DeliveryFinalizationError):
-        terminal_reason_code = delivery_integrity_reason_code(
-            terminal_failure.record.failure_class
-        )
+        terminal_reason_code = terminal_failure.record.failure_class.value
         terminal_gate_class = None
     elif isinstance(terminal_failure, DeliveryContractViolation):
         terminal_reason_code = terminal_failure.reason_code
@@ -239,8 +236,6 @@ async def fail_chat(
                     "reason_code": terminal_reason_code,
                     "gate_class": terminal_gate_class,
                 },
-                terminal_reason_code=terminal_reason_code,
-                terminal_gate_class=terminal_gate_class,
             )
         except ValueError:
             raced_run = await trip_run_store.get_run(trip_run.run_id)

@@ -104,6 +104,12 @@ async def build_components(settings: Optional[Settings] = None) -> AppComponents
     )
     run_execution_store = get_run_execution_store()
     run_command_store = get_run_command_store()
+
+    async def _delivery_bundle_persisted(run_id: str) -> bool:
+        """恢复判定用的持久化产物探针：该 run 是否留下过 durable Bundle。"""
+
+        return await delivery_bundle_store.get_current_bundle_id(run_id) is not None
+
     run_recovery_service = RunRecoveryService(
         trip_run_store=trip_run_store,
         execution_store=run_execution_store,
@@ -111,6 +117,7 @@ async def build_components(settings: Optional[Settings] = None) -> AppComponents
         checkpoint_probe=travel_workflow.has_checkpoint
         if checkpointer_available
         else None,
+        bundle_probe=_delivery_bundle_persisted,
         sweep_seconds=settings.run_control.recovery_sweep_seconds,
     )
     background_job_store = get_background_job_store()

@@ -487,11 +487,8 @@ def _project_product_event(event_type: str, payload: Dict[str, Any]) -> Dict[str
             out["run_cost_summary"] = audit_safe_value(payload["run_cost_summary"])
         return out
     if event_type == "run_failed":
-        # ``run_status`` restated the frame name; the failure
-        # codes (``reason_code`` / ``error_code``) are internal attribution with
-        # no client reader — they are kept where they belong, on the durable run
-        # record (``transition_status(terminal_reason_code=…)``), which is what
-        # an operator reads.
+        # run_failed 帧只下发用户可读的失败提示；reason_code / error_code
+        # 属内部归因字段，仅保留在运行记录里供操作侧查阅，不下发客户端。
         out = {
             **common,
             "message": payload.get("message")

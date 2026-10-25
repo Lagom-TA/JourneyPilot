@@ -1,6 +1,6 @@
 import { TRIP_WORKSPACE_CONTRACT_VERSION } from "./workspace";
 import { type TripReportProjection, type MapProjection, type PublicCitationProjection } from "./report";
-import { type PublicStructuredItineraryV2, type PublicFulfillmentSummary, type SelectionSlot } from "./itinerary";
+import { type PublicStructuredItineraryV2, type SelectionSlot } from "./itinerary";
 import { type PublicWeatherAdjustment } from "./weather";
 export const DELIVERY_BUNDLE_CONTRACT_VERSION = 'journeypilot.delivery_bundle.v10' as const;
 export interface DeliveryRevisionManifest {
@@ -24,9 +24,6 @@ export interface PublicDeliveryBundle {
             citations: PublicCitationProjection[];
         };
     };
-    coverage_disclosure: {
-        notes: string[];
-    };
     provider_environment: {
         sandbox_note: string | null;
     };
@@ -37,7 +34,6 @@ export interface PublicTripWorkspace {
     generation_id: string;
     workspace_revision: number;
     itinerary: PublicStructuredItineraryV2;
-    fulfillment_summary: PublicFulfillmentSummary;
     selection_slots: SelectionSlot[];
     weather_proposal_decisions: Array<{
         proposal_id: string;
@@ -60,8 +56,6 @@ export function isPublicDeliveryBundle(value: unknown): value is PublicDeliveryB
         && workspace.generation_id === manifest.generation_id
         && workspace.workspace_revision === manifest.workspace_revision
         && Array.isArray(workspace.itinerary?.day_plans)
-        && Array.isArray(workspace.fulfillment_summary?.fulfilled)
-        && Array.isArray(workspace.fulfillment_summary?.deviations)
         && Array.isArray(workspace.selection_slots)
         && Array.isArray(workspace.weather_proposal_decisions)
         && Array.isArray(workspace.weather_adjustments)

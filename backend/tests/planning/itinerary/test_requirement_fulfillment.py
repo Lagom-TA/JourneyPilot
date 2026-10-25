@@ -206,38 +206,6 @@ def test_public_explanation_hides_internal_intent_identifier():
     ]
 
 
-def test_public_workspace_schema_requires_typed_fulfillment_and_generation():
-    workspace = PublicBundleWorkspaceResponse.model_validate(
-        {
-            "contract_version": "journeypilot.trip_workspace.v10",
-            "run_id": "run_test",
-            "generation_id": "generation_test",
-            "workspace_revision": 0,
-            "itinerary": {},
-            "fulfillment_summary": {
-                "fulfilled": [
-                    {
-                        "requirement_id": "requirement_1",
-                        "summary": "安排当代建筑",
-                        "status": "satisfied",
-                        "explanation": "已在行程中落实。",
-                    }
-                ],
-                "deviations": [],
-            },
-        }
-    )
-
-    assert workspace.generation_id == "generation_test"
-    assert workspace.fulfillment_summary.fulfilled[0].status == "satisfied"
-
-
-
-
-
-
-
-
 def _match(candidate_id: str, intent_id: str, status: IntentMatchStatus):
     return CandidateIntentMatch(
         candidate_id=candidate_id,

@@ -34,7 +34,6 @@ def _mutation_bundle(
         generated_at=created_at,
     )
 
-    coverage_disclosure = current.coverage_disclosure
     hashes = bundle_content_hashes(
         workspace=workspace,
         fact_snapshot=fact_snapshot,
@@ -42,7 +41,6 @@ def _mutation_bundle(
         report_projection=report,
         map_projection=map_projection,
         source_index=source_index,
-        coverage_disclosure=coverage_disclosure,
     )
     return DeliveryBundle(
         manifest=DeliveryRevisionManifest(
@@ -62,7 +60,6 @@ def _mutation_bundle(
         report_projection=report,
         map_projection=map_projection,
         source_index=source_index,
-        coverage_disclosure=coverage_disclosure,
     )
 
 

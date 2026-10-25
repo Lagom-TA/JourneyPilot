@@ -110,7 +110,6 @@ def _build_refreshed_bundle(
         historical_weather_days=retained_days | carried_days,
     )
 
-    coverage_disclosure = bundle.coverage_disclosure
     hashes = bundle_content_hashes(
         workspace=workspace,
         fact_snapshot=facts,
@@ -118,7 +117,6 @@ def _build_refreshed_bundle(
         report_projection=report,
         map_projection=map_projection,
         source_index=source_index,
-        coverage_disclosure=coverage_disclosure,
     )
     generated_id = id_factory()
     bundle_id = (
@@ -143,7 +141,6 @@ def _build_refreshed_bundle(
         report_projection=report,
         map_projection=map_projection,
         source_index=source_index,
-        coverage_disclosure=coverage_disclosure,
     )
     return refreshed, used_previous
 

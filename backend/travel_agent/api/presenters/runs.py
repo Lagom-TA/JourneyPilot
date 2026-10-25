@@ -129,9 +129,7 @@ def _event_response(event) -> Optional[TripRunEventResponse]:
             "status": TripRunStatus.FAILED.value,
             "message": "旅行方案暂时无法生成，请稍后重试。",
         }
-        reason = event.payload.get("terminal_reason_code") or event.payload.get(
-            "reason_code"
-        )
+        reason = event.payload.get("reason_code")
         if reason:
             payload["reason_code"] = reason
     elif event.event_type in {"run.created", "run.started", "run.control_requested"}:

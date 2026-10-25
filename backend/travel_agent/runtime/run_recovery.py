@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from travel_agent.runtime.delivery_audit import audit_has_durable_bundle
 from travel_agent.runtime.concurrency import PeriodicTask
 from travel_agent.runtime.concurrency import run_forever
 from travel_agent.runtime.run_commands import RUN_ENDED_BEFORE_CONSUMPTION
@@ -30,6 +29,9 @@ logger = logging.getLogger(__name__)
 
 
 CheckpointProbe = Callable[[str], Awaitable[bool]]
+
+#: 判定一个 run 是否留下了持久化交付产物（durable Bundle）。
+BundleProbe = Callable[[str], Awaitable[bool]]
 
 
 @dataclass(frozen=True)
@@ -94,12 +96,14 @@ class RunRecoveryService:
         execution_store: RunExecutionStore,
         command_store: Optional[RunCommandStore] = None,
         checkpoint_probe: Optional[CheckpointProbe] = None,
+        bundle_probe: Optional[BundleProbe] = None,
         sweep_seconds: int = 60,
     ) -> None:
         self._trip_run_store = trip_run_store
         self._execution_store = execution_store
         self._command_store = command_store
         self._checkpoint_probe = checkpoint_probe
+        self._bundle_probe = bundle_probe
         self._sweep_seconds = max(5, sweep_seconds)
         self._poller = PeriodicTask("run_recovery", self._sweep_loop)
         self.last_report = RunRecoveryReport()
@@ -299,21 +303,33 @@ class RunRecoveryService:
         if (
             candidate.status == TripRunStatus.COMPLETED
             and candidate.mode == TripRunMode.DEEP.value
-            and not audit_has_durable_bundle(candidate.completion_audit)
         ):
-            reason = "completed_without_durable_bundle"
-            await self._execution_store.record_recovery(
-                candidate.run_id,
-                recovery_status=RunRecoveryStatus.RECOVERY_CONTRACT_FAILURE,
-                recovery_reason=reason,
-            )
-            return RunRecoveryOutcome(
-                run_id=candidate.run_id,
-                previous_status=candidate.status.value,
-                resolved_status="unchanged",
-                recovery_status=RunRecoveryStatus.RECOVERY_CONTRACT_FAILURE.value,
-                reason=reason,
-            )
+            has_bundle: Optional[bool] = None
+            if self._bundle_probe is not None:
+                try:
+                    has_bundle = await self._bundle_probe(candidate.run_id)
+                except Exception as exc:
+                    logger.warning(
+                        "交付产物存在性探测失败 run_id=%s error=%s",
+                        candidate.run_id,
+                        exc,
+                    )
+                    has_bundle = None
+            if has_bundle is False:
+                # 状态说完成、交付产物却不存在：完成事实不完整，不猜，只标诊断。
+                reason = "completed_without_durable_bundle"
+                await self._execution_store.record_recovery(
+                    candidate.run_id,
+                    recovery_status=RunRecoveryStatus.RECOVERY_CONTRACT_FAILURE,
+                    recovery_reason=reason,
+                )
+                return RunRecoveryOutcome(
+                    run_id=candidate.run_id,
+                    previous_status=candidate.status.value,
+                    resolved_status="unchanged",
+                    recovery_status=RunRecoveryStatus.RECOVERY_CONTRACT_FAILURE.value,
+                    reason=reason,
+                )
         if is_terminal_status(candidate.status):
             await self._settle_commands(
                 candidate.run_id,

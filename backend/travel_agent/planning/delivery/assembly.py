@@ -9,7 +9,6 @@ from travel_agent.planning.delivery.bundle import (
     DeliveryRevisionManifest,
     bundle_content_hashes,
 )
-from travel_agent.planning.delivery.completion import reduce_coverage_disclosure
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.weather.adjustments import build_weather_adjustment_proposals
 
@@ -61,7 +60,6 @@ def assemble_delivery_bundle(state: TravelAgentState) -> DeliveryBundle:
             )
         }
     )
-    coverage_disclosure = reduce_coverage_disclosure(state)
     hashes = bundle_content_hashes(
         workspace=workspace,
         fact_snapshot=facts,
@@ -69,7 +67,6 @@ def assemble_delivery_bundle(state: TravelAgentState) -> DeliveryBundle:
         report_projection=report,
         map_projection=map_projection,
         source_index=source_index,
-        coverage_disclosure=coverage_disclosure,
     )
     identity = ":".join([workspace.run_id, *[hashes[key] for key in sorted(hashes)]])
     bundle_id = f"bundle_{hashlib.sha256(identity.encode('utf-8')).hexdigest()[:24]}"
@@ -98,7 +95,6 @@ def assemble_delivery_bundle(state: TravelAgentState) -> DeliveryBundle:
         report_projection=report,
         map_projection=map_projection,
         source_index=source_index,
-        coverage_disclosure=coverage_disclosure,
     )
 
     proposals = build_weather_adjustment_proposals(

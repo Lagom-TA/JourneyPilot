@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from travel_agent.planning.delivery.bundle import DeliveryBundle
-from travel_agent.planning.delivery.completion import _completion_audit_with_terminal
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.operations import await_delivery_operation
 from travel_agent.runtime.run_contracts import TripRunStatus
@@ -35,12 +34,6 @@ async def _commit_initial_delivery_atomically(
         "idempotency_key": f"{state.run_id}:delivery:create",
         "metadata": {"operation": "initial_delivery"},
     }
-    completion_audit = _completion_audit_with_terminal(
-        state,
-        closure_status="completed",
-        reason_code="delivery_bundle_ready",
-        bundle=bundle,
-    )
 
     async def complete(current: DeliveryBundle, *, session: Any | None = None) -> None:
         if current.manifest.bundle_id != bundle.manifest.bundle_id:
@@ -50,7 +43,6 @@ async def _commit_initial_delivery_atomically(
                 state.run_id,
                 bundle_id=current.manifest.bundle_id,
                 manifest=current.manifest.model_dump(mode="json"),
-                completion_audit=completion_audit or None,
                 **({"session": session} if session is not None else {}),
             ),
             operation="trip_run_complete_delivery",

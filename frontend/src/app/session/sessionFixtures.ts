@@ -14,10 +14,10 @@ export function deliveryBundle(revision = 1): PublicDeliveryBundle {
     manifest: { contract_version: DELIVERY_BUNDLE_CONTRACT_VERSION, run_id: 'run-A', generation_id: 'generation-A', bundle_id: `bundle-${revision}`, workspace_revision: revision, fact_data_revision: revision, weather_data_revision: revision, created_at: '2026-10-25T08:00:00Z' },
     workspace: { contract_version: TRIP_WORKSPACE_CONTRACT_VERSION, run_id: 'run-A', generation_id: 'generation-A', workspace_revision: revision,
       itinerary: { itinerary_id: 'itinerary-A', title: '离线旅行交付', destination_ids: [], duration_days: 1, day_plans: [], visit_stops: [], dining_stops: [], lodging_stays: [], transport_legs: [], custom_blocks: [], cost_summary: cost, highlights: [], important_notes: [] },
-      fulfillment_summary: { fulfilled: [], deviations: [] }, selection_slots: [], weather_proposal_decisions: [], weather_adjustments: [] },
+      selection_slots: [], weather_proposal_decisions: [], weather_adjustments: [] },
     report_projection: { source_workspace_revision: revision, source_fact_data_revision: revision, source_weather_data_revision: revision, status: 'ready',
       document: { title: '离线旅行报告', overview: '仅使用本地测试数据', destinations: [], duration_days: 1, cost_summary: cost, cost_coverage_statement: null, days: [], selections: [], weather: [], highlights: [], important_notes: [] }, citations: [], generated_at: '2026-10-25T08:00:00Z' },
     map_projection: { source_workspace_revision: revision, content: { places: [], routes: [] } },
-    source_index: { source_fact_data_revision: revision, content: { citations: [] } }, coverage_disclosure: { notes: [] }, provider_environment: { sandbox_note: null },
+    source_index: { source_fact_data_revision: revision, content: { citations: [] } }, provider_environment: { sandbox_note: null },
   };
 }

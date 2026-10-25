@@ -104,11 +104,3 @@ class TripRunListResponse(BaseModel):
             "is truncated."
         ),
     )
-
-
-class TripRunCompletionDiagnosticsResponse(BaseModel):
-    """Developer/Eval-only, audit-safe completion diagnostic summary."""
-
-    run_id: str
-    status: str
-    completion_audit: Dict[str, Any] = Field(default_factory=dict)

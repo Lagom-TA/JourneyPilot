@@ -6,9 +6,6 @@ from travel_agent.planning.delivery.bundle import DeliveryBundle
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
 from travel_agent.planning.delivery.public.itinerary import _day
 from travel_agent.planning.delivery.public.itinerary import _public_itinerary
-from travel_agent.planning.delivery.requirement_presentation import (
-    public_requirement_explanation,
-)
 from travel_agent.planning.delivery.travel_content import public_selection_text
 from travel_agent.planning.itinerary.options import SelectionSlot
 from travel_agent.planning.weather.models import WeatherProposalDecision
@@ -89,37 +86,12 @@ def _public_workspace(
     influences are internal ranking references.
     """
 
-    report = workspace.intent_coverage_report
-    if report is None:
-        raise ValueError("public workspace requires intent coverage")
-    coverage_by_intent = {item.intent_id: item for item in report.items}
-    fulfilled: List[Dict[str, Any]] = []
-    deviations: List[Dict[str, Any]] = []
-    for index, requirement in enumerate(
-        workspace.intent_contract_snapshot.requirements, start=1
-    ):
-        coverage = coverage_by_intent[requirement.intent_id]
-        status = coverage.status.value
-        if status in {"unsupported", "conflicted"}:
-            status = "unsatisfied"
-        item = {
-            "requirement_id": f"requirement_{index}",
-            "summary": requirement.public_summary,
-            "status": status,
-            "explanation": public_requirement_explanation(requirement, coverage),
-        }
-        (fulfilled if status == "satisfied" else deviations).append(item)
-
     return {
         "contract_version": workspace.contract_version,
         "run_id": workspace.run_id,
         "generation_id": workspace.generation_id,
         "workspace_revision": workspace.workspace_revision,
         "itinerary": _public_itinerary(workspace.itinerary, view),
-        "fulfillment_summary": {
-            "fulfilled": fulfilled,
-            "deviations": deviations,
-        },
         "selection_slots": [
             _public_selection_slot(slot) for slot in workspace.selection_slots
         ],

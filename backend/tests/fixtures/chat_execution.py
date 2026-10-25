@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import httpx
@@ -218,32 +218,6 @@ def execute(body, prepared, resources):
     )
 
 
-def completion_audit(run_id, bundle_id):
-    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    deadline = {"last_observed_at": now.isoformat()}
-    for key, seconds in [
-        ("target", 300),
-        ("closeout", 360),
-        ("composition", 420),
-        ("delivery_deadline", 480),
-    ]:
-        deadline[key + "_at"] = (now + timedelta(seconds=seconds)).isoformat()
-        deadline[key + "_seconds"] = seconds
-    return {
-        "run_id": run_id,
-        "draft_id": "draft-proof",
-        "planning_authorized_at": now.isoformat(),
-        "deadline": deadline,
-        "formal_delivery": {
-            "bundle_id": bundle_id,
-            "has_bundle": True,
-            "report_ready": True,
-            "report_content_nonempty": True,
-            "projection_consistent": True,
-        },
-    }
-
-
 async def durable_delivery(resources):
     run = await resources.trip_run_store.create_run(
         session_id="deep", user_id="local", mode="deep"
@@ -264,7 +238,6 @@ async def durable_delivery(resources):
         run.run_id,
         bundle_id=manifest.bundle_id,
         manifest=manifest.model_dump(mode="json"),
-        completion_audit=completion_audit(run.run_id, manifest.bundle_id),
     )
     bundle = SimpleNamespace(manifest=manifest)
 

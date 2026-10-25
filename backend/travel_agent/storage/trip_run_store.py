@@ -19,10 +19,8 @@ from sqlalchemy import bindparam, text
 
 from travel_agent.planning.delivery.bundle import DeliveryRevisionManifest
 
-from travel_agent.planning.terminal_reasons import DELIVERY_INTEGRITY_UNCLASSIFIED_FALLBACK_REASON
 from travel_agent.runtime.run_contracts import TripRun, TripRunDetail, TripRunEvent, TripRunMode, TripRunResumePolicy, TripRunState, TripRunStatus, coerce_mode, coerce_resume_policy, coerce_status, generate_trip_run_id
 from travel_agent.runtime.run_lifecycle import assert_status_transition_allowed, is_terminal_status
-from travel_agent.planning.completion_audit import build_trip_run_completion_audit, completion_audit_from_state_summary
 from travel_agent.planning.run_summary import build_trip_run_state_summary, mark_cancelled_pending_choice, with_pending_choice_summary
 from travel_agent.runtime.time import utc_now_iso
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
@@ -62,18 +60,6 @@ def _json_loads(value: Any, default: Any) -> Any:
     return value
 
 
-def _parse_iso_datetime(value: Any) -> Optional[datetime]:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-    try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except (TypeError, ValueError):
-        return None
-    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
-
-
 def _validated_delivery_manifest(
     *,
     run_id: str,
@@ -95,261 +81,6 @@ def _validated_delivery_manifest(
     if parsed.bundle_id != bundle_id:
         raise ValueError("delivery manifest bundle_id does not match completion bundle_id")
     return parsed.model_dump(mode="json")
-
-
-def _require_deep_completion_evidence(
-    *,
-    run_id: str,
-    bundle_id: str,
-    audit_value: Dict[str, Any],
-) -> Dict[str, Any]:
-    """Validate the durable equivalent of a sealed Draft before deep completion.
-
-    ``complete_delivery`` intentionally receives a compact audit rather than a
-    full LangGraph checkpoint.  The authorization timestamp, immutable 5/6/8
-    deadline schedule, and final Bundle projection are therefore the minimum
-    evidence needed to prove that this completion is bound to one sealed Draft.
-    """
-
-    audit = completion_audit_from_state_summary(audit_value)
-    if str(audit.get("run_id") or "") != run_id:
-        raise ValueError("deep completion audit run_id does not match TripRun")
-    draft_id = str(audit.get("draft_id") or "").strip()
-    authorized_at = _parse_iso_datetime(audit.get("planning_authorized_at"))
-    deadline = audit.get("deadline") if isinstance(audit.get("deadline"), dict) else {}
-    target_at = _parse_iso_datetime(deadline.get("target_at"))
-    closeout_at = _parse_iso_datetime(deadline.get("closeout_at"))
-    composition_at = _parse_iso_datetime(deadline.get("composition_at"))
-    delivery_deadline_at = _parse_iso_datetime(deadline.get("delivery_deadline_at"))
-    observed_at = _parse_iso_datetime(deadline.get("last_observed_at"))
-    if not draft_id or authorized_at is None:
-        raise ValueError("deep completion requires sealed Draft authorization evidence")
-    if any(
-        value is None
-        for value in (
-            target_at,
-            closeout_at,
-            composition_at,
-            delivery_deadline_at,
-            observed_at,
-        )
-    ):
-        raise ValueError("deep completion requires the sealed Draft deadline audit")
-    assert target_at is not None
-    assert closeout_at is not None
-    assert composition_at is not None
-    assert delivery_deadline_at is not None
-    assert observed_at is not None
-    # Validate against the seconds embedded in the completion audit (stamped when
-    # the Draft was sealed), not the current ``run_deadline`` config.
-    try:
-        target_seconds = int(deadline.get("target_seconds") or 0)
-        closeout_seconds = int(deadline.get("closeout_seconds") or 0)
-        composition_seconds = int(deadline.get("composition_seconds") or 0)
-        delivery_deadline_seconds = int(deadline.get("delivery_deadline_seconds") or 0)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("deep completion deadline audit is missing embedded window seconds") from exc
-    if not (
-        target_seconds
-        and closeout_seconds
-        and composition_seconds
-        and delivery_deadline_seconds
-    ):
-        raise ValueError("deep completion deadline audit is missing embedded window seconds")
-    if (
-        (target_at - authorized_at).total_seconds() != target_seconds
-        or (closeout_at - authorized_at).total_seconds() != closeout_seconds
-        or (composition_at - authorized_at).total_seconds() != composition_seconds
-        or (delivery_deadline_at - authorized_at).total_seconds()
-        != delivery_deadline_seconds
-        or observed_at < authorized_at
-    ):
-        raise ValueError("deep completion deadline audit is not bound to the sealed Draft")
-
-    formal_delivery = (
-        audit.get("formal_delivery")
-        if isinstance(audit.get("formal_delivery"), dict)
-        else {}
-    )
-    if (
-        formal_delivery.get("bundle_id") != bundle_id
-        or not bool(formal_delivery.get("has_bundle"))
-        or not bool(formal_delivery.get("report_ready"))
-        or not bool(formal_delivery.get("report_content_nonempty"))
-        or not bool(formal_delivery.get("projection_consistent"))
-    ):
-        raise ValueError("deep completion requires an auditable ready Delivery Bundle")
-
-    terminal = (
-        audit.get("terminal_attribution")
-        if isinstance(audit.get("terminal_attribution"), dict)
-        else None
-    )
-    if terminal is not None and (
-        terminal.get("draft_id") != draft_id
-        or terminal.get("closure_status") != TripRunStatus.COMPLETED.value
-        or terminal.get("delivery_bundle_id") != bundle_id
-    ):
-        raise ValueError("deep completion terminal attribution does not bind the Delivery Bundle")
-    return deepcopy(audit)
-
-
-def _completion_milestones(summary: Dict[str, Any]) -> List[tuple[str, str, Dict[str, Any], str]]:
-    """Return due 0/5/6/8-minute events from a durable completion audit.
-
-    The events use stable per-draft idempotency keys. Their durable
-    event timestamp records persistence time; the payload contains only
-    immutable schedule data so later checkpoints cannot conflict with an
-    already-recorded milestone. A restart may observe several overdue
-    boundaries in one snapshot, but it can never duplicate or move a boundary
-    by granting a fresh planning window.
-    """
-
-    audit = completion_audit_from_state_summary(summary)
-    draft_id = str(audit.get("draft_id") or "").strip()
-    authorized_at = _parse_iso_datetime(audit.get("planning_authorized_at"))
-    deadline = audit.get("deadline") if isinstance(audit.get("deadline"), dict) else {}
-    observed_at = _parse_iso_datetime(deadline.get("last_observed_at"))
-    if not draft_id or authorized_at is None:
-        return []
-    observed_at = observed_at or authorized_at
-    # threshold_seconds 必须与 completion audit 内嵌秒数同源，禁止写死 300/360/480。
-    try:
-        target_seconds = int(deadline.get("target_seconds") or 0)
-        closeout_seconds = int(deadline.get("closeout_seconds") or 0)
-        delivery_seconds = int(deadline.get("delivery_deadline_seconds") or 0)
-    except (TypeError, ValueError):
-        return []
-    definitions = (
-        ("authorized", "run.planning_authorized", authorized_at, 0),
-        (
-            "target_missed",
-            "run.target_missed",
-            _parse_iso_datetime(deadline.get("target_at")),
-            target_seconds,
-        ),
-        (
-            "closeout_entered",
-            "run.closeout_entered",
-            _parse_iso_datetime(deadline.get("closeout_at")),
-            closeout_seconds,
-        ),
-        (
-            "delivery_deadline_exhausted",
-            "run.delivery_deadline_exhausted",
-            _parse_iso_datetime(deadline.get("delivery_deadline_at")),
-            delivery_seconds,
-        ),
-    )
-    milestones: List[tuple[str, str, Dict[str, Any], str]] = []
-    for milestone, event_type, scheduled_at, threshold_seconds in definitions:
-        if scheduled_at is None or observed_at < scheduled_at:
-            continue
-        # 非 authorized 里程碑缺少内嵌秒数时跳过（fail-closed，不写假 threshold）。
-        if milestone != "authorized" and not threshold_seconds:
-            continue
-        key = f"completion_milestone:{draft_id}:{milestone}"
-        milestones.append(
-            (
-                event_type,
-                key,
-                {
-                    "draft_id": draft_id,
-                    "milestone": milestone,
-                    "threshold_seconds": threshold_seconds,
-                    "scheduled_at": scheduled_at.isoformat(),
-                },
-                milestone,
-            )
-        )
-    return milestones
-
-
-def _completion_audit_for_status(
-    audit_value: Dict[str, Any],
-    target: TripRunStatus,
-    *,
-    reason_code: Optional[str] = None,
-    delivery_bundle_id: Optional[str] = None,
-    gate_class: Optional[str] = None,
-) -> Dict[str, Any]:
-    """Keep terminal attribution aligned with the durable lifecycle state."""
-
-    audit = completion_audit_from_state_summary(audit_value)
-    if not audit:
-        return {}
-    next_audit = deepcopy(audit)
-    if target == TripRunStatus.RUNNING:
-        next_audit["terminal_attribution"] = None
-    elif target in {TripRunStatus.CANCELLED, TripRunStatus.FAILED}:
-        existing = next_audit.get("terminal_attribution")
-        existing_status = (
-            existing.get("closure_status") if isinstance(existing, dict) else None
-        )
-        if existing_status != target.value:
-            next_audit["terminal_attribution"] = {
-                "draft_id": next_audit.get("draft_id"),
-                "closure_status": target.value,
-                # 兜底值不是 InternalFailureClass 的任何一个值，但它以
-                # delivery_integrity 前缀开头，所以今天会被度量的 startswith 命中
-                # （run_completion_metrics.py:_terminal_bucket）——
-                # delivery_integrity_failed 那个桶里因此混着「有具体失败分类」和
-                # 「调用方没给分类的兜底」两类 run。改这个字符串的值会改度量输出，
-                # 是独立的行为票，不在此处顺手改。
-                "reason_code": reason_code
-                or (
-                    "user_cancelled"
-                    if target == TripRunStatus.CANCELLED
-                    else DELIVERY_INTEGRITY_UNCLASSIFIED_FALLBACK_REASON
-                ),
-                "recorded_at": utc_now_iso(),
-                "delivery_bundle_id": delivery_bundle_id,
-                "gate_class": gate_class,
-            }
-    elif target == TripRunStatus.COMPLETED:
-        existing = next_audit.get("terminal_attribution")
-        existing_status = (
-            existing.get("closure_status") if isinstance(existing, dict) else None
-        )
-        if existing_status != TripRunStatus.COMPLETED.value:
-            next_audit["terminal_attribution"] = {
-                "draft_id": next_audit.get("draft_id"),
-                "closure_status": TripRunStatus.COMPLETED.value,
-                "reason_code": reason_code or "delivery_bundle_ready",
-                "recorded_at": utc_now_iso(),
-                "delivery_bundle_id": delivery_bundle_id,
-                "gate_class": gate_class,
-            }
-    return next_audit
-
-
-def _preserve_terminal_attribution(
-    previous_audit_value: Dict[str, Any],
-    next_audit_value: Dict[str, Any],
-) -> Dict[str, Any]:
-    """Do not let a lagging graph frame erase committed completion truth."""
-
-    previous_audit = completion_audit_from_state_summary(previous_audit_value)
-    next_audit = completion_audit_from_state_summary(next_audit_value)
-    previous_terminal = previous_audit.get("terminal_attribution")
-    if not previous_terminal:
-        return next_audit
-    if not next_audit:
-        return deepcopy(previous_audit)
-    merged_audit = deepcopy(next_audit)
-    if not merged_audit.get("terminal_attribution"):
-        merged_audit["terminal_attribution"] = deepcopy(previous_terminal)
-    if (
-        isinstance(previous_terminal, dict)
-        and previous_terminal.get("closure_status") == TripRunStatus.COMPLETED.value
-    ):
-        previous_formal_delivery = previous_audit.get("formal_delivery")
-        if isinstance(previous_formal_delivery, dict):
-            # A completed Deep run has exactly one ready Bundle.  A delayed
-            # pre-finalizer checkpoint must never replace that immutable
-            # projection with its older no-bundle state.
-            merged_audit["formal_delivery"] = deepcopy(previous_formal_delivery)
-    return merged_audit
 
 
 @asynccontextmanager
@@ -401,7 +132,6 @@ def _state_from_row(row: Dict[str, Any]) -> TripRunState:
         current_node=row.get("current_node"),
         completed_nodes=list(_json_loads(row.get("completed_nodes"), [])),
         latest_state_summary=dict(_json_loads(row.get("latest_state_summary"), {})),
-        completion_audit=dict(_json_loads(row.get("completion_audit"), {})),
         pending_user_choice=_json_loads(row.get("pending_user_choice"), None),
         trace_event_count=int(row.get("trace_event_count") or 0),
         pending_monitor_trigger_count=int(row.get("pending_monitor_trigger_count") or 0),
@@ -507,12 +237,12 @@ class TripRunStore:
                     """
                     INSERT INTO trip_run_states
                         (run_id, status, current_node, completed_nodes,
-                         latest_state_summary, completion_audit, pending_user_choice,
+                         latest_state_summary, pending_user_choice,
                          trace_event_count,
                          pending_monitor_trigger_count, last_error, updated_at)
                     VALUES
                         (:run_id, :status, NULL, CAST(:completed_nodes AS jsonb),
-                         CAST(:summary AS jsonb), CAST(:completion_audit AS jsonb), NULL, 0, 0, NULL, NOW())
+                         CAST(:summary AS jsonb), NULL, 0, 0, NULL, NOW())
                     """
                 ),
                 {
@@ -520,7 +250,6 @@ class TripRunStore:
                     "status": state.status.value,
                     "completed_nodes": "[]",
                     "summary": _json_dumps(initial_summary),
-                    "completion_audit": "{}",
                 },
             )
             await self._append_event_in_session(
@@ -814,9 +543,6 @@ class TripRunStore:
         event_type: Optional[str] = None,
         payload: Optional[Dict[str, Any]] = None,
         allow_same: bool = True,
-        terminal_reason_code: Optional[str] = None,
-        terminal_gate_class: Optional[str] = None,
-        completion_audit: Optional[Dict[str, Any]] = None,
     ) -> TripRun:
         target = coerce_status(target_status)
         async with get_db_session() as session:
@@ -844,7 +570,7 @@ class TripRunStore:
                 else 0
             )
             state_result = await session.execute(
-                text("SELECT latest_state_summary, completion_audit, pending_user_choice FROM trip_run_states WHERE run_id = :run_id FOR UPDATE"),
+                text("SELECT latest_state_summary, pending_user_choice FROM trip_run_states WHERE run_id = :run_id FOR UPDATE"),
                 {"run_id": run_id},
             )
             state_row = state_result.mappings().first()
@@ -855,10 +581,6 @@ class TripRunStore:
             current_pending = _json_loads(
                 state_row.get("pending_user_choice") if state_row else None,
                 None,
-            )
-            current_audit = _json_loads(
-                state_row.get("completion_audit") if state_row else None,
-                {},
             )
             resolved_pending = (
                 mark_cancelled_pending_choice(pending_user_choice or current_pending)
@@ -872,12 +594,6 @@ class TripRunStore:
                 with_pending_choice_summary(current_summary, pending=summary_pending)
                 if resolved_pending or target != TripRunStatus.AWAITING_INPUT
                 else current_summary
-            )
-            next_audit = _completion_audit_for_status(
-                completion_audit or current_audit,
-                target,
-                reason_code=terminal_reason_code,
-                gate_class=terminal_gate_class,
             )
 
             timestamps = {
@@ -920,7 +636,6 @@ class TripRunStore:
                     SET status = :status,
                         current_node = COALESCE(:current_node, current_node),
                         latest_state_summary = CAST(:summary AS jsonb),
-                        completion_audit = CAST(:completion_audit AS jsonb),
                         pending_user_choice = CAST(:pending_user_choice AS jsonb),
                         last_error = CAST(:last_error AS jsonb),
                         updated_at = NOW()
@@ -932,14 +647,10 @@ class TripRunStore:
                     "status": target.value,
                     "current_node": current_node,
                     "summary": _json_dumps(next_summary),
-                    "completion_audit": _json_dumps(next_audit),
                     "pending_user_choice": _json_dumps(resolved_pending) if resolved_pending else None,
                     "last_error": _json_dumps(last_error) if last_error else None,
                 },
             )
-            terminal_attribution = completion_audit_from_state_summary(
-                next_audit
-            ).get("terminal_attribution")
             await self._append_event_in_session(
                 session,
                 run_id,
@@ -950,11 +661,6 @@ class TripRunStore:
                     **(payload or {}),
                     **({"current_node": current_node} if current_node else {}),
                     **({"last_error": last_error} if last_error else {}),
-                    **(
-                        {"terminal_attribution": terminal_attribution}
-                        if terminal_attribution is not None
-                        else {}
-                    ),
                 },
             )
             refreshed = await session.execute(
@@ -970,7 +676,6 @@ class TripRunStore:
         bundle_id: str,
         manifest: Dict[str, Any],
         current_node: str = "delivery_finalizer",
-        completion_audit: Optional[Dict[str, Any]] = None,
         session: Any | None = None,
     ) -> tuple[TripRun, TripRunEvent, TripRunEvent]:
         """Atomically expose ready, COMPLETED, and terminal durable truth."""
@@ -993,7 +698,7 @@ class TripRunStore:
             state_result = await session.execute(
                 text(
                     """
-                    SELECT latest_state_summary, completion_audit
+                    SELECT latest_state_summary
                     FROM trip_run_states
                     WHERE run_id = :run_id
                     FOR UPDATE
@@ -1007,20 +712,6 @@ class TripRunStore:
             summary = with_pending_choice_summary(
                 _json_loads(state_row.get("latest_state_summary"), {}),
                 pending=False,
-            )
-            audit_input = (
-                deepcopy(completion_audit)
-                if completion_audit is not None
-                else _json_loads(state_row.get("completion_audit"), {})
-            )
-            audit = (
-                _require_deep_completion_evidence(
-                    run_id=run_id,
-                    bundle_id=bundle_id,
-                    audit_value=audit_input,
-                )
-                if coerce_mode(row["mode"]) == TripRunMode.DEEP
-                else completion_audit_from_state_summary(audit_input)
             )
 
             existing_result = await session.execute(
@@ -1075,15 +766,6 @@ class TripRunStore:
                 },
             )
             self._inject(DeliveryCompletionBoundary.READY_EVENT)
-            audit = _completion_audit_for_status(
-                audit,
-                TripRunStatus.COMPLETED,
-                reason_code="delivery_bundle_ready",
-                delivery_bundle_id=bundle_id,
-            )
-            terminal_attribution = completion_audit_from_state_summary(
-                audit
-            ).get("terminal_attribution")
             await session.execute(
                 text(
                     """
@@ -1110,7 +792,6 @@ class TripRunStore:
                     SET status = :status,
                         current_node = :current_node,
                         latest_state_summary = CAST(:summary AS jsonb),
-                        completion_audit = CAST(:completion_audit AS jsonb),
                         pending_user_choice = NULL,
                         last_error = NULL,
                         updated_at = NOW()
@@ -1122,7 +803,6 @@ class TripRunStore:
                     "status": TripRunStatus.COMPLETED.value,
                     "current_node": current_node,
                     "summary": _json_dumps(summary),
-                    "completion_audit": _json_dumps(audit),
                 },
             )
             self._inject(DeliveryCompletionBoundary.COMPLETED_STATUS)
@@ -1140,11 +820,6 @@ class TripRunStore:
                     "delivery_event_sequence": ready_event.sequence,
                     "current_node": current_node,
                     "idempotency_key": terminal_key,
-                    **(
-                        {"terminal_attribution": terminal_attribution}
-                        if terminal_attribution is not None
-                        else {}
-                    ),
                 },
             )
             self._inject(DeliveryCompletionBoundary.TERMINAL_EVENT)
@@ -1215,7 +890,7 @@ class TripRunStore:
             if not row:
                 return None
             state_summary_result = await session.execute(
-                text("SELECT latest_state_summary, completion_audit FROM trip_run_states WHERE run_id = :run_id"),
+                text("SELECT latest_state_summary FROM trip_run_states WHERE run_id = :run_id"),
                 {"run_id": run_id},
             )
             state_summary_row = state_summary_result.mappings().first()
@@ -1226,13 +901,6 @@ class TripRunStore:
                 ),
                 pending=False,
             )
-            resume_audit = _completion_audit_for_status(
-                _json_loads(
-                    state_summary_row.get("completion_audit") if state_summary_row else None,
-                    {},
-                ),
-                TripRunStatus.RUNNING,
-            )
 
             await session.execute(
                 text(
@@ -1241,7 +909,6 @@ class TripRunStore:
                     SET status = :running,
                         current_node = COALESCE(:current_node, current_node),
                         latest_state_summary = CAST(:summary AS jsonb),
-                        completion_audit = CAST(:completion_audit AS jsonb),
                         pending_user_choice = NULL,
                         last_error = NULL,
                         updated_at = NOW()
@@ -1253,7 +920,6 @@ class TripRunStore:
                     "running": TripRunStatus.RUNNING.value,
                     "current_node": current_node,
                     "summary": _json_dumps(resume_summary),
-                    "completion_audit": _json_dumps(resume_audit),
                 },
             )
             updated = _run_from_row(dict(row))
@@ -1457,7 +1123,6 @@ class TripRunStore:
         state_snapshot: Any,
     ) -> TripRunState:
         summary = build_trip_run_state_summary(state_snapshot)
-        audit = build_trip_run_completion_audit(state_snapshot)
         async with get_db_session() as session:
             # Keep the parent -> state lock order consistent with
             # complete_delivery(), transition_status(), and node lifecycle.
@@ -1475,8 +1140,6 @@ class TripRunStore:
             if not row:
                 raise KeyError(f"TripRunState not found: {run_id}")
             state = _state_from_row(dict(row))
-            audit = _preserve_terminal_attribution(state.completion_audit, audit)
-            audit = _completion_audit_for_status(audit, state.status)
             summary = with_pending_choice_summary(
                 summary,
                 pending=(
@@ -1489,7 +1152,6 @@ class TripRunStore:
                     """
                     UPDATE trip_run_states
                     SET latest_state_summary = CAST(:summary AS jsonb),
-                        completion_audit = CAST(:completion_audit AS jsonb),
                         updated_at = NOW()
                     WHERE run_id = :run_id
                     """
@@ -1497,23 +1159,12 @@ class TripRunStore:
                 {
                     "run_id": run_id,
                     "summary": _json_dumps(summary),
-                    "completion_audit": _json_dumps(audit),
                 },
             )
             await session.execute(
                 text("UPDATE trip_runs SET updated_at = NOW() WHERE run_id = :run_id"),
                 {"run_id": run_id},
             )
-            for event_type, idempotency_key, payload, _milestone in _completion_milestones(
-                audit
-            ):
-                await self._append_event_once_in_session(
-                    session,
-                    run_id,
-                    event_type,
-                    payload,
-                    idempotency_key=idempotency_key,
-                )
             refreshed = await session.execute(
                 text("SELECT * FROM trip_run_states WHERE run_id = :run_id"),
                 {"run_id": run_id},
@@ -1890,9 +1541,6 @@ class InMemoryTripRunStore(TripRunStore):
         event_type: Optional[str] = None,
         payload: Optional[Dict[str, Any]] = None,
         allow_same: bool = True,
-        terminal_reason_code: Optional[str] = None,
-        terminal_gate_class: Optional[str] = None,
-        completion_audit: Optional[Dict[str, Any]] = None,
     ) -> TripRun:
         run = self.runs.get(run_id)
         if run is None:
@@ -1938,21 +1586,12 @@ class InMemoryTripRunStore(TripRunStore):
                 state.latest_state_summary,
                 pending=bool(state.pending_user_choice) and target == TripRunStatus.AWAITING_INPUT,
             )
-        state.completion_audit = _completion_audit_for_status(
-            completion_audit or state.completion_audit,
-            target,
-            reason_code=terminal_reason_code,
-            gate_class=terminal_gate_class,
-        )
         state.last_error = (
             {"code": error_code or "error", "message": error_message or ""}
             if error_code or error_message
             else None
         )
         state.updated_at = now
-        terminal_attribution = completion_audit_from_state_summary(
-            state.completion_audit
-        ).get("terminal_attribution")
         await self.append_event(
             run_id,
             event_type or f"run.{target.value}",
@@ -1962,11 +1601,6 @@ class InMemoryTripRunStore(TripRunStore):
                 **(payload or {}),
                 **({"current_node": current_node} if current_node else {}),
                 **({"last_error": state.last_error} if state.last_error else {}),
-                **(
-                    {"terminal_attribution": terminal_attribution}
-                    if terminal_attribution is not None
-                    else {}
-                ),
             },
         )
         return run
@@ -1978,7 +1612,6 @@ class InMemoryTripRunStore(TripRunStore):
         bundle_id: str,
         manifest: Dict[str, Any],
         current_node: str = "delivery_finalizer",
-        completion_audit: Optional[Dict[str, Any]] = None,
     ) -> tuple[TripRun, TripRunEvent, TripRunEvent]:
         manifest_payload = _validated_delivery_manifest(
             run_id=run_id,
@@ -1991,20 +1624,6 @@ class InMemoryTripRunStore(TripRunStore):
         state = self.states.get(run_id)
         if state is None:
             raise KeyError(f"TripRunState not found: {run_id}")
-        audit_input = (
-            deepcopy(completion_audit)
-            if completion_audit is not None
-            else deepcopy(state.completion_audit)
-        )
-        audit = (
-            _require_deep_completion_evidence(
-                run_id=run_id,
-                bundle_id=bundle_id,
-                audit_value=audit_input,
-            )
-            if run.mode == TripRunMode.DEEP
-            else completion_audit_from_state_summary(audit_input)
-        )
         existing = [
             event
             for event in self.events[run_id]
@@ -2066,16 +1685,6 @@ class InMemoryTripRunStore(TripRunStore):
                 state.latest_state_summary,
                 pending=False,
             )
-            state.completion_audit = audit
-            state.completion_audit = _completion_audit_for_status(
-                state.completion_audit,
-                TripRunStatus.COMPLETED,
-                reason_code="delivery_bundle_ready",
-                delivery_bundle_id=bundle_id,
-            )
-            terminal_attribution = completion_audit_from_state_summary(
-                state.completion_audit
-            ).get("terminal_attribution")
             state.updated_at = now
             self._inject(DeliveryCompletionBoundary.COMPLETED_STATUS)
             terminal_event = await self.append_event(
@@ -2090,11 +1699,6 @@ class InMemoryTripRunStore(TripRunStore):
                     "delivery_event_sequence": ready_event.sequence,
                     "current_node": current_node,
                     "idempotency_key": f"{run_id}:run_terminal:{bundle_id}",
-                    **(
-                        {"terminal_attribution": terminal_attribution}
-                        if terminal_attribution is not None
-                        else {}
-                    ),
                 },
             )
             self._inject(DeliveryCompletionBoundary.TERMINAL_EVENT)
@@ -2141,10 +1745,6 @@ class InMemoryTripRunStore(TripRunStore):
         state.latest_state_summary = with_pending_choice_summary(
             state.latest_state_summary,
             pending=False,
-        )
-        state.completion_audit = _completion_audit_for_status(
-            state.completion_audit,
-            TripRunStatus.RUNNING,
         )
         state.last_error = None
         state.updated_at = now
@@ -2268,9 +1868,6 @@ class InMemoryTripRunStore(TripRunStore):
         if state is None or run is None:
             raise KeyError(f"TripRunState not found: {run_id}")
         summary = build_trip_run_state_summary(state_snapshot)
-        audit = build_trip_run_completion_audit(state_snapshot)
-        audit = _preserve_terminal_attribution(state.completion_audit, audit)
-        audit = _completion_audit_for_status(audit, state.status)
         state.latest_state_summary = with_pending_choice_summary(
             summary,
             pending=(
@@ -2278,18 +1875,8 @@ class InMemoryTripRunStore(TripRunStore):
                 and bool(state.pending_user_choice)
             ),
         )
-        state.completion_audit = audit
         state.updated_at = utc_now_iso()
         run.updated_at = state.updated_at
-        for event_type, idempotency_key, payload, _milestone in _completion_milestones(
-            audit
-        ):
-            await self.append_event_once(
-                run_id,
-                event_type,
-                payload,
-                idempotency_key=idempotency_key,
-            )
         return state
 
     async def append_event(self, run_id: str, event_type: str, payload: Dict[str, Any]) -> TripRunEvent:

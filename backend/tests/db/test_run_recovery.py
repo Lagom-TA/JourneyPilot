@@ -57,30 +57,26 @@ async def _orphan_run(
     return run.run_id
 
 
-async def _set_completion_audit(run_id: str, audit: dict) -> None:
-    import json
-
-    async with get_db_session() as session:
-        await session.execute(
-            text(
-                "UPDATE trip_run_states SET completion_audit = CAST(:audit AS jsonb) "
-                "WHERE run_id = :run_id"
-            ),
-            {"run_id": run_id, "audit": json.dumps(audit)},
-        )
-
-
-def _service(*, checkpoint_available: bool | None = True) -> RunRecoveryService:
-    """`checkpoint_available=None` 表示这个部署没有 checkpointer。"""
+def _service(
+    *,
+    checkpoint_available: bool | None = True,
+    bundle_available: bool | None = None,
+) -> RunRecoveryService:
+    """`checkpoint_available=None` 表示这个部署没有 checkpointer；
+    `bundle_available=None` 表示不注入交付产物探针（恢复判定查不到产物存在性）。"""
 
     async def probe(_run_id: str) -> bool:
         return bool(checkpoint_available)
+
+    async def bundle_probe(_run_id: str) -> bool:
+        return bool(bundle_available)
 
     return RunRecoveryService(
         trip_run_store=TripRunStore(),
         execution_store=RunExecutionStore(),
         command_store=RunCommandStore(),
         checkpoint_probe=probe if checkpoint_available is not None else None,
+        bundle_probe=bundle_probe if bundle_available is not None else None,
     )
 
 
@@ -246,9 +242,6 @@ async def test_completed_run_is_never_downgraded(migrated_async_database):
 
     run_id = await _orphan_run(status=TripRunStatus.RUNNING)
     store = TripRunStore()
-    await _set_completion_audit(
-        run_id, {"formal_delivery": {"has_bundle": True, "bundle_id": "bundle-1"}}
-    )
     async with get_db_session() as session:
         # 深度 Run 的 COMPLETED 只能由 complete_delivery() 写，这里直接造终态行以
         # 表达「Bundle 已原子完成，只是执行行还留着」这个残局。
@@ -261,7 +254,7 @@ async def test_completed_run_is_never_downgraded(migrated_async_database):
             {"run_id": run_id},
         )
 
-    report = await _service().sweep()
+    report = await _service(bundle_available=True).sweep()
 
     assert report.outcomes[0].recovery_status == RunRecoveryStatus.RELEASED.value
     run = await store.get_run(run_id)
@@ -269,7 +262,7 @@ async def test_completed_run_is_never_downgraded(migrated_async_database):
 
 
 async def test_completed_without_bundle_is_a_contract_failure(migrated_async_database):
-    """状态说完成、审计里没有 Bundle → 不猜，只标诊断，状态不动。"""
+    """状态说完成、交付产物却不存在 → 不猜，只标诊断，状态不动。"""
 
     run_id = await _orphan_run(status=TripRunStatus.RUNNING)
     async with get_db_session() as session:
@@ -278,7 +271,7 @@ async def test_completed_without_bundle_is_a_contract_failure(migrated_async_dat
             {"run_id": run_id},
         )
 
-    report = await _service().sweep()
+    report = await _service(bundle_available=False).sweep()
 
     outcome = report.outcomes[0]
     assert outcome.recovery_status == RunRecoveryStatus.RECOVERY_CONTRACT_FAILURE.value
