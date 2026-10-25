@@ -3,7 +3,7 @@ import type { PanInfo } from 'motion/react';
 import { AnimatePresence, animate, m, useDragControls, useMotionValue } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { duration, easing, spring } from '../../lib/motion';
-import { CanvasMotion } from '../motion/CanvasMotion';
+import { CanvasMotion } from './CanvasMotion';
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss';
 
 /**

@@ -8,7 +8,7 @@ import { Input } from './Input';
 import { RequestFailureNotice } from './RequestFailureNotice';
 import { Skeleton } from './Skeleton';
 import { staggerContainer, staggerItem } from '../../lib/motion';
-import type { RequestFailure } from '../../lib/requestFailureMessage';
+import { type RequestFailure } from '../../lib/requestFailureMessage';
 
 /**
  * 一个侧屏的**壳** —— 一根列、一套标题栏、一条状态顺序、一次入场编排。

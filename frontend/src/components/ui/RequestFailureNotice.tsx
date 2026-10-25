@@ -2,7 +2,7 @@ import React from 'react';
 import { AlertCircle, RefreshCw, RotateCcw } from 'lucide-react';
 import { Button } from './Button';
 import { cn } from '../../lib/utils';
-import type { RequestFailure } from '../../lib/requestFailureMessage';
+import { type RequestFailure } from '../../lib/requestFailureMessage';
 
 /**
  * 一次读写失败在界面上的样子 —— 一处定义，四个屏同读。

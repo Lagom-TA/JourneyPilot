@@ -1,4 +1,4 @@
-import { ApiError } from './api';
+import { ApiError } from './http';
 
 /**
  * 机读错误 detail 的唯一读取器。

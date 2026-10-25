@@ -1,8 +1,8 @@
 // Deterministic component fixture. No model or provider requests are made.
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ThinkingChain } from '../../src/components/chat/ThinkingChain';
-import type { ThinkingStep } from '../../src/types/chat';
+import { ThinkingChain } from '../../src/features/chat/components/ThinkingChain';
+import { type ThinkingStep } from '../../src/features/chat/types/messages';
 import '../../src/index.css';
 const timestamp = new Date();
 const base = (id: string, agentName: string, extra: Partial<ThinkingStep>): ThinkingStep => ({ id, agentName, content: '', stepName: '', timestamp, ...extra });

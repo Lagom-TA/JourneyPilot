@@ -1,4 +1,4 @@
-import { ApiError } from './api';
+import { ApiError } from './http';
 
 /**
  * 一次数据面读写失败，对旅行者说的那一句话 —— **以及那一句话之后他能按的那个键**。
@@ -9,7 +9,7 @@ import { ApiError } from './api';
  * 是**结构化的**，不必猜；它答的问题只有一个：「这一屏刚才没读到东西，怎么跟人说」。
  * 一个读结构、一个读字符串，不是同一件事的两份实现。
  *
- * 为什么需要它：`api.ts` 的 `ApiError.message` 兜底是 `` `${status} ${statusText}` ``，
+ * 为什么需要它：`ts` 的 `ApiError.message` 兜底是 `` `${status} ${statusText}` ``，
  * 422 时是 `formatApiErrorDetail` 拼出来的 `body.session_id: field required` 这种 loc: msg 串。
  * 这些串**一个字都不许印给旅行者** —— 「Normal client mode never
  * prints raw HTTP status text, exception classes, stack traces, or backend messages」，而
