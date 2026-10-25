@@ -1,17 +1,7 @@
 import React from 'react';
 import { Button } from './Button';
 
-/**
- * 懒加载视图的最小错误边界（懒加载分包）。
- *
- * 五个非 chat 视图与地图子树走 React.lazy 后，chunk 下载可能因网络异常失败。
- * 无边界时 React 会抛错到根、整屏白屏；本边界兜住该失败，就地显示一句完整文案
- * 与「重新加载」Button——点击整页刷新重新拉取 chunk。刻意**不做重试基建**
- * （无指数退避、无 chunk 级 import 重试）：一次直白的整页刷新是最诚实的恢复。
- *
- * 错误边界必须是 class 组件（React 只在 class 上暴露 getDerivedStateFromError /
- * componentDidCatch）。这是全站唯一获准的 class 组件用途。
- */
+/* React 的错误边界生命周期仅由 class 组件提供。 */
 interface LazyViewBoundaryProps {
   children: React.ReactNode;
   resetKey?: React.Key;

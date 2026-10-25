@@ -12,32 +12,7 @@ import { cn } from '../../lib/utils';
 import { duration, easing, transitions } from '../../lib/motion';
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss';
 
-/**
- * Anchored, in-place popover primitive.
- *
- * Neither Tooltip (pointer-events-none, text only) nor Modal (full-screen)
- * fits the hallmark "grow out of the anchor" interaction. This is a non-modal
- * layer that:
- *
- * - grows from the trigger corner: `transformOrigin` is the anchored corner,
- *   entrance is `scale 0.96 → 1 + opacity 0 → 1` on the **restrained** axis
- *   (`slow` + `decelerate` — a surface arriving); exit runs the reverse on
- *   `base` + `accelerate` via `AnimatePresence`.
- *
- *   Never move this to the expressive axis (`transitions.emphasisEnter`). That
- *   axis has exactly two sanctioned moments — the itinerary revealing, an
- *   approval gate appearing — and a popover opened on the itinerary-reveal
- *   screen would put two overshoots in one frame. A popover is a surface, not
- *   a moment.
- * - is 320–360px wide, flips inward when it would overflow the viewport, and on
- *   narrow screens clamps to the host container's width.
- * - closes on outside-click; re-clicking the trigger toggles it.
- *
- * The consumer supplies the trigger via a render prop so it can wire the ref and
- * toggle handler onto its own element.
- */
 
-/** Corner of the trigger the panel is anchored to; drives `transformOrigin`. */
 export type PopoverPlacement = 'bottom-start' | 'bottom-end' | 'top-start' | 'top-end';
 
 interface TriggerRenderProps {
@@ -47,42 +22,14 @@ interface TriggerRenderProps {
 }
 
 export interface PopoverProps {
-  /** Render prop for the trigger. Spread the provided props onto a <button>. */
   trigger: (props: TriggerRenderProps) => React.ReactNode;
-  /**
-   * Popover body. May be static content, or a render prop that receives a
-   * `close` callback so content (e.g. a select menu) can dismiss the popover on
-   * a choice.
-   */
   children: React.ReactNode | ((close: () => void) => React.ReactNode);
-  /** Preferred anchoring corner; flips inward on overflow. Default bottom-start. */
   placement?: PopoverPlacement;
-  /** Gap in px between trigger and panel. Default 8. */
   offset?: number;
-  /**
-   * Match the panel width to the trigger width instead of the 320–360px range.
-   * Used by form-field consumers (SelectMenu) where the menu should track the
-   * field it drops out of. Still clamped to the viewport as a mobile safety net.
-   */
   matchTriggerWidth?: boolean;
-  /** Extra classes on the panel surface. */
   className?: string;
-  /**
-   * Render the panel through a portal to `document.body` instead of in place.
-   *
-   * Anchored floaters that live inside `overflow-hidden` / `overflow-x-auto`
-   * ancestors need this: an in-place `fixed` panel is still clipped by the
-   * ancestor's overflow. The citation / annotation / transport-provider
-   * markers all live in such containers, so they set `portal`.
-   */
+  /* portal 避免面板被祖先的 overflow 裁切。 */
   portal?: boolean;
-  /**
-   * `closeOnEscape` 不是一个开关：Esc **无条件生效**，走 `hooks/useOverlayDismiss`。
-   *
-   * 同一个原语上不能一半实例按 Esc 能出、一半不能 —— 从界面上看不出区别，却是同一份
-   * 契约两种兑现。
-   */
-  /** Optional `data-testid` on the panel surface. */
   testId?: string;
 }
 
@@ -90,7 +37,6 @@ const MIN_WIDTH = 320;
 const MAX_WIDTH = 360;
 const VIEWPORT_MARGIN = 12;
 
-/** transform-origin per resolved placement — the panel grows from the anchor corner. */
 const ORIGIN: Record<PopoverPlacement, string> = {
   'bottom-start': 'top left',
   'bottom-end': 'top right',
@@ -105,7 +51,6 @@ interface Position {
   placement: PopoverPlacement;
 }
 
-/** Compute a fixed-position box, flipping inward and clamping to the viewport. */
 function computePosition(
   triggerRect: DOMRect,
   panelHeight: number,
@@ -116,11 +61,7 @@ function computePosition(
   const vw = window.innerWidth;
   const vh = window.innerHeight;
 
-  // Width. Default: sits in the [MIN, MAX] range, capped to the viewport.
-  // Form-field mode (`matchTriggerWidth`): tracks the trigger so a select menu
-  // is exactly as wide as the field it drops from. Both clamp to the viewport so
-  // narrow screens never overflow. Authoritative — never derived from content,
-  // so measurement never feeds back.
+  // 宽度不由内容反推，避免测量反馈循环。
   const available = vw - VIEWPORT_MARGIN * 2;
   const width = matchTriggerWidth
     ? Math.min(triggerRect.width, available)
@@ -132,8 +73,6 @@ function computePosition(
   let vertical: 'top' | 'bottom' = preferred.startsWith('top') ? 'top' : 'bottom';
   let horizontal: 'start' | 'end' = preferred.endsWith('start') ? 'start' : 'end';
 
-  // Vertical flip: prefer below, flip above when it would clip the bottom edge
-  // and there is more room above.
   const spaceBelow = vh - triggerRect.bottom - offset;
   const spaceAbove = triggerRect.top - offset;
   if (vertical === 'bottom' && spaceBelow < height && spaceAbove > spaceBelow) {
@@ -142,8 +81,6 @@ function computePosition(
     vertical = 'bottom';
   }
 
-  // Horizontal: 'start' aligns panel-left to trigger-left; 'end' aligns
-  // panel-right to trigger-right. Flip the alignment when it overflows.
   let left = horizontal === 'start' ? triggerRect.left : triggerRect.right - width;
   if (horizontal === 'start' && left + width > vw - VIEWPORT_MARGIN) {
     horizontal = 'end';
@@ -152,7 +89,6 @@ function computePosition(
     horizontal = 'start';
     left = triggerRect.left;
   }
-  // Final clamp so the panel is always fully on-screen (mobile safety net).
   left = Math.min(Math.max(left, VIEWPORT_MARGIN), vw - width - VIEWPORT_MARGIN);
 
   const top =
@@ -181,8 +117,6 @@ export const Popover: React.FC<PopoverProps> = ({
   const close = useCallback(() => setOpen(false), []);
   const toggle = useCallback(() => setOpen((v) => !v), []);
 
-  // Position measurement: measure the panel then place it. Runs on open and on
-  // resize/scroll so the panel tracks the anchor and re-flips on viewport change.
   const reposition = useCallback(() => {
     const t = triggerRef.current;
     const p = panelRef.current;
@@ -193,8 +127,7 @@ export const Popover: React.FC<PopoverProps> = ({
 
   useLayoutEffect(() => {
     if (!open) {
-      // Keep the last position so the AnimatePresence exit stays anchored and
-      // visible; it is recomputed on the next open.
+      // 保留关闭前的位置，让退出动画仍锚定在触发器旁。
       return undefined;
     }
     reposition();
@@ -206,8 +139,6 @@ export const Popover: React.FC<PopoverProps> = ({
     };
   }, [open, reposition]);
 
-  // Outside-click closes. Trigger clicks are ignored here (the trigger's own
-  // toggle handles them).
   useEffect(() => {
     if (!open) return undefined;
     const onPointerDown = (e: PointerEvent) => {
@@ -219,21 +150,11 @@ export const Popover: React.FC<PopoverProps> = ({
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
   }, [open, close]);
 
-  /**
-   * Esc 关闭 + 焦点归还，走全站那一处定义。
-   *
-   * **不传 `panelRef`**：锚定浮层是非模态的，打开它不该把焦点从触发器上搬走。归还的
-   * 对象由那个 hook 记（「打开之前焦点在哪」），所以这里也不再自己 `triggerRef.focus()`
-   * —— 那是同一件事的第二份账。
-   */
+  /* 非模态浮层不传 panelRef，打开时焦点留在触发器。 */
   useOverlayDismiss({ open, onDismiss: close });
 
   const resolvedPlacement = position?.placement ?? placement;
 
-  // Entrance/exit variants: grow from the anchor corner (scale + opacity).
-  // Restrained axis only — a dropdown/menu is not one of the three expressive
-  // moments, so surface `slow`+`decelerate` on enter, `base`+`accelerate` on exit
-  // (no `emphasis`/overshoot).
   const panelVariants: Variants = {
     hidden: { opacity: 0, scale: 0.96 },
     visible: {
@@ -267,9 +188,8 @@ export const Popover: React.FC<PopoverProps> = ({
             left: position?.left ?? 0,
             width: position?.width ?? MIN_WIDTH,
             transformOrigin: ORIGIN[resolvedPlacement],
-            // 浮层用 md 挡阴影 —— 浮起面那一档。
             boxShadow: 'var(--shadow-md)',
-            // Hide until positioned to avoid a first-frame flash at (0,0).
+            // 定位完成前隐藏，避免首帧闪现在视口原点。
             visibility: position ? 'visible' : 'hidden',
           }}
           variants={panelVariants}

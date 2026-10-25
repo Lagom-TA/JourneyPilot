@@ -4,23 +4,13 @@ import { cn } from '../../lib/utils';
 import { Popover, type PopoverPlacement } from './Popover';
 import { Tooltip } from './Tooltip';
 
-/**
- * 检查面入口（Inspect Surface）：圆圈 i，点开看 audit-safe 细节。
- * 展开态仅为当次 local state，不写 localStorage、不记「本会话已展开」。
- */
 export interface InspectHintProps {
-  /** 浮层内容；无内容时不渲染触发器。 */
   children: React.ReactNode;
-  /** 悬停微释义。 */
   label?: string;
   placement?: PopoverPlacement;
-  /** 面板额外 class。 */
   panelClassName?: string;
-  /** 触发器额外 class。 */
   className?: string;
-  /** 测试 id。 */
   testId?: string;
-  /** 紧凑尺寸（工具行内嵌）。 */
   size?: 'sm' | 'md';
 }
 
@@ -74,7 +64,6 @@ export const InspectHint: React.FC<InspectHintProps> = ({
   );
 };
 
-/** 检查面段落标题。 */
 export const InspectSectionTitle: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
   className,
@@ -82,7 +71,6 @@ export const InspectSectionTitle: React.FC<{ children: React.ReactNode; classNam
   <p className={cn('text-[11px] font-semibold tracking-wide text-ink-secondary', className)}>{children}</p>
 );
 
-/** 检查面键值行。 */
 export const InspectRow: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
   <div className="flex items-start justify-between gap-3 text-[11px] leading-relaxed">
     <span className="shrink-0 text-ink-muted">{label}</span>

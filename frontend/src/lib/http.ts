@@ -23,10 +23,7 @@ export function formatApiErrorDetail(detail: unknown): string | null {
     return parts.filter(Boolean).join('; ') || null;
   }
   if (detail && typeof detail === 'object') {
-    // 机读 detail 的既有形状是 `{code, message}`。`message` 是给人看的那一半，
-    // 直接 JSON.stringify 会把 `{"code":"place_provider_unavailable",…}` 原样
-    // 显示到输入框下面。只带 code 的站点（如 report_out_of_date）另有专门的
-    // 前端分支读 `body.detail.code`，走不到这里的展示位。
+    // 优先展示结构化 detail.message，避免把机读对象直接显示给用户。
     const record = detail as Record<string, unknown>;
     if (typeof record.message === 'string' && record.message.trim()) return record.message;
     return JSON.stringify(detail);
@@ -94,7 +91,7 @@ export async function fetchJson<T>(
       message = formatApiErrorDetail(record?.detail)
         || (typeof record?.message === 'string' ? record.message : message);
     } catch {
-      // keep HTTP status fallback
+      // 无法解析响应体时保留 HTTP 状态兜底。
     }
     throw new ApiError(message, response.status, body);
   }
@@ -128,7 +125,7 @@ export async function fetchBlob(path: string, init: RequestInit, timeoutMs: numb
       message = formatApiErrorDetail(record?.detail)
         || (typeof record?.message === 'string' ? record.message : message);
     } catch {
-      // keep HTTP status fallback
+      // 无法解析响应体时保留 HTTP 状态兜底。
     }
     throw new ApiError(message, response.status, body);
   }

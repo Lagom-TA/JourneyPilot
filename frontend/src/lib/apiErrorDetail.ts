@@ -1,15 +1,5 @@
 import { ApiError } from './http';
 
-/**
- * 机读错误 detail 的唯一读取器。
- *
- * 后端的 `detail` 有两种形状：一句字符串，和 `{code, message, …}`（trip_runs.py 13 处 +
- * chat.py 1 处 + places.py 2 处）。只有后者能被判据消费——`code` 是给代码看的、`message`
- * 是给人看的。读不到就返回两个 null，调用方据此回落到自己的兜底文案，而不是去猜字符串。
- *
- * 这三层展开（是不是 ApiError → body 是不是 object → detail 是不是 object）**只写在这里**：
- * 抄两遍的东西迟早只改一处。
- */
 export interface ApiErrorDetail {
   code: string | null;
   message: string | null;
@@ -31,10 +21,7 @@ export function apiErrorDetail(error: unknown): ApiErrorDetail {
   };
 }
 
-/**
- * detail 里 `code`/`message` 之外的具名字符串字段，例如冲突回报的
- * `current_bundle_id`。空串按缺失处理：一个空 id 不是答案。
- */
+/* 空字符串按缺失处理，避免将空标识当作有效值。 */
 export function apiErrorDetailString(error: unknown, key: string): string | null {
   const value = detailRecord(error)?.[key];
   return typeof value === 'string' && value ? value : null;

@@ -8,13 +8,7 @@ function readEnv(name: 'VITE_API_BASE'): string | undefined {
   return (import.meta as ImportMetaWithEnv).env?.[name];
 }
 
-/**
- * The api-base decision itself, separated from where the value comes from.
- *
- * Vite freezes a source module's `import.meta.env` at transform time, so the
- * base cannot be re-derived after the module loads — keep this pure and free
- * of `import.meta` reads.
- */
+/* Vite 在转换时固定 import.meta.env，因此解析逻辑不直接读取环境。 */
 export function resolveApiBaseUrl(configured: string | undefined): string {
   const raw = configured?.trim();
   if (!raw) return '/api';
