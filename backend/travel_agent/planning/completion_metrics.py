@@ -269,9 +269,6 @@ def recompute_completion_metrics(
     )
 
 
-calculate_run_completion_metrics = recompute_completion_metrics
-
-
 def evaluate_completion_guarantee(
     metrics: RunCompletionMetrics,
 ) -> CompletionGuaranteeEvaluation:

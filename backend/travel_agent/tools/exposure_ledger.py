@@ -18,7 +18,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, Optional
 
-from ..llm.usage import estimate_tokens
+from ..llm.token_counting import estimate_tokens
 
 
 def estimate_text_tokens(text: str) -> int:

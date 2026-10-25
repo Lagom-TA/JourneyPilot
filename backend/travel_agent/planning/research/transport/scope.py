@@ -2,20 +2,13 @@
 
 from __future__ import annotations
 
-import logging
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
-from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
 from travel_agent.planning.research.provider_assignments import (
-    build_provider_evidence_assignments,
-    dump_provider_evidence_assignments,
     parse_provider_evidence_assignments,
-    scope_attempt_numbers,
 )
 from travel_agent.planning.state import TravelAgentState
-
-logger = logging.getLogger(__name__)
 
 
 _NODE_NAME = "transport_researcher"
@@ -159,35 +152,6 @@ def scope_long_distance_transport_tools(
 
 
 def transport_provider_assignments(assignment: Dict[str, Any], state: TravelAgentState):
-    """Upgrade the old planner's empty same-city scopes on checkpoint resume."""
-    if (
-        assignment.get("provider_evidence_assignments") == []
-        and not assignment.get("require_current_candidate")
-        and not assignment.get("connector_gaps")
-    ):
-        identity = ControlledTripIdentity.model_validate(state.controlled_trip_identity)
-        if all(
-            place.place_id == identity.origin.place_id
-            for place in identity.destinations
-        ):
-            assignment = {
-                **assignment,
-                "provider_evidence_assignments": dump_provider_evidence_assignments(
-                    build_provider_evidence_assignments(
-                        run_id=state.run_id,
-                        constraint_pack_revision=state.constraint_pack_revision,
-                        worker_kind=_NODE_NAME,
-                        controlled_trip_identity=identity.model_dump(mode="json"),
-                        prior_scope_attempts=scope_attempt_numbers(
-                            state.provider_evidence_outcomes
-                        ),
-                        transport_classes=["public_transit", "flexible"],
-                    )
-                ),
-            }
-            logger.info(
-                "Upgraded legacy same-city Provider scopes run_id=%s", state.run_id
-            )
     return parse_provider_evidence_assignments(
         assignment,
         expected_worker=_NODE_NAME,

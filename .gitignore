@@ -373,6 +373,7 @@ test_output/
 !backend/tests/**
 backend/tests/**/__pycache__/
 backend/tests/**/*.pyc
+backend/tests/**/.DS_Store
 
 
 # =============================================================================

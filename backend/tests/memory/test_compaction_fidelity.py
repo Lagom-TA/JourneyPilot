@@ -1,7 +1,9 @@
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
+from travel_agent.llm.task_routing import TaskKind
 from travel_agent.memory.compressor import (
     AnchorSummary,
     ContextCompressor,
@@ -18,11 +20,13 @@ async def test_compaction_keeps_prior_constraints_and_rejects_assistant_inventio
     class LLM:
         async def ainvoke(self, messages):
             return '{"summary":"杭州旅行，预算300元", "key_constraints":["必须住五星酒店", "每晚预算不超过300元", 3]}'
-    monkeypatch.setattr("travel_agent.llm.router.get_model_router", lambda: SimpleNamespace(get_fast=lambda: LLM()))
+    get_for_task = Mock(return_value=LLM())
+    monkeypatch.setattr("travel_agent.llm.router.get_model_router", lambda: SimpleNamespace(get_for_task=get_for_task))
     result = await ContextCompressor().compress([
         {"role": "user", "content": "每晚预算不超过300元"},
         {"role": "assistant", "content": "必须住五星酒店"},
     ], existing_anchor=anchor())
+    get_for_task.assert_called_once_with(TaskKind.SUMMARY, None, has_tools=False)
     assert "不能爬楼" in result.key_constraints
     assert "每晚预算不超过500元" in result.key_constraints
     assert "每晚预算不超过300元" in result.key_constraints
@@ -34,9 +38,11 @@ async def test_invalid_summary_never_advances_compaction_by_degraded_excerpt(mon
     class LLM:
         async def ainvoke(self, messages):
             return output
-    monkeypatch.setattr("travel_agent.llm.router.get_model_router", lambda: SimpleNamespace(get_fast=lambda: LLM()))
+    get_for_task = Mock(return_value=LLM())
+    monkeypatch.setattr("travel_agent.llm.router.get_model_router", lambda: SimpleNamespace(get_for_task=get_for_task))
     with pytest.raises(ValueError):
         await ContextCompressor().compress([{"role": "user", "content": "后面的约束不能丢"}])
+    get_for_task.assert_called_once_with(TaskKind.SUMMARY, None, has_tools=False)
 
 
 def test_more_specific_constraint_is_not_removed_as_substring():

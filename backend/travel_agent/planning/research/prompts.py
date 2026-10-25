@@ -128,9 +128,3 @@ def build_research_packet_prompt(
         + "\n</research_runtime>"
     )
     return ResearchPrompt(system, runtime_text)
-
-
-def build_research_packet_system_prompt(**kwargs: Any) -> str:
-    """Legacy string view; workers use the split message assembly."""
-    prompt = build_research_packet_prompt(**kwargs)
-    return prompt.system + "\n\n" + prompt.runtime

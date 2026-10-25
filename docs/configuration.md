@@ -1,4 +1,4 @@
-<!-- 本文件由 `journeypilot config docs` 生成，不要手改。字段与默认值改在 src/travel_agent/config/models.py。 -->
+<!-- 本文件由 `journeypilot config docs` 生成，不要手改。字段与默认值改在 backend/travel_agent/config/models.py。 -->
 
 # 配置字段参考
 
@@ -32,6 +32,7 @@
 | `fast_model.temperature` | float | `0.5` | — | `JOURNEYPILOT_FAST_MODEL__TEMPERATURE` |
 | `fast_model.reasoning_effort` | low &#124; medium | `low` | — | `JOURNEYPILOT_FAST_MODEL__REASONING_EFFORT` |
 | `fast_model.timeout` | int | `30` | — | `JOURNEYPILOT_FAST_MODEL__TIMEOUT` |
+| `embedding.enabled` | bool | `True` | — | `JOURNEYPILOT_EMBEDDING__ENABLED` |
 | `embedding.provider` | str | `qwen3` | — | `JOURNEYPILOT_EMBEDDING__PROVIDER` |
 | `embedding.api_key` | str | （空） | — | `JOURNEYPILOT_EMBEDDING__API_KEY` |
 | `embedding.model_name` | str | `n24q02m/Qwen3-Embedding-0.6B-ONNX` | — | `JOURNEYPILOT_EMBEDDING__MODEL_NAME` |

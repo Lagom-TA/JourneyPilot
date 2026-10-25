@@ -43,7 +43,6 @@ from travel_agent.runtime.context import current_model_window
 from .usage import (
     LLMCallRecord,
     UsageRecorder,
-    estimate_tokens,
     extract_usage,
     error_usage_message,
     generate_call_id,
@@ -55,7 +54,7 @@ from .usage import (
 )
 from .chat_client import ReasoningChatOpenAI, reasoning_replay
 from .request_policy import is_openai_reasoning_model, model_reasoning_effort
-from .token_counting import estimate_request_tokens
+from .token_counting import estimate_request_tokens, estimate_tokens
 
 logger = logging.getLogger(__name__)
 

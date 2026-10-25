@@ -616,8 +616,8 @@ def test_lodging_exclusion_has_an_owner_without_unneeded_research(stages, overni
 @pytest.mark.parametrize("same_city", [True, False])
 def test_planner_assigns_authoritative_transport_scopes_for_local_and_intercity_trips(same_city):
     from travel_agent.planning.research.plan import planner_node
-    from travel_agent.planning.research.provider_assignments import (
-        parse_provider_evidence_assignments,
+    from travel_agent.planning.research.transport.scope import (
+        transport_provider_assignments,
     )
 
     contract, generation = _contract()
@@ -644,12 +644,14 @@ def test_planner_assigns_authoritative_transport_scopes_for_local_and_intercity_
         constraint_pack_revision=contract.constraint_pack_revision,
     )
     result = asyncio.run(planner_node(state))
-    assignments = parse_provider_evidence_assignments(
-        result["agent_assignments"]["transport_researcher"],
-        expected_worker="transport_researcher",
-        expected_run_id=state.run_id,
-        expected_constraint_pack_revision=state.constraint_pack_revision,
-    )
+    assignment = result["agent_assignments"]["transport_researcher"]
+    assignments = transport_provider_assignments(assignment, state)
+    for update in (
+        {"run_id": "run_other"},
+        {"constraint_pack_revision": state.constraint_pack_revision + 1},
+    ):
+        with pytest.raises(ValueError, match="authority mismatch"):
+            transport_provider_assignments(assignment, state.model_copy(update=update))
     assert {item.scope.transport_class for item in assignments} == (
         {"public_transit", "flexible"} if same_city
         else {"long_distance", "public_transit", "flexible"}
@@ -658,32 +660,21 @@ def test_planner_assigns_authoritative_transport_scopes_for_local_and_intercity_
     assert [leg.leg_role for leg in legs] == ([] if same_city else ["outbound", "return"])
 
 
-@pytest.mark.parametrize("same_city,scoped,raw,repairable", [
-    (True, False, [], True),
-    (False, False, [], False),
-    (True, True, [], False),
-    (True, False, None, False),
-])
-def test_transport_resume_repairs_only_legacy_initial_same_city_scopes(same_city, scoped, raw, repairable):
+@pytest.mark.parametrize("assignment", [{"provider_evidence_assignments": []}, {}])
+def test_transport_rejects_empty_or_missing_same_city_scopes(assignment):
     from travel_agent.planning.research.transport.scope import (
         transport_provider_assignments,
     )
 
     identity = _identity()
-    if same_city:
-        identity["destinations"] = [identity["origin"]]
-    state = TravelAgentState(run_id="run_local_resume", controlled_trip_identity=identity,
-                             constraint_pack_revision=2)
-    assignment = {"provider_evidence_assignments": raw, "require_current_candidate": scoped}
-    if not repairable:
-        with pytest.raises(ValueError, match="requires Provider evidence scopes"):
-            transport_provider_assignments(assignment, state)
-        return
-    scopes = transport_provider_assignments(assignment, state)
-    assert {item.scope.transport_class for item in scopes} == {"public_transit", "flexible"}
-    assert all(item.scope.run_id == state.run_id and item.scope.constraint_pack_revision == 2
-               for item in scopes)
-    assert assignment["provider_evidence_assignments"] == []
+    identity["destinations"] = [identity["origin"]]
+    state = TravelAgentState(
+        run_id="run_local_resume",
+        controlled_trip_identity=identity,
+        constraint_pack_revision=2,
+    )
+    with pytest.raises(ValueError, match="requires Provider evidence scopes"):
+        transport_provider_assignments(assignment, state)
 
 
 def test_same_city_exclusions_do_not_create_hotel_or_intercity_research():

@@ -23,7 +23,6 @@ def test_overflow_never_evicts_and_drain_survives_process_reopen(tmp_path):
     recorder = UsageRecorder(maxlen=2, spool_path=path)
     for n in range(7):
         recorder.record(record(str(n)))
-    assert recorder.dropped == 0
     batch = recorder.drain()
     assert len(batch) == 2
     reopened = UsageRecorder(spool_path=path)
@@ -77,7 +76,7 @@ r=UsageRecorder(spool_path=sys.argv[1])
 r.admit(LLMCallRecord(id='crashed',run_id='run',node=None,agent=None,tier='fast',provider='test',model_request='test',method='ainvoke',stream=False,start_ts='2026-10-08T00:00:00+00:00'))
 os._exit(0)
 """
-    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2])}
+    env = {"PATH": os.environ["PATH"], "PYTHONPATH": str(Path(__file__).resolve().parents[2])}
     subprocess.run([sys.executable, "-c", script, str(path)], check=True, env=env)
     recovered = UsageRecorder(spool_path=path).snapshot()[0]
     assert recovered.id == "crashed" and recovered.status == "interrupted"
@@ -102,9 +101,154 @@ def test_write_failure_keeps_record_and_explicit_incomplete_state(monkeypatch):
     recorder = UsageRecorder()
     monkeypatch.setattr(recorder._spool, "put", lambda *a, **kw: (_ for _ in ()).throw(OSError("disk full")))
     recorder.record(record())
-    assert len(recorder.snapshot()) == 1
-    assert not recorder.integrity("run")["capture_complete"]
+    for _ in range(3):
+        assert recorder.snapshot() == [record()]
+        assert not recorder.integrity("run")["capture_complete"]
+        assert recorder.integrity("run")["spool_write_failed"] == 1
+
+
+def test_filtered_drain_persists_only_completed_records_for_selected_run(tmp_path, monkeypatch):
+    path = tmp_path / "spool.sqlite3"
+    recorder = UsageRecorder(spool_path=path)
+    put = recorder._spool.put
+
+    def unavailable(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(recorder._spool, "put", unavailable)
+    completed = record()
+    other = record("other-call", "other")
+    started = record("started")
+    recorder.record(completed)
+    recorder.record(other)
+    recorder.admit(started)
+    monkeypatch.setattr(recorder._spool, "put", put)
+
+    assert recorder.drain(run_id="run") == [completed]
+    reopened = UsageRecorder(spool_path=path)
+    assert reopened.drain() == [completed]
+    assert reopened.integrity("run")["spool_write_failed"] == 2
+    assert reopened.integrity("other")["pending_call_count"] == 0
+    assert recorder.integrity("run")["pending_call_count"] == 2
+    assert {rec.id for rec in recorder.drain()} == {completed.id, other.id}
+    assert {rec.id for rec in reopened.drain()} == {completed.id, other.id}
+    assert reopened.integrity("other")["spool_write_failed"] == 1
+    assert recorder.integrity("run")["spool_write_failed"] == 2
+
+
+async def test_flush_persists_recovered_capture_before_cost_database_recovers(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    path = tmp_path / "spool.sqlite3"
+    recorder = UsageRecorder(spool_path=path)
+    put = recorder._spool.put
+    attempts = 0
+
+    def fail_first_write(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("disk full")
+        return put(*args, **kwargs)
+
+    monkeypatch.setattr(recorder._spool, "put", fail_first_write)
+    ack = Mock(wraps=recorder.ack)
+    monkeypatch.setattr(recorder, "ack", ack)
+    recorder.record(record())
+
+    class Unavailable:
+        async def record_calls(self, records):
+            raise ConnectionError("cost database unavailable")
+
+    service = UsageFlushService(recorder, Unavailable())
+    await service.flush()
+    await service.flush()
+    ack.assert_not_called()
+    assert attempts == 2
+    reopened = UsageRecorder(spool_path=path)
+    assert reopened.drain() == [record()]
+    assert reopened.integrity("run")["spool_write_failed"] == 1
+    store = InMemoryCostLedgerStore()
+    service.store = store
+    await service.flush()
+    ack.assert_called_once_with([record()])
+    assert len(store.calls) == 1
+    assert reopened.drain() == []
+
+
+def test_conflicting_capture_does_not_replace_volatile_completion(tmp_path, monkeypatch):
+    recorder = UsageRecorder(spool_path=tmp_path / "spool.sqlite3")
+    put = recorder._spool.put
+
+    def unavailable(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(recorder._spool, "put", unavailable)
+    rec = record()
+    recorder.record(rec)
+    with pytest.raises(UsageSpoolConflict):
+        recorder.record(replace(rec, output_tokens=6))
+    recorder.ack([replace(rec, output_tokens=7)])
+    monkeypatch.setattr(recorder._spool, "put", put)
+    assert recorder.drain() == [rec]
     assert recorder.integrity("run")["spool_write_failed"] == 1
+
+
+@pytest.mark.parametrize("write_recovers", [False, True])
+def test_drain_never_hides_conflict_between_volatile_and_durable_capture(
+    tmp_path, monkeypatch, write_recovers
+):
+    path = tmp_path / "spool.sqlite3"
+    recorder = UsageRecorder(spool_path=path)
+    put = recorder._spool.put
+
+    def unavailable(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(recorder._spool, "put", unavailable)
+    original = record()
+    recorder.record(original)
+    other = UsageRecorder(spool_path=path)
+    conflicting = replace(original, output_tokens=6)
+    other.record(conflicting)
+    if write_recovers:
+        monkeypatch.setattr(recorder._spool, "put", put)
+    with pytest.raises(UsageSpoolConflict):
+        recorder.drain()
+    assert other.drain() == [conflicting]
+    assert recorder._volatile[original.id] == ("complete", original)
+    assert recorder.integrity("run")["spool_write_failed"] == 1
+
+
+def test_retried_failure_counters_are_not_duplicated_after_partial_persistence(tmp_path, monkeypatch):
+    path = tmp_path / "spool.sqlite3"
+    recorder = UsageRecorder(spool_path=path)
+    put = recorder._spool.put
+    failure = recorder._spool.failure
+
+    def unavailable(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(recorder._spool, "put", unavailable)
+    recorder.record(record())
+    recorder.record(record("other-call", "other"))
+    monkeypatch.setattr(recorder._spool, "put", put)
+    failed = False
+
+    def fail_second_counter(run_id, count):
+        nonlocal failed
+        if run_id == "other" and not failed:
+            failed = True
+            raise OSError("disk full")
+        failure(run_id, count)
+
+    monkeypatch.setattr(recorder._spool, "failure", fail_second_counter)
+    assert len(recorder.drain()) == 2
+    assert len(recorder.drain()) == 2
+    reopened = UsageRecorder(spool_path=path)
+    assert len(reopened.drain()) == 2
+    assert reopened.integrity("run")["spool_write_failed"] == 1
+    assert reopened.integrity("other")["spool_write_failed"] == 1
 
 
 def test_concurrent_capture_conflict_is_not_last_writer_wins(tmp_path):
@@ -155,23 +299,47 @@ def test_pending_capture_is_not_a_complete_zero_bill():
     assert summary["record_failed"] == 1
 
 
-def test_concurrent_startup_upgrades_old_spool_without_volatile_fallback(tmp_path):
-    import sqlite3
+@pytest.mark.parametrize("existing_schema", [False, True])
+def test_concurrent_process_startup_opens_current_spool_without_volatile_fallback(
+    tmp_path, existing_schema
+):
+    import json
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier
 
-    path = tmp_path / "old.sqlite3"
-    with sqlite3.connect(path) as database:
-        database.execute("PRAGMA journal_mode=WAL")
-        database.execute("CREATE TABLE usage_outbox (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, phase TEXT NOT NULL, pid INTEGER NOT NULL, payload TEXT NOT NULL)")
-    barrier = Barrier(4)
-    def open_recorder(n):
-        barrier.wait()
-        recorder = UsageRecorder(spool_path=path)
-        recorder.record(replace(record(), id=f"call_{n}"))
-        return recorder
-    with ThreadPoolExecutor(4) as pool:
-        recorders = list(pool.map(open_recorder, range(4)))
-    assert all(recorder._spool is not None for recorder in recorders)
-    assert len(recorders[0].snapshot()) == 4
-    assert all(recorder.integrity("run")["spool_write_failed"] == 0 for recorder in recorders)
+    path = tmp_path / "spool.sqlite3"
+    if existing_schema:
+        initialized = UsageRecorder(spool_path=path)
+        initialized._spool.db.close()
+    script = """
+import json,sys
+from travel_agent.llm.usage import UsageRecorder,LLMCallRecord
+print('ready', flush=True)
+sys.stdin.readline()
+r=UsageRecorder(spool_path=sys.argv[1])
+assert r._spool is not None
+r.record(LLMCallRecord(**json.loads(sys.argv[2])))
+assert r.integrity('run')['spool_write_failed'] == 0
+"""
+    env = {"PATH": os.environ["PATH"], "PYTHONPATH": str(Path(__file__).resolve().parents[2])}
+    barrier = Barrier(8)
+
+    def capture(n):
+        with subprocess.Popen(
+            [sys.executable, "-c", script, str(path), json.dumps(record(f"call_{n}").to_dict())],
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        ) as child:
+            assert child.stdout.readline().strip() == "ready"
+            barrier.wait(timeout=15)
+            _, error = child.communicate("start\n", timeout=20)
+            assert child.returncode == 0, error
+
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(capture, range(8)))
+    reopened = UsageRecorder(spool_path=path)
+    assert {rec.id for rec in reopened.snapshot()} == {f"call_{n}" for n in range(8)}
+    assert reopened.integrity("run")["spool_write_failed"] == 0

@@ -33,8 +33,7 @@ class ChatAccounting:
             ledger = await self.cost_ledger_store.record_calls(batch)
             self.usage_recorder.ack(batch)
         except Exception as exc:
-            self.usage_recorder.requeue(batch)
-            logger.warning(f"usage 落库失败（已回放 {len(batch)} 条待重试）: {exc}")
+            logger.warning(f"usage 落库失败（保留 {len(batch)} 条待重试）: {exc}")
             return []
         events: List[Dict[str, Any]] = []
         for call in ledger:
@@ -65,7 +64,7 @@ class ChatAccounting:
         """终结时兜底 drain + 落库，返回 run 级成本汇总。
 
         终态按落库真实结果分流事件（CB-02）：全部落库成功发 run.cost_recorded；有本 run 记录
-        落库失败则回放待重试 + 发 run.cost_record_failed（携 record_failed 计数），事件流不再撒谎。
+        落库失败则保留待重试 + 发 run.cost_record_failed（携 record_failed 计数），事件流不再撒谎。
         record_failed 一并随 run_cost_summary 下发供前端诚实呈现。
         """
         if self.cost_ledger_store is None:
@@ -79,11 +78,10 @@ class ChatAccounting:
                     await self.cost_ledger_store.record_calls(batch)
                     self.usage_recorder.ack(batch)
                 except Exception as exc:
-                    self.usage_recorder.requeue(batch)
                     record_failed = sum(1 for rec in batch if rec.run_id == self.run_id)
                     record_error = exc.__class__.__name__
                     logger.warning(
-                        f"usage 终结落库失败（已回放 {len(batch)} 条待重试，本 run {record_failed} 条）: {exc}"
+                        f"usage 终结落库失败（保留 {len(batch)} 条待重试，本 run {record_failed} 条）: {exc}"
                     )
         try:
             summary = await self.cost_ledger_store.run_summary(self.run_id)

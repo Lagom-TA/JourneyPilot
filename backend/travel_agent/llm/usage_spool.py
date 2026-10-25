@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import sqlite3
 import socket
+import time
 
 
 def process_identity(pid):
@@ -42,16 +43,22 @@ class UsageSpool:
             descriptor = os.open(target, os.O_CREAT | os.O_RDWR, 0o600)
             os.close(descriptor)
         self.db = sqlite3.connect(str(path), check_same_thread=False, timeout=10)
-        self.db.execute("PRAGMA journal_mode=WAL")
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                self.db.execute("PRAGMA journal_mode=WAL")
+                break
+            except sqlite3.OperationalError as exc:
+                # Concurrent WAL initialization can bypass SQLite's busy timeout.
+                if exc.sqlite_errorcode != sqlite3.SQLITE_BUSY or time.monotonic() >= deadline:
+                    self.db.close()
+                    raise
+                time.sleep(0.01)
         self.db.execute("PRAGMA synchronous=FULL")
         with self.db:
-            # Multiple API processes may open/upgrade the same volume together.
-            # Serialize schema inspection and migration just like call_id writes.
             self.db.execute("BEGIN IMMEDIATE")
             self.db.execute("CREATE TABLE IF NOT EXISTS usage_outbox (id TEXT PRIMARY KEY, run_id TEXT NOT NULL, phase TEXT NOT NULL, pid INTEGER NOT NULL, payload TEXT NOT NULL, owner_token TEXT)")
             self.db.execute("CREATE TABLE IF NOT EXISTS usage_capture_failures (run_id TEXT PRIMARY KEY, failures INTEGER NOT NULL)")
-            if "owner_token" not in {row[1] for row in self.db.execute("PRAGMA table_info(usage_outbox)")}:
-                self.db.execute("ALTER TABLE usage_outbox ADD COLUMN owner_token TEXT")
         self.recover_abandoned()
 
     @staticmethod
@@ -62,7 +69,7 @@ class UsageSpool:
         with self.db:
             rows = self.db.execute("SELECT id,pid,payload,owner_token FROM usage_outbox WHERE phase='started'").fetchall()
             for call_id, pid, data, owner_token in rows:
-                if alive(pid) and (owner_token is None or process_identity(pid) == owner_token):
+                if alive(pid) and process_identity(pid) == owner_token:
                     continue
                 payload = json.loads(data)
                 payload.update(status="interrupted", usage_complete=False, usage_source="missing",

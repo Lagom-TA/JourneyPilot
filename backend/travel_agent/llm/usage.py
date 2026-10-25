@@ -34,9 +34,6 @@ import uuid
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, Optional, Tuple
 
-from .token_counting import estimate_tokens as estimate_tokens
-
-
 # 默认取批大小；不限制总记录数，不挤出未确认记录。
 DEFAULT_BUFFER_MAX = 10_000
 
@@ -149,24 +146,31 @@ class UsageRecorder:
             self._spool = None
             self._spool_error = True
 
+    def _persist(self, rec, phase, *, retry=False):
+        existing = self._volatile.get(rec.id)
+        if existing and existing[0] == "complete" and existing != (phase, rec):
+            raise UsageSpoolConflict("call_id has conflicting usage payload")
+        try:
+            if self._spool is None:
+                raise OSError("usage spool unavailable")
+            self._spool.put(rec.to_dict(), phase=phase)
+            for run_id, count in list(self._failures.items()):
+                self._spool.failure(run_id, count)
+                del self._failures[run_id]
+            self._volatile.pop(rec.id, None)
+            self._spool_error = False
+        except UsageSpoolConflict:
+            raise
+        except Exception as exc:
+            self._spool_error = True
+            if not retry:
+                self._failures[rec.run_id] = self._failures.get(rec.run_id, 0) + 1
+            self._volatile[rec.id] = (phase, deepcopy(rec))
+            logging.getLogger(__name__).error("Usage persistence failed call_id=%s error=%s", rec.id, type(exc).__name__)
+
     def _put(self, rec, phase):
         with self._lock:
-            try:
-                if self._spool is None:
-                    raise OSError("usage spool unavailable")
-                self._spool.put(rec.to_dict(), phase=phase)
-                for run_id, count in self._failures.items():
-                    self._spool.failure(run_id, count)
-                self._failures.clear()
-                self._volatile.pop(rec.id, None)
-                self._spool_error = False
-            except UsageSpoolConflict:
-                raise
-            except Exception as exc:
-                self._spool_error = True
-                self._failures[rec.run_id] = self._failures.get(rec.run_id, 0) + 1
-                self._volatile[rec.id] = (phase, deepcopy(rec))
-                logging.getLogger(__name__).error("Usage persistence failed call_id=%s error=%s", rec.id, type(exc).__name__)
+            self._persist(rec, phase)
 
     def admit(self, rec):
         rec.status, rec.usage_complete, rec.usage_source = "started", False, "missing"
@@ -177,6 +181,9 @@ class UsageRecorder:
 
     def drain(self, *, run_id=None):
         with self._lock:
+            for phase, rec in list(self._volatile.values()):
+                if phase == "complete" and (not run_id or rec.run_id == run_id):
+                    self._persist(rec, phase, retry=True)
             records = {}
             if self._spool:
                 try:
@@ -188,6 +195,8 @@ class UsageRecorder:
                     logging.getLogger(__name__).error("Usage spool read failed: %s", type(exc).__name__)
             for phase, rec in self._volatile.values():
                 if phase == "complete" and (not run_id or rec.run_id == run_id):
+                    if rec.id in records and records[rec.id] != rec:
+                        raise UsageSpoolConflict("call_id has conflicting usage payload")
                     records[rec.id] = deepcopy(rec)
             return list(records.values())
 
@@ -198,12 +207,6 @@ class UsageRecorder:
             for rec in records:
                 if self._volatile.get(rec.id) == ("complete", rec):
                     self._volatile.pop(rec.id)
-
-    def requeue(self, records):
-        # A failed consumer never removed these records. Legacy callers may
-        # requeue an external batch, so put is still idempotent and conflict-safe.
-        for rec in records:
-            self.record(rec)
 
     def snapshot(self):
         return self.drain()
@@ -232,10 +235,6 @@ class UsageRecorder:
                             "total_reasoning_output_tokens"):
                     summary[key] = None
         return summary
-
-    @property
-    def dropped(self):
-        return 0
 
     def clear(self):
         with self._lock:

@@ -173,6 +173,12 @@
           "title": "Dimensions",
           "type": "integer"
         },
+        "enabled": {
+          "default": true,
+          "description": "启用向量知识检索与自动记忆抽取；关闭后仍可读写手动偏好。",
+          "title": "Enabled",
+          "type": "boolean"
+        },
         "model_name": {
           "default": "n24q02m/Qwen3-Embedding-0.6B-ONNX",
           "title": "Model Name",
@@ -916,7 +922,7 @@
     },
     "RunBudgetConfig": {
       "additionalProperties": false,
-      "description": "一次 Run 允许花掉多少。\n\nRun 被授权时按这些值封存一份快照（``entities/run_budget.py``），之后改配置\n不影响在跑的 Run —— 与 Deadline 同一条规矩。墙钟**不在这里**：它由\n``RunDeadlineSnapshot`` 一处拥有，在这里再写一个 max_wall_seconds 就是让\n同一件事有两个 owner。",
+      "description": "一次 Run 允许花掉多少。\n\nRun 被授权时按这些值封存一份快照（``runtime/budget.py``），之后改配置\n不影响在跑的 Run —— 与 Deadline 同一条规矩。墙钟**不在这里**：它由\n``RunDeadlineSnapshot`` 一处拥有，在这里再写一个 max_wall_seconds 就是让\n同一件事有两个 owner。",
       "properties": {
         "enforce_limits": {
           "default": false,
@@ -1122,7 +1128,7 @@
     },
     "StreamingConfig": {
       "additionalProperties": false,
-      "description": "SSE 缓冲的内存预算。**全仓唯一定义处**，`api/sse_buffer.py` 读它。",
+      "description": "SSE 缓冲的内存预算。**全仓唯一定义处**，`runtime/events.py` 读它。",
       "properties": {
         "critical_queue_size": {
           "default": 128,
@@ -1201,7 +1207,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "全局设置。优先级：环境变量 > config.yaml > 这里的默认值。\n\n默认值的原则：**安全、稳定、不产生意外费用**。api_key 默认为空，provider 必须由\n用户选（`configs/providers/*.yaml` 帮他填），监听 localhost，运行时改模型默认关，\n重型增强默认关，预算与 Deadline 都是明确的有限值。",
+  "description": "全局设置。优先级：环境变量 > config.yaml > 这里的默认值。\n\n默认值的原则：**安全、稳定、不产生意外费用**。api_key 默认为空，provider 必须由\n用户选（`backend/travel_agent/resources/providers/*.yaml` 帮他填），监听 localhost，运行时改模型默认关，\n重型增强默认关，预算与 Deadline 都是明确的有限值。",
   "properties": {
     "background_jobs": {
       "$ref": "#/$defs/BackgroundJobsConfig"

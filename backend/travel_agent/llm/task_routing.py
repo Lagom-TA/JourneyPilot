@@ -109,9 +109,7 @@ class TaskLLM:
 
 
 def llm_for_task(router, task, feedback=None, *, has_tools=False):
-    if hasattr(router, "get_for_task"):
-        return router.get_for_task(task, feedback, has_tools=has_tools)
-    return router.get_primary() if TaskKind(task) in {TaskKind.COMPOSITION, TaskKind.CONSTRAINT_ARBITRATION} else router.get_fast()
+    return router.get_for_task(task, feedback, has_tools=has_tools)
 
 
 def with_quality_feedback(llm, feedback):

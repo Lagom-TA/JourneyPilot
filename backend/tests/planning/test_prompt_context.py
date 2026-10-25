@@ -15,7 +15,6 @@ from travel_agent.planning.research.output.policy import (
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.planning.research.prompts import (
     build_research_packet_prompt,
-    build_research_packet_system_prompt,
 )
 
 
@@ -33,7 +32,7 @@ def test_prompt_injects_the_packet_schema_and_matching_candidate_limit(
     """模型实际读取的 schema 与候选上限必须来自同一次真实渲染。"""
 
     candidate_limit = packet_candidate_limit(worker_kind)
-    prompt = build_research_packet_system_prompt(
+    prompt = build_research_packet_prompt(
         worker_kind=worker_kind,
         run_id="run_prompt_test",
         task_id="task_prompt_test",
@@ -51,10 +50,9 @@ def test_prompt_injects_the_packet_schema_and_matching_candidate_limit(
         separators=(",", ":"),
     )
 
-    assert prompt.count(schema) == 1
-    assert f'"candidate_limit":{candidate_limit}' in prompt
-    assert "本 Packet 最多输出本轮 candidate_limit 个" in prompt
-    assert prompt.index(schema) < prompt.index("run_prompt_test")
+    assert prompt.system.count(schema) == 1
+    assert f'"candidate_limit":{candidate_limit}' in prompt.runtime
+    assert "本 Packet 最多输出本轮 candidate_limit 个" in prompt.system
 
 
 def test_new_research_run_preserves_the_complete_schema_prefix() -> None:
@@ -67,8 +65,8 @@ def test_new_research_run_preserves_the_complete_schema_prefix() -> None:
         research_brief_context="北京",
         candidate_limit=3,
     )
-    first = build_research_packet_system_prompt(run_id="run_a", **options)
-    second = build_research_packet_system_prompt(
+    first = build_research_packet_prompt(run_id="run_a", **options)
+    second = build_research_packet_prompt(
         run_id="run_b",
         **{
             **options,
@@ -78,7 +76,7 @@ def test_new_research_run_preserves_the_complete_schema_prefix() -> None:
             "candidate_limit": 2,
         },
     )
-    assert first.split("</json_schema>")[0] == second.split("</json_schema>")[0]
+    assert first.system.split("</json_schema>")[0] == second.system.split("</json_schema>")[0]
 
 
 @pytest.mark.parametrize(

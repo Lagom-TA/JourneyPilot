@@ -1,9 +1,4 @@
-"""
-离线知识库构建脚本 — 非主调用路径。
-
-由 scripts/build_index.py 调用, FastAPI 运行时不会触达此模块。
-将网络上的旅行信息抓取为文本后, 再交由索引器建入知识库。
-"""
+"""Fetch web pages as plain text for offline knowledge indexing."""
 
 from __future__ import annotations
 

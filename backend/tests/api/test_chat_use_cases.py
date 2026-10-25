@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -26,6 +28,7 @@ from travel_agent.conversation.chat.lease import RequestExecutionLease
 from travel_agent.conversation.chat.presentation import ChatPresentation
 from travel_agent.conversation.chat.turns import ChatTurns
 from travel_agent.conversation.intake_contracts import RouteName
+from travel_agent.llm.usage import LLMCallRecord, UsageRecorder
 from travel_agent.planning.delivery.evidence_basis import (
     PublicProjectionContractViolation,
 )
@@ -34,6 +37,7 @@ from travel_agent.runtime.cancellation import RunCancelled, run_control_registry
 from travel_agent.runtime.run_contracts import (
     TripRunStatus,
 )
+from travel_agent.storage.cost_ledger_store import InMemoryCostLedgerStore
 
 
 @pytest.mark.parametrize(
@@ -635,3 +639,162 @@ async def test_cancellation_reason_remains_user_vs_lease_loss(
     ]
     assert run.status.value == status
     assert [event["type"] for event in events] == [event_type]
+
+
+def usage_call(call_id, run_id):
+    return LLMCallRecord(
+        id=call_id,
+        run_id=run_id,
+        node="worker",
+        agent="worker",
+        tier="fast",
+        provider="test",
+        model_request="test",
+        method="ainvoke",
+        stream=False,
+        start_ts="2026-10-08T00:00:00+00:00",
+        input_tokens=10,
+        output_tokens=5,
+        total_tokens=15,
+    )
+
+
+@pytest.mark.parametrize("flush_path", ["periodic", "terminal"])
+async def test_accounting_recovers_local_spool_while_cost_database_stays_unavailable(
+    resources, tmp_path, monkeypatch, caplog, flush_path
+):
+    run = await resources.trip_run_store.create_run(
+        session_id="cost", user_id="local", mode="fast"
+    )
+    other_run = await resources.trip_run_store.create_run(
+        session_id="other-cost", user_id="local", mode="fast"
+    )
+    path = tmp_path / "spool.sqlite3"
+    recorder = UsageRecorder(spool_path=path)
+    other = usage_call("other", other_run.run_id)
+    recorder.record(other)
+    put = recorder._spool.put
+    attempts = 0
+
+    def fail_first_write(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("disk full")
+        return put(*args, **kwargs)
+
+    monkeypatch.setattr(recorder._spool, "put", fail_first_write)
+    current = usage_call("current", run.run_id)
+    recorder.record(current)
+    ack = Mock(wraps=recorder.ack)
+    monkeypatch.setattr(recorder, "ack", ack)
+    store = InMemoryCostLedgerStore()
+    record_calls = store.record_calls
+    batches = []
+
+    async def database_unavailable(batch):
+        batches.append(list(batch))
+        raise ConnectionError("cost database unavailable")
+
+    monkeypatch.setattr(store, "record_calls", database_unavailable)
+    accounting = ChatAccounting(
+        run_id=run.run_id,
+        message_id="assistant",
+        cost_ledger_store=store,
+        usage_recorder=recorder,
+        trip_run_store=resources.trip_run_store,
+    )
+    expected_ids = {current.id, other.id} if flush_path == "periodic" else {current.id}
+    for _ in range(2):
+        if flush_path == "periodic":
+            assert await accounting.flush_usage_updates() == []
+        else:
+            summary = await accounting.finalize_cost_summary(terminal=True)
+            assert summary["call_count"] == 0
+            assert summary["total_tokens"] is None
+            assert not summary["capture_complete"]
+            assert summary["record_failed"] == 2
+            event = resources.trip_run_store.events[run.run_id][-1]
+            assert event.event_type == "run.cost_record_failed"
+            assert event.payload["record_failed"] == 2
+            assert event.payload["error"] == "ConnectionError"
+            assert event.payload["total_tokens"] is None
+        ack.assert_not_called()
+        reopened = UsageRecorder(spool_path=path)
+        assert {rec.id for rec in reopened.drain()} == {current.id, other.id}
+        assert reopened.integrity(run.run_id)["spool_write_failed"] == 1
+        reopened._spool.db.close()
+    assert attempts == 2
+    assert len(batches) == 2
+    assert all({rec.id for rec in batch} == expected_ids for batch in batches)
+    assert "保留" in caplog.text and "回放" not in caplog.text
+    monkeypatch.setattr(store, "record_calls", record_calls)
+    if flush_path == "periodic":
+        events = await accounting.flush_usage_updates()
+        assert len(events) == 1
+        assert events[0]["type"] == "usage_update"
+        assert events[0]["call_id"] == current.id
+        assert events[0]["run_id"] == run.run_id
+        assert events[0]["message_id"] == "assistant"
+    else:
+        summary = await accounting.finalize_cost_summary(terminal=True)
+        assert summary["call_count"] == 1
+        assert summary["total_tokens"] == 15
+    ack.assert_called_once()
+    assert {rec.id for rec in ack.call_args.args[0]} == expected_ids
+    assert {call.id for call in store.calls} == expected_ids
+    reopened = UsageRecorder(spool_path=path)
+    assert {rec.id for rec in reopened.drain()} == {current.id, other.id} - expected_ids
+    assert reopened.integrity(run.run_id)["pending_call_count"] == 0
+
+
+async def test_terminal_accounting_filters_other_runs_and_unfinished_calls(
+    resources, tmp_path, monkeypatch
+):
+    run = await resources.trip_run_store.create_run(
+        session_id="cost", user_id="local", mode="fast"
+    )
+    path = tmp_path / "spool.sqlite3"
+    recorder = UsageRecorder(spool_path=path)
+    completed = usage_call("completed", run.run_id)
+    other = usage_call("other", "other-run")
+    started = usage_call("started", run.run_id)
+    recorder.record(completed)
+    recorder.record(other)
+    recorder.admit(started)
+    ack = Mock(wraps=recorder.ack)
+    monkeypatch.setattr(recorder, "ack", ack)
+    store = InMemoryCostLedgerStore()
+    accounting = ChatAccounting(
+        run_id=run.run_id,
+        message_id="assistant",
+        cost_ledger_store=store,
+        usage_recorder=recorder,
+        trip_run_store=resources.trip_run_store,
+    )
+
+    summary = await accounting.finalize_cost_summary(terminal=True)
+    assert summary["call_count"] == 1
+    assert summary["pending_call_count"] == 1
+    assert summary["record_failed"] == 1
+    assert not summary["capture_complete"]
+    ack.assert_called_once_with([completed])
+    event = resources.trip_run_store.events[run.run_id][-1]
+    assert event.event_type == "run.cost_record_failed"
+    assert event.payload["record_failed"] == 1 and event.payload["error"] is None
+    reopened = UsageRecorder(spool_path=path)
+    assert reopened.drain() == [other]
+    assert reopened.integrity(run.run_id)["pending_call_count"] == 1
+
+    finished = replace(started, status="ok", usage_complete=True, usage_source="reported")
+    recorder.record(finished)
+    summary = await accounting.finalize_cost_summary(terminal=True)
+    assert summary["call_count"] == 2
+    assert summary["record_failed"] == 0
+    assert summary["capture_complete"]
+    assert ack.call_count == 2 and ack.call_args.args[0] == [finished]
+    assert {call.id for call in store.calls} == {completed.id, finished.id}
+    assert reopened.drain() == [other]
+    event = resources.trip_run_store.events[run.run_id][-1]
+    assert event.event_type == "run.cost_recorded"
+    assert event.payload["call_count"] == 2
