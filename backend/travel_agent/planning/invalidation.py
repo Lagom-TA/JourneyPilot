@@ -8,15 +8,7 @@ from typing import Dict
 
 
 def workspace_acceptance_invalidation() -> Dict[str, Any]:
-    return {
-        "intent_coverage_report": None,
-        "intent_fidelity_gaps": [],
-        "intent_fidelity_route": None,
-        "recommendation_quality": None,
-        "delivery_quality_gaps": [],
-        "delivery_quality_route": None,
-        **_projection_invalidation(),
-    }
+    return _projection_invalidation()
 
 
 def _projection_invalidation() -> Dict[str, Any]:
@@ -67,13 +59,9 @@ def invalidation_update(impact: AmendmentImpact) -> Dict[str, Any]:
         "agent_assignments": {},
         "current_plan_step": 0,
         "agent_status": {},
-        "artifact_status": {},
-        "artifact_gate_route": None,
         "minimum_delivery_draft": None,
         "run_deadline": None,
         "run_budget": None,
-        "gate_failure_attributions": {},
-        "terminal_attribution": None,
         "provider_evidence_outcomes": {},
         "weather_impacts": {},
         "composition_repair_attempts": 0,

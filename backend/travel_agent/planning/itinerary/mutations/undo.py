@@ -48,7 +48,6 @@ def apply_workspace_v2_inverse(
             inverse.previous_workspace.model_copy(
                 update={
                     "workspace_revision": workspace.workspace_revision + 1,
-                    "intent_coverage_report": None,
                 }
             ).model_dump(mode="json")
         )
@@ -141,7 +140,6 @@ def apply_selection_inverse(
             update={
                 "workspace_revision": workspace.workspace_revision + 1,
                 "itinerary": itinerary,
-                "intent_coverage_report": None,
                 "selection_slots": [
                     next_slot
                     if item.selection_slot_id == slot.selection_slot_id

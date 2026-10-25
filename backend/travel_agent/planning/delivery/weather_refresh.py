@@ -16,9 +16,6 @@ from travel_agent.planning.delivery.weather_refresh_contracts import (
 from travel_agent.planning.delivery.weather_refresh_contracts import (
     WeatherBundleRefreshResult,
 )
-from travel_agent.planning.delivery.weather_refresh_contracts import (
-    WeatherRefreshRefused,
-)
 from travel_agent.planning.weather.adjustments import build_weather_adjustment_proposals
 from travel_agent.planning.weather.context_builder import WeatherContextBuildResult
 from travel_agent.planning.weather.context_builder import WeatherContextBuilder
@@ -53,13 +50,11 @@ def _build_refreshed_bundle(
     now: datetime,
     id_factory: IdFactory,
 ) -> tuple[DeliveryBundle, bool]:
-    """Recompute one whole candidate Bundle revision from a new forecast.
+    """按新预报整体重算一个候选 Bundle 修订。
 
-    Every step here is pure: it either yields a fully valid next Bundle or
-    refuses.  Re-admission refuses through ``WeatherRefreshRefused``; the
-    Delivery Bundle contract refuses through ``ValidationError`` when the
-    recomputed weather view no longer covers frozen canonical lineage.  The
-    caller turns both into a typed refusal instead of an unhandled error.
+    每一步都是纯计算：要么产出一个完整合法的下一个 Bundle，要么在重算后的
+    天气视图无法覆盖冻结的 canonical 血统时以 ``ValidationError`` 拒绝；
+    调用方把该异常转成类型化拒绝，而不是未处理错误。
     """
 
     facts = _fact_snapshot(bundle, result)
@@ -68,7 +63,6 @@ def _build_refreshed_bundle(
         bundle,
         facts=facts,
         weather=weather,
-        now=now,
     )
 
     weather, carried_impact_ids, carried_days = _carry_over_frozen_impacts(
@@ -254,12 +248,8 @@ class WeatherBundleRefreshService:
                 now=now,
                 id_factory=self._id_factory,
             )
-        except (WeatherRefreshRefused, ValidationError) as exc:
-            reason = (
-                exc.code
-                if isinstance(exc, WeatherRefreshRefused)
-                else WEATHER_SNAPSHOT_INCONSISTENT
-            )
+        except ValidationError as exc:
+            reason = WEATHER_SNAPSHOT_INCONSISTENT
             logger.warning(
                 "weather refresh refused run_id=%s bundle_id=%s reason=%s: %s",
                 run_id,

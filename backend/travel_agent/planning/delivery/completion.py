@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
-
-from travel_agent.planning.delivery.bundle import DeliveryBundle
 from travel_agent.planning.outcomes import DeliveryFailureRecord
 from travel_agent.planning.state import TravelAgentState
 
@@ -15,20 +11,6 @@ class DeliveryFinalizationError(RuntimeError):
         super().__init__(record.public_message)
         self.record = record
         self.__cause__ = cause
-
-
-def _terminal_recorded_at(
-    state: TravelAgentState, bundle: Optional[DeliveryBundle] = None
-) -> datetime:
-    """终态时间取持久化的 deadline 观察时刻，不用新的实时时钟。"""
-
-    if state.run_deadline is not None:
-        return state.run_deadline.last_observed_at
-    if bundle is not None:
-        return bundle.manifest.created_at
-    if state.minimum_delivery_draft is not None:
-        return state.minimum_delivery_draft.planning_authorized_at
-    return datetime.now(timezone.utc)
 
 
 def _require_sealed_completion_generation(state: TravelAgentState) -> None:

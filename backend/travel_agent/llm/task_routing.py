@@ -21,10 +21,6 @@ class TaskKind(str, Enum):
 class QualityFeedback:
     schema_failures: int = 0
     truncated: bool = False
-    hard_gate_failed: bool = False
-    hard_gate_unknown: bool = False
-    evidence_available: bool = True
-    evidence_closure_dropped: int = 0
 
 
 @dataclass(frozen=True)
@@ -49,10 +45,8 @@ def select_task_route(task, primary, fast, feedback=None, *, has_tools=False,
     quality = feedback or QualityFeedback()
     tier = "primary" if task in {TaskKind.COMPOSITION, TaskKind.CONSTRAINT_ARBITRATION} else "fast"
     reason, action = "task_default", "invoke"
-    if (quality.hard_gate_unknown or quality.hard_gate_failed or quality.evidence_closure_dropped) and not quality.evidence_available:
-        reason, action = "evidence_gap", "research_required"
-    elif tier == "fast" and task != TaskKind.RESEARCH_TOOLS and (
-        quality.schema_failures or quality.truncated or quality.hard_gate_failed
+    if tier == "fast" and task != TaskKind.RESEARCH_TOOLS and (
+        quality.schema_failures or quality.truncated
     ):
         tier, reason = "primary", "quality_failure"
     if has_tools and tier == "primary" and not chat_tool_protocol_supported(primary):

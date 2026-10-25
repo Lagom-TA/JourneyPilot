@@ -15,7 +15,6 @@ MutationCreator = Literal[
     "deterministic_pruner",
     "anchor_backfill",
     "slot_backfill",
-    "composition_repair",
     "user_edit",
 ]
 
@@ -87,7 +86,6 @@ def _mutation(
         target_entity_ids=target_entity_ids,
         affected_intent_ids=sorted(set(affected_intent_ids)),
         affected_rule_ids=sorted(set(affected_rule_ids)),
-        hard_rules_revalidated=False,
         created_by=created_by,
     )
 
@@ -162,32 +160,6 @@ def diff_composition_mutations(
             )
         )
     return mutations
-
-
-def mark_mutations_revalidated(
-    mutations: Sequence[CompositionMutation],
-    *,
-    coverage_before: Mapping[str, str] | None = None,
-    coverage_after: Mapping[str, str] | None = None,
-) -> list[CompositionMutation]:
-    before = coverage_before or {}
-    after = coverage_after or {}
-    validated: list[CompositionMutation] = []
-    for mutation in mutations:
-        intent_ids = set(mutation.affected_intent_ids)
-        update: dict[str, Any] = {"hard_rules_revalidated": True}
-        if coverage_before is not None:
-            update["coverage_before"] = {
-                intent_id: before[intent_id]
-                for intent_id in sorted(intent_ids & before.keys())
-            }
-        if coverage_after is not None:
-            update["coverage_after"] = {
-                intent_id: after[intent_id]
-                for intent_id in sorted(intent_ids & after.keys())
-            }
-        validated.append(mutation.model_copy(update=update))
-    return validated
 
 
 def user_workspace_mutation(

@@ -101,17 +101,10 @@ def _replace_visit_candidate(
     candidate = workspace.recommendation_catalog.candidate_index().get(
         operation.candidate_id
     )
-    admission = workspace.recommendation_catalog.admission_index().get(
-        (operation.candidate_id, None)
-    )
-    if (
-        not isinstance(candidate, VisitCandidate)
-        or admission is None
-        or admission.status != "passed"
-    ):
+    if not isinstance(candidate, VisitCandidate):
         raise WorkspaceV2MutationError(
-            "candidate_not_admitted",
-            "Weather replacement candidate did not pass admission",
+            "candidate_not_found",
+            "Weather replacement candidate is missing from the catalog",
         )
     planned_end = (
         current.planned_start

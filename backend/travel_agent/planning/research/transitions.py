@@ -6,12 +6,7 @@ from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary.revision import bounded_repair_context
 from travel_agent.planning.itinerary.draft import ItineraryCompositionError
 from travel_agent.planning.itinerary.revision import apply_composition_repair_budget
-from travel_agent.planning.outcomes import (
-    CandidateResearchGap,
-    GateClass,
-    GateDisposition,
-)
-from travel_agent.planning.research.attribution import _record_attribution
+from travel_agent.planning.outcomes import CandidateResearchGap
 from travel_agent.planning.research.retry import _mark_scoped_gaps_exhausted
 
 
@@ -73,29 +68,9 @@ def _catalog_contract_update(
     base_update: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     """Record a catalog contract outcome and hand the run to composition."""
-    accumulated = dict(base_update or {})
-    gap_ids = (
-        [f"catalog:{worker_kind}:{reason_code}"]
-        if worker_kind
-        else [f"catalog:{reason_code}"]
-    )
     return {
-        **accumulated,
+        **(base_update or {}),
         "candidate_gate_status": "passed",
         "candidate_gate_route": "passed",
-        "gate_failure_attributions": _record_attribution(
-            state.model_copy(
-                update={
-                    "gate_failure_attributions": accumulated.get(
-                        "gate_failure_attributions",
-                        state.gate_failure_attributions,
-                    )
-                }
-            ),
-            gate_class=GateClass.COMPOSITION,
-            disposition=GateDisposition.COMPOSITION_REPAIR,
-            reason_code=reason_code,
-            gap_ids=gap_ids,
-        ),
         "last_error": message,
     }

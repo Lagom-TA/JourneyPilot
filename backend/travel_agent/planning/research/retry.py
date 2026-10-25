@@ -6,12 +6,7 @@ from typing import Any, Dict, Iterable
 from travel_agent.planning.requirements.route_legs import build_required_long_distance_legs
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.assignments import strip_round_suffix
-from travel_agent.planning.outcomes import (
-    CandidateResearchGap,
-    GateClass,
-    GateDisposition,
-)
-from travel_agent.planning.research.attribution import _record_attribution
+from travel_agent.planning.outcomes import CandidateResearchGap
 from travel_agent.planning.research.domains import ResearchDomain
 from travel_agent.planning.research.failure_signals import (
     ProviderFailureSignal,
@@ -247,12 +242,10 @@ def _resolve_research_target(
     gaps: list[CandidateResearchGap],
     blocked_workers: Iterable[str],
     packets_by_worker: Dict[str, Any],
-    attributions: Dict[str, Any],
     failure_ledger: Dict[str, list[str]],
 ) -> tuple[
     CandidateResearchGap | None,
     list[CandidateResearchGap],
-    Dict[str, Any],
     Dict[str, list[str]],
     list[ProviderFailureSignal],
 ]:
@@ -266,7 +259,7 @@ def _resolve_research_target(
             excluded_domains=excluded_domains,
         )
         if primary_gap is None:
-            return None, gaps, attributions, failure_ledger, []
+            return None, gaps, failure_ledger, []
         signals = _worker_failure_signals(
             state,
             packet=packets_by_worker.get(primary_gap.worker_kind),
@@ -277,7 +270,7 @@ def _resolve_research_target(
             None,
         )
         if deterministic_signal is None:
-            return primary_gap, gaps, attributions, failure_ledger, signals
+            return primary_gap, gaps, failure_ledger, signals
         gap_domain = primary_gap.research_domain or ResearchDomain.VISIT
         gaps = _mark_scoped_gaps_exhausted(
             gaps,
@@ -292,15 +285,5 @@ def _resolve_research_target(
                     *(signal.signature for signal in signals),
                 ]
             )
-        )
-        attributions = _record_attribution(
-            state.model_copy(update={"gate_failure_attributions": attributions}),
-            gate_class=GateClass.COMPOSITION,
-            disposition=GateDisposition.TARGETED_RESEARCH,
-            reason_code=deterministic_signal.reason_code,
-            domain=gap_domain,
-            gap_ids=[primary_gap.gap_id],
-            failure_signature=deterministic_signal.signature,
-            deterministic=True,
         )
         excluded_domains.add(gap_domain)

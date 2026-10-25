@@ -16,7 +16,6 @@ from tests.fixtures.research_catalog import (
     make_research_intent,
     make_visit_packet,
 )
-from travel_agent.planning.delivery.intent_gate import _candidate_retry_available
 from travel_agent.planning.delivery.report_projection import (
     _reportable_selection_options,
 )
@@ -48,7 +47,6 @@ from travel_agent.planning.requirements.candidate_match_contracts import (
 from travel_agent.planning.requirements.composition_compiler import (
     compile_composition_rules,
 )
-from travel_agent.planning.requirements.coverage_contracts import IntentFidelityGap
 from travel_agent.planning.requirements.intent_contracts import (
     CountIntentValue,
     IntentItem,
@@ -1832,42 +1830,6 @@ def test_route_fallback_keeps_one_option_per_long_distance_scope():
         "outbound_fast",
         "return_only",
     ]
-
-
-def test_intent_fidelity_does_not_reopen_exhausted_candidate_domain():
-    intent = make_research_intent(
-        "intent_required",
-        "Required Garden",
-        kind=IntentKind.MUST_INCLUDE,
-        strength=IntentStrength.HARD,
-        verification=VerificationMode.DETERMINISTIC,
-    )
-    gap = IntentFidelityGap(
-        gap_id="intent_gap_required",
-        intent_id=intent.intent_id,
-        reason="required_candidate_missing",
-        blocking=True,
-        retry_target="candidate_gate",
-    )
-    candidate_gap = CandidateResearchGap(
-        gap_id="candidate_gap_required",
-        worker_kind="destination_researcher",
-        generation_id="generation_test",
-        reason="insufficient_intent_evidence",
-        intent_id=intent.intent_id,
-        research_domain=ResearchDomain.VISIT,
-        status="exhausted",
-    )
-    state = TravelAgentState(
-        intent_spec=make_intent_spec(intent),
-        candidate_research_gaps=[candidate_gap],
-    )
-
-    assert _candidate_retry_available(state, [gap]) is False
-    state.candidate_research_gaps = [
-        candidate_gap.model_copy(update={"status": "open"})
-    ]
-    assert _candidate_retry_available(state, [gap]) is True
 
 
 def test_domain_cap_keeps_targeted_and_intent_candidates_before_fallback():

@@ -49,15 +49,6 @@ NODE_ACCOMMODATION = "accommodation_researcher"
 NODE_ITINERARY = "itinerary_planner"
 
 
-NODE_ARTIFACT_GATE = "artifact_gate"
-
-
-NODE_INTENT_FIDELITY_GATE = "intent_fidelity_gate"
-
-
-NODE_DELIVERY_QUALITY_GATE = "delivery_quality_gate"
-
-
 NODE_BUDGET_ESTIMATE = "budget_estimate"
 
 

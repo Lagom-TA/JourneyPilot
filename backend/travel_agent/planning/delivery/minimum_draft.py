@@ -282,11 +282,9 @@ def _clear_completion_generation() -> Dict[str, Any]:
     return {
         "run_deadline": None,
         "run_budget": None,
-        "gate_failure_attributions": {},
         "candidate_research_gaps": [],
         "candidate_gate_attempts": {},
         "candidate_gate_failure_signatures": {},
-        "terminal_attribution": None,
     }
 
 
@@ -365,5 +363,4 @@ def seal_minimum_delivery_draft(
         "minimum_delivery_draft": sealed,
         "run_deadline": build_run_deadline_snapshot(sealed),
         "run_budget": build_run_budget_snapshot(),
-        "terminal_attribution": None,
     }

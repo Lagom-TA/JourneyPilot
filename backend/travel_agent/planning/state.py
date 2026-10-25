@@ -17,15 +17,9 @@ from travel_agent.planning.itinerary.draft import ItineraryCompositionDraft
 from travel_agent.planning.itinerary.mutation_contracts import CompositionMutation
 from travel_agent.planning.outcomes import CandidateResearchGap
 from travel_agent.planning.outcomes import DeliveryFailureRecord
-from travel_agent.planning.outcomes import DeliveryQualityGap
-from travel_agent.planning.outcomes import GateFailureAttribution
-from travel_agent.planning.outcomes import RecommendationQualityState
-from travel_agent.planning.outcomes import TerminalAttribution
 from travel_agent.planning.requirements.candidate_match_contracts import (
     CandidateIntentMatch,
 )
-from travel_agent.planning.requirements.coverage_contracts import IntentCoverageReport
-from travel_agent.planning.requirements.coverage_contracts import IntentFidelityGap
 from travel_agent.planning.requirements.generation_contracts import PlanningGeneration
 from travel_agent.planning.requirements.inputs import MinimumDeliveryDraft
 from travel_agent.planning.requirements.intent_contracts import IntentSpec
@@ -74,7 +68,7 @@ def _merge_dicts(a: Dict, b: Dict) -> Dict:
     concurrent writers must **not** share keys.
 
     Contract for worker-owned maps (``research_packets``, ``agent_status``,
-    ``artifact_status``, …): each parallel branch writes **only its agent
+    …): each parallel branch writes **only its agent
     key** (or a round-suffixed key owned by that branch). Same-key dual write
     is undefined and must not appear in production paths; tests document
     last-wins under both merge orders.
@@ -212,22 +206,6 @@ def _merge_run_deadline_allow_clear(
     )
 
 
-def _merge_gate_failure_attributions_allow_clear(
-    a: Dict[str, GateFailureAttribution],
-    b: Dict[str, GateFailureAttribution],
-) -> Dict[str, GateFailureAttribution]:
-    """Keep independent gap/domain attribution records without cross-over.
-
-    Gate nodes may update different domains concurrently. Records are keyed by
-    their stable attribution id, so a newer observation of the same classified
-    failure replaces only that record. An explicit empty mapping clears the
-    previous Draft generation during a plan edit.
-    """
-    if not b:
-        return {}
-    return {**(a or {}), **b}
-
-
 class TravelAgentState(BaseModel):
     """
     全局工作流状态（LangGraph StateGraph 使用）。
@@ -283,12 +261,6 @@ class TravelAgentState(BaseModel):
     run_budget: Annotated[
         Optional[RunBudgetSnapshot], _take_latest_value_allow_clear
     ] = None
-    gate_failure_attributions: Annotated[
-        Dict[str, GateFailureAttribution], _merge_gate_failure_attributions_allow_clear
-    ] = Field(default_factory=dict)
-    terminal_attribution: Annotated[
-        Optional[TerminalAttribution], _take_latest_value_allow_clear
-    ] = None
 
     destination_geo: List[DestinationGeoPoint] = Field(default_factory=list)
     weather_context: Optional[WeatherContextSnapshot] = None
@@ -306,11 +278,6 @@ class TravelAgentState(BaseModel):
     agent_status: Annotated[Dict[str, str], _merge_dicts_allow_clear] = Field(
         default_factory=dict
     )
-
-    artifact_status: Annotated[Dict[str, str], _merge_dicts_allow_clear] = Field(
-        default_factory=dict
-    )
-    artifact_gate_route: Optional[str] = None
 
     research_packets: Annotated[Dict[str, ResearchPacket], _merge_dicts] = Field(
         default_factory=dict
@@ -353,16 +320,8 @@ class TravelAgentState(BaseModel):
     composition_mutations: Annotated[
         List[CompositionMutation], _merge_composition_mutations
     ] = Field(default_factory=list)
-    intent_coverage_report: Optional[IntentCoverageReport] = None
-    intent_fidelity_gaps: List[IntentFidelityGap] = Field(default_factory=list)
-    intent_fidelity_route: Optional[
-        Literal["passed", "candidate_gate", "composition_repair"]
-    ] = None
     local_connector_gaps: List[LocalConnectorGap] = Field(default_factory=list)
     trip_workspace_v2: Optional[TripWorkspaceV2] = None
-    recommendation_quality: Optional[RecommendationQualityState] = None
-    delivery_quality_gaps: List[DeliveryQualityGap] = Field(default_factory=list)
-    delivery_quality_route: Optional[str] = None
     fact_store_snapshot: Optional[FactStoreSnapshot] = None
     report_projection: Optional[TripReportProjection] = None
     map_projection: Optional[MapProjection] = None
@@ -503,23 +462,10 @@ class TravelAgentState(BaseModel):
                 raise ValueError(
                     "candidate selection plan belongs to another catalog generation"
                 )
-        if self.intent_coverage_report is not None:
-            if self.intent_spec is None or self.trip_workspace_v2 is None:
-                raise ValueError("intent coverage requires intent and workspace state")
-            if (
-                self.intent_coverage_report.generation_id
-                != self.intent_spec.generation_id
-                or self.intent_coverage_report.intent_spec_revision
-                != self.intent_spec.revision
-                or self.intent_coverage_report.workspace_revision
-                != self.trip_workspace_v2.workspace_revision
-            ):
-                raise ValueError("intent coverage belongs to obsolete planning state")
         draft = self.minimum_delivery_draft
         dependent_values = (
             self.run_deadline,
             self.run_budget,
-            self.terminal_attribution,
         )
         if draft is None:
             if any(value is not None for value in dependent_values):
@@ -561,18 +507,6 @@ class TravelAgentState(BaseModel):
 
         if (self.run_budget is None) != (self.run_deadline is None):
             raise ValueError("run budget and run deadline must be sealed together")
-        if (
-            self.terminal_attribution is not None
-            and self.terminal_attribution.draft_id != draft.draft_id
-        ):
-            raise ValueError(
-                "terminal attribution belongs to another minimum delivery draft"
-            )
-        for attribution in self.gate_failure_attributions.values():
-            if attribution.draft_id != draft.draft_id:
-                raise ValueError(
-                    "gate failure attribution belongs to another minimum delivery draft"
-                )
         return self
 
     model_config = {"arbitrary_types_allowed": True}
