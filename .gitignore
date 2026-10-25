@@ -50,6 +50,7 @@ test-results/
 outputs/
 output/
 !/backend/travel_agent/planning/research/output/
+out/
 temp/
 tmp/
 cache/
