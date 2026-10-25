@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import List, Literal, Optional
 
 from pydantic import Field, model_validator
 
@@ -12,63 +11,6 @@ from travel_agent.schema import StrictModel
 
 class GateClass(str, Enum):
     COMPOSITION = "composition"
-
-
-class GateDisposition(str, Enum):
-    TARGETED_RESEARCH = "targeted_research"
-    COMPOSITION_REPAIR = "composition_repair"
-
-    RESEARCH_EXHAUSTED = "research_exhausted"
-
-
-class DeliveryContractViolation(RuntimeError):
-    def __init__(
-        self,
-        message: str,
-        *,
-        reason_code: str,
-        gate_class: GateClass,
-    ) -> None:
-        self.reason_code = reason_code
-        self.gate_class = gate_class
-        super().__init__(message)
-
-
-class GateFailureAttribution(StrictModel):
-    attribution_id: str = Field(min_length=1)
-
-    draft_id: Optional[str] = Field(default=None, min_length=1)
-    gate_class: GateClass
-    disposition: GateDisposition
-    reason_code: str = Field(min_length=1)
-    research_domain: Optional[ResearchDomain] = None
-    gap_ids: List[str] = Field(default_factory=list)
-    failure_signature: Optional[str] = None
-    deterministic: bool = False
-    retry_attempt: int = Field(default=0, ge=0)
-    recorded_at: datetime
-
-    @model_validator(mode="after")
-    def validate_gate_attribution(self) -> "GateFailureAttribution":
-        if self.recorded_at.tzinfo is None:
-            raise ValueError(
-                "gate failure attribution timestamps must be timezone-aware"
-            )
-        if len(self.gap_ids) != len(set(self.gap_ids)):
-            raise ValueError("gate failure attribution gap ids must be unique")
-        return self
-
-
-AuditClosureStatus = Literal["completed", "cancelled", "failed"]
-
-
-class TerminalAttribution(StrictModel):
-    draft_id: str = Field(min_length=1)
-    closure_status: AuditClosureStatus
-    reason_code: str = Field(min_length=1)
-    recorded_at: datetime
-    delivery_bundle_id: Optional[str] = None
-    gate_class: Optional[GateClass] = None
 
 
 class CandidateResearchGap(StrictModel):
@@ -133,64 +75,6 @@ class CandidateResearchGap(StrictModel):
                 "only long-distance candidate gaps may bind Provider evidence scope"
             )
         return self
-
-
-class DeliveryQualityGap(StrictModel):
-    gap_id: str = Field(min_length=1)
-    gate: Literal[
-        "slot",
-        "itinerary",
-        "source_weather",
-        "integrity",
-    ]
-    reason: Literal[
-        "slot_option_count",
-        "slot_comparison_mismatch",
-        "missing_lodging_night",
-        "missing_dining_day",
-        "route_infeasible",
-        "route_endpoint_mismatch",
-        "physical_candidate_reused",
-        "destination_transfer_missing",
-        "day_date_discontinuity",
-        "day_timeline_missing",
-        "fact_not_verified",
-        "source_missing",
-        "weather_lineage_missing",
-        "weather_unavailable_refreshable",
-        "workspace_missing",
-        "catalog_missing",
-    ]
-    field_path: str = Field(min_length=1)
-    entity_id: Optional[str] = None
-    candidate_id: Optional[str] = None
-    worker_kind: Optional[
-        Literal[
-            "destination_researcher", "accommodation_researcher", "transport_researcher"
-        ]
-    ] = None
-    repair_context: Dict[str, Any] = Field(default_factory=dict)
-    gate_class: GateClass = GateClass.COMPOSITION
-    research_domain: Optional[ResearchDomain] = None
-    blocking: bool = True
-    retry_target: Literal[
-        "itinerary_planner",
-        "destination_researcher",
-        "accommodation_researcher",
-        "transport_researcher",
-        "weather_refresh",
-        "candidate_gate",
-        "composition_repair",
-    ]
-
-
-class RecommendationQualityState(StrictModel):
-    schema_gate: Literal["pending", "passed", "failed"]
-    candidate_gate: Literal["pending", "passed", "failed"]
-    slot_gate: Literal["pending", "passed", "failed"]
-    itinerary_gate: Literal["pending", "passed", "failed"]
-    source_weather_gate: Literal["pending", "passed", "failed"]
-    active_gap_ids: List[str] = Field(default_factory=list)
 
 
 class InternalFailureClass(str, Enum):

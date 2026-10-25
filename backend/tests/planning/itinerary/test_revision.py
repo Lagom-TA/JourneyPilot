@@ -350,12 +350,6 @@ def test_occurrences_reach_connectors_workspace_and_checkpoint(provider):
     assert len(result.itinerary.transport_legs) == 4
     assert len(result.selection_slots) == (10 if provider else 6)
     assert skeleton.model_dump() == before
-    from travel_agent.planning.delivery.quality.evaluation import (
-        evaluate_delivery_quality,
-    )
-
-    quality, issues = evaluate_delivery_quality(restored)
-    assert quality.itinerary_gate == "passed", [(issue.reason, issue.field_path) for issue in issues]
 
 
 @pytest.mark.parametrize("scoped", [False, True])
@@ -502,29 +496,6 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
     repairing = restore_planning_state(routed, **await candidate_gate.candidate_gate_node(routed))
     assert candidate_gate.route_after_candidate_gate(repairing) == "composition_repair"
     assert repairing.composition_repair_attempts == 1
-    from travel_agent.planning.requirements.composition_compiler import (
-        compile_composition_rules,
-    )
-    from travel_agent.planning.requirements.verification.coverage import (
-        evaluate_intent_fidelity,
-    )
-
-    prior_workspace = workspace(skeleton, catalog, intent_spec=spec)
-    report, gaps = evaluate_intent_fidelity(
-        intent_spec=repairing.intent_spec,
-        rules=compile_composition_rules(repairing.intent_spec),
-        workspace=prior_workspace,
-        repair_budget_exhausted=False,
-    )
-    assert report.items and report.items[0].status.value == "satisfied"
-    repairing = restore_planning_state(
-        repairing,
-        trip_workspace_v2=prior_workspace.model_copy(update={"intent_coverage_report": report}),
-        intent_coverage_report=report,
-        intent_fidelity_gaps=gaps,
-        intent_fidelity_route="composition_repair",
-        delivery_quality_route="composition_repair",
-    )
     fixed = json.loads(bad.model_dump_json())
     fixed["days"][0]["day_design"]["free_time"][0].update(
         planned_start="2026-10-10T11:00:00+09:00",
@@ -540,12 +511,6 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
     monkeypatch.setattr(node, "llm_for_task", lambda *args: Model())
     revised = restore_planning_state(repairing, **await node.itinerary_planner_node(repairing, {}))
     assert revised.trip_workspace_v2 is None and not revised.local_connector_gaps
-    assert revised.intent_coverage_report is None
-    assert revised.intent_fidelity_gaps == []
-    assert revised.intent_fidelity_route is None
-    assert revised.recommendation_quality is None
-    assert revised.delivery_quality_gaps == []
-    assert revised.delivery_quality_route is None
     assert revised.intent_spec == repairing.intent_spec
     assert revised.recommendation_catalog == repairing.recommendation_catalog
     routed = restore_planning_state(revised, **await planning_research_dispatch.dispatcher_node(revised))
@@ -568,8 +533,6 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
     assert planning_research_dispatch.route_after_dispatcher(routed) == "itinerary_planner"
     completed = restore_planning_state(routed, **await node.itinerary_planner_node(routed, {}))
     assert completed.agent_status["itinerary_planner"] == "completed"
-    assert completed.intent_coverage_report is None
-    assert completed.trip_workspace_v2.intent_coverage_report is None
     block = completed.trip_workspace_v2.itinerary.custom_blocks[0]
     assert block.planned_start.isoformat() == "2026-10-10T11:00:00+09:00"
     assert block.planned_end.isoformat() == "2026-10-10T12:00:00+09:00"
@@ -1131,10 +1094,6 @@ def test_candidate_scoped_mode_lock_targets_actual_occurrences_only(partial):
 
 @pytest.mark.parametrize("meal_type", ["snack", "lunch"])
 def test_multiple_same_meal_occurrences_have_distinct_targeted_slots_after_checkpoint(meal_type):
-    from travel_agent.planning.delivery.quality.evaluation import (
-        evaluate_delivery_quality,
-    )
-
     packets = []
     for candidate_id in ("cafe_first", "cafe_second"):
         packet = visit_packet(candidate_id)
@@ -1159,8 +1118,6 @@ def test_multiple_same_meal_occurrences_have_distinct_targeted_slots_after_check
         assert selected.candidate_entity_ref.entity_id == stop.item_id
         assert selected.candidate_id == stop.lineage.candidate_id
         assert any(admission.candidate_id == selected.candidate_id and admission.selection_slot_id == slot.selection_slot_id for admission in result.recommendation_catalog.admission_results)
-    quality, issues = evaluate_delivery_quality(restored)
-    assert quality.itinerary_gate == "passed", [issue.reason for issue in issues]
 
 
 def test_real_duplicate_occurrence_and_overlapping_repeat_still_fail():

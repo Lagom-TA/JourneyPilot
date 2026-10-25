@@ -5,7 +5,6 @@ from __future__ import annotations
 from enum import Enum
 from pydantic import Field
 from travel_agent.schema import StrictModel
-from typing import Dict
 from typing import List
 from typing import Literal
 
@@ -28,13 +27,9 @@ class CompositionMutation(StrictModel):
     target_entity_ids: List[str] = Field(default_factory=list)
     affected_intent_ids: List[str] = Field(default_factory=list)
     affected_rule_ids: List[str] = Field(default_factory=list)
-    coverage_before: Dict[str, str] = Field(default_factory=dict)
-    coverage_after: Dict[str, str] = Field(default_factory=dict)
-    hard_rules_revalidated: bool
     created_by: Literal[
         "deterministic_pruner",
         "anchor_backfill",
         "slot_backfill",
-        "composition_repair",
         "user_edit",
     ]

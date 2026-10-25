@@ -83,8 +83,6 @@ class DeliveryBundle(StrictModel):
 
     @model_validator(mode="after")
     def validate_manifest(self) -> "DeliveryBundle":
-        if self.workspace.intent_coverage_report is None:
-            raise ValueError("delivery bundle requires an intent coverage report")
         revisions = (
             self.workspace.workspace_revision,
             self.fact_snapshot.fact_data_revision,
@@ -206,7 +204,6 @@ class DeliveryBundle(StrictModel):
             for day in itinerary.day_plans
         }
         candidates = catalog.candidate_index()
-        admissions = catalog.admission_index()
         for proposal in self.weather_snapshot.adjustment_proposals:
             if not set(proposal.fact_assertion_ids) <= fact_index.keys():
                 raise ValueError("weather proposal references a missing fact assertion")
@@ -225,15 +222,12 @@ class DeliveryBundle(StrictModel):
                         raise ValueError("weather selection references a missing slot")
                 elif isinstance(operation, WeatherVisitReplacementOperation):
                     candidate = candidates.get(operation.candidate_id)
-                    admission = admissions.get((operation.candidate_id, None))
                     if (
                         operation.item_id not in visit_ids
                         or not isinstance(candidate, VisitCandidate)
-                        or admission is None
-                        or admission.status != "passed"
                     ):
                         raise ValueError(
-                            "weather visit replacement is not an admitted visit"
+                            "weather visit replacement references a missing visit candidate"
                         )
                 elif isinstance(operation, WeatherTransportModeOperation):
                     if operation.transport_leg_id not in transport_ids:

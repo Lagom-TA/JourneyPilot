@@ -9,39 +9,24 @@ import langchain
 from langgraph.graph import END, START, StateGraph
 
 from travel_agent.planning.costs.estimate import budget_estimate_node
-from travel_agent.planning.delivery.artifact_gate import (
-    artifact_gate_node,
-    route_after_artifact_gate,
-)
 from travel_agent.planning.delivery.finalizer import delivery_finalizer_node
-from travel_agent.planning.delivery.intent_gate import (
-    intent_fidelity_gate_node,
-    route_after_intent_fidelity_gate,
-)
 from travel_agent.planning.delivery.minimum_draft import (
     minimum_delivery_draft_builder_node,
 )
 from travel_agent.planning.delivery.projection_node import delivery_projection_node
-from travel_agent.planning.delivery.quality.node import (
-    delivery_quality_gate_node,
-    route_after_delivery_quality_gate,
-)
 from travel_agent.planning.execution import with_run_control
 from travel_agent.planning.itinerary.node import itinerary_planner_node
 from travel_agent.planning.nodes import (
     NODE_ACCOMMODATION,
-    NODE_ARTIFACT_GATE,
     NODE_BUDGET_ESTIMATE,
     NODE_CANDIDATE_GATE,
     NODE_CLARIFIER,
     NODE_DELIVERY_FINALIZER,
     NODE_DELIVERY_PROJECTOR,
-    NODE_DELIVERY_QUALITY_GATE,
     NODE_DESTINATION,
     NODE_DESTINATION_GEO_RESOLVER,
     NODE_DISPATCHER,
     NODE_INTENT_AMENDMENT_ROUTER,
-    NODE_INTENT_FIDELITY_GATE,
     NODE_ITINERARY,
     NODE_MINIMUM_DELIVERY_DRAFT,
     NODE_PLAN_GATE,
@@ -123,26 +108,6 @@ def _route_after_candidate_gate_with_amendments(state: TravelAgentState) -> str:
     return route_after_candidate_gate(state)
 
 
-def _route_after_artifact_gate_with_amendments(state: TravelAgentState) -> str:
-    if state.pending_intent_amendments:
-        return NODE_INTENT_AMENDMENT_ROUTER
-    return route_after_artifact_gate(state)
-
-
-def _route_after_intent_fidelity_with_amendments(state: TravelAgentState) -> str:
-    if state.pending_intent_amendments:
-        return NODE_INTENT_AMENDMENT_ROUTER
-    return route_after_intent_fidelity_gate(state)
-
-
-def _route_after_delivery_quality_gate_with_amendments(
-    state: TravelAgentState,
-) -> str:
-    if state.pending_intent_amendments:
-        return NODE_INTENT_AMENDMENT_ROUTER
-    return route_after_delivery_quality_gate(state)
-
-
 def route_after_intent_amendment(state: TravelAgentState) -> str:
     route = str(state.intent_amendment_route or "")
     if not route:
@@ -194,17 +159,6 @@ def build_travel_workflow() -> StateGraph:
     graph.add_node(
         NODE_CANDIDATE_GATE,
         with_run_control(NODE_CANDIDATE_GATE, candidate_gate_node),
-    )
-    graph.add_node(
-        NODE_ARTIFACT_GATE, with_run_control(NODE_ARTIFACT_GATE, artifact_gate_node)
-    )
-    graph.add_node(
-        NODE_INTENT_FIDELITY_GATE,
-        with_run_control(NODE_INTENT_FIDELITY_GATE, intent_fidelity_gate_node),
-    )
-    graph.add_node(
-        NODE_DELIVERY_QUALITY_GATE,
-        with_run_control(NODE_DELIVERY_QUALITY_GATE, delivery_quality_gate_node),
     )
     from travel_agent.planning.recovery import with_worker_recovery
 
@@ -321,9 +275,6 @@ def build_travel_workflow() -> StateGraph:
         NODE_TRANSPORT,
         NODE_ACCOMMODATION,
         NODE_ITINERARY,
-        NODE_ARTIFACT_GATE,
-        NODE_INTENT_FIDELITY_GATE,
-        NODE_DELIVERY_QUALITY_GATE,
         NODE_BUDGET_ESTIMATE,
         NODE_DELIVERY_PROJECTOR,
         NODE_DELIVERY_FINALIZER,
@@ -339,7 +290,7 @@ def build_travel_workflow() -> StateGraph:
         _route_after_dispatcher_with_amendments,
         {
             NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
-            "to_check": NODE_ARTIFACT_GATE,
+            "to_check": NODE_BUDGET_ESTIMATE,
             NODE_CANDIDATE_GATE: NODE_CANDIDATE_GATE,
             NODE_DESTINATION: NODE_DESTINATION,
             NODE_TRANSPORT: NODE_TRANSPORT,
@@ -358,38 +309,6 @@ def build_travel_workflow() -> StateGraph:
             NODE_TRANSPORT: NODE_TRANSPORT,
             NODE_ACCOMMODATION: NODE_ACCOMMODATION,
             NODE_ITINERARY: NODE_ITINERARY,
-            "composition_repair": NODE_ITINERARY,
-        },
-    )
-
-    graph.add_conditional_edges(
-        NODE_ARTIFACT_GATE,
-        _route_after_artifact_gate_with_amendments,
-        {
-            NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
-            "accepted": NODE_INTENT_FIDELITY_GATE,
-            NODE_CANDIDATE_GATE: NODE_CANDIDATE_GATE,
-            "composition_repair": NODE_ITINERARY,
-        },
-    )
-
-    graph.add_conditional_edges(
-        NODE_INTENT_FIDELITY_GATE,
-        _route_after_intent_fidelity_with_amendments,
-        {
-            NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
-            "passed": NODE_DELIVERY_QUALITY_GATE,
-            "candidate_gate": NODE_CANDIDATE_GATE,
-            "composition_repair": NODE_ITINERARY,
-        },
-    )
-
-    graph.add_conditional_edges(
-        NODE_DELIVERY_QUALITY_GATE,
-        _route_after_delivery_quality_gate_with_amendments,
-        {
-            NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
-            "passed": NODE_BUDGET_ESTIMATE,
             "composition_repair": NODE_ITINERARY,
         },
     )

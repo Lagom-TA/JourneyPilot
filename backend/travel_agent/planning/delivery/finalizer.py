@@ -11,7 +11,6 @@ from travel_agent.planning.delivery.assembly import assemble_delivery_bundle
 from travel_agent.planning.delivery.completion import (
     DeliveryFinalizationError,
     _require_sealed_completion_generation,
-    _terminal_recorded_at,
 )
 from travel_agent.planning.delivery.evidence_basis import (
     PublicProjectionContractViolation,
@@ -23,7 +22,6 @@ from travel_agent.planning.delivery.public.bundle import public_delivery_bundle
 from travel_agent.planning.outcomes import (
     DeliveryFailureRecord,
     InternalFailureClass,
-    TerminalAttribution,
 )
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.operations import (
@@ -159,15 +157,6 @@ async def delivery_finalizer_node(
                 "delivery_persisted": True,
                 "delivery_failure": None,
                 "is_completed": True,
-                "terminal_attribution": TerminalAttribution(
-                    draft_id=state.minimum_delivery_draft.draft_id,
-                    closure_status="completed",
-                    reason_code="delivery_bundle_ready",
-                    recorded_at=_terminal_recorded_at(state, current),
-                    delivery_bundle_id=current.manifest.bundle_id,
-                )
-                if state.minimum_delivery_draft is not None
-                else None,
             }
         except Exception as exc:
             last_error = exc

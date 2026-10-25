@@ -35,26 +35,10 @@ def _workspace_with_dining_reminders(state: TravelAgentState):
 
 
 async def delivery_projection_node(state: TravelAgentState) -> Dict[str, Any]:
-    if state.delivery_quality_route != "passed" or state.trip_workspace_v2 is None:
-        raise ValueError(
-            "delivery projections require a workspace that passed every quality gate"
-        )
+    if state.trip_workspace_v2 is None:
+        raise ValueError("delivery projections require the composed workspace")
     if state.weather_context is None:
         raise ValueError("delivery projections require the planning weather snapshot")
-    quality = state.recommendation_quality
-    if quality is None or any(
-        status != "passed"
-        for status in (
-            quality.schema_gate,
-            quality.candidate_gate,
-            quality.slot_gate,
-            quality.itinerary_gate,
-            quality.source_weather_gate,
-        )
-    ):
-        raise ValueError(
-            "delivery projections cannot bypass deterministic quality gates"
-        )
 
     workspace = _workspace_with_dining_reminders(state)
     facts = build_fact_snapshot(

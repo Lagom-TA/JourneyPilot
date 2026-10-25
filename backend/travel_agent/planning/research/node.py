@@ -15,13 +15,8 @@ from travel_agent.planning.itinerary.connectors import (
     extract_local_connector_gaps,
 )
 from travel_agent.planning.itinerary.draft import ItineraryCompositionError
-from travel_agent.planning.outcomes import (
-    CandidateResearchGap,
-    GateClass,
-    GateDisposition,
-)
+from travel_agent.planning.outcomes import CandidateResearchGap
 from travel_agent.planning.research.assembly import build_candidate_catalog
-from travel_agent.planning.research.attribution import _record_attribution
 from travel_agent.planning.research.candidates import TransportCandidate
 from travel_agent.planning.research.catalog import CandidateGateIntegrityError
 from travel_agent.planning.research.deadlines import (
@@ -208,17 +203,15 @@ async def candidate_gate_node(
     packets_by_worker = {
         packet.worker_kind: packet for packet in catalog.research_packets
     }
-    attributions = dict(state.gate_failure_attributions or {})
     failure_ledger = {
         key: list(dict.fromkeys(values))
         for key, values in (state.candidate_gate_failure_signatures or {}).items()
     }
-    primary_gap, gaps, attributions, failure_ledger, signals = _resolve_research_target(
+    primary_gap, gaps, failure_ledger, signals = _resolve_research_target(
         state,
         gaps=gaps,
         blocked_workers=blocked_workers,
         packets_by_worker=packets_by_worker,
-        attributions=attributions,
         failure_ledger=failure_ledger,
     )
     base_update["candidate_research_gaps"] = gaps
@@ -240,14 +233,6 @@ async def candidate_gate_node(
                         "candidate_gate_status": "composition_repair",
                         "candidate_gate_route": "composition_repair",
                         "candidate_gate_failure_signatures": failure_ledger,
-                        "gate_failure_attributions": _record_attribution(
-                            state.model_copy(
-                                update={"gate_failure_attributions": attributions}
-                            ),
-                            gate_class=GateClass.COMPOSITION,
-                            disposition=GateDisposition.COMPOSITION_REPAIR,
-                            reason_code="placement_skeleton_unavailable",
-                        ),
                         "last_error": str(
                             state.last_error or "placement skeleton unavailable"
                         ),
@@ -269,7 +254,6 @@ async def candidate_gate_node(
                 "candidate_gate_status": "needs_research",
                 "candidate_gate_route": "itinerary_planner",
                 "candidate_gate_failure_signatures": failure_ledger,
-                "gate_failure_attributions": attributions,
                 "local_connector_gaps": [],
                 "agent_assignments": assignments,
             }
@@ -306,14 +290,6 @@ async def candidate_gate_node(
                     ),
                     "candidate_gate_status": "composition_repair",
                     "candidate_gate_route": "composition_repair",
-                    "gate_failure_attributions": _record_attribution(
-                        state.model_copy(
-                            update={"gate_failure_attributions": attributions}
-                        ),
-                        gate_class=GateClass.COMPOSITION,
-                        disposition=GateDisposition.COMPOSITION_REPAIR,
-                        reason_code="placement_skeleton_invalid",
-                    ),
                     "last_error": str(exc),
                 },
             )
@@ -361,7 +337,6 @@ async def candidate_gate_node(
             (
                 primary_gap,
                 gaps,
-                attributions,
                 failure_ledger,
                 signals,
             ) = _resolve_research_target(
@@ -369,13 +344,10 @@ async def candidate_gate_node(
                 gaps=gaps,
                 blocked_workers=blocked_workers,
                 packets_by_worker=packets_by_worker,
-                attributions=attributions,
                 failure_ledger=failure_ledger,
             )
 
     base_update["candidate_research_gaps"] = gaps
-    if attributions != (state.gate_failure_attributions or {}):
-        base_update["gate_failure_attributions"] = attributions
     if failure_ledger != (state.candidate_gate_failure_signatures or {}):
         base_update["candidate_gate_failure_signatures"] = failure_ledger
     if primary_gap is None:
@@ -405,7 +377,6 @@ async def candidate_gate_node(
         unresolved_connector_gaps=unresolved_connector_gaps,
         signals=signals,
         failure_ledger=failure_ledger,
-        attributions=attributions,
         base_update=base_update,
         packet_workers=packet_workers,
         required_candidate_kinds=required_candidate_kinds,

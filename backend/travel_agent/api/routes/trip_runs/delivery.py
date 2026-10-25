@@ -9,9 +9,6 @@ from travel_agent.storage.delivery_bundle_store import (
     BundleRevisionConflict,
     BundleRevisionVector,
 )
-from travel_agent.planning.delivery.weather_refresh_contracts import (
-    WeatherRefreshRefused,
-)
 from travel_agent.runtime.blocking_work import BlockingWorkBusy
 from travel_agent.integrations.pdf_readiness import PdfFontUnavailable
 from travel_agent.planning.delivery.pdf_export import ReportOutOfDateError
@@ -113,31 +110,6 @@ async def refresh_current_bundle_weather(
     except BundleContractSuperseded as exc:
         raise_bundle_contract_superseded(exc)
         raise AssertionError("unreachable")
-    except WeatherRefreshRefused as exc:
-        logger.warning(
-            "weather refresh refused at API boundary run_id=%s reason=%s: %s",
-            run_id,
-            exc.code,
-            exc,
-        )
-
-        try:
-            current = await components.delivery_bundle_store.get_current(run_id)
-        except BundleContractSuperseded as superseded:
-            raise_bundle_contract_superseded(superseded)
-            raise AssertionError("unreachable")
-        if current is None:
-            raise HTTPException(status_code=404, detail="当前 Delivery Bundle 不存在")
-        return WeatherBundleRefreshResponse(
-            refresh_id=request.refresh_id,
-            attempted=True,
-            committed=False,
-            used_previous_values=False,
-            refusal_reason=exc.code,
-            bundle=PublicDeliveryBundleResponse.model_validate(
-                public_delivery_bundle(current)
-            ),
-        )
     return WeatherBundleRefreshResponse(
         refresh_id=request.refresh_id,
         attempted=result.attempted,

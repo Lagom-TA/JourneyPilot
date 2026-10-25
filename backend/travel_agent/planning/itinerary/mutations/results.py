@@ -35,7 +35,6 @@ def _validated_workspace(
             update={
                 "workspace_revision": workspace.workspace_revision + 1,
                 "itinerary": itinerary,
-                "intent_coverage_report": None,
             }
         ).model_dump(mode="json")
     )
@@ -77,7 +76,6 @@ def _snapshot_result(
         following.model_copy(
             update={
                 "workspace_revision": workspace.workspace_revision + 1,
-                "intent_coverage_report": None,
             }
         ).model_dump(mode="json")
     )

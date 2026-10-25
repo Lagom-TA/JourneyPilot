@@ -12,13 +12,12 @@ from travel_agent.planning.requirements.candidate_match_contracts import (
 from travel_agent.planning.requirements.candidate_match_contracts import (
     IntentMatchStatus,
 )
-from travel_agent.planning.requirements.entity_checks import check_attributes
-from travel_agent.planning.requirements.entity_checks import explicit_category_match
 from travel_agent.planning.requirements.intent_contracts import CategoryIntentValue
 from travel_agent.planning.requirements.intent_contracts import IntentItem
 from travel_agent.planning.requirements.intent_contracts import IntentKind
 from travel_agent.planning.requirements.intent_contracts import IntentSpec
 from travel_agent.planning.requirements.intent_contracts import IntentTarget
+from travel_agent.planning.requirements.intent_contracts import ScalarIntentValue
 from travel_agent.planning.requirements.intent_contracts import VerificationMode
 from travel_agent.planning.requirements.intent_contracts import canonical_json_hash
 from travel_agent.planning.research.candidates import ResearchCandidate
@@ -35,6 +34,84 @@ import re
 
 
 logger = logging.getLogger(__name__)
+
+
+
+_ATTRIBUTE_FIELDS = (
+    "provider_place_type",
+    "visit_type",
+    "cuisine_types",
+    "recommended_dishes",
+    "meal_type",
+    "selected_mode",
+    "transport_class",
+    "room_type",
+    "reservation_required",
+    "opening_window",
+    "address",
+)
+
+
+def check_attributes(entity) -> dict:
+    return {
+        field: getattr(entity, field)
+        for field in _ATTRIBUTE_FIELDS
+        if getattr(entity, field, None) is not None
+    }
+
+
+def explicit_category_match(name: str, attributes: dict, intent) -> bool | None:
+    if isinstance(intent.value, CategoryIntentValue):
+        categories = intent.value.categories
+    elif isinstance(intent.value, ScalarIntentValue):
+        categories = [intent.value.value]
+    else:
+        return None
+    if name.casefold().strip() in {
+        category.casefold().strip() for category in categories
+    }:
+        return True
+    aliases = {
+        "博物馆": "museum",
+        "博物院": "museum",
+        "museums": "museum",
+        "公园": "park",
+        "parks": "park",
+        "海鲜": "seafood",
+    }
+    categories = [
+        re.sub(
+            r"^(?:不要|不去|避开|禁止|排除|avoid\s+|no\s+)",
+            "",
+            category.casefold().strip(),
+        ).strip()
+        for category in categories
+    ]
+    terms = {aliases.get(term, term) for term in categories}
+    values = {
+        str(value).casefold().strip()
+        for key, raw in attributes.items()
+        if key
+        in {"provider_place_type", "visit_type", "cuisine_types", "selected_mode"}
+        for value in (raw if isinstance(raw, list) else [raw])
+    }
+    values = {aliases.get(value, value) for value in values}
+    if terms & values:
+        return True
+
+    if not re.search(r"不|无|非|not\b|without\b|no\b", name, re.I):
+        name_class = None
+        if re.search(r"(?:博物馆|博物院|\bmuseum)\s*$", name, re.I):
+            name_class = "museum"
+        elif re.search(r"(?:公园|\bpark)\s*$", name, re.I):
+            name_class = "park"
+        if name_class in terms:
+            return True
+        if name_class is not None and terms <= {"museum", "park"}:
+            return False
+    if values & {"museum", "park"} and terms <= {"museum", "park"}:
+        return False
+    return None
 
 
 def _trace_scope() -> str:

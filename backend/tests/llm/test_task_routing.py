@@ -38,13 +38,7 @@ def test_llm_for_task_forwards_route_parameters(task, feedback, has_tools):
     get_for_task.assert_called_once_with(task, feedback, has_tools=has_tools)
 
 
-def test_evidence_gap_requests_research_without_model_upgrade():
-    route = select_task_route(TaskKind.CANDIDATE_EVALUATION, PRIMARY, FAST,
-                              QualityFeedback(hard_gate_unknown=True, evidence_available=False))
-    assert route.tier == "fast" and route.action == "research_required"
-
-
-@pytest.mark.parametrize("feedback", [QualityFeedback(schema_failures=1), QualityFeedback(truncated=True), QualityFeedback(hard_gate_failed=True)])
+@pytest.mark.parametrize("feedback", [QualityFeedback(schema_failures=1), QualityFeedback(truncated=True)])
 def test_quality_failures_upgrade_schema_only_tasks(feedback):
     route = select_task_route(TaskKind.SCHEMA_REPAIR, PRIMARY, FAST, feedback)
     assert route.tier == "primary" and route.reason == "quality_failure"

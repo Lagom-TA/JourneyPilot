@@ -7,27 +7,8 @@ from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
 from travel_agent.planning.delivery.bundle import DeliveryBundle
-from travel_agent.planning.delivery.bundle import DeliveryRevisionManifest
-from travel_agent.planning.delivery.readmission.catalog import (
-    readmit_current_catalog_candidates,
-)
-from travel_agent.planning.delivery.readmission.contracts import (
-    CandidateReadmissionError,
-)
-from travel_agent.planning.delivery.readmission.evidence import (
-    workspace_destination_country_codes,
-)
-from travel_agent.planning.delivery.readmission.evidence import (
-    workspace_hard_constraint_pack,
-)
-from travel_agent.planning.delivery.weather_refresh_contracts import (
-    WeatherRefreshRefused,
-)
 from travel_agent.planning.references import EntityRef
 from travel_agent.planning.references import EntityType
-from travel_agent.planning.requirements.verification.workspace import (
-    revalidate_workspace_intent,
-)
 from travel_agent.planning.research.evidence import FactStoreSnapshot
 from travel_agent.planning.research.selection_policy import (
     rebind_candidate_selection_catalog_revision,
@@ -225,11 +206,11 @@ def _target_dates(
 
 
 def _frozen_weather_impact_refs(bundle: DeliveryBundle) -> set[str]:
-    """Every weather impact id a frozen record still points at.
+    """收集刷新后仍需保留的天气影响 ID。
 
-    Frozen itinerary lineage records what was considered when an entry was
-    admitted, and the report projection copies those ids.  Nothing recomputes
-    either, so they are the set the refreshed snapshot has to keep covering.
+    已物化实体的 lineage 与报告投影都引用旧影响 ID，候选目录中的候选也各自
+    指向其评估时的影响记录；这些引用不会随刷新重算，刷新后的天气快照必须
+    继续覆盖它们，Bundle 合同才不会因悬空引用拒绝提交。
     """
 
     refs: set[str] = set()
@@ -241,6 +222,8 @@ def _frozen_weather_impact_refs(bundle: DeliveryBundle) -> set[str]:
         *itinerary.transport_legs,
     ]:
         refs.update(entity.lineage.weather_impact_ids)
+    for candidate in bundle.workspace.recommendation_catalog.candidate_index().values():
+        refs.update(candidate.weather_impact_ids)
     document = bundle.report_projection.document
     if document is not None:
         for day in document.days:
@@ -374,111 +357,42 @@ def _rebind_catalog_for_snapshot(
     *,
     facts: FactStoreSnapshot,
     weather: WeatherContextSnapshot,
-    now: datetime,
 ) -> tuple[TripWorkspaceV2, WeatherContextSnapshot]:
-    """Atomically re-evaluate catalog evidence against a new fact/weather view.
+    """把工作区与候选目录对齐到新的事实与天气数据版本。
 
-    Recomputing only canonical impacts leaves the catalog/admission lineage at the old
-    weather revision.  So: build a lightweight staging bundle, deterministically
-    re-admit every Candidate, and include its evaluated impact records in the same
-    immutable weather snapshot before the final Bundle is validated and committed.
+    目录与 packet 的 fact_data_revision 提升到新快照的版本；旧代 admission 与
+    排名记录随版本失效一并清空。候选与行程内容保持原样，事实快照合并保留了
+    旧断言，lineage 引用不会悬空。
     """
 
     catalog = bundle.workspace.recommendation_catalog
-    candidate_ids = tuple(catalog.candidate_index())
-    if not candidate_ids:
-        refreshed_packets = [
-            packet.model_copy(update={"fact_data_revision": facts.fact_data_revision})
-            for packet in catalog.research_packets
-        ]
-        refreshed_catalog = catalog.model_copy(
-            update={
-                "generation_id": bundle.manifest.generation_id,
-                "fact_data_revision": facts.fact_data_revision,
-                "weather_data_revision": weather.weather_data_revision,
-                "research_packets": refreshed_packets,
-                "admission_results": [],
-                "candidate_discovery_records": [
-                    record
-                    for packet in refreshed_packets
-                    for record in packet.candidate_discovery_records
-                ],
-                "candidate_ranking_scores": [],
-            }
-        )
-        workspace = bundle.workspace.model_copy(
-            update={
-                "workspace_revision": bundle.workspace.workspace_revision + 1,
-                "recommendation_catalog": refreshed_catalog,
-                "candidate_selection_plan": rebind_candidate_selection_catalog_revision(
-                    bundle.workspace.candidate_selection_plan,
-                    facts.fact_data_revision,
-                ),
-                "intent_coverage_report": None,
-            }
-        )
-        workspace, _report, _gaps = revalidate_workspace_intent(workspace)
-        return workspace, weather
-
-    staging_manifest = DeliveryRevisionManifest(
-        run_id=bundle.manifest.run_id,
-        generation_id=bundle.manifest.generation_id,
-        bundle_id=bundle.manifest.bundle_id,
-        workspace_revision=bundle.manifest.workspace_revision,
-        fact_data_revision=facts.fact_data_revision,
-        weather_data_revision=weather.weather_data_revision,
-        contract_versions=bundle.manifest.contract_versions,
-        content_hashes=bundle.manifest.content_hashes,
-        created_at=now,
-    )
-
-    staging = DeliveryBundle.model_construct(
-        manifest=staging_manifest,
-        workspace=bundle.workspace,
-        fact_snapshot=facts,
-        weather_snapshot=weather,
-        report_projection=bundle.report_projection,
-        map_projection=bundle.map_projection,
-        source_index=bundle.source_index,
-    )
-    try:
-        readmission = readmit_current_catalog_candidates(
-            staging,
-            candidate_ids=candidate_ids,
-            constraint_pack=workspace_hard_constraint_pack(bundle.workspace),
-            destination_country_codes=workspace_destination_country_codes(
-                bundle.workspace
-            ),
-            as_of=now,
-            allow_fact_revision_rebind=True,
-            allow_unanchored_existing_identity=True,
-        )
-    except CandidateReadmissionError as exc:
-        raise WeatherRefreshRefused(
-            exc.code,
-            f"weather refresh cannot safely re-admit current catalog: {exc.code}",
-        ) from exc
-    merged_impacts = {item.weather_impact_id: item for item in weather.impacts}
-    for impact in readmission.weather_impacts:
-        merged_impacts[impact.weather_impact_id] = impact
-    rebound_weather = weather.model_copy(
+    refreshed_packets = [
+        packet.model_copy(update={"fact_data_revision": facts.fact_data_revision})
+        for packet in catalog.research_packets
+    ]
+    refreshed_catalog = catalog.model_copy(
         update={
-            "impacts": sorted(
-                merged_impacts.values(), key=lambda item: item.weather_impact_id
-            )
+            "generation_id": bundle.manifest.generation_id,
+            "fact_data_revision": facts.fact_data_revision,
+            "weather_data_revision": weather.weather_data_revision,
+            "research_packets": refreshed_packets,
+            "admission_results": [],
+            "candidate_discovery_records": [
+                record
+                for packet in refreshed_packets
+                for record in packet.candidate_discovery_records
+            ],
+            "candidate_ranking_scores": [],
         }
     )
-
     workspace = bundle.workspace.model_copy(
         update={
             "workspace_revision": bundle.workspace.workspace_revision + 1,
-            "recommendation_catalog": readmission.catalog,
+            "recommendation_catalog": refreshed_catalog,
             "candidate_selection_plan": rebind_candidate_selection_catalog_revision(
                 bundle.workspace.candidate_selection_plan,
                 facts.fact_data_revision,
             ),
-            "intent_coverage_report": None,
         }
     )
-    workspace, _report, _gaps = revalidate_workspace_intent(workspace)
-    return workspace, rebound_weather
+    return workspace, weather

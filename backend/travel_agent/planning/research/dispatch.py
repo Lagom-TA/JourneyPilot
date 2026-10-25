@@ -145,7 +145,7 @@ def route_after_dispatcher(state: TravelAgentState) -> Union[str, list]:
 
     if next_agent not in _KNOWN_NEXT_AGENTS:
         logger.error(
-            "Dispatcher: unknown next_agent=%r; converging on the artifact gate",
+            "Dispatcher: unknown next_agent=%r; converging on budget estimate",
             next_agent,
         )
         return "to_check"
@@ -181,12 +181,12 @@ def route_after_dispatcher(state: TravelAgentState) -> Union[str, list]:
 
         logger.error(
             "Dispatcher: dispatch_group without a valid plan step; "
-            "converging on the artifact gate"
+            "converging on budget estimate"
         )
         return "to_check"
 
     logger.error(
-        "Dispatcher: unhandled next_agent=%r; converging on the artifact gate",
+        "Dispatcher: unhandled next_agent=%r; converging on budget estimate",
         next_agent,
     )
     return "to_check"

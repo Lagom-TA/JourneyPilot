@@ -20,8 +20,6 @@ from travel_agent.planning.requirements.composition_compiler import compile_comp
 from travel_agent.planning.itinerary.day_capacity import daily_planning_windows
 from travel_agent.planning.research.assignment_context import build_assignment_context
 
-_COMPOSITION_REPAIR_GAP_LIMIT = 8
-
 
 def _composition_repair_section(state: TravelAgentState) -> str:
     """The repair round's only new input: why the previous attempt failed."""
@@ -33,20 +31,6 @@ def _composition_repair_section(state: TravelAgentState) -> str:
             "- 候选门对上一轮 skeleton 的裁定："
             f"{state.placement_skeleton_failure_context}"
         )
-    blocking = [gap for gap in state.delivery_quality_gaps if gap.blocking]
-    for gap in blocking[:_COMPOSITION_REPAIR_GAP_LIMIT]:
-        detail = f"{gap.gate} / {gap.reason}（{gap.field_path}）"
-        locator = gap.entity_id or gap.candidate_id
-        if locator:
-            detail += f"，涉及 {locator}"
-        lines.append(f"- 质量门阻塞项：{detail}")
-    fidelity_gaps = [gap for gap in state.intent_fidelity_gaps if gap.blocking]
-    for gap in fidelity_gaps[:_COMPOSITION_REPAIR_GAP_LIMIT]:
-        missing_days = gap.repair_context.get("missing_days") or []
-        detail = f"{gap.reason}（intent={gap.intent_id}）"
-        if missing_days:
-            detail += f"，缺失 Day {missing_days}"
-        lines.append(f"- 意图验收阻塞项：{detail}")
     if not lines:
         return ""
     body = "\n".join(lines)

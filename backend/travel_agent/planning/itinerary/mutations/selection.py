@@ -319,12 +319,9 @@ def _apply_selection(
     candidate = workspace.recommendation_catalog.candidate_index().get(
         option.candidate_id
     )
-    admission = workspace.recommendation_catalog.admission_index().get(
-        (option.candidate_id, slot.selection_slot_id)
-    )
-    if candidate is None or admission is None or admission.status != "passed":
+    if candidate is None:
         raise WorkspaceV2MutationError(
-            "candidate_not_admitted", "Candidate did not pass slot admission"
+            "candidate_not_found", "Selection option has no matching candidate"
         )
     if getattr(candidate, "availability_status", None) == "unavailable":
         raise WorkspaceV2MutationError(
@@ -418,7 +415,6 @@ def _apply_selection(
             update={
                 "workspace_revision": workspace.workspace_revision + 1,
                 "itinerary": itinerary,
-                "intent_coverage_report": None,
                 "selection_slots": [
                     next_slot
                     if item.selection_slot_id == slot.selection_slot_id

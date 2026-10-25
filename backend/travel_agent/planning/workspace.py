@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Union
 
 from pydantic import Field, model_validator
 
 from travel_agent.planning.research.selection_contracts import CandidateSelectionPlan
 from travel_agent.planning.itinerary.mutation_contracts import CompositionMutation
-from travel_agent.planning.requirements.check_contracts import EntityIntentCheck
 from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
-from travel_agent.planning.requirements.coverage_contracts import IntentCoverageReport
 from travel_agent.planning.itinerary.models import (
     DiningStop,
     LodgingStay,
@@ -45,8 +43,6 @@ class TripWorkspaceV2(StrictModel):
     itinerary: StructuredItineraryV2
     recommendation_catalog: RecommendationCatalog
     intent_contract_snapshot: IntentContractSnapshot
-    intent_coverage_report: Optional[IntentCoverageReport] = None
-    entity_intent_checks: List[EntityIntentCheck] = Field(default_factory=list)
     composition_mutations: List[CompositionMutation] = Field(default_factory=list)
     candidate_selection_plan: CandidateSelectionPlan
     user_input_anchors: List[UserInputAnchor] = Field(default_factory=list)
@@ -86,43 +82,6 @@ class TripWorkspaceV2(StrictModel):
             raise ValueError(
                 "workspace candidate selection references a missing candidate"
             )
-        admitted_candidate_ids = {
-            item.candidate_id
-            for item in catalog.admission_results
-            if item.status == "passed"
-        }
-        if (
-            not {entry.candidate_id for entry in self.candidate_selection_plan.entries}
-            <= admitted_candidate_ids
-        ):
-            raise ValueError(
-                "workspace candidate selection references a rejected candidate"
-            )
-        if self.intent_coverage_report is not None:
-            if self.intent_coverage_report.generation_id != self.generation_id:
-                raise ValueError("workspace and intent coverage generations differ")
-            if (
-                self.intent_coverage_report.intent_spec_revision
-                != self.intent_contract_snapshot.intent_spec_revision
-            ):
-                raise ValueError(
-                    "workspace and intent coverage intent revisions differ"
-                )
-            if (
-                self.intent_coverage_report.workspace_revision
-                != self.workspace_revision
-            ):
-                raise ValueError("workspace and intent coverage revisions differ")
-            requirement_ids = {
-                item.intent_id for item in self.intent_contract_snapshot.requirements
-            }
-            coverage_ids = {
-                item.intent_id for item in self.intent_coverage_report.items
-            }
-            if coverage_ids != requirement_ids:
-                raise ValueError(
-                    "workspace intent coverage does not match the intent contract"
-                )
         mutation_ids = [item.mutation_id for item in self.composition_mutations]
         if len(mutation_ids) != len(set(mutation_ids)):
             raise ValueError("workspace composition mutations must be unique")
@@ -134,13 +93,9 @@ class TripWorkspaceV2(StrictModel):
                 "workspace composition mutation belongs to another generation"
             )
         candidates = catalog.candidate_index()
-        admissions = catalog.admission_index()
         anchor_ids = [item.anchor_id for item in self.user_input_anchors]
         if len(anchor_ids) != len(set(anchor_ids)):
             raise ValueError("workspace user-input anchor ids must be unique")
-        slot_status = {
-            slot.selection_slot_id: slot.status for slot in self.selection_slots
-        }
         packet_by_candidate = {
             candidate.candidate_id: packet.research_packet_id
             for packet in catalog.research_packets
@@ -180,17 +135,6 @@ class TripWorkspaceV2(StrictModel):
                 raise ValueError(
                     "canonical entity research packet lineage is inconsistent"
                 )
-            admission = admissions.get(
-                (lineage.candidate_id, lineage.selection_slot_id)
-            )
-            invalid_selected_allowed = (
-                lineage.selection_slot_id is not None
-                and slot_status.get(lineage.selection_slot_id) == "needs_user_decision"
-            )
-            if (
-                admission is None or admission.status != "passed"
-            ) and not invalid_selected_allowed:
-                raise ValueError("canonical entity candidate did not pass admission")
             if not set(lineage.fact_assertion_ids) <= set(candidate.fact_assertion_ids):
                 raise ValueError(
                     "canonical entity fact lineage exceeds candidate facts"
@@ -229,13 +173,6 @@ class TripWorkspaceV2(StrictModel):
                 if candidate is None or candidate.candidate_kind != expected_kind:
                     raise ValueError(
                         "selection option references a missing or cross-domain candidate"
-                    )
-                admission = admissions.get(
-                    (option.candidate_id, slot.selection_slot_id)
-                )
-                if admission is None or admission.status != "passed":
-                    raise ValueError(
-                        "selection option candidate did not pass admission for the slot"
                     )
                 if option.candidate_entity_ref.entity_id != slot.target_entity_id:
                     raise ValueError(

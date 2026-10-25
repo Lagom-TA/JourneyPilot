@@ -8,17 +8,12 @@ from travel_agent.planning.requirements.route_legs import build_required_long_di
 from travel_agent.planning.research.query_contracts import ResearchQueryKind
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary.connectors import LocalConnectorGap
-from travel_agent.planning.outcomes import (
-    CandidateResearchGap,
-    GateDisposition,
-    GateFailureAttribution,
-)
+from travel_agent.planning.outcomes import CandidateResearchGap
 from travel_agent.planning.research.assignment_policy import (
     _deterministically_rejected_candidate_ids,
     _long_distance_instruction,
     _recommended_tools,
 )
-from travel_agent.planning.research.attribution import _record_attribution
 from travel_agent.planning.research.candidates import TransportCandidate
 from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.research.deadlines import (
@@ -44,7 +39,6 @@ def schedule_targeted_research(
     unresolved_connector_gaps: list[LocalConnectorGap],
     signals: list[ProviderFailureSignal],
     failure_ledger: Dict[str, list[str]],
-    attributions: Dict[str, GateFailureAttribution],
     base_update: Dict[str, Any],
     packet_workers: Mapping[str, str],
     required_candidate_kinds: Mapping[str, set[str]],
@@ -392,18 +386,6 @@ def schedule_targeted_research(
         "candidate_gate_attempts": attempts,
         "candidate_gate_failure_signatures": failure_ledger,
         "agent_assignments": assignments,
-        "gate_failure_attributions": _record_attribution(
-            state.model_copy(update={"gate_failure_attributions": attributions}),
-            gate_class=primary_gap.gate_class,
-            disposition=GateDisposition.TARGETED_RESEARCH,
-            reason_code=primary_gap.reason,
-            domain=domain,
-            gap_ids=[primary_gap.gap_id],
-            failure_signature=accumulated_signatures[-1]
-            if accumulated_signatures
-            else None,
-            retry_attempt=attempts[attempt_scope],
-        ),
     }
     if observed_deadline is not None:
         update["run_deadline"] = observed_deadline

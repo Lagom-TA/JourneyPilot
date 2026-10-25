@@ -2,7 +2,6 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any, AsyncGenerator, Dict, Optional
-from travel_agent.planning.outcomes import DeliveryContractViolation
 from travel_agent.planning.delivery.evidence_basis import (
     PublicProjectionContractViolation,
 )
@@ -199,16 +198,10 @@ async def fail_chat(
 
     if isinstance(terminal_failure, DeliveryFinalizationError):
         terminal_reason_code = terminal_failure.record.failure_class.value
-        terminal_gate_class = None
-    elif isinstance(terminal_failure, DeliveryContractViolation):
-        terminal_reason_code = terminal_failure.reason_code
-        terminal_gate_class = terminal_failure.gate_class.value
     elif isinstance(terminal_failure, PublicProjectionContractViolation):
         terminal_reason_code = "public_projection_contract_violation"
-        terminal_gate_class = None
     else:
         terminal_reason_code = "unclassified_workflow_failure"
-        terminal_gate_class = None
 
     sealed_status: Optional[TripRunStatus] = None
     try:
@@ -234,7 +227,6 @@ async def fail_chat(
                 event_type="run.failed",
                 payload={
                     "reason_code": terminal_reason_code,
-                    "gate_class": terminal_gate_class,
                 },
             )
         except ValueError:

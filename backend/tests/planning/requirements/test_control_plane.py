@@ -7,7 +7,6 @@ import pytest
 from openai import OpenAIError
 
 import travel_agent.planning.requirements.normalization.model as _owner_planning_requirements_normalization_model
-from travel_agent.planning.delivery.artifact_gate import artifact_gate_node
 from travel_agent.planning.requirements.amendments import apply_runtime_amendments
 from travel_agent.planning.requirements.approval import _build_plan_gate_payload
 from travel_agent.planning.requirements.conflicts import detect_intent_conflicts
@@ -1252,39 +1251,6 @@ def test_latest_packets_rejects_an_obsolete_generation():
         generation_id="generation_current",
     )
     assert latest == {"destination_researcher": current_packet}
-
-
-@pytest.mark.asyncio
-async def test_artifact_gate_resolves_generation_qualified_worker_packet():
-    packet = ResearchPacket.model_construct(
-        generation_id="generation_current",
-        worker_kind="destination_researcher",
-        run_id="run_current",
-    )
-    generation = PlanningGeneration(
-        generation_id="generation_current",
-        controlled_trip_identity_revision=1,
-        intent_spec_revision=1,
-        constraint_pack_revision=1,
-        plan_revision=0,
-        identity_hash="0" * 64,
-        intent_hash="1" * 64,
-        constraint_hash="2" * 64,
-    )
-    state = TravelAgentState.model_construct(
-        run_id="run_current",
-        planning_generation=generation,
-        execution_plan=[["destination_researcher"]],
-        agent_status={"destination_researcher": "completed"},
-        research_packets={
-            "destination_researcher@generation_current": packet,
-        },
-    )
-
-    update = await artifact_gate_node(state)
-
-    assert update["artifact_gate_route"] == "accepted"
-    assert update["artifact_status"] == {"destination_researcher": "accepted"}
 
 
 def test_runtime_supplement_routes_through_contract_normalization():
