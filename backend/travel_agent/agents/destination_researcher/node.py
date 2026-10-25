@@ -25,10 +25,10 @@ from langchain_core.runnables import RunnableConfig
 from travel_agent.planning.research.domains import ResearchDomain
 
 from ...config import get_settings
-from ...entities.place_identity import stable_place_id_amap_poi
-from ...entities.provider_evidence import parse_provider_evidence_assignments
-from ...entities.research_query_plan import ResearchQuery, ResearchQueryKind
-from ...entities.state import TravelAgentState
+from travel_agent.integrations.place_identity import stable_place_id_amap_poi
+from travel_agent.planning.research.provider_assignments import parse_provider_evidence_assignments
+from travel_agent.planning.research.query_contracts import ResearchQuery, ResearchQueryKind
+from travel_agent.planning.state import TravelAgentState
 from ...knowledge.collections import GroundingCorpus, grounding_corpus
 from ...knowledge.place_mentions import (
     chunk_texts_by_collection,
@@ -39,31 +39,19 @@ from travel_agent.knowledge.source_records import rag_chunk_source_records
 from ...llm.router import get_model_router
 from ...llm.task_routing import TaskKind, llm_for_task
 from ...memory.research_context import format_worker_research_context
-from ...services.candidate_admission import provider_place_type_matches_candidate_kind
-from ...services.constraint_applicability import (
-    active_hard_constraint_ids,
-    active_hard_constraints,
-)
-from ...services.delivery_projection import candidate_place_id
-from ...services.destination_scope import annotate_destination_distance
-from ...services.fallback_query_policy import (
-    FallbackQueryPolicy,
-    runtime_fallback_capacity,
-)
-from ...services.nominatim_place_search import (
-    NominatimPlaceSearchError,
-    lookup_typed_addresses_bilingual,
-)
-from ...services.product_requirements import (
-    destinations_are_cn_only,
-    discovery_physical_candidate_kinds,
-    required_physical_candidate_kinds,
-)
-from ...services.research_query_planner import queries_by_ids
-from ...services.state_invalidation import generation_packet_key
+from travel_agent.integrations.places.taxonomy import provider_place_type_matches_candidate_kind
+from travel_agent.planning.requirements.constraint_applicability import active_hard_constraint_ids, active_hard_constraints
+from travel_agent.planning.delivery.candidate_presentation import candidate_place_id
+from travel_agent.planning.requirements.destination_scope import annotate_destination_distance
+from travel_agent.planning.research.fallback_policy import FallbackQueryPolicy, runtime_fallback_capacity
+from travel_agent.integrations.places.contracts import NominatimPlaceSearchError
+from travel_agent.integrations.places.nominatim import lookup_typed_addresses_bilingual
+from travel_agent.planning.requirements.product_policy import destinations_are_cn_only, discovery_physical_candidate_kinds, required_physical_candidate_kinds
+from travel_agent.planning.research.query_planner import queries_by_ids
+from travel_agent.planning.invalidation import generation_packet_key
 from ...storage.worker_journal_store import JournalConflict
 from ...tools.governance import QUALITY_VERIFIED_PLACE_IDS_METADATA_KEY
-from ...utils.brief_helpers import build_assignment_context
+from travel_agent.planning.research.assignment_context import build_assignment_context
 from ...utils.coordinates import amap_location_to_wgs84
 from travel_agent.runtime.cancellation import RunCancelled
 from travel_agent.planning.research.output.sources import (

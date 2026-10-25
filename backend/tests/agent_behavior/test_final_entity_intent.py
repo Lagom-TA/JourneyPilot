@@ -11,34 +11,21 @@ from tests.agent_behavior.test_itinerary_revision import checkpoint, draft, visi
 from tests.test_composition_context import state
 
 from travel_agent.agents.orchestrator import intent_fidelity_gate as gate
-from travel_agent.entities.candidate_discovery import CandidateDiscoveryOrigin
-from travel_agent.entities.candidate_intent import (
-    CandidateIntentMatch,
-    IntentMatchStatus,
-)
-from travel_agent.entities.intent_coverage import IntentContractSnapshot
-from travel_agent.entities.intent_spec import (
-    IntentKind,
-    IntentStrength,
-    IntentTarget,
-    VerificationMode,
-)
+from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryOrigin
+from travel_agent.planning.requirements.candidate_match_contracts import CandidateIntentMatch, IntentMatchStatus
+from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
+from travel_agent.planning.requirements.intent_contracts import IntentKind, IntentStrength, IntentTarget, VerificationMode
 from travel_agent.planning.itinerary.draft import ItineraryCompositionDraft
 from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
 from travel_agent.planning.outcomes import DeliveryContractViolation
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.planning.workspace import TripWorkspaceV2
-from travel_agent.services.candidate_intent_evaluation import evaluate_candidate_intents
-from travel_agent.services.candidate_selection import build_candidate_selection_plan
-from travel_agent.services.composition_rule_compiler import compile_composition_rules
-from travel_agent.services.intent_requirement_check import (
-    check_final_entities,
-    requirement_check_objects,
-)
-from travel_agent.services.intent_verification import (
-    evaluate_intent_fidelity,
-    revalidate_workspace_intent,
-)
+from travel_agent.planning.requirements.candidate_evaluation import evaluate_candidate_intents
+from travel_agent.planning.research.selection_policy import build_candidate_selection_plan
+from travel_agent.planning.requirements.composition_compiler import compile_composition_rules
+from travel_agent.planning.requirements.entity_checks import check_final_entities, requirement_check_objects
+from travel_agent.planning.requirements.verification.coverage import evaluate_intent_fidelity
+from travel_agent.planning.requirements.verification.workspace import revalidate_workspace_intent
 from travel_agent.planning.itinerary.revision import (
     MAXIMUM_COMPOSITION_REPAIR_ATTEMPTS,
 )

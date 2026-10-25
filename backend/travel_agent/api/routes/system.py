@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from ...builders import get_components
-from ...capabilities import capability_report
+from travel_agent.config.capabilities import capability_report
 from ...config import get_settings, persist_model_config
 from ...llm.router import ModelTier, get_model_router
 from ..schemas import ModelConfigRequest, SystemStatus
@@ -189,8 +189,8 @@ def _probe_resource_limits(settings: Any) -> Dict[str, Any]:
     「上传变慢了」，而没有一处读数解释为什么。
     """
 
-    from ...services.blocking_work import blocking_work_metrics
-    from ...utils.concurrency import channel_metrics
+    from travel_agent.runtime.blocking_work import blocking_work_metrics
+    from travel_agent.runtime.concurrency import channel_metrics
 
     channels = channel_metrics()
     return {
@@ -214,7 +214,7 @@ def _probe_pdf_export() -> Dict[str, Any]:
     才知道这件事的。
     """
 
-    from ...services.pdf_export import last_pdf_probe
+    from travel_agent.integrations.pdf_readiness import last_pdf_probe
 
     probe = last_pdf_probe()
     if probe is None:
@@ -303,11 +303,8 @@ async def _probe_knowledge_corpus() -> Dict[str, Any]:
 def _probe_data_snapshots(settings: Any) -> Dict[str, Any]:
     """Report the age of every committed upstream snapshot, blocking nothing."""
 
-    from ...entities.data_snapshot_freshness import station_snapshot_freshness
-    from ...services.rail_12306 import (
-        station_snapshot_fingerprint_drift,
-        station_snapshot_metadata,
-    )
+    from travel_agent.integrations.rail.snapshot_freshness import station_snapshot_freshness
+    from travel_agent.integrations.rail.snapshot_diagnostics import station_snapshot_fingerprint_drift, station_snapshot_metadata
 
     freshness = station_snapshot_freshness(
         station_snapshot_metadata(),

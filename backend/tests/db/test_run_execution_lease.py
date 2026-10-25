@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import text
 
-from travel_agent.entities.trip_run import RunRecoveryStatus
+from travel_agent.runtime.run_contracts import RunRecoveryStatus
 from travel_agent.storage.database import get_db_session
 from travel_agent.storage.run_execution_store import (
     EXECUTOR_ID,

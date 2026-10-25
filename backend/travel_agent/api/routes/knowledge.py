@@ -15,7 +15,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
 from ...builders import get_components
 from ...config import get_settings
-from ...local_profile import LOCAL_USER_ID
+from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from ...knowledge.collections import canonical_logical_collection, user_scoped_collection
 from ...knowledge.sources.document_parse import (
     MIN_INDEXABLE_CHARS,

@@ -3,15 +3,11 @@ from __future__ import annotations
 import hashlib
 from typing import Dict, Iterable, Mapping
 
-from travel_agent.entities.candidate_intent import IntentMatchStatus
-from travel_agent.entities.intent_spec import IntentStrength, IntentTarget
-from travel_agent.entities.provider_evidence import (
-    build_provider_evidence_assignments,
-    build_required_long_distance_legs,
-    explicit_cross_day_return_required,
-    scope_attempt_numbers,
-)
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.requirements.candidate_match_contracts import IntentMatchStatus
+from travel_agent.planning.requirements.intent_contracts import IntentStrength, IntentTarget
+from travel_agent.planning.research.provider_assignments import build_provider_evidence_assignments, scope_attempt_numbers
+from travel_agent.planning.requirements.route_legs import build_required_long_distance_legs, explicit_cross_day_return_required
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.assignments import strip_round_suffix
 from travel_agent.planning.outcomes import CandidateResearchGap, GateClass
 from travel_agent.planning.research.candidates import (

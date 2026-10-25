@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 
 from langchain_core.runnables import RunnableConfig
 
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.assignments import strip_round_suffix
 from travel_agent.planning.execution import is_structural_connector_round
 from travel_agent.planning.itinerary.connectors import (
@@ -49,7 +49,7 @@ from travel_agent.planning.research.transitions import (
     _placement_skeleton_verdict,
 )
 from travel_agent.runtime.deadlines import observe_run_deadline
-from travel_agent.services.day_planning import default_walking_days
+from travel_agent.planning.itinerary.day_capacity import default_walking_days
 
 
 async def candidate_gate_node(

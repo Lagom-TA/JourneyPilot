@@ -46,9 +46,9 @@ from ..agents.orchestrator.planner import planner_node
 from ..agents.orchestrator.intent_amendment_router import (
     intent_amendment_router_node,
 )
-from ..entities.trip_run import generate_trip_run_id
+from travel_agent.runtime.run_contracts import generate_trip_run_id
 from ..storage.cost_ledger_store import get_cost_ledger_store
-from ..local_profile import LOCAL_USER_ID
+from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from ..storage.delivery_bundle_store import DeliveryBundleStore
 from ..storage.trip_run_store import TripRunStore, get_trip_run_store
 from ..storage.tool_audit_store import get_tool_audit_store
@@ -61,11 +61,11 @@ from ..agents.scope.research_brief_builder import research_brief_builder_node
 from ..agents.summary_card.node import trip_summary_card_after_brief_node
 from ..agents.transport_researcher.node import transport_researcher_node
 from ..config import get_settings
-from ..entities.state import TravelAgentState
-from ..entities.request_contract import AmendmentImpact, IntentAmendment
-from ..services.state_invalidation import invalidation_update
-from ..utils.display_names import get_agent_display_name
-from ..utils.message_helpers import build_messages
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.planning.requirements.request_contracts import AmendmentImpact, IntentAmendment
+from travel_agent.planning.invalidation import invalidation_update
+from travel_agent.planning.presentation import get_agent_display_name
+from travel_agent.conversation.messages import build_messages
 from ..planning.nodes import (
     NODE_ACCOMMODATION,
     NODE_ARTIFACT_GATE,

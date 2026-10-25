@@ -4,14 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable
 
-from ..entities.request_contract import (
-    AmendmentImpact,
-    IntentAmendment,
-    IntentAmendmentRejection,
-)
-from ..entities.state import TravelAgentState
-from ..entities.trip_input import classify_locked_identity_intent
-from ..services.state_invalidation import invalidation_update
+from travel_agent.planning.requirements.request_contracts import AmendmentImpact, IntentAmendment, IntentAmendmentRejection
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.planning.requirements.identity_amendments import classify_locked_identity_intent
+from travel_agent.planning.invalidation import invalidation_update
 from travel_agent.runtime.deadlines import observe_run_deadline
 
 

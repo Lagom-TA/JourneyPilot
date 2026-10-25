@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Literal
 from pydantic import ConfigDict, Field, model_validator
 from pydantic_core import PydanticCustomError
 
-from travel_agent.entities.candidate_discovery import CandidateDiscoveryRecord
+from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryRecord
 from travel_agent.planning.references import EntityType
 from travel_agent.planning.research.candidates import ResearchCandidate
 from travel_agent.planning.research.evidence import (

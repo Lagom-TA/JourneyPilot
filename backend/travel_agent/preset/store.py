@@ -14,13 +14,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
-from ..entities.preset import (
-    PRESET_DESCRIPTION_MAX_CHARS,
-    PRESET_INSTRUCTIONS_MAX_CHARS,
-    PRESET_NAME_MAX_CHARS,
-    PresetConstraints,
-    TravelPreset,
-)
+from travel_agent.planning.requirements.preset_contracts import PRESET_DESCRIPTION_MAX_CHARS, PRESET_INSTRUCTIONS_MAX_CHARS, PRESET_NAME_MAX_CHARS, PresetConstraints, TravelPreset
 from ..storage.database import get_db_session
 
 logger = logging.getLogger(__name__)

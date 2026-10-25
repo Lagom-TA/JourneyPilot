@@ -10,18 +10,11 @@ from typing import Any, Dict, List, Mapping, Optional
 
 from sqlalchemy import bindparam, text
 
-from ..entities.background_job import (
-    OPEN_BACKGROUND_JOB_STATUSES,
-    BackgroundJob,
-    BackgroundJobStatus,
-    BackgroundJobType,
-    coerce_job_status,
-    coerce_job_type,
-    generate_background_job_id,
-)
+from travel_agent.runtime.job_contracts import OPEN_BACKGROUND_JOB_STATUSES, BackgroundJob, BackgroundJobStatus, BackgroundJobType, coerce_job_status, coerce_job_type, generate_background_job_id
 from .database import get_db_session
 from .run_execution_store import EXECUTOR_ID
-from .row_values import iso_or_none as _iso, json_dumps as _dumps
+from travel_agent.runtime.time import iso_or_none as _iso
+from travel_agent.storage.row_values import json_dumps as _dumps
 
 _OPEN_STATUS_VALUES = tuple(sorted(status.value for status in OPEN_BACKGROUND_JOB_STATUSES))
 #: 可领取的状态。`running` 也在里面：一条租约已过期的 running 就是「上一个进程崩在

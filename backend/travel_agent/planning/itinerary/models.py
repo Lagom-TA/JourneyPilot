@@ -6,8 +6,8 @@ from typing import Dict, Iterable, List, Literal, Optional
 
 from pydantic import Field, model_validator
 
-from travel_agent.entities.intent_coverage import EntityIntentExplanation
-from travel_agent.entities.transport_semantics import count_service_transfers
+from travel_agent.planning.delivery.requirement_contracts import EntityIntentExplanation
+from travel_agent.planning.transport_semantics import count_service_transfers
 from travel_agent.planning.costs.coverage import (
     CostCoverageSummary,
     build_cost_coverage_summary,

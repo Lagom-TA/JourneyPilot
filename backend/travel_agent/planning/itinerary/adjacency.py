@@ -3,10 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Literal, Mapping, Optional, Sequence
 
-from travel_agent.entities.planning_time_buffers import (
-    planned_alighting_buffer_minutes,
-    planned_boarding_buffer_minutes,
-)
+from travel_agent.planning.itinerary.time_buffers import planned_alighting_buffer_minutes, planned_boarding_buffer_minutes
 from travel_agent.planning.itinerary.bindings import (
     placement_display_name,
     placement_place_id,

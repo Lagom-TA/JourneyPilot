@@ -4,11 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import List, Optional
 
-from travel_agent.entities.composition_rules import (
-    COMPOSITION_PROMPT_VERSION,
-    CompositionRule,
-)
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.requirements.composition_contracts import COMPOSITION_PROMPT_VERSION, CompositionRule
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.memory.agent_context import render_agent_context
 from travel_agent.planning.assignments import resolve_agent_assignment
 from travel_agent.planning.itinerary.model_schema import _composition_response_schema
@@ -18,14 +15,10 @@ from travel_agent.planning.itinerary.supply import (
     authoring_domains,
 )
 from travel_agent.planning.nodes import NODE_ITINERARY
-from travel_agent.services.candidate_selection import (
-    selected_candidate_capabilities,
-)
-from travel_agent.services.composition_rule_compiler import compile_composition_rules
-from travel_agent.services.day_planning import (
-    daily_planning_windows,
-)
-from travel_agent.utils.brief_helpers import build_assignment_context
+from travel_agent.planning.itinerary.selected_supply import selected_candidate_capabilities
+from travel_agent.planning.requirements.composition_compiler import compile_composition_rules
+from travel_agent.planning.itinerary.day_capacity import daily_planning_windows
+from travel_agent.planning.research.assignment_context import build_assignment_context
 
 _COMPOSITION_REPAIR_GAP_LIMIT = 8
 

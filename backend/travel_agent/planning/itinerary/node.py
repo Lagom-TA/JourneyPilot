@@ -7,12 +7,10 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import ValidationError
 
-from travel_agent.entities.intent_coverage import IntentContractSnapshot
-from travel_agent.entities.provider_evidence import (
-    build_required_long_distance_legs,
-    explicit_cross_day_return_required,
-)
-from travel_agent.entities.state import TravelAgentState, bounded_repair_context
+from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
+from travel_agent.planning.requirements.route_legs import build_required_long_distance_legs, explicit_cross_day_return_required
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.planning.itinerary.revision import bounded_repair_context
 from travel_agent.llm.router import get_model_router
 from travel_agent.llm.task_routing import TaskKind, llm_for_task
 from travel_agent.planning.assignments import resolve_agent_assignment
@@ -35,16 +33,10 @@ from travel_agent.planning.itinerary.requirements import (
 from travel_agent.planning.nodes import NODE_ITINERARY
 from travel_agent.planning.workspace import TripWorkspaceV2
 from travel_agent.runtime.deadlines import observe_run_deadline
-from travel_agent.services.candidate_selection import (
-    catalog_for_candidate_selection,
-    catalog_for_workspace_materialization,
-)
-from travel_agent.services.day_design import apply_day_design
-from travel_agent.services.day_planning import (
-    default_walking_days,
-    disclose_default_walking,
-)
-from travel_agent.services.geo_dispersion import itinerary_dispersion
+from travel_agent.planning.itinerary.selected_supply import catalog_for_candidate_selection, catalog_for_workspace_materialization
+from travel_agent.planning.itinerary.day_design import apply_day_design
+from travel_agent.planning.itinerary.day_capacity import default_walking_days, disclose_default_walking
+from travel_agent.planning.itinerary.dispersion import itinerary_dispersion
 
 logger = logging.getLogger(__name__)
 
@@ -173,9 +165,7 @@ async def itinerary_planner_node(
                 required_legs,
                 unlocatable,
             )
-            from travel_agent.services.state_invalidation import (
-                workspace_acceptance_invalidation,
-            )
+            from travel_agent.planning.invalidation import workspace_acceptance_invalidation
 
             return {
                 **deadline_update,

@@ -17,7 +17,7 @@ from travel_agent.planning.outcomes import CandidateResearchGap
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.schema import StrictModel
 
-from ..entities.research_query_plan import ResearchQuery
+from travel_agent.planning.research.query_contracts import ResearchQuery
 
 _COORDINATION_KINDS = {
     "destination_researcher": frozenset(),

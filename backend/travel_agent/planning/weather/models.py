@@ -14,6 +14,8 @@ from travel_agent.planning.references import (
 from travel_agent.planning.transport import TransportMode
 from travel_agent.schema import StrictModel
 
+from travel_agent.integrations.weather_contracts import WeatherTimeWindow
+
 WEATHER_SNAPSHOT_CONTRACT_VERSION = "journeypilot.weather_context_snapshot.v2"
 
 
@@ -26,18 +28,6 @@ class WeatherSensitivity(StrictModel):
     requires_clear_visibility: bool
 
 
-class WeatherTimeWindow(StrictModel):
-    start_at: datetime
-    end_at: datetime
-    precipitation_probability_pct: Optional[float] = Field(default=None, ge=0, le=100)
-    apparent_temperature_c: Optional[float] = None
-    wind_speed_kph: Optional[float] = Field(default=None, ge=0)
-
-    @model_validator(mode="after")
-    def validate_window(self) -> "WeatherTimeWindow":
-        if self.end_at <= self.start_at:
-            raise ValueError("weather time window must end after it starts")
-        return self
 
 
 class WeatherCoverage(StrictModel):

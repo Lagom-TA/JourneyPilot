@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any, Mapping, Sequence
 
-from travel_agent.entities.provider_evidence import ProviderEvidenceScope
+from travel_agent.planning.research.provider_contracts import ProviderEvidenceScope
 from travel_agent.planning.references import EntityRef, EntityType
 from travel_agent.planning.research.evidence import (
     FactAssertion,

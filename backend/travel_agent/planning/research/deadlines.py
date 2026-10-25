@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary.connectors import LocalConnectorGap
 from travel_agent.runtime.deadlines import DeadlineObservation, observe_run_deadline
 

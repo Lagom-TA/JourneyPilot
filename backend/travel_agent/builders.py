@@ -9,52 +9,41 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from .config import Settings, get_settings
-from .storage.maintenance.report import SchemaReport, verify_database_contract
-from .storage.background_job_store import (
-    BackgroundJobStore,
-    get_background_job_store,
-)
-from .storage.cost_ledger_store import CostLedgerStore, get_cost_ledger_store
-from .storage.delivery_bundle_store import DeliveryBundleStore
-from .storage.memory_lifecycle_store import (
-    MemoryLifecycleStore,
-    get_memory_lifecycle_store,
-)
-from .storage.provider_snapshot_cache import (
-    ProviderSnapshotCache,
-    get_provider_snapshot_cache,
-)
-from .storage.run_command_store import (
-    RunCommandStore,
-    get_run_command_store,
-)
-from .storage.run_execution_store import (
-    RunExecutionStore,
-    get_run_execution_store,
-)
-from .storage.trip_run_store import TripRunStore, get_trip_run_store
-from .storage.tool_audit_store import ToolAuditStore, get_tool_audit_store
-from .storage.worker_journal_store import WorkerJournalStore
-from .integrations.weather import default_weather_providers
-from .memory.chat_session import ChatSessionMemory
-from .memory.memory_extractor import MemoryExtractor
-from .memory.user_profile import UserProfileMemory
-from .llm.router import ModelRouter, get_model_router
-from .llm.usage import UsageRecorder, get_usage_recorder
-from .preset.store import PresetStore
-from .preset.product_config import ProductConfigurationStore
-from .knowledge.indexer import KnowledgeIndexer
-from .knowledge.retriever import HybridRetriever
-from .tools.mcp_manager import MCPManager, get_mcp_manager
-from .tools.registry import ToolRegistry, get_tool_registry
-from .services.background_jobs import BackgroundJobWorker, build_job_handlers
-from .services.run_lease import release_all_leases
-from .services.run_recovery import RunRecoveryService
-from .services.usage_flush import UsageFlushService
-from .services.weather_context_builder import WeatherContextBuilder
-from .workflows.fast_answer import FastAnswerWorkflow
-from .workflows.travel_planning import TravelPlanningWorkflow
+from travel_agent.config import Settings, get_settings
+from travel_agent.storage.maintenance.report import SchemaReport, verify_database_contract
+from travel_agent.storage.background_job_store import BackgroundJobStore, get_background_job_store
+from travel_agent.storage.cost_ledger_store import CostLedgerStore, get_cost_ledger_store
+from travel_agent.storage.delivery_bundle_store import DeliveryBundleStore
+from travel_agent.storage.memory_lifecycle_store import MemoryLifecycleStore, get_memory_lifecycle_store
+from travel_agent.storage.provider_snapshot_cache import ProviderSnapshotCache, get_provider_snapshot_cache
+from travel_agent.storage.run_command_store import RunCommandStore, get_run_command_store
+from travel_agent.storage.run_execution_store import RunExecutionStore, get_run_execution_store
+from travel_agent.storage.trip_run_store import TripRunStore, get_trip_run_store
+from travel_agent.storage.tool_audit_store import ToolAuditStore, get_tool_audit_store
+from travel_agent.storage.worker_journal_store import WorkerJournalStore
+from travel_agent.integrations.weather import default_weather_providers
+from travel_agent.memory.chat_session import ChatSessionMemory
+from travel_agent.memory.memory_extractor import MemoryExtractor
+from travel_agent.memory.user_profile import UserProfileMemory
+from travel_agent.llm.router import ModelRouter, get_model_router
+from travel_agent.llm.usage import UsageRecorder, get_usage_recorder
+from travel_agent.preset.store import PresetStore
+from travel_agent.preset.product_config import ProductConfigurationStore
+from travel_agent.knowledge.indexer import KnowledgeIndexer
+from travel_agent.knowledge.retriever import HybridRetriever
+from travel_agent.tools.mcp_manager import MCPManager, get_mcp_manager
+from travel_agent.tools.registry import ToolRegistry, get_tool_registry
+from travel_agent.runtime.background_jobs import BackgroundJobWorker
+from travel_agent.runtime.background_jobs import JobHandler
+from travel_agent.runtime.job_contracts import BackgroundJobType, coerce_job_type
+from travel_agent.memory.extraction_jobs import make_memory_extraction_handler
+from typing import Dict
+from travel_agent.runtime.run_lease import release_all_leases
+from travel_agent.runtime.run_recovery import RunRecoveryService
+from travel_agent.runtime.usage_flush import UsageFlushService
+from travel_agent.planning.weather.context_builder import WeatherContextBuilder
+from travel_agent.workflows.fast_answer import FastAnswerWorkflow
+from travel_agent.workflows.travel_planning import TravelPlanningWorkflow
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +149,7 @@ class AppBuilder:
 
         # 只读合同校验。结构由 `journeypilot migrate` 在启动 API 之前建好；
         # 校验不通过不抛异常，进程仍要启动到 readiness 可读。
-        from .storage.database import get_engine
+        from travel_agent.storage.database import get_engine
 
         schema_report = await verify_database_contract(
             get_engine(), embedding_dimensions=self.settings.embedding.dimensions
@@ -175,7 +164,7 @@ class AppBuilder:
             getattr(self.settings.checkpoint_retention, "require_on_startup", False)
         )
         try:
-            from .storage.checkpointer import build_checkpointer
+            from travel_agent.storage.checkpointer import build_checkpointer
 
             checkpointer, checkpointer_pool = await build_checkpointer(self.settings)
             checkpointer_available = checkpointer is not None
@@ -199,7 +188,7 @@ class AppBuilder:
 
         # 注册内置工具
         try:
-            from .tools.builtin_tools import register_builtin_tools
+            from travel_agent.tools.builtin_tools import register_builtin_tools
             register_builtin_tools()
             logger.info("内置工具注册完成")
         except Exception as e:
@@ -307,13 +296,13 @@ class AppBuilder:
                 logger.warning(f"LangGraph checkpointer 连接池关闭失败: {e}")
 
         try:
-            from .storage.database import close_db
+            from travel_agent.storage.database import close_db
             await close_db()
         except Exception as e:
             logger.warning(f"数据库关闭失败: {e}")
 
         try:
-            from .storage.redis_client import close_redis
+            from travel_agent.storage.redis_client import close_redis
             await close_redis()
         except Exception as e:
             logger.warning(f"Redis 关闭失败: {e}")
@@ -336,3 +325,15 @@ def set_components(components: AppComponents) -> None:
     """设置全局组件容器（在 FastAPI lifespan 中调用）"""
     global _components
     _components = components
+
+
+def build_job_handlers(components: Any) -> Dict[BackgroundJobType, JobHandler]:
+    """任务类型 → 处理器。新增类型时只改这一处。"""
+
+    return {
+        coerce_job_type(BackgroundJobType.MEMORY_EXTRACTION): make_memory_extraction_handler(
+            chat_session_memory=components.chat_session_memory,
+            memory_extractor=components.memory_extractor,
+            user_profile_memory=components.user_profile_memory,
+        ),
+    }

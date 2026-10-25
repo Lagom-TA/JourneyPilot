@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping, MutableMapping
 
-from ..local_profile import LOCAL_USER_ID
+from travel_agent.runtime.local_identity import LOCAL_USER_ID
 
 USER_KNOWLEDGE_COLLECTION = "travel_knowledge"
 

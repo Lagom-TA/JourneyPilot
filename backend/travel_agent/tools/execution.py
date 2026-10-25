@@ -5,7 +5,7 @@ import datetime
 import logging
 from typing import Any, Dict, List, Optional, Set
 
-from ..entities.tool_gateway import ToolGatewayDecision
+from travel_agent.tools.gateway_contracts import ToolGatewayDecision
 from ..runtime.budget import RunBudgetExhausted, current_budget_ledger, guard_run_budget
 from ..runtime.operations import (
     ModelWindowClosed,

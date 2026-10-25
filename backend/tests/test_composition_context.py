@@ -3,10 +3,10 @@ from datetime import date
 from tests.agent_behavior.test_intent_research_ranking_selection import _catalog, _spec
 from tests.test_run_budget_boundaries import _draft
 from travel_agent.planning.itinerary.prompts import _build_composition_prompt
-from travel_agent.entities.planning_generation import PlanningGeneration
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.requirements.generation_contracts import PlanningGeneration
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.requirements.inputs import MinimumDeliveryDraft
-from travel_agent.services.candidate_selection import build_candidate_selection_plan
+from travel_agent.planning.research.selection_policy import build_candidate_selection_plan
 
 
 def state():

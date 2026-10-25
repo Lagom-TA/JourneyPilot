@@ -7,40 +7,16 @@ from travel_agent.agents.orchestrator.intent_fidelity_gate import (
 )
 from travel_agent.planning.assignments import assignment_research_round, resolve_agent_assignment
 from travel_agent.api.schemas import PublicBundleWorkspaceResponse
-from travel_agent.entities.candidate_intent import (
-    CandidateIntentMatch,
-    IntentMatchStatus,
-)
-from travel_agent.entities.candidate_selection import (
-    CandidateSelectionRole,
-    SelectedCandidateCapability,
-)
-from travel_agent.entities.composition_rules import (
-    CompositionRule,
-    CompositionRuleKind,
-)
-from travel_agent.entities.intent_coverage import EntityIntentExplanation
-from travel_agent.entities.intent_spec import (
-    AlternativeIntentValue,
-    CadenceIntentValue,
-    CountIntentValue,
-    IntentItem,
-    IntentKind,
-    IntentSpec,
-    IntentStrength,
-    IntentTarget,
-    ScalarIntentValue,
-    VerificationMode,
-    canonical_json_hash,
-)
+from travel_agent.planning.requirements.candidate_match_contracts import CandidateIntentMatch, IntentMatchStatus
+from travel_agent.planning.research.selection_contracts import CandidateSelectionRole, SelectedCandidateCapability
+from travel_agent.planning.requirements.composition_contracts import CompositionRule, CompositionRuleKind
+from travel_agent.planning.delivery.requirement_contracts import EntityIntentExplanation
+from travel_agent.planning.requirements.intent_contracts import AlternativeIntentValue, CadenceIntentValue, CountIntentValue, IntentItem, IntentKind, IntentSpec, IntentStrength, IntentTarget, ScalarIntentValue, VerificationMode, canonical_json_hash
 from travel_agent.planning.research.domains import ResearchDomain
-from travel_agent.services.composition_mutations import (
-    diff_composition_mutations,
-    mark_mutations_revalidated,
-)
-from travel_agent.services.composition_rule_compiler import compile_composition_rules
-from travel_agent.services.intent_verification import evaluate_intent_fidelity
-from travel_agent.services.public_delivery import _public_intent_explanations
+from travel_agent.planning.itinerary.mutation_history import diff_composition_mutations, mark_mutations_revalidated
+from travel_agent.planning.requirements.composition_compiler import compile_composition_rules
+from travel_agent.planning.requirements.verification.coverage import evaluate_intent_fidelity
+from travel_agent.planning.delivery.public.itinerary import _public_intent_explanations
 
 
 def _capability(

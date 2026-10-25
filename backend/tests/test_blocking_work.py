@@ -8,13 +8,8 @@ import time
 import pytest
 
 from travel_agent.config import get_settings
-from travel_agent.services.blocking_work import (
-    BlockingWorkBusy,
-    blocking_channel,
-    blocking_work_metrics,
-    run_blocking,
-)
-from travel_agent.utils.concurrency import reset_channels
+from travel_agent.runtime.blocking_work import BlockingWorkBusy, blocking_channel, blocking_work_metrics, run_blocking
+from travel_agent.runtime.concurrency import reset_channels
 
 
 @pytest.fixture(autouse=True)

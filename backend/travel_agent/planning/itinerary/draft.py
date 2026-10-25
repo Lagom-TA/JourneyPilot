@@ -7,7 +7,7 @@ from typing import Annotated, Callable, Literal, Optional, Union
 
 from pydantic import Field, model_validator
 
-from travel_agent.entities.day_design import DayDesign
+from travel_agent.planning.itinerary.day_design_contracts import DayDesign
 from travel_agent.schema import StrictModel
 
 

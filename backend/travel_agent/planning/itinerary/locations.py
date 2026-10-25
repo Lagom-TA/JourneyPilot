@@ -6,7 +6,7 @@ import logging
 import unicodedata
 from typing import Any, Dict, List, Optional
 
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary.draft import (
     _SERVER_OWNED_PLACE_FIELDS,
     AuthoredPlaceBase,
@@ -20,12 +20,7 @@ from travel_agent.planning.nodes import NODE_ITINERARY
 from travel_agent.planning.tool_context import build_tool_context_from_state
 from travel_agent.runtime.deadlines import observe_run_deadline
 from travel_agent.runtime.operations import ModelWindowClosed, await_model_operation
-from travel_agent.services.authored_place_resolution import (
-    AuthoredPlaceScope,
-    AuthoredPlaceToolAccess,
-    authored_place_scopes,
-    resolve_authored_place,
-)
+from travel_agent.planning.itinerary.place_resolution import AuthoredPlaceScope, AuthoredPlaceToolAccess, authored_place_scopes, resolve_authored_place
 from travel_agent.tools.execution import execute_tool
 from travel_agent.tools.registry import get_tool_registry
 

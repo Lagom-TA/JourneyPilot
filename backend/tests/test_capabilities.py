@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from travel_agent.capabilities import capability_gaps, capability_report
+from travel_agent.config.capabilities import capability_gaps, capability_report
 from travel_agent.config import Settings
 
 
@@ -20,7 +20,7 @@ def test_disabled_embedding_does_not_probe_optional_dependencies(monkeypatch):
     from unittest.mock import Mock
 
     probe = Mock()
-    monkeypatch.setattr("travel_agent.capabilities._missing", probe)
+    monkeypatch.setattr("travel_agent.config.capabilities._missing", probe)
     settings = _settings(**{
         "embedding.enabled": False,
         "rerank.provider": "cross_encoder",
@@ -36,7 +36,7 @@ def test_a_configuration_matching_the_install_has_no_gaps(monkeypatch):
     local-embedding，让断言跟着环境走会让那一档永远是红的。
     """
 
-    monkeypatch.setattr("travel_agent.capabilities._missing", lambda *modules: [])
+    monkeypatch.setattr("travel_agent.config.capabilities._missing", lambda *modules: [])
     assert capability_gaps(_settings()) == []
 
 
@@ -47,7 +47,7 @@ def test_a_missing_enhancement_names_its_config_item_and_install_command(monkeyp
     """
 
     monkeypatch.setattr(
-        "travel_agent.capabilities._missing",
+        "travel_agent.config.capabilities._missing",
         lambda *modules: list(modules),
     )
     gaps = capability_gaps(_settings(**{"rerank.provider": "cross_encoder"}))
@@ -61,7 +61,7 @@ def test_a_missing_enhancement_names_its_config_item_and_install_command(monkeyp
 
 def test_a_disabled_enhancement_is_not_a_gap(monkeypatch):
     monkeypatch.setattr(
-        "travel_agent.capabilities._missing",
+        "travel_agent.config.capabilities._missing",
         lambda *modules: list(modules),
     )
     gaps = capability_gaps(
@@ -72,7 +72,7 @@ def test_a_disabled_enhancement_is_not_a_gap(monkeypatch):
 
 def test_a_remote_embedding_provider_needs_no_local_stack(monkeypatch):
     monkeypatch.setattr(
-        "travel_agent.capabilities._missing",
+        "travel_agent.config.capabilities._missing",
         lambda *modules: list(modules),
     )
     gaps = capability_gaps(_settings(**{"embedding.provider": "openai"}))
@@ -83,7 +83,7 @@ def test_the_report_blocks_readiness_when_a_gap_exists(monkeypatch):
     """这一项与空语料那一类不同：它会在第一次真正调用时抛异常，所以拦门禁。"""
 
     monkeypatch.setattr(
-        "travel_agent.capabilities._missing",
+        "travel_agent.config.capabilities._missing",
         lambda *modules: list(modules),
     )
     report = capability_report(_settings(**{"embedding.provider": "qwen3"}))
@@ -93,7 +93,7 @@ def test_the_report_blocks_readiness_when_a_gap_exists(monkeypatch):
 
 
 def test_the_report_is_ready_when_nothing_is_missing(monkeypatch):
-    monkeypatch.setattr("travel_agent.capabilities._missing", lambda *modules: [])
+    monkeypatch.setattr("travel_agent.config.capabilities._missing", lambda *modules: [])
     report = capability_report(_settings())
     assert report["ready"] is True
     assert report["gaps"] == []
@@ -106,7 +106,7 @@ def test_probing_never_imports_the_module(module, monkeypatch):
 
     import sys
 
-    from travel_agent.capabilities import _missing
+    from travel_agent.config.capabilities import _missing
 
     before = set(sys.modules)
     _missing(module)

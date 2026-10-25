@@ -105,7 +105,7 @@ class OpenAICompatibleEmbedder(BaseEmbedder):
 
     def _channel(self):
         from ..config import get_settings
-        from ..utils.concurrency import channel_gate
+        from travel_agent.runtime.concurrency import channel_gate
 
         return channel_gate("embedding", int(get_settings().provider_channels.embedding))
 
@@ -208,7 +208,7 @@ class Qwen3OnnxEmbedder(BaseEmbedder):
             return []
         # ONNX 推理是同步的、吃满一个核，所以它走受限通道而不是裸线程：一次入库能
         # 排出上千批推理，而这个进程还要给在线请求留核。
-        from ..services.blocking_work import run_blocking
+        from travel_agent.runtime.blocking_work import run_blocking
 
         if len(texts) <= self._EMBED_MICRO_BATCH:
             return await run_blocking("local_embedding", self._embed_sync, texts)

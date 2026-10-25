@@ -11,12 +11,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import ValidationError
 
 from ...builders import get_components
-from ...entities.user import (
-    TRAVEL_PREFERENCE_GROUPS,
-    PreferenceOptionGroup,
-    TravelPreference,
-)
-from ...local_profile import LOCAL_USER_ID
+from travel_agent.memory.preference_contracts import TRAVEL_PREFERENCE_GROUPS, PreferenceOptionGroup, TravelPreference
+from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from ..schemas import (
     ChatSessionDetail,
     ChatSessionSummary,
@@ -58,7 +54,7 @@ async def get_default_origin():
 
 @router.put("/default-origin", response_model=DefaultOriginResponse)
 async def set_default_origin(request: DefaultOriginRequest):
-    from ...entities.trip_input import ORIGIN_PLACE_KINDS
+    from travel_agent.planning.requirements.identity_contracts import ORIGIN_PLACE_KINDS
 
     if request.place.kind not in ORIGIN_PLACE_KINDS:
         raise HTTPException(status_code=422, detail="常用出发地只支持城市、机场或火车站")

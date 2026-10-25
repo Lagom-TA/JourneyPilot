@@ -11,7 +11,7 @@ from travel_agent.utils.log_redaction import (
     install_query_secret_redaction,
 )
 
-_EVAL_LOGGER = "travel_agent.services.candidate_intent_evaluation"
+_EVAL_LOGGER = "travel_agent.planning.requirements.candidate_evaluation"
 _GATE_LOGGER = "travel_agent.planning.research.node"
 
 
@@ -20,7 +20,7 @@ def test_missing_deadline_preserves_route_without_logging(
 ) -> None:
 
     from travel_agent.planning.research.node import route_after_candidate_gate
-    from travel_agent.entities.state import TravelAgentState
+    from travel_agent.planning.state import TravelAgentState
 
     state = TravelAgentState(candidate_gate_route="transport_researcher")
     assert state.run_deadline is None
@@ -102,7 +102,8 @@ def test_provider_module_installs_it_at_import_time(clean_redaction_state) -> No
     httpx_logger.filters = []
     _INSTALLED_LOGGERS.discard("httpx")
 
-    import travel_agent.services.amap_route_search as amap
+
+    import travel_agent.integrations.routes.amap as amap
 
     importlib.reload(amap)
 

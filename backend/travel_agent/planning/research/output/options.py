@@ -7,20 +7,11 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Mapping, Sequence
 
-from travel_agent.entities.provider_evidence import (
-    ProviderEvidenceAssignment,
-    ProviderEvidenceOutcome,
-    ProviderEvidenceScope,
-)
+from travel_agent.planning.research.provider_contracts import ProviderEvidenceAssignment, ProviderEvidenceOutcome, ProviderEvidenceScope
 from travel_agent.knowledge.place_mentions import PlaceLookup, ProviderIdentity
 from travel_agent.planning.research.packets import ResearchPacket
-from travel_agent.services.candidate_admission import (
-    provider_place_type_matches_candidate_kind,
-)
-from travel_agent.services.destination_scope import (
-    DESTINATION_DISTANCE_KEY,
-    MAX_DESTINATION_DISTANCE_KM,
-)
+from travel_agent.integrations.places.taxonomy import provider_place_type_matches_candidate_kind
+from travel_agent.planning.requirements.destination_scope import DESTINATION_DISTANCE_KEY, MAX_DESTINATION_DISTANCE_KM
 
 from .identifiers import _provider_candidate_id
 from .policy import _PLACE_IDENTITY_FIELDS, _WORKER_CANDIDATE_MODELS, ResearchWorkerKind

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from datetime import date
 
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.assignments import strip_round_suffix
 from travel_agent.planning.nodes import RESEARCH_WORKER_NODES
-from travel_agent.services.destination_scope import destination_points
-from travel_agent.services.product_requirements import required_physical_candidate_kinds
+from travel_agent.planning.requirements.destination_scope import destination_points
+from travel_agent.planning.requirements.product_policy import required_physical_candidate_kinds
 
 
 def _destination_country_codes(state: TravelAgentState) -> dict[str, str]:

@@ -12,24 +12,11 @@ from typing import Any, Dict, List, Optional, Sequence
 import pytest
 from langgraph.errors import GraphInterrupt
 
-from travel_agent.entities.trip_run import (
-    RunCommand,
-    RunCommandStatus,
-    RunCommandType,
-    TripRunStatus,
-    generate_run_command_id,
-    run_command_digest,
-)
-from travel_agent.entities.state import TravelAgentState
-from travel_agent.entities.request_contract import (
-    AmendmentImpact,
-    IntentAmendmentRejection,
-)
-from travel_agent.services.run_commands import (
-    PAST_SUPPLEMENT_STAGE,
-    RUN_ENDED_BEFORE_CONSUMPTION,
-    RunCommandCoordinator,
-)
+from travel_agent.runtime.command_contracts import RunCommand, RunCommandStatus, RunCommandType, generate_run_command_id, run_command_digest
+from travel_agent.runtime.run_contracts import TripRunStatus
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.planning.requirements.request_contracts import AmendmentImpact, IntentAmendmentRejection
+from travel_agent.runtime.run_commands import PAST_SUPPLEMENT_STAGE, RUN_ENDED_BEFORE_CONSUMPTION, RunCommandCoordinator
 from travel_agent.planning import execution
 from travel_agent.runtime.cancellation import RunCancelled, run_control_registry
 from travel_agent.runtime.context import (
@@ -486,8 +473,8 @@ def test_parallel_workers_do_not_store_the_same_amendment_twice():
     就出现三遍。
     """
 
-    from travel_agent.entities.request_contract import IntentAmendment
-    from travel_agent.entities.state import _replace_amendments
+    from travel_agent.planning.requirements.request_contracts import IntentAmendment
+    from travel_agent.planning.state import _replace_amendments
 
     amendment = IntentAmendment(
         command_id="cmd-1",
@@ -501,8 +488,8 @@ def test_parallel_workers_do_not_store_the_same_amendment_twice():
 
 
 def test_replacing_amendments_keeps_order_and_distinct_commands():
-    from travel_agent.entities.request_contract import IntentAmendment
-    from travel_agent.entities.state import _replace_amendments
+    from travel_agent.planning.requirements.request_contracts import IntentAmendment
+    from travel_agent.planning.state import _replace_amendments
 
     first = IntentAmendment(
         command_id="cmd-1",

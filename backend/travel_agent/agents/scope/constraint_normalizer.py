@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from ...config import get_settings
-from ...entities.state import TravelAgentState
-from ...local_profile import LOCAL_USER_ID
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from ...memory.context_builder import ContextBudget
 from ...memory.memory_store import MemoryStore
 from ...memory.user_profile import UserProfileMemory

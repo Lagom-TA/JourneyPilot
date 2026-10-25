@@ -4,11 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ...entities.state import TravelAgentState
-from ...services.capability_planning import (
-    RESEARCH_BRIEF_POLICY_VERSION,
-    build_research_brief,
-)
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.planning.research.brief_builder import RESEARCH_BRIEF_POLICY_VERSION, build_research_brief
 
 
 async def research_brief_builder_node(state: TravelAgentState) -> Dict[str, Any]:

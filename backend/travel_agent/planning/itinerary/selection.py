@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Mapping, Sequence
 
-from travel_agent.entities.candidate_options import candidate_option_availability
+from travel_agent.planning.research.option_availability import candidate_option_availability
 from travel_agent.planning.itinerary.draft import _stable_id
 from travel_agent.planning.itinerary.models import TransportLeg
 from travel_agent.planning.itinerary.options import (

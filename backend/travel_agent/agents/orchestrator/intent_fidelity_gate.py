@@ -4,20 +4,17 @@ from typing import Any, Dict
 
 from travel_agent.planning.outcomes import DeliveryContractViolation, GateClass
 
-from ...entities.candidate_intent import IntentMatchStatus
-from ...entities.intent_coverage import IntentFidelityGap
-from ...entities.intent_spec import IntentTarget
-from ...entities.state import TravelAgentState
+from travel_agent.planning.requirements.candidate_match_contracts import IntentMatchStatus
+from travel_agent.planning.requirements.coverage_contracts import IntentFidelityGap
+from travel_agent.planning.requirements.intent_contracts import IntentTarget
+from travel_agent.planning.state import TravelAgentState
 from ...llm.router import get_model_router
 from ...llm.task_routing import TaskKind, llm_for_task
-from ...services.composition_mutations import mark_mutations_revalidated
-from ...services.composition_rule_compiler import compile_composition_rules
-from ...services.intent_entity_binding import bind_intent_context
-from ...services.intent_requirement_check import (
-    check_final_entities,
-    evaluate_final_entities,
-)
-from ...services.intent_verification import evaluate_intent_fidelity
+from travel_agent.planning.itinerary.mutation_history import mark_mutations_revalidated
+from travel_agent.planning.requirements.composition_compiler import compile_composition_rules
+from travel_agent.planning.requirements.entity_binding import bind_intent_context
+from travel_agent.planning.requirements.entity_checks import check_final_entities, evaluate_final_entities
+from travel_agent.planning.requirements.verification.coverage import evaluate_intent_fidelity
 from travel_agent.planning.itinerary.revision import (
     apply_composition_repair_budget,
     composition_repair_budget_exhausted,

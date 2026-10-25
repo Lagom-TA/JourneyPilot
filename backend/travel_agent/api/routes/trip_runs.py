@@ -18,17 +18,12 @@ from typing import Any, Dict, Literal, Mapping, Optional
 from fastapi import APIRouter, HTTPException, Query, Response
 
 from ...builders import get_components
-from ...entities.trip_run import (
-    RunCommand,
-    RunCommandStatus,
-    RunCommandType,
-    TripRunStatus,
-    available_run_actions,
-    is_cancellable,
-)
-from ...local_profile import LOCAL_USER_ID
-from ...entities.workspace_v2_mutations import WorkspaceV2MutationError
-from ...entities.trip_input import classify_locked_identity_intent
+from travel_agent.runtime.command_contracts import RunCommand, RunCommandStatus, RunCommandType
+from travel_agent.runtime.run_contracts import TripRunStatus
+from travel_agent.runtime.run_lifecycle import available_run_actions, is_cancellable
+from travel_agent.runtime.local_identity import LOCAL_USER_ID
+from travel_agent.planning.itinerary.mutations.contracts import WorkspaceV2MutationError
+from travel_agent.planning.requirements.identity_amendments import classify_locked_identity_intent
 from ...storage.delivery_bundle_store import (
     BundleContractSuperseded,
     BundleIdempotencyMismatch,
@@ -36,22 +31,14 @@ from ...storage.delivery_bundle_store import (
     BundleRevisionVector,
 )
 from ...integrations.weather import default_weather_providers
-from ...services.workspace_v2_service import WorkspaceV2Service
-from ...services.weather_bundle_refresh import (
-    WeatherBundleRefreshService,
-    WeatherRefreshRefused,
-)
-from ...services.weather_context_builder import WeatherContextBuilder
-from ...services.run_completion_metrics import (
-    RunCompletionMetrics,
-    recompute_completion_metrics,
-)
-from ...services.blocking_work import BlockingWorkBusy, run_blocking
-from ...services.pdf_export import (
-    PdfFontUnavailable,
-    ReportOutOfDateError,
-    render_trip_report_pdf,
-)
+from travel_agent.planning.delivery.workspace_mutations import WorkspaceV2Service
+from travel_agent.planning.delivery.weather_refresh import WeatherBundleRefreshService
+from travel_agent.planning.delivery.weather_refresh_contracts import WeatherRefreshRefused
+from travel_agent.planning.weather.context_builder import WeatherContextBuilder
+from travel_agent.planning.completion_metrics import RunCompletionMetrics, recompute_completion_metrics
+from travel_agent.runtime.blocking_work import BlockingWorkBusy, run_blocking
+from travel_agent.integrations.pdf_readiness import PdfFontUnavailable
+from travel_agent.planning.delivery.pdf_export import ReportOutOfDateError, render_trip_report_pdf
 from ..schemas import (
     PublicDeliveryBundleResponse,
     ToolAuditRecordResponse,
@@ -81,11 +68,8 @@ from ..schemas import (
 )
 from ..audit_projection import audit_safe_value
 from ..sse_projection import public_plan_gate_payload
-from ...services.public_delivery import (
-    public_delivery_bundle,
-    public_event_manifest,
-)
-from ...services.run_commands import RUN_ENDED_BEFORE_CONSUMPTION
+from travel_agent.planning.delivery.public.bundle import public_delivery_bundle, public_event_manifest
+from travel_agent.runtime.run_commands import RUN_ENDED_BEFORE_CONSUMPTION
 from travel_agent.runtime.cancellation import run_control_registry
 
 logger = logging.getLogger(__name__)

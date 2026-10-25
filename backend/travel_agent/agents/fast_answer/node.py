@@ -23,9 +23,9 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
-from ...entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from ...llm.router import get_model_router
-from ...guardrails.output_guard import OutputGuard
+from travel_agent.conversation.answer_presentation import OutputGuard
 from ...tools.governance import tool_envelope_to_evidence_candidate
 from travel_agent.tools.knowledge_results import knowledge_tool_documents, knowledge_tool_summaries
 from ...memory.context_builder import ContextBuilder, ContextBudget

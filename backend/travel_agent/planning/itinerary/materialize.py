@@ -3,20 +3,15 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING, Mapping, Optional
 
-from travel_agent.entities.candidate_selection import CandidateSelectionPlan
-from travel_agent.entities.composition_mutation import CompositionMutation
-from travel_agent.entities.controlled_place_name import (
-    CONTROLLED_DESTINATION_ANCHOR_PREFIX,
-    controlled_public_place_name,
-)
-from travel_agent.entities.day_theme import derive_day_theme
-from travel_agent.entities.intent_coverage import IntentContractSnapshot
-from travel_agent.entities.provider_reference_service import (
-    ProviderReferenceService,
-    reference_service_note,
-)
-from travel_agent.entities.transport_semantics import count_service_transfers
-from travel_agent.entities.trip_highlights import derive_trip_highlights
+from travel_agent.planning.research.selection_contracts import CandidateSelectionPlan
+from travel_agent.planning.itinerary.mutation_contracts import CompositionMutation
+from travel_agent.planning.requirements.place_names import CONTROLLED_DESTINATION_ANCHOR_PREFIX, controlled_public_place_name
+from travel_agent.planning.itinerary.day_themes import derive_day_theme
+from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
+from travel_agent.planning.research.reference_service_contracts import ProviderReferenceService
+from travel_agent.planning.delivery.reference_service_presentation import reference_service_note
+from travel_agent.planning.transport_semantics import count_service_transfers
+from travel_agent.planning.itinerary.highlights import derive_trip_highlights
 from travel_agent.planning.costs.coverage import (
     build_cost_coverage_summary,
     itinerary_price_components,
@@ -69,7 +64,7 @@ from travel_agent.planning.transport import TransportMode, TransportSegment
 from travel_agent.planning.workspace import TripWorkspaceV2
 
 if TYPE_CHECKING:
-    from travel_agent.entities.provider_evidence import ProviderRouteLegScope
+    from travel_agent.planning.research.provider_contracts import ProviderRouteLegScope
 
 
 def _total_budget_cap_cny(anchors: Optional[list[UserInputAnchor]]) -> Optional[float]:

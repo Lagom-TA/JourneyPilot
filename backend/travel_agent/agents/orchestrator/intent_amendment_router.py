@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ...entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from ...workflows.intent_amendments import apply_runtime_amendments
 
 

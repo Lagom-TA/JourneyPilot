@@ -4,13 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from travel_agent.entities.background_job import (
-    BackgroundJob,
-    BackgroundJobPermanentError,
-    BackgroundJobType,
-)
+from travel_agent.runtime.job_contracts import BackgroundJob, BackgroundJobPermanentError, BackgroundJobType
 from travel_agent.memory.memory_extractor import MemoryExtractionOutcome
-from travel_agent.services.memory_extraction_job import make_memory_extraction_handler
+from travel_agent.memory.extraction_jobs import make_memory_extraction_handler
 
 
 class _Sessions:

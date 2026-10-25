@@ -3,8 +3,8 @@ from __future__ import annotations
 import hashlib
 from typing import Any, Dict, Iterable
 
-from travel_agent.entities.provider_evidence import build_required_long_distance_legs
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.requirements.route_legs import build_required_long_distance_legs
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.assignments import strip_round_suffix
 from travel_agent.planning.outcomes import (
     CandidateResearchGap,

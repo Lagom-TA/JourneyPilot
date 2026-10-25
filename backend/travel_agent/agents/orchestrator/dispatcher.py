@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional, Set, Union
 
 from langchain_core.runnables import RunnableConfig
 
-from ...entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.deadlines import observe_run_deadline
 from travel_agent.planning.itinerary.revision import composition_repair_budget_exhausted
 from travel_agent.planning.assignments import strip_round_suffix

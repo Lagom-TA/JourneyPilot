@@ -12,20 +12,10 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..config import MAX_COMPLETION_TOKENS
-from ..entities.preset import (
-    PRESET_DESCRIPTION_MAX_CHARS,
-    PRESET_INSTRUCTIONS_MAX_CHARS,
-    PRESET_NAME_MAX_CHARS,
-    PresetConstraints,
-)
-from ..entities.trip_input import (
-    ControlledTripIdentity,
-    GuidedIntakeState,
-    PlaceIdentity,
-    RouteDecision,
-    RouteName,
-)
-from ..entities.workspace_v2_mutations import WorkspaceV2Mutation
+from travel_agent.planning.requirements.preset_contracts import PRESET_DESCRIPTION_MAX_CHARS, PRESET_INSTRUCTIONS_MAX_CHARS, PRESET_NAME_MAX_CHARS, PresetConstraints
+from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity, PlaceIdentity
+from travel_agent.conversation.intake_contracts import GuidedIntakeState, RouteDecision, RouteName
+from travel_agent.planning.itinerary.mutations.contracts import WorkspaceV2Mutation
 
 
 # ---------------------------------------------------------------------------

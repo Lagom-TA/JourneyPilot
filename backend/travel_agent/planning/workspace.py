@@ -4,13 +4,11 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import Field, model_validator
 
-from travel_agent.entities.candidate_selection import CandidateSelectionPlan
-from travel_agent.entities.composition_mutation import CompositionMutation
-from travel_agent.entities.intent_check import EntityIntentCheck
-from travel_agent.entities.intent_coverage import (
-    IntentContractSnapshot,
-    IntentCoverageReport,
-)
+from travel_agent.planning.research.selection_contracts import CandidateSelectionPlan
+from travel_agent.planning.itinerary.mutation_contracts import CompositionMutation
+from travel_agent.planning.requirements.check_contracts import EntityIntentCheck
+from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
+from travel_agent.planning.requirements.coverage_contracts import IntentCoverageReport
 from travel_agent.planning.itinerary.models import (
     DiningStop,
     LodgingStay,

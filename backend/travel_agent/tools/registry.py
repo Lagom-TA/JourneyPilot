@@ -9,7 +9,8 @@ import logging
 import re
 from typing import Any, Dict, Iterable, List, Optional, Set
 
-from ..entities.tool_gateway import ToolManifest, infer_tool_manifest
+from travel_agent.tools.gateway_contracts import ToolManifest
+from travel_agent.tools.manifest_inference import infer_tool_manifest
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Optional, Sequence
 
-from travel_agent.entities.opening_hours import opening_window_violation
+from travel_agent.planning.itinerary.opening_hours import opening_window_violation
 from travel_agent.planning.itinerary.adjacency import (
     _long_distance_anchor,
     day_connector_adjacencies,
@@ -36,7 +36,7 @@ from travel_agent.planning.research.candidates import (
 from travel_agent.planning.research.catalog import RecommendationCatalog
 
 if TYPE_CHECKING:
-    from travel_agent.entities.provider_evidence import ProviderRouteLegScope
+    from travel_agent.planning.research.provider_contracts import ProviderRouteLegScope
 
 
 def _validate_stop_opening_window(

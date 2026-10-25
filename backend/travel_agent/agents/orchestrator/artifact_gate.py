@@ -26,7 +26,7 @@ from travel_agent.planning.outcomes import (
 )
 from travel_agent.planning.workspace import TripWorkspaceV2
 
-from ...entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary.revision import apply_composition_repair_budget
 from travel_agent.planning.nodes import RESEARCH_WORKER_NODES as _RESEARCH_WORKERS
 from travel_agent.runtime.deadlines import observe_run_deadline

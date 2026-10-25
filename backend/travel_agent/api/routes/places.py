@@ -7,17 +7,9 @@ from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ...entities.trip_input import (
-    DESTINATION_PLACE_KINDS,
-    ITINERARY_PLACE_KINDS,
-    ORIGIN_PLACE_KINDS,
-    PlaceIdentity,
-    PlaceKind,
-)
-from ...services.nominatim_place_search import (
-    NominatimPlaceSearchError,
-    search_nominatim_raw,
-)
+from travel_agent.planning.requirements.identity_contracts import DESTINATION_PLACE_KINDS, ITINERARY_PLACE_KINDS, ORIGIN_PLACE_KINDS, PlaceIdentity, PlaceKind
+from travel_agent.integrations.places.contracts import NominatimPlaceSearchError
+from travel_agent.integrations.places.nominatim import search_nominatim_raw
 from ..schemas import PlaceCandidateResponse, PlaceSearchResponse
 
 logger = logging.getLogger(__name__)

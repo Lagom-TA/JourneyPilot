@@ -30,12 +30,7 @@ from typing import List, Optional
 
 from ...config import IngestConfig, get_settings
 from ...utils.user_text import content_length
-from ...services.blocking_work import (
-    BlockingWorkBusy,
-    blocking_channel,
-    run_blocking,
-    run_in_thread,
-)
+from travel_agent.runtime.blocking_work import BlockingWorkBusy, blocking_channel, run_blocking, run_in_thread
 
 logger = logging.getLogger(__name__)
 

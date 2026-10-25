@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.assignments import strip_round_suffix
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.planning.research.provider_failure import (

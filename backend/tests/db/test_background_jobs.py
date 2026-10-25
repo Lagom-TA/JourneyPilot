@@ -11,12 +11,8 @@ import asyncio
 import pytest
 from sqlalchemy import text
 
-from travel_agent.entities.background_job import (
-    BackgroundJobStatus,
-    BackgroundJobType,
-    memory_extraction_dedupe_key,
-    retry_delay_seconds,
-)
+from travel_agent.runtime.job_contracts import BackgroundJobStatus, BackgroundJobType, retry_delay_seconds
+from travel_agent.memory.extraction_jobs import memory_extraction_dedupe_key
 from travel_agent.storage.background_job_store import BackgroundJobStore
 from travel_agent.storage.database import get_db_session
 
@@ -229,7 +225,7 @@ async def test_oldest_pending_seconds_reports_backlog(migrated_async_database):
 async def test_the_same_fact_from_the_same_turn_lands_once(migrated_async_database):
     """至少一次执行的代价由业务写入这一侧兜住：同一条来源消息的同一句事实只有一行。"""
 
-    from travel_agent.entities.background_job import memory_fact_digest
+    from travel_agent.memory.extraction_jobs import memory_fact_digest
 
     digest = memory_fact_digest("local", "m-1", "用户吃素")
     insert = text(
@@ -257,7 +253,7 @@ async def test_the_same_fact_from_the_same_turn_lands_once(migrated_async_databa
 async def test_worker_runs_retries_and_gives_up(migrated_async_database):
     """worker 的完整生命周期：失败重试、重试用尽进死信、成功写下结论。"""
 
-    from travel_agent.services.background_jobs import BackgroundJobWorker
+    from travel_agent.runtime.background_jobs import BackgroundJobWorker
 
     store = BackgroundJobStore()
     attempts: list[str] = []
@@ -288,8 +284,8 @@ async def test_worker_runs_retries_and_gives_up(migrated_async_database):
 
 
 async def test_worker_sends_permanent_failures_straight_to_dead(migrated_async_database):
-    from travel_agent.entities.background_job import BackgroundJobPermanentError
-    from travel_agent.services.background_jobs import BackgroundJobWorker
+    from travel_agent.runtime.job_contracts import BackgroundJobPermanentError
+    from travel_agent.runtime.background_jobs import BackgroundJobWorker
 
     store = BackgroundJobStore()
 
@@ -306,7 +302,7 @@ async def test_worker_sends_permanent_failures_straight_to_dead(migrated_async_d
 
 
 async def test_worker_marks_a_job_with_no_handler_dead(migrated_async_database):
-    from travel_agent.services.background_jobs import BackgroundJobWorker
+    from travel_agent.runtime.background_jobs import BackgroundJobWorker
 
     store = BackgroundJobStore()
     worker = BackgroundJobWorker(store, {}, poll_seconds=0.1, lease_seconds=10)

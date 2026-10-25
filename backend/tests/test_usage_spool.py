@@ -9,7 +9,7 @@ import pytest
 from travel_agent.storage.cost_ledger_store import InMemoryCostLedgerStore
 from travel_agent.llm.usage import LLMCallRecord, UsageRecorder
 from travel_agent.llm.usage_spool import UsageSpoolConflict
-from travel_agent.services.usage_flush import UsageFlushService
+from travel_agent.runtime.usage_flush import UsageFlushService
 
 
 def record(call_id="a", run="run"):

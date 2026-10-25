@@ -6,7 +6,7 @@ import pytest
 
 from travel_agent.storage.maintenance import migrate
 from travel_agent.storage.maintenance.connection import connect
-from travel_agent.local_profile import LOCAL_USER_ID
+from travel_agent.runtime.local_identity import LOCAL_USER_ID
 
 pytestmark = pytest.mark.postgres
 

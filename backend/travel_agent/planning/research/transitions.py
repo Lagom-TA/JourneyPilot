@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from travel_agent.entities.state import TravelAgentState, bounded_repair_context
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.planning.itinerary.revision import bounded_repair_context
 from travel_agent.planning.itinerary.draft import ItineraryCompositionError
 from travel_agent.planning.itinerary.revision import apply_composition_repair_budget
 from travel_agent.planning.outcomes import (

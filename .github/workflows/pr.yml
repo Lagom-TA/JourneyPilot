@@ -196,7 +196,7 @@ jobs:
           uv run --project backend python - <<'PY'
           import sys
           sys.path.insert(0, "backend")
-          from travel_agent.capabilities import capability_gaps
+          from travel_agent.config.capabilities import capability_gaps
           from travel_agent.config import Settings
           settings = Settings()
           settings.embedding.provider = "qwen3"

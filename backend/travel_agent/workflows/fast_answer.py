@@ -15,11 +15,11 @@ from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from langgraph.graph import END, START, StateGraph
 
-from ..entities.trip_run import generate_trip_run_id
+from travel_agent.runtime.run_contracts import generate_trip_run_id
 from ..agents.fast_answer.node import fast_answer_node
-from ..entities.state import TravelAgentState
-from ..local_profile import LOCAL_USER_ID
-from ..utils.message_helpers import build_messages
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.runtime.local_identity import LOCAL_USER_ID
+from travel_agent.conversation.messages import build_messages
 from travel_agent.runtime.context import run_attribution
 from travel_agent.planning.execution import with_run_control
 

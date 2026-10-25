@@ -6,9 +6,10 @@ from typing import Any, Dict
 
 from langchain_core.messages import AIMessage
 
-from ..entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from ..panels.constraint import dining_allergy_reminders
-from ..services.delivery_projection import build_delivery_projections, build_fact_snapshot
+from travel_agent.planning.delivery.projection_builder import build_delivery_projections
+from travel_agent.planning.delivery.fact_projection import build_fact_snapshot
 
 
 def _workspace_with_dining_reminders(state: TravelAgentState):

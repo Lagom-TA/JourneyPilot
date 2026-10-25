@@ -69,13 +69,9 @@ from travel_agent.knowledge.place_mentions import (  # noqa: E402
     propose_place_mentions,
 )
 from travel_agent.knowledge.collections import FACTORY_KNOWLEDGE_COLLECTIONS  # noqa: E402
-from travel_agent.services.nominatim_place_search import (  # noqa: E402
-    NominatimPlaceSearchError,
-    is_concrete_dining_place,
-    is_concrete_visit_place,
-    normalize_nominatim_place,
-    search_nominatim_raw,
-)
+from travel_agent.integrations.places.contracts import NominatimPlaceSearchError
+from travel_agent.integrations.places.normalization import is_concrete_dining_place, is_concrete_visit_place, normalize_nominatim_place
+from travel_agent.integrations.places.nominatim import search_nominatim_raw
 
 # The local factory corpus, read from the one place that names it. This census scores
 # the optional local corpus, so it deliberately excludes the per-user uploaded

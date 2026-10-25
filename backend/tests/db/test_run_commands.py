@@ -11,11 +11,8 @@ import asyncio
 import pytest
 from sqlalchemy import text
 
-from travel_agent.entities.trip_run import (
-    RunCommandStatus,
-    RunCommandType,
-    TripRunStatus,
-)
+from travel_agent.runtime.command_contracts import RunCommandStatus, RunCommandType
+from travel_agent.runtime.run_contracts import TripRunStatus
 from travel_agent.storage.database import get_db_session
 from travel_agent.storage.run_command_store import RunCommandStore
 from travel_agent.storage.run_execution_store import EXECUTOR_ID

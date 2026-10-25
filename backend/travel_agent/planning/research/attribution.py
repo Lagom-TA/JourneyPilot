@@ -4,7 +4,7 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Dict, Iterable
 
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.outcomes import (
     GateClass,
     GateDisposition,

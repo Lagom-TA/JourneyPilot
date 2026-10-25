@@ -35,9 +35,9 @@ from ..config import (
     get_settings,
     resolve_price,
 )
-from ..entities.trip_run import utc_now_iso
+from travel_agent.runtime.time import utc_now_iso
 from ..config.providers import TokenLimitField
-from ..utils.concurrency import channel_gate
+from travel_agent.runtime.concurrency import channel_gate
 from travel_agent.runtime.operations import (
     ModelWindowClosed,
     await_model_operation,

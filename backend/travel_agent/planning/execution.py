@@ -8,7 +8,7 @@ import logging
 import time
 from typing import Any, Awaitable, Callable, Dict, Iterator, List, Optional, TypeVar
 from langgraph.errors import GraphInterrupt
-from ..entities.request_contract import IntentAmendment, IntentAmendmentRejection
+from travel_agent.planning.requirements.request_contracts import IntentAmendment, IntentAmendmentRejection
 from .nodes import (
     NODE_INTENT_AMENDMENT_ROUTER as _INTENT_AMENDMENT_ROUTER,
     NODE_REQUEST_CONTRACT_NORMALIZER as _REQUEST_CONTRACT_NORMALIZER,

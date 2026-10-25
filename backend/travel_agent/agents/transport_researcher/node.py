@@ -25,42 +25,29 @@ from langchain_core.runnables import RunnableConfig
 
 from travel_agent.planning.research.domains import ResearchDomain
 
-from ...entities.place_identity import stable_place_id_12306
-from ...entities.provider_evidence import (
-    ProviderEvidenceScope,
-    ProviderRouteLegScope,
-    build_provider_evidence_assignments,
-    dump_provider_evidence_assignments,
-    parse_provider_evidence_assignments,
-    scope_attempt_numbers,
-)
-from ...entities.provider_reference_service import ProviderReferenceService
-from ...entities.research_query_plan import ResearchQueryKind
-from ...entities.state import TravelAgentState
-from ...entities.trip_input import ControlledTripIdentity
+from travel_agent.integrations.place_identity import stable_place_id_12306
+from travel_agent.planning.research.provider_contracts import ProviderEvidenceScope, ProviderRouteLegScope
+from travel_agent.planning.research.provider_assignments import build_provider_evidence_assignments, dump_provider_evidence_assignments, parse_provider_evidence_assignments, scope_attempt_numbers
+from travel_agent.planning.research.reference_service_contracts import ProviderReferenceService
+from travel_agent.planning.research.query_contracts import ResearchQueryKind
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
 from ...llm.router import get_model_router
 from ...llm.task_routing import TaskKind, llm_for_task
 from ...memory.research_context import format_worker_research_context
-from ...services.authored_place_resolution import (
-    AuthoredPlaceScope,
-    AuthoredPlaceToolAccess,
-    resolve_station_point,
-)
-from ...services.constraint_applicability import (
-    active_hard_constraint_ids,
-    active_hard_constraints,
-)
-from ...services.destination_scope import destination_points, is_within_destination
-from ...services.rail_12306 import city_station_telecodes
-from ...services.research_query_planner import queries_by_ids
-from ...services.state_invalidation import generation_packet_key
+from travel_agent.planning.itinerary.place_resolution import AuthoredPlaceScope, AuthoredPlaceToolAccess, resolve_station_point
+from travel_agent.planning.requirements.constraint_applicability import active_hard_constraint_ids, active_hard_constraints
+from travel_agent.planning.requirements.destination_scope import destination_points, is_within_destination
+from travel_agent.integrations.rail.stations import city_station_telecodes
+from travel_agent.planning.research.query_planner import queries_by_ids
+from travel_agent.planning.invalidation import generation_packet_key
 from ...storage.worker_journal_store import JournalConflict
 from ...tools.registry import get_tool_registry
 from ...tools.temporal import (
     TemporalPreflightStatus,
     evaluate_temporal_request,
 )
-from ...utils.brief_helpers import build_assignment_context
+from travel_agent.planning.research.assignment_context import build_assignment_context
 from travel_agent.runtime.cancellation import RunCancelled
 from travel_agent.planning.research.output.sources import (
     authoritative_retry_source_records,
@@ -1666,7 +1653,7 @@ async def discover_required_local_route(
     # bounded provider-call allowance and cannot displace a necessary route.
     # Coordinate proximity only prioritizes provider queries. It never supplies
     # a walking time or proves that a pedestrian path exists.
-    from ...services.geo_dispersion import haversine_km
+    from travel_agent.utils.geography import haversine_km
     comparisons.sort(key=lambda request: haversine_km(
         request["from_latitude"], request["from_longitude"],
         request["to_latitude"], request["to_longitude"],

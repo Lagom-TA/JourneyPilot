@@ -18,8 +18,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..services.global_route_search import global_route_search
-from ..services.nominatim_place_search import global_place_search
+from travel_agent.integrations.routes.global_search import global_route_search
+from travel_agent.planning.research.place_search import global_place_search
 from .registry import get_tool_registry
 
 logger = logging.getLogger(__name__)

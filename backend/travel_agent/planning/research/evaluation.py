@@ -2,20 +2,17 @@ from __future__ import annotations
 
 from typing import Mapping
 
-from travel_agent.entities.candidate_intent import CandidateIntentMatch
-from travel_agent.entities.candidate_selection import CandidateSelectionPlan
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.requirements.candidate_match_contracts import CandidateIntentMatch
+from travel_agent.planning.research.selection_contracts import CandidateSelectionPlan
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.llm.router import get_model_router
 from travel_agent.llm.task_routing import TaskKind, llm_for_task
 from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.research.requirements import _trip_duration_days
-from travel_agent.services.candidate_intent_evaluation import evaluate_candidate_intents
-from travel_agent.services.candidate_ranking import rank_candidates
-from travel_agent.services.candidate_selection import (
-    build_candidate_selection_plan,
-    selection_policy_from_intent_spec,
-)
-from travel_agent.services.day_planning import daily_planning_windows
+from travel_agent.planning.requirements.candidate_evaluation import evaluate_candidate_intents
+from travel_agent.planning.research.ranking import rank_candidates
+from travel_agent.planning.research.selection_policy import build_candidate_selection_plan, selection_policy_from_intent_spec
+from travel_agent.planning.itinerary.day_capacity import daily_planning_windows
 
 
 async def evaluate_catalog(

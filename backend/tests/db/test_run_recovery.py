@@ -10,18 +10,14 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import text
 
-from travel_agent.entities.trip_run import (
-    RunCommandStatus,
-    RunCommandType,
-    RunRecoveryStatus,
-    TripRunStatus,
-    available_run_actions,
-)
+from travel_agent.runtime.command_contracts import RunCommandStatus, RunCommandType
+from travel_agent.runtime.run_contracts import RunRecoveryStatus, TripRunStatus
+from travel_agent.runtime.run_lifecycle import available_run_actions
 from travel_agent.storage.database import get_db_session
 from travel_agent.storage.run_command_store import RunCommandStore
 from travel_agent.storage.run_execution_store import RunExecutionStore
 from travel_agent.storage.trip_run_store import TripRunStore
-from travel_agent.services.run_recovery import RunRecoveryService
+from travel_agent.runtime.run_recovery import RunRecoveryService
 
 pytestmark = pytest.mark.postgres
 

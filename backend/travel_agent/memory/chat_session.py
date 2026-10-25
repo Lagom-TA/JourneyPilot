@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import bindparam, text
 
 from travel_agent.tools.display import public_text, result_preview
-from ..entities.session_title import TITLE_MAX_LEN, derive_session_title
+from travel_agent.conversation.titles import TITLE_MAX_LEN, derive_session_title
 from ..storage.database import get_db_session
 
 logger = logging.getLogger(__name__)

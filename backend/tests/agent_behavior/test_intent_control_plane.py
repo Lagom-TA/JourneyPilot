@@ -1,3 +1,5 @@
+
+import travel_agent.planning.requirements.normalization.model as _owner_planning_requirements_normalization_model
 import asyncio
 import json
 from types import SimpleNamespace
@@ -7,39 +9,20 @@ from openai import OpenAIError
 
 from travel_agent.agents.orchestrator.artifact_gate import artifact_gate_node
 from travel_agent.planning.research.history import _latest_packets
-from travel_agent.entities.intent_spec import (
-    AlternativeIntentValue,
-    CategoryIntentValue,
-    IntentConflict,
-    IntentItem,
-    IntentKind,
-    IntentStrength,
-    IntentTarget,
-    OutputRequirementValue,
-    ScalarIntentValue,
-    VerificationMode,
-)
-from travel_agent.entities.planning_generation import PlanningGeneration
-from travel_agent.entities.request_contract import ClauseDisposition, IntentAmendment
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.requirements.intent_contracts import AlternativeIntentValue, CategoryIntentValue, IntentConflict, IntentItem, IntentKind, IntentStrength, IntentTarget, OutputRequirementValue, ScalarIntentValue, VerificationMode
+from travel_agent.planning.requirements.generation_contracts import PlanningGeneration
+from travel_agent.planning.requirements.request_contracts import ClauseDisposition, IntentAmendment
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.panels.constraint import deterministic_budget_constraints
 from travel_agent.planning.research.packets import ResearchPacket
-from travel_agent.services.capability_planning import (
-    build_capability_plan,
-    build_research_brief,
-)
-from travel_agent.services.intent_conflicts import detect_intent_conflicts
-from travel_agent.services.intent_normalization import (
-    IntentDraft,
-    NormalizedClauseDraft,
-    RequestContractNormalizationResult,
-    SourceClause,
-    is_material_clause,
-    normalize_clauses,
-    split_source_clauses,
-)
-from travel_agent.services.intent_revision import build_request_contract_revision
-from travel_agent.services.research_query_planner import build_research_query_plan
+from travel_agent.planning.research.capability_planning import build_capability_plan
+from travel_agent.planning.research.brief_builder import build_research_brief
+from travel_agent.planning.requirements.conflicts import detect_intent_conflicts
+from travel_agent.planning.requirements.normalization.contracts import IntentDraft, NormalizedClauseDraft, RequestContractNormalizationResult, SourceClause
+from travel_agent.planning.requirements.normalization.clauses import is_material_clause, split_source_clauses
+from travel_agent.planning.requirements.normalization.model import normalize_clauses
+from travel_agent.planning.requirements.revision import build_request_contract_revision
+from travel_agent.planning.research.query_planner import build_research_query_plan
 from travel_agent.workflows import intent_amendments as intent_amendment_workflow
 from travel_agent.workflows.intent_amendments import apply_runtime_amendments
 from travel_agent.workflows.travel_planning import _build_plan_gate_payload
@@ -279,7 +262,7 @@ async def test_repeated_repair_failure_gets_an_unanchored_semantic_regeneration(
 
 @pytest.mark.asyncio
 async def test_slow_normalization_calls_share_one_operation_budget(monkeypatch):
-    from travel_agent.services import intent_normalization as normalization_module
+
 
     clause = _clause(0, "并给出备选方案")
 
@@ -295,12 +278,12 @@ async def test_slow_normalization_calls_share_one_operation_budget(monkeypatch):
             raise AssertionError("operation timeout must cancel the slow call")
 
     monkeypatch.setattr(
-        normalization_module,
+        _owner_planning_requirements_normalization_model,
         "INTENT_NORMALIZATION_CALL_TIMEOUT_SECONDS",
         0.02,
     )
     monkeypatch.setattr(
-        normalization_module,
+        _owner_planning_requirements_normalization_model,
         "INTENT_NORMALIZATION_OPERATION_TIMEOUT_SECONDS",
         0.035,
     )
@@ -610,9 +593,7 @@ def test_lodging_exclusion_has_an_owner_without_unneeded_research(stages, overni
 @pytest.mark.parametrize("same_city", [True, False])
 def test_planner_assigns_authoritative_transport_scopes_for_local_and_intercity_trips(same_city):
     from travel_agent.agents.orchestrator.planner import planner_node
-    from travel_agent.entities.provider_evidence import (
-        parse_provider_evidence_assignments,
-    )
+    from travel_agent.planning.research.provider_assignments import parse_provider_evidence_assignments
 
     contract, generation = _contract()
     identity = _identity()

@@ -12,15 +12,12 @@ from fastapi import HTTPException
 
 from travel_agent.api import schemas
 from travel_agent.api.routes import trip_runs as routes
-from travel_agent.entities.trip_run import (
-    RunCommandStatus,
-    RunCommandType,
-    TripRunStatus,
-)
+from travel_agent.runtime.command_contracts import RunCommandStatus, RunCommandType
+from travel_agent.runtime.run_contracts import TripRunStatus
 from travel_agent.storage.run_command_store import RunCommandStore
 from travel_agent.storage.run_execution_store import RunExecutionStore
 from travel_agent.storage.trip_run_store import TripRunStore
-from travel_agent.services.run_commands import RunCommandCoordinator
+from travel_agent.runtime.run_commands import RunCommandCoordinator
 from travel_agent.runtime.cancellation import run_control_registry
 
 pytestmark = pytest.mark.postgres

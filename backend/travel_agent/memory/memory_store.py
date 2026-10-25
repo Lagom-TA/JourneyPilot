@@ -24,8 +24,8 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import text
 
 from ..config import get_settings
-from ..entities.background_job import memory_fact_digest
-from ..entities.memory_lifecycle import MemoryRetentionPolicy, MemoryRetentionStatus
+from travel_agent.memory.extraction_jobs import memory_fact_digest
+from travel_agent.memory.lifecycle import MemoryRetentionPolicy, MemoryRetentionStatus
 from ..storage.database import get_db_session
 from ..storage.row_values import iso_or_empty as _iso
 

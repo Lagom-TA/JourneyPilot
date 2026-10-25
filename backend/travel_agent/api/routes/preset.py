@@ -10,7 +10,7 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException
 
-from ...local_profile import LOCAL_USER_ID
+from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from ...preset.store import PresetStore
 from ..schemas import (
     GenerateInstructionsRequest,

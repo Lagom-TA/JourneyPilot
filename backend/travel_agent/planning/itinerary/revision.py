@@ -33,3 +33,17 @@ def apply_composition_repair_budget(
         return out
     out["composition_repair_attempts"] = attempts + 1
     return out
+
+
+
+
+
+REPAIR_CONTEXT_CHAR_LIMIT = 600
+
+
+def bounded_repair_context(stage: str, detail: str) -> str:
+    """One bounded line stating which composition stage failed and why."""
+    text = f"{stage} 阶段失败 — {detail}".strip()
+    if len(text) <= REPAIR_CONTEXT_CHAR_LIMIT:
+        return text
+    return text[: REPAIR_CONTEXT_CHAR_LIMIT - 1] + "…"

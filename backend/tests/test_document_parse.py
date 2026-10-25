@@ -13,7 +13,7 @@ from travel_agent.knowledge.sources.document_parse import (
     inspect_upload,
     parse_upload,
 )
-from travel_agent.utils.concurrency import reset_channels
+from travel_agent.runtime.concurrency import reset_channels
 
 
 @pytest.fixture(autouse=True)

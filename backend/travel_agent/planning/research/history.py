@@ -4,7 +4,7 @@ import re
 from collections import defaultdict
 from typing import Dict, Mapping, Sequence
 
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.assignments import strip_round_suffix
 from travel_agent.planning.nodes import RESEARCH_WORKER_NODES
 from travel_agent.planning.research.candidates import ResearchCandidate

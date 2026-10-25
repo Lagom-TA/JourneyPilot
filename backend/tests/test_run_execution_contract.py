@@ -5,16 +5,12 @@
 
 from __future__ import annotations
 
+import travel_agent.runtime.run_lease as _owner_runtime_run_lease
+
 import pytest
 
-from travel_agent.entities.trip_run import (
-    RunExecution,
-    RunRecoveryStatus,
-    TripRun,
-    TripRunResumePolicy,
-    TripRunStatus,
-    available_run_actions,
-)
+from travel_agent.runtime.run_contracts import RunExecution, RunRecoveryStatus, TripRun, TripRunResumePolicy, TripRunStatus
+from travel_agent.runtime.run_lifecycle import available_run_actions
 
 
 def _run(status: TripRunStatus, *, policy: TripRunResumePolicy = TripRunResumePolicy.CHECKPOINT) -> TripRun:
@@ -109,7 +105,7 @@ def test_unregister_only_removes_its_own_handle():
 def test_a_superseded_lease_keeper_does_not_evict_the_active_one():
     """输的那个 keeper 失效时，关闭时要交还的那份名单里不能少了接管者。"""
 
-    from travel_agent.services import run_lease
+
 
     class _Keeper:
         def __init__(self, run_id: str) -> None:
@@ -117,15 +113,15 @@ def test_a_superseded_lease_keeper_does_not_evict_the_active_one():
 
     losing = _Keeper("run-1")
     winning = _Keeper("run-1")
-    run_lease._active_keepers["run-1"] = losing
-    run_lease._active_keepers["run-1"] = winning
+    _owner_runtime_run_lease._active_keepers["run-1"] = losing
+    _owner_runtime_run_lease._active_keepers["run-1"] = winning
     try:
-        run_lease._drop_active_keeper(losing)
-        assert run_lease._active_keepers.get("run-1") is winning
-        run_lease._drop_active_keeper(winning)
-        assert "run-1" not in run_lease._active_keepers
+        _owner_runtime_run_lease._drop_active_keeper(losing)
+        assert _owner_runtime_run_lease._active_keepers.get("run-1") is winning
+        _owner_runtime_run_lease._drop_active_keeper(winning)
+        assert "run-1" not in _owner_runtime_run_lease._active_keepers
     finally:
-        run_lease._active_keepers.pop("run-1", None)
+        _owner_runtime_run_lease._active_keepers.pop("run-1", None)
 
 
 def test_the_node_window_table_covers_every_worker_the_graph_fans_out_to():
@@ -157,7 +153,7 @@ def test_the_node_window_table_covers_every_worker_the_graph_fans_out_to():
 def test_exact_connector_lookup_uses_the_composition_window():
     """A skeleton-derived route lookup is composition, not late discovery."""
 
-    from travel_agent.entities.state import TravelAgentState
+    from travel_agent.planning.state import TravelAgentState
     from travel_agent.planning import execution
 
     state = TravelAgentState.model_construct(
@@ -180,7 +176,7 @@ def test_exact_connector_lookup_uses_the_composition_window():
 
 
 def test_ordinary_transport_research_stays_in_the_research_window():
-    from travel_agent.entities.state import TravelAgentState
+    from travel_agent.planning.state import TravelAgentState
     from travel_agent.planning import execution
 
     state = TravelAgentState.model_construct(

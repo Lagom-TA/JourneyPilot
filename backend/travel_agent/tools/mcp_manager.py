@@ -21,7 +21,7 @@ from mcp.client.sse import sse_client
 from mcp.client.stdio import stdio_client
 
 from ..utils.coordinates import amap_location_to_wgs84
-from ..utils.rate_gate import rate_gate_for
+from travel_agent.runtime.rate_gate import rate_gate_for
 from .temporal import temporal_schema_contract_errors
 
 logger = logging.getLogger(__name__)

@@ -64,9 +64,9 @@ package = false
 # doctor/readiness 明确报降级，不让基础安装承担全部重量。
 #
 #   uv sync --project backend                                 core（约 300 MB）
-#   uv sync --project backend--group local-embedding          + 本地 Qwen Embedding（ONNX，约 +400 MB）
-#   uv sync --project backend--group cross-encoder            + BGE Reranker（torch stack，约 +2.5 GB）
-#   uv sync --project backend--group dev                      + 测试与 lint
+#   uv sync --project backend --group local-embedding          + 本地 Qwen Embedding（ONNX，约 +400 MB）
+#   uv sync --project backend --group cross-encoder            + BGE Reranker（torch stack，约 +2.5 GB）
+#   uv sync --project backend --group dev                      + 测试与 lint
 #
 # 只承诺少量官方组合并在 CI 建矩阵（core / core+local-embedding /
 # core+local-embedding+cross-encoder）。其余组合标记 advanced，不承诺每 PR 全测。
@@ -113,4 +113,4 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 # Direct scripts bootstrap the adjacent backend package before importing it.
-"backend/scripts/*.py" = ["E402"]
+"scripts/*.py" = ["E402"]

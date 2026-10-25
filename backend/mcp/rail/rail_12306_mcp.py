@@ -8,7 +8,7 @@ intercity rail leg.  This server keeps the three tool names and argument shapes
 the repo already couples to, and reads the live query path out of
 ``/otn/leftTicket/init`` on every call.
 
-All decode logic lives in ``travel_agent.services.rail_12306`` so it is unit
+All decode logic lives in ``travel_agent.integrations.rail`` so it is unit
 testable without a subprocess.  ``get-tickets`` answers with a JSON payload
 (structured, code-consumed); ``get-interline-tickets`` and
 ``get-station-code-of-citys`` answer with the text/JSON string their only
@@ -28,11 +28,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
-from travel_agent.services.rail_12306 import (
-    get_interline_tickets_text,
-    get_station_code_of_citys_text,
-    get_tickets_payload,
-)
+from travel_agent.integrations.rail.queries import get_interline_tickets_text, get_station_code_of_citys_text, get_tickets_payload
 
 
 server = Server("journeypilot-12306-rail")

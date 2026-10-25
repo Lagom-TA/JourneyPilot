@@ -14,7 +14,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
-from travel_agent.services.duffel_flight_search import search_duffel_flights
+from travel_agent.integrations.flights.duffel import search_duffel_flights
 
 
 server = Server("journeypilot-duffel-v2")

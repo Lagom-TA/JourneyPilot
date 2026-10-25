@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from travel_agent.entities.candidate_selection import CandidateSelectionPlan
+from travel_agent.planning.research.selection_contracts import CandidateSelectionPlan
 from travel_agent.planning.research.candidates import (
     DiningCandidate,
     LodgingCandidate,
@@ -10,9 +10,7 @@ from travel_agent.planning.research.candidates import (
     VisitCandidate,
 )
 from travel_agent.planning.research.catalog import RecommendationCatalog
-from travel_agent.services.candidate_selection import (
-    selected_candidate_capabilities,
-)
+from travel_agent.planning.itinerary.selected_supply import selected_candidate_capabilities
 
 
 def selected_ids_by_kind(

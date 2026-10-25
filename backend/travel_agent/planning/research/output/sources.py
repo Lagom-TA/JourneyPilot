@@ -8,7 +8,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
-from travel_agent.entities.provider_environment import snapshot_data_environment
+from travel_agent.integrations.provider_environment import snapshot_data_environment
 from travel_agent.knowledge.fragments import is_rag_chunk_source_id
 from travel_agent.planning.references import EntityRef
 from travel_agent.planning.research.catalog import RecommendationCatalog

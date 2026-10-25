@@ -16,15 +16,9 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import bindparam, text
 
-from ..entities.trip_run import (
-    RunExecution,
-    RunRecoveryStatus,
-    TripRunStatus,
-    coerce_recovery_status,
-    coerce_status,
-)
+from travel_agent.runtime.run_contracts import RunExecution, RunRecoveryStatus, TripRunStatus, coerce_recovery_status, coerce_status
 from .database import get_db_session
-from .row_values import iso_or_none as _iso
+from travel_agent.runtime.time import iso_or_none as _iso
 
 
 def _build_executor_id() -> str:

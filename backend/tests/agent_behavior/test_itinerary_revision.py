@@ -9,9 +9,9 @@ from tests.agent_behavior.test_intent_research_ranking_selection import (
 )
 from tests.test_composition_context import state
 
-from travel_agent.entities.candidate_discovery import CandidateDiscoveryOrigin
-from travel_agent.entities.intent_coverage import IntentContractSnapshot
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryOrigin
+from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary import composition, connector_estimates, locations
 from travel_agent.planning.itinerary.checks import (
     validate_itinerary_transport_topology,
@@ -34,8 +34,8 @@ from travel_agent.planning.itinerary.prompts import _build_composition_prompt
 from travel_agent.planning.research import evaluation as candidate_evaluation
 from travel_agent.planning.research.candidates import DiningCandidate
 from travel_agent.planning.research.packets import ResearchPacket
-from travel_agent.services.candidate_ranking import rank_candidates
-from travel_agent.services.candidate_selection import build_candidate_selection_plan
+from travel_agent.planning.research.ranking import rank_candidates
+from travel_agent.planning.research.selection_policy import build_candidate_selection_plan
 
 
 def checkpoint(current, **update):
@@ -392,7 +392,7 @@ def test_occurrences_reach_connectors_workspace_and_checkpoint(provider):
 
 @pytest.mark.parametrize("scoped", [False, True])
 def test_pure_transport_station_change_and_return_requirements(scoped):
-    from travel_agent.entities.provider_evidence import ProviderRouteLegScope
+    from travel_agent.planning.research.provider_contracts import ProviderRouteLegScope
 
     inbound = long_distance_packet(
         "candidate_in",
@@ -479,7 +479,7 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
 
     from travel_agent.agents.orchestrator import dispatcher
     from travel_agent.planning.research import node as candidate_gate
-    from travel_agent.entities.intent_spec import IntentKind, IntentTarget
+    from travel_agent.planning.requirements.intent_contracts import IntentKind, IntentTarget
     from travel_agent.planning.itinerary import node
 
     objective = _intent("intent_trip", "Tokyo day trip", kind=IntentKind.OBJECTIVE)
@@ -536,10 +536,8 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
     repairing = checkpoint(routed, **await candidate_gate.candidate_gate_node(routed))
     assert candidate_gate.route_after_candidate_gate(repairing) == "composition_repair"
     assert repairing.composition_repair_attempts == 1
-    from travel_agent.services.composition_rule_compiler import (
-        compile_composition_rules,
-    )
-    from travel_agent.services.intent_verification import evaluate_intent_fidelity
+    from travel_agent.planning.requirements.composition_compiler import compile_composition_rules
+    from travel_agent.planning.requirements.verification.coverage import evaluate_intent_fidelity
 
     prior_workspace = workspace(skeleton, catalog, intent_spec=spec)
     report, gaps = evaluate_intent_fidelity(
@@ -641,7 +639,7 @@ async def test_new_draft_researches_connectors_then_uses_the_same_materializer(
     from travel_agent.agents.orchestrator import dispatcher
     from travel_agent.planning.research import node as candidate_gate
     from travel_agent.planning.itinerary import node
-    from travel_agent.services.research_query_planner import build_research_query_plan
+    from travel_agent.planning.research.query_planner import build_research_query_plan
 
     catalog = _catalog(visit_packet(), restaurant_packet())
     skeleton = ItineraryCompositionDraft.model_validate(
@@ -972,7 +970,7 @@ def test_only_same_scope_intrinsically_credible_route_is_conflict_evidence(irrel
 async def test_feasible_provider_alternative_wins_despite_another_route_conflict(
     monkeypatch, scheduled, fast_access,
 ):
-    from travel_agent.entities.candidate_ranking import CandidateRankingScore
+    from travel_agent.planning.research.ranking_contracts import CandidateRankingScore
     from travel_agent.planning.itinerary import node
 
     def timing(arrival):
@@ -1213,7 +1211,7 @@ def test_real_duplicate_occurrence_and_overlapping_repeat_still_fail():
 
 
 def grounded_place_packet(packet, query_plan, *, country_code="JP"):
-    from travel_agent.entities.intent_spec import canonical_json_hash
+    from travel_agent.planning.requirements.intent_contracts import canonical_json_hash
     from travel_agent.planning.research.evidence import (
         FactAssertion, FactSourceLink, FieldProvenance,
     )
@@ -1281,9 +1279,9 @@ def grounded_place_packet(packet, query_plan, *, country_code="JP"):
 
 def research_ready_state(*, kinds=("visit",), second_destination=False, cn_food=False):
     from tests.agent_behavior.test_intent_research_ranking_selection import _brief, _identity
-    from travel_agent.entities.research_brief import DomainResearchObjective
-    from travel_agent.entities.trip_input import ControlledTripIdentity
-    from travel_agent.services.research_query_planner import build_research_query_plan
+    from travel_agent.planning.research.brief_contracts import DomainResearchObjective
+    from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
+    from travel_agent.planning.research.query_planner import build_research_query_plan
 
     original = state()
     identity = _identity().model_dump(mode="json")
@@ -1411,7 +1409,7 @@ async def test_real_candidate_gate_still_requires_noncompensating_physical_kinds
 
 @pytest.mark.asyncio
 async def test_real_candidate_gate_keeps_exact_long_distance_responsibilities(monkeypatch):
-    from travel_agent.entities.provider_evidence import build_required_long_distance_legs
+    from travel_agent.planning.requirements.route_legs import build_required_long_distance_legs
     from travel_agent.planning.research.node import candidate_gate_node
 
     offline_candidate_model(monkeypatch)

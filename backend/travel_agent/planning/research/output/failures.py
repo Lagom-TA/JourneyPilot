@@ -7,7 +7,7 @@ import json
 from datetime import datetime
 from typing import Any, Mapping, Sequence
 
-from travel_agent.entities.provider_evidence import ProviderEvidenceOutcome
+from travel_agent.planning.research.provider_contracts import ProviderEvidenceOutcome
 from travel_agent.planning.research.evidence import SourceRecord
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.tools.governance import (

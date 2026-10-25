@@ -31,6 +31,33 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
 私有配置 `config.yaml`、`.env`、`.venv` 和运行时数据仍在仓库根目录，
 后端项目清单集中在 `backend/pyproject.toml`，两者不混放。
 
+## 后端职责归属
+
+源码按实际职责归属组织，合同与实现放在各自领域内，不使用统一的 entities、services
+或 guardrails 导出层。调用方直接导入符号的定义模块，包的 `__init__.py` 不汇总这些符号。
+
+- `planning/state.py`：快答与规划共用的唯一图状态，保留全部 checkpoint 字段和 reducer。
+- `planning/requirements/`：受控旅行身份、请求与意图合同、归一化、规则编译及覆盖验收。
+  归一化分别由 clauses、prompts、model、fallback、deterministic 模块负责；verification
+  分开处理实体、规则、覆盖报告与工作区复验。
+- `planning/research/`：调研计划、供应商责任与结果、候选准入、排序和选择政策。
+  `admission/` 区分证据、身份、住宿、评分和准入汇总，地点检索政策位于 `place_search.py`。
+- `planning/itinerary/`：日程容量、地点解析、住宿基点、开放时间和已选供应的物化。
+  `mutations/` 分开定义变更合同、时间线校验、具体变更、结果构造、天气操作与撤销；
+  `apply.py` 只按具体变更类型分派，不承担变更算法。
+- `planning/delivery/`：事实、来源、引用、报告与地图投影，公共序列化、候选重新准入、
+  天气刷新和工作区变更的原子服务。PDF 的报告排版属于交付，字体与渲染器就绪检查属于 integrations。
+- `conversation/`：路由、输入安全、快答的来源绑定、信息标签、回答展示及会话标题和消息合同。
+- `runtime/`：运行与命令合同、状态转换、租约、恢复、后台任务、并发和时间函数。
+  恢复只读取持久化交付审计，不依赖 planning；后台任务处理器在 `builders.py` 装配。
+- `integrations/`：地点、路线、航班、铁路、汇率和天气供应商访问，以及低层供应商合同与就绪检查。
+  供应商适配器不导入规划状态或候选准入政策；地点原始响应缓存由 `storage/place_search_cache.py` 维护。
+- `memory/`：偏好、生命周期合同和记忆提取任务；`storage/` 负责持久化与缓存。
+- `config/capabilities.py`：配置所需依赖的可用性检查；`utils/` 仅保留通用坐标、距离、文本、JSON 和日志脱敏工具。
+
+图、agent 节点、panel 和 API 用例编排尚保留原入口目录；它们直接消费上述领域模块，
+不通过旧目录转发。目录迁移不改变公开 API、持久化版本、哈希、节点名称或业务判断。
+
 ## 三条边界
 
 **一、最终事实在库里，内存只是缓存。** 关掉程序之后还应该发生的事，都有一行。

@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 # account's currency into the ``*_cny`` the delivery contract requires) reads the
 # same publisher, and two spellings of one URL is how a repo ends up asking two
 # different services the same question.
-from travel_agent.services.currency_conversion import FRANKFURTER_BASE_URL
+from travel_agent.integrations.currency import FRANKFURTER_BASE_URL
 
 BASE_URL = FRANKFURTER_BASE_URL
 

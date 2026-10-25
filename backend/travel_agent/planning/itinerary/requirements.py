@@ -3,10 +3,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
-from travel_agent.entities.provider_evidence import (
-    provider_evidence_scope_id,
-)
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.research.provider_scope_ids import provider_evidence_scope_id
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary.draft import (
     ItineraryCompositionDraft,
 )

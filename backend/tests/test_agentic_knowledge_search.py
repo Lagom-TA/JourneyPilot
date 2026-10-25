@@ -154,8 +154,8 @@ async def test_checkpoint_replay_keeps_fragments_and_rechecks_authorization(know
 async def test_fast_answer_uses_real_loop_and_passes_tool_evidence(knowledge, monkeypatch):
     import asyncio
     from travel_agent.agents.fast_answer import node
-    from travel_agent.entities.state import TravelAgentState
-    from travel_agent.guardrails.output_guard import OutputGuard
+    from travel_agent.planning.state import TravelAgentState
+    from travel_agent.conversation.answer_presentation import OutputGuard
 
     _, tools = knowledge
     llm = ScriptedLLM([call("园林"), {"content": "建议分两天参观园林。", "tool_calls": []}])
@@ -184,7 +184,7 @@ async def test_fast_answer_uses_real_loop_and_passes_tool_evidence(knowledge, mo
 async def test_fast_answer_never_completes_a_nonfinal_real_loop(knowledge, monkeypatch, scenario):
     import asyncio
     from travel_agent.agents.fast_answer import node
-    from travel_agent.entities.state import TravelAgentState
+    from travel_agent.planning.state import TravelAgentState
 
     search, tools = knowledge
 

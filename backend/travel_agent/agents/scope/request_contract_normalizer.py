@@ -8,23 +8,16 @@ from typing import Any, Dict, List, Optional
 
 from langchain_core.runnables import RunnableConfig
 
-from ...entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from ...memory.context_builder import build_context_report
 from ...llm.router import get_model_router
 from ...panels.constraint import (
     constraint_free_text_sources,
     referenced_context_sections,
 )
-from ...services.intent_normalization import (
-    INTENT_NORMALIZATION_PROMPT_VERSION,
-    normalize_clauses,
-    split_source_clauses,
-)
-from ...services.intent_revision import (
-    REQUEST_CONTRACT_POLICY_VERSION,
-    build_request_contract_revision,
-    constraint_pack_semantic_hash,
-)
+from travel_agent.planning.requirements.normalization.model import INTENT_NORMALIZATION_PROMPT_VERSION, normalize_clauses
+from travel_agent.planning.requirements.normalization.clauses import split_source_clauses
+from travel_agent.planning.requirements.revision import REQUEST_CONTRACT_POLICY_VERSION, build_request_contract_revision, constraint_pack_semantic_hash
 from .constraint_normalizer import build_run_constraint_pack, load_constraint_sources
 
 

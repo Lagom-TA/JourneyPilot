@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable
 
-from ...entities.state import TravelAgentState
-from ...entities.trip_summary_card import TripSummaryCard, TripSummaryFact
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.planning.delivery.summary_card_contracts import TripSummaryCard, TripSummaryFact
 
 
 def _brief_dict(state: TravelAgentState) -> Dict[str, Any]:

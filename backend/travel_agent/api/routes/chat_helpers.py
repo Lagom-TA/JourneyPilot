@@ -15,7 +15,7 @@ from typing import Dict, Optional
 from fastapi import HTTPException
 
 from ...config import get_settings
-from ...guardrails.input_guard import InputGuard
+from travel_agent.conversation.input_safety import InputGuard
 from ...memory.context_builder import ContextBudget
 
 logger = logging.getLogger(__name__)
@@ -176,10 +176,8 @@ async def enqueue_memory_extraction(
         return
     if not user_message or not user_message_id:
         return
-    from ...entities.background_job import (
-        BackgroundJobType,
-        memory_extraction_dedupe_key,
-    )
+    from travel_agent.runtime.job_contracts import BackgroundJobType
+    from travel_agent.memory.extraction_jobs import memory_extraction_dedupe_key
     from ...storage.background_job_store import get_background_job_store
 
     try:

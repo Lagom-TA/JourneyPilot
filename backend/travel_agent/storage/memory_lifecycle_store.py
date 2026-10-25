@@ -7,16 +7,8 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 
-from ..entities.memory_lifecycle import (
-    ForgettingAuditRecord,
-    ForgettingAuditStatus,
-    MemoryDeleteScope,
-    MemoryDeletionSummary,
-    default_forgetting_boundary,
-    generate_memory_forgetting_request_id,
-    sanitize_forgetting_metadata,
-)
-from ..entities.trip_run import utc_now_iso
+from travel_agent.memory.lifecycle import ForgettingAuditRecord, ForgettingAuditStatus, MemoryDeleteScope, MemoryDeletionSummary, default_forgetting_boundary, generate_memory_forgetting_request_id, sanitize_forgetting_metadata
+from travel_agent.runtime.time import utc_now_iso
 from ..memory.chat_session import ChatSessionMemory
 from ..memory.memory_graph import MemoryGraph
 from ..memory.memory_store import MemoryStore

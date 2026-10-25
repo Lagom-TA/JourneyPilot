@@ -7,9 +7,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from travel_agent.entities.candidate_discovery import CandidateDiscoveryRecord
-from travel_agent.entities.intent_spec import canonical_json_hash
-from travel_agent.entities.research_query_plan import ResearchQuery
+from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryRecord
+from travel_agent.planning.requirements.intent_contracts import canonical_json_hash
+from travel_agent.planning.research.query_contracts import ResearchQuery
 from travel_agent.memory.research_context import (
     format_worker_research_context,
     project_research_context,

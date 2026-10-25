@@ -1,3 +1,5 @@
+
+import travel_agent.planning.delivery.report_projection as _owner_planning_delivery_report_projection
 from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
@@ -6,21 +8,14 @@ from tests.agent_behavior.test_intent_composition_fidelity import (
     _intent_spec,
     _workspace,
 )
-from travel_agent.entities.candidate_intent import (
-    CandidateIntentMatch,
-    IntentMatchStatus,
-)
-from travel_agent.entities.intent_coverage import IntentContractSnapshot
-from travel_agent.entities.intent_spec import (
-    IntentKind,
-    IntentStrength,
-    ScalarIntentValue,
-)
+from travel_agent.planning.requirements.candidate_match_contracts import CandidateIntentMatch, IntentMatchStatus
+from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
+from travel_agent.planning.requirements.intent_contracts import IntentKind, IntentStrength, ScalarIntentValue
 from travel_agent.planning.costs.coverage import CostCoverageSummary
 from travel_agent.planning.delivery.projections import ReportDestination
-from travel_agent.services import delivery_projection
-from travel_agent.services.composition_rule_compiler import compile_composition_rules
-from travel_agent.services.intent_verification import evaluate_intent_fidelity
+
+from travel_agent.planning.requirements.composition_compiler import compile_composition_rules
+from travel_agent.planning.requirements.verification.coverage import evaluate_intent_fidelity
 
 
 def test_report_keeps_unverifiable_requirement_after_bounded_fidelity_release(monkeypatch):
@@ -54,10 +49,10 @@ def test_report_keeps_unverifiable_requirement_after_bounded_fidelity_release(mo
         intent_coverage_report=report,
     )
     # Identity/citation projection is independent of the audited fidelity report.
-    monkeypatch.setattr(delivery_projection, "project_public_citations", lambda *args: [])
-    monkeypatch.setattr(delivery_projection, "_report_destinations", lambda *args: [
+    monkeypatch.setattr(_owner_planning_delivery_report_projection, "project_public_citations", lambda *args: [])
+    monkeypatch.setattr(_owner_planning_delivery_report_projection, "_report_destinations", lambda *args: [
         ReportDestination(destination_id="city", display_name="测试城市")])
-    projected = delivery_projection.project_report(
+    projected = _owner_planning_delivery_report_projection.project_report(
         workspace, SimpleNamespace(fact_assertions=[], fact_data_revision=0),
         SimpleNamespace(days=[], weather_data_revision=0), generated_at=datetime.now(timezone.utc),
     )

@@ -4,9 +4,9 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import ConfigDict, Field, model_validator
 
-from travel_agent.entities.candidate_discovery import CandidateDiscoveryRecord
-from travel_agent.entities.candidate_intent import CandidateIntentMatch
-from travel_agent.entities.candidate_ranking import CandidateRankingScore
+from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryRecord
+from travel_agent.planning.requirements.candidate_match_contracts import CandidateIntentMatch
+from travel_agent.planning.research.ranking_contracts import CandidateRankingScore
 from travel_agent.planning.research.candidates import (
     CandidateAdmissionResult,
     ResearchCandidate,

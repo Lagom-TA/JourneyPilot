@@ -12,9 +12,7 @@ from travel_agent.planning.research.evidence import (
     FactSourceLink,
     FieldProvenance,
 )
-from travel_agent.services.candidate_admission import (
-    provider_place_type_matches_candidate_kind,
-)
+from travel_agent.integrations.places.taxonomy import provider_place_type_matches_candidate_kind
 from travel_agent.tools.governance import compiled_tool_source_id_is_about
 
 from .identifiers import (

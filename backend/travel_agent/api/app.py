@@ -15,7 +15,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from ..builders import AppBuilder, set_components
-from ..capabilities import capability_gaps
+from travel_agent.config.capabilities import capability_gaps
 from ..config import get_settings
 from ..paths import BACKEND_DIR
 from ..utils.log_redaction import install_query_secret_redaction
@@ -75,13 +75,8 @@ async def _probe_pdf_font() -> Optional[str]:
     readiness 的 `pdf_export` 里能看见。
     """
 
-    from ..services.blocking_work import run_blocking
-    from ..services.pdf_export import (
-        PdfFontUnavailable,
-        PdfRendererProbe,
-        probe_pdf_renderer,
-        record_pdf_probe,
-    )
+    from travel_agent.runtime.blocking_work import run_blocking
+    from travel_agent.integrations.pdf_readiness import PdfFontUnavailable, PdfRendererProbe, probe_pdf_renderer, record_pdf_probe
 
     try:
         font = await run_blocking("pdf_export", probe_pdf_renderer)

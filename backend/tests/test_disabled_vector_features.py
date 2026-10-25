@@ -28,7 +28,7 @@ async def test_disabled_memory_search_does_not_compute_embeddings(disabled_vecto
 
 async def test_manual_preferences_and_profile_still_load(disabled_vectors, monkeypatch):
     from travel_agent.agents.scope import constraint_normalizer as normalizer
-    from travel_agent.entities.state import TravelAgentState
+    from travel_agent.planning.state import TravelAgentState
 
     manual = [{"fact_id": "42", "content": "不要海鲜"}]
     profile = object()
@@ -118,7 +118,7 @@ async def test_bootstrap_and_health_do_not_read_corpus(disabled_vectors, monkeyp
 
 async def test_fast_answer_continues_without_retrieval(disabled_vectors, monkeypatch):
     from travel_agent.agents.fast_answer import node
-    from travel_agent.entities.state import TravelAgentState
+    from travel_agent.planning.state import TravelAgentState
 
     class FakeLLM:
         calls = 0

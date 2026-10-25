@@ -13,7 +13,7 @@ from travel_agent.integrations.weather import (
     WeatherProviderNotApplicable,
     WeatherProviderRequest,
 )
-from travel_agent.services.weather_context_builder import WeatherContextBuilder
+from travel_agent.planning.weather.context_builder import WeatherContextBuilder
 from travel_agent.tools.registry import ToolRegistry
 from travel_agent.tools.temporal import (
     TemporalPreflightStatus,

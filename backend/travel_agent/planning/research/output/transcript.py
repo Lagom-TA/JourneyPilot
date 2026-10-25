@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 
-from travel_agent.entities.provider_evidence import TIMETABLED_TRANSPORT_CLASSES
+from travel_agent.planning.research.provider_contracts import TIMETABLED_TRANSPORT_CLASSES
 from travel_agent.planning.transport import (
     TransportEndpoint,
     TransportMode,

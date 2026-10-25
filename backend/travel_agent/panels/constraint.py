@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from ..entities.user import DIETARY_ALLERGY_OPTION
+from travel_agent.memory.preference_contracts import DIETARY_ALLERGY_OPTION
 from ..utils.json_helpers import safe_parse_json
 
 # JourneyPilot v1 核心约束类 + extension + other（LLM / fallback 归类目标）。

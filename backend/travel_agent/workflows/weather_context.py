@@ -7,14 +7,14 @@ from typing import Any, Dict, List, Optional
 
 from langchain_core.runnables import RunnableConfig
 
-from travel_agent.entities.state import TravelAgentState
-from travel_agent.entities.trip_input import ControlledTripIdentity
-from travel_agent.entities.weather_planning import DestinationGeoPoint
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
+from travel_agent.planning.weather.geography_contracts import DestinationGeoPoint
 from travel_agent.integrations.weather import (
     WeatherProviderRequest,
     default_weather_providers,
 )
-from travel_agent.services.weather_context_builder import WeatherContextBuilder
+from travel_agent.planning.weather.context_builder import WeatherContextBuilder
 
 
 def destination_geo_resolver_node(state: TravelAgentState) -> Dict[str, Any]:

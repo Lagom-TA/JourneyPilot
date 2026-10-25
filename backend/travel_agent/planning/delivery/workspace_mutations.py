@@ -1,0 +1,468 @@
+"""Planning delivery workspace mutations."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+from datetime import timezone
+from pydantic import TypeAdapter
+from travel_agent.planning.delivery.bundle import DeliveryBundle
+from travel_agent.planning.delivery.readmission.contracts import (
+    CandidateReadmissionError,
+)
+from travel_agent.planning.delivery.readmission.evidence import (
+    workspace_destination_country_codes,
+)
+from travel_agent.planning.delivery.readmission.evidence import (
+    workspace_hard_constraint_pack,
+)
+from travel_agent.planning.delivery.readmission.selected import (
+    readmit_current_candidates,
+)
+from travel_agent.planning.delivery.workspace_projection import _mutation_bundle
+from travel_agent.planning.delivery.workspace_projection import (
+    _new_candidate_materializations,
+)
+from travel_agent.planning.delivery.workspace_projection import (
+    _weather_with_readmission_impacts,
+)
+from travel_agent.planning.itinerary.mutation_history import mark_mutations_revalidated
+from travel_agent.planning.itinerary.mutation_history import user_workspace_mutation
+from travel_agent.planning.itinerary.mutations.apply import apply_workspace_v2_mutation
+from travel_agent.planning.itinerary.mutations.contracts import (
+    ApplyWeatherAdjustmentMutation,
+)
+from travel_agent.planning.itinerary.mutations.contracts import (
+    DeleteCustomBlockMutation,
+)
+from travel_agent.planning.itinerary.mutations.contracts import (
+    DeleteLodgingStayMutation,
+)
+from travel_agent.planning.itinerary.mutations.contracts import (
+    DeleteTransportLegMutation,
+)
+from travel_agent.planning.itinerary.mutations.contracts import (
+    WorkspaceSnapshotInversePatch,
+)
+from travel_agent.planning.itinerary.mutations.contracts import WorkspaceV2InversePatch
+from travel_agent.planning.itinerary.mutations.contracts import WorkspaceV2Mutation
+from travel_agent.planning.itinerary.mutations.contracts import (
+    WorkspaceV2MutationApplication,
+)
+from travel_agent.planning.itinerary.mutations.contracts import WorkspaceV2MutationError
+from travel_agent.planning.itinerary.mutations.undo import apply_workspace_v2_inverse
+from travel_agent.planning.requirements.composition_compiler import (
+    compile_composition_rules,
+)
+from travel_agent.planning.requirements.verification.workspace import (
+    revalidate_workspace_intent,
+)
+from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.storage.delivery_bundle_store import BundleCommitKind
+from travel_agent.storage.delivery_bundle_store import BundleCommitResult
+from travel_agent.storage.delivery_bundle_store import BundleIdempotencyMismatch
+from travel_agent.storage.delivery_bundle_store import BundleRevisionConflict
+from travel_agent.storage.delivery_bundle_store import BundleRevisionVector
+from travel_agent.storage.delivery_bundle_store import DeliveryBundleStore
+from typing import Callable
+from typing import Optional
+from uuid import uuid4
+
+
+Clock = Callable[[], datetime]
+
+
+IdFactory = Callable[[], str]
+
+
+INVERSE_ADAPTER = TypeAdapter(WorkspaceV2InversePatch)
+
+
+@dataclass(frozen=True)
+class WorkspaceBundleMutationResult:
+    application: WorkspaceV2MutationApplication
+    commit: Optional[BundleCommitResult]
+
+
+@dataclass(frozen=True)
+class WorkspaceMutationPreview:
+    application: WorkspaceV2MutationApplication
+    total_cost_delta_cny: Optional[float]
+    explicit_confirmation: bool = False
+
+    @property
+    def requires_confirmation(self) -> bool:
+        return self.explicit_confirmation or self.total_cost_delta_cny not in (
+            None,
+            0.0,
+        )
+
+
+class WorkspaceV2Service:
+    def __init__(
+        self,
+        store: DeliveryBundleStore,
+        *,
+        clock: Clock = lambda: datetime.now(timezone.utc),
+        id_factory: IdFactory = lambda: f"bundle_{uuid4().hex}",
+    ) -> None:
+        self._store = store
+        self._clock = clock
+        self._id_factory = id_factory
+
+    def _require_current_candidate_materializations(
+        self,
+        current: DeliveryBundle,
+        application: WorkspaceV2MutationApplication,
+    ) -> None:
+        """Reject every stale Candidate-to-canonical promotion in one boundary.
+
+        The pure reducer can safely express all legacy operation shapes, but
+        it must never be the authority for whether a Candidate is current.
+        Re-admitting the changed lineages here covers selection slots, direct
+        Visit/Transport replacements, route retries, and weather proposal
+        replacements uniformly.
+        """
+
+        materializations = _new_candidate_materializations(
+            current.workspace, application.workspace
+        )
+        if not materializations:
+            return
+        candidate_scopes: dict[str, list[str | None]] = {}
+        for candidate_id, selection_slot_id in materializations:
+            candidate_scopes.setdefault(candidate_id, []).append(selection_slot_id)
+        try:
+            readmission = readmit_current_candidates(
+                current,
+                candidate_scopes=candidate_scopes,
+                constraint_pack=workspace_hard_constraint_pack(current.workspace),
+                destination_country_codes=workspace_destination_country_codes(
+                    current.workspace
+                ),
+                as_of=self._clock(),
+            )
+        except CandidateReadmissionError as exc:
+            raise WorkspaceV2MutationError(exc.code, str(exc)) from exc
+        admissions = {
+            (item.candidate_id, item.selection_slot_id): item
+            for item in readmission.admissions
+        }
+        candidates = {item.candidate_id: item for item in readmission.candidates}
+        for candidate_id, selection_slot_id in materializations:
+            candidate = candidates.get(candidate_id)
+            admission = admissions.get((candidate_id, selection_slot_id))
+            if (
+                candidate is None
+                or candidate.freshness_status != "current"
+                or admission is None
+                or admission.status != "passed"
+            ):
+                raise WorkspaceV2MutationError(
+                    "candidate_not_current",
+                    "Replacement Candidate did not pass current evidence and constraint re-admission",
+                )
+        if (
+            readmission.catalog_changed
+            or _weather_with_readmission_impacts(current, readmission.weather_impacts)
+            != current.weather_snapshot
+        ):
+            raise WorkspaceV2MutationError(
+                "candidate_refresh_required",
+                "Refresh the current Candidate choices before confirming this replacement",
+            )
+
+    def _revalidate_intent_application(
+        self,
+        application: WorkspaceV2MutationApplication,
+        operation: dict,
+        previous_workspace: TripWorkspaceV2,
+    ) -> WorkspaceV2MutationApplication:
+        if not application.changed:
+            return application
+        workspace = application.workspace
+        affected_intent_ids = {
+            requirement.intent_id
+            for requirement in workspace.intent_contract_snapshot.requirements
+            if "composition" in requirement.impact_stages
+            or "projection" in requirement.impact_stages
+        }
+        rules = compile_composition_rules(workspace.intent_contract_snapshot)
+        affected_rule_ids = [
+            rule.rule_id for rule in rules if rule.intent_id in affected_intent_ids
+        ]
+        ledger_entry = user_workspace_mutation(
+            generation_id=workspace.generation_id,
+            workspace_revision=workspace.workspace_revision,
+            operation=operation,
+            affected_intent_ids=sorted(affected_intent_ids),
+            affected_rule_ids=affected_rule_ids,
+        )
+        workspace = workspace.model_copy(
+            update={
+                "composition_mutations": [
+                    *workspace.composition_mutations,
+                    ledger_entry,
+                ]
+            }
+        )
+        try:
+            workspace, report, _gaps = revalidate_workspace_intent(workspace)
+        except ValueError as exc:
+            raise WorkspaceV2MutationError(
+                "intent_contract_violation",
+                str(exc),
+            ) from exc
+        previous_report = previous_workspace.intent_coverage_report
+        coverage_before = (
+            {item.intent_id: item.status.value for item in previous_report.items}
+            if previous_report is not None
+            else {}
+        )
+        coverage_after = {item.intent_id: item.status.value for item in report.items}
+        workspace = workspace.model_copy(
+            update={
+                "composition_mutations": [
+                    *workspace.composition_mutations[:-1],
+                    *mark_mutations_revalidated(
+                        workspace.composition_mutations[-1:],
+                        coverage_before=coverage_before,
+                        coverage_after=coverage_after,
+                    ),
+                ]
+            }
+        )
+        workspace = TripWorkspaceV2.model_validate(workspace.model_dump(mode="json"))
+        return application.model_copy(update={"workspace": workspace})
+
+    async def preview(
+        self,
+        *,
+        run_id: str,
+        expected: BundleRevisionVector,
+        mutation: WorkspaceV2Mutation,
+    ) -> WorkspaceMutationPreview:
+        """Apply the reducer without persisting or moving the current Bundle pointer."""
+
+        current = await self._current(run_id, expected)
+        application = apply_workspace_v2_mutation(
+            current.workspace,
+            mutation,
+            current.weather_snapshot,
+        )
+        application = self._revalidate_intent_application(
+            application,
+            mutation.model_dump(mode="json"),
+            current.workspace,
+        )
+        self._require_current_candidate_materializations(current, application)
+        before = current.workspace.itinerary.cost_summary.known_subtotal_cny
+        after = application.workspace.itinerary.cost_summary.known_subtotal_cny
+        delta = None if before is None or after is None else after - before
+        return WorkspaceMutationPreview(
+            application=application,
+            total_cost_delta_cny=delta,
+            explicit_confirmation=isinstance(
+                mutation,
+                (
+                    ApplyWeatherAdjustmentMutation,
+                    DeleteCustomBlockMutation,
+                    DeleteLodgingStayMutation,
+                    DeleteTransportLegMutation,
+                ),
+            ),
+        )
+
+    async def apply(
+        self,
+        *,
+        run_id: str,
+        expected: BundleRevisionVector,
+        mutation: WorkspaceV2Mutation,
+        idempotency_key: str,
+    ) -> WorkspaceBundleMutationResult:
+        """Apply a workspace mutation with optimistic CAS on commit.
+
+        Read → pure compute → commit are **not** one DB lock.  Concurrent
+        applies with the same ``expected`` vector: one commit wins; the other raises
+        ``BundleRevisionConflict``.  Clients must re-read current + retry.  Correct
+        fail-closed behavior, not silent last-write-wins.
+        """
+        mutation_payload = mutation.model_dump(mode="json")
+        mutation_request = {
+            "operation": "workspace_mutation",
+            "mutation": mutation_payload,
+            "base_bundle_id": expected.bundle_id,
+            "base_workspace_revision": expected.workspace_revision,
+            "base_fact_data_revision": expected.fact_data_revision,
+            "base_weather_data_revision": expected.weather_data_revision,
+        }
+        replay = await self._store.get_commit(run_id, idempotency_key)
+        if replay is not None:
+            if replay.metadata.get("mutation_request") != mutation_request:
+                raise BundleIdempotencyMismatch(
+                    "idempotency key was used for another workspace mutation"
+                )
+            inverse = (
+                INVERSE_ADAPTER.validate_python(replay.inverse_patch)
+                if replay.inverse_patch is not None
+                else None
+            )
+            return WorkspaceBundleMutationResult(
+                application=WorkspaceV2MutationApplication(
+                    workspace=replay.result.bundle.workspace,
+                    changed=replay.metadata.get("mutation_outcome") != "no_op",
+                    label=replay.metadata.get("label"),
+                    inverse=inverse,
+                ),
+                commit=replay.result,
+            )
+        current = await self._current(run_id, expected)
+        application = apply_workspace_v2_mutation(
+            current.workspace,
+            mutation,
+            current.weather_snapshot,
+        )
+        application = self._revalidate_intent_application(
+            application,
+            mutation_payload,
+            current.workspace,
+        )
+        self._require_current_candidate_materializations(current, application)
+        if not application.changed:
+            receipt = await self._store.record_noop_receipt(
+                run_id=run_id,
+                idempotency_key=idempotency_key,
+                expected=expected,
+                kind=BundleCommitKind.WORKSPACE_MUTATION_RECEIPT,
+                idempotency_request=mutation_request,
+                metadata={
+                    "mutation": mutation_payload,
+                    "mutation_request": mutation_request,
+                    "mutation_outcome": "no_op",
+                    "label": application.label,
+                },
+            )
+            return WorkspaceBundleMutationResult(
+                application=application, commit=receipt
+            )
+        bundle = _mutation_bundle(
+            current,
+            application.workspace,
+            bundle_id=self._id_factory(),
+            created_at=self._clock(),
+        )
+        commit = await self._store.commit(
+            bundle=bundle,
+            kind=BundleCommitKind.WORKSPACE_MUTATION,
+            idempotency_key=idempotency_key,
+            expected=expected,
+            inverse_patch=application.inverse.model_dump(mode="json")
+            if application.inverse
+            else None,
+            metadata={
+                "mutation": mutation_payload,
+                "mutation_request": mutation_request,
+                "mutation_outcome": "committed",
+                "label": application.label,
+            },
+            idempotency_request=mutation_request,
+        )
+        return WorkspaceBundleMutationResult(application=application, commit=commit)
+
+    async def undo_current(
+        self,
+        *,
+        run_id: str,
+        expected: BundleRevisionVector,
+        undo_of_mutation_id: str,
+        idempotency_key: str,
+    ) -> BundleCommitResult:
+        undo_request = {
+            "operation": "workspace_undo",
+            "undo_of_mutation_id": undo_of_mutation_id,
+            "base_bundle_id": expected.bundle_id,
+            "base_workspace_revision": expected.workspace_revision,
+            "base_fact_data_revision": expected.fact_data_revision,
+            "base_weather_data_revision": expected.weather_data_revision,
+        }
+        replay = await self._store.get_commit(run_id, idempotency_key)
+        if replay is not None:
+            if replay.metadata.get("undo_request") != undo_request:
+                raise BundleIdempotencyMismatch(
+                    "idempotency key was used for another undo mutation"
+                )
+            return replay.result
+
+        head = await self._store.get_undo_head(run_id)
+        if head is None or head.mutation_id != undo_of_mutation_id:
+            raise WorkspaceV2MutationError(
+                "undo_head_changed",
+                "The current workspace operation is no longer undoable",
+            )
+        inverse = INVERSE_ADAPTER.validate_python(head.inverse_patch)
+        current = await self._current(run_id, expected)
+        workspace = apply_workspace_v2_inverse(
+            current.workspace,
+            inverse,
+            allow_data_refresh_rebase=(
+                current.workspace.workspace_revision > head.workspace_revision
+            ),
+        )
+        undo_application = self._revalidate_intent_application(
+            WorkspaceV2MutationApplication(
+                workspace=workspace,
+                changed=workspace != current.workspace,
+                label=head.label,
+            ),
+            {"type": "undo", "undo_of_mutation_id": undo_of_mutation_id},
+            current.workspace,
+        )
+        workspace = undo_application.workspace
+
+        self._require_current_candidate_materializations(
+            current,
+            undo_application,
+        )
+        bundle = _mutation_bundle(
+            current,
+            workspace,
+            bundle_id=self._id_factory(),
+            created_at=self._clock(),
+        )
+        result = await self._store.commit(
+            bundle=bundle,
+            kind=BundleCommitKind.UNDO,
+            idempotency_key=idempotency_key,
+            expected=expected,
+            inverse_patch=WorkspaceSnapshotInversePatch(
+                applied_workspace_revision=workspace.workspace_revision,
+                previous_workspace=current.workspace,
+            ).model_dump(mode="json"),
+            metadata={
+                "undo_of_mutation_id": undo_of_mutation_id,
+                "undo_request": undo_request,
+                "undo_inverse_type": inverse.type,
+                "label": head.label,
+                "semantic_label": head.semantic_label,
+                "undo_label": (
+                    f"撤销：{head.semantic_label}"
+                    if head.label.startswith("恢复：")
+                    else f"恢复：{head.semantic_label}"
+                ),
+            },
+            idempotency_request=undo_request,
+        )
+        return result
+
+    async def _current(
+        self, run_id: str, expected: BundleRevisionVector
+    ) -> DeliveryBundle:
+        current = await self._store.get_current(run_id)
+        if current is None or BundleRevisionVector.from_bundle(current) != expected:
+            raise BundleRevisionConflict(
+                BundleRevisionVector.from_bundle(current)
+                if current is not None
+                else None
+            )
+        return current

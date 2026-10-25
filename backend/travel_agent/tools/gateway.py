@@ -7,12 +7,7 @@ import logging
 import re
 from typing import Any, Awaitable, Callable, Dict, Optional, Set
 
-from ..entities.tool_gateway import (
-    ToolGatewayDecision,
-    ToolGatewayPolicyResult,
-    ToolManifest,
-    ToolResultTrustPolicy,
-)
+from travel_agent.tools.gateway_contracts import ToolGatewayDecision, ToolGatewayPolicyResult, ToolManifest, ToolResultTrustPolicy
 from ..storage.tool_audit_store import ToolAuditStore
 from .governance import ToolExecutionStatus, build_tool_execution_envelope
 from .registry import ToolRegistry
@@ -40,7 +35,7 @@ def _manifest_from_metadata(tool_name: str, metadata: Dict[str, Any]) -> ToolMan
         payload = dict(raw)
         payload.setdefault("tool_name", tool_name)
         return ToolManifest(**payload)
-    from ..entities.tool_gateway import infer_tool_manifest
+    from travel_agent.tools.manifest_inference import infer_tool_manifest
 
     return infer_tool_manifest(
         tool_name=tool_name,

@@ -20,7 +20,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
 from psycopg.conninfo import make_conninfo
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.storage.maintenance.fingerprint import fingerprint_sync
 from travel_agent.storage.worker_journal_store import (
     WorkerJournalStore,

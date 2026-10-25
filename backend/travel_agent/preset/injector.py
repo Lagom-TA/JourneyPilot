@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from ..entities.preset import TravelPreset
+from travel_agent.planning.requirements.preset_contracts import TravelPreset
 
 # Preset 里**由 Constraint Pack 负责**的两个字段 → pack 的 category。
 #

@@ -1,30 +1,12 @@
-"""数据库行 ↔ 领域对象之间的取值归一。
-
-这些函数原本在九个 store 里各写一份，带着**三种互不相同的空值约定**（空串→None、
-空串→空串、None→空串）。同一次响应里因此可以出现两种时间戳形状，而改一处时区处理
-要在九个地方找齐。
-
-时区：库里的 `TIMESTAMPTZ` 读回来带 tzinfo，但离线 SQL 与部分驱动会给出 naive 值 ——
-一律按 UTC 补齐，绝不让「有没有时区」变成调用方要判的事。
-"""
+"""Storage row values."""
 
 from __future__ import annotations
 
+from travel_agent.runtime.time import iso_or_none
+from typing import Any
+from typing import Dict
+from typing import Mapping
 import json
-from datetime import datetime, timezone
-from typing import Any, Dict, Mapping, Optional
-
-
-def iso_or_none(value: Any) -> Optional[str]:
-    """行里的时间戳 → ISO 字符串。空值（含空串）→ None。"""
-
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        moment = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-        return moment.isoformat()
-    text = str(value).strip()
-    return text or None
 
 
 def iso_or_empty(value: Any) -> str:

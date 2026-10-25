@@ -4,22 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from ...entities.state import TaskType, TravelAgentState
-from ...entities.provider_evidence import (
-    build_provider_evidence_assignments,
-    build_required_long_distance_legs,
-    dump_provider_evidence_assignments,
-    explicit_cross_day_return_required,
-    scope_attempt_numbers,
-)
-from ...services.capability_planning import (
-    CAPABILITY_PLAN_POLICY_VERSION,
-    build_capability_plan,
-)
-from ...services.research_query_planner import (
-    RESEARCH_QUERY_POLICY_VERSION,
-    build_research_query_plan,
-)
+from travel_agent.conversation.contracts import TaskType
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.planning.research.provider_assignments import build_provider_evidence_assignments, dump_provider_evidence_assignments, scope_attempt_numbers
+from travel_agent.planning.requirements.route_legs import build_required_long_distance_legs, explicit_cross_day_return_required
+from travel_agent.planning.research.capability_planning import CAPABILITY_PLAN_POLICY_VERSION, build_capability_plan
+from travel_agent.planning.research.query_planner import RESEARCH_QUERY_POLICY_VERSION, build_research_query_plan
 
 
 def _attach_initial_provider_evidence_scopes(

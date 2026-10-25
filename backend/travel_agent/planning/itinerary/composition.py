@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from travel_agent.conversation.history import append_recent_history
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary.checks import validate_placement_skeleton
 from travel_agent.planning.itinerary.connectors import (
     connector_mode_requests_from_constraint_pack,
@@ -21,9 +21,7 @@ from travel_agent.planning.itinerary.model_schema import _composition_response_s
 from travel_agent.planning.itinerary.parsing import _parse_exact_llm_composition
 from travel_agent.planning.itinerary.prompts import _build_composition_prompt
 from travel_agent.planning.itinerary.requirements import _required_leg_scope_ids
-from travel_agent.services.day_planning import (
-    default_walking_days,
-)
+from travel_agent.planning.itinerary.day_capacity import default_walking_days
 
 
 async def _compose_draft(

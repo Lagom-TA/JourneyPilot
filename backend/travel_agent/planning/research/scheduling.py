@@ -2,16 +2,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, Mapping
 
-from travel_agent.entities.provider_evidence import (
-    ProviderRouteLegScope,
-    build_provider_evidence_assignments,
-    build_required_long_distance_legs,
-    dump_provider_evidence_assignments,
-    explicit_cross_day_return_required,
-    scope_attempt_numbers,
-)
-from travel_agent.entities.research_query_plan import ResearchQueryKind
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.research.provider_contracts import ProviderRouteLegScope
+from travel_agent.planning.research.provider_assignments import build_provider_evidence_assignments, dump_provider_evidence_assignments, scope_attempt_numbers
+from travel_agent.planning.requirements.route_legs import build_required_long_distance_legs, explicit_cross_day_return_required
+from travel_agent.planning.research.query_contracts import ResearchQueryKind
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary.connectors import LocalConnectorGap
 from travel_agent.planning.outcomes import (
     CandidateResearchGap,
@@ -37,10 +32,7 @@ from travel_agent.planning.research.transitions import (
     _catalog_contract_update,
     _passed_update,
 )
-from travel_agent.services.research_query_planner import (
-    append_structural_connector_query,
-    append_targeted_repair_query,
-)
+from travel_agent.planning.research.query_planner import append_structural_connector_query, append_targeted_repair_query
 
 
 def schedule_targeted_research(

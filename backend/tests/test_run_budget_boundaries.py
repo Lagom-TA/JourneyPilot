@@ -104,7 +104,7 @@ def _draft(*, authorized_at=None):
 
 
 def _generation():
-    from travel_agent.entities.planning_generation import PlanningGeneration
+    from travel_agent.planning.requirements.generation_contracts import PlanningGeneration
 
     return PlanningGeneration(
         generation_id="generation_budget",
@@ -119,7 +119,7 @@ def _generation():
 
 
 def _intent_spec():
-    from travel_agent.entities.intent_spec import IntentSpec
+    from travel_agent.planning.requirements.intent_contracts import IntentSpec
 
     return IntentSpec(
         intent_spec_id="intent_spec_budget",
@@ -133,7 +133,7 @@ def _intent_spec():
 def test_budget_and_deadline_must_be_sealed_together():
     """一个封了 Deadline 却没有预算的 Run 说明有条路径只封了一半。"""
 
-    from travel_agent.entities.state import TravelAgentState
+    from travel_agent.planning.state import TravelAgentState
     from travel_agent.workflows.minimum_delivery_draft import (
         seal_minimum_delivery_draft,
     )

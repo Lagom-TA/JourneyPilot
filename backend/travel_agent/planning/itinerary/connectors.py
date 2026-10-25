@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal, Mapping, Optional
 
 from pydantic import Field, model_validator
 
-from travel_agent.entities.transport_semantics import nominal_service_day_conflict
+from travel_agent.integrations.routes.service_days import nominal_service_day_conflict
 from travel_agent.planning.itinerary.adjacency import (
     _chain_endpoint,
     day_chain_node_pairs,
@@ -38,7 +38,7 @@ from travel_agent.planning.transport import TransportEndpoint
 from travel_agent.schema import StrictModel
 
 if TYPE_CHECKING:
-    from travel_agent.entities.provider_evidence import ProviderRouteLegScope
+    from travel_agent.planning.research.provider_contracts import ProviderRouteLegScope
 
 
 logger = logging.getLogger(__name__)

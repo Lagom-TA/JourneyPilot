@@ -12,7 +12,7 @@ from typing import Any
 
 from travel_agent.planning.workspace import TripWorkspaceV2
 
-from ..entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 
 
 async def budget_estimate_node(state: TravelAgentState) -> dict[str, Any]:

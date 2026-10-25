@@ -9,7 +9,7 @@ from typing import Any, Mapping, Optional, Sequence
 
 from pydantic import ValidationError
 
-from travel_agent.entities.provider_evidence import ProviderEvidenceScope
+from travel_agent.planning.research.provider_contracts import ProviderEvidenceScope
 from travel_agent.knowledge.source_records import rag_chunk_source_records
 from travel_agent.planning.research.evidence import SourceRecord
 from travel_agent.planning.research.packets import (

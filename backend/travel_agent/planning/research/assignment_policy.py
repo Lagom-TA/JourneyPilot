@@ -2,14 +2,12 @@ from __future__ import annotations
 
 from typing import Mapping, Sequence
 
-from travel_agent.entities.provider_evidence import ProviderRouteLegScope
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.research.provider_contracts import ProviderRouteLegScope
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.research.domains import ResearchDomain
 from travel_agent.planning.research.requirements import _destination_country_codes
-from travel_agent.services.candidate_admission import (
-    DETERMINISTIC_IDENTITY_VERDICT_FIELD_PATHS,
-)
+from travel_agent.planning.research.admission.identity import DETERMINISTIC_IDENTITY_VERDICT_FIELD_PATHS
 
 _ALTERNATIVE_TOOLS = {
     "destination_researcher": [

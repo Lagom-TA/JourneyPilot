@@ -31,10 +31,7 @@ def _graph_node_names() -> frozenset[str]:
     ],
 )
 def test_user_facing_node_metadata_matches_the_runtime_graph(table_name, extra_keys):
-    from travel_agent.utils.display_names import (
-        AGENT_DISPLAY_NAMES,
-        STEP_DISPLAY_NAMES,
-    )
+    from travel_agent.planning.presentation import AGENT_DISPLAY_NAMES, STEP_DISPLAY_NAMES
     from travel_agent.workflows.trace import NODE_PHASES
 
     tables = {

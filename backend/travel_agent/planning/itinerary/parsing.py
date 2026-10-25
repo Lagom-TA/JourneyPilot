@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary.draft import (
     _SERVER_OWNED_PLACE_FIELDS,
     ItineraryCompositionDraft,

@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Body, HTTPException, Query
 
 from ...builders import get_components
-from ...local_profile import LOCAL_USER_ID
+from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from ...memory.memory_store import (
     MemoryStore,
     USER_MANUAL_IMPORTANCE,

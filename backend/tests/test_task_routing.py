@@ -63,7 +63,7 @@ async def test_sol_repair_preserves_evidence_as_observations_without_foreign_rea
 
 
 async def test_candidate_schema_failure_uses_primary_repair_with_same_evidence():
-    from travel_agent.services.candidate_intent_evaluation import _semantic_batch_call
+    from travel_agent.planning.requirements.candidate_evaluation import _semantic_batch_call
     requests = []
     class Client:
         def __init__(self, tier):

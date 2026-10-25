@@ -5,13 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from travel_agent.entities.worker_failure_protocol import (
-    PREFIX_PROVIDER_CAPABILITY,
-    PREFIX_PROVIDER_DETERMINISTIC,
-    PREFIX_PROVIDER_EMPTY,
-    PREFIX_PROVIDER_TRANSIENT,
-    PREFIX_SCHEMA_GATE,
-)
+from travel_agent.planning.research.failure_protocol import PREFIX_PROVIDER_CAPABILITY, PREFIX_PROVIDER_DETERMINISTIC, PREFIX_PROVIDER_EMPTY, PREFIX_PROVIDER_TRANSIENT, PREFIX_SCHEMA_GATE
 
 ProviderFailureCategory = Literal["deterministic", "transient", "incomplete"]
 

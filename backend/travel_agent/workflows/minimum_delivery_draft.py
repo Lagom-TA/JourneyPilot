@@ -16,8 +16,8 @@ from travel_agent.planning.requirements.inputs import (
     UserInputAnchor,
 )
 
-from ..entities.intent_spec import IntentItem, IntentStrength
-from ..entities.trip_input import ControlledTripIdentity
+from travel_agent.planning.requirements.intent_contracts import IntentItem, IntentStrength
+from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
 from travel_agent.runtime.budget import build_run_budget_snapshot
 from travel_agent.planning.deadlines import build_run_deadline_snapshot
 from travel_agent.runtime.deadlines import utc_now

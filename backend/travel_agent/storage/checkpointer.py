@@ -24,7 +24,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from ..config import Settings
 from .maintenance.checkpoint_schema import missing_checkpoint_tables_async
-from ..utils.log_filters import install_checkpoint_serde_log_dedup
+from travel_agent.storage.checkpoint_logging import install_checkpoint_serde_log_dedup
 
 logger = logging.getLogger(__name__)
 

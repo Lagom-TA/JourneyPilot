@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
 
-from travel_agent.entities.provider_evidence import ProviderEvidenceScope
+from travel_agent.planning.research.provider_contracts import ProviderEvidenceScope
 from travel_agent.llm.strict_json_schema import as_strict_schema
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.planning.weather.models import WeatherSensitivity

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Iterable, Mapping
 
-from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.outcomes import CandidateResearchGap
 from travel_agent.planning.research.candidates import ResearchCandidate
 from travel_agent.planning.research.catalog import (
@@ -22,17 +22,10 @@ from travel_agent.planning.research.requirements import (
 )
 from travel_agent.planning.weather.candidates import _target_ref, _weather_days
 from travel_agent.planning.weather.models import WeatherImpact
-from travel_agent.services.candidate_admission import (
-    admit_candidate,
-    normalize_lodging_price_evidence,
-)
-from travel_agent.services.constraint_applicability import (
-    bind_candidate_constraint_gate_attestations,
-)
-from travel_agent.services.weather_impact_engine import (
-    WeatherImpactEngine,
-    risk_profile_from_constraint_pack,
-)
+from travel_agent.planning.research.admission.assessment import admit_candidate
+from travel_agent.planning.research.admission.lodging import normalize_lodging_price_evidence
+from travel_agent.planning.requirements.constraint_applicability import bind_candidate_constraint_gate_attestations
+from travel_agent.planning.weather.impacts import WeatherImpactEngine, risk_profile_from_constraint_pack
 
 logger = logging.getLogger(__name__)
 

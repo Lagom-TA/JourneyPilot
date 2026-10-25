@@ -27,38 +27,16 @@ from travel_agent.planning.research.output.choices import (
 from travel_agent.planning.research.output.schemas import (
     _provider_selection_response_schema,
 )
-from travel_agent.entities.candidate_discovery import (
-    CandidateDiscoveryOrigin,
-    CandidateDiscoveryRecord,
-)
-from travel_agent.entities.candidate_intent import (
-    CandidateIntentMatch,
-    IntentMatchStatus,
-)
-from travel_agent.entities.candidate_ranking import GENERIC_FALLBACK_PENALTY
-from travel_agent.entities.candidate_selection import (
-    CandidateSelectionRole,
-    SelectionPolicy,
-)
-from travel_agent.entities.intent_coverage import IntentFidelityGap
-from travel_agent.entities.intent_spec import (
-    CategoryIntentValue,
-    CountIntentValue,
-    IntentItem,
-    IntentKind,
-    IntentSpec,
-    IntentStrength,
-    IntentTarget,
-    VerificationMode,
-    canonical_json_hash,
-)
-from travel_agent.entities.research_brief import (
-    DomainResearchObjective,
-    ResearchBriefV2,
-)
-from travel_agent.entities.research_query_plan import ResearchQueryKind
-from travel_agent.entities.state import TravelAgentState
-from travel_agent.entities.trip_input import ControlledTripIdentity
+from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryOrigin, CandidateDiscoveryRecord
+from travel_agent.planning.requirements.candidate_match_contracts import CandidateIntentMatch, IntentMatchStatus
+from travel_agent.planning.research.ranking_contracts import GENERIC_FALLBACK_PENALTY
+from travel_agent.planning.research.selection_contracts import CandidateSelectionRole, SelectionPolicy
+from travel_agent.planning.requirements.coverage_contracts import IntentFidelityGap
+from travel_agent.planning.requirements.intent_contracts import CategoryIntentValue, CountIntentValue, IntentItem, IntentKind, IntentSpec, IntentStrength, IntentTarget, VerificationMode, canonical_json_hash
+from travel_agent.planning.research.brief_contracts import DomainResearchObjective, ResearchBriefV2
+from travel_agent.planning.research.query_contracts import ResearchQueryKind
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
 from travel_agent.planning.itinerary.checks import validate_placement_skeleton
 from travel_agent.planning.itinerary.connectors import LocalConnectorGap
 from travel_agent.planning.itinerary.draft import (
@@ -92,24 +70,14 @@ from travel_agent.planning.transport import (
     TransportSegment,
 )
 from travel_agent.planning.weather.models import WeatherSensitivity
-from travel_agent.services.candidate_intent_evaluation import (
-    evaluate_candidate_intents,
-)
-from travel_agent.services.candidate_ranking import rank_candidates
-from travel_agent.services.candidate_selection import (
-    build_candidate_selection_plan,
-    catalog_for_candidate_selection,
-    catalog_for_workspace_materialization,
-    selected_candidate_capabilities,
-)
-from travel_agent.services.composition_rule_compiler import compile_composition_rules
-from travel_agent.services.delivery_projection import _reportable_selection_options
-from travel_agent.services.fallback_query_policy import FallbackQueryPolicy
-from travel_agent.services.research_query_planner import (
-    append_structural_connector_query,
-    append_targeted_repair_query,
-    build_research_query_plan,
-)
+from travel_agent.planning.requirements.candidate_evaluation import evaluate_candidate_intents
+from travel_agent.planning.research.ranking import rank_candidates
+from travel_agent.planning.research.selection_policy import build_candidate_selection_plan
+from travel_agent.planning.itinerary.selected_supply import catalog_for_candidate_selection, catalog_for_workspace_materialization, selected_candidate_capabilities
+from travel_agent.planning.requirements.composition_compiler import compile_composition_rules
+from travel_agent.planning.delivery.report_projection import _reportable_selection_options
+from travel_agent.planning.research.fallback_policy import FallbackQueryPolicy
+from travel_agent.planning.research.query_planner import append_structural_connector_query, append_targeted_repair_query, build_research_query_plan
 from travel_agent.runtime.context import current_node, current_run_id
 
 
@@ -2263,7 +2231,7 @@ def test_domain_cap_keeps_targeted_and_intent_candidates_before_fallback():
 # 路径要的输入，重建一份只会多一份要跟着改的夹具。
 # ─────────────────────────────────────────────────────────────────────────────
 
-_EVAL_LOGGER = "travel_agent.services.candidate_intent_evaluation"
+_EVAL_LOGGER = "travel_agent.planning.requirements.candidate_evaluation"
 
 
 def _warnings(caplog) -> list[str]:

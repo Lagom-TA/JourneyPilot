@@ -14,7 +14,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 
 from ...builders import get_components
-from ...local_profile import LOCAL_USER_ID
+from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from ...memory.chat_session import TURN_PAGE_LIMIT
 from ...memory.compaction import CompactionBusy, get_compaction_service
 from ..schemas import SessionTurnPage
