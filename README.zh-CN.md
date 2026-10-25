@@ -4,9 +4,9 @@
 
 <p>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-lockup-night.png">
-    <source media="(prefers-color-scheme: light)" srcset="assets/logo-lockup-day.png">
-    <img src="assets/logo-lockup-day.png" alt="JourneyPilot" width="620">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-lockup-night.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo-lockup-day.png">
+    <img src="docs/assets/logo-lockup-day.png" alt="JourneyPilot" width="620">
   </picture>
 </p>
 
@@ -29,7 +29,7 @@ JourneyPilot 会查询交通、地点、天气、路线和公开资料，再把�
 </div>
 
 <p align="center">
-  <img src="assets/workspace.webp" alt="JourneyPilot 行程工作台" width="980">
+  <img src="docs/assets/workspace.webp" alt="JourneyPilot 行程工作台" width="980">
 </p>
 
 ## 项目介绍
@@ -62,7 +62,7 @@ JourneyPilot 是一个开源的 AI 旅行规划工作台。告诉它出行日期
 |---|---|
 | 旅行规划流程的交互式介绍 | [JourneyPilot 项目网站](https://imlagom.com/journeypilot/) |
 | 产品与工程设计 | [项目手记（撰写中）](https://imlagom.com/blog/journeypilot/) · [文档目录](docs/) |
-| 模型和外部服务配置 | [示例配置](config.example.yaml) · [配置说明](#配置) |
+| 模型和外部服务配置 | [示例配置](backend/config.example.yaml) · [配置说明](#配置) |
 | 反馈建议或报告问题 | [GitHub Issues](https://github.com/Lagom-TA/JourneyPilot/issues) |
 
 项目网站用于展示产品。生成自己的行程时，需要自行部署工作台，并配置模型和所需的数据服务。应用负责查询和整理旅行信息，订票、预订和付款由相应服务商处理。
@@ -80,7 +80,7 @@ JourneyPilot 是一个开源的 AI 旅行规划工作台。告诉它出行日期
 </td>
 <td width="50%" valign="top">
 
-![按天展示的行程](assets/itinerary-day.webp)
+![按天展示的行程](docs/assets/itinerary-day.webp)
 
 </td>
 </tr>
@@ -94,7 +94,7 @@ JourneyPilot 是一个开源的 AI 旅行规划工作台。告诉它出行日期
 </td>
 <td width="50%" valign="top">
 
-![交通详情与来源](assets/transport-evidence.webp)
+![交通详情与来源](docs/assets/transport-evidence.webp)
 
 </td>
 </tr>
@@ -108,7 +108,7 @@ JourneyPilot 是一个开源的 AI 旅行规划工作台。告诉它出行日期
 </td>
 <td width="50%" valign="top">
 
-![JourneyPilot 完整报告](assets/report.webp)
+![JourneyPilot 完整报告](docs/assets/report.webp)
 
 </td>
 </tr>
@@ -128,15 +128,15 @@ JourneyPilot 是一个开源的 AI 旅行规划工作台。告诉它出行日期
 ```bash
 git clone https://github.com/Lagom-TA/JourneyPilot.git
 cd JourneyPilot
-cp config.example.yaml config.yaml
+cp backend/config.example.yaml config.yaml
 ```
 
 按 provider preset 填好模型段，API Key 走环境变量。**Key 不要写进 `config.yaml`** ——
 这份文件会被复制、被提交、被贴进 issue：
 
 ```bash
-uv run python journeypilot.py configure --list              # 可用 preset
-uv run python journeypilot.py configure --provider deepseek # 写好模型段
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py configure --list              # 可用 preset
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py configure --provider deepseek # 写好模型段
 export JOURNEYPILOT_PRIMARY_MODEL__API_KEY="your-api-key"
 export JOURNEYPILOT_FAST_MODEL__API_KEY="your-api-key"
 ```
@@ -173,17 +173,17 @@ JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh
 而不是等到第一次真正调用才抛 ImportError：
 
 ```bash
-uv sync                            # core：只够跑远程 embedding（embedding.provider=openai）
-uv sync --group local-embedding    # 本地 Qwen3 ONNX 向量（配置默认档，run.sh 装的就是这个）
-uv sync --group cross-encoder      # BGE 重排（rerank.provider=cross_encoder，会拉 torch）
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend                            # core：只够跑远程 embedding（embedding.provider=openai）
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --group local-embedding    # 本地 Qwen3 ONNX 向量（配置默认档，run.sh 装的就是这个）
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --group cross-encoder      # BGE 重排（rerank.provider=cross_encoder，会拉 torch）
 ```
 
 默认的 Compose 数据库用官方 `pgvector` 镜像，不编译任何东西。中文分词增强（zhparser）
 是**换一个镜像**，它构建失败不影响默认档：
 
 ```bash
-docker build -t journeypilot-postgres:pg18-zhparser ./docker
-POSTGRES_IMAGE=journeypilot-postgres:pg18-zhparser docker compose up -d
+docker build -t journeypilot-postgres:pg18-zhparser ./infra/postgres
+POSTGRES_IMAGE=journeypilot-postgres:pg18-zhparser docker compose -f infra/compose.yml up -d
 ```
 
 同一个卷、同一个端口、同一个服务名，切换后要重建词法索引。
@@ -218,14 +218,14 @@ JourneyPilot 的后端使用 LangGraph 和 FastAPI，数据保存在 PostgreSQL 
 JourneyPilot 会先读取内置默认值和 `config.yaml`，环境变量拥有最高优先级。**未知字段会被
 拒绝**而不是忽略：一个拼错的字段名静默什么都不做，是「我改了配置为什么没生效」的唯一来源。
 
-- [`config.example.yaml`](config.example.yaml) —— 带注释的起点
+- [`backend/config.example.yaml`](backend/config.example.yaml) —— 带注释的起点
 - [`docs/configuration.md`](docs/configuration.md) —— 每个字段的类型、默认值、取值范围与
   环境变量名（由 schema 生成，`journeypilot config docs`）
 
 ```bash
-uv run python journeypilot.py config show      # 生效值 + 每个值的来源
-uv run python journeypilot.py config validate  # 只校验，不启动服务
-uv run python journeypilot.py config env       # 全部合法环境变量名
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config show      # 生效值 + 每个值的来源
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config validate  # 只校验，不启动服务
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config env       # 全部合法环境变量名
 ```
 
 每个字段都能用 `JOURNEYPILOT_<段>__<字段>` 覆盖，例如 `JOURNEYPILOT_DATABASE__PORT=55433`。
@@ -258,7 +258,7 @@ uv run python journeypilot.py config env       # 全部合法环境变量名
 在 `config.yaml` 的 `mcp.servers` 下填入服务密钥，然后运行：
 
 ```bash
-uv run python scripts/check_mcp.py
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/scripts/check_mcp.py
 ```
 
 `config.yaml`、`.env*` 和其他本地密钥文件都已加入 Git 忽略列表。
@@ -267,13 +267,13 @@ uv run python scripts/check_mcp.py
 
 ## 数据库、备份与升级
 
-API 进程不执行任何 DDL：不建表、不改列、不删数据，启动时只**只读**校验「这个库是否匹配当前代码的结构合同」。结构变更是 [`migrations/versions/`](migrations/versions/) 下的版本化迁移，由 `journeypilot` 执行：
+API 进程不执行任何 DDL：不建表、不改列、不删数据，启动时只**只读**校验「这个库是否匹配当前代码的结构合同」。结构变更是 [`backend/migrations/versions/`](backend/migrations/versions/) 下的版本化迁移，由 `journeypilot` 执行：
 
 ```bash
-uv run python journeypilot.py doctor          # 体检：数据库、迁移版本、结构、扩展、备份现状
-uv run python journeypilot.py migrate         # 执行待迁移（持锁；非空库先自动备份）
-uv run python journeypilot.py backup          # 生成经过校验的备份：转储 + manifest + SHA-256
-uv run python journeypilot.py restore <目录>   # 恢复到新库、验证通过后再切换
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py doctor          # 体检：数据库、迁移版本、结构、扩展、备份现状
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py migrate         # 执行待迁移（持锁；非空库先自动备份）
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py backup          # 生成经过校验的备份：转储 + manifest + SHA-256
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py restore <目录>   # 恢复到新库、验证通过后再切换
 ```
 
 每个命令都支持 `--json`，供 CI 使用。
@@ -307,11 +307,11 @@ npm run dev
 
 ```bash
 # 后端
-uv sync --frozen --group local-embedding --group dev
-uv run ruff check src/ tests/ scripts/
-uv run python journeypilot.py config validate
-uv run python journeypilot.py config docs --check    # 生成的字段表与 schema 一致
-JOURNEYPILOT_DATABASE__PORT=55433 uv run pytest      # db 测试建临时库；没有 PostgreSQL 时自动跳过
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --frozen --group local-embedding --group dev
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config validate
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config docs --check    # 生成的字段表与 schema 一致
+JOURNEYPILOT_DATABASE__PORT=55433 UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend pytest -c backend/pyproject.toml      # db 测试建临时库；没有 PostgreSQL 时自动跳过
 
 # 前端
 cd frontend

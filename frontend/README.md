@@ -28,7 +28,7 @@ LLM provider key 只应配置在后端环境中，不应写入前端 `.env`。
 ## 构建与类型检查
 
 ```bash
-npm run build        # 产物写入 ../static（VITE_OUT_DIR 可覆盖）
+npm run build        # 产物写入 ../backend/static（VITE_OUT_DIR 可覆盖）
 npm run type-check   # tsc --noEmit
 ```
 

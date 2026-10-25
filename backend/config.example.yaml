@@ -1,0 +1,288 @@
+# JourneyPilot 配置模板。
+# 复制为 config.yaml；模型 API Key 请通过环境变量或 .env 注入。
+# 可用 journeypilot configure --provider <id> 生成模型配置。
+# 未知字段会被拒绝；环境变量格式为 JOURNEYPILOT_<段>__<字段>。
+# 详细字段说明可用 journeypilot config docs 查看。
+
+# 配置结构版本，不能缺失或与当前版本不匹配。
+config_version: 2
+
+env: development
+debug: false
+
+# 模型 API Key 不要写入配置文件；请使用 JOURNEYPILOT_*__API_KEY 或 .env。
+# 连接模板见 backend/travel_agent/resources/providers/*.yaml。
+primary_model:
+  api_key: ""
+  model_name: "deepseek-v4-pro"
+  base_url: "https://api.deepseek.com"
+  max_tokens: 65536
+  reasoning_effort: medium # DeepSeek V4 的 medium 会映射为 high；模型策略对它选择 low。
+  temperature: 0.7
+  timeout: 120
+
+fast_model:
+  api_key: ""
+  model_name: "deepseek-v4-flash"
+  base_url: "https://api.deepseek.com"
+  max_tokens: 65536
+  reasoning_effort: low
+  temperature: 0.5
+  timeout: 30
+
+# 向量模型：qwen3 使用本地模型；openai 需要 api_key 和 base_url；hash 仅用于本地 smoke。
+# dimensions 必须与数据库 pgvector 列一致，调整后需要重新索引。
+embedding:
+  enabled: true  # false 关闭向量知识库与自动记忆抽取，保留手动偏好读写
+  provider: "qwen3"
+  api_key: ""                                          # provider=openai 时填写
+  model_name: "n24q02m/Qwen3-Embedding-0.6B-ONNX"      # provider=openai 时填写模型名
+  base_url: "https://api.openai.com/v1"                # provider=openai 时填写
+  dimensions: 1024                                     # 必须与数据库列维度一致
+
+# 本模板默认使用本机 PostgreSQL 5433、Redis 6379；使用仓库 Compose 时改为 55433、16379。
+database:
+  host: "localhost"
+  port: 5433
+  name: "travel_agent"
+  user: "travel_agent"
+  password: "travel_agent_pwd"
+  pool_size: 10
+  max_overflow: 20
+
+# 仅 journeypilot CLI 使用；API 不执行 DDL。
+maintenance:
+  # 相对路径按仓库根目录解析。
+  backup_dir: "backups"
+  # 自动升级前备份的保留份数；手动备份不受此限制。
+  keep_automatic_backups: 5
+  # 留空时自动选择负责该数据库端口的 PostgreSQL 容器。
+  postgres_container: ""
+  # 迁移锁等待超时（秒）。
+  migration_lock_timeout_seconds: 30
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+
+# Provider 事实的跨进程缓存；Redis 不可用时只视为未命中，不复用旧候选或 Bundle。
+provider_snapshot_cache:
+  enabled: true
+  redis_key_prefix: "journeypilot:provider-snapshot:v1"
+  redis_timeout_seconds: 0.25
+  place_identity_ttl_seconds: 604800
+  route_ttl_seconds: 300
+
+server:
+  host: "0.0.0.0"
+  port: 8001
+  reload: true
+  log_level: "info"
+  allow_runtime_model_config: false
+  cors_origins:
+    - "http://localhost:8080"
+    - "http://127.0.0.1:8080"
+
+rag:
+  chunk_size: 500
+  chunk_overlap: 50
+  top_k: 5
+  score_threshold: 0.3
+  chunker_type: "contextual"        # text、semantic 或 contextual
+  semantic_split_threshold: 0.5
+# semantic/contextual 分块会调用 embedding 和 fast 模型，调用量随文档长度增长。
+  model_chunking_max_chars: 60000   # 超过后使用固定窗口，不调用模型
+  contextual_failure_threshold: 8   # 单文档连续失败达到此值后跳过剩余模型调用
+
+# deferred 按需提供工具目录；full 注入全部工具，主要用于调试。
+tool_exposure:
+  mode: "deferred"          # deferred 或 full
+  worker_only: true
+  min_tools_threshold: 8
+
+# 深度调研开始前是否暂停并等待用户确认计划。
+run_control:
+  plan_gate_enabled: true
+  # 执行租约过期后由恢复扫描接管；心跳应小于租约的一半。
+  lease_seconds: 45
+  lease_heartbeat_seconds: 10
+  lease_heartbeat_failure_threshold: 3
+  recovery_sweep_seconds: 60
+  # 取消和追加要求先落库，执行器按此间隔轮询。
+  command_poll_seconds: 2.0
+
+# SSE 缓冲与背压参数。
+streaming:
+  critical_queue_size: 128
+  max_coalesced_chunk_chars: 2048
+  max_pending_text_chars: 65536
+  heartbeat_seconds: 15.0
+  # 消费者迟迟不读取时的最大等待时间；超时结束流，状态以持久化记录为准。
+  stalled_consumer_seconds: 30.0
+
+# 后台任务（如记忆抽取）。
+background_jobs:
+  poll_seconds: 5.0
+  lease_seconds: 60
+  batch_size: 1
+  # 已完成任务的保留天数；dead 任务不清理，留到用户确认。
+  completed_retention_days: 30
+
+# 阻塞型同步工作的并发上限；排满后最多等待 queue_wait_seconds。
+blocking_work:
+  pdf_export: 1
+  document_parse: 2
+  local_embedding: 2
+  queue_wait_seconds: 30.0
+
+# 上传与文档解析边界，包含文件大小、页数、展开量、压缩比和字符数。
+ingest:
+  max_upload_bytes: 10485760        # 10 MB
+  max_pdf_pages: 500
+  max_docx_entries: 5000
+  max_uncompressed_bytes: 104857600 # ZIP 条目解压后的总量上限
+  max_compression_ratio: 100.0      # ZIP 压缩比上限
+  max_extracted_chars: 2000000      # 超过后截断并在回执中说明
+  # 解析在受限子进程中运行，超时只停止等待。
+  parse_timeout_seconds: 60.0
+  parse_cpu_seconds: 60             # 0 表示不限制
+  parse_address_space_bytes: 2147483648
+
+# Deep Run 的四段墙钟窗口（秒），必须递增；已开始的 Run 使用自己的快照。
+run_deadline:
+  target_seconds: 375       # 目标完成点
+  closeout_seconds: 450     # 之后不再发起研究调用
+  composition_seconds: 570  # 之后只做行程投影
+  delivery_seconds: 600     # 完成投影与 Bundle 写入
+
+# Run 只记录消耗，默认不设调用、Token、费用或累计工具重试配额。
+run_budget:
+  enforce_limits: false
+  max_llm_calls: null
+  max_tool_calls: null
+  max_input_tokens: null
+  max_output_tokens: null
+  max_cost_usd: null
+  max_tool_retries_per_target: null
+
+# 各上游同时在飞的请求上限，不等同于 Run 预算。
+# ingest_contextual_llm 与 online_fast_llm 共用 fast 上游，因此分别限流。
+provider_channels:
+  primary_research_llm: 6
+  online_fast_llm: 8
+  ingest_contextual_llm: 4
+  embedding: 4
+
+# RAG 二阶段重排。
+rerank:
+  enabled: true
+  provider: "llm"           # llm 或 cross_encoder
+  model_name: "BAAI/bge-reranker-v2-m3"
+  initial_top_k: 20
+  final_top_k: 5
+
+# 地理编码与地点身份查询。
+geocoding:
+  nominatim_base_url: "https://nominatim.openstreetmap.org"
+  user_agent: "JourneyPilot/1.0 (travel itinerary geocoder; https://github.com/journeypilot)"
+  # /lookup 和 Overpass 的超时；仅用于地点身份的后备查询。
+  timeout_seconds: 10.0
+  # 用户提交目的地时 /search 的单次超时。
+  search_timeout_seconds: 3.4
+  # 公共 Nominatim 需要限速，避免超过每秒请求限制。
+  min_interval_seconds: 1.1
+  # /search 原始结果的 Redis 缓存时长。
+  search_cache_ttl_seconds: 604800
+  search_cache_key_prefix: "journeypilot:nominatim-search:v1"
+  # Redis 查询超时后按缓存未命中处理。
+  search_cache_redis_timeout_seconds: 0.25
+
+# 交通路由：国内坐标使用高德，其他地区使用 Transitous；高德 Key 从 amap-maps 的 MCP 配置读取。
+routing:
+  transitous_base_url: "https://api.transitous.org"
+  amap_base_url: "https://restapi.amap.com"
+  user_agent: "JourneyPilot/2.0 (https://github.com/journeypilot)"
+  timeout_seconds: 20.0
+  min_interval_seconds: 1.0
+
+# 上游数据快照有效期；站点表无版本号时按年龄判断，只影响非阻塞提示。
+data_snapshots:
+  station_max_age_days: 90
+
+# LangGraph Checkpoint 清理和启动要求。
+checkpoint_retention:
+  completed_days: 30
+  cancelled_days: 30
+  failed_interrupted_days: 90
+  batch_size: 100
+  require_on_startup: false
+
+model_pricing:
+  - pattern: "deepseek-v4-flash"
+    provider: deepseek
+    input_per_1m: 0.14
+    cached_input_per_1m: 0.0028
+    output_per_1m: 0.28
+    currency: USD
+    effective_from: "2026-07-03"
+    source_url: "https://api-docs.deepseek.com/quick_start/pricing"
+  - pattern: "deepseek-v4-pro"
+    provider: deepseek
+    input_per_1m: 0.435
+    cached_input_per_1m: 0.003625
+    output_per_1m: 0.87
+    currency: USD
+    effective_from: "2026-07-03"
+    source_url: "https://api-docs.deepseek.com/quick_start/pricing"
+
+logging:
+  level: "info"
+  file:
+    enabled: true
+    path: "logs/"
+    rotation: "1 day"
+    retention: "7 days"
+
+mcp:
+  servers:
+    baidu-maps:
+      env:
+        BAIDU_MAP_API_KEY: ""
+
+    duckduckgo-search:
+      disabled: false
+
+    tavily-search:
+      env:
+        TAVILY_API_KEY: ""
+
+    brave-search:
+      env:
+        BRAVE_API_KEY: ""
+
+    firecrawl:
+      env:
+        FIRECRAWL_API_KEY: ""
+
+    amap-maps:
+      env:
+        AMAP_MAPS_API_KEY: ""
+      # 按当前 Key 的 QPS 设置；3 QPS 约填 0.34，5 QPS 约填 0.2，0 表示不限速。
+      min_interval_seconds: 0
+
+    duffel-flights:
+      env:
+        DUFFEL_API_KEY_LIVE: ""
+
+    12306-train: {}
+
+    open-meteo: {}
+
+    currency-exchange-mcp: {}
+
+# 每次模型尝试的本地持久 outbox；部署时将 data/usage 挂载为持久卷。
+usage:
+  spool_path: data/usage/outbox.sqlite3
+  flush_seconds: 2

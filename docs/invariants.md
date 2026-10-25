@@ -291,9 +291,9 @@ Tests:
 - `agent_behavior/test_intent_research_ranking_selection.py::test_visit_rejects_published_weekday_closure`
 
 ### INV-WEP-001：schema_gate: 前缀进门后暂态性由文本里的暂态标记决定
-Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
-`src/travel_agent/planning/research/provider_failure.py`、
-`src/travel_agent/agents/worker_errors.py`
+Owner: `backend/travel_agent/entities/worker_failure_protocol.py`、
+`backend/travel_agent/planning/research/provider_failure.py`、
+`backend/travel_agent/agents/worker_errors.py`
 Enforced by: `classify_provider_failure` 见该前缀进条件分支（文本含 `_TRANSIENT_MARKERS`
 判 (transient, provider_transient_failure)，否则判 (deterministic,
 provider_deterministic_failure)）；`is_provider_or_model_failure` 对它返回 True。
@@ -303,9 +303,9 @@ Tests:
 - `test_worker_error_protocol_contract.py::test_schema_gate_prefix_preserves_transient_retryability`
 
 ### INV-WEP-002：provider_empty: 前缀进门后固定判 (incomplete, provider_empty_result)
-Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
-`src/travel_agent/planning/research/provider_failure.py`、
-`src/travel_agent/agents/worker_errors.py`
+Owner: `backend/travel_agent/entities/worker_failure_protocol.py`、
+`backend/travel_agent/planning/research/provider_failure.py`、
+`backend/travel_agent/agents/worker_errors.py`
 Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider_or_model_failure`
 对它返回 True；Provider 完成了调用但零命中是诚实的空结果，不是合同失败。
 前缀字符串是持久化格式，逐字符不许变
@@ -313,9 +313,9 @@ Tests:
 - `test_worker_error_protocol_contract.py::test_persisted_failure_prefixes_have_stable_reader_verdict`
 
 ### INV-WEP-003：provider_transient: 前缀进门后固定判 (transient, provider_transient_failure)
-Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
-`src/travel_agent/planning/research/provider_failure.py`、
-`src/travel_agent/agents/worker_errors.py`
+Owner: `backend/travel_agent/entities/worker_failure_protocol.py`、
+`backend/travel_agent/planning/research/provider_failure.py`、
+`backend/travel_agent/agents/worker_errors.py`
 Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider_or_model_failure`
 对它返回 True；暂态失败重试不会逐字复现，不许读成确定性失败关域。
 前缀字符串是持久化格式，逐字符不许变
@@ -323,9 +323,9 @@ Tests:
 - `test_worker_error_protocol_contract.py::test_persisted_failure_prefixes_have_stable_reader_verdict`
 
 ### INV-WEP-004：provider_deterministic: 前缀进门后固定判 (deterministic, provider_deterministic_failure)
-Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
-`src/travel_agent/planning/research/provider_failure.py`、
-`src/travel_agent/agents/worker_errors.py`
+Owner: `backend/travel_agent/entities/worker_failure_protocol.py`、
+`backend/travel_agent/planning/research/provider_failure.py`、
+`backend/travel_agent/agents/worker_errors.py`
 Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider_or_model_failure`
 对它返回 True；确定性失败重试逐字复现，域按有限重试后关闭。
 前缀字符串是持久化格式，逐字符不许变
@@ -333,9 +333,9 @@ Tests:
 - `test_worker_error_protocol_contract.py::test_persisted_failure_prefixes_have_stable_reader_verdict`
 
 ### INV-WEP-005：provider_capability: 前缀进门后固定判 (incomplete, provider_capability_declined)
-Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
-`src/travel_agent/planning/research/provider_failure.py`、
-`src/travel_agent/agents/worker_errors.py`
+Owner: `backend/travel_agent/entities/worker_failure_protocol.py`、
+`backend/travel_agent/planning/research/provider_failure.py`、
+`backend/travel_agent/agents/worker_errors.py`
 Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider_or_model_failure`
 对它返回 True；Gateway 在任何调用前判定 Provider 答不了所请求的日期，
 是 incomplete 不是合同失败，域保留那轮换模态的定向重研。
@@ -608,7 +608,7 @@ Tests:
 - `test_config_contract.py::test_a_preset_section_never_contains_an_api_key`
 
 ### INV-PROV-001：Provider 兼容性来自声明，不靠猜 base_url
-Owner: `config/providers.py`、`configs/providers/*.yaml`
+Owner: `config/providers.py`、`backend/travel_agent/resources/providers/*.yaml`
 Enforced by: capability 按 host（带端口）解析；认不出的上游走保守档
 ADR: [ADR-0008](adr/ADR-0008-config-single-source.md)
 Tests:
@@ -665,8 +665,8 @@ Tests:
    再挂一条不变量只是让文档变长。
 
 2. **`_AGENT_TOOL_POLICY` 与 `_FALLBACK_MAP` 有守卫但还没有不变量指向它们。**
-   `tests/test_tool_policy_contract.py` 已经双向守住了策略表与 `WORKER_NODES`、
-   与已配置 MCP server 的关系；`tests/test_tool_registry_contract.py::
+   `backend/tests/test_tool_policy_contract.py` 已经双向守住了策略表与 `WORKER_NODES`、
+   与已配置 MCP server 的关系；`backend/tests/test_tool_registry_contract.py::
    test_hand_written_no_fallback_tools_absent_from_fallback_map` 守住了
    `_FALLBACK_MAP` 的一半（手写 `allow_offline_fallback=False` 的工具不许在里面有键）。
    两处都还没有任何一条 `### INV-` 点名。这不是裁定不立，是一个还没做的补注 ——

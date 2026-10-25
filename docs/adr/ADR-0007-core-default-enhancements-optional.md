@@ -1,8 +1,8 @@
 # ADR-0007：核心能力默认可用，增强能力显式安装
 
 状态：已采纳
-影响：`pyproject.toml` 的 `[dependency-groups]`、`capabilities.py`、`Dockerfile`、
-`docker-compose.yml`、`docker/Dockerfile`
+影响：`backend/pyproject.toml` 的 `[dependency-groups]`、`capabilities.py`、`infra/api.Dockerfile`、
+`infra/compose.yml`、`infra/postgres/Dockerfile`
 
 ## 决定
 

@@ -18,6 +18,19 @@ FastAPI 进程
 PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
 ```
 
+## 仓库目录
+
+- `backend/travel_agent/`：后端源码，直接位于 backend 下，不再套一层 src。
+- `backend/tests/`、`backend/migrations/`、`backend/scripts/`：后端测试、迁移与维护脚本。
+- `backend/mcp/`：仓内 MCP 服务及其独立 Node 依赖。
+- `backend/travel_agent/resources/providers/`：公开的模型连接模板。
+- `frontend/`：前端源码；构建产物默认写入 `backend/static/`，由 API 服务。
+- `infra/`：容器构建、Compose 与基础设施脚本。
+- `docs/`：文档与截图；根目录 `run.sh` 是唯一开发启动器。
+
+私有配置 `config.yaml`、`.env`、`.venv` 和运行时数据仍在仓库根目录，
+后端项目清单集中在 `backend/pyproject.toml`，两者不混放。
+
 ## 三条边界
 
 **一、最终事实在库里，内存只是缓存。** 关掉程序之后还应该发生的事，都有一行。

@@ -34,7 +34,7 @@ credentials.yaml
 *.log
 logs/
 frontend/logs/
-mcp_servers/logs/
+backend/mcp/logs/
 frontend/test-results/
 test-results/
 
@@ -49,7 +49,7 @@ test-results/
 # 输出目录
 outputs/
 output/
-!/src/travel_agent/planning/research/output/
+!/backend/travel_agent/planning/research/output/
 temp/
 tmp/
 cache/
@@ -365,15 +365,14 @@ chromedriver/
 
 # 本地知识库与生成数据（不进入开源仓库）
 data/
-# 仓库任意位置的临时测试脚本不进版本控制，但 tests/ 整棵树要进（含子目录）。
+# 临时测试脚本不入库，正式后端测试包含所有子目录。
 test_*.py
 *_test.py
 test_output/
-!tests/
-!tests/**
-# `!tests/**` 也会把这些捞回来，所以在它之后重新排除。
-tests/**/__pycache__/
-tests/**/*.pyc
+!backend/tests/
+!backend/tests/**
+backend/tests/**/__pycache__/
+backend/tests/**/*.pyc
 
 
 # =============================================================================
@@ -394,8 +393,9 @@ frontend/.env-exemple
 # 可观测性
 otel-collector-config.yaml
 
-static/*
-!static/.gitkeep
+/static/*
+!/static/.gitkeep
+/backend/static/
 
 # IDE / 开发过程目录
 .cursor/

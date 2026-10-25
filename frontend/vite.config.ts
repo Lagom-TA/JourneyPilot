@@ -17,7 +17,7 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: process.env.VITE_OUT_DIR || '../static',
+    outDir: process.env.VITE_OUT_DIR || '../backend/static',
     emptyOutDir: true,
     rollupOptions: {
       output: {

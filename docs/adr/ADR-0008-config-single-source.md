@@ -1,8 +1,8 @@
 # ADR-0008：配置只有一处定义，来源可查
 
 状态：已采纳
-影响：`config/` 包、`configs/providers/*.yaml`、`docs/configuration.md`、
-`journeypilot config *`、`run.sh`、`docker-compose.yml`
+影响：`config/` 包、`backend/travel_agent/resources/providers/*.yaml`、`docs/configuration.md`、
+`journeypilot config *`、`run.sh`、`infra/compose.yml`
 
 ## 决定
 
@@ -10,7 +10,7 @@
 - 环境变量统一 `JOURNEYPILOT_<段>__<字段>`，一处按 schema 解析；认不出的
   `JOURNEYPILOT_*` 变量与类型不符的值都是**错误**。
 - 启动脚本、Compose、README **不定义任何策略**（Deadline、预算、超时、端口默认值）。
-- Provider 的具体连接值是 **preset**（`configs/providers/*.yaml`），不是默认值。
+- Provider 的具体连接值是 **preset**（`backend/travel_agent/resources/providers/*.yaml`），不是默认值。
 - 字段参考表与 JSON Schema 由 schema 生成，CI 检查 diff 为空。
 
 ## 为什么

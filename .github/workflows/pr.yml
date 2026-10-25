@@ -34,15 +34,15 @@ jobs:
           uv-version: ${{ env.UV_VERSION }}
           python-version: ${{ env.PYTHON_VERSION }}
           groups: "--group local-embedding --group dev"
-      - run: uv run ruff check src/ tests/ scripts/
+      - run: uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
       - name: 配置校验与生成物一致性
         run: |
-          uv run python journeypilot.py config validate
-          uv run python journeypilot.py config docs --check
+          uv run --project backend python backend/journeypilot.py config validate
+          uv run --project backend python backend/journeypilot.py config docs --check
       # 不带数据库的那一批。db/ 目录下的测试自己会因连不上 PostgreSQL 而跳过，
       # 这里显式排除，避免把「跳过」读成「通过」。
       - name: Unit tests
-        run: uv run pytest tests/ --ignore=tests/db -q
+        run: uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignore=backend/tests/db -q
 
   backend-integration:
     name: backend · integration + migration
@@ -50,7 +50,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        # 与 docker-compose.yml 同一个 digest：CI 与用户跑的不是两个数据库。
+        # 与 infra/compose.yml 同一个 digest：CI 与用户跑的不是两个数据库。
         image: pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
         env:
           POSTGRES_DB: travel_agent
@@ -85,16 +85,16 @@ jobs:
       # 空库 → head，以及结构指纹存档必须匹配。指纹不匹配意味着有人加了迁移
       # 却没重新生成存档，此后所有校验都对着错的基准比。
       - name: Migration on an empty database
-        run: uv run python journeypilot.py migrate --json
+        run: uv run --project backend python backend/journeypilot.py migrate --json
       - name: Schema contract
-        run: uv run python journeypilot.py doctor --json
+        run: uv run --project backend python backend/journeypilot.py doctor --json
       # db/ 下的测试各自建临时库；连不上时它们默认跳过，而一个静默跳过的门禁是绿的。
-      # JP_TESTS_REQUIRE_POSTGRES=1 让这一档把「连不上」判成失败（见 tests/conftest.py）。
+      # JP_TESTS_REQUIRE_POSTGRES=1 让这一档把「连不上」判成失败（见 backend/tests/conftest.py）。
       # 收集数是数不出跳过的：skip 发生在 fixture setup，不在收集期。
       - name: Integration + migration tests
         env:
           JP_TESTS_REQUIRE_POSTGRES: "1"
-        run: uv run pytest tests/db -q
+        run: uv run --project backend pytest -c backend/pyproject.toml backend/tests/db -q
 
   frontend:
     name: frontend · type-check + unit + build
@@ -119,7 +119,7 @@ jobs:
       - run: npm run test
       - run: npm run build
       - name: 构建产物非空
-        run: test -s ../static/index.html
+        run: test -s ../backend/static/index.html
 
   e2e-smoke:
     name: e2e · compose smoke
@@ -132,7 +132,7 @@ jobs:
           node-version-file: frontend/.nvmrc
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # 顺序不能反：镜像会 `COPY static/`，而那份产物由这一步产生。先 build 镜像
+      # 顺序不能反：镜像会 `COPY backend/static/`，而那份产物由这一步产生。先 build 镜像
       # 会得到一个只有 .gitkeep 的 static/，于是 API 端口给的是 API 说明页。
       - name: Build frontend
         working-directory: frontend
@@ -142,8 +142,8 @@ jobs:
       # 没有模型 Key：这一层要抓的是「部署本身坏了」，不是规划结果（ADR-0009）。
       - name: Start the stack
         run: |
-          cp config.example.yaml config.yaml
-          docker compose up -d --build postgres redis api
+          cp backend/config.example.yaml config.yaml
+          docker compose -f infra/compose.yml up -d --build postgres redis api
       - name: Wait for readiness
         run: |
           for attempt in $(seq 1 60); do
@@ -152,7 +152,7 @@ jobs:
             case "$code" in 200|503) echo "readiness answered $code"; exit 0 ;; esac
             sleep 5
           done
-          echo "API 没有在 5 分钟内回答 readiness"; docker compose logs api; exit 1
+          echo "API 没有在 5 分钟内回答 readiness"; docker compose -f infra/compose.yml logs api; exit 1
       - name: Playwright
         working-directory: frontend
         env:
@@ -163,7 +163,7 @@ jobs:
           npm run test:e2e
       - name: Compose logs on failure
         if: failure()
-        run: docker compose logs --no-color
+        run: docker compose -f infra/compose.yml logs --no-color
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -172,7 +172,7 @@ jobs:
           retention-days: 7
       - name: Tear down
         if: always()
-        run: docker compose down -v
+        run: docker compose -f infra/compose.yml down -v
 
   core-install:
     name: dependency groups · core without cross encoder
@@ -187,22 +187,22 @@ jobs:
           groups: "--no-dev"
       - name: torch stack must be absent
         run: |
-          ! uv run python -c "import torch" 2>/dev/null || { echo "core 装进了 torch"; exit 1; }
-          ! uv run python -c "import sentence_transformers" 2>/dev/null \
+          ! uv run --project backend python -c "import torch" 2>/dev/null || { echo "core 装进了 torch"; exit 1; }
+          ! uv run --project backend python -c "import sentence_transformers" 2>/dev/null \
             || { echo "core 装进了 sentence-transformers"; exit 1; }
       # 缺依赖时必须**拒绝启动并给出安装命令**，不是等第一次调用抛 ImportError。
       - name: A configured-but-missing enhancement refuses to start
         run: |
-          uv run python - <<'PY'
+          uv run --project backend python - <<'PY'
           import sys
-          sys.path.insert(0, "src")
+          sys.path.insert(0, "backend")
           from travel_agent.capabilities import capability_gaps
           from travel_agent.config import Settings
           settings = Settings()
           settings.embedding.provider = "qwen3"
           gaps = capability_gaps(settings)
           assert gaps, "缺 local-embedding 却没有报出缺口"
-          assert "uv sync --group local-embedding" in gaps[0].install_command
+          assert "uv sync --project backend --group local-embedding" in gaps[0].install_command
           settings.embedding.provider = "openai"
           settings.rerank.provider = "cross_encoder"
           gaps = capability_gaps(settings)
@@ -211,8 +211,8 @@ jobs:
           PY
       - name: Config layer works without any enhancement
         run: |
-          uv run python journeypilot.py config validate
-          uv run python journeypilot.py configure --list
+          uv run --project backend python backend/journeypilot.py config validate
+          uv run --project backend python backend/journeypilot.py configure --list
 
   supply-chain:
     name: security · secrets + dependency audit
@@ -246,15 +246,15 @@ jobs:
           version: ${{ env.UV_VERSION }}
       - name: Python lockfile is current
         run: |
-          uv lock --check
+          uv lock --project backend --check
       - name: Dockerfile pins its base images by digest
         run: |
           # 只固定 tag 的基础镜像会被上游重新指向，而两台机器因此构出两个不同的镜像。
-          for file in docker/Dockerfile; do
+          for file in infra/postgres/Dockerfile; do
             grep -qE '^FROM [^ ]+@sha256:[0-9a-f]{64}' "$file" \
               || { echo "$file 的 FROM 没有固定 digest"; exit 1; }
           done
-          grep -qE 'image: pgvector/pgvector:[^ ]+@sha256:' docker-compose.yml \
+          grep -qE 'image: pgvector/pgvector:[^ ]+@sha256:' infra/compose.yml \
             || { echo "compose 的 postgres 镜像没有固定 digest"; exit 1; }
       - name: No plaintext apt sources with verification disabled
         run: |
@@ -262,7 +262,7 @@ jobs:
           #
           # 排除注释行：解释「为什么禁止 trusted=yes」的那段注释本身含有这个字符串，
           # 而一个被自己的文档触发的门禁只会教人把文档删掉。
-          if grep -rn 'trusted=yes' docker/ Dockerfile | grep -vE ':\s*#'; then
+          if grep -rn 'trusted=yes' infra/postgres/ infra/api.Dockerfile | grep -vE ':\s*#'; then
             echo "发现关闭验签的 apt 源"; exit 1
           fi
           echo "no apt source disables verification"

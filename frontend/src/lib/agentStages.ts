@@ -7,7 +7,7 @@
  * - 只给阶段状态 + 职责 + 必要的补研原因；不展示模型内部思考 / token / 延迟 / 工具全量
  *   （那些留在现有 chat 原始 trace，本视图是另一个 altitude）。
  *
- * 阶段映射对齐后端 `src/travel_agent/utils/display_names.py` 与 LangGraph 图结构
+ * 阶段映射对齐后端 `backend/travel_agent/utils/display_names.py` 与 LangGraph 图结构
  * （workflows/travel_planning.py）；阶段职责文案对齐 JP-02-05 工作流职责语义。
  */
 import type { ThinkingStep } from '../types/chat';

@@ -4,9 +4,9 @@
 
 <p>
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-lockup-night.png">
-    <source media="(prefers-color-scheme: light)" srcset="assets/logo-lockup-day.png">
-    <img src="assets/logo-lockup-day.png" alt="JourneyPilot" width="620">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-lockup-night.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo-lockup-day.png">
+    <img src="docs/assets/logo-lockup-day.png" alt="JourneyPilot" width="620">
   </picture>
 </p>
 
@@ -29,7 +29,7 @@ JourneyPilot researches transport, places, weather, routes, and the open web, th
 </div>
 
 <p align="center">
-  <img src="assets/workspace.webp" alt="JourneyPilot trip workspace" width="980">
+  <img src="docs/assets/workspace.webp" alt="JourneyPilot trip workspace" width="980">
 </p>
 
 ## Overview
@@ -62,7 +62,7 @@ The current product interface is in Simplified Chinese. Code, configuration, and
 |---|---|
 | Interactive introduction to the planning workflow | [JourneyPilot website](https://imlagom.com/journeypilot/) |
 | Design and engineering background | [Project notes (in progress)](https://imlagom.com/blog/journeypilot/) · [Documentation](docs/) |
-| Model and service configuration | [Example configuration](config.example.yaml) · [Configuration](#configuration) |
+| Model and service configuration | [Example configuration](backend/config.example.yaml) · [Configuration](#configuration) |
 | Feedback and bug reports | [GitHub Issues](https://github.com/Lagom-TA/JourneyPilot/issues) |
 
 The website demonstrates the product. To generate your own itineraries, self-host the workspace and configure a model provider and the data services you need. The app researches and organizes travel information; reservations and purchases remain with the relevant providers.
@@ -80,7 +80,7 @@ Every stop has a place in the schedule. Visits, dining, lodging, and transport e
 </td>
 <td width="50%" valign="top">
 
-![Day-by-day itinerary](assets/itinerary-day.webp)
+![Day-by-day itinerary](docs/assets/itinerary-day.webp)
 
 </td>
 </tr>
@@ -94,7 +94,7 @@ Routes, schedules, durations, prices, providers, and source links stay next to t
 </td>
 <td width="50%" valign="top">
 
-![Transport details and sources](assets/transport-evidence.webp)
+![Transport details and sources](docs/assets/transport-evidence.webp)
 
 </td>
 </tr>
@@ -108,7 +108,7 @@ The full report follows the same itinerary shown in the workspace and can be exp
 </td>
 <td width="50%" valign="top">
 
-![JourneyPilot report](assets/report.webp)
+![JourneyPilot report](docs/assets/report.webp)
 
 </td>
 </tr>
@@ -128,7 +128,7 @@ The full report follows the same itinerary shown in the workspace and can be exp
 ```bash
 git clone https://github.com/Lagom-TA/JourneyPilot.git
 cd JourneyPilot
-cp config.example.yaml config.yaml
+cp backend/config.example.yaml config.yaml
 ```
 
 Fill in the model section from a provider preset, then supply the API key through the
@@ -136,8 +136,8 @@ environment. Keys never belong in `config.yaml` — that file gets copied, commi
 pasted into issues:
 
 ```bash
-uv run python journeypilot.py configure --list              # available presets
-uv run python journeypilot.py configure --provider deepseek # writes the model section
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py configure --list              # available presets
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py configure --provider deepseek # writes the model section
 export JOURNEYPILOT_PRIMARY_MODEL__API_KEY="your-api-key"
 export JOURNEYPILOT_FAST_MODEL__API_KEY="your-api-key"
 ```
@@ -175,9 +175,9 @@ configuration that asks for one without its dependency **refuses to start** rath
 failing on the first real call:
 
 ```bash
-uv sync                            # core: remote embeddings only (embedding.provider=openai)
-uv sync --group local-embedding    # local Qwen3 ONNX embeddings (the shipped default; what run.sh installs)
-uv sync --group cross-encoder      # BGE reranker (rerank.provider=cross_encoder, pulls torch)
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend                            # core: remote embeddings only (embedding.provider=openai)
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --group local-embedding    # local Qwen3 ONNX embeddings (the shipped default; what run.sh installs)
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --group cross-encoder      # BGE reranker (rerank.provider=cross_encoder, pulls torch)
 ```
 
 The default Compose database is the official `pgvector` image and compiles nothing.
@@ -185,8 +185,8 @@ Chinese word segmentation (zhparser) is a **different image**, and a build failu
 leaves the default stack untouched:
 
 ```bash
-docker build -t journeypilot-postgres:pg18-zhparser ./docker
-POSTGRES_IMAGE=journeypilot-postgres:pg18-zhparser docker compose up -d
+docker build -t journeypilot-postgres:pg18-zhparser ./infra/postgres
+POSTGRES_IMAGE=journeypilot-postgres:pg18-zhparser docker compose -f infra/compose.yml up -d
 ```
 
 Same volume, same port, same service name. Rebuild the lexical indexes after switching;
@@ -222,14 +222,14 @@ Settings are read from built-in defaults and `config.yaml`, with environment var
 taking precedence. Unknown fields are **rejected** rather than ignored, so a misspelled
 key fails loudly instead of silently doing nothing.
 
-- [`config.example.yaml`](config.example.yaml) — annotated starting point
+- [`backend/config.example.yaml`](backend/config.example.yaml) — annotated starting point
 - [`docs/configuration.md`](docs/configuration.md) — every field, default, range and
   environment-variable name (generated from the schema; `journeypilot config docs`)
 
 ```bash
-uv run python journeypilot.py config show      # effective values + where each came from
-uv run python journeypilot.py config validate  # check without starting the service
-uv run python journeypilot.py config env       # every valid environment variable
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config show      # effective values + where each came from
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config validate  # check without starting the service
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config env       # every valid environment variable
 ```
 
 Every field can be overridden with `JOURNEYPILOT_<section>__<field>`, for example
@@ -263,7 +263,7 @@ JourneyPilot can be useful with the providers that require no credentials, then 
 Add provider credentials under `mcp.servers` in `config.yaml`, then check their status with:
 
 ```bash
-uv run python scripts/check_mcp.py
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/scripts/check_mcp.py
 ```
 
 `config.yaml`, `.env*`, and other local credential files are ignored by Git.
@@ -272,13 +272,13 @@ The optional local knowledge corpus is intentionally not included in this public
 
 ## Database, backups, and upgrades
 
-The API process issues no DDL at all. It creates no tables, alters no columns, and deletes no rows on startup — it only verifies, read-only, that the database matches the schema contract of the code that is running. Schema changes are versioned migrations under [`migrations/versions/`](migrations/versions/), applied by the `journeypilot` command:
+The API process issues no DDL at all. It creates no tables, alters no columns, and deletes no rows on startup — it only verifies, read-only, that the database matches the schema contract of the code that is running. Schema changes are versioned migrations under [`backend/migrations/versions/`](backend/migrations/versions/), applied by the `journeypilot` command:
 
 ```bash
-uv run python journeypilot.py doctor          # database, migration revision, schema, extensions, backups
-uv run python journeypilot.py migrate         # run pending migrations (holds a lock; backs up first)
-uv run python journeypilot.py backup          # verified backup: dump + manifest + SHA-256 checksums
-uv run python journeypilot.py restore <dir>   # restore into a new database, verify, then switch
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py doctor          # database, migration revision, schema, extensions, backups
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py migrate         # run pending migrations (holds a lock; backs up first)
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py backup          # verified backup: dump + manifest + SHA-256 checksums
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py restore <dir>   # restore into a new database, verify, then switch
 ```
 
 Every command accepts `--json` for CI use.
@@ -312,11 +312,11 @@ Before opening a pull request, run what CI runs:
 
 ```bash
 # Backend
-uv sync --frozen --group local-embedding --group dev
-uv run ruff check src/ tests/ scripts/
-uv run python journeypilot.py config validate
-uv run python journeypilot.py config docs --check    # generated field table matches the schema
-JOURNEYPILOT_DATABASE__PORT=55433 uv run pytest      # db tests use temporary databases; skipped without PostgreSQL
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --frozen --group local-embedding --group dev
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config validate
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config docs --check    # generated field table matches the schema
+JOURNEYPILOT_DATABASE__PORT=55433 UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend pytest -c backend/pyproject.toml      # db tests use temporary databases; skipped without PostgreSQL
 
 # Frontend
 cd frontend

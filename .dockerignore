@@ -6,6 +6,7 @@
 temp
 tmp
 node_modules
+backend/mcp/node_modules
 frontend/node_modules
 frontend/test-results
 test-results

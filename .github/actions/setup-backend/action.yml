@@ -31,7 +31,7 @@ runs:
       shell: bash
     # --frozen：lockfile 就是事实。它与 pyproject 不一致时这一步失败，
     # 而那正是「改了依赖没提交 lockfile」应该被发现的地方。
-    - run: uv sync --frozen ${{ inputs.groups }}
+    - run: uv sync --project backend --frozen ${{ inputs.groups }}
       shell: bash
     # 客户端版本必须 >= 服务端，否则 create_backup 会拒绝产出备份。
     - if: inputs.postgres-client == 'true'

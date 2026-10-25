@@ -288,7 +288,7 @@ export interface ContextCompactionPayload {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 8 TripOps live API DTOs
-// These mirror backend response_model contracts in src/travel_agent/api/schemas.py.
+// These mirror backend response_model contracts in backend/travel_agent/api/schemas.py.
 // These types describe the live REST/SSE boundaries.
 // ─────────────────────────────────────────────────────────────────────────────
 

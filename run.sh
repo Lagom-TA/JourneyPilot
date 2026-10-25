@@ -6,6 +6,8 @@ set -euo pipefail
 # ─────────────────────────────────────────────────────────────────────────────
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="$ROOT_DIR/frontend"
+BACKEND_DIR="$ROOT_DIR/backend"
+export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$ROOT_DIR/.venv}"
 FRONTEND_PORT="${FRONTEND_PORT:-8080}"
 BACKEND_PORT=""
 
@@ -116,7 +118,7 @@ stop_spinner() {
 
 write_runtime_state() {
   mkdir -p "$(dirname "$PORTS_FILE")"
-  # shell-sourceable + machine-readable for scripts/e2e/resolve_ports.py
+  # shell-sourceable + machine-readable for frontend/e2e/support/resolve_ports.py
   {
     printf 'BACKEND_PID=%s\nFRONTEND_PID=%s\nBACKEND_PORT=%s\nFRONTEND_PORT=%s\n' \
       "$BACKEND_PID" "$FRONTEND_PID" "$BACKEND_PORT" "$FRONTEND_PORT"
@@ -427,7 +429,7 @@ require_command() {
 }
 
 run_in_env() {
-  (cd "$ROOT_DIR" && uv run "$@")
+  (cd "$ROOT_DIR" && uv run --project "$BACKEND_DIR" "$@")
 }
 
 check_python_env_exists() {
@@ -437,8 +439,7 @@ check_python_env_exists() {
 check_backend_runtime_imports() {
   run_in_env python -c "
 import sys
-sys.path.insert(0, r'$ROOT_DIR/src')
-sys.path.insert(0, r'$ROOT_DIR')
+sys.path.insert(0, r'$BACKEND_DIR')
 import fastapi, openai, uvicorn, yaml, mcp
 from main import app
 from travel_agent.config import get_settings
@@ -483,8 +484,7 @@ resolve_backend_port() {
   local resolved
   resolved="$(run_in_env python -c "
 import sys
-sys.path.insert(0, r'$ROOT_DIR/src')
-sys.path.insert(0, r'$ROOT_DIR')
+sys.path.insert(0, r'$BACKEND_DIR')
 from travel_agent.config import get_settings
 print(get_settings().server.port)
 " 2>/dev/null | tail -n 1 || true)"
@@ -540,12 +540,12 @@ step_config() {
   print_section "Pre-flight"
 
   if [[ ! -f "$ROOT_DIR/config.yaml" ]]; then
-    if [[ -f "$ROOT_DIR/config.example.yaml" ]]; then
-      cp "$ROOT_DIR/config.example.yaml" "$ROOT_DIR/config.yaml"
-      print_item "config" ok "created from config.example.yaml"
+    if [[ -f "$BACKEND_DIR/config.example.yaml" ]]; then
+      cp "$BACKEND_DIR/config.example.yaml" "$ROOT_DIR/config.yaml"
+      print_item "config" ok "created from backend/config.example.yaml"
       printf "  ${DIM}│${RESET}  ${YELLOW}Edit config.yaml and fill in your API keys before proceeding.${RESET}\n"
     else
-      print_item "config" warn "config.example.yaml not found — skipping"
+      print_item "config" warn "backend/config.example.yaml not found — skipping"
     fi
   else
     print_item "config" ok "config.yaml"
@@ -584,9 +584,9 @@ step_infra() {
     fi
   fi
 
-  local compose_file="$ROOT_DIR/docker-compose.yml"
+  local compose_file="$ROOT_DIR/infra/compose.yml"
   if [[ ! -f "$compose_file" ]]; then
-    print_item "docker" warn "docker-compose.yml not found"
+    print_item "docker" warn "infra/compose.yml not found"
     return 0
   fi
 
@@ -644,12 +644,12 @@ step_python() {
 
   start_spinner "uv sync ${UV_SYNC_ARGS[*]}..."
   local sync_ok=0
-  (cd "$ROOT_DIR" && uv sync "${UV_SYNC_ARGS[@]}" >/dev/null 2>&1) && sync_ok=1 || true
+  (cd "$ROOT_DIR" && uv sync --project "$BACKEND_DIR" "${UV_SYNC_ARGS[@]}" >/dev/null 2>&1) && sync_ok=1 || true
   stop_spinner
 
   if [[ "$sync_ok" -eq 0 ]]; then
     print_item "python" fail "uv sync failed"
-    printf "  ${DIM}│${RESET}  ${DIM}Run manually: cd %s && uv sync %s${RESET}\n" "$ROOT_DIR" "${UV_SYNC_ARGS[*]}"
+    printf "  ${DIM}│${RESET}  ${DIM}Run manually: cd %s && uv sync --project backend %s${RESET}\n" "$ROOT_DIR" "${UV_SYNC_ARGS[*]}"
     return 1
   fi
 
@@ -674,7 +674,7 @@ step_python() {
 
 step_mcp() {
   local mcp_out
-  mcp_out=$(run_in_env python "$ROOT_DIR/scripts/check_mcp.py" 2>&1 || true)
+  mcp_out=$(run_in_env python "$BACKEND_DIR/scripts/check_mcp.py" 2>&1 || true)
 
   local bad_lines
   bad_lines=$(echo "$mcp_out" | awk '/^[[:alnum:]_.-]+[[:space:]]+status=(error|misconfigured|pending)/ { print }' 2>/dev/null || true)
@@ -716,7 +716,7 @@ step_migrate() {
 
   local out status
   start_spinner "journeypilot migrate..."
-  out=$( (cd "$ROOT_DIR" && uv run python journeypilot.py migrate 2>&1) ) && status=0 || status=$?
+  out=$( (cd "$ROOT_DIR" && uv run --project "$BACKEND_DIR" python "$BACKEND_DIR/journeypilot.py" migrate 2>&1) ) && status=0 || status=$?
   stop_spinner
 
   if (( status != 0 )); then
@@ -739,10 +739,9 @@ step_start_backend() {
 
   (
     cd "$ROOT_DIR"
-    JOURNEYPILOT_SERVER__PORT="$BACKEND_PORT" uv run python -c "
+    JOURNEYPILOT_SERVER__PORT="$BACKEND_PORT" uv run --project "$BACKEND_DIR" python -c "
 import sys
-sys.path.insert(0, r'$ROOT_DIR/src')
-sys.path.insert(0, r'$ROOT_DIR')
+sys.path.insert(0, r'$BACKEND_DIR')
 import uvicorn
 from main import app
 from travel_agent.config import get_settings
@@ -851,7 +850,7 @@ cmd_start() {
   printf "  ${DIM}│${RESET}  %-14s ${GREEN}live${RESET}  ${DIM}前端直连真实后端${RESET}\n" "mode"
   printf "  ${DIM}│${RESET}  %-14s ${DIM}%s${RESET}\n" "ports file" "$PORTS_FILE"
   if [[ "${BACKEND_PORT}" != "8001" ]] || [[ "${FRONTEND_PORT}" != "8080" ]]; then
-    print_item "port note" warn "using non-default ports — e2e: read $PORTS_FILE or scripts/e2e/resolve_ports.py"
+    print_item "port note" warn "using non-default ports — e2e: read $PORTS_FILE or frontend/e2e/support/resolve_ports.py"
   fi
 
   printf "\n  ${GREEN}ready in %ds${RESET}  ${DIM}·  Ctrl+C to stop  ·  ./run.sh logs${RESET}\n\n" "$elapsed"
@@ -963,7 +962,7 @@ cmd_status() {
   # discovery; never use discovery to acquire stop authority over a process.
   if [[ -z "${BACKEND_PORT:-}" ]] || ! backend_is_ready; then
     local resolved_ports key value
-    resolved_ports="$(run_in_env python "$ROOT_DIR/scripts/e2e/resolve_ports.py" 2>/dev/null || true)"
+    resolved_ports="$(run_in_env python "$ROOT_DIR/frontend/e2e/support/resolve_ports.py" 2>/dev/null || true)"
     while IFS='=' read -r key value; do
       case "$key" in
         BACKEND_PORT) BACKEND_PORT="$value" ;;
@@ -1003,7 +1002,7 @@ cmd_status() {
   pg_status=$(docker inspect --format='{{.State.Health.Status}}' journeypilot-postgres 2>/dev/null || echo "unknown")
   rd_status=$(docker inspect --format='{{.State.Health.Status}}' journeypilot-redis   2>/dev/null || echo "unknown")
 
-  # Compose host ports from docker-compose.yml (not config.example 5433/6379).
+  # Compose host ports from infra/compose.yml (not config.example 5433/6379).
   if [[ "$pg_status" == "healthy" ]]; then
     print_item "postgres" ok "healthy   :55433 (compose host)"
   elif [[ "$pg_status" == "unknown" ]]; then
@@ -1060,13 +1059,13 @@ cmd_check() {
   # Python env
   start_spinner "uv sync ${UV_SYNC_ARGS[*]}..."
   local sync_ok=0
-  (cd "$ROOT_DIR" && uv sync "${UV_SYNC_ARGS[@]}" >/dev/null 2>&1) && sync_ok=1 || true
+  (cd "$ROOT_DIR" && uv sync --project "$BACKEND_DIR" "${UV_SYNC_ARGS[@]}" >/dev/null 2>&1) && sync_ok=1 || true
   stop_spinner
 
   if [[ "$sync_ok" -eq 1 ]] && check_python_env_exists; then
     print_item "python" ok ".venv OK"
   else
-    print_item "python" fail ".venv not runnable — run: uv sync ${UV_SYNC_ARGS[*]}"
+    print_item "python" fail ".venv not runnable — run: uv sync --project backend ${UV_SYNC_ARGS[*]}"
     status=1
   fi
 
@@ -1079,14 +1078,14 @@ cmd_check() {
   if [[ "$import_ok" -eq 1 ]]; then
     print_item "imports" ok "all critical imports OK"
   else
-    print_item "imports" fail "some imports failed — run: uv sync ${UV_SYNC_ARGS[*]}"
+    print_item "imports" fail "some imports failed — run: uv sync --project backend ${UV_SYNC_ARGS[*]}"
     status=1
   fi
 
   # MCP servers
   start_spinner "checking MCP servers..."
   local mcp_out
-  mcp_out=$(run_in_env python "$ROOT_DIR/scripts/check_mcp.py" 2>&1 || true)
+  mcp_out=$(run_in_env python "$BACKEND_DIR/scripts/check_mcp.py" 2>&1 || true)
   stop_spinner
 
   local bad_lines
@@ -1107,14 +1106,14 @@ cmd_check() {
   # doctor 只读、不加锁，所以 check 可以跑它；migrate 不能挪进 check。
   start_spinner "journeypilot doctor..."
   local doctor_out doctor_status
-  doctor_out=$( (cd "$ROOT_DIR" && uv run python journeypilot.py doctor 2>&1) ) \
+  doctor_out=$( (cd "$ROOT_DIR" && uv run --project "$BACKEND_DIR" python "$BACKEND_DIR/journeypilot.py" doctor 2>&1) ) \
     && doctor_status=0 || doctor_status=$?
   stop_spinner
 
   if (( doctor_status == 0 )); then
     print_item "database" ok "$(echo "$doctor_out" | sed -n 's/^判定 *\(.*\)$/\1/p' | tail -1)"
   else
-    print_item "database" fail "see below — run: uv run python journeypilot.py doctor"
+    print_item "database" fail "see below — run: uv run --project backend python backend/journeypilot.py doctor"
     while IFS= read -r line; do
       [[ -z "$line" ]] && continue
       printf "  ${DIM}│${RESET}      ${DIM}%s${RESET}\n" "$line"
@@ -1145,7 +1144,7 @@ cmd_help() {
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Sourced rather than executed: define the functions and run nothing. This is
-# what lets scripts/stop_tree_harness.sh drive the real stop_tree instead of a
+# what lets infra/scripts/stop_tree_harness.sh drive the real stop_tree instead of a
 # copy of it — the function holds every kill this repo issues, and a copy that
 # drifted from it would verify the wrong code.
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
