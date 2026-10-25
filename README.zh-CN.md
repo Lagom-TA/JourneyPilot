@@ -303,11 +303,11 @@ npm install
 npm run dev
 ```
 
-提交 Pull Request 前，请跑一遍 CI 跑的那些：
+提交 Pull Request 前，请完成本地检查，并验证本次改动影响的实际功能：
 
 ```bash
 # 后端
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --frozen --group local-embedding --group dev
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --locked --group local-embedding --group dev
 UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
 UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config validate
 UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config docs --check    # 生成的字段表与 schema 一致
@@ -320,8 +320,10 @@ npm run check                                        # 类型检查 + 单元测�
 npm run test:e2e                                     # 需要一套跑着的服务，见 playwright.config.ts
 ```
 
-同一批作业在 [`.github/workflows/pr.yml`](.github/workflows/pr.yml) 里跑。不保留定时
-nightly 或 release 工作流；需要时在本地验证源码构建。
+[CI](.github/workflows/pr.yml) 自动运行后端 lint、配置与单元测试，前端类型检查、
+单元测试与构建，以及密钥扫描。数据库迁移与集成测试可在 Actions 的 `PR` 工作流中
+点击 **Run workflow** 手动执行。完整应用的浏览器与部署验证按需在本地运行，
+数据库测试跳过不等于验证通过。不保留定时 nightly 或 release 工作流。
 
 ### 设计文档
 

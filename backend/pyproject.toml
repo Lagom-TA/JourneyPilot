@@ -68,8 +68,6 @@ package = false
 #   uv sync --project backend --group cross-encoder            + BGE Reranker（torch stack，约 +2.5 GB）
 #   uv sync --project backend --group dev                      + 测试与 lint
 #
-# 只承诺少量官方组合并在 CI 建矩阵（core / core+local-embedding /
-# core+local-embedding+cross-encoder）。其余组合标记 advanced，不承诺每 PR 全测。
 [dependency-groups]
 # embedding.provider = "qwen3"（默认）需要这一组。未安装时 embedding 只能走
 # provider="openai"（远程）或 "hash"（零依赖、语义质量低）。
@@ -113,4 +111,4 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 # Direct scripts bootstrap the adjacent backend package before importing it.
-"scripts/*.py" = ["E402"]
+"**/scripts/*.py" = ["E402"]

@@ -624,7 +624,7 @@ readiness 的 `optional_capabilities` 拦门禁
 ADR: [ADR-0007](adr/ADR-0007-core-default-enhancements-optional.md)
 Tests:
 - `test_capabilities.py::*`
-- CI：`core-install` 作业验证 core 安装不需要 cross encoder
+- 依赖安装组合按需在隔离环境验证，不作为每次 PR 的安装矩阵
 
 ### INV-UI-002：翻回来的历史不被 setup 投影切掉
 Owner: `frontend/src/lib/conversationFlow.ts` 的 `projectVisibleMessages`

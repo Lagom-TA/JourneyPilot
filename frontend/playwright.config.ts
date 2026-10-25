@@ -1,12 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-/**
- * E2E 跑在一套**真实跑着的** JourneyPilot 上（`./run.sh start` 或
- * `docker compose up`），不由这份配置去拉起后端：那条启动路径有自己的编排器
- * （`journeypilot` CLI + main.py），在这里复制一份等于让「怎么启动」有两个 owner。
- *
- * 地址来自环境变量，默认是 run.sh 的端口。CI 的 e2e-smoke 作业先起 compose 再传入。
- */
+// Connect to an already running app; run.sh and Compose own service startup.
 const baseURL = process.env.JOURNEYPILOT_APP_URL || 'http://127.0.0.1:8080';
 
 export default defineConfig({

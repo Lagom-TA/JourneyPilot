@@ -14,10 +14,11 @@
 - 日志文本、prompt 全文、实现私有函数和兼容旧路径，除非本身是公开或持久化合同，否则
   不单独建测试。
 
-CI 按路径分档：
+自动 CI 运行非数据库测试和 `db/test_offline_sql.py`。数据库迁移与集成测试可在 Actions 的 `PR` 工作流中手动触发，或在本地数据库就绪后执行：
 
 ```bash
 uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignore=backend/tests/db -q
+uv run --project backend pytest -c backend/pyproject.toml backend/tests/db/test_offline_sql.py -q
 JP_TESTS_REQUIRE_POSTGRES=1 uv run --project backend pytest -c backend/pyproject.toml backend/tests/db -q
 ```
 

@@ -15,6 +15,7 @@ from travel_agent.api.schemas.commands import (
     TripRunSupplementRequest,
 )
 from travel_agent.api.routes.trip_runs import control as routes
+from travel_agent.bootstrap import registry
 from travel_agent.runtime.command_contracts import RunCommandStatus, RunCommandType
 from travel_agent.runtime.run_contracts import TripRunStatus
 from travel_agent.storage.run_command_store import RunCommandStore
@@ -38,7 +39,7 @@ class _Components:
 @pytest.fixture
 def components(monkeypatch):
     wired = _Components()
-    monkeypatch.setattr(routes, "get_components", lambda: wired)
+    monkeypatch.setattr(registry, "_components", wired)
     # 每个用例都从「本进程没有跑任何 run」开始：这正是要验证的环境。
     run_control_registry.clear()
     return wired

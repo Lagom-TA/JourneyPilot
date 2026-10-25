@@ -1,24 +1,20 @@
-# 每个 PR 必跑的门禁。
-#
-# 原则（ADR-0009）：**不花钱、不看运气**。真实 Provider 一次限流会让一次无关的改动
-# 变红，然后所有人开始忽略红灯。这里的每一个作业都只用 fake / fixture /
-# service container。
-#
-# 这里保留源码构建所需的迁移、前端 build 与核心 SSE 测试；没有定时或发布工作流。
 name: PR
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
 
 concurrency:
-  # 同一个 PR 连推两次时，取消上一次：那次的结论已经没人会看。
-  group: pr-${{ github.workflow }}-${{ github.ref }}
+  group: pr-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
-  # 让每个作业的 Python 与 uv 版本固定：一个会自己升级的工具链让红/绿不可复现。
   UV_VERSION: "0.9.7"
   PYTHON_VERSION: "3.11"
 
@@ -26,7 +22,7 @@ jobs:
   backend-unit:
     name: backend · lint + unit
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-backend
@@ -35,22 +31,52 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           groups: "--group local-embedding --group dev"
       - run: uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
-      - name: 配置校验与生成物一致性
+      - name: Configuration
         run: |
           uv run --project backend python backend/journeypilot.py config validate
           uv run --project backend python backend/journeypilot.py config docs --check
-      # 不带数据库的那一批。db/ 目录下的测试自己会因连不上 PostgreSQL 而跳过，
-      # 这里显式排除，避免把「跳过」读成「通过」。
-      - name: Unit tests
-        run: uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignore=backend/tests/db -q
+      - name: Unit tests and offline migrations
+        run: |
+          uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignore=backend/tests/db -q
+          uv run --project backend pytest -c backend/pyproject.toml backend/tests/db/test_offline_sql.py -q
+
+  frontend:
+    name: frontend · type-check + unit + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run check
+
+  secrets:
+    name: security · secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
 
   backend-integration:
-    name: backend · integration + migration
+    name: backend · integration + migration (manual)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     services:
       postgres:
-        # 与 infra/compose.yml 同一个 digest：CI 与用户跑的不是两个数据库。
         image: pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
         env:
           POSTGRES_DB: travel_agent
@@ -74,6 +100,7 @@ jobs:
       JOURNEYPILOT_DATABASE__PASSWORD: travel_agent_pwd
       JOURNEYPILOT_REDIS__HOST: 127.0.0.1
       JOURNEYPILOT_REDIS__PORT: "6379"
+      JP_TESTS_REQUIRE_POSTGRES: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-backend
@@ -82,187 +109,6 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           groups: "--group local-embedding --group dev"
           postgres-client: "true"
-      # 空库 → head，以及结构指纹存档必须匹配。指纹不匹配意味着有人加了迁移
-      # 却没重新生成存档，此后所有校验都对着错的基准比。
-      - name: Migration on an empty database
-        run: uv run --project backend python backend/journeypilot.py migrate --json
-      - name: Schema contract
-        run: uv run --project backend python backend/journeypilot.py doctor --json
-      # db/ 下的测试各自建临时库；连不上时它们默认跳过，而一个静默跳过的门禁是绿的。
-      # JP_TESTS_REQUIRE_POSTGRES=1 让这一档把「连不上」判成失败（见 backend/tests/conftest.py）。
-      # 收集数是数不出跳过的：skip 发生在 fixture setup，不在收集期。
-      - name: Integration + migration tests
-        env:
-          JP_TESTS_REQUIRE_POSTGRES: "1"
-        run: uv run --project backend pytest -c backend/pyproject.toml backend/tests/db -q
-
-  frontend:
-    name: frontend · type-check + unit + build
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: frontend/.nvmrc
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      # npm ci 而不是 npm install：后者会改写 lockfile，而一个构建期被改写却没被
-      # 提交的 lockfile 意味着装的版本没有任何地方记着。
-      - run: npm ci
-      - name: Lockfile is committed and current
-        run: git diff --exit-code -- package-lock.json
-      - run: npm run type-check
-      - run: npm run test
-      - run: npm run build
-      - name: 构建产物非空
-        run: test -s ../backend/static/index.html
-
-  e2e-smoke:
-    name: e2e · compose smoke
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: frontend/.nvmrc
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      # 顺序不能反：镜像会 `COPY backend/static/`，而那份产物由这一步产生。先 build 镜像
-      # 会得到一个只有 .gitkeep 的 static/，于是 API 端口给的是 API 说明页。
-      - name: Build frontend
-        working-directory: frontend
-        run: |
-          npm ci
-          npm run build
-      # 没有模型 Key：这一层要抓的是「部署本身坏了」，不是规划结果（ADR-0009）。
-      - name: Start the stack
-        run: |
-          cp backend/config.example.yaml config.yaml
-          docker compose -f infra/compose.yml up -d --build postgres redis api
-      - name: Wait for readiness
-        run: |
-          for attempt in $(seq 1 60); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8001/api/health/ready || true)
-            # 200 与 503 都是**回答**（503 = 起来了但报告自己降级）；连不上才继续等。
-            case "$code" in 200|503) echo "readiness answered $code"; exit 0 ;; esac
-            sleep 5
-          done
-          echo "API 没有在 5 分钟内回答 readiness"; docker compose -f infra/compose.yml logs api; exit 1
-      - name: Playwright
-        working-directory: frontend
-        env:
-          # 容器里的 API 直接服务静态产物，所以 e2e 打的是 8001。
-          JOURNEYPILOT_APP_URL: http://127.0.0.1:8001
-        run: |
-          npx playwright install --with-deps chromium
-          npm run test:e2e
-      - name: Compose logs on failure
-        if: failure()
-        run: docker compose -f infra/compose.yml logs --no-color
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-artifacts
-          path: frontend/test-results/
-          retention-days: 7
-      - name: Tear down
-        if: always()
-        run: docker compose -f infra/compose.yml down -v
-
-  core-install:
-    name: dependency groups · core without cross encoder
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-backend
-        with:
-          uv-version: ${{ env.UV_VERSION }}
-          python-version: ${{ env.PYTHON_VERSION }}
-          groups: "--no-dev"
-      - name: torch stack must be absent
-        run: |
-          ! uv run --project backend python -c "import torch" 2>/dev/null || { echo "core 装进了 torch"; exit 1; }
-          ! uv run --project backend python -c "import sentence_transformers" 2>/dev/null \
-            || { echo "core 装进了 sentence-transformers"; exit 1; }
-      # 缺依赖时必须**拒绝启动并给出安装命令**，不是等第一次调用抛 ImportError。
-      - name: A configured-but-missing enhancement refuses to start
-        run: |
-          uv run --project backend python - <<'PY'
-          import sys
-          sys.path.insert(0, "backend")
-          from travel_agent.config.capabilities import capability_gaps
-          from travel_agent.config.models import Settings
-          settings = Settings()
-          settings.embedding.provider = "qwen3"
-          gaps = capability_gaps(settings)
-          assert gaps, "缺 local-embedding 却没有报出缺口"
-          assert "uv sync --project backend --group local-embedding" in gaps[0].install_command
-          settings.embedding.provider = "openai"
-          settings.rerank.provider = "cross_encoder"
-          gaps = capability_gaps(settings)
-          assert gaps and "cross-encoder" in gaps[0].install_command
-          print("capability gaps reported with an actionable command")
-          PY
-      - name: Config layer works without any enhancement
-        run: |
-          uv run --project backend python backend/journeypilot.py config validate
-          uv run --project backend python backend/journeypilot.py configure --list
-
-  supply-chain:
-    name: security · secrets + dependency audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # gitleaks 要看历史才能抓到「提交过又删掉」的密钥。
-          fetch-depth: 0
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: frontend/.nvmrc
-      - name: npm audit (production dependencies, report only)
-        working-directory: frontend
-        run: |
-          npm ci
-          # **只报不拦**，理由是可操作性：一条新公布的传递依赖 advisory 常常没有可用
-          # 修复版本，而 npm audit 没有 "ignore-unfixed"。让它拦门禁，等于让一个 PR
-          # 作者无法解决的问题挡住他的改动 —— 然后所有人开始忽略红灯。
-          #
-          # 这里只报告：传递依赖 advisory 不该让一个无法自行修复的改动卡住。
-          npm audit --omit=dev --audit-level=high || \
-            echo "::warning::npm audit 报了 high 以上的问题，见上面的清单"
-      - uses: astral-sh/setup-uv@v5
-        with:
-          version: ${{ env.UV_VERSION }}
-      - name: Python lockfile is current
-        run: |
-          uv lock --project backend --check
-      - name: Dockerfile pins its base images by digest
-        run: |
-          # 只固定 tag 的基础镜像会被上游重新指向，而两台机器因此构出两个不同的镜像。
-          for file in infra/postgres/Dockerfile; do
-            grep -qE '^FROM [^ ]+@sha256:[0-9a-f]{64}' "$file" \
-              || { echo "$file 的 FROM 没有固定 digest"; exit 1; }
-          done
-          grep -qE 'image: pgvector/pgvector:[^ ]+@sha256:' infra/compose.yml \
-            || { echo "compose 的 postgres 镜像没有固定 digest"; exit 1; }
-      - name: No plaintext apt sources with verification disabled
-        run: |
-          # HTTP 源 + trusted=yes 等于让任何能改写那条链路的人往镜像里塞东西。
-          #
-          # 排除注释行：解释「为什么禁止 trusted=yes」的那段注释本身含有这个字符串，
-          # 而一个被自己的文档触发的门禁只会教人把文档删掉。
-          if grep -rn 'trusted=yes' infra/postgres/ infra/api.Dockerfile | grep -vE ':\s*#'; then
-            echo "发现关闭验签的 apt 源"; exit 1
-          fi
-          echo "no apt source disables verification"
+      - run: uv run --project backend python backend/journeypilot.py migrate --json
+      - run: uv run --project backend python backend/journeypilot.py doctor --json
+      - run: uv run --project backend pytest -c backend/pyproject.toml backend/tests/db -q

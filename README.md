@@ -308,11 +308,11 @@ npm install
 npm run dev
 ```
 
-Before opening a pull request, run what CI runs:
+Before opening a pull request, run the local checks and validate the behavior your changes affect:
 
 ```bash
 # Backend
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --frozen --group local-embedding --group dev
+UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --locked --group local-embedding --group dev
 UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
 UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config validate
 UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config docs --check    # generated field table matches the schema
@@ -325,8 +325,11 @@ npm run check                                        # type-check + unit tests +
 npm run test:e2e                                     # needs a running stack; see playwright.config.ts
 ```
 
-The same jobs run in [`.github/workflows/pr.yml`](.github/workflows/pr.yml). There is no
-scheduled nightly or release workflow; source builds are verified locally when needed.
+[CI](.github/workflows/pr.yml) automatically runs backend lint, configuration and unit checks,
+frontend type-checks, unit tests and builds, and secret scanning. Database integration and
+migration tests are available through **Run workflow** in the `PR` workflow. Full-stack browser
+and deployment checks run locally as needed; skipped database tests are not a passing result.
+There is no scheduled nightly or release workflow.
 
 ### Design documents
 
