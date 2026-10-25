@@ -10,7 +10,8 @@ import pytest
 
 from travel_agent.api.app import create_app
 from travel_agent.bootstrap import registry
-from travel_agent.config import Settings, loader, publication, runtime_models
+from travel_agent.config.models import Settings
+from travel_agent.config import loader, publication, runtime_models
 from travel_agent.knowledge.documents import (
     SourceDocumentUnavailable,
     require_source_document,

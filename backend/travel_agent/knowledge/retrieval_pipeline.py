@@ -6,7 +6,7 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
-from ..config import get_settings
+from ..config.loader import get_settings
 from .reranker import get_reranker
 from .retriever import rrf_fuse
 

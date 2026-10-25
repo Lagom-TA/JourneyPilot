@@ -7,7 +7,7 @@ from typing import AsyncGenerator
 from travel_agent.bootstrap.assembly import build_components
 from travel_agent.bootstrap.registry import set_components
 from travel_agent.bootstrap.shutdown import shutdown_components
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.config.capabilities import capability_gaps
 from travel_agent.integrations.pdf_readiness import probe_pdf_font
 from travel_agent.knowledge.bootstrap import bootstrap_factory_corpus

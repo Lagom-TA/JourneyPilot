@@ -257,7 +257,7 @@ def get_usage_recorder() -> UsageRecorder:
     """进程级计量缓冲单例（router 捕获与 AppComponents 暴露共用同一实例）。"""
     global _recorder_singleton
     if _recorder_singleton is None:
-        from ..config import get_settings
+        from ..config.loader import get_settings
         _recorder_singleton = UsageRecorder(spool_path=Path(get_settings().usage.spool_path))
     return _recorder_singleton
 

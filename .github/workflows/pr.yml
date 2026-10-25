@@ -197,7 +197,7 @@ jobs:
           import sys
           sys.path.insert(0, "backend")
           from travel_agent.config.capabilities import capability_gaps
-          from travel_agent.config import Settings
+          from travel_agent.config.models import Settings
           settings = Settings()
           settings.embedding.provider = "qwen3"
           gaps = capability_gaps(settings)

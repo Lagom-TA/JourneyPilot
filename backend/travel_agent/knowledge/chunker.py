@@ -15,7 +15,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from ..config import get_settings
+from ..config.loader import get_settings
 from ..llm.router import llm_channel
 
 logger = logging.getLogger(__name__)

@@ -8,7 +8,7 @@ from typing import Any, AsyncGenerator, Dict, List, NoReturn, Optional
 from langgraph.types import Command
 from pydantic import ValidationError
 
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.conversation.messages import build_messages
 from travel_agent.llm.usage import get_usage_recorder
 from travel_agent.planning.graph import get_travel_graph

@@ -135,7 +135,7 @@ def test_reused_pid_does_not_hide_abandoned_attempt():
 
 
 async def test_changed_price_does_not_reprice_idempotent_ledger_capture():
-    from travel_agent.config import ModelPricingItem
+    from travel_agent.config.models import ModelPricingItem
     store = InMemoryCostLedgerStore()
     old = ModelPricingItem(pattern="test", input_per_1m=2, output_per_1m=10)
     new = old.model_copy(update={"input_per_1m": 30, "output_per_1m": 100})

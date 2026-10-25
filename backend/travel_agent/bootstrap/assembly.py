@@ -5,7 +5,8 @@ from typing import Optional
 
 from travel_agent.bootstrap.components import AppComponents
 from travel_agent.bootstrap.jobs import build_job_handlers
-from travel_agent.config import Settings, get_settings
+from travel_agent.config.models import Settings
+from travel_agent.config.loader import get_settings
 from travel_agent.conversation.workflow import FastAnswerWorkflow
 from travel_agent.integrations.weather import default_weather_providers
 from travel_agent.knowledge.indexer import KnowledgeIndexer

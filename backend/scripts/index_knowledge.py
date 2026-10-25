@@ -134,7 +134,7 @@ async def index_file(file_path: str, collection: str) -> None:
 
 def resolve_default_chunker_type() -> str:
     """The chunker the project configured, for callers that did not name one."""
-    from travel_agent.config import get_settings
+    from travel_agent.config.loader import get_settings
 
     return get_settings().rag.chunker_type
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.runtime.concurrency import ChannelBusy
 from travel_agent.runtime.concurrency import channel_gate
 from travel_agent.runtime.concurrency import channel_metrics

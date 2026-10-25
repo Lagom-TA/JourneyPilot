@@ -1,17 +1,3 @@
-"""上传文档的输入边界与解析入口。
-
-一份上传要过三道界，顺序不能换：
-
-1. **类型**：后缀在支持范围内，且内容与后缀相符（PDF 看 magic bytes，DOCX 看
-   ZIP 结构与必要条目）。只看后缀等于让调用方声明自己的类型。
-2. **规模**：字节数、ZIP 解压后总量与压缩比、条目数。DOCX 是 ZIP，一份 200 KB
-   的上传展开后可以是几个 GB，而这一道必须在**把它读进内存之前**判完。
-3. **解析**：交给受限子进程（`document_parser_worker.py`），带 CPU / 地址空间
-   上限与墙钟上限，超时杀进程组。
-
-只有第 3 道会花时间，前两道都是常数级的（ADR-0006）。
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -28,7 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from ...config import IngestConfig, get_settings
+from ...config.loader import get_settings
+from ...config.models import IngestConfig
 from ...utils.user_text import content_length
 from travel_agent.runtime.blocking_work import BlockingWorkBusy, blocking_channel, run_blocking, run_in_thread
 
@@ -45,12 +32,7 @@ _WORKER = Path(__file__).with_name("document_parser_worker.py")
 
 
 class DocumentRejected(Exception):
-    """这份文件不进库，以及是哪一种不进。
-
-    ``code`` 是产品合同的一部分：界面按它说话（前端那张表在
-    `frontend/src/lib/knowledgeIngestFailure.ts`，两张表逐条对齐）。
-    ``detail`` 只给日志 —— 解析器的原话对旅行者没有意义。
-    """
+    # code 可交给客户端分类，解析器原始 detail 只进入日志。
 
     def __init__(self, code: str, detail: str) -> None:
         self.code = code

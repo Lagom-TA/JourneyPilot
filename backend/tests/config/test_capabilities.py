@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from travel_agent.config import Settings
+from travel_agent.config.models import Settings
 from travel_agent.config.capabilities import capability_gaps, capability_report
 
 

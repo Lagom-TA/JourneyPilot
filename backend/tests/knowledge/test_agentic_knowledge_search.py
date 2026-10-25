@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 import travel_agent.conversation.answer.node as conversation_answer_node
-from travel_agent.config import Settings
+from travel_agent.config.models import Settings
 from travel_agent.knowledge.source_records import rag_chunk_source_records
 from travel_agent.tools import access, builtin_tools, content, execution, react
 from travel_agent.tools.governance import build_tool_execution_envelope

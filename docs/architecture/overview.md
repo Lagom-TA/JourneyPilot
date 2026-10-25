@@ -58,18 +58,29 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
 - `conversation/`：路由、输入安全、来源绑定、信息标签、回答展示及会话合同。
   `compaction.py` 只测量和整理会话；`answer/` 分开汇率上下文、实时工具上下文和快答节点。
   `graph.py` 拥有唯一快答图缓存，`workflow.py` 负责流式更新、完整状态和生命周期回调。
+- `conversation/chat/`：请求准备、费用记录、消息保存、请求自身的租约、断连清理和已持久化交付读取。
+  `execution.py` 协调这些职责，展示状态与工具、文本、进度事件分开维护。
+- `api/`：HTTP 参数、错误映射、公开投影和 SSE 编码；`schemas/`、`routes/trip_runs/` 按资源划分，
+  不承担工作流执行、运行取消或交付事务。聊天请求合同归 `conversation/chat/contracts.py`。
+- `bootstrap/`：组件构建、唯一组件注册、启动、关闭、后台任务装配与诊断。
+  `startup.py` 在数据库合同通过后启动写入任务，`shutdown.py` 先停止任务并释放租约，再关闭连接池。
 - `runtime/`：运行与命令合同、状态转换、租约、恢复、后台任务、并发和时间函数。
-  恢复只读取持久化交付审计，不依赖 planning；后台任务处理器在 `builders.py` 装配。
+  恢复只读取持久化交付审计，不依赖 planning；后台任务处理器在 `bootstrap/jobs.py` 装配。
 - `integrations/`：地点、路线、航班、铁路、汇率和天气供应商访问，以及低层供应商合同与就绪检查。
   供应商适配器不导入规划状态或候选准入政策；地点原始响应缓存由 `storage/place_search_cache.py` 维护。
 - `memory/`：偏好、生命周期合同和记忆提取任务；`storage/` 负责持久化与缓存。
-- `config/capabilities.py`：配置所需依赖的可用性检查；`utils/` 仅保留通用坐标、距离、文本、JSON 和日志脱敏工具。
+- 预设的合同归 `planning/requirements/`，种子归 `config/seeds/`，持久化归 `storage/`，
+  提示上下文归 `conversation/preset_context.py`，显式发布归 `config/publication.py`，没有聚合的 preset 包。
+- `config/models.py`、`loader.py`、`providers.py`、`redaction.py` 分别定义配置模型、加载、供应商能力与脱敏，
+  调用方直接导入定义模块；`loader.py` 保留唯一的延迟配置缓存。
+  `config/capabilities.py` 检查配置所需依赖；`utils/` 仅保留通用坐标、文本、JSON 和日志脱敏工具。
 
 图节点、约束和运行封装直接归属上述领域，不保留 agents、workflows 或 panels 转发目录。
 `planning/weather/node.py` 负责天气图节点，`presentation.py` 负责规划提示展示；
 `planning/costs/estimate.py` 保留预算节点，`planning/trace.py` 维护流式观测合同，
-`storage/checkpoint_pruning.py` 负责 checkpoint 保留清理。API、CLI 与 preset 的入口编排独立维护。
-目录迁移不改变公开 API、持久化版本、哈希、节点名称或业务判断。
+`storage/checkpoint_pruning.py` 负责 checkpoint 保留清理。CLI 的参数解析、输出与各维护命令分别归属
+`cli/arguments.py`、`output.py` 和对应命令模块，`main.py` 只负责启动顺序与分派。
+目录迁移不改变公开 API、持久化版本、哈希、节点名称或业务判断；旧 Python 模块路径不再提供兼容导出。
 
 ## 三条边界
 

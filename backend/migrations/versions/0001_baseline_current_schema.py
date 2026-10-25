@@ -44,7 +44,7 @@ logger = logging.getLogger("alembic.runtime.migration")
 
 
 def _embedding_dimensions() -> int:
-    from travel_agent.config import get_settings
+    from travel_agent.config.loader import get_settings
 
     return int(get_settings().embedding.dimensions)
 

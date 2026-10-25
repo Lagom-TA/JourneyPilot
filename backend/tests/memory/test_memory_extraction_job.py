@@ -101,7 +101,7 @@ async def test_disabled_vectors_do_not_enqueue_or_wake_worker(monkeypatch):
     from unittest.mock import AsyncMock, Mock
 
     from travel_agent.memory import extraction_jobs
-    from travel_agent.config import Settings
+    from travel_agent.config.models import Settings
     from travel_agent.storage import background_job_store
 
     settings = Settings(embedding={"enabled": False})

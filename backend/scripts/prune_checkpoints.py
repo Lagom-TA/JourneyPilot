@@ -18,7 +18,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from travel_agent.bootstrap.assembly import build_components
 from travel_agent.bootstrap.shutdown import shutdown_components
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.storage.checkpoint_pruning import CheckpointPruningService
 
 

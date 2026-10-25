@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from datetime import timezone
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.integrations.routes.amap import AmapRouteSearchError
 from travel_agent.integrations.routes.amap import amap_route_search
 from travel_agent.runtime.rate_gate import rate_gate_for

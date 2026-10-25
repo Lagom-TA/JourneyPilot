@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from travel_agent.bootstrap.registry import get_components
-from ...config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.api.schemas.system import ModelConfigRequest, SystemStatus
 
 from travel_agent.bootstrap.diagnostics.status import collect_status

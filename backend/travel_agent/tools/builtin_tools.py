@@ -230,7 +230,7 @@ KNOWLEDGE_SEARCH_SCHEMA = {
 
 
 async def knowledge_search(query: str, collection: str | None = None, limit: int = 3) -> Dict[str, Any]:
-    from ..config import get_settings
+    from ..config.loader import get_settings
     from ..knowledge.collections import grounding_corpus, relabel_to_logical_collections
     from ..knowledge.retrieval_pipeline import retrieve_for_query
     from ..knowledge.retriever import HybridRetriever

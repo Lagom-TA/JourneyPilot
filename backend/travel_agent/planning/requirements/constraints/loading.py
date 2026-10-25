@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.llm.router import get_model_router
 from travel_agent.llm.task_routing import TaskKind, llm_for_task
 from travel_agent.memory.context_builder import ContextBudget

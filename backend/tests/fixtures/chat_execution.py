@@ -12,6 +12,8 @@ import pytest
 
 from tests.fixtures.run_commands import FakeCommandStore
 from travel_agent.bootstrap import registry
+from travel_agent.config import loader
+from travel_agent.config.models import Settings
 from travel_agent.api.app import create_app
 from travel_agent.conversation.chat import preparation
 from travel_agent.conversation.chat.contracts import ChatRequest
@@ -133,6 +135,8 @@ class FastWorkflow:
 
 @pytest.fixture
 def resources(monkeypatch):
+    settings = Settings(embedding={"enabled": False})
+    monkeypatch.setattr(loader, "_effective", SimpleNamespace(settings=settings))
     workflow = FastWorkflow()
     memory = ChatMemory()
     execution = ExecutionStore()

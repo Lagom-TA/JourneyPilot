@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
 from travel_agent.bootstrap.registry import get_components
-from ...config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from ...knowledge.collections import CollectionAddressInvalid, normalize_collection, scope_collection
 from ...knowledge.sources.document_parse import (

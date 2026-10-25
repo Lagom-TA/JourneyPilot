@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Literal, Optional, get_args
 from pydantic import Field
 from travel_agent.schema import StrictModel
-from ..config import get_settings
+from ..config.loader import get_settings
 from .context import current_run_budget, current_run_id
 
 

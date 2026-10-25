@@ -33,7 +33,7 @@ async def execute_tool(tool_name, arguments, *args, **kwargs):
 
     journal = current_worker_journal.get()
     if tool_name == "knowledge_search":
-        from ..config import get_settings
+        from ..config.loader import get_settings
 
         if not get_settings().embedding.enabled:
             return build_tool_execution_envelope(

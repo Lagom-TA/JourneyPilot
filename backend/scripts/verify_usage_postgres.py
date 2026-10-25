@@ -19,7 +19,7 @@ import psycopg
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.engine import URL
 
-from travel_agent.config import ModelPricingItem
+from travel_agent.config.models import ModelPricingItem
 from travel_agent.paths import REPO_ROOT
 from travel_agent.storage.maintenance.fingerprint import fingerprint_sync
 from travel_agent.storage.cost_ledger_store import CostLedgerConflict, CostLedgerStore

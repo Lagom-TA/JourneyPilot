@@ -7,7 +7,7 @@ import httpx
 import pytest
 from langchain_core.messages import AIMessageChunk
 
-from travel_agent.config import ModelPricingItem, RunBudgetConfig
+from travel_agent.config.models import ModelPricingItem, RunBudgetConfig
 from travel_agent.llm.chat_client import ReasoningChatOpenAI
 from travel_agent.llm.router import ModelTier, OpenAICompatibleLLM
 from travel_agent.llm.token_counting import (

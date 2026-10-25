@@ -12,10 +12,11 @@ from travel_agent.cli.main import main
 
 @pytest.fixture
 def configured(monkeypatch):
-    from travel_agent import config
+    from travel_agent.config import loader
+    from travel_agent.config.models import Settings
 
-    settings = config.Settings()
-    monkeypatch.setattr(config, "get_settings", lambda: settings)
+    settings = Settings()
+    monkeypatch.setattr(loader, "get_settings", lambda: settings)
     return settings
 
 

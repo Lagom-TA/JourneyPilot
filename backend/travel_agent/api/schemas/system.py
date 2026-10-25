@@ -4,7 +4,7 @@ from typing import Any
 from typing import Dict
 from pydantic import BaseModel
 from pydantic import Field
-from travel_agent.config import MAX_COMPLETION_TOKENS
+from travel_agent.config.models import MAX_COMPLETION_TOKENS
 
 
 class ModelConfigRequest(BaseModel):

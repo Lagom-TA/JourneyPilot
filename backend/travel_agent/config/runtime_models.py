@@ -2,7 +2,7 @@
 
 import logging
 
-from travel_agent.config import get_settings, persist_model_config
+from travel_agent.config.loader import get_settings, persist_model_config
 from travel_agent.llm.router import ModelTier, get_model_router
 
 logger = logging.getLogger(__name__)

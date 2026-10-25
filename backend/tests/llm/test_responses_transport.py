@@ -7,7 +7,7 @@ import json
 import httpx
 import pytest
 
-from travel_agent.config import Settings
+from travel_agent.config.models import Settings
 from travel_agent.llm.chat_client import ReasoningChatOpenAI
 from travel_agent.llm.router import ModelRouter
 from travel_agent.llm.task_routing import TaskKind

@@ -6,7 +6,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
 
-from travel_agent.config import CheckpointRetentionConfig
+from travel_agent.config.models import CheckpointRetentionConfig
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,7 @@ import httpx
 import pytest
 from langchain_core.messages import HumanMessage
 
-from travel_agent.config import FastModelConfig, PrimaryModelConfig
+from travel_agent.config.models import FastModelConfig, PrimaryModelConfig
 from travel_agent.llm.chat_client import ReasoningChatOpenAI
 from travel_agent.llm.request_policy import (
     is_openai_reasoning_model,

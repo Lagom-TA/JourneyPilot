@@ -188,7 +188,7 @@ def test_redaction_keeps_structure_and_drops_secrets():
     规则（`config/redaction.py`），所以这一条同时钉住了两处。
     """
 
-    from travel_agent.config import redact
+    from travel_agent.config.redaction import redact
 
     payload = {
         "primary_model": {"model_name": "gpt-x", "api_key": "sk-real-secret"},

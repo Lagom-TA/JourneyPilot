@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.integrations.places.contracts import NominatimPlaceSearchError
 from travel_agent.integrations.places.normalization import _OSM_RELATION_PLACE_ID
 from travel_agent.integrations.places.retry import _OVERPASS_RATE_GATE

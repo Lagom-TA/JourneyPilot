@@ -80,7 +80,7 @@ def test_executor_id_is_not_just_a_pid() -> None:
 def test_heartbeat_must_fit_inside_the_lease() -> None:
     """心跳间隔逼近租约长度时拒绝启动：丢一次心跳就失去租约不是配置，是故障。"""
 
-    from travel_agent.config import RunControlConfig
+    from travel_agent.config.models import RunControlConfig
 
     with pytest.raises(ValueError):
         RunControlConfig(lease_seconds=10, lease_heartbeat_seconds=9)

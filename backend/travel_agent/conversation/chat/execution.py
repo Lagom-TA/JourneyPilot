@@ -2,7 +2,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any, AsyncGenerator, Dict
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.runtime.run_contracts import TripRunStatus
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from travel_agent.runtime.run_commands import RunCommandCoordinator

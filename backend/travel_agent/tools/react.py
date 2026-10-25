@@ -138,7 +138,7 @@ async def streaming_react_loop(
             item.get("tool_name") == "knowledge_search"
             for item in saved.get("results", [])
         ):
-            from ..config import get_settings
+            from ..config.loader import get_settings
             from ..tools.gateway import _manifest_from_metadata
 
             manifest = _manifest_from_metadata(

@@ -442,7 +442,7 @@ import sys
 sys.path.insert(0, r'$BACKEND_DIR')
 import fastapi, openai, uvicorn, yaml, mcp
 from main import app
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 " 2>/dev/null
 }
 
@@ -485,7 +485,7 @@ resolve_backend_port() {
   resolved="$(run_in_env python -c "
 import sys
 sys.path.insert(0, r'$BACKEND_DIR')
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 print(get_settings().server.port)
 " 2>/dev/null | tail -n 1 || true)"
   BACKEND_PORT="${resolved:-8001}"
@@ -744,7 +744,7 @@ import sys
 sys.path.insert(0, r'$BACKEND_DIR')
 import uvicorn
 from main import app
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 cfg = get_settings()
 uvicorn.run(app, host=cfg.server.host, port=cfg.server.port, reload=False, log_level=cfg.server.log_level)
 "

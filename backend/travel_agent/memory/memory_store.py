@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 
-from ..config import get_settings
+from ..config.loader import get_settings
 from travel_agent.memory.extraction_jobs import memory_fact_digest
 from travel_agent.memory.lifecycle import MemoryRetentionPolicy, MemoryRetentionStatus
 from ..storage.database import get_db_session

@@ -61,7 +61,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from travel_agent.config import get_settings  # noqa: E402
+from travel_agent.config.loader import get_settings  # noqa: E402
 from travel_agent.paths import REPO_ROOT
 from travel_agent.storage.database import get_session_factory  # noqa: E402
 from travel_agent.knowledge.place_mentions import (  # noqa: E402

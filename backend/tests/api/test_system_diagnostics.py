@@ -10,7 +10,8 @@ import pytest
 from travel_agent.api.app import create_app
 from travel_agent.bootstrap import registry
 from travel_agent.bootstrap.diagnostics import dependencies
-from travel_agent.config import Settings, loader
+from travel_agent.config.models import Settings
+from travel_agent.config import loader
 from travel_agent.integrations import pdf_readiness
 from travel_agent.storage import database, redis_client
 from travel_agent.storage.maintenance.report import SchemaReport

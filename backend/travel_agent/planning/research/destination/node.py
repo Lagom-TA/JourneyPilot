@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.conversation.history import append_recent_history
 from travel_agent.knowledge.collections import grounding_corpus
 from travel_agent.knowledge.source_records import rag_chunk_source_records

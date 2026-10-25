@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.runtime.run_lease import RunLeaseKeeper
 from travel_agent.runtime.cancellation import RunControlHandle
 from .errors import ExecutionAlreadyOwned

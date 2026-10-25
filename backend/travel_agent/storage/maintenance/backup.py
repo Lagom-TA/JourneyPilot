@@ -110,7 +110,8 @@ def _write_redacted_config(directory: Path) -> str | None:
 
     import yaml
 
-    from ...config import find_config_yaml, load_yaml, redact
+    from ...config.loader import find_config_yaml, load_yaml
+    from ...config.redaction import redact
 
     path = find_config_yaml()
     if path is None:

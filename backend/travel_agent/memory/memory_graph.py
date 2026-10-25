@@ -1,23 +1,3 @@
-"""
-Memory Graph (Infrastructure Layer)
-
-知识图谱读写模块，使用 PostgreSQL 关系表模拟图结构：
-  memory_entities  — 实体节点（今天只有 person 与 trait 两种）
-  memory_relations — 关系边
-
-设计特点：
-  - 实体 upsert：基于 (user_id, name, entity_type) 唯一约束
-  - 关系词表只有一个成员，且它必须有产出方（见 ``_PRODUCED_RELATIONS``）
-  - 画像聚合：纯模板，无 LLM 调用，快速生成自然语言画像文本
-
-**这里没有「图谱矛盾消解」。** 曾经有过一段按 (source, relation) 换 target 就给旧边
-打 ``valid_until`` 墓碑的代码，以及一个「只对单值关系生效」的豁免集合 ``{has_budget}``。
-产品侧唯一的写入方是 ``update_portrait``，它把 relation 写死成 ``has_trait`` ——
-两个集合不相交，那段代码一次都没执行过，库里 ``valid_until`` 非空 0 行。第 40 迭代
-把它连同 ``valid_until`` 列一起删了：**承认这个能力不存在**，将来要做得重写，
-而不是留一段读起来像在防着什么的死代码。
-"""
-
 from __future__ import annotations
 
 import logging
@@ -30,13 +10,6 @@ from ..storage.database import get_db_session
 
 logger = logging.getLogger(__name__)
 
-# 产品真的会产出的关系类型 —— 全仓唯一的产出方是 ``update_portrait``。
-#
-# 这不是一张「支持哪些关系」的词表，是一张「谁真的在写」的清单：往里加一个成员，
-# 必须同时在源码里加出它的产出方，否则这张清单就描述了一个代码里写不出来、聚合侧
-# 永远等不到的关系。此前这里是一张 10 个标签的词表，其中 9 个全仓没有
-# 任何一处写得出来，聚合侧为它们准备的分支于是永远不执行 —— 那是「装了没人接线」
-# 在图谱层的样子（同形先例：``preset/injector.py`` 里那个因零调用方被删的格式化器）。
 _PRODUCED_RELATIONS = frozenset({"has_trait"})
 
 # dimension → 中文分组标题
@@ -199,15 +172,6 @@ class MemoryGraph:
     # -----------------------------------------------------------------------
 
     async def get_relations(self, user_id: str) -> List[Dict[str, Any]]:
-        """
-        查询用户的全部关系。JOIN entities 取两端的 name / entity_type / properties。
-
-        此前它叫 ``get_active_relations``，多一句 ``WHERE valid_until IS NULL``。
-        而唯一给 ``valid_until`` 写过非空值的是一段从未执行的矛盾消解代码 ——
-        一个只会过滤出空集的过滤器，和没有过滤器是同一件事，更糟，因为那一行看起来
-        像是在防着什么。删除语义是物理删除（``delete_relation`` / ``delete_entity`` /
-        ``delete_user_graph``），一行在表里就是有效的，所以名字里的 active 也一并去掉。
-        """
         async with get_db_session() as session:
             result = await session.execute(
                 text("""
@@ -316,10 +280,6 @@ class MemoryGraph:
         if not relations:
             return ""
 
-        # 按 dimension 分组收集 trait。
-        # 这里只有这一支：图谱里只可能有 ``has_trait``（``upsert_relation`` 是唯一写入口
-        # 且当场拒绝其他关系类型）。此前这里还有「去过 / 想去 / 其他偏好」三支，
-        # 它们的关系类型全仓没有产出方，一次都没执行过。
         grouped: Dict[str, List[str]] = defaultdict(list)
 
         for r in relations:

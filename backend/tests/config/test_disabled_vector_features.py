@@ -9,7 +9,7 @@ import travel_agent.conversation.answer.node as conversation_answer_node
 import travel_agent.memory.memory_store as memory_memory_store
 import travel_agent.memory.user_profile as memory_user_profile
 import travel_agent.planning.requirements.constraints.loading as planning_requirements_constraints_loading
-from travel_agent.config import Settings
+from travel_agent.config.models import Settings
 
 
 @pytest.fixture

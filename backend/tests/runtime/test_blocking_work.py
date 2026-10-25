@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.runtime.blocking_work import (
     BlockingWorkBusy,
     blocking_channel,

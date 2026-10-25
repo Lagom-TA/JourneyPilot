@@ -88,7 +88,7 @@ async def fast_answer_node(
         except Exception as e:
             logger.debug(f"FastAnswer: Anchor 解析失败: {e}")
 
-    from travel_agent.config import get_settings
+    from travel_agent.config.loader import get_settings
 
     ctx_builder = ContextBuilder(
         ContextBudget(response_reserve=get_settings().fast_model.max_tokens)

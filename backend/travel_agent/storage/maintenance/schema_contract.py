@@ -96,8 +96,7 @@ OPTIONAL_EXTENSIONS: tuple[str, ...] = ("zhparser",)
 CHINESE_TEXT_SEARCH_CONFIG = "chinese"
 FALLBACK_TEXT_SEARCH_CONFIG = "simple"
 
-# 派生向量列。维度是**配置驱动**的，所以指纹里它们被归一化成占位符，实际维度另存一份
-# （给 P0-D 的 embedding 合同校验用）。
+# 向量维度由配置决定，指纹使用占位符，实际维度另行校验。
 EMBEDDING_VECTOR_COLUMNS: tuple[tuple[str, str], ...] = (
     ("knowledge_chunks", "embedding"),
     ("memory_facts", "embedding"),

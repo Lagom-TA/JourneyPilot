@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from datetime import timezone
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.integrations.places.contracts import NominatimPlaceSearchError
 from travel_agent.integrations.places.contracts import NominatimSearchObservation
 from travel_agent.integrations.places.normalization import normalize_country_code

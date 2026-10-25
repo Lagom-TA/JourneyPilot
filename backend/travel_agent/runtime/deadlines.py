@@ -84,7 +84,7 @@ RUN_DEADLINE_POLICY_VERSION = "run_deadline.v2"
 
 def _windows():
     # Read configuration only when sealing a fresh snapshot.
-    from ..config import get_settings
+    from ..config.loader import get_settings
 
     return get_settings().run_deadline
 

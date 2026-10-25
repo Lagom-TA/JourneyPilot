@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import text
 
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.storage.database import get_db_session
 from travel_agent.memory.memory_store import MemoryStore, USER_MANUAL_SESSION_ID
 

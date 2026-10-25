@@ -11,7 +11,8 @@ from dataclasses import dataclass
 import re
 from typing import Any
 
-from ..config import ToolExposureConfig, get_settings
+from ..config.loader import get_settings
+from ..config.models import ToolExposureConfig
 from travel_agent.planning.nodes import WORKER_NODES
 from .builtin_tools import SEARCH_TOOLS_NAME, build_search_tools_item
 from .exposure_ledger import estimate_schema_tokens, estimate_text_tokens

@@ -280,7 +280,7 @@ class EventBuffer:
 
 def build_event_buffer(streaming_config: Optional[Any] = None) -> EventBuffer:
     if streaming_config is None:
-        from ..config import get_settings
+        from ..config.loader import get_settings
 
         streaming_config = get_settings().streaming
     return EventBuffer(

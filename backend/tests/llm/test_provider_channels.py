@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.llm.router import current_llm_channel, llm_channel
 from travel_agent.runtime.concurrency import (
     ChannelBusy,

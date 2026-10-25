@@ -219,7 +219,7 @@ def get_reranker() -> Optional[Reranker]:
     if _reranker_instance is not None:
         return _reranker_instance
 
-    from ..config import get_settings
+    from ..config.loader import get_settings
     settings = get_settings()
     cfg = settings.rerank
 

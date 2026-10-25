@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from travel_agent.planning.research.evidence import ProviderSnapshotProvenance
 
-from ..config import get_settings
+from ..config.loader import get_settings
 from travel_agent.integrations.provider_environment import snapshot_data_environment
 from ..utils.coordinates import within_china_coordinate_box
 from .redis_client import get_redis

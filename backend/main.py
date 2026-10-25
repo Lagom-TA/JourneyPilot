@@ -7,7 +7,7 @@ import logging
 
 import uvicorn
 
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 
 settings = get_settings()
 logging.basicConfig(

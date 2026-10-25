@@ -10,7 +10,7 @@ from .output import EXIT_FAILED, EXIT_OK, _emit
 
 def cmd_config_show(args: argparse.Namespace) -> int:
 
-    from ..config import ConfigError, load_effective_config
+    from ..config.loader import ConfigError, load_effective_config
 
     try:
         effective = load_effective_config()
@@ -34,7 +34,7 @@ def cmd_config_show(args: argparse.Namespace) -> int:
 
 def cmd_config_validate(args: argparse.Namespace) -> int:
 
-    from ..config import ConfigError, load_effective_config
+    from ..config.loader import ConfigError, load_effective_config
 
     try:
         effective = load_effective_config()
@@ -56,7 +56,7 @@ def cmd_config_validate(args: argparse.Namespace) -> int:
 
 def cmd_config_env(args: argparse.Namespace) -> int:
 
-    from ..config import env_variable_reference
+    from ..config.loader import env_variable_reference
 
     reference = env_variable_reference()
     _emit(
@@ -106,12 +106,8 @@ def cmd_config_docs(args: argparse.Namespace) -> int:
 
 def cmd_configure(args: argparse.Namespace) -> int:
 
-    from ..config import (
-        available_presets,
-        get_preset,
-        preset_model_section,
-        write_model_section,
-    )
+    from ..config.loader import write_model_section
+    from ..config.providers import available_presets, get_preset, preset_model_section
 
     presets = available_presets()
     if args.list or not args.provider:

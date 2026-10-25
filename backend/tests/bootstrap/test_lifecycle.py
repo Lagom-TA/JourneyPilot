@@ -6,7 +6,8 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from travel_agent.bootstrap import registry, shutdown, startup
-from travel_agent.config import Settings, loader
+from travel_agent.config.models import Settings
+from travel_agent.config import loader
 from travel_agent.knowledge import factory_seed
 from travel_agent.storage import database, redis_client
 

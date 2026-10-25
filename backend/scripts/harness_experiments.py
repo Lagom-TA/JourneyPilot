@@ -18,7 +18,8 @@ import time
 import uuid
 
 from travel_agent.planning.research.prompts import build_research_packet_prompt
-from travel_agent.config import ToolExposureConfig, get_settings
+from travel_agent.config.loader import get_settings
+from travel_agent.config.models import ToolExposureConfig
 from travel_agent.storage.cost_ledger_store import build_ledger_call
 from travel_agent.llm.experiments import summarize_trials
 from travel_agent.llm.router import ModelTier, OpenAICompatibleLLM

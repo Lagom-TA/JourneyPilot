@@ -23,7 +23,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 @pytest.fixture(scope="session")
 def settings():
-    from travel_agent.config import get_settings
+    from travel_agent.config.loader import get_settings
 
     return get_settings()
 
@@ -100,7 +100,7 @@ def unmanaged_database(temp_database) -> object:
 async def migrated_async_database(temp_database, monkeypatch):
     """Point environment, settings and engine at the disposable database together."""
 
-    from travel_agent.config import reload_settings
+    from travel_agent.config.loader import reload_settings
     from travel_agent.storage.maintenance import migrate
     from travel_agent.storage.database import close_db
 

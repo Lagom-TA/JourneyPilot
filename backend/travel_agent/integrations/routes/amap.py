@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from datetime import timezone
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.integrations.routes.service_days import nominal_service_day_conflict
 from travel_agent.runtime.rate_gate import rate_gate_for
 from travel_agent.utils.coordinates import gcj02_to_wgs84

@@ -7,7 +7,7 @@ from ..paths import REPO_ROOT
 
 
 def _settings() -> Any:
-    from ..config import get_settings
+    from ..config.loader import get_settings
 
     return get_settings()
 

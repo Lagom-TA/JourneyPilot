@@ -8,7 +8,7 @@ from copy import deepcopy
 
 import pytest
 
-from travel_agent.config import ToolExposureConfig
+from travel_agent.config.models import ToolExposureConfig
 from travel_agent.storage.tool_audit_store import InMemoryToolAuditStore
 from travel_agent.tools import execution, react
 from travel_agent.tools.exposure import (

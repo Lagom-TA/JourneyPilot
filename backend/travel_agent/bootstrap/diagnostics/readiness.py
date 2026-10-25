@@ -22,7 +22,7 @@ from travel_agent.bootstrap.diagnostics.runtime import (
     _probe_run_execution,
 )
 from travel_agent.bootstrap.registry import get_components
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.config.capabilities import capability_report
 
 _NON_BLOCKING_COMPONENTS = frozenset(

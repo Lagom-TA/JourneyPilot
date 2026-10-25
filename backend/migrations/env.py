@@ -2,7 +2,7 @@
 
 两处刻意的选择：
 
-- **URL 只有一个来源**：`travel_agent.config.get_settings().database`。测试和
+- **URL 只有一个来源**：`travel_agent.config.loader.get_settings().database`。测试和
   `journeypilot restore` 需要迁另一个库时，通过 `config.attributes["db_url"]`
   显式传入，而不是让 `alembic.ini` 里躺着第二份地址。
 - **不用 autogenerate，也没有 target_metadata**：这个仓的 Schema 是手写 SQL、
@@ -39,7 +39,7 @@ def _database_url() -> str:
     if explicit:
         return str(explicit)
 
-    from travel_agent.config import get_settings
+    from travel_agent.config.loader import get_settings
 
     db = get_settings().database
     return f"postgresql+psycopg://{db.user}:{db.password}@{db.host}:{db.port}/{db.name}"

@@ -6,19 +6,10 @@ import json
 
 import pytest
 
-from travel_agent.config import (
-    CONFIG_VERSION,
-    ConfigError,
-    Settings,
-    available_presets,
-    capabilities_for,
-    check_config_version,
-    env_variable_reference,
-    get_preset,
-    load_effective_config,
-    preset_model_section,
-    redact,
-)
+from travel_agent.config.models import CONFIG_VERSION, Settings
+from travel_agent.config.loader import ConfigError, check_config_version, env_variable_reference, load_effective_config
+from travel_agent.config.providers import available_presets, capabilities_for, get_preset, preset_model_section
+from travel_agent.config.redaction import redact
 from travel_agent.config.env import EnvOverrideError, apply_env_overrides
 from travel_agent.config.loader import build_settings
 from travel_agent.config.schema_export import field_reference_markdown, json_schema_text
@@ -372,7 +363,7 @@ def test_generated_config_docs_are_committed():
 def test_the_example_config_is_valid_and_current():
     """示例配置必须能被当前 schema 读进来，并且带着当前版本号。"""
 
-    from travel_agent.config import load_yaml
+    from travel_agent.config.loader import load_yaml
     from travel_agent.paths import BACKEND_DIR
 
     root = BACKEND_DIR
@@ -382,7 +373,7 @@ def test_the_example_config_is_valid_and_current():
 
 
 def test_the_example_config_ships_no_api_key():
-    from travel_agent.config import load_yaml
+    from travel_agent.config.loader import load_yaml
     from travel_agent.paths import BACKEND_DIR
 
     root = BACKEND_DIR

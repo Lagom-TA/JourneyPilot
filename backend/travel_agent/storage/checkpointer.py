@@ -22,7 +22,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
-from ..config import Settings
+from ..config.models import Settings
 from .maintenance.checkpoint_schema import missing_checkpoint_tables_async
 from travel_agent.storage.checkpoint_logging import install_checkpoint_serde_log_dedup
 

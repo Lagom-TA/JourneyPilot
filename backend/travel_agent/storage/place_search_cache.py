@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from datetime import timedelta
 from datetime import timezone
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.integrations.places.contracts import NominatimSearchObservation
 from travel_agent.integrations.places.normalization import logger
 from travel_agent.storage.redis_client import get_redis

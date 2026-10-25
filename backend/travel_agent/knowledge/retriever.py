@@ -35,7 +35,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 
-from ..config import get_settings
+from ..config.loader import get_settings
 from ..storage.database import get_db_session
 from .reranker import get_reranker
 

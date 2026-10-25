@@ -251,10 +251,7 @@ def fingerprint_sync(conn: Any, *, embedding_dimensions: int) -> dict[str, Any]:
 
 
 async def fingerprint_async(conn: Any, *, embedding_dimensions: int) -> dict[str, Any]:
-    """从 SQLAlchemy `AsyncConnection` 读指纹（API 只读校验侧）。
-
-    全部是 `SELECT`，所以 API 进程调用它不违反 ADR-P0-03。
-    """
+    # API 校验只能读取结构，不能执行 DDL。
 
     from sqlalchemy import text
 

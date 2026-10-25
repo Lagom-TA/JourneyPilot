@@ -27,16 +27,10 @@ from typing import (
     runtime_checkable,
 )
 
-from ..config import (
-    FastModelConfig,
-    PrimaryModelConfig,
-    ProviderCapabilities,
-    capabilities_for,
-    get_settings,
-    resolve_price,
-)
+from ..config.loader import get_settings, resolve_price
+from ..config.models import FastModelConfig, PrimaryModelConfig
+from ..config.providers import ProviderCapabilities, TokenLimitField, capabilities_for
 from travel_agent.runtime.time import utc_now_iso
-from ..config.providers import TokenLimitField
 from travel_agent.runtime.concurrency import channel_gate
 from travel_agent.runtime.operations import (
     ModelWindowClosed,

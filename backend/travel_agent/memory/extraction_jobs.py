@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 
 from travel_agent.runtime.job_contracts import BackgroundJob
 from travel_agent.runtime.job_contracts import BackgroundJobPermanentError

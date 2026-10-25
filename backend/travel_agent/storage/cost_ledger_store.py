@@ -24,7 +24,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import text
 
-from ..config import ModelPricingItem, resolve_price
+from ..config.loader import resolve_price
+from ..config.models import ModelPricingItem
 from ..llm.usage import LLMCallRecord
 from .database import get_db_session
 from travel_agent.runtime.time import iso_or_none as _iso

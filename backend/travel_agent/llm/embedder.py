@@ -18,7 +18,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
-from ..config import get_settings
+from ..config.loader import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ class OpenAICompatibleEmbedder(BaseEmbedder):
         return self._dimensions
 
     def _channel(self):
-        from ..config import get_settings
+        from ..config.loader import get_settings
         from travel_agent.runtime.concurrency import channel_gate
 
         return channel_gate("embedding", int(get_settings().provider_channels.embedding))

@@ -15,7 +15,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from travel_agent.bootstrap.startup import application_lifespan
-from ..config import get_settings
+from travel_agent.config.loader import get_settings
 from ..paths import BACKEND_DIR
 from ..utils.log_redaction import install_query_secret_redaction
 from .middleware import request_logging_middleware

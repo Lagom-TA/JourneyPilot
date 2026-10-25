@@ -6,7 +6,7 @@ from typing import get_args
 
 import pytest
 
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.runtime.budget import (
     BudgetDimension,
     RunBudgetExhausted,

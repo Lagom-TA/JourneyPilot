@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List
 
-from ..config import AgentToolPolicy
+from ..config.models import AgentToolPolicy
 from .registry import get_tool_registry
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ async def get_available_tools(selected_mcp_servers: List[str]) -> List[Dict[str,
     "从工具注册表获取可用工具列表，按 selected_mcp_servers 过滤 MCP 工具。"
     try:
         registry = get_tool_registry()
-        from ..config import get_settings
+        from ..config.loader import get_settings
 
         tools = registry.get_tools_as_schemas()
         if not get_settings().embedding.enabled:
@@ -59,7 +59,7 @@ def filter_tools_for_agent(
     agent_name: str,
 ) -> List[Dict[str, Any]]:
     "按 Agent 工具策略（_AGENT_TOOL_POLICY）过滤工具。"
-    from ..config import get_settings
+    from ..config.loader import get_settings
 
     if not get_settings().embedding.enabled:
         tools = [

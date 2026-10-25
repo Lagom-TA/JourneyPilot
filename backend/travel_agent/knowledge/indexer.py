@@ -1,13 +1,3 @@
-"""
-文档索引管道 (Application Layer)
-将文档块向量化后写入 pgvector 知识库。
-
-支持三种分块策略（通过 config.rag.chunker_type 或参数控制）：
-  text        — TextChunker（同步，固定窗口）
-  semantic    — SemanticChunker（异步，语义边界）
-  contextual  — ContextualChunker（异步，语义分块 + LLM 上下文前缀）
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -17,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 
-from ..config import get_settings
+from ..config.loader import get_settings
 from ..storage.database import get_db_session
 from .chunker import get_chunker
 
@@ -37,15 +27,7 @@ def _normalize_source(source: str) -> str:
 
 
 class KnowledgeIndexer:
-    """
-    知识库文档索引器。
-    负责：文档分块 → 向量化 → 写入 PostgreSQL。
-
-    一篇资料的正文住在 `knowledge_documents`（一篇一行，`(collection, source)` 唯一），
-    段住在 `knowledge_chunks`。**正文是原件、段是投影**：入库、改写、删除都从正文那一行
-    出发，段整批重算。所以同名重新入库是替换 —— 此前它是追加，同一份文件上传两次
-    会得到两套段，而检索层看到的是两份彼此重叠的资料。
-    """
+    # 正文独立保存；同一来源重新入库时替换正文并重建分块。
 
     def __init__(self, embedder=None, chunker_type: Optional[str] = None) -> None:
         self._embedder = embedder

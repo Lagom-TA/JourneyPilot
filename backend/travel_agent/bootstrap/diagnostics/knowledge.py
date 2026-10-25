@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 
 
 async def _probe_knowledge_corpus() -> Dict[str, Any]:

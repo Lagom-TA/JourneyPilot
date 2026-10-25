@@ -1,46 +1,3 @@
-"""可选的本地出厂语料种子：导出、校验、开机灌库。
-
-`data/corpus/` 是本地知识库工件目录，默认被 Git 忽略，不随公开仓库发布。
-如果本地提供种子，应用会在启动时尝试自举；没有种子时，Provider 调研仍可运行，
-知识库会作为非阻塞降级项报告。
-
-## 这个模块解决的是什么
-
-`data/corpus/*.txt` 只是**清单**（抓哪些词条、进哪个集合、用哪个 chunker）。这些文件和
-按清单建出来的正文、向量都是本地可选工件，不进入公开仓库；它们此前只活在某台机器的
-`postgres_data` 卷里 ——
-`docker compose down -v` 一次、或者换台机器，出厂语料就是空的，而**没有任何一处会红**：
-空库照样启动，`grounding_corpus()` 照样返回四个集合名，检索照样返回 0 条，
-规划照样往下跑。而这正是「只活在某一次会话里就等于没有」那个形状，
-只不过这次活在的是 docker 卷。
-
-所以维护者如果需要稳定的本地知识库，应把种子放入被忽略的 `data/corpus/seed/`，由开机流程自举；
-公开仓库没有这份数据时，系统必须明确报告降级，而不是假装知识库存在。
-
-## 为什么本地种子也可以包含向量，而不是开机现算
-
-正文保存在本地、向量开机现算，听起来更干净，但本机实测这个 embedder 是 **0.35 秒一段**：
-现有语料就要跑十分钟，而新机器还要先下 1.2 GB 的 ONNX 权重。开机等十分钟的东西，
-运营者会绕过它，绕过一次就回到「库是空的但看起来正常」。
-
-`travel_tips` 还多一层：它是 contextual 分块，每个块的上下文前缀当初是**一次 LLM 调用**
-换来的。好在那些前缀已经落在 `content` 里，所以从种子重建不必重烧配额 ——
-但这也说明种子必须存**块级文本**（含前缀），不能只存原始文档。
-
-## 为什么 manifest 要记 embedder 身份
-
-把 Qwen3 算的向量灌进一个配置成 OpenAI embedding 的库里，检索时**查询向量与语料向量
-来自两个不同的空间**，余弦相似度是噪声 —— 而且它不会报错，只会静静地召回错东西。
-这是同一件事有两套取值、彼此对不上的又一个变体。所以身份对不上时**从种子的文本重算**，
-绝不灌那批向量；重算这条路走得通，正是因为上面说的前缀已经在文本里。
-
-## 为什么只补空集合
-
-运营者可以用 `backend/scripts/index_knowledge.py` 往出厂集合里继续加东西。开机时无条件覆盖
-会把那些内容悄悄丢掉。所以默认只填**当前为空**的集合；要重灌得显式说
-（`backend/scripts/factory_corpus_seed.py --load --force`）。
-"""
-
 from __future__ import annotations
 
 import hashlib
@@ -53,7 +10,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from sqlalchemy import text
 
-from ..config import get_settings
+from ..config.loader import get_settings
 from ..paths import REPO_ROOT
 from ..storage.database import get_db_session
 from .collections import FACTORY_KNOWLEDGE_COLLECTIONS
@@ -253,26 +210,7 @@ def read_manifest(seed_dir: Optional[Path] = None) -> Optional[SeedManifest]:
 
 
 def seeded_factory_collections(seed_dir: Optional[Path] = None) -> Tuple[str, ...]:
-    """本地种子真的带了正文的出厂集合 —— **「哪个出厂集合有货」在这里回答一次**。
-
-    三个读者：接地探针清单（``knowledge/collections.py::grounding_corpus``）、开机自举的降级
-    判据（``ensure_factory_corpus``）、``/api/health/ready`` 的 ``knowledge_corpus``。
-    此前这三处各写了一份 ``declared > 0``，谁跟谁漂开都不会红；而其中最要紧的那一处
-     （探针清单）压根没执行过这条豁免，每次检索都为一个出厂就空的集合发探针，
-    多印一行「向量 0 + lexical 0 → 融合 0」—— 和一次真正的接线断裂长得一模一样。
-
-    **为什么 manifest 是对的来源。** 它是这台机器上「出厂语料应该有什么」的声明，
-    纯文件、不连库，因而在检索热路径上可读；而「库里实际有几段」的定义处是
-    ``factory_collection_counts()``。两者对不上有两个方向，都必须看得见，否则探针清单
-    会静默变短（那正是 ``knowledge/collections.py`` 的 docstring 禁止的读数）：
-
-      声明有货、库里为空 → 开机自举与 ready 都报降级；
-      声明没有、库里有货 → ready 的 ``unprobed_with_content`` 点名报出来。
-
-    没有种子时返回空元组：种子没说过任何话，就不许替它说。
-    顺序跟着 ``FACTORY_KNOWLEDGE_COLLECTIONS`` 走，不跟着 manifest 的 key 顺序走 ——
-    探针清单要可复现。
-    """
+    # 清单表示预期内容，不代表数据库里实际已有内容。
 
     manifest = read_manifest(seed_dir)
     if manifest is None:

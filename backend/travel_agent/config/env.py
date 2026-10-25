@@ -1,11 +1,3 @@
-"""环境变量覆盖：按 schema 一处解析嵌套路径（ADR-0008）。
-
-命名统一为 ``JOURNEYPILOT_<段>__<字段>``，``__`` 是层级分隔符，例如
-``JOURNEYPILOT_DATABASE__PORT``。**认不出的变量是错误，不是忽略。**
-
-MCP provider 的原生 Key 名（``TAVILY_API_KEY`` 等）不走这套前缀，见 `mcp_defaults.py`。
-"""
-
 from __future__ import annotations
 
 import os
@@ -30,24 +22,12 @@ def leaf_fields(
     *,
     include_containers: bool = False,
 ) -> Dict[Tuple[str, ...], Any]:
-    """schema 里每一个叶子字段 → 它的 ``FieldInfo``。
-
-    **全仓只有这一份遍历**，容器判定与嵌套判定的规则因此只有一份。文档生成器曾经自己
-    走一遍同一棵树，两套判定「今天恰好一致」—— 加一个藏在容器式注解后面的嵌套段就会
-    分叉，于是 `config docs --check` 绿着，而 docs/configuration.md 少一行。
-
-    ``include_containers``：文档要列出 list / dict 字段（``model_pricing``、
-    ``mcp_servers``、``cors_origins``），环境变量不要 —— 用一个字符串表达一张价格表，
-    得到的是又一门需要自己的解析器和自己的错误信息的小语言。那些字段走 YAML。
-    """
+    # 容器字段可列入文档，但不能通过单个环境变量赋值。
 
     paths: Dict[Tuple[str, ...], Any] = {}
     for name, field in model.model_fields.items():
         annotation = field.annotation
-        # 容器判定必须**在**嵌套模型判定之前：``List[ModelPricingItem]`` 里确实有一个
-        # BaseModel，但它是表里每一行的类型，不是一个可寻址的字段。先递归的话会造出
-        # ``JOURNEYPILOT_MODEL_PRICING__CURRENCY`` 这种名字，而它指向的路径是
-        # 「往一个 list 上 setattr」。
+        # 容器里的模型不是可逐层赋值的字段，必须先排除容器再递归。
         if _is_container(annotation):
             if include_containers:
                 paths[(*prefix, name)] = field

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import interrupt
 
-from travel_agent.config import get_settings
+from travel_agent.config.loader import get_settings
 from travel_agent.planning.delivery.minimum_draft import seal_minimum_delivery_draft
 from travel_agent.planning.invalidation import invalidation_update
 from travel_agent.planning.nodes import (
