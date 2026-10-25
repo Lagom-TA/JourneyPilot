@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException
-from pydantic import ValidationError
+from travel_agent.memory.preferences import PreferenceRejected, update_travel_preferences
 
-from ...builders import get_components
+from travel_agent.bootstrap.registry import get_components
 from travel_agent.memory.preference_contracts import TRAVEL_PREFERENCE_GROUPS, PreferenceOptionGroup, TravelPreference
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from ..schemas import (
@@ -85,48 +85,20 @@ async def get_user_profile():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _preference_rejection(error: ValidationError) -> str:
-    """把 `TravelPreference` 的拒绝理由投影成一句客户端读得懂的话。
 
-    只取校验器自己写的那句（Pydantic 会给它加一个 ``Value error, `` 前缀），
-    **不带**类型名、字段路径与 ``errors.pydantic.dev`` 链接 —— 那些是内部实现细节，
-    不该整段发给客户端。
-    """
-
-    messages = [
-        str(err.get("msg", "")).removeprefix("Value error, ").strip()
-        for err in error.errors()
-    ]
-    unique = list(dict.fromkeys(m for m in messages if m))
-    return "；".join(unique) or "偏好取值不合法"
 
 
 @router.patch("/preferences")
 async def update_preferences(request: UpdatePreferencesRequest):
     """更新用户偏好（设置页显式编辑：带上来的每一组都按覆盖处理，取消勾选才能真正移除）"""
     components = get_components()
-    unknown = sorted(set(request.preferences) - set(TravelPreference.model_fields))
-    if unknown:
-        # 客户端发来一个后端不认的偏好组，是**请求的问题**，不是服务端故障：
-        # 这里显式 422，而不是让 `TravelPreference(extra="forbid")` 抛 `ValidationError`
-        # 包成 500 并把 Pydantic 的原始报文（含 errors.pydantic.dev 链接）整段发给客户端 ——
-        # 一个错误的字段名读起来像服务挂了。
-        raise HTTPException(
-            status_code=422,
-            detail=f"不认识这几组偏好：{'、'.join(unknown)}",
-        )
     try:
-        await components.user_profile_memory.update_preferences(
-            LOCAL_USER_ID, request.preferences
-        )
+        await update_travel_preferences(components.user_profile_memory, LOCAL_USER_ID, request.preferences)
         return {"status": "success", "message": "用户偏好已更新"}
     except HTTPException:
         raise
-    except ValidationError as e:
-        # 取值不在选项表里、或者是一串空白：同样是**请求的问题**。
-        # 判定在 `TravelPreference` 那一处（读写共用），这里只负责把它投影成一个
-        # 请求错误 —— 不是 500，也不是把 Pydantic 的原始报文发给客户端。
-        raise HTTPException(status_code=422, detail=_preference_rejection(e))
+    except PreferenceRejected as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
         logger.error(f"更新用户偏好失败: {e}")
         raise HTTPException(status_code=500, detail="保存偏好失败，请稍后重试")

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from pydantic import Field
 from typing import List
 from typing import Optional
@@ -53,3 +53,17 @@ class TravelPreset(BaseModel):
     usage_count: int = 0
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+
+
+class SystemPresetSeed(BaseModel):
+    """Validated, release-managed shape for a system travel preset."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=PRESET_NAME_MAX_CHARS)
+    description: str = Field(default="", max_length=PRESET_DESCRIPTION_MAX_CHARS)
+    icon: str = "compass"
+    category: str = "custom"
+    instructions: str = Field(min_length=1, max_length=PRESET_INSTRUCTIONS_MAX_CHARS)
+    constraints: PresetConstraints = Field(default_factory=PresetConstraints)

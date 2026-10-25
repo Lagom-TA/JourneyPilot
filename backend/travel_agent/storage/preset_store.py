@@ -11,53 +11,16 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
-from travel_agent.planning.requirements.preset_contracts import PRESET_DESCRIPTION_MAX_CHARS, PRESET_INSTRUCTIONS_MAX_CHARS, PRESET_NAME_MAX_CHARS, PresetConstraints, TravelPreset
-from ..storage.database import get_db_session
+from travel_agent.config.seeds.travel_presets import validated_system_preset_seeds
+from travel_agent.planning.requirements.preset_contracts import (
+    PresetConstraints,
+    TravelPreset,
+)
+from travel_agent.storage.database import get_db_session
 
 logger = logging.getLogger(__name__)
-
-
-class SystemPresetSeed(BaseModel):
-    """Validated, release-managed shape for a system travel preset."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    id: str = Field(min_length=1)
-    name: str = Field(min_length=1, max_length=PRESET_NAME_MAX_CHARS)
-    description: str = Field(default="", max_length=PRESET_DESCRIPTION_MAX_CHARS)
-    icon: str = "compass"
-    category: str = "custom"
-    instructions: str = Field(min_length=1, max_length=PRESET_INSTRUCTIONS_MAX_CHARS)
-    constraints: PresetConstraints = Field(default_factory=PresetConstraints)
-
-
-def validated_system_preset_seeds(
-    raw_presets: Optional[List[Dict[str, Any]]] = None,
-) -> List[SystemPresetSeed]:
-    """Validate release data before bootstrap or an explicit publication."""
-    if raw_presets is None:
-        from .presets import get_presets
-
-        raw_presets = get_presets()
-
-    allowed_constraints = set(PresetConstraints.model_fields)
-    seeds: List[SystemPresetSeed] = []
-    for raw in raw_presets:
-        constraints = raw.get("constraints", {}) if isinstance(raw, dict) else {}
-        if not isinstance(constraints, dict):
-            raise ValueError("system preset constraints must be an object")
-        unsupported = set(constraints) - allowed_constraints
-        if unsupported:
-            raise ValueError(f"system preset constraints contain unsupported fields: {sorted(unsupported)}")
-        seeds.append(SystemPresetSeed.model_validate(raw))
-
-    ids = [seed.id for seed in seeds]
-    if len(ids) != len(set(ids)):
-        raise ValueError("system preset ids must be unique")
-    return seeds
 
 
 class PresetStore:
@@ -77,7 +40,9 @@ class PresetStore:
             rows = result.mappings().all()
             return [self._row_to_preset(dict(r)) for r in rows]
 
-    async def get_preset(self, preset_id: str, user_id: Optional[str] = None) -> Optional[TravelPreset]:
+    async def get_preset(
+        self, preset_id: str, user_id: Optional[str] = None
+    ) -> Optional[TravelPreset]:
         """获取单个预设。传入 user_id 时仅允许读取系统预设或本人自定义预设。"""
         async with get_db_session() as session:
             if user_id:
@@ -142,7 +107,9 @@ class PresetStore:
             icon=data.get("icon", "compass"),
             category=data.get("category", "custom"),
             instructions=data.get("instructions", ""),
-            constraints=PresetConstraints(**constraints) if isinstance(constraints, dict) else constraints,
+            constraints=PresetConstraints(**constraints)
+            if isinstance(constraints, dict)
+            else constraints,
             is_preset=data.get("is_preset", False),
             created_at=now,
             updated_at=now,
@@ -249,7 +216,9 @@ class PresetStore:
                         "icon": payload["icon"],
                         "cat": payload["category"],
                         "instr": payload["instructions"],
-                        "constraints": json.dumps(payload["constraints"], ensure_ascii=False),
+                        "constraints": json.dumps(
+                            payload["constraints"], ensure_ascii=False
+                        ),
                         "ts": now,
                     },
                 )
@@ -289,7 +258,9 @@ class PresetStore:
                         "icon": payload["icon"],
                         "cat": payload["category"],
                         "instr": payload["instructions"],
-                        "constraints": json.dumps(payload["constraints"], ensure_ascii=False),
+                        "constraints": json.dumps(
+                            payload["constraints"], ensure_ascii=False
+                        ),
                         "ts": now,
                     },
                 )

@@ -111,3 +111,20 @@ def relabel_to_logical_collections(
         probe = str(doc.get("collection") or "")
         if probe:
             doc["collection"] = corpus.logical_name(probe)
+
+
+class CollectionAddressInvalid(ValueError):
+    code = "collection_address_invalid"
+    message = "资料库地址不是一个合法的逻辑集合名"
+
+
+def normalize_collection(collection: str) -> str:
+    try:
+        return canonical_logical_collection(collection)
+    except ValueError as exc:
+        raise CollectionAddressInvalid(str(exc)) from exc
+
+
+def scope_collection(collection: str) -> str:
+    """Resolve a validated logical address to the local user's collection."""
+    return user_scoped_collection(normalize_collection(collection))

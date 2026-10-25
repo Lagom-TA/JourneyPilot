@@ -147,7 +147,7 @@ def test_dynamic_inputs_change_only_runtime_and_preserve_message_boundaries(
 def test_context_sections_have_one_owner_and_are_injected_once(monkeypatch):
     from travel_agent.memory.agent_context import agent_context_sections
 
-    from travel_agent.preset.injector import PresetInjector
+    from travel_agent.conversation.preset_context import PresetInjector
 
 
     monkeypatch.setattr(

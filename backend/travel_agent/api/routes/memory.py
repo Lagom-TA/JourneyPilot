@@ -6,14 +6,13 @@ import logging
 
 from fastapi import APIRouter, Body, HTTPException, Query
 
-from ...builders import get_components
+from travel_agent.bootstrap.registry import get_components
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from ...memory.memory_store import (
     MemoryStore,
-    USER_MANUAL_IMPORTANCE,
-    USER_MANUAL_SESSION_ID,
 )
 from ...utils.user_text import is_blank
+from travel_agent.memory.manual_facts import ManualFactSaveFailed, save_manual_fact
 from ..schemas import (
     AddMemoryFactRequest,
     AddMemoryFactResponse,
@@ -91,33 +90,13 @@ async def add_memory_fact(request: AddMemoryFactRequest = Body(...)):
     category = (request.category or "").strip() or "preference"
     store = MemoryStore()
     try:
-        existing = await store.find_manual_fact(LOCAL_USER_ID, content)
-        if existing is not None:
-            return AddMemoryFactResponse(
-                status="existing",
-                fact=_fact_item(existing),
-            )
-
-        fact_id = await store.save_fact(
-            user_id=LOCAL_USER_ID,
-            session_id=USER_MANUAL_SESSION_ID,
-            content=content,
-            category=category,
-            importance=USER_MANUAL_IMPORTANCE,
+        result = await save_manual_fact(
+            store=store, user_id=LOCAL_USER_ID, content=content, category=category,
+            profile_for_write=lambda: get_components().user_profile_memory,
         )
-        if fact_id is None:
-            raise HTTPException(status_code=500, detail="memory fact save failed")
-        # 已经落下真实记忆后才建立画像行；读取和失败写入都不会制造空画像。
-        await get_components().user_profile_memory.ensure_profile_for_write(LOCAL_USER_ID)
-        # 身份由写入交回来，按它读回整条 —— 不拿内容去全量列表里猜是哪一条。
-        created = await store.get_fact(LOCAL_USER_ID, fact_id)
-        if created is None:
-            # 刚写进去、按 id 读不回来，是真故障，不许包装成「成功但没有对象」。
-            raise HTTPException(status_code=500, detail="memory fact save failed")
-        return AddMemoryFactResponse(
-            status="created",
-            fact=_fact_item(created),
-        )
+        return AddMemoryFactResponse(status=result.status, fact=_fact_item(result.fact))
+    except ManualFactSaveFailed as exc:
+        raise HTTPException(status_code=500, detail="memory fact save failed") from exc
     except HTTPException:
         raise
     except Exception as e:

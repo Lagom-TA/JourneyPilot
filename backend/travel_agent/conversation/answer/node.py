@@ -64,7 +64,7 @@ async def fast_answer_node(
 
     preset_suffix = ""
     if state.preset_context:
-        from travel_agent.preset.injector import PresetInjector
+        from travel_agent.conversation.preset_context import PresetInjector
 
         preset_suffix = PresetInjector.format_for_agent(state.preset_context)
 

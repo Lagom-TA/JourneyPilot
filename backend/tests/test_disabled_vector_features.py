@@ -101,8 +101,8 @@ def test_disabled_embedding_rejects_a_previously_cached_model(disabled_vectors, 
 
 
 async def test_bootstrap_and_health_do_not_read_corpus(disabled_vectors, monkeypatch):
-    from travel_agent.api.app import _bootstrap_factory_corpus
-    from travel_agent.api.routes.system import _probe_knowledge_corpus
+    from travel_agent.knowledge.bootstrap import bootstrap_factory_corpus
+    from travel_agent.bootstrap.diagnostics.knowledge import _probe_knowledge_corpus
     from travel_agent.knowledge import factory_seed
 
     seed = AsyncMock()
@@ -111,7 +111,7 @@ async def test_bootstrap_and_health_do_not_read_corpus(disabled_vectors, monkeyp
     monkeypatch.setattr(factory_seed, "ensure_factory_corpus", seed)
     monkeypatch.setattr(factory_seed, "factory_collection_counts", count)
     monkeypatch.setattr(factory_seed, "read_manifest", manifest)
-    assert await _bootstrap_factory_corpus() == []
+    assert await bootstrap_factory_corpus() == []
     probe = await _probe_knowledge_corpus()
     assert probe["enabled"] is False
     assert probe["ready"] is False

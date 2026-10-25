@@ -36,7 +36,7 @@ def agent_context_sections(
             logger.debug("%s AnchorSummary 注入失败: %s", agent_label or "agent", exc)
     if getattr(state, "preset_context", None):
         try:
-            from ..preset.injector import PresetInjector
+            from travel_agent.conversation.preset_context import PresetInjector
 
             text = PresetInjector.format_for_agent(state.preset_context)
             if text:

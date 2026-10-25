@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from travel_agent.preset.product_config import validated_trip_planner_seed
+from travel_agent.config.seeds.trip_planner import validated_trip_planner_seed
 from typing import Any
 from typing import Mapping
 

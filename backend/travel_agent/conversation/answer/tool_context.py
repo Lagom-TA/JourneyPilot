@@ -42,7 +42,7 @@ async def _build_realtime_tool_context(
         args["requested_date"] = requested_date
 
     try:
-        from travel_agent.builders import get_components
+        from travel_agent.bootstrap.registry import get_components
         from travel_agent.runtime.events import run_ts_ms
         from travel_agent.tools.execution import execute_tool
         from travel_agent.tools.registry import get_tool_registry

@@ -7,15 +7,14 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from ..builders import AppBuilder, set_components
-from travel_agent.config.capabilities import capability_gaps
+from travel_agent.bootstrap.startup import application_lifespan
 from ..config import get_settings
 from ..paths import BACKEND_DIR
 from ..utils.log_redaction import install_query_secret_redaction
@@ -25,176 +24,11 @@ from .routes import chat, knowledge, memory, places, preset, product, sessions, 
 logger = logging.getLogger(__name__)
 
 
-async def _bootstrap_factory_corpus() -> list[str]:
-    """把本地可选的出厂语料种子补进空集合，返回补不上的问题（空 = 没问题）。
-
-    自举**只补空集合**：运营者可以用 `backend/scripts/index_knowledge.py` 往出厂集合里继续加
-    东西，开机无条件覆盖会把那些悄悄丢掉。种子本身与判断规则在 `knowledge/factory_seed.py`。
-
-    **返回的问题不进「请勿放行流量」那一行**，理由与 readiness 里 `data_snapshots`
-    那条注释同源：空语料降低的是接地质量，它不让服务答不出话 —— 深度规划的候选身份
-    全部来自 Provider（知识库只提名），快问快答还有模型自身知识与实时工具。
-    把它塞进那一行会让一个能服务的部署被读成「不许放行」，而那正是
-    「一处报警一处放行」的另一个方向。
-
-    但它**必须自己有一条 ERROR**：空库若只剩一句 warning 就等于什么都没做。
-    运营者看到的是「系统就绪」旁边一条红线，
-    两句话不矛盾 —— 服务能跑，知识库是空的，开演之前去修。
-    """
-
-    if not get_settings().embedding.enabled:
-        return []
-
-    from ..knowledge.factory_seed import ensure_factory_corpus
-
-    try:
-        report = await ensure_factory_corpus()
-    except Exception as exc:  # 自举崩了不拦启动，但要变成一条红线、不是一个静默的坑
-        logger.exception("出厂语料自举失败")
-        return [f"出厂语料自举失败（{exc}）"]
-
-    if report.loaded:
-        logger.info(
-            "出厂语料自举：灌入 %s%s",
-            "、".join(f"{name} {count} 段" for name, count in sorted(report.loaded.items())),
-            "（种子 embedder 与当前配置不符，向量已重算）" if report.reembedded else "",
-        )
-    elif not report.problems:
-        logger.info("出厂语料就位：%s", report.present)
-    return list(report.problems)
-
-
-async def _probe_pdf_font() -> Optional[str]:
-    """开机确认这台机器能排出中文 PDF，返回问题（None = 没问题）。
-
-    字体探测放在启动而不是首次导出：一台缺可嵌入 CJK 字体的机器上，用户是在按下
-    「导出」并等完一次渲染之后才知道这件事的。探测本身也走渲染通道，因为它就是
-    一次真实渲染（一页、内存里、不产出任何产物）。
-
-    不阻塞启动：缺字体降级的是导出，不是规划与问答。它自己有一条 ERROR，并在
-    readiness 的 `pdf_export` 里能看见。
-    """
-
-    from travel_agent.runtime.blocking_work import run_blocking
-    from travel_agent.integrations.pdf_readiness import PdfFontUnavailable, PdfRendererProbe, probe_pdf_renderer, record_pdf_probe
-
-    try:
-        font = await run_blocking("pdf_export", probe_pdf_renderer)
-    except PdfFontUnavailable as exc:
-        record_pdf_probe(PdfRendererProbe(available=False, problem=str(exc)))
-        return str(exc)
-    except Exception as exc:  # 渲染器本身坏了也是「导不出 PDF」
-        problem = f"PDF 渲染预检失败（{exc}）"
-        record_pdf_probe(PdfRendererProbe(available=False, problem=problem))
-        return problem
-    record_pdf_probe(PdfRendererProbe(available=True, font=font))
-    logger.info("PDF 渲染预检通过 | 字体: %s", font)
-    return None
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """应用生命周期管理：启动时初始化，关闭时清理"""
-    settings = get_settings()
-    # 配置要求了但没装的增强依赖 → **拒绝启动**。让它跑起来的后果是用户问出第一个
-    # 问题、等到检索那一步才拿到一个 ImportError，而那条错误里没有可敲的命令。
-    gaps = capability_gaps(settings)
-    if gaps:
-        for gap in gaps:
-            logger.error("增强依赖缺失：%s", gap.message())
-        raise RuntimeError(
-            "配置选择的增强能力缺少依赖："
-            + "；".join(gap.message() for gap in gaps)
-        )
-    builder = AppBuilder(settings)
-
-    try:
-        logger.info("JourneyPilot API 启动中...")
-        components = await builder.build()
-        set_components(components)
-        # 破库 / 无持久化启动绝不能显示「系统就绪」——运营者只看这一行。
-        degraded: list[str] = []
-        report = components.schema_report
-        if report is None or not report.compatible:
-            problems = "；".join(report.problems) if report else "合同校验未执行"
-            action = (report.next_action if report else "") or "journeypilot doctor"
-            degraded.append(f"数据库合同校验未通过（{problems}）→ {action}")
-        else:
-            # 出厂数据写入只在合同校验通过后跑：结构没建好时这些 DML 会成批失败，
-            # 而那批失败只是同一个问题的回声。
-            try:
-                await components.preset_store.ensure_presets()
-                await components.product_configuration_store.ensure_seed()
-                logger.info("预设与产品配置初始化完成")
-            except Exception as e:
-                logger.warning(f"预设初始化失败: {e}")
-            # 出厂语料自举。放在这里而不是 run.sh：docker compose 起的那一路不经过
-            # run.sh，而「知识库是空的」在两路上是同一件事。空库时检索静默返回 0 条、
-            # 规划照常交付，所以要自成一条 ERROR，不并进下面那句「请勿放行流量」，
-            # 理由见 `_bootstrap_factory_corpus` 的 docstring。
-            corpus_problems = await _bootstrap_factory_corpus()
-            if corpus_problems:
-                logger.error(
-                    "出厂语料未就位，知识库检索会静默返回 0 条"
-                    "（详见 GET /api/health/ready 的 knowledge_corpus）| %s",
-                    "；".join(corpus_problems),
-                )
-            # 孤儿 Run 普查放在这里而不是更早：它要写 trip_runs，所以必须等合同校验通过。
-            # 在接受业务请求之前跑完 —— 一个显示 running 的 Run 如果在恢复判定之前就被
-            # 客户端读到，用户看到的是一个永远不动的进度条。
-            recovery = components.run_recovery_service
-            if recovery is not None:
-                try:
-                    recovery_report = await recovery.sweep()
-                    recovery_report.log_summary()
-                except Exception as e:
-                    logger.error("启动恢复普查失败: %s", e, exc_info=True)
-                    degraded.append(f"启动恢复普查失败（{e}）")
-                # 周期扫描与这一次普查各自成败：租约还没过期的 run 本来就该被首次普查
-                # 跳过、留给后面的扫描接住，普查失败把扫描也一起关掉，那些 run 会永远
-                # 停在 running。
-                recovery.start()
-            # 上一个进程留下的后台任务在这里被重新领走：它们的最终事实在 background_jobs，
-            # 不在任何一个已经退出的 Event Loop 里。
-            worker = components.background_job_worker
-            if worker is not None:
-                try:
-                    await worker.cleanup()
-                except Exception as e:
-                    logger.warning("后台任务清理失败: %s", e)
-                worker.start()
-        # 字体探测与库无关，所以不等合同校验：一台缺字体的机器在两种情况下都导不出报告。
-        pdf_problem = await _probe_pdf_font()
-        if pdf_problem:
-            logger.error(
-                "PDF 导出不可用，规划与问答不受影响"
-                "（详见 GET /api/health/ready 的 pdf_export）| %s",
-                pdf_problem,
-            )
-        # checkpointer 的判据必须与 readiness 逐字同源（system.py::readiness 的
-        # `bool(components.checkpointer) or not gates_enabled`）：门关掉时没有
-        # checkpointer 是合法配置，不是降级。两处分叉就会一处报警一处放行。
-        if not components.checkpointer_available and settings.run_control.plan_gate_enabled:
-            degraded.append(
-                f"LangGraph checkpointer 不可用（{components.checkpointer_init_error}）"
-            )
-        if degraded:
-            logger.error(
-                "系统降级启动，请勿放行流量（详见 GET /api/health/ready）| %s | "
-                "工具: %d 个 | 模型: %s",
-                "；".join(degraded),
-                components.tool_registry.count,
-                settings.primary_model.model_name,
-            )
-        else:
-            logger.info(
-                f"系统就绪 | 工具: {components.tool_registry.count} 个 | "
-                f"模型: {settings.primary_model.model_name}"
-            )
+    async with application_lifespan():
         yield
-    finally:
-        logger.info("JourneyPilot API 关闭中，清理资源...")
-        await builder.teardown()
 
 
 def create_app() -> FastAPI:

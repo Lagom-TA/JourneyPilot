@@ -13,17 +13,17 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
-from ...builders import get_components
+from travel_agent.bootstrap.registry import get_components
 from ...config import get_settings
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
-from ...knowledge.collections import canonical_logical_collection, user_scoped_collection
+from ...knowledge.collections import CollectionAddressInvalid, normalize_collection, scope_collection
 from ...knowledge.sources.document_parse import (
-    MIN_INDEXABLE_CHARS,
     SUPPORTED_SUFFIXES,
     DocumentRejected,
     parse_upload,
 )
-from ...utils.user_text import content_length
+from travel_agent.knowledge.text_validation import TextNotIndexable, require_indexable_text
+from travel_agent.knowledge.documents import SourceDocumentUnavailable, require_source_document
 from ..schemas import (
     KnowledgeCollectionStatsResponse,
     KnowledgeDeleteResponse,
@@ -40,7 +40,7 @@ router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
 
 # 阈值与判定在 `knowledge/sources/document_parse.py`：上传与批量导入两条入口共用一份，
 # 否则扫描版 PDF 在一条路上被拒、在另一条路上变成一次「成功索引 0 个文本块」。
-_MIN_INDEXABLE_CHARS = MIN_INDEXABLE_CHARS
+
 
 # 这条路上每一个 4xx 都带一个 `code`，**一个都不许少**。少一个的后果不是「少一句话」，
 # 是**画成另一句话**：界面读不到 code 就按状态码回落，而 422 那一档的回落是
@@ -83,50 +83,21 @@ def _require_vector_knowledge() -> None:
 
 def _logical_collection_name(collection: str) -> str:
     """Project the shared collection contract to an HTTP 400 boundary."""
-
     try:
-        return canonical_logical_collection(collection)
-    except ValueError as exc:
+        return normalize_collection(collection)
+    except CollectionAddressInvalid as exc:
         logger.warning("资料库集合名不合法: %s", exc)
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "code": "collection_address_invalid",
-                "message": "资料库地址不是一个合法的逻辑集合名",
-            },
-        ) from exc
+        raise HTTPException(status_code=400, detail={"code": exc.code, "message": exc.message}) from exc
 
 
-def scope_collection(collection: str) -> str:
-    """把逻辑集合名解析成本机用户的物理集合名。"""
 
-    return user_scoped_collection(_logical_collection_name(collection))
 
 
 def _require_indexable_text(text: str) -> str:
-    """一份资料要么带着可索引的正文，要么这次上传就不算成功。
-
-    四种格式与手输那一路共用这一道界（`_MIN_INDEXABLE_CHARS` 的注释写了为什么它在
-    这一层）。扫描版 PDF 是这条路上最常见的一种：`pypdf` 不报错、逐页返回空串，
-    没有这道界它就变成一次「成功索引 0 个文本块」。
-
-    ``detail`` 走 ``{code, message}`` 那个形状（读取器在
-    `frontend/src/lib/apiErrorDetail.ts`）：**话由界面说**，这里只负责说清是哪一种
-    失败。少了这个 code，界面只能按状态码回落到「请求的信息不完整，请刷新页面后
-    重试」——而请求是完整的、刷新也不会让这份文件长出正文。
-    """
-
-    # 「有几个字算有内容」的量法在 `utils/user_text.py`（偏好与记忆两处同一条）；
-    # **阈值**是这个字段自己的属性，所以它留在这里。
-    if content_length(text) < _MIN_INDEXABLE_CHARS:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "code": "no_indexable_text",
-                "message": "没有可索引的正文（可能是空文件或扫描版 PDF）",
-            },
-        )
-    return text
+    try:
+        return require_indexable_text(text)
+    except TextNotIndexable as exc:
+        raise HTTPException(status_code=422, detail={"code": exc.code, "message": exc.message}) from exc
 
 
 def _rejection_to_http(rejection: DocumentRejected) -> HTTPException:
@@ -252,7 +223,7 @@ async def upload_file(
 async def query_knowledge(request: KnowledgeQueryRequest):
     """语义查询知识库（仅当前用户作用域集合）。"""
     _require_vector_knowledge()
-    collection = scope_collection(request.collection)
+    collection = scope_collection(_logical_collection_name(request.collection))
     components = get_components()
     try:
         docs = await components.vector_retriever.retrieve(
@@ -284,33 +255,13 @@ async def delete_collection(collection_name: str):
 
 
 async def _require_source_document(collection: str, source: str) -> dict:
-    """取一篇资料的正文，取不到就说清是哪一种取不到。
-
-    两种「没有正文」必须分开回报，否则界面只能说一句含糊的话：
-
-    - **这一篇不存在**（404 `unknown_source`）：来源名打错了，或它刚被删掉。
-    - **这一篇有段、但正文没有留存**（409 `document_text_unavailable`）：
-      `knowledge_documents` 之前入库的资料。这里**不许**把段拼回去当正文交出去 ——
-      段带重叠、contextual 分块还带 LLM 前缀，拼出来的不是用户写下的东西，
-      而一旦他按了保存，那份近似品就成了新的正文（见建表处的注释）。
-    """
-
-    indexer = get_components().knowledge_indexer
-    document = await indexer.get_document(collection, source)
-    if document is not None:
-        return document
-    if await indexer.count_source_chunks(collection, source) > 0:
+    try:
+        return await require_source_document(get_components().knowledge_indexer, collection, source)
+    except SourceDocumentUnavailable as exc:
         raise HTTPException(
-            status_code=409,
-            detail={
-                "code": "document_text_unavailable",
-                "message": "这篇资料入库时没有留存正文",
-            },
-        )
-    raise HTTPException(
-        status_code=404,
-        detail={"code": "unknown_source", "message": "资料库里没有这一篇"},
-    )
+            status_code=409 if exc.code == "document_text_unavailable" else 404,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
 
 
 @router.get(

@@ -71,7 +71,8 @@ def test_readiness_blocks_on_the_schema_contract():
     分叉的结果是一处报警一处放行。这条把「同源」变成一个会红的断言。
     """
 
-    from travel_agent.api.routes.system import _NON_BLOCKING_COMPONENTS, _probe_schema_report
+    from travel_agent.bootstrap.diagnostics.readiness import _NON_BLOCKING_COMPONENTS
+    from travel_agent.bootstrap.diagnostics.dependencies import _probe_schema_report
     from travel_agent.storage.maintenance.report import GATES_READINESS
 
     assert GATES_READINESS is True

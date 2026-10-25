@@ -17,7 +17,7 @@ from typing import Any, Dict, Literal, Mapping, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Response
 
-from ...builders import get_components
+from travel_agent.bootstrap.registry import get_components
 from travel_agent.runtime.command_contracts import RunCommand, RunCommandStatus, RunCommandType
 from travel_agent.runtime.run_contracts import TripRunStatus
 from travel_agent.runtime.run_lifecycle import available_run_actions, is_cancellable

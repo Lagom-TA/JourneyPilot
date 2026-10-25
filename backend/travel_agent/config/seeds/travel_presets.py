@@ -5,7 +5,12 @@
 
 from __future__ import annotations
 
-from typing import List, Dict, Any
+from typing import Any, Dict, List, Optional
+
+from travel_agent.planning.requirements.preset_contracts import (
+    PresetConstraints,
+    SystemPresetSeed,
+)
 
 BUILTIN_PRESETS = [
     {
@@ -216,3 +221,29 @@ BUILTIN_PRESETS = [
 def get_presets() -> List[Dict[str, Any]]:
     """获取所有内置预设定义（稳定数据入口）。"""
     return BUILTIN_PRESETS
+
+
+def validated_system_preset_seeds(
+    raw_presets: Optional[List[Dict[str, Any]]] = None,
+) -> List[SystemPresetSeed]:
+    """Validate release data before bootstrap or an explicit publication."""
+    if raw_presets is None:
+        raw_presets = get_presets()
+
+    allowed_constraints = set(PresetConstraints.model_fields)
+    seeds: List[SystemPresetSeed] = []
+    for raw in raw_presets:
+        constraints = raw.get("constraints", {}) if isinstance(raw, dict) else {}
+        if not isinstance(constraints, dict):
+            raise ValueError("system preset constraints must be an object")
+        unsupported = set(constraints) - allowed_constraints
+        if unsupported:
+            raise ValueError(
+                f"system preset constraints contain unsupported fields: {sorted(unsupported)}"
+            )
+        seeds.append(SystemPresetSeed.model_validate(raw))
+
+    ids = [seed.id for seed in seeds]
+    if len(ids) != len(set(ids)):
+        raise ValueError("system preset ids must be unique")
+    return seeds

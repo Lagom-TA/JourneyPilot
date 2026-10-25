@@ -16,14 +16,14 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from travel_agent.builders import AppBuilder
+from travel_agent.bootstrap.assembly import build_components
+from travel_agent.bootstrap.shutdown import shutdown_components
 from travel_agent.config import get_settings
 from travel_agent.storage.checkpoint_pruning import CheckpointPruningService
 
 
 async def main() -> None:
-    builder = AppBuilder()
-    components = await builder.build()
+    components = await build_components()
     try:
         retention = get_settings().checkpoint_retention
         service = CheckpointPruningService(
@@ -34,7 +34,7 @@ async def main() -> None:
         result = await service.prune_once()
         print(json.dumps(result.__dict__, ensure_ascii=False, indent=2))
     finally:
-        await builder.teardown()
+        await shutdown_components()
 
 
 if __name__ == "__main__":

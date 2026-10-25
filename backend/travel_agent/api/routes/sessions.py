@@ -13,7 +13,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query
 
-from ...builders import get_components
+from travel_agent.bootstrap.registry import get_components
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from ...memory.chat_session import TURN_PAGE_LIMIT
 from ...memory.compaction import CompactionBusy, get_compaction_service

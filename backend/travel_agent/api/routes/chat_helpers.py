@@ -61,8 +61,8 @@ async def load_preset_context(
         return "", {}
     from fastapi import HTTPException
 
-    from ...preset.injector import PresetInjector
-    from ...preset.store import PresetStore
+    from travel_agent.conversation.preset_context import PresetInjector
+    from travel_agent.storage.preset_store import PresetStore
 
     try:
         preset_store = PresetStore()

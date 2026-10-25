@@ -59,7 +59,7 @@ def with_worker_recovery(node, worker):
         store = configurable.get("worker_journal_store")
         if store is None:
             try:
-                from ..builders import get_components
+                from travel_agent.bootstrap.registry import get_components
 
                 store = getattr(get_components(), "worker_journal_store", None)
             except RuntimeError:

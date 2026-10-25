@@ -19,7 +19,7 @@ from travel_agent.planning.outcomes import (
     InternalFailureClass,
 )
 
-from ...builders import get_components
+from travel_agent.bootstrap.registry import get_components
 from ...config import get_settings
 from travel_agent.planning.delivery.evidence_basis import PublicProjectionContractViolation
 from travel_agent.planning.terminal_reasons import delivery_integrity_reason_code

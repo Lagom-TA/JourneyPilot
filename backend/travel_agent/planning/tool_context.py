@@ -9,7 +9,7 @@ def build_tool_context_from_state(state: Any) -> Dict[str, Any]:
         "run_id": getattr(state, "run_id", None),
     }
     try:
-        from ..builders import get_components
+        from travel_agent.bootstrap.registry import get_components
 
         components = get_components()
         context["tool_audit_store"] = getattr(components, "tool_audit_store", None)

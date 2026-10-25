@@ -18,7 +18,7 @@ from typing import Sequence
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_DIR))
 
-from travel_agent.preset.publication import build_publication_summary, publish_seed
+from travel_agent.config.publication import build_publication_summary, publish_seed
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:

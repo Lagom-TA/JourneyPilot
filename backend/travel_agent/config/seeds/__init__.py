@@ -1,0 +1,1 @@
+"""Release-managed product seeds."""

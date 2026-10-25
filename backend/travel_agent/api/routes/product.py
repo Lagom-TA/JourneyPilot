@@ -2,7 +2,8 @@
 
 from fastapi import APIRouter, HTTPException
 
-from ...preset.product_config import ProductConfigurationStore, TripPlannerConfiguration
+from travel_agent.storage.product_configuration_store import ProductConfigurationStore
+from travel_agent.planning.requirements.product_contracts import TripPlannerConfiguration
 
 router = APIRouter(prefix="/api/product", tags=["product"])
 _store = ProductConfigurationStore()

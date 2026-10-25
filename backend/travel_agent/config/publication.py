@@ -6,17 +6,19 @@ import hashlib
 import json
 from typing import Any, Dict
 
+from travel_agent.config.seeds.travel_presets import validated_system_preset_seeds
+from travel_agent.config.seeds.trip_planner import validated_trip_planner_seed
+from travel_agent.planning.requirements.product_contracts import TRIP_PLANNER_CONFIG_KEY
+from travel_agent.storage.preset_store import PresetStore
+from travel_agent.storage.product_configuration_store import ProductConfigurationStore
+
 from ..storage.maintenance.report import require_database_contract
-from .product_config import (
-    TRIP_PLANNER_CONFIG_KEY,
-    ProductConfigurationStore,
-    validated_trip_planner_seed,
-)
-from .store import PresetStore, validated_system_preset_seeds
 
 
 def _digest(payload: Any) -> str:
-    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    encoded = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
