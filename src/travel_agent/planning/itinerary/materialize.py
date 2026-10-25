@@ -785,3 +785,26 @@ def materialize_trip_workspace(
         user_input_anchors=user_input_anchors or [],
         selection_slots=slots,
     )
+
+
+def _restore_full_catalog(
+    workspace: TripWorkspaceV2,
+    full_catalog: RecommendationCatalog | None,
+) -> TripWorkspaceV2:
+    if full_catalog is None:
+        return workspace
+    admissions = {
+        (result.candidate_id, result.selection_slot_id): result
+        for result in full_catalog.admission_results
+    }
+    admissions.update(
+        {
+            (result.candidate_id, result.selection_slot_id): result
+            for result in workspace.recommendation_catalog.admission_results
+            if result.selection_slot_id is not None
+        }
+    )
+    restored_catalog = full_catalog.model_copy(
+        update={"admission_results": list(admissions.values())}
+    )
+    return workspace.model_copy(update={"recommendation_catalog": restored_catalog})

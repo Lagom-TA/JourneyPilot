@@ -963,7 +963,7 @@ async def lookup_typed_addresses_bilingual(
 # 一次工具调用里整条身份 fallback 的时间片。每条别名查询都是一次全 bbox 扫描，Visit
 # 还要乘上 5 条 tag predicate，六城探针（见 ``_OVERPASS_TAG_FILTERS`` 上方的表）实测
 # 单条别名 23-74s。20.0 与 B 梯子的按条目口径对齐
-# （itinerary_planner/node.py::_AUTHORED_ENTRY_BUDGET_SECONDS）：健康实例上够一次成功
+# （planning/itinerary/locations.py::_AUTHORED_ENTRY_BUDGET_SECONDS）：健康实例上够一次成功
 # 解析跑完，实例过载时把损失钉在一个时间片里，而不是让 4 条别名 × 3 次重试拖走整轮
 # 调研。时间片先于重试阶梯用尽是预期结果，此时归因是 budget_spent 而不是 provider
 # unavailable——两者都写进 identity_fallback_failure，读日志能分开。

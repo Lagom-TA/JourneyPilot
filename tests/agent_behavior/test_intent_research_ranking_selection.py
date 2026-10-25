@@ -856,7 +856,7 @@ def test_provider_duration_conflict_is_reported_without_changing_the_draft(monke
 
 
 def test_json_object_composition_schema_keeps_semantics_without_null_branches():
-    from travel_agent.agents.itinerary_planner.node import _composition_response_schema
+    from travel_agent.planning.itinerary.model_schema import _composition_response_schema
 
     prompt_schema = _composition_response_schema(strict_wire=False)
     strict_schema = _composition_response_schema(strict_wire=True)

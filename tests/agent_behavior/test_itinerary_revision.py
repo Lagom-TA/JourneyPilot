@@ -9,13 +9,10 @@ from tests.agent_behavior.test_intent_research_ranking_selection import (
 )
 from tests.test_composition_context import state
 
-from travel_agent.agents.itinerary_planner.node import (
-    _build_composition_prompt,
-    _composition_phase,
-)
 from travel_agent.entities.candidate_discovery import CandidateDiscoveryOrigin
 from travel_agent.entities.intent_coverage import IntentContractSnapshot
 from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.itinerary import composition, connector_estimates, locations
 from travel_agent.planning.itinerary.checks import (
     validate_itinerary_transport_topology,
     validate_placement_skeleton,
@@ -31,7 +28,9 @@ from travel_agent.planning.itinerary.draft import (
     placement_occurrence_key,
 )
 from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
+from travel_agent.planning.itinerary.node import _composition_phase
 from travel_agent.planning.itinerary.parsing import parse_itinerary_composition
+from travel_agent.planning.itinerary.prompts import _build_composition_prompt
 from travel_agent.planning.research.candidates import DiningCandidate
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.services.candidate_ranking import rank_candidates
@@ -187,6 +186,87 @@ def test_repeated_restaurant_is_an_occurrence_not_a_global_identity():
     payload["duration_days"] = 2
     result = parse_itinerary_composition(json.dumps(payload))
     assert [len(day.placements) for day in result.days] == [2, 1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cross_day", [False, True], ids=["different-meals", "different-days"])
+async def test_planner_preserves_useful_restaurant_reuse_through_checkpoint(
+    monkeypatch, cross_day,
+):
+    from travel_agent.planning.itinerary import node
+
+    original = state()
+    payload = draft([meal()])
+    if cross_day:
+        payload["duration_days"] = 2
+        payload["days"].append({
+            **payload["days"][0],
+            "day_id": "day_2", "day": 2, "date": "2026-10-11",
+            "placements": [meal(day="2026-10-11")],
+        })
+        shell = original.minimum_delivery_draft.day_shells[0]
+        original = checkpoint(
+            original,
+            controlled_trip_identity={
+                **original.controlled_trip_identity, "end_date": "2026-10-11",
+            },
+            minimum_delivery_draft=original.minimum_delivery_draft.model_copy(update={
+                "day_shells": [
+                    shell.model_copy(update={"lodging_night": True}),
+                    shell.model_copy(update={
+                        "day_id": "day_2", "day": 2, "date": date(2026, 10, 11),
+                    }),
+                ],
+            }),
+        )
+    else:
+        payload["days"][0]["placements"].append(meal("lunch", "12:00", "13:00"))
+    placements = [item for day in payload["days"] for item in day["placements"]]
+    reasons = ["早餐顺路", "重访喜欢的门店品尝另一道菜"]
+    for placement, reason in zip(placements, reasons):
+        placement["selection_reason"] = reason
+    catalog = _catalog(restaurant_packet())
+    scores = rank_candidates(catalog=catalog, intent_spec=original.intent_spec, matches=[])
+    catalog = catalog.model_copy(update={"candidate_ranking_scores": scores})
+    selection = build_candidate_selection_plan(
+        catalog=catalog, intent_spec=original.intent_spec, ranking_scores=scores,
+        duration_days=payload["duration_days"], destination_count=1,
+    )
+    calls = []
+
+    class Model:
+        async def ainvoke(self, messages, **kwargs):
+            calls.append(messages)
+            assert "不同餐次" in messages[0]["content"]
+            assert "包括跨日复用" in messages[0]["content"]
+            assert "不要求全程地点唯一" in messages[0]["content"]
+            return json.dumps(payload)
+
+    monkeypatch.setattr(node, "get_model_router", lambda: None)
+    monkeypatch.setattr(node, "llm_for_task", lambda *args: Model())
+    current = checkpoint(
+        original, recommendation_catalog=catalog, candidate_selection_plan=selection,
+    )
+    drafted = checkpoint(current, **await node.itinerary_planner_node(current, {}))
+    assert drafted.composition_failure_context is None
+    assert len(calls) == 1
+    ready = checkpoint(drafted, candidate_gate_status="passed")
+    completed = checkpoint(ready, **await node.itinerary_planner_node(ready, {}))
+    assert completed.agent_status["itinerary_planner"] == "completed"
+    stops = completed.trip_workspace_v2.itinerary.dining_stops
+    assert len({stop.item_id for stop in stops}) == 2
+    assert [stop.lineage.candidate_id for stop in stops] == ["candidate_dining"] * 2
+    assert [stop.day_id for stop in stops] == [
+        day["day_id"] for day in payload["days"] for _ in day["placements"]
+    ]
+    assert [stop.meal_type for stop in stops] == [item["meal_type"] for item in placements]
+    assert [(stop.planned_start.isoformat(), stop.planned_end.isoformat()) for stop in stops] == [
+        (item["planned_start"], item["planned_end"]) for item in placements
+    ]
+    assert [stop.selection_reason for stop in stops] == reasons
+    repeated = checkpoint(ready, **await node.itinerary_planner_node(ready, {}))
+    assert [stop.item_id for stop in repeated.trip_workspace_v2.itinerary.dining_stops] == [stop.item_id for stop in stops]
+    assert len(calls) == 1
 
 
 def test_duplicate_same_meal_is_reported_not_removed():
@@ -396,9 +476,9 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
         _spec,
     )
 
-    from travel_agent.agents.itinerary_planner import node
     from travel_agent.agents.orchestrator import candidate_gate, dispatcher
     from travel_agent.entities.intent_spec import IntentKind, IntentTarget
+    from travel_agent.planning.itinerary import node
 
     objective = _intent("intent_trip", "Tokyo day trip", kind=IntentKind.OBJECTIVE)
     spec = _spec(objective.model_copy(update={"target": IntentTarget.TRIP, "impact_stages": ["composition"]}))
@@ -527,7 +607,6 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
 
 @pytest.mark.asyncio
 async def test_revision_model_receives_distinct_actual_drafts(monkeypatch):
-    from travel_agent.agents.itinerary_planner import node
 
     catalog = _catalog(restaurant_packet())
     seen = []
@@ -546,7 +625,7 @@ async def test_revision_model_receives_distinct_actual_drafts(monkeypatch):
             placement_skeleton=ItineraryCompositionDraft.model_validate(payload),
             composition_failure_context="rest conflict",
         )
-        await node._compose_draft(current, "revise", Model(), set(), [], set())
+        await composition._compose_draft(current, "revise", Model(), set(), [], set())
     assert seen[0] != seen[1]
     assert "旧稿甲" in seen[0] and "旧稿乙" in seen[1]
 
@@ -557,8 +636,8 @@ async def test_new_draft_researches_connectors_then_uses_the_same_materializer(
 ):
     from tests.agent_behavior.test_intent_research_ranking_selection import _brief
 
-    from travel_agent.agents.itinerary_planner import node
     from travel_agent.agents.orchestrator import candidate_gate, dispatcher
+    from travel_agent.planning.itinerary import node
     from travel_agent.services.research_query_planner import build_research_query_plan
 
     catalog = _catalog(visit_packet(), restaurant_packet())
@@ -617,7 +696,6 @@ async def test_new_draft_researches_connectors_then_uses_the_same_materializer(
 async def test_located_retry_keeps_new_reasons_and_reuses_provider_identity(
     monkeypatch,
 ):
-    from travel_agent.agents.itinerary_planner import node
     from travel_agent.planning.itinerary.draft import authored_places
 
     entry = visit_entry()
@@ -651,8 +729,8 @@ async def test_located_retry_keeps_new_reasons_and_reuses_provider_identity(
             "longitude": 139.7,
         }
 
-    monkeypatch.setattr(node, "resolve_authored_place", resolve)
-    monkeypatch.setattr(node, "_authored_place_tool_access", lambda state: None)
+    monkeypatch.setattr(locations, "resolve_authored_place", resolve)
+    monkeypatch.setattr(locations, "_authored_place_tool_access", lambda state: None)
 
     class Model:
         def __init__(self):
@@ -680,7 +758,7 @@ async def test_located_retry_keeps_new_reasons_and_reuses_provider_identity(
             return json.dumps(response)
 
     model = Model()
-    result = await node._compose_draft(current, "revise", model, set(), [], set())
+    result = await composition._compose_draft(current, "revise", model, set(), [], set())
     place = authored_places(result)[0].place
     assert len(model.messages) == 2 and calls == ["English Museum"]
     assert place.resolved_place_id == "located_museum"
@@ -788,7 +866,6 @@ async def test_existing_revision_budget_stops_reopening_the_broken_draft():
 
 @pytest.mark.asyncio
 async def test_changed_authored_identity_resolves_again_and_internal_parse_keeps_trusted_location(monkeypatch):
-    from travel_agent.agents.itinerary_planner import node
     from travel_agent.planning.itinerary.draft import authored_places
 
     entry = visit_entry()
@@ -810,13 +887,13 @@ async def test_changed_authored_identity_resolves_again_and_internal_parse_keeps
     async def resolve(**kwargs):
         calls.append(kwargs["name"])
         return {"name": "Museum B", "place_id": "trusted_b", "address": "Provider B", "latitude": 35.7, "longitude": 139.8}
-    monkeypatch.setattr(node, "resolve_authored_place", resolve)
-    monkeypatch.setattr(node, "_authored_place_tool_access", lambda state: None)
+    monkeypatch.setattr(locations, "resolve_authored_place", resolve)
+    monkeypatch.setattr(locations, "_authored_place_tool_access", lambda state: None)
     class Model:
         async def ainvoke(self, messages, **kwargs):
             return json.dumps(response)
     current = checkpoint(restored, recommendation_catalog=_catalog())
-    result = await node._compose_draft(current, "revise", Model(), set(), [], set())
+    result = await composition._compose_draft(current, "revise", Model(), set(), [], set())
     located = authored_places(result)[0].place
     assert calls == ["Museum B"]
     assert located.resolved_place_id == "trusted_b" and located.resolved_latitude == 35.7
@@ -891,8 +968,8 @@ def test_only_same_scope_intrinsically_credible_route_is_conflict_evidence(irrel
 async def test_feasible_provider_alternative_wins_despite_another_route_conflict(
     monkeypatch, scheduled, fast_access,
 ):
-    from travel_agent.agents.itinerary_planner import node
     from travel_agent.entities.candidate_ranking import CandidateRankingScore
+    from travel_agent.planning.itinerary import node
 
     def timing(arrival):
         return {
@@ -976,8 +1053,8 @@ async def test_feasible_provider_alternative_wins_despite_another_route_conflict
 
 @pytest.mark.asyncio
 async def test_provider_time_conflict_returns_to_existing_bounded_revision(monkeypatch):
-    from travel_agent.agents.itinerary_planner import node
     from travel_agent.agents.orchestrator import candidate_gate
+    from travel_agent.planning.itinerary import node
 
     catalog = _catalog(restaurant_packet(), visit_packet(), route_packet())
     skeleton = parse_itinerary_composition(json.dumps(draft([meal(), visit_entry("09:10", "10:10")])))
@@ -1030,7 +1107,6 @@ async def test_provider_time_conflict_returns_to_existing_bounded_revision(monke
 
 @pytest.mark.asyncio
 async def test_connector_estimator_receives_real_names_and_cannot_shrink_time_window():
-    from travel_agent.agents.itinerary_planner import node
 
     catalog = _catalog(restaurant_packet(), visit_packet())
     skeleton = parse_itinerary_composition(json.dumps(draft([meal(), visit_entry("09:10", "10:10")])))
@@ -1043,7 +1119,7 @@ async def test_connector_estimator_receives_real_names_and_cannot_shrink_time_wi
             assert described["to_endpoint"]["name"] == "candidate_visit"
             return json.dumps({"connectors": [{"gap_id": gaps[0].gap_id, "mode": "bus", "duration_minutes": 60, "selection_reason": "honest estimate"}]})
 
-    authored = await node._author_connector_routes(Model(), gaps)
+    authored = await connector_estimates._author_connector_routes(Model(), gaps)
     with pytest.raises(ItineraryCompositionError, match="cannot fit"):
         materialize_skeleton_connectors(skeleton, catalog, gaps, authored)
 

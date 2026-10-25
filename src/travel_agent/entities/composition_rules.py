@@ -9,7 +9,7 @@ from travel_agent.planning.research.domains import ResearchDomain
 from travel_agent.schema import StrictModel
 
 COMPOSITION_RULE_POLICY_VERSION = "composition_rules.v1"
-COMPOSITION_PROMPT_VERSION = "itinerary_composition.v1"
+COMPOSITION_PROMPT_VERSION = "itinerary_composition.v2"
 
 
 class CompositionRuleKind(str, Enum):

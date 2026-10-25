@@ -256,7 +256,7 @@ Tests:
 - `agent_behavior/test_intent_research_ranking_selection.py::test_semantic_evaluator_cannot_claim_a_match_without_evidence`
 
 ### INV-CANDIDATE-003：通过 Admission 不产生 Placement 义务
-Owner: `services/candidate_selection.py`、`agents/itinerary_planner/node.py`
+Owner: `services/candidate_selection.py`、`planning/itinerary/node.py`
 Enforced by: Selection 只从 passed admissions 产生有限候选集合；Planner 用 Selection Plan 过滤 Catalog
 ADR: [ADR-0011](adr/ADR-0011-intent-aware-candidate-pipeline.md)
 Tests:
@@ -273,14 +273,14 @@ Tests:
 - `agent_behavior/test_intent_research_ranking_selection.py::test_packet_compiler_owns_and_merges_candidate_discovery_lineage`
 
 ### INV-COMPOSITION-001：Composer 只能放置 Selection Plan 允许的候选
-Owner: `services/candidate_selection.py`、`agents/itinerary_planner/node.py`、
-`services/composition_backfill.py`
-Enforced by: Primary/Required/Fallback 才能进入 Composition；Alternative 只供显式换选；回填按
-Intent 缺口与合法槽位排序，不把 Admission 当作 Placement 义务
+Owner: `services/candidate_selection.py`、`planning/itinerary/node.py`、
+`planning/itinerary/model_schema.py`
+Enforced by: Primary/Required/Fallback 才能进入 Composition；Alternative 只供显式换选。
+规划器根据用户要求编写或修订完整草稿，不把通过准入等同于必须安排，也不由服务器自动补位。
 ADR: [ADR-0012](adr/ADR-0012-intent-fidelity-and-controlled-exploration.md)
 Tests:
 - `agent_behavior/test_intent_research_ranking_selection.py::test_selected_capabilities_exclude_alternatives_from_composition_pool`
-- `agent_behavior/test_intent_composition_fidelity.py::test_slot_backfill_prefers_pending_intent_and_respects_daily_maximum`
+- `agent_behavior/test_itinerary_revision.py::test_planner_preserves_useful_restaurant_reuse_through_checkpoint`
 
 ### INV-COMPOSITION-002：可解析的开放时间是 Placement 硬边界
 Owner: `planning/itinerary/checks.py`

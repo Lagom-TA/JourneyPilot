@@ -5,7 +5,12 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from travel_agent.planning.itinerary.draft import ItineraryCompositionDraft
+from travel_agent.entities.state import TravelAgentState
+from travel_agent.planning.itinerary.draft import (
+    _SERVER_OWNED_PLACE_FIELDS,
+    ItineraryCompositionDraft,
+)
+from travel_agent.planning.itinerary.requirements import _verify_day_window
 
 
 def parse_itinerary_composition(raw: str) -> ItineraryCompositionDraft:
@@ -30,3 +35,22 @@ def _normalize_time_structure(payload: dict[str, Any]) -> None:
     for day in days:
         if isinstance(day, dict):
             day["time_structure"] = ["morning", "lunch", "afternoon", "evening"]
+
+
+def _parse_exact_llm_composition(
+    raw: str,
+    state: TravelAgentState,
+) -> ItineraryCompositionDraft:
+    payload = json.loads(raw)
+    if isinstance(payload, dict):
+        for day in payload.get("days", []) or []:
+            if not isinstance(day, dict):
+                continue
+            for placement in day.get("placements", []) or []:
+                if not isinstance(placement, dict):
+                    continue
+                place = placement.get("authored_place")
+                if isinstance(place, dict):
+                    for field in _SERVER_OWNED_PLACE_FIELDS:
+                        place.pop(field, None)
+    return _verify_day_window(parse_itinerary_composition(json.dumps(payload)), state)

@@ -475,7 +475,7 @@ async def resolve_authored_place(
         # amap first, Nominatim second. OSM barely holds individual Chinese
         # restaurants and shops, so the Nominatim rung answers for almost no CN
         # entry — yet running it first spends the whole per-entry budget
-        # (itinerary_planner/node.py::_AUTHORED_ENTRY_BUDGET_SECONDS) on up to
+        # (planning/itinerary/locations.py::_AUTHORED_ENTRY_BUDGET_SECONDS) on up to
         # seven phrasings before the rung that can actually answer gets its
         # turn. Under a Nominatim brownout the first phrasing alone used to
         # exceed the budget, so ``asyncio.wait_for`` cancelled the ladder and the

@@ -11,6 +11,14 @@ from travel_agent.entities.day_design import DayDesign
 from travel_agent.schema import StrictModel
 
 
+_SERVER_OWNED_PLACE_FIELDS = (
+    "resolved_place_id",
+    "resolved_address",
+    "resolved_latitude",
+    "resolved_longitude",
+)
+
+
 class AuthoredPlaceBase(StrictModel):
     """Authored identity whose resolved fields belong to the place provider."""
 
