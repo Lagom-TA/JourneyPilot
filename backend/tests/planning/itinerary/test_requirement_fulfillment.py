@@ -7,7 +7,7 @@ from tests.fixtures.fulfillment import (
     make_fulfillment_spec,
     make_fulfillment_workspace,
 )
-from travel_agent.api.schemas import PublicBundleWorkspaceResponse
+from travel_agent.api.schemas.delivery import PublicBundleWorkspaceResponse
 from travel_agent.planning.assignments import (
     assignment_research_round,
     resolve_agent_assignment,

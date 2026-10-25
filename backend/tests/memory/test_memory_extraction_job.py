@@ -100,17 +100,17 @@ async def test_disabled_vectors_do_not_enqueue_or_wake_worker(monkeypatch):
     from types import SimpleNamespace
     from unittest.mock import AsyncMock, Mock
 
-    from travel_agent.api.routes import chat_helpers
+    from travel_agent.memory import extraction_jobs
     from travel_agent.config import Settings
     from travel_agent.storage import background_job_store
 
     settings = Settings(embedding={"enabled": False})
-    monkeypatch.setattr(chat_helpers, "get_settings", lambda: settings)
+    monkeypatch.setattr(extraction_jobs, "get_settings", lambda: settings)
     store = SimpleNamespace(enqueue=AsyncMock())
     get_store = Mock(return_value=store)
     monkeypatch.setattr(background_job_store, "get_background_job_store", get_store)
     worker = Mock()
-    await chat_helpers.enqueue_memory_extraction(
+    await extraction_jobs.enqueue_memory_extraction(
         user_id="local", session_id="session", user_message="我吃素",
         user_message_id="message", assistant_message_id="reply", profile_revision=1,
         portrait_baseline="", background_job_worker=worker,

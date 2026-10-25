@@ -15,12 +15,12 @@ class StreamingStripper:
     - <think>...</think>              模型推理/思考内容（Qwen3、QwQ 等模型会输出）
     - "Thinking Process" 等开头的纯文本推理块（部分 Qwen3 API 不输出 <think> 标签）
     """
-    # 两种结构化数据注释块的 open 标签共享 -->  闭合符
+
     _OPEN_COMMENTS = ("<!-- DESTINATION_JSON",)
     _CLOSE_COMMENT = "-->"
     _OPEN_THINK = "<think>"
     _CLOSE_THINK = "</think>"
-    # 纯文本推理块的开头关键词（大小写不敏感匹配时需正规化）
+
     _THINKING_MARKERS = (
         "Thinking Process",
         "thinking process",
@@ -28,8 +28,7 @@ class StreamingStripper:
         "Let me think",
         "思考过程",
     )
-    # 引用在流结束后由 OutputGuard 映射为结构化角标；流式阶段整段缓冲并隐藏，
-    # 避免用户短暂看到 [[fact:1]] 或 [来源：ev_...]。
+
     _INTERNAL_MARKER_PREFIXES = (
         "[[fact:",
         "[[fact：",
@@ -44,18 +43,13 @@ class StreamingStripper:
         "[引用:",
         "[引用：",
     )
-    # 纯文本推理结束的判定：连续空行（\n\n）后紧跟以下任一内容即视为正文开始：
-    #   [^\x00-\x7F] — 非 ASCII 字符（即中文/日文等）
-    #   \s*#{1,3}\s   — Markdown 标题（# / ## / ###）
-    #   \s*[-*]\s     — Markdown 列表项（- / *）
-    #   [A-Z]         — 英文句首大写（纯英文正文，避免吞到 EOS）
+
     _THINKING_END_RE = re.compile(
-        r'\n\n(?=[^\x00-\x7F#\-\*]|\s*#{1,3}\s|\s*[-*]\s|[A-Z])',
+        r"\n\n(?=[^\x00-\x7F#\-\*]|\s*#{1,3}\s|\s*[-*]\s|[A-Z])",
     )
-    # Hard cap on pure-text think buffer so English prose without a blank line
-    # cannot be held until stream end and then dropped by flush().
+
     _TEXT_THINK_MAX_CHARS = 4000
-    # 需要缓冲的最大前缀长度（用于检测跨 chunk 的标签开头）
+
     _HOLD = max(
         max(len(tag) for tag in _OPEN_COMMENTS),
         len("<think>"),
@@ -67,7 +61,7 @@ class StreamingStripper:
         self._buf = ""
         self._in_comment_block = False
         self._in_think_block = False
-        self._in_text_think_block = False   # 纯文本推理块状态
+        self._in_text_think_block = False
         self._comment_buf = ""
         self._think_buf = ""
         self._text_think_buf = ""
@@ -81,7 +75,9 @@ class StreamingStripper:
             self._internal_marker_buf += chunk
             close_pos = self._internal_marker_buf.find(self._internal_marker_close)
             if close_pos != -1:
-                remainder = self._internal_marker_buf[close_pos + len(self._internal_marker_close):]
+                remainder = self._internal_marker_buf[
+                    close_pos + len(self._internal_marker_close) :
+                ]
                 self._internal_marker_buf = ""
                 self._in_internal_marker = False
                 self._buf = ""
@@ -91,7 +87,7 @@ class StreamingStripper:
             self._comment_buf += chunk
             close_pos = self._comment_buf.find(self._CLOSE_COMMENT)
             if close_pos != -1:
-                remainder = self._comment_buf[close_pos + len(self._CLOSE_COMMENT):]
+                remainder = self._comment_buf[close_pos + len(self._CLOSE_COMMENT) :]
                 self._comment_buf = ""
                 self._in_comment_block = False
                 self._buf = ""
@@ -101,7 +97,7 @@ class StreamingStripper:
             self._think_buf += chunk
             close_pos = self._think_buf.find(self._CLOSE_THINK)
             if close_pos != -1:
-                remainder = self._think_buf[close_pos + len(self._CLOSE_THINK):]
+                remainder = self._think_buf[close_pos + len(self._CLOSE_THINK) :]
                 self._think_buf = ""
                 self._in_think_block = False
                 self._buf = ""
@@ -109,18 +105,18 @@ class StreamingStripper:
             return ""
         if self._in_text_think_block:
             self._text_think_buf += chunk
-            # 检测正文开始：连续空行后出现中文、Markdown 标题/列表、或英文大写句首
+
             m = self._THINKING_END_RE.search(self._text_think_buf)
             if m:
-                remainder = self._text_think_buf[m.start():]
+                remainder = self._text_think_buf[m.start() :]
                 self._text_think_buf = ""
                 self._in_text_think_block = False
                 self._buf = ""
                 return self._process(remainder)
-            # Force end after max buffer — treat remainder as body
+
             if len(self._text_think_buf) >= self._TEXT_THINK_MAX_CHARS:
                 overflow = self._text_think_buf[self._TEXT_THINK_MAX_CHARS :]
-                # Prefer to surface text after the last blank line as body.
+
                 split_at = self._text_think_buf.rfind("\n\n")
                 if split_at != -1 and split_at > 0:
                     remainder = self._text_think_buf[split_at:]
@@ -140,7 +136,6 @@ class StreamingStripper:
         for marker in self._THINKING_MARKERS:
             pos = buf.find(marker)
             if pos != -1 and (earliest_pos == -1 or pos < earliest_pos):
-                # 仅在行首（前面是空白或文本开头）时触发，避免误伤正文中的句子
                 prefix = buf[:pos]
                 if not prefix or prefix[-1] in ("\n", "\r", " ", "\t") or pos == 0:
                     earliest_pos = pos
@@ -173,34 +168,36 @@ class StreamingStripper:
     def _process(self, text: str) -> str:
         self._buf += text
 
-        # 找到最近出现的特殊块开头
         comment_pos, comment_tag = self._find_comment_open(self._buf)
         think_pos = self._buf.find(self._OPEN_THINK)
         text_think_pos, text_think_marker = self._find_text_thinking_marker(self._buf)
         marker_pos, marker_tag = self._find_internal_marker(self._buf)
 
-        # 选择最早出现的块
         earliest_pos: int = -1
         earliest_type: str = ""
         if comment_pos != -1:
             earliest_pos, earliest_type = comment_pos, "comment"
         if think_pos != -1 and (earliest_pos == -1 or think_pos < earliest_pos):
             earliest_pos, earliest_type = think_pos, "think"
-        if text_think_pos != -1 and (earliest_pos == -1 or text_think_pos < earliest_pos):
+        if text_think_pos != -1 and (
+            earliest_pos == -1 or text_think_pos < earliest_pos
+        ):
             earliest_pos, earliest_type = text_think_pos, "text_think"
         if marker_pos != -1 and (earliest_pos == -1 or marker_pos < earliest_pos):
             earliest_pos, earliest_type = marker_pos, "internal_marker"
 
         if earliest_type == "internal_marker":
             safe = self._buf[:earliest_pos]
-            marker_start = self._buf[earliest_pos:earliest_pos + len(marker_tag)]
+            marker_start = self._buf[earliest_pos : earliest_pos + len(marker_tag)]
             self._internal_marker_close = "]]" if marker_start.startswith("[[") else "]"
             self._in_internal_marker = True
-            self._internal_marker_buf = self._buf[earliest_pos + len(marker_tag):]
+            self._internal_marker_buf = self._buf[earliest_pos + len(marker_tag) :]
             self._buf = ""
             close_pos = self._internal_marker_buf.find(self._internal_marker_close)
             if close_pos != -1:
-                remainder = self._internal_marker_buf[close_pos + len(self._internal_marker_close):]
+                remainder = self._internal_marker_buf[
+                    close_pos + len(self._internal_marker_close) :
+                ]
                 self._internal_marker_buf = ""
                 self._in_internal_marker = False
                 return safe + self._process(remainder)
@@ -209,11 +206,11 @@ class StreamingStripper:
         if earliest_type == "think":
             safe = self._buf[:earliest_pos]
             self._in_think_block = True
-            self._think_buf = self._buf[earliest_pos + len(self._OPEN_THINK):]
+            self._think_buf = self._buf[earliest_pos + len(self._OPEN_THINK) :]
             self._buf = ""
             close_pos = self._think_buf.find(self._CLOSE_THINK)
             if close_pos != -1:
-                remainder = self._think_buf[close_pos + len(self._CLOSE_THINK):]
+                remainder = self._think_buf[close_pos + len(self._CLOSE_THINK) :]
                 self._think_buf = ""
                 self._in_think_block = False
                 return safe + self._process(remainder)
@@ -222,11 +219,11 @@ class StreamingStripper:
         if earliest_type == "comment":
             safe = self._buf[:earliest_pos]
             self._in_comment_block = True
-            self._comment_buf = self._buf[earliest_pos + len(comment_tag):]
+            self._comment_buf = self._buf[earliest_pos + len(comment_tag) :]
             self._buf = ""
             close_pos = self._comment_buf.find(self._CLOSE_COMMENT)
             if close_pos != -1:
-                remainder = self._comment_buf[close_pos + len(self._CLOSE_COMMENT):]
+                remainder = self._comment_buf[close_pos + len(self._CLOSE_COMMENT) :]
                 self._comment_buf = ""
                 self._in_comment_block = False
                 return safe + self._process(remainder)
@@ -235,18 +232,17 @@ class StreamingStripper:
         if earliest_type == "text_think":
             safe = self._buf[:earliest_pos]
             self._in_text_think_block = True
-            self._text_think_buf = self._buf[earliest_pos + len(text_think_marker):]
+            self._text_think_buf = self._buf[earliest_pos + len(text_think_marker) :]
             self._buf = ""
-            # 检查本 chunk 中是否已经包含结束标志
+
             m = self._THINKING_END_RE.search(self._text_think_buf)
             if m:
-                remainder = self._text_think_buf[m.start():]
+                remainder = self._text_think_buf[m.start() :]
                 self._text_think_buf = ""
                 self._in_text_think_block = False
                 return safe + self._process(remainder)
             return safe
 
-        # 未命中任何块，检查尾部是否可能是某个标签的前缀，需要暂时保留
         all_patterns = (
             list(self._OPEN_COMMENTS)
             + [self._OPEN_THINK]
@@ -287,3 +283,50 @@ def strip_non_display_blocks(content: str) -> str:
 
     stripper = StreamingStripper()
     return stripper.feed(content) + stripper.flush()
+
+
+_THINKING_TEXT_PATTERN = re.compile(
+    r"^(?:Thinking Process|thinking process|Let me analyze|Let me think|思考过程)"
+    r"[\s\S]*?(?=\n\n(?=[^\x00-\x7F#\-\*]|\s*#{1,3}\s|\s*[-*]\s))",
+    re.MULTILINE,
+)
+
+
+_LEADING_ENGLISH_THINKING_PATTERN = re.compile(
+    r"^(?:Thinking Process|thinking process|Let me analyze|Let me think)[\s\S]+",
+)
+
+
+def strip_thinking_text(content: str) -> str:
+    """
+    移除 LLM 输出中的纯文本推理过程（Qwen3 等模型可能输出 "Thinking Process:" 等英文推理块）。
+    作为最终兜底，在内容写入前端和数据库之前调用。
+    """
+    if not content:
+        return content
+
+    cleaned = _THINKING_TEXT_PATTERN.sub("", content).lstrip()
+    if cleaned and cleaned != content:
+        return cleaned
+
+    has_cjk = bool(re.search(r"[\u4e00-\u9fff]", content))
+    has_markdown = bool(re.search(r"\n#{1,3}\s", content))
+    if not has_cjk and not has_markdown:
+        return content
+
+    for marker in (
+        "Thinking Process",
+        "thinking process",
+        "Let me analyze",
+        "Let me think",
+        "思考过程",
+    ):
+        if content.lstrip().startswith(marker):
+            m = re.search(r"\n\n(?=[^\x00-\x7F]|\s*#{1,3}\s|\s*[-*]\s)", content)
+            if m:
+                candidate = content[m.start() :].lstrip()
+                if candidate:
+                    return candidate
+            break
+
+    return content

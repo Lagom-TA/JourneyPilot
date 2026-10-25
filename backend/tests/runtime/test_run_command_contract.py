@@ -7,11 +7,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List
 
 import pytest
 from langgraph.errors import GraphInterrupt
 
+from tests.fixtures.run_commands import FakeCommandStore
 from travel_agent.planning import execution
 from travel_agent.planning.execution import with_run_control
 from travel_agent.planning.requirements.request_contracts import (
@@ -21,10 +22,8 @@ from travel_agent.planning.requirements.request_contracts import (
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.cancellation import RunCancelled, run_control_registry
 from travel_agent.runtime.command_contracts import (
-    RunCommand,
     RunCommandStatus,
     RunCommandType,
-    generate_run_command_id,
     run_command_digest,
 )
 from travel_agent.runtime.context import (
@@ -56,88 +55,6 @@ def _capture_lifecycle() -> tuple[List[Dict[str, Any]], Any]:
     return events, node_lifecycle_sink.set(sink)
 
 
-class FakeCommandStore:
-    """内存版命令表。语义与 SQL 那份一致：只有未收口的命令能被取走或改写。"""
-
-    def __init__(self) -> None:
-        self.commands: Dict[str, RunCommand] = {}
-
-    async def enqueue(
-        self,
-        run_id: str,
-        command_type: str | RunCommandType,
-        payload: Optional[Dict[str, Any]] = None,
-    ) -> tuple[RunCommand, bool]:
-        body = dict(payload or {})
-        digest = run_command_digest(command_type, body)
-        for command in self.commands.values():
-            if command.run_id == run_id and command.request_digest == digest:
-                return command, False
-        command = RunCommand(
-            command_id=generate_run_command_id(),
-            run_id=run_id,
-            command_type=command_type,
-            payload=body,
-            request_digest=digest,
-        )
-        self.commands[command.command_id] = command
-        return command, True
-
-    async def claim_pending(self, run_id: str, *, limit: int = 20) -> List[RunCommand]:
-        claimed = []
-        for command in list(self.commands.values()):
-            if command.run_id != run_id or command.status is not RunCommandStatus.PENDING:
-                continue
-            command.status = RunCommandStatus.CLAIMED
-            claimed.append(command)
-        return claimed[:limit]
-
-    async def settle(
-        self,
-        command_ids: Sequence[str],
-        *,
-        status: RunCommandStatus,
-        result: Optional[Dict[str, Any]] = None,
-        error_code: Optional[str] = None,
-    ) -> int:
-        settled = 0
-        for command_id in command_ids:
-            command = self.commands.get(command_id)
-            if command is None or not command.is_open:
-                continue
-            command.status = status
-            command.result = result
-            command.error_code = error_code
-            settled += 1
-        return settled
-
-    async def settle_open_for_run(
-        self,
-        run_id: str,
-        *,
-        status: RunCommandStatus,
-        command_types=None,
-        result: Optional[Dict[str, Any]] = None,
-        error_code: Optional[str] = None,
-    ) -> List[RunCommand]:
-        kinds = (
-            {RunCommandType(str(getattr(value, "value", value))) for value in command_types}
-            if command_types is not None
-            else set(RunCommandType)
-        )
-        settled = []
-        for command in self.commands.values():
-            if command.run_id != run_id or not command.is_open:
-                continue
-            if command.command_type not in kinds:
-                continue
-            command.status = status
-            command.result = result
-            command.error_code = error_code
-            settled.append(command)
-        return settled
-
-
 class FakeTripRunStore:
     def __init__(self) -> None:
         self.events: List[tuple[str, str, Dict[str, Any]]] = []
@@ -152,7 +69,9 @@ class FakeTripRunStore:
     ) -> None:
         if any(key == idempotency_key for _run, _type, key in self._keys()):
             return
-        self.events.append((run_id, event_type, {**payload, "idempotency_key": idempotency_key}))
+        self.events.append(
+            (run_id, event_type, {**payload, "idempotency_key": idempotency_key})
+        )
 
     def _keys(self):
         return [
@@ -183,16 +102,14 @@ def wired(run_id):
 def test_cancel_digest_ignores_payload_but_supplement_digest_does_not() -> None:
     """摘要口径就是幂等口径：取消按意图，追加要求按内容。"""
 
-    assert run_command_digest(RunCommandType.CANCEL, {"source": "a"}) == run_command_digest(
-        RunCommandType.CANCEL, {"source": "b"}
-    )
+    assert run_command_digest(
+        RunCommandType.CANCEL, {"source": "a"}
+    ) == run_command_digest(RunCommandType.CANCEL, {"source": "b"})
     same = {"category": "food", "content": "少走路"}
-    assert run_command_digest(
-        RunCommandType.SUPPLEMENT, same
-    ) == run_command_digest(RunCommandType.SUPPLEMENT, dict(same))
-    assert run_command_digest(
-        RunCommandType.SUPPLEMENT, same
-    ) != run_command_digest(
+    assert run_command_digest(RunCommandType.SUPPLEMENT, same) == run_command_digest(
+        RunCommandType.SUPPLEMENT, dict(same)
+    )
+    assert run_command_digest(RunCommandType.SUPPLEMENT, same) != run_command_digest(
         RunCommandType.SUPPLEMENT, {"category": "pace", "content": "少走路"}
     )
 
@@ -219,7 +136,9 @@ async def test_durable_cancel_reaches_the_boundary_without_any_notification(
         )
 
 
-async def test_supplement_is_consumed_only_after_contract_normalization(wired, run_id) -> None:
+async def test_supplement_is_consumed_only_after_contract_normalization(
+    wired, run_id
+) -> None:
     handle, store, runs, coordinator = wired
     command, _ = await store.enqueue(
         run_id,
@@ -298,9 +217,7 @@ async def test_a_failed_node_keeps_the_supplement_for_the_next_boundary(
             "pending_intent_amendments": [],
             "applied_intent_amendment_ids": [command.command_id],
         },
-    )(
-        TravelAgentState(run_id=run_id, user_message="x")
-    )
+    )(TravelAgentState(run_id=run_id, user_message="x"))
     assert update["applied_intent_amendment_ids"] == [command.command_id]
     assert store.commands[command.command_id].status is RunCommandStatus.CONSUMED
 
@@ -329,7 +246,9 @@ async def test_divert_boundary_defers_every_read_command_without_touching_the_st
     await coordinator.poll_once()
 
     async def diverted(_state: TravelAgentState) -> Dict[str, Any]:  # pragma: no cover
-        raise AssertionError("合同已建立且带新鲜 supplement 时应 divert，节点体不该执行")
+        raise AssertionError(
+            "合同已建立且带新鲜 supplement 时应 divert，节点体不该执行"
+        )
 
     with caplog.at_level(logging.INFO, logger="travel_agent.planning.execution"):
         update = await with_run_control("planner", diverted)(
@@ -448,7 +367,9 @@ async def test_cancelled_run_consumes_its_cancel_and_rejects_the_rest(
 
     assert store.commands[cancel.command_id].status is RunCommandStatus.CONSUMED
     assert store.commands[supplement.command_id].status is RunCommandStatus.REJECTED
-    assert store.commands[supplement.command_id].error_code == RUN_ENDED_BEFORE_CONSUMPTION
+    assert (
+        store.commands[supplement.command_id].error_code == RUN_ENDED_BEFORE_CONSUMPTION
+    )
 
 
 async def test_a_completed_run_does_not_pretend_the_cancel_was_carried_out(
@@ -592,6 +513,7 @@ async def test_wrapped_node_restores_deadline_overwritten_by_bare_set(run_id) ->
     sentinel_b = object()
     token = current_run_deadline.set(sentinel_a)
     try:
+
         async def node(_state: TravelAgentState) -> Dict[str, Any]:
             current_run_deadline.set(sentinel_b)
             return {}
@@ -616,7 +538,9 @@ async def test_worker_entering_after_delivery_is_ignored_without_any_lifecycle_e
     events, token = _capture_lifecycle()
     try:
 
-        async def late_worker(_state: TravelAgentState) -> Dict[str, Any]:  # pragma: no cover
+        async def late_worker(
+            _state: TravelAgentState,
+        ) -> Dict[str, Any]:  # pragma: no cover
             raise AssertionError("交付之后 worker 不该再被执行")
 
         update = await with_run_control("destination_researcher", late_worker)(
@@ -662,7 +586,9 @@ async def test_a_worker_returning_after_delivery_is_overwritten_but_still_report
     assert [event["status"] for event in events] == ["started", "completed"]
 
 
-async def test_delivery_finalizer_marks_the_handle_delivery_ready(wired, run_id) -> None:
+async def test_delivery_finalizer_marks_the_handle_delivery_ready(
+    wired, run_id
+) -> None:
     """唯一置位 delivery_ready 的路径：finalizer 报告 delivery_persisted=True。"""
 
     handle, _store, _runs, _coordinator = wired
@@ -678,7 +604,9 @@ async def test_delivery_finalizer_marks_the_handle_delivery_ready(wired, run_id)
     assert handle.delivery_ready_event.is_set()
 
 
-async def test_graph_interrupt_passes_through_the_wrapper_untouched(wired, run_id) -> None:
+async def test_graph_interrupt_passes_through_the_wrapper_untouched(
+    wired, run_id
+) -> None:
     """plan_gate 的 interrupt 靠包装层原样放行才能落进 checkpoint：不算失败。"""
 
     _handle, _store, _runs, _coordinator = wired

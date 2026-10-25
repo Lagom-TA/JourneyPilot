@@ -19,7 +19,7 @@ from ..storage.database import get_db_session
 
 logger = logging.getLogger(__name__)
 
-# 与 api.schemas.SessionStatus 枚举的 .value 保持对齐;
+# 与 api.schemas.sessions.SessionStatus 枚举的 .value 保持对齐;
 # 修改时两处同步 (本模块避免反向 import api 层)。
 STATUS_ACTIVE = "active"
 STATUS_INTERRUPTED = "interrupted"

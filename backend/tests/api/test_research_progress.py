@@ -3,14 +3,10 @@ import json
 
 import pytest
 
-from travel_agent.api.routes.chat_stream_handlers import (
-    SSEContext,
-    _handle_agent_activity,
-    _handle_react_thinking,
-    _handle_state_update,
-    _handle_tool_done,
-    _handle_tool_start,
-)
+from travel_agent.conversation.chat.presentation import ChatPresentation
+from travel_agent.conversation.chat.progress_events import _handle_agent_activity, _handle_state_update
+from travel_agent.conversation.chat.text_events import _handle_react_thinking
+from travel_agent.conversation.chat.tool_events import _handle_tool_done, _handle_tool_start
 from travel_agent.api.sse_projection import project_sse_payload
 from travel_agent.tools.display import public_text, result_preview
 
@@ -18,7 +14,7 @@ PACKET = '正在分派并行调研任务{"contract_version":"journeypilot.resear
 
 
 def context():
-    return SSEContext(message_id='m', session_id='s', mode='deep', use_deep_research=True)
+    return ChatPresentation(message_id='m', session_id='s', mode='deep', use_deep_research=True)
 
 
 @pytest.mark.parametrize('text', [PACKET, '```json\n{"candidates": []}', '{', '[{"name":"秘密"}]'])
@@ -88,7 +84,7 @@ async def test_worker_packet_still_reaches_internal_consumer():
 
 
 async def test_lifecycle_starts_specialists_before_their_first_model_or_tool_call():
-    from travel_agent.api.routes.chat_stream_handlers import _handle_node_activity
+    from travel_agent.conversation.chat.progress_events import _handle_node_activity
     ctx = context()
     event = [e async for e in _handle_node_activity({'node': 'itinerary_planner', 'status': 'started', 'error_type': 'private'}, ctx)]
     assert event[0]['agent_name'] == '行程规划'

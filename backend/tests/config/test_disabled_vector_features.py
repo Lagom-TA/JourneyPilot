@@ -156,11 +156,7 @@ async def test_fast_answer_continues_without_retrieval(disabled_vectors, monkeyp
 
 async def test_knowledge_api_rejects_vector_operations_before_io(disabled_vectors, monkeypatch):
     from travel_agent.api.routes import knowledge
-    from travel_agent.api.schemas import (
-        KnowledgeQueryRequest,
-        KnowledgeSourceUpdateRequest,
-        KnowledgeUploadRequest,
-    )
+    from travel_agent.api.schemas.knowledge import KnowledgeQueryRequest, KnowledgeSourceUpdateRequest, KnowledgeUploadRequest
 
     components = Mock()
     parse = AsyncMock()

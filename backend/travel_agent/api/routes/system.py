@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from travel_agent.bootstrap.registry import get_components
 from ...config import get_settings
-from ..schemas import ModelConfigRequest, SystemStatus
+from travel_agent.api.schemas.system import ModelConfigRequest, SystemStatus
 
 from travel_agent.bootstrap.diagnostics.status import collect_status
 from travel_agent.bootstrap.diagnostics.readiness import collect_readiness

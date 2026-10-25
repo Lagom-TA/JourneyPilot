@@ -38,7 +38,7 @@ class LoggingConfig(StrictConfig):
 
 
 # How many tokens one completion may emit.  **One definition site**: the two
-# tier configs below and ``api/schemas.ModelConfigRequest`` all read it from
+# tier configs below and ``api/schemas/system.ModelConfigRequest`` all read it from
 # here, because three independent copies of the same ceiling is how a POST that
 # omits the field silently downgrades a running deployment.
 #

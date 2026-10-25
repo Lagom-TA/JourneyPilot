@@ -24,7 +24,7 @@ from ...knowledge.sources.document_parse import (
 )
 from travel_agent.knowledge.text_validation import TextNotIndexable, require_indexable_text
 from travel_agent.knowledge.documents import SourceDocumentUnavailable, require_source_document
-from ..schemas import (
+from travel_agent.api.schemas.knowledge import (
     KnowledgeCollectionStatsResponse,
     KnowledgeDeleteResponse,
     KnowledgeQueryRequest,

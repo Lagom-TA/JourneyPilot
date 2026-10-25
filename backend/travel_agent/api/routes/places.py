@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from travel_agent.planning.requirements.identity_contracts import DESTINATION_PLACE_KINDS, ITINERARY_PLACE_KINDS, ORIGIN_PLACE_KINDS, PlaceIdentity, PlaceKind
 from travel_agent.integrations.places.contracts import NominatimPlaceSearchError
 from travel_agent.integrations.places.nominatim import search_nominatim_raw
-from ..schemas import PlaceCandidateResponse, PlaceSearchResponse
+from travel_agent.api.schemas.places import PlaceCandidateResponse, PlaceSearchResponse
 
 logger = logging.getLogger(__name__)
 

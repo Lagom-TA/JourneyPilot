@@ -16,34 +16,51 @@ from fastapi.routing import APIRoute
 from pydantic import BaseModel
 
 from travel_agent.api import routes as routes_package
-from travel_agent.api import schemas as schemas_module
+from travel_agent.api import schemas as schemas_package
+from travel_agent.conversation.chat import contracts as chat_contracts
 
 
 def _routers() -> list[tuple[str, APIRouter]]:
     found = []
-    for info in pkgutil.iter_modules(routes_package.__path__):
-        module = import_module(f"{routes_package.__name__}.{info.name}")
+    for info in pkgutil.walk_packages(
+        routes_package.__path__, routes_package.__name__ + "."
+    ):
+        module = import_module(info.name)
         router = getattr(module, "router", None)
         if isinstance(router, APIRouter):
             found.append((info.name, router))
     return found
 
 
-@pytest.mark.parametrize("module_name, router", _routers(), ids=lambda v: getattr(v, "prefix", v))
+@pytest.mark.parametrize(
+    "module_name, router", _routers(), ids=lambda v: getattr(v, "prefix", v)
+)
 def test_no_route_takes_user_id(module_name: str, router: APIRouter) -> None:
     for route in router.routes:
         if not isinstance(route, APIRoute):
             continue
-        assert "{user_id}" not in route.path, f"{module_name}: {route.path} 仍带身份路径段"
+        assert "{user_id}" not in route.path, (
+            f"{module_name}: {route.path} 仍带身份路径段"
+        )
         params = route.dependant.path_params + route.dependant.query_params
         names = {param.name for param in params}
         assert "user_id" not in names, f"{module_name}: {route.path} 仍收 user_id 参数"
 
 
 def test_no_request_or_response_schema_carries_user_id() -> None:
+    modules = [
+        chat_contracts,
+        *(
+            import_module(info.name)
+            for info in pkgutil.walk_packages(
+                schemas_package.__path__, schemas_package.__name__ + "."
+            )
+        ),
+    ]
     offenders = [
         name
-        for name, obj in vars(schemas_module).items()
+        for module in modules
+        for name, obj in vars(module).items()
         if inspect.isclass(obj)
         and issubclass(obj, BaseModel)
         and "user_id" in obj.model_fields

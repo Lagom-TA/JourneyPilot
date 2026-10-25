@@ -13,15 +13,8 @@ from travel_agent.memory.preferences import PreferenceRejected, update_travel_pr
 from travel_agent.bootstrap.registry import get_components
 from travel_agent.memory.preference_contracts import TRAVEL_PREFERENCE_GROUPS, PreferenceOptionGroup, TravelPreference
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
-from ..schemas import (
-    ChatSessionDetail,
-    ChatSessionSummary,
-    DefaultOriginRequest,
-    DefaultOriginResponse,
-    UpdatePreferencesRequest,
-    UpdateSessionRequest,
-    UserProfileResponse,
-)
+from travel_agent.api.schemas.sessions import ChatSessionDetail, ChatSessionSummary, UpdateSessionRequest
+from travel_agent.api.schemas.profile import DefaultOriginRequest, DefaultOriginResponse, UpdatePreferencesRequest, UserProfileResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/user", tags=["user"])

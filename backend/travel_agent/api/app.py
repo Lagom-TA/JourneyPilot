@@ -19,7 +19,8 @@ from ..config import get_settings
 from ..paths import BACKEND_DIR
 from ..utils.log_redaction import install_query_secret_redaction
 from .middleware import request_logging_middleware
-from .routes import chat, knowledge, memory, places, preset, product, sessions, system, trip_runs, user
+from .routes.trip_runs import runs, events, delivery, workspace, control
+from .routes import chat, knowledge, memory, places, preset, product, sessions, system, user
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,11 @@ def create_app() -> FastAPI:
     app.include_router(memory.router)
     app.include_router(preset.router)
     app.include_router(product.router)
-    app.include_router(trip_runs.router)
+    app.include_router(runs.router)
+    app.include_router(events.router)
+    app.include_router(delivery.router)
+    app.include_router(workspace.router)
+    app.include_router(control.router)
 
     # Vite writes its generated frontend beside the backend package.
     static_path = BACKEND_DIR / "static"

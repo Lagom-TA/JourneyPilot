@@ -13,7 +13,7 @@ from ...memory.memory_store import (
 )
 from ...utils.user_text import is_blank
 from travel_agent.memory.manual_facts import ManualFactSaveFailed, save_manual_fact
-from ..schemas import (
+from travel_agent.api.schemas.memory import (
     AddMemoryFactRequest,
     AddMemoryFactResponse,
     MemoryDeleteAllOptions,

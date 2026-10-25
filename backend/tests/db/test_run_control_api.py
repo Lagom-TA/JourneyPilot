@@ -10,8 +10,11 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from travel_agent.api import schemas
-from travel_agent.api.routes import trip_runs as routes
+from travel_agent.api.schemas.commands import (
+    TripRunControlRequest,
+    TripRunSupplementRequest,
+)
+from travel_agent.api.routes.trip_runs import control as routes
 from travel_agent.runtime.command_contracts import RunCommandStatus, RunCommandType
 from travel_agent.runtime.run_contracts import TripRunStatus
 from travel_agent.storage.run_command_store import RunCommandStore
@@ -51,8 +54,8 @@ async def _running_run(components: _Components, *, with_lease: bool) -> str:
     return run.run_id
 
 
-def _cancel() -> schemas.TripRunControlRequest:
-    return schemas.TripRunControlRequest(action="cancel")
+def _cancel() -> TripRunControlRequest:
+    return TripRunControlRequest(action="cancel")
 
 
 async def test_cancel_is_accepted_with_a_live_executor_elsewhere(
@@ -71,7 +74,9 @@ async def test_cancel_is_accepted_with_a_live_executor_elsewhere(
     assert command is not None and command.command_type is RunCommandType.CANCEL
     # cancel_requested 已经写进 trip_runs：完成边界从此提交不了。
     with pytest.raises(ValueError):
-        await components.trip_run_store.transition_status(run_id, TripRunStatus.COMPLETED)
+        await components.trip_run_store.transition_status(
+            run_id, TripRunStatus.COMPLETED
+        )
 
 
 async def test_cancel_without_a_live_lease_converges_immediately(
@@ -106,10 +111,15 @@ async def test_cancelling_a_finished_run_is_refused_and_leaves_nothing_pending(
     migrated_async_database, components
 ):
     run = await components.trip_run_store.create_run(
-        session_id="s-control", user_id="local", mode="fast", resume_policy="clarify_only"
+        session_id="s-control",
+        user_id="local",
+        mode="fast",
+        resume_policy="clarify_only",
     )
     await components.trip_run_store.transition_status(run.run_id, TripRunStatus.RUNNING)
-    await components.trip_run_store.transition_status(run.run_id, TripRunStatus.COMPLETED)
+    await components.trip_run_store.transition_status(
+        run.run_id, TripRunStatus.COMPLETED
+    )
 
     with pytest.raises(HTTPException) as excinfo:
         await routes.control_trip_run(run.run_id, _cancel())
@@ -129,7 +139,7 @@ async def test_supplement_is_accepted_without_any_in_process_handle(
 
     receipt = await routes.add_trip_run_supplement(
         run_id,
-        schemas.TripRunSupplementRequest(category="food", content="想吃本地早餐"),
+        TripRunSupplementRequest(category="food", content="想吃本地早餐"),
     )
 
     assert receipt.accepted is True
@@ -137,7 +147,9 @@ async def test_supplement_is_accepted_without_any_in_process_handle(
     open_commands = await components.run_command_store.list_open(run_id)
     assert [command.command_id for command in open_commands] == [receipt.command_id]
     assert open_commands[0].payload["content"] == "想吃本地早餐"
-    events = await components.trip_run_store.list_events(run_id, after_sequence=0, limit=50)
+    events = await components.trip_run_store.list_events(
+        run_id, after_sequence=0, limit=50
+    )
     queued = [event for event in events if event.event_type == "run.supplement_queued"]
     assert len(queued) == 1
     assert queued[0].payload["command_id"] == receipt.command_id
@@ -147,13 +159,15 @@ async def test_resending_the_same_supplement_does_not_queue_it_twice(
     migrated_async_database, components
 ):
     run_id = await _running_run(components, with_lease=True)
-    request = schemas.TripRunSupplementRequest(category="pace", content="慢一点")
+    request = TripRunSupplementRequest(category="pace", content="慢一点")
 
     first = await routes.add_trip_run_supplement(run_id, request)
     second = await routes.add_trip_run_supplement(run_id, request)
 
     assert second.command_id == first.command_id
-    events = await components.trip_run_store.list_events(run_id, after_sequence=0, limit=50)
+    events = await components.trip_run_store.list_events(
+        run_id, after_sequence=0, limit=50
+    )
     assert len([e for e in events if e.event_type == "run.supplement_queued"]) == 1
 
 
@@ -165,7 +179,7 @@ async def test_supplement_needs_a_running_run(migrated_async_database, component
     with pytest.raises(HTTPException) as excinfo:
         await routes.add_trip_run_supplement(
             run.run_id,
-            schemas.TripRunSupplementRequest(category="other", content="随便"),
+            TripRunSupplementRequest(category="other", content="随便"),
         )
 
     assert excinfo.value.status_code == 409
@@ -208,7 +222,9 @@ async def test_command_receipt_can_be_read_after_a_disconnect(
     run_id = await _running_run(components, with_lease=False)
     receipt = await routes.control_trip_run(run_id, _cancel())
 
-    read = await routes.read_trip_run_command(run_id, receipt.command_id, session_id=None)
+    read = await routes.read_trip_run_command(
+        run_id, receipt.command_id, session_id=None
+    )
 
     assert read.command_id == receipt.command_id
     assert read.command_type == RunCommandType.CANCEL.value
@@ -217,5 +233,7 @@ async def test_command_receipt_can_be_read_after_a_disconnect(
     assert read.consumed_at
 
     with pytest.raises(HTTPException) as excinfo:
-        await routes.read_trip_run_command(run_id, "cmd_does_not_exist", session_id=None)
+        await routes.read_trip_run_command(
+            run_id, "cmd_does_not_exist", session_id=None
+        )
     assert excinfo.value.status_code == 404

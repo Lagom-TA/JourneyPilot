@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from travel_agent.storage.preset_store import PresetStore
 from travel_agent.conversation.preset_instructions import generate_preset_instructions
-from ..schemas import (
+from travel_agent.api.schemas.presets import (
     GenerateInstructionsRequest,
     PresetCreateRequest,
     PresetResponse,
