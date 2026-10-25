@@ -151,3 +151,14 @@ class RecommendationCatalog(StrictModel):
             (result.candidate_id, result.selection_slot_id): result
             for result in self.admission_results
         }
+
+
+class CandidateGateIntegrityError(RuntimeError):
+    """A stale or malformed packet cannot safely enter Candidate admission."""
+
+    def __init__(
+        self, reason_code: str, message: str, *, worker_kind: str | None = None
+    ):
+        super().__init__(message)
+        self.reason_code = reason_code
+        self.worker_kind = worker_kind

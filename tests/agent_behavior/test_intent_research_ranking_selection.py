@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from travel_agent.agents.destination_researcher import node as destination_node
-from travel_agent.agents.orchestrator.candidate_gate import (
-    _apply_candidate_caps,
+from travel_agent.planning.research.history import _apply_candidate_caps
+from travel_agent.planning.research.deadlines import (
     _closeout_blocks_targeted_round,
     _research_closeout_can_skip_connector_pass,
 )
@@ -1150,7 +1150,7 @@ def test_closeout_only_allows_exact_connector_targeted_rounds():
 
 
 def test_candidate_gate_routes_exact_connector_lookup_during_closeout(monkeypatch):
-    from travel_agent.agents.orchestrator import candidate_gate
+    from travel_agent.planning.research import node as candidate_gate
 
     state = TravelAgentState.model_construct(
         candidate_gate_route="transport_researcher",
@@ -1178,7 +1178,7 @@ def test_candidate_gate_routes_exact_connector_lookup_during_closeout(monkeypatc
 
 
 def test_candidate_gate_stops_exact_connector_lookup_after_composition(monkeypatch):
-    from travel_agent.agents.orchestrator import candidate_gate
+    from travel_agent.planning.research import node as candidate_gate
 
     state = TravelAgentState.model_construct(
         candidate_gate_route="transport_researcher",

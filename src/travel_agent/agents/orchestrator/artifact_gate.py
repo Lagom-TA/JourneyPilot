@@ -27,12 +27,12 @@ from travel_agent.planning.outcomes import (
 from travel_agent.planning.workspace import TripWorkspaceV2
 
 from ...entities.state import TravelAgentState
-from ...workflows.composition_repair import apply_composition_repair_budget
+from travel_agent.planning.itinerary.revision import apply_composition_repair_budget
 from travel_agent.planning.nodes import RESEARCH_WORKER_NODES as _RESEARCH_WORKERS
 from travel_agent.runtime.deadlines import observe_run_deadline
 from travel_agent.planning.assignments import strip_round_suffix
-from .candidate_gate import (
-    _latest_packets,
+from travel_agent.planning.research.history import _latest_packets
+from travel_agent.planning.research.retry import (
     worker_research_satisfied_by_a_later_round,
     worker_targeted_research_exhausted,
 )

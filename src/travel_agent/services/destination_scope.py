@@ -176,12 +176,7 @@ def annotate_destination_distance(
 def destination_points(
     controlled_trip_identity: Mapping[str, Any] | None,
 ) -> dict[str, tuple[float, float]]:
-    """Index each controlled destination's own point by its ``place_id``.
-
-    Mirrors ``candidate_gate._destination_country_codes`` deliberately: a
-    destination missing either half of its pair contributes no entry at all, so a
-    lookup miss and an unusable point are the same case downstream.
-    """
+    """Omit incomplete coordinates so callers cannot mistake them for a usable point."""
     destinations = (controlled_trip_identity or {}).get("destinations") or []
     points: dict[str, tuple[float, float]] = {}
     for item in destinations:

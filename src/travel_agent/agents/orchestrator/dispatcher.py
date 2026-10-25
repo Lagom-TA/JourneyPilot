@@ -19,7 +19,7 @@ from langchain_core.runnables import RunnableConfig
 
 from ...entities.state import TravelAgentState
 from travel_agent.runtime.deadlines import observe_run_deadline
-from ...workflows.composition_repair import composition_repair_budget_exhausted
+from travel_agent.planning.itinerary.revision import composition_repair_budget_exhausted
 from travel_agent.planning.assignments import strip_round_suffix
 
 logger = logging.getLogger(__name__)

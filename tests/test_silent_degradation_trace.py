@@ -1,17 +1,4 @@
-"""静默降级留痕（评审条目 B9）。
-
-三处处置各不相同，这个文件按三处分节钉住：
-
-* ``candidate_gate.route_after_candidate_gate`` 那个 ``except ValueError``：
-  不可达分支，**只加注释不加日志**。给不可达分支加 WARNING 只会让读的人以为它
-  可能发生。这里只断言它仍然不打日志、仍然返回 fail-open 的 ``"passed"``。
-* ``services/candidate_intent_evaluation`` 的三条静默路径：断言在
-  ``tests/agent_behavior/test_intent_research_ranking_selection.py`` 末尾那一节 ——
-  那里已经有这三条路径要的 ``_intent`` / ``_packet`` / ``_catalog`` 夹具，在这里重建
-  一份只会多一份要跟着改的东西。
-* ``utils/log_redaction``：脱敏是**加挂载点不是挪原位**。provider 模块 import 时那句
-  才是主挂点；日志入口再挂一遍覆盖反方向的缺口，靠的是安装函数幂等。
-"""
+"""验证正常路由不会误报错误，日志脱敏不会泄露查询凭证。"""
 
 from __future__ import annotations
 
@@ -25,25 +12,14 @@ from travel_agent.utils.log_redaction import (
 )
 
 _EVAL_LOGGER = "travel_agent.services.candidate_intent_evaluation"
-_GATE_LOGGER = "travel_agent.agents.orchestrator.candidate_gate"
+_GATE_LOGGER = "travel_agent.planning.research.node"
 
 
-# ── 3.1 不可达分支：仍然不留日志 ──────────────────────────────────────────────
-
-
-def test_unreachable_deadline_branch_stays_silent_and_fails_open(
+def test_missing_deadline_preserves_route_without_logging(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """``run_deadline`` 为 None 时直接返回既定路由，整条路径零日志。
 
-    那个 ``except ValueError`` 今天不可达（入参是 pydantic 校验过的
-    ``RunDeadlineSnapshot``），所以这里能验的是它的**邻居**：路由函数在正常输入上
-    不打任何日志。加了 WARNING 的话这条会红。
-    """
-
-    from travel_agent.agents.orchestrator.candidate_gate import (
-        route_after_candidate_gate,
-    )
+    from travel_agent.planning.research.node import route_after_candidate_gate
     from travel_agent.entities.state import TravelAgentState
 
     state = TravelAgentState(candidate_gate_route="transport_researcher")
@@ -53,9 +29,6 @@ def test_unreachable_deadline_branch_stays_silent_and_fails_open(
         assert route_after_candidate_gate(state) == "transport_researcher"
 
     assert [r for r in caplog.records if r.name == _GATE_LOGGER] == []
-
-
-# ── 3.3 脱敏：幂等 + 日志入口挂得上 ──────────────────────────────────────────
 
 
 @pytest.fixture

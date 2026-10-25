@@ -102,24 +102,7 @@ async def weather_context_builder_node(
 
 
 def format_weather_context_for_planning(state: TravelAgentState) -> str:
-    """The one rendering of weather any prompt gets; unavailable means do not infer.
-
-    This used to be the *second* rendering in the composition prompt, which
-    already carried ``WeatherContext.model_dump_json()`` verbatim.  Measured, the
-    two together were 36% of that prompt and the day records in them were
-    byte-identical.  This one is the survivor because it is the only one with a
-    rule attached and the only one every worker already reads; the composition
-    prompt's own copy is gone.
-
-    ``hourly_windows`` is not here either, and that is not a truncation — it has
-    **no model-facing consumer**.  Every real reader of the hourly detail is
-    deterministic server code holding the typed object
-    (``candidate_gate._scheduled_transport_weather_day``,
-    ``services.weather_adjustment``, ``services.candidate_readmission_freshness``,
-    ``services.weather_context_builder``), and no prompt in this repo mentions an
-    hourly window.  It was 30% of the composition prompt across both copies, paid
-    per call, read by nobody who was reading a prompt.
-    """
+    """Keep hourly detail for deterministic checks rather than duplicating it in prompts."""
 
     context = state.weather_context
     if context is None:

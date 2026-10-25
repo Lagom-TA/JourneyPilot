@@ -34,7 +34,7 @@ from travel_agent.planning.research.domains import ResearchDomain
 
 from ...entities.lodging_routing import day_lodging_bases
 from ...entities.state import TravelAgentState
-from ...workflows.composition_repair import (
+from travel_agent.planning.itinerary.revision import (
     apply_composition_repair_budget,
     composition_repair_attempts,
     composition_repair_budget_exhausted,

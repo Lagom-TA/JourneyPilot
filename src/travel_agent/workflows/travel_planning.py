@@ -29,7 +29,10 @@ from ..agents.accommodation_researcher.node import accommodation_researcher_node
 from ..agents.destination_researcher.node import destination_researcher_node
 from travel_agent.planning.itinerary.node import itinerary_planner_node
 from ..agents.orchestrator.dispatcher import dispatcher_node, route_after_dispatcher
-from ..agents.orchestrator.candidate_gate import candidate_gate_node, route_after_candidate_gate
+from travel_agent.planning.research.node import (
+    candidate_gate_node,
+    route_after_candidate_gate,
+)
 from ..agents.orchestrator.artifact_gate import artifact_gate_node, route_after_artifact_gate
 from ..agents.orchestrator.delivery_quality_gate import (
     delivery_quality_gate_node,

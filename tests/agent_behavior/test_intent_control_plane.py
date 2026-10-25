@@ -6,7 +6,7 @@ import pytest
 from openai import OpenAIError
 
 from travel_agent.agents.orchestrator.artifact_gate import artifact_gate_node
-from travel_agent.agents.orchestrator.candidate_gate import _latest_packets
+from travel_agent.planning.research.history import _latest_packets
 from travel_agent.entities.intent_spec import (
     AlternativeIntentValue,
     CategoryIntentValue,

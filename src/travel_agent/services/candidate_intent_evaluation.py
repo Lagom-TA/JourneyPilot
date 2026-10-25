@@ -26,19 +26,7 @@ from .intent_requirement_check import check_attributes, explicit_category_match
 
 logger = logging.getLogger(__name__)
 
-# 这个模块的三条静默降级路径共用的归因前缀。
-#
-# 为什么必须带轮次/身份而不只是打一句「解析失败」：这张图有修复回边、有并发扇出，
-# 一条 backend.log 里三个 worker 的输出会交织。run_id 与 node 从
-# `runtime/context` 的 contextvar 取（低层调用点拿不到 TravelAgentState，
-# 这两个 contextvar 就是为此存在的），domain 与本轮规模从本地作用域取。
-#
-# 缺口，写在这里而不是留给下一个人猜：**每个域的 attempt 计数拿不到**。它在
-# `TravelAgentState.candidate_gate_attempts`（entities/state.py:385）上，只有调用方
-# `agents/orchestrator/candidate_gate.py` 手里有；为了记日志给
-# `evaluate_candidate_intents` 新增一个参数穿透进来不值得，所以这里用
-# run_id + node + domain 定位到「哪一次节点执行的哪个域」，同一 run 里同一 node 的
-# 多轮之间靠日志的时间顺序区分。
+# Use execution-local identity to distinguish concurrent evaluation logs.
 
 
 def _trace_scope() -> str:

@@ -39,7 +39,7 @@ from travel_agent.services.intent_verification import (
     evaluate_intent_fidelity,
     revalidate_workspace_intent,
 )
-from travel_agent.workflows.composition_repair import (
+from travel_agent.planning.itinerary.revision import (
     MAXIMUM_COMPOSITION_REPAIR_ATTEMPTS,
 )
 

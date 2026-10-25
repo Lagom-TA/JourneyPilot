@@ -18,11 +18,11 @@ from ...services.intent_requirement_check import (
     evaluate_final_entities,
 )
 from ...services.intent_verification import evaluate_intent_fidelity
-from ...workflows.composition_repair import (
+from travel_agent.planning.itinerary.revision import (
     apply_composition_repair_budget,
     composition_repair_budget_exhausted,
 )
-from .candidate_gate import worker_targeted_research_exhausted
+from travel_agent.planning.research.retry import worker_targeted_research_exhausted
 
 _TARGET_RESEARCH_WORKER = {
     IntentTarget.VISIT: "destination_researcher",

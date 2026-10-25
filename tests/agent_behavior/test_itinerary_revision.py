@@ -31,6 +31,7 @@ from travel_agent.planning.itinerary.materialize import materialize_trip_workspa
 from travel_agent.planning.itinerary.node import _composition_phase
 from travel_agent.planning.itinerary.parsing import parse_itinerary_composition
 from travel_agent.planning.itinerary.prompts import _build_composition_prompt
+from travel_agent.planning.research import evaluation as candidate_evaluation
 from travel_agent.planning.research.candidates import DiningCandidate
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.services.candidate_ranking import rank_candidates
@@ -476,7 +477,8 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
         _spec,
     )
 
-    from travel_agent.agents.orchestrator import candidate_gate, dispatcher
+    from travel_agent.agents.orchestrator import dispatcher
+    from travel_agent.planning.research import node as candidate_gate
     from travel_agent.entities.intent_spec import IntentKind, IntentTarget
     from travel_agent.planning.itinerary import node
 
@@ -589,9 +591,9 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
     async def evaluate(**kwargs):
         return [], {}
 
-    monkeypatch.setattr(candidate_gate, "evaluate_candidate_intents", evaluate)
-    monkeypatch.setattr(candidate_gate, "get_model_router", lambda: None)
-    monkeypatch.setattr(candidate_gate, "llm_for_task", lambda *args: None)
+    monkeypatch.setattr(candidate_evaluation, "evaluate_candidate_intents", evaluate)
+    monkeypatch.setattr(candidate_evaluation, "get_model_router", lambda: None)
+    monkeypatch.setattr(candidate_evaluation, "llm_for_task", lambda *args: None)
     ready = checkpoint(routed, **await candidate_gate.candidate_gate_node(routed))
     assert candidate_gate.route_after_candidate_gate(ready) == "passed"
     routed = checkpoint(ready, **await dispatcher.dispatcher_node(ready))
@@ -636,7 +638,8 @@ async def test_new_draft_researches_connectors_then_uses_the_same_materializer(
 ):
     from tests.agent_behavior.test_intent_research_ranking_selection import _brief
 
-    from travel_agent.agents.orchestrator import candidate_gate, dispatcher
+    from travel_agent.agents.orchestrator import dispatcher
+    from travel_agent.planning.research import node as candidate_gate
     from travel_agent.planning.itinerary import node
     from travel_agent.services.research_query_planner import build_research_query_plan
 
@@ -666,9 +669,9 @@ async def test_new_draft_researches_connectors_then_uses_the_same_materializer(
     async def evaluate(**kwargs):
         return [], {}
 
-    monkeypatch.setattr(candidate_gate, "evaluate_candidate_intents", evaluate)
-    monkeypatch.setattr(candidate_gate, "get_model_router", lambda: None)
-    monkeypatch.setattr(candidate_gate, "llm_for_task", lambda *args: None)
+    monkeypatch.setattr(candidate_evaluation, "evaluate_candidate_intents", evaluate)
+    monkeypatch.setattr(candidate_evaluation, "get_model_router", lambda: None)
+    monkeypatch.setattr(candidate_evaluation, "llm_for_task", lambda *args: None)
     pending = checkpoint(current, **await candidate_gate.candidate_gate_node(current))
     assert candidate_gate.route_after_candidate_gate(pending) == "transport_researcher"
     assert len(pending.local_connector_gaps) == 1
@@ -843,8 +846,9 @@ def test_lodging_morning_and_evening_are_distinct_occurrences():
 
 @pytest.mark.asyncio
 async def test_existing_revision_budget_stops_reopening_the_broken_draft():
-    from travel_agent.agents.orchestrator import candidate_gate, dispatcher
-    from travel_agent.workflows.composition_repair import (
+    from travel_agent.agents.orchestrator import dispatcher
+    from travel_agent.planning.research import node as candidate_gate
+    from travel_agent.planning.itinerary.revision import (
         MAXIMUM_COMPOSITION_REPAIR_ATTEMPTS,
     )
 
@@ -1053,7 +1057,7 @@ async def test_feasible_provider_alternative_wins_despite_another_route_conflict
 
 @pytest.mark.asyncio
 async def test_provider_time_conflict_returns_to_existing_bounded_revision(monkeypatch):
-    from travel_agent.agents.orchestrator import candidate_gate
+    from travel_agent.planning.research import node as candidate_gate
     from travel_agent.planning.itinerary import node
 
     catalog = _catalog(restaurant_packet(), visit_packet(), route_packet())
@@ -1206,3 +1210,228 @@ def test_real_duplicate_occurrence_and_overlapping_repeat_still_fail():
     payload["itinerary"]["dining_stops"].append(payload["itinerary"]["dining_stops"][0])
     with pytest.raises(ValueError, match="dining stop ids must be unique"):
         checkpoint(state(), trip_workspace_v2=payload)
+
+
+def grounded_place_packet(packet, query_plan, *, country_code="JP"):
+    from travel_agent.entities.intent_spec import canonical_json_hash
+    from travel_agent.planning.research.evidence import (
+        FactAssertion, FactSourceLink, FieldProvenance,
+    )
+    from travel_agent.tools.governance import compiled_tool_source_id
+
+    payload = packet.model_dump()
+    candidate = payload["candidates"][0]
+    candidate["provider_country_code"] = country_code
+    if country_code == "CN":
+        candidate.update(destination_id="destination_hangzhou", address="Hangzhou")
+    domain = candidate["candidate_kind"]
+    query = next(
+        query for query in query_plan.queries
+        if query.domain.value == domain
+        and query.destination_id == candidate["destination_id"]
+        and query.query_kind.value == "structural"
+    )
+    source = payload["source_records"][0]
+    source_id = compiled_tool_source_id(source["tool_audit_id"], candidate["place_id"])
+    identity = {
+        field: candidate[field] for field in (
+            "branch_name" if domain == "dining" else "name",
+            "place_id", "address", "provider_place_type", "provider_country_code",
+        )
+    }
+    identity.update(
+        latitude=30.25 if country_code == "CN" else 35.68,
+        longitude=120.16 if country_code == "CN" else 139.76,
+    )
+    source.update(
+        source_record_id=source_id, snapshot=identity,
+        content_hash=canonical_json_hash(identity),
+    )
+    entity = payload["fact_assertions"][0]["entity_ref"]
+    facts = [
+        FactAssertion(
+            fact_assertion_id=f"fact_{candidate['candidate_id']}_{field}",
+            entity_ref=entity, field_path=field, asserted_value=value,
+            criticality="decision_critical", status="verified",
+            source_links=[FactSourceLink(
+                source_record_id=source_id, relation="supports",
+                source_locator=field,
+            )],
+        )
+        for field, value in identity.items()
+    ]
+    candidate.update(
+        source_record_ids=[source_id],
+        fact_assertion_ids=[fact.fact_assertion_id for fact in facts],
+        field_paths=list(identity),
+    )
+    payload.update(
+        research_query_plan_id=query_plan.query_plan_id,
+        executed_query_ids=[query.query_id], fact_assertions=facts,
+        field_provenance=[FieldProvenance(
+            origin="external_fact", entity_ref=entity, field_path=fact.field_path,
+            reference_ids=[fact.fact_assertion_id],
+        ) for fact in facts],
+    )
+    payload["candidate_discovery_records"][0].update(
+        query_ids=[query.query_id], intent_ids=[], origins=["structural_query"],
+    )
+    return ResearchPacket.model_validate(payload)
+
+
+def research_ready_state(*, kinds=("visit",), second_destination=False, cn_food=False):
+    from tests.agent_behavior.test_intent_research_ranking_selection import _brief, _identity
+    from travel_agent.entities.research_brief import DomainResearchObjective
+    from travel_agent.entities.trip_input import ControlledTripIdentity
+    from travel_agent.services.research_query_planner import build_research_query_plan
+
+    original = state()
+    identity = _identity().model_dump(mode="json")
+    identity.update(start_date="2026-10-10", end_date="2026-10-12")
+    identity["origin"] = dict(identity["destinations"][0])
+    if second_destination:
+        identity["origin"] = _identity().model_dump(mode="json")["origin"]
+        identity["destinations"].append({
+            **identity["destinations"][0], "place_id": "destination_osaka",
+            "name": "Osaka", "display_name": "Osaka, Japan", "admin_path": ["Osaka"],
+            "latitude": 34.69, "longitude": 135.5,
+        })
+    if cn_food:
+        identity["destinations"][0].update(
+            place_id="destination_hangzhou", name="Hangzhou", display_name="Hangzhou, China",
+            country_code="CN", latitude=30.25, longitude=120.16, admin_path=["Hangzhou"],
+        )
+        identity["origin"] = dict(identity["destinations"][0])
+        identity["style"].update(primary="food", secondary_interests=[])
+    brief = _brief(original.intent_spec).model_copy(update={
+        "controlled_trip_identity": ControlledTripIdentity.model_validate(identity),
+        "domain_objectives": [DomainResearchObjective(
+            objective_id=f"objective_{kind}", domain=kind, summary=f"research {kind}",
+        ) for kind in ("visit", "dining")],
+    })
+    plan = build_research_query_plan(intent_spec=original.intent_spec, brief=brief)
+    packets = [grounded_place_packet(
+        visit_packet() if kind == "visit" else restaurant_packet(), plan,
+        country_code="CN" if cn_food else "JP",
+    ) for kind in kinds]
+    packet = packets[0].model_dump()
+    for other in packets[1:]:
+        for field in ("candidates", "candidate_discovery_records", "source_records", "fact_assertions", "field_provenance"):
+            packet[field].extend(other.model_dump()[field])
+        packet["executed_query_ids"].extend(other.executed_query_ids)
+    for candidate in packet["candidates"]:
+        candidate["research_packet_id"] = packet["research_packet_id"]
+    packet = ResearchPacket.model_validate(packet)
+    shell = original.minimum_delivery_draft.day_shells[0]
+    draft = original.minimum_delivery_draft.model_copy(update={
+        "constraint_pack_revision": 1,
+        "day_shells": [shell.model_copy(update={
+            "day_id": f"day_{day}", "day": day, "date": date(2026, 10, 9 + day),
+            "destination_id": identity["destinations"][-1 if second_destination and day == 3 else 0]["place_id"],
+            "arrival_from_destination_id": identity["destinations"][0]["place_id"] if second_destination and day == 3 else None,
+            "lodging_night": day < 3,
+        }) for day in range(1, 4)],
+    })
+    return checkpoint(
+        original, controlled_trip_identity=identity, constraint_pack_revision=1,
+        fact_data_revision=1, research_brief=brief, research_query_plan=plan,
+        planning_generation=original.planning_generation.model_copy(update={"constraint_pack_revision": 1}),
+        minimum_delivery_draft=draft, recommendation_catalog=None, candidate_selection_plan=None,
+        research_packets={"destination_researcher": packet},
+        execution_plan=[["destination_researcher"], ["itinerary_planner"]],
+        agent_status={"destination_researcher": "completed", "itinerary_planner": "pending"},
+    )
+
+
+def offline_candidate_model(monkeypatch):
+    class Model:
+        async def ainvoke(self, messages, **kwargs):
+            return json.dumps({"matches": []})
+
+    monkeypatch.setattr(candidate_evaluation, "get_model_router", lambda: None)
+    monkeypatch.setattr(candidate_evaluation, "llm_for_task", lambda *args: Model())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kinds", [("visit",), ("visit", "dining")])
+async def test_real_candidate_gate_releases_reusable_places_to_planner(monkeypatch, kinds):
+    from travel_agent.planning.research.node import candidate_gate_node, route_after_candidate_gate
+
+    offline_candidate_model(monkeypatch)
+    current = research_ready_state(kinds=kinds)
+    ready = checkpoint(current, **await candidate_gate_node(current))
+    assert all(row.status == "passed" for row in ready.recommendation_catalog.admission_results)
+    assert len(ready.recommendation_catalog.candidate_ranking_scores) == len(kinds)
+    assert ready.candidate_selection_plan.composition_candidate_ids()
+    assert len(ready.minimum_delivery_draft.day_shells) > len(kinds)
+    assert route_after_candidate_gate(ready) == "itinerary_planner"
+    assert not ready.candidate_research_gaps
+    assert not ready.candidate_gate_attempts
+    assert "destination_researcher" not in ready.agent_assignments
+
+
+@pytest.mark.asyncio
+async def test_real_candidate_gate_researches_the_destination_without_a_stop(monkeypatch):
+    from travel_agent.planning.research.gaps import _gap_id
+    from travel_agent.planning.research.node import candidate_gate_node
+
+    offline_candidate_model(monkeypatch)
+    current = research_ready_state(second_destination=True)
+    pending = checkpoint(current, **await candidate_gate_node(current))
+    assert pending.candidate_gate_route == "destination_researcher"
+    gap, = pending.candidate_research_gaps
+    assert (gap.gap_id, gap.field_path, gap.destination_id, gap.status) == (
+        _gap_id("destination_researcher", "missing_destination_physical_stop", "destination_osaka"),
+        "itinerary.destination_physical_stop", "destination_osaka", "researching",
+    )
+    scopes = pending.agent_assignments["destination_researcher"]["provider_evidence_assignments"]
+    assert scopes
+    assert all("destination_osaka" in row["scope"]["target_identity"] for row in scopes)
+    objective = pending.agent_assignments["destination_researcher"]["objective"]
+    assert gap.gap_id in objective and gap.destination_id in objective
+    assert sum(pending.candidate_gate_attempts.values()) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("available,missing,cn_food", [("dining", "visit", False), ("visit", "dining", True)])
+async def test_real_candidate_gate_still_requires_noncompensating_physical_kinds(
+    monkeypatch, available, missing, cn_food,
+):
+    from travel_agent.planning.research.node import candidate_gate_node
+
+    offline_candidate_model(monkeypatch)
+    current = research_ready_state(kinds=(available,), cn_food=cn_food)
+    pending = checkpoint(current, **await candidate_gate_node(current))
+    assert pending.recommendation_catalog.admission_results[0].status == "passed"
+    assert pending.candidate_gate_route == "destination_researcher"
+    gap, = pending.candidate_research_gaps
+    assert gap.field_path == f"candidate_kind.{missing}"
+    assert pending.agent_assignments["destination_researcher"]["required_candidate_kinds"] == [missing]
+
+
+@pytest.mark.asyncio
+async def test_real_candidate_gate_keeps_exact_long_distance_responsibilities(monkeypatch):
+    from travel_agent.entities.provider_evidence import build_required_long_distance_legs
+    from travel_agent.planning.research.node import candidate_gate_node
+
+    offline_candidate_model(monkeypatch)
+    current = research_ready_state()
+    identity = dict(current.controlled_trip_identity)
+    identity["origin"] = {
+        **identity["origin"], "place_id": "origin_shanghai", "name": "Shanghai",
+        "display_name": "Shanghai, China", "country_code": "CN", "admin_path": ["Shanghai"],
+        "latitude": 31.23, "longitude": 121.47,
+    }
+    current = checkpoint(current, controlled_trip_identity=identity,
+        execution_plan=[["destination_researcher", "transport_researcher"], ["itinerary_planner"]])
+    pending = checkpoint(current, **await candidate_gate_node(current))
+    assert pending.candidate_gate_route == "transport_researcher"
+    gaps = [gap for gap in pending.candidate_research_gaps if gap.field_path == "transport_class.long_distance"]
+    assert len(gaps) == 2 and all(gap.status == "researching" for gap in gaps)
+    assigned = pending.agent_assignments["transport_researcher"]["provider_evidence_assignments"]
+    assert {row["scope"]["scope_id"] for row in assigned} == {gap.provider_evidence_scope_id for gap in gaps}
+    assert {json.dumps(row["scope"]["route_leg"], sort_keys=True) for row in assigned} == {
+        json.dumps(leg.model_dump(mode="json"), sort_keys=True)
+        for leg in build_required_long_distance_legs(identity, cross_day_return_required=False)
+    }
+    assert sum(pending.candidate_gate_attempts.values()) == 1
