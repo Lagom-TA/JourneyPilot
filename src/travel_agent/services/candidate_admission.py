@@ -343,7 +343,7 @@ def _supporting_compiled_tool_sources(
     fabricated entity's claim on a genuine compiled source for a different
     place.  ``compiled_tool_source_id_is_about`` closes that: the id's final
     component is the digest of the entity the envelope returned, minted by
-    ``research_packet_output`` from the very same helper.
+    ``planning.research.output.identifiers`` from the very same helper.
     """
 
     sources_by_id = {source.source_record_id: source for source in source_records}
@@ -902,7 +902,7 @@ def _out_of_destination_identity_fields(
     """Reject a located place that is not a stop in the destination it claims.
 
     The backstop half of the destination-scope rule.  The enum a worker selects from
-    already drops far places (``research_packet_output._eligible_place_selection_options``),
+    already drops far places (``planning.research.output.options._eligible_place_selection_options``),
     which is the half that keeps the *near* one instead of losing both; this half catches
     any path that reaches admission without having gone through that enum.
 

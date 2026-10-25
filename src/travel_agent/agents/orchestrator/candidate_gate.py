@@ -85,7 +85,10 @@ from travel_agent.planning.nodes import RESEARCH_WORKER_NODES as _RESEARCH_WORKE
 from travel_agent.planning.execution import is_structural_connector_round
 from travel_agent.runtime.deadlines import DeadlineObservation, observe_run_deadline
 from travel_agent.planning.assignments import strip_round_suffix
-from .provider_failure import classify_provider_failure, is_provider_or_model_failure
+from travel_agent.planning.research.provider_failure import (
+    classify_provider_failure,
+    is_provider_or_model_failure,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -177,7 +180,7 @@ def _failure_signals(packet: ResearchPacket | None) -> list[ProviderFailureSigna
     What makes an observation a provider failure is a server-compiled record,
     not its wording.  Both keys read here are server-owned: an
     ``external_tool`` source may enter a packet only from the authoritative
-    registry ``research_packet_output`` compiles out of this round's Tool
+    registry ``planning.research.output.sources`` compiles out of this round's Tool
     Gateway transcript — ``_bind_source_content_hashes`` replaces any
     model-echoed copy with the registry record and rejects an id the registry
     does not hold — and only the server stamps ``lifecycle_status="rejected"``

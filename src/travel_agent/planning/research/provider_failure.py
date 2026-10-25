@@ -1,24 +1,17 @@
-"""Normalized provider-failure classification shared by orchestration gates.
-
-The classifier deliberately works on error *categories*, never raw provider
-payloads.  Candidate Gate owns the retry/circuit decision; Artifact Gate only
-uses the same classification to decide whether an absent typed artifact is a
-provider/model-content outcome or a true internal-contract failure.
-"""
+"""Pure provider failure classification for research and orchestration."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Literal
 
-from ...entities.worker_failure_protocol import (
+from travel_agent.entities.worker_failure_protocol import (
     PREFIX_PROVIDER_CAPABILITY,
     PREFIX_PROVIDER_DETERMINISTIC,
     PREFIX_PROVIDER_EMPTY,
     PREFIX_PROVIDER_TRANSIENT,
     PREFIX_SCHEMA_GATE,
 )
-
 
 ProviderFailureCategory = Literal["deterministic", "transient", "incomplete"]
 
@@ -29,16 +22,7 @@ class ProviderFailureClassification:
     reason_code: str
 
 
-# A query that reached the Provider and came back with nothing.  The
-# authoritative signal is the ``provider_empty:`` prefix below; this free-text
-# marker only covers Provider payloads that phrase the miss in their own words.
-_QUERY_MISS_MARKERS = (
-    "found no executable route",
-)
-
-# The one definition of these two vocabularies; ``agents.worker_errors`` imports
-# them rather than keeping a second copy.  A classification that depended on
-# which layer saw the string first is not a classification.
+_QUERY_MISS_MARKERS = ("found no executable route",)
 _TRANSIENT_MARKERS = (
     "timeout",
     "timed out",
@@ -46,12 +30,6 @@ _TRANSIENT_MARKERS = (
     "temporarily",
     "rate limit",
     "rate-limit",
-    # amap answers a breached query-per-second allowance with
-    # ``CUQPS_HAS_EXCEEDED_THE_LIMIT`` — no space, so "rate limit" never matched
-    # it.  It is transient by construction: the allowance is per second, and the
-    # rate gate is what keeps a Run from tripping it again.  Reading it as
-    # deterministic would close the whole lodging domain on one second's worth of
-    # contention (candidate_gate closes a domain on a deterministic signal).
     "cuqps",
     "exceeded_the_limit",
     "429",
@@ -62,7 +40,6 @@ _TRANSIENT_MARKERS = (
     "provider unavailable",
     "upstream",
 )
-
 _DETERMINISTIC_MARKERS = (
     "401",
     "403",
@@ -81,18 +58,6 @@ _DETERMINISTIC_MARKERS = (
     "response schema",
     "provider contract",
 )
-
-# These phrases identify an external/model failure without treating a local
-# contract message such as ``tool assignment missing`` as a provider outcome.
-# The generic nouns "provider", "model", and "tool" are deliberately not
-# signals by themselves.
-#
-# Research workers write standardized prefixes via
-# ``agents.worker_errors.format_worker_last_error``:
-# ``schema_gate:``, ``provider_empty:``, ``provider_capability:``,
-# ``provider_transient:``, ``provider_deterministic:``.  Artifact Gate already
-# treats a present Research Packet + failed status as content (not missing
-# packet); prefixes still matter when the packet is absent.
 _EXPLICIT_EXTERNAL_FAILURE_MARKERS = (
     PREFIX_SCHEMA_GATE,
     PREFIX_PROVIDER_EMPTY,
@@ -113,14 +78,9 @@ _EXPLICIT_EXTERNAL_FAILURE_MARKERS = (
 
 
 def classify_provider_failure(value: object) -> ProviderFailureClassification:
-    """Classify an external/provider failure without treating it as evidence."""
+    "Classify an external/provider failure without treating it as evidence."
     raw = str(value or "")
     text = raw.casefold()
-    # Prefer standardized worker prefixes before free-text markers.
-    # A ``schema_gate:`` prefix marks the packet-collection layer, not the
-    # transiency of the failure: a collection call that timed out or hit a
-    # rate limit does not repeat verbatim, so the transient markers inside the
-    # text decide the category.
     if text.startswith(PREFIX_SCHEMA_GATE):
         if any(marker in text for marker in _TRANSIENT_MARKERS):
             return ProviderFailureClassification(
@@ -146,11 +106,6 @@ def classify_provider_failure(value: object) -> ProviderFailureClassification:
             category="incomplete",
             reason_code="provider_empty_result",
         )
-    # The Gateway decided before any call that this Provider cannot answer the
-    # requested date.  Nothing failed and nothing repeats verbatim on a
-    # *different* Provider, so this is an incomplete round, not a deterministic
-    # contract failure: the domain keeps its one bounded targeted re-research,
-    # which is precisely the round that switches modality.
     if text.startswith(PREFIX_PROVIDER_CAPABILITY):
         return ProviderFailureClassification(
             category="incomplete",
@@ -178,11 +133,7 @@ def classify_provider_failure(value: object) -> ProviderFailureClassification:
 
 
 def is_provider_or_model_failure(value: object) -> bool:
-    """Return whether a worker failure carries an explicit external/model signal.
-
-    A blank or purely local malformed-state message remains Delivery Integrity;
-    it must not be quietly reclassified as a content gap.
-    """
+    "Return whether a worker failure carries an explicit external/model signal."
     text = str(value or "").casefold()
     if not text:
         return False

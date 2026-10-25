@@ -36,7 +36,10 @@ from .candidate_gate import (
     worker_research_satisfied_by_a_later_round,
     worker_targeted_research_exhausted,
 )
-from .provider_failure import classify_provider_failure, is_provider_or_model_failure
+from travel_agent.planning.research.provider_failure import (
+    classify_provider_failure,
+    is_provider_or_model_failure,
+)
 
 
 def _round_trip_workspace(workspace: Any) -> TripWorkspaceV2 | None:

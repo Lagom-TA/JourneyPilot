@@ -39,7 +39,7 @@ deny_tools 排除（见 tools/access.py: _AGENT_TOOL_POLICY），且
 **地点身份类工具一律没有降级边**，无论 Provider 是 Nominatim 还是高德：
 
 - ``global_place_search``（Nominatim 全球地点身份）：网页散文永远产不出 Provider
-  地点身份，``research_packet_output._successful_place_records`` 只认
+  地点身份，``planning.research.output.transcript._successful_place_records`` 只认
   ``tool_name == "global_place_search"`` 且 ``status == "success"`` 的信封。
 - ``maps_text_search`` / ``maps_around_search`` / ``maps_search_detail``（高德 POI）：
   三条消费路径全部封死——确定性住宿预绑定丢弃 ``status != "success"``，坐标补全对

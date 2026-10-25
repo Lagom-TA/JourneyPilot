@@ -74,15 +74,7 @@ PROVIDER_RESULT_OUTCOME_EMPTY_SUCCESS = "empty_success"
 # ---------------------------------------------------------------------------
 # Compiled tool SourceRecord identity
 # ---------------------------------------------------------------------------
-# Every ``external_tool`` SourceRecord in a Research Packet is minted by the
-# server from a successful Tool Gateway envelope, and its id encodes *which
-# entity* that envelope was about.  Two layers read that encoding and they must
-# never drift apart: ``agents.research_packet_output`` mints the id, and
-# ``services.candidate_admission`` re-derives it to ask "is this compiled source
-# about the entity this candidate claims to be?".  A duplicated literal or a
-# duplicated digest formula in those two places would silently reopen the
-# whole-entity hallucination channel the suffix exists to close, so both sites
-# call the helpers below instead.
+# Bind audit and entity identity so one place cannot borrow another place's evidence.
 COMPILED_TOOL_SOURCE_ID_PREFIX = "source_tool_success_"
 
 _COMPILED_TOOL_SOURCE_ENTITY_DIGEST_LENGTH = 16
@@ -125,7 +117,7 @@ def compiled_tool_source_id_is_about(source_record_id: str, entity_id: str) -> b
 # result matched the branch's locality tokens).  It is the *only* discriminator
 # that separates "a review of this exact branch was retrieved" from "this place
 # was looked up on a map", because both compile into an ``external_tool``
-# SourceRecord about the same ``place_id``.  ``research_packet_output`` reads it
+# SourceRecord about the same ``place_id``.  The research transcript reader uses it
 # to decide which envelopes become quality sources, and that is its only reader:
 # a restaurant does not owe a review to be admitted, so whether this key is present
 # decides only whether the report *marks* the option 外部评价已核验 — never whether

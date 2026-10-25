@@ -49,6 +49,7 @@ test-results/
 # 输出目录
 outputs/
 output/
+!/src/travel_agent/planning/research/output/
 temp/
 tmp/
 cache/

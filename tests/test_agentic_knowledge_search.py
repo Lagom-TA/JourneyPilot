@@ -266,7 +266,7 @@ async def test_single_query_and_one_rerank_across_collections(knowledge, monkeyp
 
 async def test_packet_citations_use_only_whole_visible_fragments(knowledge, monkeypatch):
     import json
-    from travel_agent.agents.research_packet_output import _ground_rag_chunk_sources
+    from travel_agent.planning.research.output.sources import _ground_rag_chunk_sources
 
     _, tools = knowledge
     _, result = await run([call("园林"), {"content": "建议", "tool_calls": []}], tools)

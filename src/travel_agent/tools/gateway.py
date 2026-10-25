@@ -171,13 +171,7 @@ class ToolGateway:
             if reference_only
             else ToolExecutionStatus.NOT_APPLICABLE.value
         )
-        # A date-capability decision is deliberately *not* an ``error``: the
-        # envelope's ``error`` field is the execution-failure carrier that
-        # ``research_packet_output._failed_tool_sources`` compiles into a
-        # rejected source and Candidate Gate reads as a provider failure.  The
-        # capability text stays fully visible on ``result_summary`` (below), in
-        # ``metadata.temporal``, in the durable audit record, and in the
-        # ``reason`` returned to the caller.
+        # An unsupported date is not a failed call and must not create rejected evidence.
         envelope = build_tool_execution_envelope(
             tool_name=manifest.tool_name,
             arguments=arguments,

@@ -247,7 +247,8 @@ Tests:
 - `agent_behavior/test_intent_research_ranking_selection.py::test_semantic_exclusion_becomes_a_hard_ranking_violation`
 
 ### INV-CANDIDATE-002：模型不得生成正式 Intent 或 Query Lineage
-Owner: `agents/research_packet_output.py`
+Owner: `planning/research/output/metadata.py`、`planning/research/output/lineage.py`、
+`planning/research/output/schemas.py`、`planning/research/output/parsing.py`
 Enforced by: 模型输出 Schema 移除正式谱系字段；Packet Compiler 用服务端元数据覆盖并校验
 ADR: [ADR-0011](adr/ADR-0011-intent-aware-candidate-pipeline.md)
 Tests:
@@ -263,7 +264,8 @@ Tests:
 - `agent_behavior/test_intent_research_ranking_selection.py::test_selection_never_promotes_a_gate_rejected_candidate`
 
 ### INV-CANDIDATE-004：同一 Identity Candidate 在多个 Query 中只出现一次
-Owner: `agents/research_packet_output.py` 的 Provider Identity 选项去重与 Packet 边界
+Owner: `planning/research/output/identifiers.py`、`planning/research/output/options.py`、
+`planning/research/output/lineage.py`、`planning/research/output/parsing.py`
 Enforced by: Provider place/route identity 生成稳定 Candidate ID；重复身份不能形成两个 Packet 候选，
 执行过的 Query、Intent 与 Origin 合并到一条 Candidate Discovery Record
 ADR: [ADR-0011](adr/ADR-0011-intent-aware-candidate-pipeline.md)
@@ -290,7 +292,7 @@ Tests:
 
 ### INV-WEP-001：schema_gate: 前缀进门后暂态性由文本里的暂态标记决定
 Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
-`src/travel_agent/agents/orchestrator/provider_failure.py`、
+`src/travel_agent/planning/research/provider_failure.py`、
 `src/travel_agent/agents/worker_errors.py`
 Enforced by: `classify_provider_failure` 见该前缀进条件分支（文本含 `_TRANSIENT_MARKERS`
 判 (transient, provider_transient_failure)，否则判 (deterministic,
@@ -302,7 +304,7 @@ Tests:
 
 ### INV-WEP-002：provider_empty: 前缀进门后固定判 (incomplete, provider_empty_result)
 Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
-`src/travel_agent/agents/orchestrator/provider_failure.py`、
+`src/travel_agent/planning/research/provider_failure.py`、
 `src/travel_agent/agents/worker_errors.py`
 Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider_or_model_failure`
 对它返回 True；Provider 完成了调用但零命中是诚实的空结果，不是合同失败。
@@ -312,7 +314,7 @@ Tests:
 
 ### INV-WEP-003：provider_transient: 前缀进门后固定判 (transient, provider_transient_failure)
 Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
-`src/travel_agent/agents/orchestrator/provider_failure.py`、
+`src/travel_agent/planning/research/provider_failure.py`、
 `src/travel_agent/agents/worker_errors.py`
 Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider_or_model_failure`
 对它返回 True；暂态失败重试不会逐字复现，不许读成确定性失败关域。
@@ -322,7 +324,7 @@ Tests:
 
 ### INV-WEP-004：provider_deterministic: 前缀进门后固定判 (deterministic, provider_deterministic_failure)
 Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
-`src/travel_agent/agents/orchestrator/provider_failure.py`、
+`src/travel_agent/planning/research/provider_failure.py`、
 `src/travel_agent/agents/worker_errors.py`
 Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider_or_model_failure`
 对它返回 True；确定性失败重试逐字复现，域按有限重试后关闭。
@@ -332,7 +334,7 @@ Tests:
 
 ### INV-WEP-005：provider_capability: 前缀进门后固定判 (incomplete, provider_capability_declined)
 Owner: `src/travel_agent/entities/worker_failure_protocol.py`、
-`src/travel_agent/agents/orchestrator/provider_failure.py`、
+`src/travel_agent/planning/research/provider_failure.py`、
 `src/travel_agent/agents/worker_errors.py`
 Enforced by: `classify_provider_failure` 见该前缀直接映射，`is_provider_or_model_failure`
 对它返回 True；Gateway 在任何调用前判定 Provider 答不了所请求的日期，

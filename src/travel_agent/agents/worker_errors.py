@@ -2,7 +2,7 @@
 
 Workers write a single string into ``TravelAgentState.last_error``. Artifact Gate
 and Candidate Gate classify with substring markers in
-``orchestrator.provider_failure``. Prefixes make schema vs provider outcomes
+``planning.research.provider_failure``. Prefixes make schema vs provider outcomes
 explicit without a parallel structured error channel. The prefix constants
 themselves live in ``entities/worker_failure_protocol.py`` so the classifier
 (which sits upstream in the import graph) reads the same values.
@@ -19,11 +19,11 @@ from ..entities.worker_failure_protocol import (
     PREFIX_SCHEMA_GATE as PREFIX_SCHEMA_GATE,
     PREFIX_WORKER_FAILED as PREFIX_WORKER_FAILED,
 )
-from .orchestrator.provider_failure import (
+from travel_agent.planning.research.provider_failure import (
     _DETERMINISTIC_MARKERS,
     _TRANSIENT_MARKERS,
 )
-from .research_packet_output import ResearchPacketOutputError
+from travel_agent.planning.research.output.policy import ResearchPacketOutputError
 
 _QUERY_MISS_MARKERS = (
     "found no executable route",
@@ -48,7 +48,7 @@ def format_worker_last_error(
     """Return a classifier-friendly last_error string for research workers.
 
     ``provider_empty_round`` is the honest empty-success signal computed by
-    ``research_packet_output.provider_round_answered_empty``: the Provider
+    ``planning.research.output.failures.provider_round_answered_empty``: the Provider
     completed its calls, reported zero hits, and nothing in the round failed.
     The Packet exception that surfaces afterwards is a *symptom* of having
     nothing to serialize, so it must not be attributed to the schema layer —
@@ -58,7 +58,7 @@ def format_worker_last_error(
 
     ``provider_capability_round`` is the same argument one step earlier in the
     call chain, computed by
-    ``research_packet_output.provider_round_capability_declared``: the Gateway
+    ``planning.research.output.failures.provider_round_capability_declared``: the Gateway
     decided *before* any call that the Provider cannot answer the requested
     date.  It takes precedence over ``provider_empty_round`` because it is the
     more specific statement — the Provider did not merely find nothing, it was

@@ -40,26 +40,7 @@ ProviderEvidenceStatus = Literal[
 ]
 ProviderRouteLegRole = Literal["outbound", "return", "inter_destination"]
 
-# The transport classes whose product *is* a timetable, and therefore the only ones
-# that owe ``departure_at``/``arrival_at``.
-#
-# One definition, two readers: ``research_packet_output`` decides which Provider routes
-# may be harvested at all, and ``services/candidate_admission`` decides which of them are
-# admitted.  Neither may spell the rule out as its own literal set.
-#
-# For a long-distance leg the times are the product: G269 上海虹桥 15:00 → 深圳北 21:35
-# is what the traveller buys, and the placement skeleton anchors a whole Day on them.
-# A local transit connector is not that. The traveller walks to the platform and takes
-# the next one; ``TransportCandidate.departure_at`` is optional precisely because such
-# a leg has no scheduled instant, and even a timetabled provider's answer there is
-# "the next departure after the time you asked about" — an illustration, not a
-# commitment.
-#
-# Requiring the pair anyway makes the stricter layer unsatisfiable for any provider that
-# answers in *durations*, which is the norm for mainland-China transit: amap returns
-# 41 minutes and ¥4 on 地铁1号线 and no clock at all.  Such routes get dropped silently at
-# harvest (``route_options=0`` with a successful call in the log), and the connector goes
-# back to being authored by the model with an invented duration.
+# Long-distance services need a timetable; local routes may provide only a duration.
 TIMETABLED_TRANSPORT_CLASSES: frozenset[str] = frozenset({"long_distance"})
 _EXPLICIT_CROSS_DAY_RETURN = re.compile(
     r"跨日|跨夜|次日|翌日|第二天到达|凌晨到达|overnight|red[- ]?eye",

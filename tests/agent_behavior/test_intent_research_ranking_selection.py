@@ -15,12 +15,16 @@ from travel_agent.agents.orchestrator.candidate_gate import (
 from travel_agent.agents.orchestrator.intent_fidelity_gate import (
     _candidate_retry_available,
 )
-from travel_agent.agents.research_packet_output import (
+from travel_agent.planning.research.output.lineage import (
     _bind_candidate_discovery_lineage,
+)
+from travel_agent.planning.research.output.choices import (
     _default_provider_place_selections,
     _provider_place_selections_or_default,
     _provider_route_selection_limit,
     _provider_route_selections_or_default,
+)
+from travel_agent.planning.research.output.schemas import (
     _provider_selection_response_schema,
 )
 from travel_agent.entities.candidate_discovery import (
@@ -1935,7 +1939,7 @@ def test_targeted_packet_keeps_traced_candidate_and_prunes_unrelated_extras():
 
 
 def test_targeted_packet_still_rejects_when_no_candidate_has_query_lineage():
-    from travel_agent.agents.research_packet_output import ResearchPacketOutputError
+    from travel_agent.planning.research.output.policy import ResearchPacketOutputError
 
     packet = _packet(
         "candidate_unrelated",

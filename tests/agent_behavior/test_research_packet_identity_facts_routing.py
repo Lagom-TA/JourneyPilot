@@ -14,14 +14,12 @@ import logging
 
 import pytest
 
-from travel_agent.agents.research_packet_output import (
-    ResearchPacketOutputError,
-    parse_research_packet_output,
-)
+from travel_agent.planning.research.output.policy import ResearchPacketOutputError
+from travel_agent.planning.research.output.parsing import parse_research_packet_output
 from travel_agent.planning.research.evidence import SourceRecord
 from travel_agent.planning.research.packets import ResearchPacket
 
-_PACKET_LOGGER = "travel_agent.agents.research_packet_output"
+_PACKET_LOGGER = "travel_agent.planning.research.output.parsing"
 _IDENTITY_FACTS_MESSAGE = "research packet requires external identity-bound facts"
 _CLOSURE_DROPPED_LOG = "Research Packet candidate closure dropped"
 _RUN_ID = "run-1"

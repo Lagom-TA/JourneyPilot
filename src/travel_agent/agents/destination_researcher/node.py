@@ -66,18 +66,26 @@ from ...tools.governance import QUALITY_VERIFIED_PLACE_IDS_METADATA_KEY
 from ...utils.brief_helpers import build_assignment_context
 from ...utils.coordinates import amap_location_to_wgs84
 from travel_agent.runtime.cancellation import RunCancelled
-from ..research_packet_output import (
+from travel_agent.planning.research.output.sources import (
     authoritative_retry_source_records,
-    authoritative_tool_messages,
+)
+from travel_agent.planning.research.output.transcript import authoritative_tool_messages
+from travel_agent.planning.research.output.metadata import (
     build_authoritative_research_packet_metadata,
+)
+from travel_agent.planning.research.output.failures import (
     build_failure_only_research_packet,
-    has_required_provider_place_selection,
-    observed_place_nominations,
-    packet_candidate_limit,
-    parse_or_repair_research_packet_output,
-    provider_evidence_outcomes,
     provider_round_answered_empty,
     provider_round_capability_declared,
+)
+from travel_agent.planning.research.output.options import (
+    has_required_provider_place_selection,
+    observed_place_nominations,
+    provider_evidence_outcomes,
+)
+from travel_agent.planning.research.output.policy import packet_candidate_limit
+from travel_agent.planning.research.output.finalization import (
+    parse_or_repair_research_packet_output,
 )
 from ..research_packet_prompt import build_research_packet_prompt
 from travel_agent.conversation.history import append_recent_history
@@ -232,7 +240,7 @@ def collect_offered_dining_place_ids(
     model, and a restaurant nobody reviewed is still a restaurant.
 
     The discriminator is ``provider_place_type_matches_candidate_kind`` — the
-    same one ``research_packet_output`` uses to build the eligible option list —
+    same one ``planning.research.output.options`` uses to build the eligible option list —
     so the two surfaces the model sees cannot disagree about what is on offer.
     """
     place_ids: List[str] = []

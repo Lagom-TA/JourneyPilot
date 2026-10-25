@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from travel_agent.agents.research_packet_output import (
+from travel_agent.planning.research.output.policy import (
     ResearchWorkerKind,
     packet_candidate_limit,
 )

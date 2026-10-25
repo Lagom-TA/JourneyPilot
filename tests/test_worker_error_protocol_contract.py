@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pytest
 
-from travel_agent.agents.orchestrator.provider_failure import (
+from travel_agent.planning.research.provider_failure import (
     classify_provider_failure,
     is_provider_or_model_failure,
 )
-from travel_agent.agents.research_packet_output import ResearchPacketOutputError
+from travel_agent.planning.research.output.policy import ResearchPacketOutputError
 from travel_agent.agents.worker_errors import (
     PREFIX_PROVIDER_CAPABILITY,
     PREFIX_PROVIDER_DETERMINISTIC,

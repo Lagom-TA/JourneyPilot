@@ -15,7 +15,7 @@ rung                                         what it does with this rule
                                              a ranking preference, never a
                                              filter, so a named far point
                                              still resolves
-``research_packet_output`` 选项枚举            drops far options out of the
+``planning.research.output.options`` 选项枚举            drops far options out of the
                                              enum the worker may pick from,
                                              so the near one is what gets
                                              chosen rather than lost.  It
@@ -59,7 +59,7 @@ from .geo_dispersion import haversine_km
 
 # The key a server-normalized place record carries its own answer under.  It lives
 # beside the rule instead of beside one provider: the enum in
-# ``research_packet_output`` reads this key off *every* place record it is handed,
+# ``planning.research.output.options`` reads this key off *every* place record it is handed,
 # and a record is handed to it by four different binding paths (the
 # ``global_place_search`` executor plus three deterministic in-code Provider
 # bindings).  While the name lived in ``nominatim_place_search`` the three
