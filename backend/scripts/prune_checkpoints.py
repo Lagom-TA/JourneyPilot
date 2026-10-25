@@ -18,7 +18,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from travel_agent.builders import AppBuilder
 from travel_agent.config import get_settings
-from travel_agent.workflows.checkpoint_pruning import CheckpointPruningService
+from travel_agent.storage.checkpoint_pruning import CheckpointPruningService
 
 
 async def main() -> None:

@@ -12,10 +12,7 @@ from travel_agent.planning.research.output.policy import (
     ResearchWorkerKind,
     packet_candidate_limit,
 )
-from travel_agent.agents.research_packet_prompt import (
-    build_research_packet_prompt,
-    build_research_packet_system_prompt,
-)
+from travel_agent.planning.research.prompts import build_research_packet_prompt, build_research_packet_system_prompt
 from travel_agent.planning.research.packets import ResearchPacket
 
 
@@ -149,23 +146,15 @@ def test_dynamic_inputs_change_only_runtime_and_preserve_message_boundaries(
 
 def test_context_sections_have_one_owner_and_are_injected_once(monkeypatch):
     from travel_agent.memory.agent_context import agent_context_sections
-    from travel_agent.panels import constraint
+
     from travel_agent.preset.injector import PresetInjector
-    from travel_agent.workflows import weather_context
+
 
     monkeypatch.setattr(
         PresetInjector, "format_for_agent", lambda value: f"preset:{value}"
     )
-    monkeypatch.setattr(
-        constraint,
-        "format_constraint_pack_for_prompt",
-        lambda value: f"constraints:{value}",
-    )
-    monkeypatch.setattr(
-        weather_context,
-        "format_weather_context_for_planning",
-        lambda state: f"weather:{state.weather_context}",
-    )
+    monkeypatch.setattr('travel_agent.planning.requirements.constraints.presentation.format_constraint_pack_for_prompt', lambda value: f'constraints:{value}')
+    monkeypatch.setattr('travel_agent.planning.weather.presentation.format_weather_context_for_planning', lambda state: f'weather:{state.weather_context}')
     state = SimpleNamespace(
         session_anchor={"summary": "unique_anchor"},
         preset_context="A",

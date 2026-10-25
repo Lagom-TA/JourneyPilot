@@ -134,9 +134,7 @@ def test_budget_and_deadline_must_be_sealed_together():
     """一个封了 Deadline 却没有预算的 Run 说明有条路径只封了一半。"""
 
     from travel_agent.planning.state import TravelAgentState
-    from travel_agent.workflows.minimum_delivery_draft import (
-        seal_minimum_delivery_draft,
-    )
+    from travel_agent.planning.delivery.minimum_draft import seal_minimum_delivery_draft
 
     class _State:
         minimum_delivery_draft = _draft()
@@ -158,9 +156,7 @@ def test_budget_and_deadline_must_be_sealed_together():
 
 
 def test_sealing_a_draft_produces_a_budget_alongside_the_deadline():
-    from travel_agent.workflows.minimum_delivery_draft import (
-        seal_minimum_delivery_draft,
-    )
+    from travel_agent.planning.delivery.minimum_draft import seal_minimum_delivery_draft
 
     class _State:
         minimum_delivery_draft = _draft()
@@ -176,9 +172,7 @@ def test_sealing_a_draft_produces_a_budget_alongside_the_deadline():
 def test_a_replay_of_a_sealed_draft_never_refills_the_budget():
     """重放已封存的一代不许换来一份新预算 —— 那等于给 Run 续一次费。"""
 
-    from travel_agent.workflows.minimum_delivery_draft import (
-        seal_minimum_delivery_draft,
-    )
+    from travel_agent.planning.delivery.minimum_draft import seal_minimum_delivery_draft
 
     class _State:
         minimum_delivery_draft = _draft()
@@ -198,9 +192,7 @@ def test_a_replay_of_a_sealed_draft_never_refills_the_budget():
 
 
 def test_clearing_a_draft_generation_clears_the_budget_too():
-    from travel_agent.workflows.minimum_delivery_draft import (
-        _clear_completion_generation,
-    )
+    from travel_agent.planning.delivery.minimum_draft import _clear_completion_generation
 
     cleared = _clear_completion_generation()
     assert cleared["run_deadline"] is None

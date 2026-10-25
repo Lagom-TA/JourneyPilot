@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from travel_agent.panels.constraint import deterministic_budget_constraints
+from travel_agent.planning.requirements.constraints.extraction import deterministic_budget_constraints
 from travel_agent.planning.requirements.intent_contracts import AlternativeIntentValue
 from travel_agent.planning.requirements.intent_contracts import CategoryIntentValue
 from travel_agent.planning.requirements.intent_contracts import IntentKind

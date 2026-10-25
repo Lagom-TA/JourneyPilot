@@ -42,8 +42,8 @@ from travel_agent.runtime.run_lease import release_all_leases
 from travel_agent.runtime.run_recovery import RunRecoveryService
 from travel_agent.runtime.usage_flush import UsageFlushService
 from travel_agent.planning.weather.context_builder import WeatherContextBuilder
-from travel_agent.workflows.fast_answer import FastAnswerWorkflow
-from travel_agent.workflows.travel_planning import TravelPlanningWorkflow
+from travel_agent.conversation.workflow import FastAnswerWorkflow
+from travel_agent.planning.workflow import TravelPlanningWorkflow
 
 logger = logging.getLogger(__name__)
 

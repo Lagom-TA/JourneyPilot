@@ -7,13 +7,13 @@ from types import SimpleNamespace
 import pytest
 from openai import OpenAIError
 
-from travel_agent.agents.orchestrator.artifact_gate import artifact_gate_node
+from travel_agent.planning.delivery.artifact_gate import artifact_gate_node
 from travel_agent.planning.research.history import _latest_packets
 from travel_agent.planning.requirements.intent_contracts import AlternativeIntentValue, CategoryIntentValue, IntentConflict, IntentItem, IntentKind, IntentStrength, IntentTarget, OutputRequirementValue, ScalarIntentValue, VerificationMode
 from travel_agent.planning.requirements.generation_contracts import PlanningGeneration
 from travel_agent.planning.requirements.request_contracts import ClauseDisposition, IntentAmendment
 from travel_agent.planning.state import TravelAgentState
-from travel_agent.panels.constraint import deterministic_budget_constraints
+from travel_agent.planning.requirements.constraints.extraction import deterministic_budget_constraints
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.planning.research.capability_planning import build_capability_plan
 from travel_agent.planning.research.brief_builder import build_research_brief
@@ -23,9 +23,9 @@ from travel_agent.planning.requirements.normalization.clauses import is_material
 from travel_agent.planning.requirements.normalization.model import normalize_clauses
 from travel_agent.planning.requirements.revision import build_request_contract_revision
 from travel_agent.planning.research.query_planner import build_research_query_plan
-from travel_agent.workflows import intent_amendments as intent_amendment_workflow
-from travel_agent.workflows.intent_amendments import apply_runtime_amendments
-from travel_agent.workflows.travel_planning import _build_plan_gate_payload
+
+from travel_agent.planning.requirements.amendments import apply_runtime_amendments
+from travel_agent.planning.requirements.approval import _build_plan_gate_payload
 
 
 def _identity():
@@ -592,7 +592,7 @@ def test_lodging_exclusion_has_an_owner_without_unneeded_research(stages, overni
 
 @pytest.mark.parametrize("same_city", [True, False])
 def test_planner_assigns_authoritative_transport_scopes_for_local_and_intercity_trips(same_city):
-    from travel_agent.agents.orchestrator.planner import planner_node
+    from travel_agent.planning.research.plan import planner_node
     from travel_agent.planning.research.provider_assignments import parse_provider_evidence_assignments
 
     contract, generation = _contract()
@@ -640,9 +640,7 @@ def test_planner_assigns_authoritative_transport_scopes_for_local_and_intercity_
     (True, False, None, False),
 ])
 def test_transport_resume_repairs_only_legacy_initial_same_city_scopes(same_city, scoped, raw, repairable):
-    from travel_agent.agents.transport_researcher.node import (
-        transport_provider_assignments,
-    )
+    from travel_agent.planning.research.transport.scope import transport_provider_assignments
 
     identity = _identity()
     if same_city:
@@ -1349,14 +1347,7 @@ def test_research_amendment_is_rejected_after_the_research_window(monkeypatch):
         intent_amendment_resume_node="itinerary_planner",
     )
     state.run_deadline = object()
-    monkeypatch.setattr(
-        intent_amendment_workflow,
-        "observe_run_deadline",
-        lambda deadline: (
-            deadline,
-            SimpleNamespace(research_closed=True, composition_closed=False),
-        ),
-    )
+    monkeypatch.setattr('travel_agent.planning.requirements.amendments.observe_run_deadline', lambda deadline: (deadline, SimpleNamespace(research_closed=True, composition_closed=False)))
 
     update = apply_runtime_amendments(state)
 

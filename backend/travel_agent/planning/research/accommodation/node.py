@@ -1,0 +1,365 @@
+"""Planning research accommodation node."""
+
+from __future__ import annotations
+
+import datetime
+import logging
+import time
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from langchain_core.messages import AIMessage
+from langchain_core.runnables import RunnableConfig
+
+from travel_agent.conversation.history import append_recent_history
+from travel_agent.llm.router import get_model_router
+from travel_agent.llm.task_routing import TaskKind, llm_for_task
+from travel_agent.memory.research_context import format_worker_research_context
+from travel_agent.planning.assignments import (
+    assignment_research_round,
+    resolve_agent_assignment,
+    resolve_scoped_research_output_key,
+)
+from travel_agent.planning.invalidation import generation_packet_key
+from travel_agent.planning.requirements.constraint_applicability import (
+    active_hard_constraint_ids,
+    active_hard_constraints,
+)
+from travel_agent.planning.research.accommodation.discovery import (
+    discover_deterministic_hotels,
+)
+from travel_agent.planning.research.accommodation.prompts import (
+    build_accommodation_task_prompt,
+)
+from travel_agent.planning.research.accommodation.scope import (
+    _NODE_NAME,
+    scope_accommodation_gap_tools,
+)
+from travel_agent.planning.research.assignment_context import build_assignment_context
+from travel_agent.planning.research.domains import ResearchDomain
+from travel_agent.planning.research.errors import format_worker_last_error
+from travel_agent.planning.research.output.failures import (
+    build_failure_only_research_packet,
+    provider_round_answered_empty,
+    provider_round_capability_declared,
+)
+from travel_agent.planning.research.output.finalization import (
+    parse_or_repair_research_packet_output,
+)
+from travel_agent.planning.research.output.metadata import (
+    build_authoritative_research_packet_metadata,
+)
+from travel_agent.planning.research.output.options import provider_evidence_outcomes
+from travel_agent.planning.research.output.policy import packet_candidate_limit
+from travel_agent.planning.research.output.sources import (
+    authoritative_retry_source_records,
+)
+from travel_agent.planning.research.output.transcript import authoritative_tool_messages
+from travel_agent.planning.research.prompts import build_research_packet_prompt
+from travel_agent.planning.research.provider_assignments import (
+    parse_provider_evidence_assignments,
+)
+from travel_agent.planning.research.query_planner import queries_by_ids
+from travel_agent.planning.state import TravelAgentState
+from travel_agent.planning.tool_context import build_tool_context_from_state
+from travel_agent.runtime.cancellation import RunCancelled
+from travel_agent.storage.worker_journal_store import JournalConflict
+from travel_agent.tools.access import (
+    exclude_tools,
+    filter_tools_for_agent,
+    get_available_tools,
+)
+from travel_agent.tools.react import streaming_react_loop
+
+if TYPE_CHECKING:
+    from travel_agent.runtime.events import EventBuffer
+
+
+logger = logging.getLogger(__name__)
+
+
+_LAST_ERROR_LOG_LIMIT = 600
+
+
+_MAX_TOOL_ITERATIONS = 4
+
+
+async def accommodation_researcher_node(
+    state: TravelAgentState, config: RunnableConfig
+) -> Dict[str, Any]:
+    """住宿研究员节点：查询具体 property 并输出 Research Packet。"""
+    router = get_model_router()
+    llm = llm_for_task(router, TaskKind.RESEARCH_TOOLS, has_tools=True)
+    stream_queue: Optional["EventBuffer"] = config.get("configurable", {}).get(
+        "stream_queue"
+    )
+
+    current_time = state.current_time or datetime.datetime.now().strftime(
+        "%Y-%m-%d %H:%M"
+    )
+    user_query = state.user_query or ""
+    run_id = state.run_id
+
+    output_key, assignment = resolve_agent_assignment(
+        state.agent_assignments or {}, _NODE_NAME
+    )
+    research_brief_context = build_assignment_context(
+        assignment=assignment,
+        brief=state.research_brief,
+        intent_spec=state.intent_spec,
+        constraint_pack=state.constraint_pack,
+    )
+    task_desc = assignment["objective"]
+    if state.research_query_plan is None:
+        raise ValueError("accommodation research requires a Research Query Plan")
+    planned_queries = [
+        query
+        for query in queries_by_ids(
+            state.research_query_plan,
+            assignment.get("research_query_ids") or [],
+        )
+        if query.domain is ResearchDomain.LODGING
+    ]
+    task_desc = (
+        f"{task_desc}；研究查询："
+        + "；".join(query.query_text for query in planned_queries)
+    )[:1000]
+    recommended_tools = assignment.get("recommended_tools", [])
+    excluded_tools = assignment.get("excluded_tools", [])
+    excluded_candidate_ids = assignment.get("excluded_candidate_ids")
+    require_current_candidate = bool(assignment.get("require_current_candidate"))
+    provider_assignments = parse_provider_evidence_assignments(
+        assignment,
+        expected_worker=_NODE_NAME,
+        expected_run_id=run_id,
+        expected_constraint_pack_revision=state.constraint_pack_revision,
+    )
+    output_key = resolve_scoped_research_output_key(
+        state.research_packets,
+        _NODE_NAME,
+        output_key,
+        scoped_retry=require_current_candidate,
+    )
+
+    if state.planning_generation is None:
+        raise ValueError("accommodation research requires a planning generation")
+    generation_id = state.planning_generation.generation_id
+    upstream_packet_context = format_worker_research_context(
+        state.research_packets,
+        worker_kind=_NODE_NAME,
+        run_id=run_id,
+        generation_id=generation_id,
+        planned_queries=planned_queries,
+        assignment=assignment,
+        gaps=state.candidate_research_gaps,
+    )
+
+    active_constraint_ids = active_hard_constraint_ids(
+        state.constraint_pack,
+        worker_kind=_NODE_NAME,
+    )
+    active_constraints = active_hard_constraints(
+        state.constraint_pack,
+        worker_kind=_NODE_NAME,
+    )
+    prompt = build_research_packet_prompt(
+        worker_kind=_NODE_NAME,
+        run_id=run_id,
+        task_id=output_key,
+        constraint_pack_revision=state.constraint_pack_revision,
+        fact_data_revision=state.fact_data_revision,
+        current_time=current_time,
+        research_brief_context=research_brief_context,
+        candidate_limit=packet_candidate_limit(_NODE_NAME),
+        upstream_packet_context=upstream_packet_context,
+        active_constraint_ids=active_constraint_ids,
+        state=state,
+        recommended_tools=recommended_tools,
+    )
+
+    logger.info(
+        "AccommodationResearcher 上下文注入: anchor=%s, preset=%s, district_ctx_len=%d",
+        bool(state.session_anchor),
+        bool(state.preset_context),
+        len(upstream_packet_context),
+    )
+
+    history: List[Dict[str, Any]] = []
+    append_recent_history(history, state)
+    messages = prompt.messages(history)
+    messages.append(
+        {
+            "role": "user",
+            "content": build_accommodation_task_prompt(
+                task_desc=task_desc,
+                user_query=user_query,
+                require_current_candidate=require_current_candidate,
+            ),
+        }
+    )
+
+    selected_servers = (
+        []
+        if require_current_candidate and recommended_tools
+        else state.selected_mcp_servers or []
+    )
+    available_tools = await get_available_tools(selected_servers)
+    available_tools = filter_tools_for_agent(available_tools, _NODE_NAME)
+    available_tools = exclude_tools(available_tools, excluded_tools)
+    available_tools = scope_accommodation_gap_tools(
+        available_tools,
+        recommended_tools,
+        scoped_retry=require_current_candidate,
+    )
+
+    tool_cache = dict(state.tool_cache) if state.tool_cache else {}
+    tool_context = build_tool_context_from_state(state)
+    executed_query_ids: List[str] = []
+    packet_state_key = generation_packet_key(output_key, generation_id)
+    authoritative_packet_metadata = build_authoritative_research_packet_metadata(
+        worker_kind=_NODE_NAME,
+        run_id=run_id,
+        generation_id=generation_id,
+        intent_spec_revision=state.intent_spec_revision,
+        research_query_plan_id=state.research_query_plan.query_plan_id,
+        executed_queries=[],
+        task_id=output_key,
+        constraint_pack_revision=state.constraint_pack_revision,
+        fact_data_revision=state.fact_data_revision,
+        query_context={
+            "objective": task_desc,
+            "controlled_trip_identity": state.controlled_trip_identity or {},
+            "research_round": assignment_research_round(output_key),
+        },
+        generated_at=datetime.datetime.now(datetime.timezone.utc),
+    )
+
+    authoritative_tool_results: List[Dict[str, Any]] = []
+
+    finalize_started_at: Optional[float] = None
+    try:
+        deterministic_places_ready = await discover_deterministic_hotels(
+            state=state,
+            messages=messages,
+            available_tools=available_tools,
+            tool_context=tool_context,
+            authoritative_tool_results=authoritative_tool_results,
+            planned_queries=planned_queries,
+            executed_query_ids=executed_query_ids,
+        )
+        authoritative_packet_metadata["executed_query_ids"] = list(
+            dict.fromkeys(executed_query_ids)
+        )
+        authoritative_packet_metadata["query_context"]["query_lineage"] = [
+            query.model_dump(mode="json")
+            for query in planned_queries
+            if query.query_id in set(executed_query_ids)
+        ]
+        if deterministic_places_ready:
+            raw_response = ""
+        else:
+            react = await streaming_react_loop(
+                llm=llm,
+                messages=messages,
+                available_tools=available_tools,
+                stream_queue=stream_queue,
+                node_name=_NODE_NAME,
+                max_iterations=_MAX_TOOL_ITERATIONS,
+                can_ask_user=False,
+                tool_cache=tool_cache,
+                tool_context=tool_context,
+            )
+            raw_response = react.content
+            authoritative_tool_results.extend(react.tool_results)
+
+        finalize_started_at = time.perf_counter()
+        packet = await parse_or_repair_research_packet_output(
+            raw_response or "",
+            expected_worker=_NODE_NAME,
+            expected_run_id=run_id,
+            llm=llm,
+            context_messages=messages,
+            authoritative_tool_results=authoritative_tool_results,
+            excluded_candidate_ids=excluded_candidate_ids,
+            require_current_candidate=require_current_candidate,
+            expected_active_constraint_ids=active_constraint_ids,
+            expected_active_constraints=active_constraints,
+            authoritative_packet_metadata=authoritative_packet_metadata,
+            authoritative_source_records=authoritative_retry_source_records(
+                state.recommendation_catalog,
+                expected_worker=_NODE_NAME,
+                constraint_pack_revision=state.constraint_pack_revision,
+                fact_data_revision=state.fact_data_revision,
+            )
+            if require_current_candidate
+            else (),
+        )
+
+        logger.info(
+            "AccommodationResearcher 完成，key=%s candidates=%d facts=%d sources=%d finalize_ms=%.0f",
+            output_key,
+            len(packet.candidates),
+            len(packet.fact_assertions),
+            len(packet.source_records),
+            (time.perf_counter() - finalize_started_at) * 1000.0,
+        )
+
+        return {
+            "messages": [
+                AIMessage(content=f"已核验 {len(packet.candidates)} 个住宿候选")
+            ],
+            "research_packets": {packet_state_key: packet},
+            "agent_status": {output_key: "completed"},
+            "tool_cache": tool_cache,
+            "provider_evidence_outcomes": provider_evidence_outcomes(
+                authoritative_tool_messages(authoritative_tool_results),
+                expected_worker=_NODE_NAME,
+                packet=packet,
+                assignments=provider_assignments,
+            ),
+        }
+
+    except (RunCancelled, JournalConflict):
+        raise
+    except Exception as e:
+        if finalize_started_at is not None:
+            logger.info(
+                "AccommodationResearcher 交付定型中断，key=%s finalize_ms=%.0f",
+                output_key,
+                (time.perf_counter() - finalize_started_at) * 1000.0,
+            )
+        evidence_messages = authoritative_tool_messages(authoritative_tool_results)
+        failure_packet = build_failure_only_research_packet(
+            authoritative_packet_metadata=authoritative_packet_metadata,
+            context_messages=evidence_messages,
+        )
+        outcomes = provider_evidence_outcomes(
+            evidence_messages,
+            expected_worker=_NODE_NAME,
+            packet=failure_packet,
+            assignments=provider_assignments,
+        )
+
+        last_error = format_worker_last_error(
+            e,
+            provider_empty_round=provider_round_answered_empty(
+                evidence_messages, outcomes=outcomes
+            ),
+            provider_capability_round=provider_round_capability_declared(
+                evidence_messages, outcomes=outcomes
+            ),
+        )
+        logger.error(
+            "AccommodationResearcher 执行失败: worker=%s key=%s last_error=%s",
+            _NODE_NAME,
+            output_key,
+            last_error[:_LAST_ERROR_LOG_LIMIT],
+        )
+        result = {
+            "messages": [AIMessage(content="住宿 Research Packet 生成失败")],
+            "last_error": last_error,
+            "agent_status": {output_key: "failed"},
+        }
+        if failure_packet is not None:
+            result["research_packets"] = {packet_state_key: failure_packet}
+        result["provider_evidence_outcomes"] = outcomes
+        return result

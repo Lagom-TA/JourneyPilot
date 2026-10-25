@@ -1,3 +1,8 @@
+
+import travel_agent.conversation.answer.node as conversation_answer_node
+import travel_agent.memory.memory_store as memory_memory_store
+import travel_agent.memory.user_profile as memory_user_profile
+import travel_agent.planning.requirements.constraints.loading as planning_requirements_constraints_loading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -27,7 +32,7 @@ async def test_disabled_memory_search_does_not_compute_embeddings(disabled_vecto
 
 
 async def test_manual_preferences_and_profile_still_load(disabled_vectors, monkeypatch):
-    from travel_agent.agents.scope import constraint_normalizer as normalizer
+
     from travel_agent.planning.state import TravelAgentState
 
     manual = [{"fact_id": "42", "content": "不要海鲜"}]
@@ -35,10 +40,10 @@ async def test_manual_preferences_and_profile_still_load(disabled_vectors, monke
     profile_read = AsyncMock(return_value=profile)
     manual_read = AsyncMock(return_value=manual)
     search = AsyncMock()
-    monkeypatch.setattr(normalizer.UserProfileMemory, "get_user_profile", profile_read)
-    monkeypatch.setattr(normalizer.MemoryStore, "list_manual_facts", manual_read)
-    monkeypatch.setattr(normalizer.MemoryStore, "search_facts", search)
-    loaded = await normalizer.load_constraint_sources(TravelAgentState(user_id="local"))
+    monkeypatch.setattr(memory_user_profile.UserProfileMemory, "get_user_profile", profile_read)
+    monkeypatch.setattr(memory_memory_store.MemoryStore, "list_manual_facts", manual_read)
+    monkeypatch.setattr(memory_memory_store.MemoryStore, "search_facts", search)
+    loaded = await planning_requirements_constraints_loading.load_constraint_sources(TravelAgentState(user_id="local"))
     assert loaded.user_profile is profile
     assert loaded.manual_memory_facts == manual
     assert loaded.memory_facts == []
@@ -117,7 +122,7 @@ async def test_bootstrap_and_health_do_not_read_corpus(disabled_vectors, monkeyp
 
 
 async def test_fast_answer_continues_without_retrieval(disabled_vectors, monkeypatch):
-    from travel_agent.agents.fast_answer import node
+
     from travel_agent.planning.state import TravelAgentState
 
     class FakeLLM:
@@ -129,17 +134,18 @@ async def test_fast_answer_continues_without_retrieval(disabled_vectors, monkeyp
             yield {"type": "finish", "content": "建议用两天游览苏州，园林与老街分开安排。", "tool_calls": []}
 
     llm = FakeLLM()
-    monkeypatch.setattr(node, "get_model_router", Mock())
-    monkeypatch.setattr(node, "llm_for_task", Mock(return_value=llm))
-    monkeypatch.setattr(node, "build_run_constraint_pack", AsyncMock(return_value={}))
-    monkeypatch.setattr(node, "_build_realtime_tool_context", AsyncMock(return_value={}))
+    monkeypatch.setattr('travel_agent.conversation.answer.node.get_model_router', Mock())
+    monkeypatch.setattr('travel_agent.conversation.answer.node.llm_for_task', Mock(return_value=llm))
+    monkeypatch.setattr('travel_agent.conversation.answer.node.build_run_constraint_pack', AsyncMock(return_value={}))
+    monkeypatch.setattr('travel_agent.conversation.answer.node._build_realtime_tool_context', AsyncMock(return_value={}))
+    monkeypatch.setattr('travel_agent.conversation.answer.tool_context._build_realtime_tool_context', AsyncMock(return_value={}))
     from travel_agent.knowledge.retriever import HybridRetriever
 
     retrieve = AsyncMock(side_effect=AssertionError("retrieval must not run"))
     monkeypatch.setattr(HybridRetriever, "retrieve", retrieve)
-    monkeypatch.setattr(node, "get_available_tools", AsyncMock(return_value=[]))
+    monkeypatch.setattr('travel_agent.conversation.answer.node.get_available_tools', AsyncMock(return_value=[]))
 
-    result = await node.fast_answer_node(TravelAgentState(user_query="苏州适合游览几天？"), {})
+    result = await conversation_answer_node.fast_answer_node(TravelAgentState(user_query="苏州适合游览几天？"), {})
 
     assert result["is_completed"] is True
     assert "建议用两天" in result["messages"][0].content

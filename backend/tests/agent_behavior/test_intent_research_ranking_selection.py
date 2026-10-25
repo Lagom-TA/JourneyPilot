@@ -1,3 +1,5 @@
+
+import travel_agent.planning.research.destination.discovery as planning_research_destination_discovery
 import json
 import logging
 from datetime import datetime, timezone
@@ -6,15 +8,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from travel_agent.agents.destination_researcher import node as destination_node
+
 from travel_agent.planning.research.history import _apply_candidate_caps
 from travel_agent.planning.research.deadlines import (
     _closeout_blocks_targeted_round,
     _research_closeout_can_skip_connector_pass,
 )
-from travel_agent.agents.orchestrator.intent_fidelity_gate import (
-    _candidate_retry_available,
-)
+from travel_agent.planning.delivery.intent_gate import _candidate_retry_available
 from travel_agent.planning.research.output.lineage import (
     _bind_candidate_discovery_lineage,
 )
@@ -1727,9 +1727,11 @@ async def test_worker_executes_intent_and_structural_queries_before_fallback(
             "sanitized_result": {"results": results},
         }
 
-    monkeypatch.setattr(destination_node, "execute_tool", fake_execute_tool)
+    monkeypatch.setattr('travel_agent.planning.research.destination.dining_binding.execute_tool', fake_execute_tool)
+    monkeypatch.setattr('travel_agent.planning.research.destination.discovery.execute_tool', fake_execute_tool)
+    monkeypatch.setattr('travel_agent.planning.research.destination.operating_information.execute_tool', fake_execute_tool)
     executed = []
-    await destination_node.discover_and_resolve_required_places(
+    await planning_research_destination_discovery.discover_and_resolve_required_places(
         messages=[],
         available_tools=[{"schema": {"function": {"name": name}}} for name in ("global_place_search", "free_web_search")],
         required_candidate_kinds=["visit"],

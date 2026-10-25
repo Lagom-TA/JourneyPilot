@@ -1,3 +1,5 @@
+
+import travel_agent.planning.research.dispatch as planning_research_dispatch
 import json
 from datetime import date, datetime, timedelta
 
@@ -382,9 +384,7 @@ def test_occurrences_reach_connectors_workspace_and_checkpoint(provider):
     assert len(result.itinerary.transport_legs) == 4
     assert len(result.selection_slots) == (10 if provider else 6)
     assert skeleton.model_dump() == before
-    from travel_agent.agents.orchestrator.delivery_quality_gate import (
-        evaluate_delivery_quality,
-    )
+    from travel_agent.planning.delivery.quality.evaluation import evaluate_delivery_quality
 
     quality, issues = evaluate_delivery_quality(restored)
     assert quality.itinerary_gate == "passed", [(issue.reason, issue.field_path) for issue in issues]
@@ -477,7 +477,7 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
         _spec,
     )
 
-    from travel_agent.agents.orchestrator import dispatcher
+
     from travel_agent.planning.research import node as candidate_gate
     from travel_agent.planning.requirements.intent_contracts import IntentKind, IntentTarget
     from travel_agent.planning.itinerary import node
@@ -531,8 +531,8 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
     )
     failed = checkpoint(current, **await node.itinerary_planner_node(current, {}))
     assert "free time" in failed.composition_failure_context
-    routed = checkpoint(failed, **await dispatcher.dispatcher_node(failed))
-    assert dispatcher.route_after_dispatcher(routed) == "candidate_gate"
+    routed = checkpoint(failed, **await planning_research_dispatch.dispatcher_node(failed))
+    assert planning_research_dispatch.route_after_dispatcher(routed) == "candidate_gate"
     repairing = checkpoint(routed, **await candidate_gate.candidate_gate_node(routed))
     assert candidate_gate.route_after_candidate_gate(repairing) == "composition_repair"
     assert repairing.composition_repair_attempts == 1
@@ -578,8 +578,8 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
     assert revised.delivery_quality_route is None
     assert revised.intent_spec == repairing.intent_spec
     assert revised.recommendation_catalog == repairing.recommendation_catalog
-    routed = checkpoint(revised, **await dispatcher.dispatcher_node(revised))
-    assert dispatcher.route_after_dispatcher(routed) == "candidate_gate"
+    routed = checkpoint(revised, **await planning_research_dispatch.dispatcher_node(revised))
+    assert planning_research_dispatch.route_after_dispatcher(routed) == "candidate_gate"
     monkeypatch.setattr(
         candidate_gate,
         "build_candidate_catalog",
@@ -594,8 +594,8 @@ async def test_rest_conflict_routes_to_complete_revision_and_fresh_connectors(
     monkeypatch.setattr(candidate_evaluation, "llm_for_task", lambda *args: None)
     ready = checkpoint(routed, **await candidate_gate.candidate_gate_node(routed))
     assert candidate_gate.route_after_candidate_gate(ready) == "passed"
-    routed = checkpoint(ready, **await dispatcher.dispatcher_node(ready))
-    assert dispatcher.route_after_dispatcher(routed) == "itinerary_planner"
+    routed = checkpoint(ready, **await planning_research_dispatch.dispatcher_node(ready))
+    assert planning_research_dispatch.route_after_dispatcher(routed) == "itinerary_planner"
     completed = checkpoint(routed, **await node.itinerary_planner_node(routed, {}))
     assert completed.agent_status["itinerary_planner"] == "completed"
     assert completed.intent_coverage_report is None
@@ -636,7 +636,7 @@ async def test_new_draft_researches_connectors_then_uses_the_same_materializer(
 ):
     from tests.agent_behavior.test_intent_research_ranking_selection import _brief
 
-    from travel_agent.agents.orchestrator import dispatcher
+
     from travel_agent.planning.research import node as candidate_gate
     from travel_agent.planning.itinerary import node
     from travel_agent.planning.research.query_planner import build_research_query_plan
@@ -683,8 +683,8 @@ async def test_new_draft_researches_connectors_then_uses_the_same_materializer(
     pending = checkpoint(pending, recommendation_catalog=with_route)
     ready = checkpoint(pending, **await candidate_gate.candidate_gate_node(pending))
     assert candidate_gate.route_after_candidate_gate(ready) == "passed"
-    routed = checkpoint(ready, **await dispatcher.dispatcher_node(ready))
-    assert dispatcher.route_after_dispatcher(routed) == "itinerary_planner"
+    routed = checkpoint(ready, **await planning_research_dispatch.dispatcher_node(ready))
+    assert planning_research_dispatch.route_after_dispatcher(routed) == "itinerary_planner"
     completed = checkpoint(routed, **await node.itinerary_planner_node(routed, {}))
     assert completed.agent_status["itinerary_planner"] == "completed"
     assert (
@@ -844,7 +844,7 @@ def test_lodging_morning_and_evening_are_distinct_occurrences():
 
 @pytest.mark.asyncio
 async def test_existing_revision_budget_stops_reopening_the_broken_draft():
-    from travel_agent.agents.orchestrator import dispatcher
+
     from travel_agent.planning.research import node as candidate_gate
     from travel_agent.planning.itinerary.revision import (
         MAXIMUM_COMPOSITION_REPAIR_ATTEMPTS,
@@ -859,8 +859,8 @@ async def test_existing_revision_budget_stops_reopening_the_broken_draft():
         execution_plan=[["itinerary_planner"]],
         agent_status={"itinerary_planner": "failed"},
     )
-    routed = checkpoint(current, **await dispatcher.dispatcher_node(current))
-    assert dispatcher.route_after_dispatcher(routed) == "to_check"
+    routed = checkpoint(current, **await planning_research_dispatch.dispatcher_node(current))
+    assert planning_research_dispatch.route_after_dispatcher(routed) == "to_check"
     exhausted = checkpoint(current, **await candidate_gate.candidate_gate_node(current))
     assert candidate_gate.route_after_candidate_gate(exhausted) == "passed"
     assert exhausted.composition_repair_attempts == MAXIMUM_COMPOSITION_REPAIR_ATTEMPTS
@@ -1163,9 +1163,7 @@ def test_candidate_scoped_mode_lock_targets_actual_occurrences_only(partial):
 
 @pytest.mark.parametrize("meal_type", ["snack", "lunch"])
 def test_multiple_same_meal_occurrences_have_distinct_targeted_slots_after_checkpoint(meal_type):
-    from travel_agent.agents.orchestrator.delivery_quality_gate import (
-        evaluate_delivery_quality,
-    )
+    from travel_agent.planning.delivery.quality.evaluation import evaluate_delivery_quality
 
     packets = []
     for candidate_id in ("cafe_first", "cafe_second"):

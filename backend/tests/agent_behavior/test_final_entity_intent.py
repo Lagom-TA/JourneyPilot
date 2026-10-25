@@ -1,3 +1,5 @@
+
+import travel_agent.planning.delivery.intent_gate as planning_delivery_intent_gate
 import json
 
 import pytest
@@ -10,7 +12,7 @@ from tests.agent_behavior.test_intent_research_ranking_selection import (
 from tests.agent_behavior.test_itinerary_revision import checkpoint, draft, visit_entry
 from tests.test_composition_context import state
 
-from travel_agent.agents.orchestrator import intent_fidelity_gate as gate
+
 from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryOrigin
 from travel_agent.planning.requirements.candidate_match_contracts import CandidateIntentMatch, IntentMatchStatus
 from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
@@ -79,7 +81,7 @@ def coverage(spec, workspace):
 async def test_authored_museum_uses_existing_repair_before_terminal_rejection():
     spec, workspace = make_workspace()
     current = normal_state(spec, workspace)
-    repaired = checkpoint(current, **await gate.intent_fidelity_gate_node(current))
+    repaired = checkpoint(current, **await planning_delivery_intent_gate.intent_fidelity_gate_node(current))
     assert repaired.intent_fidelity_route == "composition_repair"
     assert repaired.composition_repair_attempts == 1
     assert repaired.intent_coverage_report.items[0].status.value == "unsatisfied"
@@ -87,7 +89,7 @@ async def test_authored_museum_uses_existing_repair_before_terminal_rejection():
     assert repaired.trip_workspace_v2.itinerary.visit_stops[0].lineage.candidate_id is None
     exhausted = normal_state(spec, workspace, attempts=MAXIMUM_COMPOSITION_REPAIR_ATTEMPTS)
     with pytest.raises(DeliveryContractViolation, match="never-violate"):
-        await gate.intent_fidelity_gate_node(exhausted)
+        await planning_delivery_intent_gate.intent_fidelity_gate_node(exhausted)
     with pytest.raises(ValueError, match="never-violate"):
         revalidate_workspace_intent(workspace)
 
@@ -95,7 +97,7 @@ async def test_authored_museum_uses_existing_repair_before_terminal_rejection():
 async def test_located_authored_park_is_not_rejected_for_missing_candidate_identity():
     spec, workspace = make_workspace("City Park")
     result = checkpoint(normal_state(spec, workspace),
-                        **await gate.intent_fidelity_gate_node(normal_state(spec, workspace)))
+                        **await planning_delivery_intent_gate.intent_fidelity_gate_node(normal_state(spec, workspace)))
     assert result.intent_fidelity_route == "passed"
     assert result.intent_coverage_report.items[0].status.value == "satisfied"
     lineage = result.trip_workspace_v2.itinerary.visit_stops[0].lineage
@@ -134,10 +136,10 @@ async def test_unresolved_entity_is_unverified_not_a_confirmed_violation(monkeyp
                                            "intent_id": row["intent"]["intent_id"],
                                            "status": "unknown", "reason": "无类别依据"} for row in rows]})
 
-    monkeypatch.setattr(gate, "get_model_router", lambda: None)
-    monkeypatch.setattr(gate, "llm_for_task", lambda *args: Model())
+    monkeypatch.setattr('travel_agent.planning.delivery.intent_gate.get_model_router', lambda: None)
+    monkeypatch.setattr('travel_agent.planning.delivery.intent_gate.llm_for_task', lambda *args: Model())
     current = normal_state(spec, workspace, attempts=MAXIMUM_COMPOSITION_REPAIR_ATTEMPTS)
-    result = checkpoint(current, **await gate.intent_fidelity_gate_node(current))
+    result = checkpoint(current, **await planning_delivery_intent_gate.intent_fidelity_gate_node(current))
     assert len(calls) == 1
     item = result.intent_coverage_report.items[0]
     assert item.status.value == "unverifiable"
@@ -208,10 +210,10 @@ async def test_semantic_result_survives_checkpoint_but_not_an_entity_edit(monkey
                                            "intent_id": row["intent"]["intent_id"],
                                            "status": "not_matched", "reason": "名称与属性表示室外园林"}]})
 
-    monkeypatch.setattr(gate, "get_model_router", lambda: None)
-    monkeypatch.setattr(gate, "llm_for_task", lambda *args: Model())
+    monkeypatch.setattr('travel_agent.planning.delivery.intent_gate.get_model_router', lambda: None)
+    monkeypatch.setattr('travel_agent.planning.delivery.intent_gate.llm_for_task', lambda *args: Model())
     current = normal_state(spec, workspace)
-    result = checkpoint(current, **await gate.intent_fidelity_gate_node(current))
+    result = checkpoint(current, **await planning_delivery_intent_gate.intent_fidelity_gate_node(current))
     assert len(calls) == 1
     saved_workspace = TripWorkspaceV2.model_validate(result.trip_workspace_v2.model_dump(mode="json"))
     _, report, _ = revalidate_workspace_intent(saved_workspace)

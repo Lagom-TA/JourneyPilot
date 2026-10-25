@@ -9,14 +9,8 @@ from travel_agent.planning.research.provider_failure import (
     is_provider_or_model_failure,
 )
 from travel_agent.planning.research.output.policy import ResearchPacketOutputError
-from travel_agent.agents.worker_errors import (
-    PREFIX_PROVIDER_CAPABILITY,
-    PREFIX_PROVIDER_DETERMINISTIC,
-    PREFIX_PROVIDER_EMPTY,
-    PREFIX_PROVIDER_TRANSIENT,
-    PREFIX_SCHEMA_GATE,
-    format_worker_last_error,
-)
+from travel_agent.planning.research.failure_protocol import PREFIX_PROVIDER_CAPABILITY, PREFIX_PROVIDER_DETERMINISTIC, PREFIX_PROVIDER_EMPTY, PREFIX_PROVIDER_TRANSIENT, PREFIX_SCHEMA_GATE
+from travel_agent.planning.research.errors import format_worker_last_error
 
 
 _NEUTRAL = "planning halted"

@@ -34,7 +34,7 @@ from travel_agent.runtime.run_lease import RunLeaseKeeper
 from ...storage.cost_ledger_store import cost_event_summary
 from ...tools.exposure_ledger import get_tool_exposure_ledger
 from ...utils.json_helpers import strip_think_blocks
-from ...workflows.delivery_finalizer import DeliveryFinalizationError
+from travel_agent.planning.delivery.completion import DeliveryFinalizationError
 from travel_agent.planning.nodes import CHECKPOINT_GATE_NODES
 from travel_agent.runtime.budget import peek_ledger, release_ledger
 from travel_agent.runtime.cancellation import (
@@ -44,7 +44,7 @@ from travel_agent.runtime.cancellation import (
     stop_verdict,
 )
 from travel_agent.runtime.events import node_timing_registry, run_ts_ms, set_run_ts_anchor
-from ...workflows.travel_planning import CheckpointContractError
+from travel_agent.planning.workflow import CheckpointContractError
 from ..schemas import ChatRequest
 from travel_agent.runtime.events import build_event_buffer
 from ..sse_projection import project_sse_payload

@@ -7,14 +7,14 @@ import pytest
 
 @lru_cache(maxsize=1)
 def _travel_graph():
-    from travel_agent.workflows.travel_planning import build_travel_workflow
+    from travel_agent.planning.graph import build_travel_workflow
 
     return build_travel_workflow()
 
 
 @lru_cache(maxsize=1)
 def _graph_node_names() -> frozenset[str]:
-    from travel_agent.workflows.fast_answer import NODE_FAST_ANSWER
+    from travel_agent.conversation.graph import NODE_FAST_ANSWER
 
     return frozenset(_travel_graph().nodes) | {NODE_FAST_ANSWER}
 
@@ -32,7 +32,7 @@ def _graph_node_names() -> frozenset[str]:
 )
 def test_user_facing_node_metadata_matches_the_runtime_graph(table_name, extra_keys):
     from travel_agent.planning.presentation import AGENT_DISPLAY_NAMES, STEP_DISPLAY_NAMES
-    from travel_agent.workflows.trace import NODE_PHASES
+    from travel_agent.planning.trace import NODE_PHASES
 
     tables = {
         "trace": NODE_PHASES,

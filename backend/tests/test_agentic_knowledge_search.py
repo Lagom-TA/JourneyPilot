@@ -1,3 +1,5 @@
+
+import travel_agent.conversation.answer.node as conversation_answer_node
 from copy import deepcopy
 from unittest.mock import AsyncMock, Mock
 
@@ -153,21 +155,22 @@ async def test_checkpoint_replay_keeps_fragments_and_rechecks_authorization(know
 
 async def test_fast_answer_uses_real_loop_and_passes_tool_evidence(knowledge, monkeypatch):
     import asyncio
-    from travel_agent.agents.fast_answer import node
+
     from travel_agent.planning.state import TravelAgentState
     from travel_agent.conversation.answer_presentation import OutputGuard
 
     _, tools = knowledge
     llm = ScriptedLLM([call("园林"), {"content": "建议分两天参观园林。", "tool_calls": []}])
-    monkeypatch.setattr(node, "get_model_router", Mock())
-    monkeypatch.setattr(node, "llm_for_task", Mock(return_value=llm))
-    monkeypatch.setattr(node, "build_run_constraint_pack", AsyncMock(return_value={}))
-    monkeypatch.setattr(node, "_build_realtime_tool_context", AsyncMock(return_value={}))
-    monkeypatch.setattr(node, "get_available_tools", AsyncMock(return_value=tools))
+    monkeypatch.setattr('travel_agent.conversation.answer.node.get_model_router', Mock())
+    monkeypatch.setattr('travel_agent.conversation.answer.node.llm_for_task', Mock(return_value=llm))
+    monkeypatch.setattr('travel_agent.conversation.answer.node.build_run_constraint_pack', AsyncMock(return_value={}))
+    monkeypatch.setattr('travel_agent.conversation.answer.node._build_realtime_tool_context', AsyncMock(return_value={}))
+    monkeypatch.setattr('travel_agent.conversation.answer.tool_context._build_realtime_tool_context', AsyncMock(return_value={}))
+    monkeypatch.setattr('travel_agent.conversation.answer.node.get_available_tools', AsyncMock(return_value=tools))
     guard = Mock(wraps=OutputGuard())
-    monkeypatch.setattr(node, "OutputGuard", lambda: guard)
+    monkeypatch.setattr('travel_agent.conversation.answer.node.OutputGuard', lambda: guard)
     queue = asyncio.Queue()
-    result = await node.fast_answer_node(
+    result = await conversation_answer_node.fast_answer_node(
         TravelAgentState(user_query="苏州适合游览几天？"),
         {"configurable": {"stream_queue": queue}},
     )
@@ -183,7 +186,7 @@ async def test_fast_answer_uses_real_loop_and_passes_tool_evidence(knowledge, mo
 @pytest.mark.parametrize("scenario", ["exception", "partial", "tool_failure", "limit"])
 async def test_fast_answer_never_completes_a_nonfinal_real_loop(knowledge, monkeypatch, scenario):
     import asyncio
-    from travel_agent.agents.fast_answer import node
+
     from travel_agent.planning.state import TravelAgentState
 
     search, tools = knowledge
@@ -201,15 +204,16 @@ async def test_fast_answer_never_completes_a_nonfinal_real_loop(knowledge, monke
             yield {"type": "finish", **call("园林"), "content": "我再查一下"}
 
     model = Model()
-    monkeypatch.setattr(node, "get_model_router", Mock())
-    monkeypatch.setattr(node, "llm_for_task", Mock(return_value=model))
-    monkeypatch.setattr(node, "build_run_constraint_pack", AsyncMock(return_value={}))
-    monkeypatch.setattr(node, "_build_realtime_tool_context", AsyncMock(return_value={}))
-    monkeypatch.setattr(node, "get_available_tools", AsyncMock(return_value=tools))
+    monkeypatch.setattr('travel_agent.conversation.answer.node.get_model_router', Mock())
+    monkeypatch.setattr('travel_agent.conversation.answer.node.llm_for_task', Mock(return_value=model))
+    monkeypatch.setattr('travel_agent.conversation.answer.node.build_run_constraint_pack', AsyncMock(return_value={}))
+    monkeypatch.setattr('travel_agent.conversation.answer.node._build_realtime_tool_context', AsyncMock(return_value={}))
+    monkeypatch.setattr('travel_agent.conversation.answer.tool_context._build_realtime_tool_context', AsyncMock(return_value={}))
+    monkeypatch.setattr('travel_agent.conversation.answer.node.get_available_tools', AsyncMock(return_value=tools))
     queue = asyncio.Queue()
     outcome = "incomplete_stream" if scenario == "partial" else "iteration_limit" if scenario == "limit" else "model_failed"
     with pytest.raises(RuntimeError, match=outcome):
-        await node.fast_answer_node(
+        await conversation_answer_node.fast_answer_node(
             TravelAgentState(user_query="苏州适合游览几天？"),
             {"configurable": {"stream_queue": queue}},
         )
