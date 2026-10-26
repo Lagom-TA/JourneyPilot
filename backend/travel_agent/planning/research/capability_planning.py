@@ -172,7 +172,6 @@ def build_capability_plan(
             constraint_pack_revision=request_contract.constraint_pack_revision,
         )
 
-    _validate_hard_intent_ownership(active, assignments)
     material = {
         "generation_id": brief.generation_id,
         "plan_revision": plan_revision,
@@ -204,7 +203,7 @@ def _assignment_objective(
     if agent == "itinerary_planner":
         labels = [item.public_summary for item in intents]
         return (
-            "只使用已准入候选组合可执行按天行程"
+            "结合候选目录与用户要求组合可执行按天行程"
             + ("；" + "；".join(labels) if labels else "")
         )[:1000]
     return "；".join(item.summary for item in objectives)[:1000]
@@ -219,23 +218,3 @@ def _candidate_kinds(objectives: Iterable[DomainResearchObjective]) -> List[str]
         ResearchDomain.LONG_DISTANCE_TRANSPORT: "transport",
     }
     return list(dict.fromkeys(mapping[item.domain] for item in objectives))
-
-
-def _validate_hard_intent_ownership(
-    intents: List[IntentItem],
-    assignments: Dict[str, AgentAssignmentContract],
-) -> None:
-    owned = {
-        intent_id
-        for assignment in assignments.values()
-        for intent_id in assignment.must_cover_intent_ids
-    }
-    missing = {
-        item.intent_id
-        for item in intents
-        if item.strength is IntentStrength.HARD and item.intent_id not in owned
-    }
-    if missing:
-        raise ValueError(
-            f"active hard intents lack capability ownership: {sorted(missing)}"
-        )
