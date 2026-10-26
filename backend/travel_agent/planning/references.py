@@ -50,8 +50,6 @@ class EntityLineage(StrictModel):
         if self.lineage_kind == "candidate_entity":
             if not self.research_packet_id or not self.candidate_id:
                 raise ValueError("candidate lineage requires a packet and candidate id")
-            if not self.fact_assertion_ids or not self.source_record_ids:
-                raise ValueError("candidate lineage requires fact and source ids")
         elif self.lineage_kind == "reference_entity":
             if not self.research_packet_id or not self.candidate_id:
                 raise ValueError("reference lineage requires a packet and candidate id")
