@@ -22,10 +22,6 @@ const NODE_ORBS: ReadonlyArray<readonly [
     ['transport_researcher', '交通查询', 'connecting'],
     ['accommodation_researcher', '住宿查询', 'searching'],
     ['itinerary_planner', '行程规划', 'weaving'],
-    ['candidate_gate', '候选校验', 'solving'],
-    ['artifact_gate', '产物校验', 'solving'],
-    ['intent_fidelity_gate', '意图校验', 'solving'],
-    ['delivery_quality_gate', '交付校验', 'solving'],
     ['budget_estimate', '预算估算', 'solving'],
     ['delivery_projector', '交付内容', 'composing'],
     ['delivery_finalizer', '交付定稿', 'shaping'],
@@ -38,8 +34,6 @@ const AGENT_TO_ORB: Record<string, OrbState> = Object.fromEntries(NODE_ORBS.flat
 const STAGE_FALLBACK_ORB: Record<StageId, OrbState> = {
     planning: 'working',
     research: 'searching',
-    verify: 'solving',
-    review: 'solving',
     synthesis: 'composing',
 };
 export function orbStateForAgent(agentName: string): OrbState {

@@ -2,7 +2,6 @@ import { generateId } from "../../../lib/utils";
 import { normalizeContextReport } from "./contextReport";
 import { normalizeContextCompactionEvent } from "./contextCompaction";
 import { type ChatSession, type Message, type ThinkingStep } from "../types/messages";
-import { type FinalAnswerCitation, type InformationAnnotation } from "../types/citations";
 import { type SessionDetail, type SessionSummary } from "../types/sessions";
 import { type TripRunStatus } from "../../travel/types/runs";
 import { stripAssistantControlBlocks } from "./visibleContent";
@@ -39,28 +38,6 @@ export function mapThinkingSteps(rawSteps: SessionDetail['messages'][number]['th
         fromCache: step.from_cache,
     }));
 }
-export function mapCitations(raw: SessionDetail['messages'][number]['citations']): FinalAnswerCitation[] {
-    return (raw || []).map((citation) => ({
-        citationId: citation.citation_id,
-        claimText: citation.claim_text,
-        sources: (citation.sources || []).map((source) => ({
-            title: source.title,
-            url: source.url,
-            sourceName: source.source_name,
-            snippet: source.snippet,
-            authorityLabel: source.authority_label,
-            retrievedAt: source.retrieved_at,
-        })),
-    })).filter((citation) => citation.citationId && citation.sources.length > 0);
-}
-export function mapAnnotations(raw: SessionDetail['messages'][number]['annotations']): InformationAnnotation[] {
-    return (raw || []).map((annotation) => ({
-        annotationId: annotation.annotation_id,
-        kind: annotation.kind,
-        label: annotation.label,
-        detail: annotation.detail,
-    })).filter((annotation) => annotation.annotationId && annotation.label);
-}
 export function mapMessage(raw: SessionDetail['messages'][number]): Message {
     const persistedContent = raw.content || '';
     const persistedDisplayContent = raw.display_content || persistedContent;
@@ -81,8 +58,6 @@ export function mapMessage(raw: SessionDetail['messages'][number]): Message {
         thinkingSteps: mapThinkingSteps(raw.thinking_steps),
         contextReport: normalizeContextReport(raw.context_report) || undefined,
         contextCompaction: normalizeContextCompactionEvent(raw.context_compaction) || undefined,
-        citations: mapCitations(raw.citations),
-        annotations: mapAnnotations(raw.annotations),
     };
 }
 export function projectMessagesForRunLifecycle(messages: Message[], status: TripRunStatus | null): Message[] {

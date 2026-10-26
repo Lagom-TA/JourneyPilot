@@ -63,24 +63,6 @@ export interface SessionDetail extends SessionSummary {
             summary: string;
             key_constraints: string[];
         };
-        citations?: Array<{
-            citation_id: string;
-            claim_text?: string;
-            sources: Array<{
-                title?: string;
-                url?: string;
-                source_name?: string;
-                snippet?: string;
-                authority_label?: string;
-                retrieved_at?: string;
-            }>;
-        }>;
-        annotations?: Array<{
-            annotation_id: string;
-            kind: 'time_sensitive' | 'seasonal_reference' | 'safety_reference';
-            label: string;
-            detail: string;
-        }>;
         trip_summary_card?: Record<string, unknown>;
     }>;
     next_before: string | null;

@@ -58,12 +58,6 @@ class ChatTurns:
                 step_name=self.presentation.final_step_name,
                 thinking_steps=self.presentation.thinking_steps,
                 context_report=self.presentation.context_report,
-                citations=list(
-                    self.presentation.final_grounding.get("citations") or []
-                ),
-                annotations=list(
-                    self.presentation.final_grounding.get("annotations") or []
-                ),
                 trip_summary_card=self.presentation.trip_summary_card,
                 run_id=self.run_id,
                 controlled_trip_identity=self.request_trip_identity,
@@ -87,10 +81,6 @@ class ChatTurns:
             step_name=self.presentation.final_step_name,
             thinking_steps=self.presentation.thinking_steps,
             context_report=self.presentation.context_report,
-            citations=list(self.presentation.final_grounding.get("citations") or []),
-            annotations=list(
-                self.presentation.final_grounding.get("annotations") or []
-            ),
             trip_summary_card=self.presentation.trip_summary_card,
             run_id=self.run_id,
             controlled_trip_identity=self.request_trip_identity,

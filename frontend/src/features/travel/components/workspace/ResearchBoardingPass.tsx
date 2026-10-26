@@ -14,7 +14,6 @@ import { READOUT_LABEL } from "../../../../lib/typography";
 import { duration, easing } from "../../../../lib/motion";
 import { isTripRunActive, isTripRunAwaitingInput } from "../../types/runs";
 import React from 'react';
-const STAGES = ['理解需求', '制定计划', '并行调研', '核对事实', '生成行程'];
 const RESUME_TEXT = '继续上次被中断的规划';
 function days(start: string, end: string): number {
     if (!start || !end)
@@ -85,9 +84,10 @@ export const ResearchBoardingPass: React.FC = () => {
                             : runStatus === 'cancel_requested'
                                 ? '正在停止'
                                 : null;
+    const stages = snapshot.stages;
     const activeIndex = completed && !state.isStreaming
-        ? STAGES.length
-        : Math.min(STAGES.length - 1, snapshot.stages.filter((stage) => stage.status === 'done').length);
+        ? stages.length
+        : Math.min(stages.length - 1, stages.filter((stage) => stage.status === 'done').length);
     const resume = async () => {
         if (!runId || resuming || state.isStreaming)
             return;
@@ -111,7 +111,7 @@ export const ResearchBoardingPass: React.FC = () => {
     const style = identity.style.primary;
     const primaryMode = bundle ? selectPrimaryLongDistanceMode(bundle.workspace.itinerary) : null;
     const RouteGlyph = primaryMode ? TRANSPORT_MODE_ICONS[primaryMode] : Route;
-    const stageShort = statusMessage || (awaiting ? '等待确认' : `${STAGES[Math.min(activeIndex, STAGES.length - 1)]}中`);
+    const stageShort = statusMessage || (awaiting ? '等待确认' : `${stages[Math.min(activeIndex, stages.length - 1)].label}中`);
     const stageLabel = statusMessage || (awaiting
         ? (state.planApprovalGate ? '等待确认调研计划' : '等待补充信息')
         : (card?.currentFocus?.trim() || stageShort));
@@ -209,10 +209,10 @@ export const ResearchBoardingPass: React.FC = () => {
 
                       <AgentOrb state={orbState} size={20} paused={!active && !awaiting && !state.isStreaming}/>
                       <span className="text-sm font-medium text-ink">{stageLabel}</span>
-                      <span className="ml-auto flex items-center gap-1" aria-label={`阶段 ${Math.min(activeIndex + 1, STAGES.length)} / ${STAGES.length}`}>
-                        {STAGES.map((label, index) => {
+                      <span className="ml-auto flex items-center gap-1" aria-label={`阶段 ${Math.min(activeIndex + 1, stages.length)} / ${stages.length}`}>
+                        {stages.map((stage, index) => {
                     const status = index < activeIndex ? 'done' : index === activeIndex && active ? 'active' : 'pending';
-                    return (<span key={label} className="flex h-1.5 w-6 items-center justify-start">
+                    return (<span key={stage.id} className="flex h-1.5 w-6 items-center justify-start">
                               <span className={cn('h-1.5 w-6 origin-left rounded-full', 'transition-[transform,background-color] duration-base ease-standard', status === 'active' ? 'scale-x-100 bg-accent' : 'scale-x-50', status === 'done' && 'bg-success', status === 'pending' && 'bg-stroke')}/>
                             </span>);
                 })}

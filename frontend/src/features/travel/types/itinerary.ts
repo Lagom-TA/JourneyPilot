@@ -1,4 +1,4 @@
-import { type VisitStop, type DiningStop, type LodgingPriceKind, type LodgingAvailabilityStatus, type TransportLeg, type TransportMode, type TransportEndpoint, type TransportSegment, type DayPlanV2, type EntityRef } from "./entities";
+import { type VisitStop, type DiningStop, type LodgingPriceKind, type LodgingAvailabilityStatus, type TransportLeg, type TransportMode, type TransportEndpoint, type TransportSegment, type DayPlanV2 } from "./entities";
 import { type CostCoverageSummary } from "./report";
 export type EvidenceBasis = 'cited_source' | 'public_reference' | 'reference_service';
 export interface EntityIntentExplanation {
@@ -141,15 +141,4 @@ export interface SelectionSlot {
     context: Record<string, unknown>;
     options: SelectionOption[];
     status: 'researching' | 'ready' | 'refreshing' | 'needs_user_decision';
-}
-export interface PersonalizationInfluence {
-    influence_id: string;
-    target_ref: EntityRef | {
-        selection_slot_id: string;
-    };
-    intent_id: string;
-    constraint_id: string | null;
-    effect: 'candidate_filter' | 'option_ranking' | 'selection_reason' | 'schedule_rule' | 'output_requirement';
-    source_kind: 'current_request' | 'saved_preference' | 'trip_context';
-    display_text: string;
 }

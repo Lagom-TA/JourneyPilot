@@ -223,8 +223,6 @@ def _project_events_to_messages(rows: List[Dict[str, Any]]) -> List[Dict[str, An
                 "step_name": payload.get("step_name"),
                 "mode": payload.get("mode"),
                 "run_id": payload.get("run_id", ""),
-                "citations": payload.get("citations") if isinstance(payload.get("citations"), list) else [],
-                "annotations": payload.get("annotations") if isinstance(payload.get("annotations"), list) else [],
                 "trip_summary_card": payload.get("trip_summary_card") if isinstance(payload.get("trip_summary_card"), dict) else None,
                 "thinking_steps": [],
             }
@@ -498,8 +496,6 @@ class ChatSessionMemory:
         step_name: str = "",
         thinking_steps: Optional[List[Dict[str, Any]]] = None,
         context_report: Optional[Dict[str, Any]] = None,
-        citations: Optional[List[Dict[str, Any]]] = None,
-        annotations: Optional[List[Dict[str, Any]]] = None,
         trip_summary_card: Optional[Dict[str, Any]] = None,
         run_id: str = "",
         controlled_trip_identity: Optional[Dict[str, Any]],
@@ -599,8 +595,6 @@ class ChatSessionMemory:
                     "step_name": step_name,
                     "mode": mode,
                     "run_id": run_id,
-                    "citations": citations or [],
-                    "annotations": annotations or [],
                     "trip_summary_card": trip_summary_card or None,
                 },
             }

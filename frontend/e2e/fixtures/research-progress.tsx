@@ -20,7 +20,7 @@ function Fixture() {
   const [mode, setMode] = useState<'live' | 'done' | 'stopped'>('live');
   const [destinationDone, setDestinationDone] = useState(false);
   const [directResult, setDirectResult] = useState(false);
-  const sourceSteps = directResult ? [...steps.filter(s => s.agentName !== '住宿查询'), base('direct-stay', '住宿查询', { progressStatus: 'completed', content: '已整理 1 个住宿候选', resultPreview: [{ title: '市中心酒店（测试样例）', detail: '长春市人民大街' }] })] : steps;
+  const sourceSteps = directResult ? [...steps.filter(s => s.agentName !== '住宿查询'), base('direct-stay', '住宿查询', { progressStatus: 'completed', content: '已整理 1 个住宿候选' })] : steps;
   const displayed = destinationDone ? [...sourceSteps, base('destination-end', '目的地调研', { progressStatus: 'completed', endTime: new Date() })] : sourceSteps;
   return <main style={{ maxWidth: 720, margin: '32px auto', padding: '0 16px' }}>
     <p style={{ fontSize: 12 }}>交互验证样例 · 长春 4 日调研</p>

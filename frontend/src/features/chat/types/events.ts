@@ -1,7 +1,6 @@
 import { type GuidedIntakeState, type RouteDecision } from "../../travel/types/planner";
 import { type ResultPreview, type ToolExecutionStatus } from "./messages";
 import { type DeliveryRevisionManifest, type PublicDeliveryBundle } from "../../travel/types/delivery";
-import { type InformationAnnotationKind } from "./citations";
 import { type RunCostSummary } from "./cost";
 export interface SSEEvent {
     type: 'chat_start' | 'thinking' | 'agent_progress' | 'agent_thinking' | 'tool_start' | 'tool_result' | 'chat_chunk' | 'chat_complete' | 'delivery_ready' | 'run_terminal' | 'run_cancelled' | 'run_failed' | 'approval_gate_raised' | 'error' | 'usage_update' | 'context_report' | 'context_compaction' | 'trip_summary_card' | 'guided_intake' | 'route_confirmation' | 'synthesis_start';
@@ -50,24 +49,6 @@ export interface SSEEvent {
     bundle?: PublicDeliveryBundle;
     status?: 'completed' | ToolExecutionStatus;
     final_content?: string;
-    citations?: Array<{
-        citation_id: string;
-        claim_text?: string;
-        sources: Array<{
-            title?: string;
-            url?: string;
-            source_name?: string;
-            snippet?: string;
-            authority_label?: string;
-            retrieved_at?: string;
-        }>;
-    }>;
-    annotations?: Array<{
-        annotation_id: string;
-        kind: InformationAnnotationKind;
-        label: string;
-        detail: string;
-    }>;
     mode?: string;
     event_id?: string;
     event_type?: string;

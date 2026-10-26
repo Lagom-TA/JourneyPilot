@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from ..llm.task_routing import TaskKind, llm_for_task
 
 from dataclasses import dataclass, field
@@ -110,11 +109,10 @@ def build_context_compaction_event(
     *,
     source: str,
 ) -> Dict[str, Any]:
-    """Project a saved Anchor into the immutable, user-visible timeline event.
+    """把已保存的 Anchor 投影为不可变的会话时间线事件。
 
-    The event deliberately snapshots the full summary and every explicit
-    constraint.  Later compactions may replace the session's current anchor,
-    but must never rewrite a past conversation event.
+    事件快照完整摘要与全部约束；后续压缩可以替换会话当前 Anchor，但不能改写这条
+    历史事件。
     """
     if source not in {"manual", "automatic"}:
         raise ValueError(f"Unsupported compaction event source: {source}")
@@ -138,7 +136,7 @@ def build_context_compaction_event(
 
 
 def _count_tokens(text: str, model: str = "gpt-4o") -> int:
-    """Shared offline estimate; authoritative billing comes from API usage."""
+    """离线 token 估算；计费口径以 API 返回的 usage 为准。"""
     from ..llm.token_counting import estimate_tokens
 
     return estimate_tokens(text, model)
@@ -159,71 +157,6 @@ def _format_messages_for_compression(
         role_label = "用户" if role == "user" else "助手"
         parts.append(f"{role_label}：{content}")
     return "\n\n".join(parts)
-
-
-# 用户的「硬约束」动词/短语标记：命中这些词的 user 消息片段才被视为用户自己确定的约束。
-# 只做兜底（在 LLM 提取的 key_constraints 之外再补），不替换 LLM 的摘要判断。
-_HARD_CONSTRAINT_MARKERS = (
-    "必须",
-    "一定要",
-    "绝不能",
-    "不能",
-    "不可以",
-    "不允许",
-    "不要",
-    "千万别",
-    "不吃",
-    "吃不了",
-    "禁止",
-    "硬性要求",
-    "硬约束",
-    "每晚",
-    "只去",
-    "只吃",
-    "只住",
-)
-
-
-def _scan_user_hard_constraints(messages: List[Dict[str, Any]]) -> List[str]:
-    """自底向上兜底：从**用户**写下的消息里，扫描显式硬约束片段。
-
-    只读 role=user 的内容（绝不用助手的话当作用户约束）。把命中了硬约束标记词
-    （必须/不能/不要/不吃/硬约束/每晚…）的片段收进来，作为 LLM 提取结果之外的第二道
-    保真：即使模型压缩时漏了早先消息里的约束，这里也能补回。每条尽量保留用户原话。
-    """
-    found: List[str] = []
-    for message in messages:
-        if not isinstance(message, dict) or message.get("role") != "user":
-            continue
-        content = message.get("content")
-        if not isinstance(content, str) or not content.strip():
-            continue
-        # 按常见断句符切出候选片段（保留一个片段内的多个约束子句）
-        fragments = re.split(r"[。！？！\n]", content)
-        for frag in fragments:
-            frag = frag.strip(" \t*【】#-·,，")
-            if not frag:
-                continue
-            if any(marker in frag for marker in _HARD_CONSTRAINT_MARKERS):
-                if frag not in found:
-                    found.append(frag)
-    return found
-
-
-def _merge_user_constraints(base: List[str], additional: List[str]) -> List[str]:
-    """合并保真约束：去重（子串/相等都算），base 优先，追加补漏的。"""
-    merged: List[str] = []
-    def _dup(text: str) -> bool:
-        t = text.strip()
-        return any(t == m for m in merged if m)
-    for item in [*base, *additional]:
-        if not isinstance(item, str):
-            continue
-        s = item.strip()
-        if not s or _dup(s):
-            continue
-        merged.append(s)
-    return merged
 
 
 class ContextCompressor:
@@ -303,14 +236,11 @@ class ContextCompressor:
         key_constraints = parsed.get("key_constraints", [])
         if not isinstance(key_constraints, list):
             key_constraints = []
-
-        # 兜底保真：LLM 提取的 key_constraints 之外，再补上从用户消息里扫到的显式硬约束，
-        # 避免压缩时把用户早先的硬约束丢掉。
-        prior = list(existing_anchor.key_constraints) if existing_anchor else []
-        user_texts = [str(m.get("content") or "") for m in messages if m.get("role") == "user"]
-        grounded = [value for value in key_constraints if isinstance(value, str) and
-                    (value in prior or any(value in text for text in user_texts))]
-        key_constraints = _merge_user_constraints(prior, [*_scan_user_hard_constraints(messages), *grounded])
+        key_constraints = [
+            value.strip()
+            for value in key_constraints
+            if isinstance(value, str) and value.strip()
+        ]
 
         summary = parsed.get("summary", "")
         if not isinstance(summary, str):

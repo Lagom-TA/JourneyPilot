@@ -1,39 +1,6 @@
-import { type StructuredItineraryV2, type UserInputAnchor, type CustomBlock, type TransportMode } from "./entities";
-import { type RecommendationCatalog, type IntentContractSnapshot, type IntentCoverageReport, type CandidateSelectionPlan } from "./research";
-import { type SelectionSlot, type PersonalizationInfluence } from "./itinerary";
+import { type CustomBlock, type TransportMode } from "./entities";
 import { type PublicDeliveryBundle } from "./delivery";
 export const TRIP_WORKSPACE_CONTRACT_VERSION = 'journeypilot.trip_workspace.v10' as const;
-export interface CompositionMutation {
-    mutation_id: string;
-    generation_id: string;
-    mutation_type: 'drop' | 'move' | 'replace' | 'backfill' | 'reorder' | 'time_adjust';
-    reason_code: string;
-    source_entity_ids: string[];
-    target_entity_ids: string[];
-    affected_intent_ids: string[];
-    affected_rule_ids: string[];
-    hard_rules_revalidated: boolean;
-    created_by: 'deterministic_pruner' | 'anchor_backfill' | 'slot_backfill' | 'composition_repair' | 'user_edit';
-}
-export interface TripWorkspaceV2 {
-    contract_version: typeof TRIP_WORKSPACE_CONTRACT_VERSION;
-    run_id: string;
-    generation_id: string;
-    workspace_revision: number;
-    itinerary: StructuredItineraryV2;
-    recommendation_catalog: RecommendationCatalog;
-    intent_contract_snapshot: IntentContractSnapshot;
-    intent_coverage_report: IntentCoverageReport | null;
-    composition_mutations: CompositionMutation[];
-    candidate_selection_plan: CandidateSelectionPlan;
-    user_input_anchors: UserInputAnchor[];
-    selection_slots: SelectionSlot[];
-    personalization_influences: PersonalizationInfluence[];
-    weather_proposal_decisions: Array<{
-        proposal_id: string;
-        decision: 'applied' | 'dismissed';
-    }>;
-}
 export type WorkspaceV2MutationOperation = {
     type: 'select_option';
     selection_slot_id: string;

@@ -1,9 +1,6 @@
 import { cn } from "../../../lib/utils";
 import { safeHref } from "../../../lib/safeHref";
-import { type FinalAnswerCitation, type InformationAnnotation } from "../types/citations";
 import { CodeBlock } from "./CodeBlock";
-import { CitationMarker } from "./citations/CitationMarker";
-import { InformationAnnotationMarker } from "./citations/InformationAnnotationMarker";
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -41,67 +38,17 @@ const markdownComponents = {
         return <td className="px-3 py-2 border-b border-stroke/60">{children}</td>;
     },
 };
-const SAFE_CITATION_RE = /\[\[\s*cite\s*[:：]\s*([a-z0-9_-]+)\s*\]\]/gi;
-const SAFE_ANNOTATION_RE = /\[\[\s*annotation\s*[:：]\s*([a-z0-9_-]+)\s*\]\]/gi;
-export function prepareCitationMarkdown(content: string, citations: FinalAnswerCitation[] = [], annotations: InformationAnnotation[] = []): string {
-    const citationIds = new Set(citations.map((citation) => citation.citationId));
-    const annotationIds = new Set(annotations.map((annotation) => annotation.annotationId));
-    return content.replace(SAFE_CITATION_RE, (_marker, citationId: string) => citationIds.has(citationId) ? `[来源](#jp-citation-${citationId})` : '').replace(SAFE_ANNOTATION_RE, (_marker, annotationId: string) => annotationIds.has(annotationId) ? `[信息状态](#jp-annotation-${annotationId})` : '');
-}
-export function prepareCitationCopyText(content: string, citations: FinalAnswerCitation[] = [], annotations: InformationAnnotation[] = []): string {
-    const indexById = new Map(citations.map((citation, index) => [citation.citationId, index + 1]));
-    const annotationById = new Map(annotations.map((annotation) => [annotation.annotationId, annotation]));
-    const cleanBody = content.replace(SAFE_CITATION_RE, (_marker, citationId: string) => {
-        const index = indexById.get(citationId);
-        return index ? `[${index}]` : '';
-    }).replace(SAFE_ANNOTATION_RE, (_marker, annotationId: string) => {
-        const annotation = annotationById.get(annotationId);
-        return annotation ? `（${annotation.label}）` : '';
-    }).trim();
-    const seenSources = new Set<string>();
-    const sourceRows: string[] = [];
-    citations.forEach((citation, citationIndex) => {
-        citation.sources.forEach((source, sourceIndex) => {
-            if (!source.title && !source.sourceName && !source.url)
-                return;
-            const label = source.title || source.sourceName || `参考来源 ${sourceIndex + 1}`;
-            const key = source.url || label;
-            if (seenSources.has(key))
-                return;
-            seenSources.add(key);
-            sourceRows.push(`[${citationIndex + 1}] ${label}${source.url ? ` ${source.url}` : ''}`);
-        });
-    });
-    return sourceRows.length > 0 ? `${cleanBody}\n\n来源：\n${sourceRows.join('\n')}` : cleanBody;
-}
 export const Markdown: React.FC<{
     content: string;
-    citations?: FinalAnswerCitation[];
-    annotations?: InformationAnnotation[];
     streaming?: boolean;
     className?: string;
-}> = ({ content, citations = [], annotations = [], streaming, className, }) => {
-    const preparedContent = React.useMemo(() => prepareCitationMarkdown(content, citations, annotations), [content, citations, annotations]);
+}> = ({ content, streaming, className, }) => {
     const components = React.useMemo(() => ({
         ...markdownComponents,
         a({ href, children }: {
             href?: string;
             children?: React.ReactNode;
         }) {
-            const citationId = href?.startsWith('#jp-citation-')
-                ? href.slice('#jp-citation-'.length)
-                : '';
-            const citationIndex = citations.findIndex((item) => item.citationId === citationId);
-            if (citationIndex >= 0) {
-                return <CitationMarker citation={citations[citationIndex]}/>;
-            }
-            const annotationId = href?.startsWith('#jp-annotation-')
-                ? href.slice('#jp-annotation-'.length)
-                : '';
-            const annotation = annotations.find((item) => item.annotationId === annotationId);
-            if (annotation) {
-                return <InformationAnnotationMarker annotation={annotation}/>;
-            }
             const hrefSafe = safeHref(href);
             if (!hrefSafe) {
                 return <span className="text-ink-secondary">{children}</span>;
@@ -111,10 +58,10 @@ export const Markdown: React.FC<{
           {children}
         </a>);
         },
-    }), [annotations, citations]);
+    }), []);
     return (<div className={cn('prose-sm max-w-none text-sm leading-relaxed markdown-content min-w-0', streaming && 'is-streaming', className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {preparedContent}
+        {content}
       </ReactMarkdown>
     </div>);
 };

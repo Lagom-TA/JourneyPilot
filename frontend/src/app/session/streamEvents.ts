@@ -1,7 +1,6 @@
 import { type AppState } from "../state/state";
 import { normalizeTripSummaryCard } from "../../features/travel/model/tripSummaryCard";
 import { normalizePlanApprovalGate } from "../../features/travel/model/planApprovalGate";
-import { type FinalAnswerCitation, type InformationAnnotation } from "../../features/chat/types/citations";
 import { type Message } from "../../features/chat/types/messages";
 import { type SSEEvent } from "../../features/chat/types/events";
 import { isTripRunStatus } from "../../features/travel/types/runs";
@@ -144,26 +143,6 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                         break;
                     flushFrameNow();
                     scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: new Date(), tsMs: event.ts_ms } });
-                    const citations: FinalAnswerCitation[] = (event.citations || []).map((citation) => ({
-                        citationId: citation.citation_id,
-                        claimText: citation.claim_text,
-                        sources: (citation.sources || []).map((source) => ({
-                            title: source.title,
-                            url: source.url,
-                            sourceName: source.source_name,
-                            snippet: source.snippet,
-                            authorityLabel: source.authority_label,
-                            retrievedAt: source.retrieved_at,
-                        })),
-                    })).filter((citation) => citation.citationId && citation.sources.length > 0);
-                    const annotations: InformationAnnotation[] = (event.annotations || []).map((annotation) => ({
-                        annotationId: annotation.annotation_id,
-                        kind: annotation.kind,
-                        label: annotation.label,
-                        detail: annotation.detail,
-                    })).filter((annotation) => annotation.annotationId && annotation.label);
-                    assistantMessage.citations = citations;
-                    assistantMessage.annotations = annotations;
                     if (event.final_content && typeof event.final_content === 'string') {
                         assistantMessage.content = event.final_content;
                         assistantMessage.displayContent = event.final_content;
@@ -172,8 +151,6 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                             payload: {
                                 content: event.final_content,
                                 displayContent: event.final_content,
-                                citations,
-                                annotations,
                                 streamCompleted: true,
                             },
                         });
@@ -181,7 +158,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     else {
                         scopedDispatch({
                             type: 'UPDATE_LAST_MESSAGE',
-                            payload: { citations, annotations, streamCompleted: true },
+                            payload: { streamCompleted: true },
                         });
                     }
                     if (event.run_id) {

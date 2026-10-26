@@ -1,5 +1,4 @@
 import { type ContextReport, type ContextCompactionEvent } from "./context";
-import { type FinalAnswerCitation, type InformationAnnotation } from "./citations";
 import { type SessionStatus } from "./sessions";
 export interface Message {
     id: string;
@@ -21,8 +20,6 @@ export interface Message {
     contextReport?: ContextReport;
     contextCompaction?: ContextCompactionEvent;
     isEarlierHistory?: boolean;
-    citations?: FinalAnswerCitation[];
-    annotations?: InformationAnnotation[];
     pendingStatusText?: string;
     streamCompleted?: boolean;
 }

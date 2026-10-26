@@ -21,11 +21,6 @@ describe('orbStateForAgent', () => {
         expect(orbStateForAgent('destination_researcher_r2')).toBe('searching');
         expect(orbStateForAgent('目的地调研（第2轮补充）')).toBe('searching');
     });
-    it('所有门都是 solving', () => {
-        for (const gate of ['candidate_gate', 'artifact_gate', 'intent_fidelity_gate', 'delivery_quality_gate']) {
-            expect(orbStateForAgent(gate)).toBe('solving');
-        }
-    });
     it('未登记但有阶段的节点退回阶段默认；完全未知退回 working', () => {
         expect(orbStateForAgent('completely_unknown_node')).toBe('working');
     });
@@ -35,8 +30,8 @@ describe('deriveOrbState', () => {
         expect(deriveOrbState([step('destination_researcher')], { ...live, awaitingInput: true })).toBe('breathing');
     });
     it('最终回答开始后是 composing', () => {
-        expect(deriveOrbState([step('candidate_gate')], { ...live, answerStarted: true })).toBe('composing');
-        expect(deriveOrbState([step('candidate_gate')], { ...live, isSynthesizing: true })).toBe('composing');
+        expect(deriveOrbState([step('destination_researcher')], { ...live, answerStarted: true })).toBe('composing');
+        expect(deriveOrbState([step('destination_researcher')], { ...live, isSynthesizing: true })).toBe('composing');
     });
     it('取最近一个有名字的步', () => {
         const steps = [step('planner'), step('destination_researcher'), step('transport_researcher')];
