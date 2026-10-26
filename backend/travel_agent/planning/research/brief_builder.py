@@ -10,7 +10,7 @@ from travel_agent.planning.requirements.intent_contracts import IntentStrength
 from travel_agent.planning.requirements.intent_contracts import IntentTarget
 from travel_agent.planning.requirements.intent_contracts import canonical_json_hash
 from travel_agent.planning.requirements.product_policy import (
-    required_physical_candidate_kinds,
+    style_selected_physical_candidate_kinds,
 )
 from travel_agent.planning.requirements.request_contracts import RequestContract
 from travel_agent.planning.requirements.route_legs import (
@@ -54,16 +54,13 @@ def build_research_brief(
         for item in active
         if item.target in _TARGET_DOMAIN
         and item.kind is not IntentKind.MUST_EXCLUDE
-        and any(
-            stage in item.impact_stages
-            for stage in ("research", "admission", "ranking")
-        )
+        and "research" in item.impact_stages
     }
-    required_kinds = required_physical_candidate_kinds(controlled_identity)
-    if "visit" in required_kinds:
-        domains.add(ResearchDomain.VISIT)
-    if "dining" in required_kinds:
-        domains.add(ResearchDomain.DINING)
+    for candidate_kind in style_selected_physical_candidate_kinds(controlled_identity):
+        if candidate_kind == "visit":
+            domains.add(ResearchDomain.VISIT)
+        elif candidate_kind == "dining":
+            domains.add(ResearchDomain.DINING)
     if identity.duration_days > 1:
         domains.add(ResearchDomain.LODGING)
     if build_required_long_distance_legs(

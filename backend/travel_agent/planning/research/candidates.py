@@ -36,29 +36,6 @@ class CandidateConstraintEvaluation(StrictModel):
         return self
 
 
-class CandidateConstraintGateAttestation(StrictModel):
-    # Only the server gate attests which authoritative inputs it evaluated.
-    schema_version: Literal["candidate_constraint_gate.v1"] = (
-        "candidate_constraint_gate.v1"
-    )
-    run_id: str = Field(min_length=1)
-    research_packet_id: str = Field(min_length=1)
-    worker_kind: Literal[
-        "destination_researcher", "accommodation_researcher", "transport_researcher"
-    ]
-    candidate_id: str = Field(min_length=1)
-    fact_data_revision: int = Field(ge=0)
-    scoped_constraint_fingerprint: str = Field(
-        min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$"
-    )
-    candidate_facts_fingerprint: str = Field(
-        min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$"
-    )
-    evaluation_fingerprint: str = Field(
-        min_length=64, max_length=64, pattern=r"^[a-f0-9]{64}$"
-    )
-
-
 class CandidateBase(StrictModel):
     candidate_id: str = Field(min_length=1)
     research_packet_id: str = Field(min_length=1)
@@ -71,7 +48,6 @@ class CandidateBase(StrictModel):
         default_factory=list
     )
 
-    constraint_gate_attestation: Optional[CandidateConstraintGateAttestation] = None
     weather_sensitivity: WeatherSensitivity
     selection_reasons: List[str] = Field(min_length=2, max_length=3)
     tradeoff: str = Field(min_length=1)
@@ -81,22 +57,6 @@ class CandidateBase(StrictModel):
     freshness_status: Literal["current", "refreshing", "stale"]
     observed_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
-
-    @model_validator(mode="after")
-    def validate_candidate_gate_inputs(self) -> "CandidateBase":
-        if len(self.active_constraint_ids) != len(set(self.active_constraint_ids)):
-            raise ValueError("active candidate constraint ids must be unique")
-        evaluation_ids = [item.constraint_id for item in self.constraint_evaluations]
-        if len(evaluation_ids) != len(set(evaluation_ids)):
-            raise ValueError("candidate constraint evaluations must be unique")
-        if not set(evaluation_ids) <= set(self.active_constraint_ids):
-            raise ValueError("candidate cannot evaluate an inactive hard constraint")
-        if any(
-            not set(item.fact_assertion_ids) <= set(self.fact_assertion_ids)
-            for item in self.constraint_evaluations
-        ):
-            raise ValueError("constraint evaluation facts must belong to the candidate")
-        return self
 
 
 class VisitCandidate(CandidateBase):
@@ -230,28 +190,3 @@ ResearchCandidate = Annotated[
     Field(discriminator="candidate_kind"),
 ]
 
-
-class CandidateFitScores(StrictModel):
-    budget_fit: float = Field(default=1.0, ge=0.0, le=1.0)
-    weather_fit: float = Field(default=1.0, ge=0.0, le=1.0)
-    constraint_fit: float = Field(default=1.0, ge=0.0, le=1.0)
-
-
-class CandidateAdmissionResult(StrictModel):
-    candidate_id: str = Field(min_length=1)
-    selection_slot_id: Optional[str] = None
-    status: Literal["passed", "insufficient_for_admission"]
-    checked_constraint_ids: List[str] = Field(default_factory=list)
-    missing_field_paths: List[str] = Field(default_factory=list)
-    fit_scores: CandidateFitScores = Field(default_factory=CandidateFitScores)
-    evaluated_fact_revision: int = Field(ge=0)
-    evaluated_weather_revision: int = Field(ge=0)
-    weather_impact_ids: List[str] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def validate_outcome(self) -> "CandidateAdmissionResult":
-        if self.status == "passed" and self.missing_field_paths:
-            raise ValueError("passed admission cannot contain missing-field reasons")
-        if self.status == "insufficient_for_admission" and not self.missing_field_paths:
-            raise ValueError("insufficient admission requires missing field paths")
-        return self

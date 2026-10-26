@@ -115,7 +115,7 @@ async def request_contract_normalizer_node(
     research_contract_changed = any(
         normalized_by_clause[item.clause_id].constraints
         or any(
-            stage in {"research", "admission"}
+            stage in {"research"}
             for intent in normalized_by_clause[item.clause_id].intents
             for stage in intent.impact_stages
         )

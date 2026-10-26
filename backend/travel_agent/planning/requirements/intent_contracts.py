@@ -146,8 +146,6 @@ IntentSourceKind = Literal[
 
 IntentImpactStage = Literal[
     "research",
-    "admission",
-    "ranking",
     "composition",
     "projection",
 ]

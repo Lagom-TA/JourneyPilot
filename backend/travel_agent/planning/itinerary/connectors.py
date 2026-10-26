@@ -12,7 +12,6 @@ from travel_agent.planning.itinerary.adjacency import (
     day_chain_node_pairs,
     day_connector_adjacencies,
 )
-from travel_agent.planning.itinerary.bindings import _passed_candidates
 from travel_agent.planning.itinerary.checks import (
     validate_itinerary_transport_topology,
     validate_placement_skeleton,
@@ -133,7 +132,7 @@ def extract_local_connector_gaps(
         required_long_distance_legs=required_long_distance_legs,
         required_leg_scope_ids=required_leg_scope_ids,
     )
-    candidates = _passed_candidates(catalog)
+    candidates = catalog.candidate_index()
     requests = flexible_mode_requests or {}
     required_pairs = required_flexible_mode_pairs or set()
     gaps: list[LocalConnectorGap] = []
@@ -239,7 +238,7 @@ def connector_mode_requests_from_constraint_pack(
             )
             for left, right in day_chain_node_pairs(
                 day,
-                _passed_candidates(catalog) if catalog is not None else None,
+                catalog.candidate_index() if catalog is not None else None,
                 skeleton if catalog is not None else None,
             )
         )
@@ -446,7 +445,7 @@ def connector_gap_rejection_reasons(
 ) -> dict[str, str]:
 
     reasons: dict[str, str] = {}
-    for candidate_id, candidate in _passed_candidates(catalog).items():
+    for candidate_id, candidate in catalog.candidate_index().items():
         if not isinstance(candidate, TransportCandidate):
             continue
         if candidate.transport_class == "long_distance":
@@ -495,7 +494,7 @@ def unfilled_connector_gaps(
     gaps: list[LocalConnectorGap],
 ) -> list[LocalConnectorGap]:
     """Return the adjacencies no admitted Provider route can currently fill."""
-    candidates = _passed_candidates(catalog)
+    candidates = catalog.candidate_index()
     unfilled: list[LocalConnectorGap] = []
     for gap in gaps:
         if any(
@@ -533,7 +532,7 @@ def materialize_skeleton_connectors(
         required_long_distance_legs=required_long_distance_legs,
         required_leg_scope_ids=required_leg_scope_ids,
     )
-    candidates = _passed_candidates(catalog)
+    candidates = catalog.candidate_index()
     gaps_by_pair = {
         (gap.day_id, gap.from_entry_key, gap.to_entry_key): gap for gap in gaps
     }

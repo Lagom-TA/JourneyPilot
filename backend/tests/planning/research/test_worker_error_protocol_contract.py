@@ -10,9 +10,7 @@ from travel_agent.planning.research.failure_protocol import (
     PREFIX_PROVIDER_DETERMINISTIC,
     PREFIX_PROVIDER_EMPTY,
     PREFIX_PROVIDER_TRANSIENT,
-    PREFIX_SCHEMA_GATE,
 )
-from travel_agent.planning.research.output.policy import ResearchPacketOutputError
 from travel_agent.planning.research.provider_failure import (
     classify_provider_failure,
     is_provider_or_model_failure,
@@ -24,7 +22,6 @@ _NEUTRAL = "planning halted"
 @pytest.mark.parametrize(
     ("prefix", "category", "reason_code"),
     [
-        (PREFIX_SCHEMA_GATE, "deterministic", "provider_deterministic_failure"),
         (PREFIX_PROVIDER_DETERMINISTIC, "deterministic", "provider_deterministic_failure"),
         (PREFIX_PROVIDER_TRANSIENT, "transient", "provider_transient_failure"),
         (PREFIX_PROVIDER_EMPTY, "incomplete", "provider_empty_result"),
@@ -39,14 +36,6 @@ def test_persisted_failure_prefixes_have_stable_reader_verdict(
     assert is_provider_or_model_failure(f"{prefix} {_NEUTRAL}") is True
 
 
-def test_schema_gate_prefix_preserves_transient_retryability() -> None:
-    result = classify_provider_failure(f"{PREFIX_SCHEMA_GATE} connection reset")
-    assert (result.category, result.reason_code) == (
-        "transient",
-        "provider_transient_failure",
-    )
-
-
 def test_writer_emits_specific_prefixes_for_typed_round_outcomes() -> None:
     assert format_worker_last_error(
         ValueError("no results"), provider_empty_round=True
@@ -54,9 +43,6 @@ def test_writer_emits_specific_prefixes_for_typed_round_outcomes() -> None:
     assert format_worker_last_error(
         ValueError("unsupported date"), provider_capability_round=True
     ).startswith(f"{PREFIX_PROVIDER_CAPABILITY} ")
-    assert format_worker_last_error(ResearchPacketOutputError("invalid packet")).startswith(
-        f"{PREFIX_SCHEMA_GATE} "
-    )
 
 
 def test_writer_is_idempotent_for_an_already_prefixed_error() -> None:

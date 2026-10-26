@@ -22,7 +22,6 @@ from travel_agent.planning.research.output.options import (
 from travel_agent.planning.research.output.transcript import authoritative_tool_messages
 from travel_agent.tools.content import compact_tool_content_for_model
 from travel_agent.tools.execution import execute_tool
-from travel_agent.tools.governance import QUALITY_VERIFIED_PLACE_IDS_METADATA_KEY
 from travel_agent.utils.coordinates import amap_location_to_wgs84
 
 logger = logging.getLogger(__name__)
@@ -45,42 +44,6 @@ def _build_amap_dining_identity_envelope(
             "success": True,
             "provider": "amap",
             "results": results,
-        },
-    }
-
-
-def _build_amap_dining_quality_envelope(
-    *,
-    place: Dict[str, Any],
-    parent_audit_id: str,
-    index: int,
-    retrieved_at: str,
-) -> Dict[str, Any]:
-    """Bind external_quality_match from amap POI identity (CN substitute for a review page)."""
-    place_id = str(place.get("place_id") or "")
-    name = str(place.get("name") or "")
-    address = str(place.get("address") or "")
-
-    quality_audit_id = f"{parent_audit_id}_dining_q{index}"
-    locality = address.split(",")[0].strip() if address else name
-    return {
-        "tool_name": "maps_text_search",
-        "server_name": "amap-maps",
-        "status": "success",
-        "audit_id": quality_audit_id,
-        "retrieved_at": retrieved_at,
-        "metadata": {
-            "evidence_allowed": True,
-            QUALITY_VERIFIED_PLACE_IDS_METADATA_KEY: [place_id],
-        },
-        "sanitized_result": {
-            "content": [
-                {
-                    "title": f"{name} - {locality}/餐厅 | 高德地图",
-                    "snippet": f"{name} {address} 餐饮服务 POI 核验",
-                    "url": f"amap://poi/{place_id.removeprefix('amap:poi:')}",
-                }
-            ]
         },
     }
 
@@ -233,20 +196,6 @@ async def discover_amap_dining(
             env.get("retrieved_at")
             or datetime.datetime.now(datetime.timezone.utc).isoformat()
         )
-        for index, place in enumerate(restaurants):
-            quality_envelope = _build_amap_dining_quality_envelope(
-                place=place,
-                parent_audit_id=audit_id,
-                index=index,
-                retrieved_at=retrieved_at,
-            )
-            messages.append(
-                {
-                    "role": "tool",
-                    "content": compact_tool_content_for_model(quality_envelope),
-                }
-            )
-            authoritative_tool_results.append(quality_envelope)
         identity_envelope = _build_amap_dining_identity_envelope(
             results=restaurants,
             audit_id=audit_id,

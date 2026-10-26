@@ -83,7 +83,7 @@ def _public_workspace(
     ``recommendation_catalog``, ``user_input_anchors`` and
     ``personalization_influences`` are absent by construction: the catalog is the
     research ledger, the anchors are already restated as report notes, and the
-    influences are internal ranking references.
+    influences are internal personalization bookkeeping.
     """
 
     return {

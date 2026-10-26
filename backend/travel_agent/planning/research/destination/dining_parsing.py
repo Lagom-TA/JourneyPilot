@@ -60,7 +60,7 @@ def _is_amap_dining_typecode(typecode: str) -> bool:
 
 
 def _amap_dining_type_label(typecode: str) -> str:
-    """provider_place_type must carry dining admission markers (餐饮服务/餐厅)."""
+    """provider_place_type 必须是餐饮服务类目（餐饮服务/餐厅）。"""
     first = ""
     for code in str(typecode or "").split("|"):
         code = code.strip()

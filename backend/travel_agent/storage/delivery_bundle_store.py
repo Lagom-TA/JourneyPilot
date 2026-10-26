@@ -207,10 +207,8 @@ def _validate_transition(
             BundleCommitKind.UNDO: {(1, 0, 0)},
             BundleCommitKind.FACT_REFRESH: {(0, 1, 0)},
             BundleCommitKind.WEATHER_REFRESH: {(0, 0, 1)},
-            # Weather refresh rebinds the Candidate catalog/admissions to the
-            # new Fact+Weather snapshot, so its Workspace payload changes as
-            # well.  Older callers without a catalog rebind may still retain
-            # the historical (0, 1, 1) transition.
+            # 天气与事实联合刷新会把候选目录重绑到新的事实+天气快照，
+            # workspace 载荷随之可能变化，因此 workspace 版本允许一并提升。
             BundleCommitKind.WEATHER_FACT_REFRESH: {(0, 1, 1), (1, 1, 1)},
         }[kind]
         if deltas not in expected_deltas:

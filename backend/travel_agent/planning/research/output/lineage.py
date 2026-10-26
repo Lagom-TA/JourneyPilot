@@ -202,6 +202,7 @@ def _query_row_matches_provider_identity(
 
 
 def _bind_candidate_discovery_lineage(payload: dict[str, Any]) -> None:
+    """Bind every candidate to the executed-query lineage observable server-side."""
     candidates = payload.get("candidates")
     if not isinstance(candidates, list):
         return
@@ -234,8 +235,6 @@ def _bind_candidate_discovery_lineage(payload: dict[str, Any]) -> None:
         except (TypeError, ValueError):
             research_round = 0
     records = []
-    retained_candidate_ids: set[str] = set()
-    dropped_candidate_ids: list[str] = []
     for candidate in candidates:
         if not isinstance(candidate, Mapping):
             continue
@@ -308,11 +307,7 @@ def _bind_candidate_discovery_lineage(payload: dict[str, Any]) -> None:
                 for row in relevant
             )
         )
-        if not origins:
-            dropped_candidate_ids.append(str(candidate.get("candidate_id") or ""))
-            continue
         candidate_id = str(candidate.get("candidate_id") or "")
-        retained_candidate_ids.add(candidate_id)
         provider_audit_ids = list(
             dict.fromkeys(
                 str(source.get("tool_audit_id") or "")
@@ -331,22 +326,5 @@ def _bind_candidate_discovery_lineage(payload: dict[str, Any]) -> None:
                 "provider_audit_ids": provider_audit_ids,
                 "discovered_at_rounds": [research_round],
             }
-        )
-    if candidates and not records:
-        raise ResearchPacketOutputError(
-            "research candidate has no server-owned executed query lineage"
-        )
-    if dropped_candidate_ids:
-        payload["candidates"] = [
-            candidate
-            for candidate in candidates
-            if isinstance(candidate, Mapping)
-            and str(candidate.get("candidate_id") or "") in retained_candidate_ids
-        ]
-        _prune_payload_to_candidate_closure(payload)
-        logger.info(
-            "Pruned %d candidate(s) without server-owned executed query lineage: %s",
-            len(dropped_candidate_ids),
-            ",".join(sorted(dropped_candidate_ids)),
         )
     payload["candidate_discovery_records"] = records

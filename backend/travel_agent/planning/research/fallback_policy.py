@@ -12,7 +12,7 @@ from travel_agent.runtime.operations import remaining_model_seconds
 from typing import Mapping
 
 
-FALLBACK_QUERY_POLICY_VERSION = "fallback_query_policy.v2"
+FALLBACK_QUERY_POLICY_VERSION = "fallback_query_policy.v3"
 
 
 _FALLBACK_CATEGORY_TOKENS: Mapping[ResearchDomain, tuple[str, ...]] = {
@@ -47,20 +47,14 @@ class FallbackQueryPolicy:
         query: ResearchQuery,
         *,
         executed_query_ids: set[str],
-        admitted_candidate_count: int,
-        required_candidate_count: int,
         research_window_open: bool,
         run_budget_available: bool,
     ) -> bool:
+        """A generic fallback query runs once its prerequisites ran, within budget."""
         if query.query_kind.value != "generic_fallback":
-            return False
-        excluded = " ".join(query.excluded_categories).casefold()
-        category_tokens = _FALLBACK_CATEGORY_TOKENS.get(query.domain, ())
-        if any(token.casefold() in excluded for token in category_tokens):
             return False
         return (
             set(query.fallback_after_query_ids) <= executed_query_ids
-            and admitted_candidate_count < required_candidate_count
             and research_window_open
             and run_budget_available
         )

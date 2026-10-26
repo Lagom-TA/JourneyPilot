@@ -55,9 +55,7 @@ _TOOLS: Dict[AgentName, List[str]] = {
 
 
 def _intent_owner(item: IntentItem, research_domains: set[ResearchDomain]) -> AgentName:
-    if not any(
-        stage in item.impact_stages for stage in ("research", "admission", "ranking")
-    ):
+    if "research" not in item.impact_stages:
         return "itinerary_planner"
     if (
         item.kind is IntentKind.MUST_EXCLUDE

@@ -10,9 +10,6 @@ from travel_agent.planning.delivery.bundle import DeliveryBundle
 from travel_agent.planning.references import EntityRef
 from travel_agent.planning.references import EntityType
 from travel_agent.planning.research.evidence import FactStoreSnapshot
-from travel_agent.planning.research.selection_policy import (
-    rebind_candidate_selection_catalog_revision,
-)
 from travel_agent.planning.weather.context_builder import WeatherContextBuildResult
 from travel_agent.planning.weather.impacts import WeatherImpactEngine
 from travel_agent.planning.weather.models import WeatherContextSnapshot
@@ -244,7 +241,7 @@ def _carry_over_frozen_impacts(
     forever, deterministically, because the sky improved.
 
     Carrying the old impact forward is honest bookkeeping: frozen lineage records
-    what was considered at admission time, which is a fact about the past that a
+    what the itinerary was planned against, which is a fact about the past that a
     new forecast does not change.  The old assertions that support it are still in
     the merged fact snapshot, so nothing dangles.
 
@@ -360,9 +357,8 @@ def _rebind_catalog_for_snapshot(
 ) -> tuple[TripWorkspaceV2, WeatherContextSnapshot]:
     """把工作区与候选目录对齐到新的事实与天气数据版本。
 
-    目录与 packet 的 fact_data_revision 提升到新快照的版本；旧代 admission 与
-    排名记录随版本失效一并清空。候选与行程内容保持原样，事实快照合并保留了
-    旧断言，lineage 引用不会悬空。
+    目录与 packet 的 fact_data_revision 提升到新快照的版本。候选与行程内容
+    保持原样，事实快照合并保留了旧断言，lineage 引用不会悬空。
     """
 
     catalog = bundle.workspace.recommendation_catalog
@@ -376,23 +372,17 @@ def _rebind_catalog_for_snapshot(
             "fact_data_revision": facts.fact_data_revision,
             "weather_data_revision": weather.weather_data_revision,
             "research_packets": refreshed_packets,
-            "admission_results": [],
             "candidate_discovery_records": [
                 record
                 for packet in refreshed_packets
                 for record in packet.candidate_discovery_records
             ],
-            "candidate_ranking_scores": [],
         }
     )
     workspace = bundle.workspace.model_copy(
         update={
             "workspace_revision": bundle.workspace.workspace_revision + 1,
             "recommendation_catalog": refreshed_catalog,
-            "candidate_selection_plan": rebind_candidate_selection_catalog_revision(
-                bundle.workspace.candidate_selection_plan,
-                facts.fact_data_revision,
-            ),
         }
     )
     return workspace, weather

@@ -1,20 +1,15 @@
 from __future__ import annotations
 
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
 from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryRecord
-from travel_agent.planning.requirements.candidate_match_contracts import CandidateIntentMatch
-from travel_agent.planning.research.ranking_contracts import CandidateRankingScore
-from travel_agent.planning.research.candidates import (
-    CandidateAdmissionResult,
-    ResearchCandidate,
-)
+from travel_agent.planning.research.candidates import ResearchCandidate
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.schema import StrictModel
 
-RECOMMENDATION_CATALOG_CONTRACT_VERSION = "journeypilot.recommendation_catalog.v6"
+RECOMMENDATION_CATALOG_CONTRACT_VERSION = "journeypilot.recommendation_catalog.v7"
 
 
 class RecommendationCatalog(StrictModel):
@@ -34,12 +29,9 @@ class RecommendationCatalog(StrictModel):
     fact_data_revision: int = Field(ge=0)
     weather_data_revision: int = Field(ge=0)
     research_packets: List[ResearchPacket] = Field(default_factory=list)
-    admission_results: List[CandidateAdmissionResult] = Field(default_factory=list)
     candidate_discovery_records: List[CandidateDiscoveryRecord] = Field(
         default_factory=list
     )
-    candidate_intent_matches: List[CandidateIntentMatch] = Field(default_factory=list)
-    candidate_ranking_scores: List[CandidateRankingScore] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_catalog(self) -> "RecommendationCatalog":
@@ -91,50 +83,6 @@ class RecommendationCatalog(StrictModel):
             for record in packet.candidate_discovery_records
         ):
             raise ValueError("catalog discovery lineage differs from research packets")
-        keys: set[tuple[str, Optional[str]]] = set()
-        candidate_index = {
-            candidate.candidate_id: candidate for candidate in candidates
-        }
-        for admission in self.admission_results:
-            candidate = candidate_index.get(admission.candidate_id)
-            if candidate is None:
-                raise ValueError("admission result references a missing candidate")
-            if admission.evaluated_fact_revision != self.fact_data_revision:
-                raise ValueError("admission result uses a different fact revision")
-            if admission.evaluated_weather_revision != self.weather_data_revision:
-                raise ValueError("admission result uses a different weather revision")
-            key = (admission.candidate_id, admission.selection_slot_id)
-            if key in keys:
-                raise ValueError("candidate admission result is duplicated for a slot")
-            keys.add(key)
-            if admission.status == "passed" and not set(
-                candidate.active_constraint_ids
-            ) <= set(admission.checked_constraint_ids):
-                raise ValueError(
-                    "passed admission did not check every active hard constraint"
-                )
-            if set(admission.weather_impact_ids) != set(candidate.weather_impact_ids):
-                raise ValueError(
-                    "candidate weather impact lineage differs from admission"
-                )
-        match_keys = [
-            (match.candidate_id, match.intent_id)
-            for match in self.candidate_intent_matches
-        ]
-        if len(match_keys) != len(set(match_keys)):
-            raise ValueError("candidate intent match is duplicated")
-        if any(candidate_id not in candidate_index for candidate_id, _ in match_keys):
-            raise ValueError("candidate intent match references a missing candidate")
-        ranking_ids = [score.candidate_id for score in self.candidate_ranking_scores]
-        if len(ranking_ids) != len(set(ranking_ids)):
-            raise ValueError("candidate ranking score is duplicated")
-        if any(candidate_id not in candidate_index for candidate_id in ranking_ids):
-            raise ValueError("candidate ranking references a missing candidate")
-        if any(
-            score.generation_id != self.generation_id
-            for score in self.candidate_ranking_scores
-        ):
-            raise ValueError("candidate ranking belongs to another generation")
         return self
 
     def candidate_index(self) -> Dict[str, ResearchCandidate]:
@@ -143,22 +91,3 @@ class RecommendationCatalog(StrictModel):
             for packet in self.research_packets
             for candidate in packet.candidates
         }
-
-    def admission_index(
-        self,
-    ) -> Dict[tuple[str, Optional[str]], CandidateAdmissionResult]:
-        return {
-            (result.candidate_id, result.selection_slot_id): result
-            for result in self.admission_results
-        }
-
-
-class CandidateGateIntegrityError(RuntimeError):
-    """A stale or malformed packet cannot safely enter Candidate admission."""
-
-    def __init__(
-        self, reason_code: str, message: str, *, worker_kind: str | None = None
-    ):
-        super().__init__(message)
-        self.reason_code = reason_code
-        self.worker_kind = worker_kind

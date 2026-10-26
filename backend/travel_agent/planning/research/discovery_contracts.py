@@ -22,7 +22,8 @@ class CandidateDiscoveryRecord(StrictModel):
     generation_id: str = Field(min_length=1)
     query_ids: List[str] = Field(default_factory=list)
     intent_ids: List[str] = Field(default_factory=list)
-    origins: List[CandidateDiscoveryOrigin] = Field(min_length=1)
+    # 允许为空：无法追溯到已执行查询的候选仍保留数据，只是没有来源标注。
+    origins: List[CandidateDiscoveryOrigin] = Field(default_factory=list)
     provider_audit_ids: List[str] = Field(default_factory=list)
     discovered_at_rounds: List[int] = Field(default_factory=list)
 

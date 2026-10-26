@@ -354,7 +354,7 @@ async def test_semantic_repair_only_regenerates_invalid_clause_rows():
                                     "categories": ["建筑与本地文化"],
                                 },
                                 "verification_mode": "semantic",
-                                "impact_stages": ["research", "ranking"],
+                                "impact_stages": ["research", "composition"],
                                 "public_summary": "偏好建筑与本地文化",
                             }
                         ],
@@ -488,7 +488,7 @@ def _contract():
                         IntentTarget.DINING,
                         CategoryIntentValue(categories=["连锁咖啡"]),
                         "排除连锁咖啡",
-                        ["research", "admission", "composition"],
+                        ["research", "composition"],
                     )
                 ],
             ),
@@ -584,8 +584,8 @@ def test_contract_and_capability_plan_are_deterministic_and_cover_hard_intents()
 
 @pytest.mark.parametrize("stages,overnight,owner", [
     (["composition", "projection"], False, "itinerary_planner"),
-    (["research", "admission", "composition"], False, "itinerary_planner"),
-    (["research", "admission", "composition"], True, "accommodation_researcher"),
+    (["research", "composition"], False, "itinerary_planner"),
+    (["research", "composition"], True, "accommodation_researcher"),
 ])
 def test_lodging_exclusion_has_an_owner_without_unneeded_research(stages, overnight, owner):
     contract, generation = _contract()
@@ -972,7 +972,7 @@ async def test_valid_model_intents_are_returned_without_rule_rewriting():
                                         "categories": ["甲景点"],
                                     },
                                     "verification_mode": "mixed",
-                                    "impact_stages": ["research", "ranking"],
+                                    "impact_stages": ["research", "composition"],
                                     "public_summary": "甲景点必须保留",
                                 },
                                 {
@@ -985,7 +985,7 @@ async def test_valid_model_intents_are_returned_without_rule_rewriting():
                                         "categories": ["乙景点"],
                                     },
                                     "verification_mode": "mixed",
-                                    "impact_stages": ["research", "ranking"],
+                                    "impact_stages": ["research", "composition"],
                                     "public_summary": "乙景点必须保留",
                                 },
                             ],
@@ -1005,8 +1005,8 @@ async def test_valid_model_intents_are_returned_without_rule_rewriting():
         "乙景点必须保留",
     ]
     assert [intent.impact_stages for intent in result.clauses[0].intents] == [
-        ["research", "ranking"],
-        ["research", "ranking"],
+        ["research", "composition"],
+        ["research", "composition"],
     ]
 
 
@@ -1105,7 +1105,7 @@ def test_include_exclude_conflict_blocks_the_contract():
         "source_kind": "current_request",
         "source_ref_id": "query_main",
         "verification_mode": VerificationMode.MIXED,
-        "impact_stages": ["admission"],
+        "impact_stages": ["research"],
     }
     include = IntentItem(
         intent_id="intent_include",
@@ -1143,7 +1143,7 @@ def test_current_exclusion_supersedes_a_saved_include_preference():
                         IntentTarget.VISIT,
                         CategoryIntentValue(categories=["故宫"]),
                         "不要故宫",
-                        ["research", "admission", "composition"],
+                        ["research", "composition"],
                     )
                 ],
             ),
@@ -1156,7 +1156,7 @@ def test_current_exclusion_supersedes_a_saved_include_preference():
                         IntentTarget.VISIT,
                         CategoryIntentValue(categories=["故宫"]),
                         "喜欢安排故宫",
-                        ["ranking"],
+                        ["composition"],
                     )
                 ],
             ),
@@ -1203,7 +1203,7 @@ def test_current_request_supersedes_structurally_identical_saved_intents():
                         IntentTarget.VISIT,
                         CategoryIntentValue(categories=["西湖"]),
                         "必须安排西湖",
-                        ["research", "admission", "ranking", "composition"],
+                        ["research", "composition"],
                     )
                 ],
             )
@@ -1284,12 +1284,12 @@ def test_identity_amendment_is_rejected_and_resumes_the_interrupted_node():
         TravelAgentState(
             run_id="run_amendment",
             pending_intent_amendments=[amendment],
-            intent_amendment_resume_node="candidate_gate",
+            intent_amendment_resume_node="dispatcher",
         )
     )
 
     assert update["pending_intent_amendments"] == []
-    assert update["intent_amendment_route"] == "candidate_gate"
+    assert update["intent_amendment_route"] == "dispatcher"
     assert (
         update["rejected_intent_amendments"][0].reason_code
         == "identity_change_requires_new_run"

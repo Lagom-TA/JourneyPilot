@@ -17,7 +17,6 @@ from travel_agent.planning.research.brief_contracts import (
     ResearchBriefV2,
 )
 from travel_agent.planning.research.candidates import (
-    CandidateAdmissionResult,
     TransportCandidate,
     VisitCandidate,
 )
@@ -106,7 +105,7 @@ def make_research_intent(
         source_text=summary,
         linked_constraint_ids=[],
         verification_mode=verification,
-        impact_stages=["research", "ranking"],
+        impact_stages=["research", "composition"],
         public_summary=summary,
     )
 
@@ -296,15 +295,6 @@ def make_visit_packet(
     )
 
 def make_catalog(*packets: ResearchPacket) -> RecommendationCatalog:
-    admissions = [
-        CandidateAdmissionResult(
-            candidate_id=packet.candidates[0].candidate_id,
-            status="passed",
-            evaluated_fact_revision=1,
-            evaluated_weather_revision=0,
-        )
-        for packet in packets
-    ]
     return RecommendationCatalog(
         generation_id="generation_test",
         intent_spec_revision=1,
@@ -312,7 +302,6 @@ def make_catalog(*packets: ResearchPacket) -> RecommendationCatalog:
         fact_data_revision=1,
         weather_data_revision=0,
         research_packets=list(packets),
-        admission_results=admissions,
         candidate_discovery_records=[
             record
             for packet in packets

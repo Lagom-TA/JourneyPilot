@@ -1,8 +1,8 @@
 """Task-scoped model views of durable Research Packets.
 
 Coordination keeps planning values and fact/source references, without repeating
-raw evidence snapshots. Targeted repairs keep the full selected lineage closure.
-The result is a separate context contract, never an admitted Research Packet.
+raw evidence snapshots. The result is a separate context contract, never an
+authoritative Research Packet.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from typing import Any, Literal, Mapping, Sequence
 
 from pydantic import Field
 
-from travel_agent.planning.outcomes import CandidateResearchGap
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.schema import StrictModel
 
@@ -31,7 +30,6 @@ _CANDIDATE_BOOKKEEPING = {
     "field_paths",
     "active_constraint_ids",
     "constraint_evaluations",
-    "constraint_gate_attestation",
     "planning_decision_ids",
     "weather_impact_ids",
     "personalization_influence_ids",
@@ -53,63 +51,10 @@ class ResearchContextView(StrictModel):
     contract_version: Literal["journeypilot.research_context.v1"] = (
         "journeypilot.research_context.v1"
     )
-    purpose: Literal["coordination_and_repair"] = "coordination_and_repair"
+    purpose: Literal["coordination"] = "coordination"
     worker_kind: str
     destination_ids: list[str]
     coordination: list[CoordinationPacket] = Field(default_factory=list)
-    repair_packets: list[dict[str, Any]] = Field(default_factory=list)
-
-
-def _closure(packet: ResearchPacket, candidate_ids: set[str]) -> dict[str, Any]:
-    candidates = [
-        candidate
-        for candidate in packet.candidates
-        if candidate.candidate_id in candidate_ids
-    ]
-    # Include every fact on the selected entities, including missing/contradictory
-    # fields needed by a repair, not just the candidate's supporting index.
-    facts = [
-        fact
-        for fact in packet.fact_assertions
-        if fact.entity_ref.entity_id in candidate_ids
-    ]
-    source_ids = {
-        source_id
-        for candidate in candidates
-        for source_id in candidate.source_record_ids
-    }
-    source_ids.update(
-        link.source_record_id for fact in facts for link in fact.source_links
-    )
-    payload = packet.model_dump(mode="json", exclude_none=True)
-    payload.update(
-        candidates=[
-            candidate.model_dump(mode="json", exclude_none=True)
-            for candidate in candidates
-        ],
-        fact_assertions=[
-            fact.model_dump(mode="json", exclude_none=True) for fact in facts
-        ],
-        source_records=[
-            source.model_dump(mode="json", exclude_none=True)
-            for source in packet.source_records
-            if source.source_record_id in source_ids
-        ],
-        field_provenance=[
-            item.model_dump(mode="json", exclude_none=True)
-            for item in packet.field_provenance
-            if item.entity_ref.entity_id in candidate_ids
-        ],
-        candidate_discovery_records=[
-            item.model_dump(mode="json", exclude_none=True)
-            for item in packet.candidate_discovery_records
-            if item.candidate_id in candidate_ids
-        ],
-    )
-    # Query prose/provider options are already in the authoritative assignment;
-    # they are not part of an entity's fact/source closure.
-    payload.pop("query_context", None)
-    return payload
 
 
 def project_research_context(
@@ -120,7 +65,6 @@ def project_research_context(
     generation_id: str,
     planned_queries: Sequence[ResearchQuery],
     assignment: Mapping[str, Any],
-    gaps: Sequence[CandidateResearchGap] = (),
 ) -> ResearchContextView:
     kinds = _COORDINATION_KINDS[worker_kind]
     destinations = {
@@ -128,23 +72,6 @@ def project_research_context(
         for query in planned_queries
         if query.generation_id == generation_id
     }
-    explicit_repair_ids = set(assignment.get("excluded_candidate_ids") or [])
-    repair_ids = set(explicit_repair_ids)
-    query_ids = {
-        query.query_id
-        for query in planned_queries
-        if query.generation_id == generation_id
-    }
-    repair_ids.update(
-        gap.candidate_id
-        for gap in gaps
-        if gap.candidate_id
-        and gap.worker_kind == worker_kind
-        and gap.generation_id == generation_id
-        and gap.status in {"open", "researching"}
-        and (gap.query_id is None or gap.query_id in query_ids)
-        and (gap.destination_id is None or gap.destination_id in destinations)
-    )
     # Newest packet owns a candidate's visible revision. Never mix generations
     # or introduce unrelated destinations merely to fill the context.
     current = sorted(
@@ -171,29 +98,14 @@ def project_research_context(
             candidate
             for candidate in packet.candidates
             if candidate.candidate_id not in seen
-            and (
-                candidate.destination_id in destinations
-                or candidate.candidate_id in explicit_repair_ids
-            )
-            and (
-                candidate.candidate_kind in kinds
-                or candidate.candidate_id in repair_ids
-            )
+            and candidate.destination_id in destinations
+            and candidate.candidate_kind in kinds
         ]
         if not selected:
             continue
         selected.sort(key=lambda candidate: candidate.candidate_id)
         ids = {candidate.candidate_id for candidate in selected}
         seen.update(ids)
-        repair = ids & repair_ids if packet.worker_kind == worker_kind else set()
-        if repair:
-            view.repair_packets.append(_closure(packet, repair))
-        coordination = [
-            candidate for candidate in selected if candidate.candidate_id not in repair
-        ]
-        if not coordination:
-            continue
-        ids = {candidate.candidate_id for candidate in coordination}
         facts = sorted(
             (
                 fact
@@ -211,7 +123,7 @@ def project_research_context(
                 worker_kind=packet.worker_kind,
                 candidates=[
                     candidate.model_dump(mode="json", exclude=_CANDIDATE_BOOKKEEPING)
-                    for candidate in coordination
+                    for candidate in selected
                 ],
                 facts=[
                     {
@@ -250,7 +162,6 @@ def project_research_context(
             )
         )
     view.coordination.sort(key=lambda packet: packet.research_packet_id)
-    view.repair_packets.sort(key=lambda packet: packet["research_packet_id"])
     return view
 
 

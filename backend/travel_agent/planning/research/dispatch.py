@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Set, Union
 from langchain_core.runnables import RunnableConfig
 
 from travel_agent.planning.assignments import strip_round_suffix
-from travel_agent.planning.itinerary.revision import composition_repair_budget_exhausted
+from travel_agent.planning.research.assembly import build_candidate_catalog
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.deadlines import observe_run_deadline
 
@@ -23,7 +23,7 @@ _DONE_STATUSES = {"completed", "partial", "failed"}
 
 _KNOWN_NEXT_AGENTS: Set[str] = {
     "to_check",
-    "candidate_gate",
+    "itinerary_planner",
     "dispatch_group",
 }
 
@@ -47,6 +47,19 @@ def _pending_agents_in_group(state: TravelAgentState, group: list[str]) -> list[
     ]
 
 
+def _catalog_update(state: TravelAgentState) -> Dict[str, Any]:
+    """Build the candidate catalog from the current worker packets.
+
+    组合阶段开始前必须先把已有 packet 收敛成候选目录；部分 worker 失败时
+    同样用剩余 packet 构建，行程组合再对空缺域自行失败。
+    """
+    catalog, impacts = build_candidate_catalog(state)
+    return {
+        "recommendation_catalog": catalog,
+        "weather_impacts": {impact.weather_impact_id: impact for impact in impacts},
+    }
+
+
 async def dispatcher_node(
     state: TravelAgentState,
     config: Optional[RunnableConfig] = None,
@@ -59,16 +72,6 @@ async def dispatcher_node(
     observed_deadline, observation = (
         observe_run_deadline(deadline) if deadline is not None else (None, None)
     )
-    if (
-        state.composition_failure_context
-        and any(
-            strip_round_suffix(agent) == "itinerary_planner" and status == "failed"
-            for agent, status in state.agent_status.items()
-        )
-        and not composition_repair_budget_exhausted(state)
-        and (observation is None or not observation.composition_closed)
-    ):
-        return {"next_agent": "candidate_gate"}
     if observation is not None:
         deadline_update: Dict[str, Any] = {"run_deadline": observed_deadline}
         if observation.research_closed:
@@ -84,12 +87,9 @@ async def dispatcher_node(
                 )
                 return {
                     **deadline_update,
+                    **_catalog_update(state),
                     "current_plan_step": composition_step,
-                    "next_agent": (
-                        "candidate_gate"
-                        if state.candidate_gate_status != "passed"
-                        else "dispatch_group"
-                    ),
+                    "next_agent": "itinerary_planner",
                 }
 
             return {
@@ -98,14 +98,10 @@ async def dispatcher_node(
             }
 
     if not plan or step >= len(plan):
-        logger.info("Dispatcher: 计划已完成，路由到校验闭环")
+        logger.info("Dispatcher: 计划已完成，路由到预算节点")
         return {"next_agent": "to_check"}
 
     current_group = plan[step]
-
-    if any(strip_round_suffix(agent) == "itinerary_planner" for agent in current_group):
-        if state.candidate_gate_status != "passed":
-            return {"next_agent": "candidate_gate"}
 
     group_complete = all(
         state.agent_status.get(agent) in _DONE_STATUSES for agent in current_group
@@ -119,23 +115,18 @@ async def dispatcher_node(
     if next_step < len(plan):
         next_group = plan[next_step]
         logger.info(f"Dispatcher: 推进到 step={next_step}, group={next_group}")
-        return {
-            "current_plan_step": next_step,
-            "next_agent": (
-                "candidate_gate"
-                if any(
-                    strip_round_suffix(agent) == "itinerary_planner"
-                    for agent in next_group
-                )
-                else "dispatch_group"
-            ),
-        }
+        update: Dict[str, Any] = {"current_plan_step": next_step}
+        if any(
+            strip_round_suffix(agent) == "itinerary_planner"
+            for agent in next_group
+        ):
+            update.update(_catalog_update(state))
+            update["next_agent"] = "itinerary_planner"
+        else:
+            update["next_agent"] = "dispatch_group"
+        return update
 
-    if state.candidate_gate_status != "passed":
-        logger.info("Dispatcher: 研究步骤完成，路由到 Candidate Gate")
-        return {"next_agent": "candidate_gate"}
-
-    logger.info("Dispatcher: Candidate Gate 已通过，路由到校验闭环")
+    logger.info("Dispatcher: 计划已收尾，路由到预算节点")
     return {"next_agent": "to_check"}
 
 
@@ -153,8 +144,8 @@ def route_after_dispatcher(state: TravelAgentState) -> Union[str, list]:
     if next_agent == "to_check":
         return "to_check"
 
-    if next_agent == "candidate_gate":
-        return "candidate_gate"
+    if next_agent == "itinerary_planner":
+        return "itinerary_planner"
 
     if next_agent == "dispatch_group":
         plan = state.execution_plan

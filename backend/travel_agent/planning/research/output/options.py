@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Mapping, Sequence
@@ -11,7 +10,6 @@ from travel_agent.planning.research.provider_contracts import ProviderEvidenceAs
 from travel_agent.knowledge.place_mentions import PlaceLookup, ProviderIdentity
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.integrations.places.taxonomy import provider_place_type_matches_candidate_kind
-from travel_agent.planning.requirements.destination_scope import DESTINATION_DISTANCE_KEY, MAX_DESTINATION_DISTANCE_KM
 
 from .identifiers import _provider_candidate_id
 from .policy import _PLACE_IDENTITY_FIELDS, _WORKER_CANDIDATE_MODELS, ResearchWorkerKind
@@ -20,9 +18,6 @@ from .transcript import (
     _successful_place_records,
     _successful_route_records,
 )
-
-logger = logging.getLogger(__name__)
-
 
 def _eligible_route_selection_options(
     context_messages: Sequence[Mapping[str, Any]],
@@ -139,18 +134,12 @@ def _eligible_place_selection_options(
         candidate_kind: [] for candidate_kind in allowed_kinds
     }
     seen: set[tuple[str, str]] = set()
-    dropped_far: list[tuple[str, float]] = []
     for envelope, provider_place, _ in _successful_place_records(
         context_messages
     ).values():
         audit_id = str(envelope.get("audit_id") or "").strip()
         if not audit_id:
             continue
-        distance = provider_place.get(DESTINATION_DISTANCE_KEY)
-        if isinstance(distance, (int, float)) and not isinstance(distance, bool):
-            if float(distance) > MAX_DESTINATION_DISTANCE_KM:
-                dropped_far.append((str(provider_place["name"]), float(distance)))
-                continue
         provider_type = str(provider_place["provider_place_type"])
         for candidate_kind in allowed_kinds:
             key = (candidate_kind, str(provider_place["place_id"]))
@@ -184,13 +173,6 @@ def _eligible_place_selection_options(
                 }
             )
             seen.add(key)
-    if dropped_far:
-        emptied = sorted(kind for kind in allowed_kinds if not options[kind])
-        logger.info(
-            "Place options outside destination | dropped=%s%s",
-            ", ".join(f"{name}@{km:.1f}km" for name, km in dropped_far),
-            f" emptied={emptied}" if emptied else "",
-        )
     return options
 
 

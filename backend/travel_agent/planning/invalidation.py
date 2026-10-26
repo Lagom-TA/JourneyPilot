@@ -28,7 +28,6 @@ def invalidation_update(impact: AmendmentImpact) -> Dict[str, Any]:
         return _projection_invalidation()
     composition = {
         **workspace_acceptance_invalidation(),
-        "candidate_selection_plan": None,
         "placement_skeleton": None,
         "composition_mutations": [],
         "trip_workspace_v2": None,
@@ -38,20 +37,9 @@ def invalidation_update(impact: AmendmentImpact) -> Dict[str, Any]:
     }
     if impact is AmendmentImpact.COMPOSITION_AFFECTING:
         return composition
-    ranking = {
+    return {
         **composition,
         "recommendation_catalog": None,
-        "candidate_intent_evaluation_cache": {},
-        "candidate_research_gaps": [],
-        "candidate_gate_status": None,
-        "candidate_gate_route": None,
-        "candidate_gate_attempts": {},
-        "candidate_gate_failure_signatures": {},
-    }
-    if impact is AmendmentImpact.RANKING_AFFECTING:
-        return ranking
-    return {
-        **ranking,
         "research_brief": None,
         "capability_plan": None,
         "research_query_plan": None,
@@ -64,7 +52,6 @@ def invalidation_update(impact: AmendmentImpact) -> Dict[str, Any]:
         "run_budget": None,
         "provider_evidence_outcomes": {},
         "weather_impacts": {},
-        "composition_repair_attempts": 0,
         "unlocatable_authored_places": [],
     }
 

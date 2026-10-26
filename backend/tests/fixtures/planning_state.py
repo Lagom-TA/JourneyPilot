@@ -5,7 +5,6 @@ from datetime import date
 from tests.fixtures.research_catalog import make_catalog, make_intent_spec
 from travel_agent.planning.requirements.generation_contracts import PlanningGeneration
 from travel_agent.planning.requirements.inputs import MinimumDeliveryDraft
-from travel_agent.planning.research.selection_policy import build_candidate_selection_plan
 from travel_agent.planning.state import TravelAgentState
 
 
@@ -44,13 +43,6 @@ def make_minimum_draft(*, authorized_at=None):
 
 def make_planning_state():
     spec, catalog = make_intent_spec(), make_catalog()
-    selection = build_candidate_selection_plan(
-        catalog=catalog,
-        intent_spec=spec,
-        ranking_scores=[],
-        duration_days=1,
-        destination_count=1,
-    )
     draft_data = make_minimum_draft().model_dump()
     draft_data.update(
         run_id="run_test",
@@ -76,7 +68,6 @@ def make_planning_state():
             constraint_hash="0" * 64,
         ),
         recommendation_catalog=catalog,
-        candidate_selection_plan=selection,
         minimum_delivery_draft=MinimumDeliveryDraft.model_validate(draft_data),
         controlled_trip_identity={"start_date": "2026-10-10", "end_date": "2026-10-10"},
         agent_assignments={"itinerary_planner": {"objective": "Tokyo museum"}},

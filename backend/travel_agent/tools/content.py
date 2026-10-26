@@ -4,10 +4,7 @@ import json
 from typing import Any, Dict, List, Mapping
 
 from ..knowledge.fragments import rag_chunk_source_id
-from .governance import (
-    QUALITY_VERIFIED_PLACE_IDS_METADATA_KEY,
-    is_tool_execution_envelope,
-)
+from .governance import is_tool_execution_envelope
 
 _TOOL_CONTENT_CHAR_LIMIT = 6000
 
@@ -85,7 +82,6 @@ _ENVELOPE_TOP_KEYS = (
 _METADATA_KEEP_KEYS = (
     "evidence_allowed",
     "quarantine_result",
-    QUALITY_VERIFIED_PLACE_IDS_METADATA_KEY,
     "snapshot_cache",
     "provider_snapshot",
     "place_ids",

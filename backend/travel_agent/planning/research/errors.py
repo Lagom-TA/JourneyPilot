@@ -10,10 +10,8 @@ from travel_agent.planning.research.failure_protocol import (
     PREFIX_PROVIDER_DETERMINISTIC,
     PREFIX_PROVIDER_EMPTY,
     PREFIX_PROVIDER_TRANSIENT,
-    PREFIX_SCHEMA_GATE,
     PREFIX_WORKER_FAILED,
 )
-from travel_agent.planning.research.output.policy import ResearchPacketOutputError
 from travel_agent.planning.research.provider_failure import (
     _DETERMINISTIC_MARKERS,
     _TRANSIENT_MARKERS,
@@ -48,20 +46,7 @@ def format_worker_last_error(
     if provider_empty_round:
         return f"{PREFIX_PROVIDER_EMPTY} {text}"
 
-    if isinstance(exc, ResearchPacketOutputError):
-        return f"{PREFIX_SCHEMA_GATE} {text}"
-
     lowered = text.casefold()
-
-    if (
-        "research packet" in lowered
-        or "worker output" in lowered
-        or "json object" in lowered
-        or "json parse" in lowered
-        or ("validation error" in lowered and "research" in lowered)
-    ):
-        return f"{PREFIX_SCHEMA_GATE} {text}"
-
     if any(marker in lowered for marker in _DETERMINISTIC_MARKERS):
         return f"{PREFIX_PROVIDER_DETERMINISTIC} {text}"
     if any(marker in lowered for marker in _TRANSIENT_MARKERS):

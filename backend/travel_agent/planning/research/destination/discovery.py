@@ -3,17 +3,11 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import Any, Dict, List
 
 from travel_agent.planning.research.destination.dining_binding import (
     _cn_only_destination_boundaries,
     discover_amap_dining,
-)
-from travel_agent.planning.research.destination.dining_quality import (
-    _web_search_entries,
-    dining_quality_source_matches_place,
-    resolve_dining_locality_tokens,
 )
 from travel_agent.planning.research.destination.scope import (
     _NODE_NAME,
@@ -34,7 +28,6 @@ from travel_agent.planning.research.query_contracts import (
 )
 from travel_agent.tools.content import compact_tool_content_for_model
 from travel_agent.tools.execution import execute_tool
-from travel_agent.tools.governance import QUALITY_VERIFIED_PLACE_IDS_METADATA_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -116,9 +109,7 @@ async def discover_and_resolve_required_places(
             {"role": "tool", "content": compact_tool_content_for_model(envelope)}
         )
         authoritative_tool_results.append(envelope)
-        if envelope.get("status") == "success" and _web_search_entries(
-            envelope.get("sanitized_result")
-        ):
+        if envelope.get("status") == "success":
             discovered_domains.add(query.domain)
         return True
 
@@ -159,8 +150,6 @@ async def discover_and_resolve_required_places(
                 if not fallback_policy.is_allowed(
                     query,
                     executed_query_ids=set(executed_query_ids),
-                    admitted_candidate_count=0,
-                    required_candidate_count=1,
                     research_window_open=research_window_open,
                     run_budget_available=run_budget_available,
                 ):
@@ -242,7 +231,6 @@ async def discover_and_resolve_required_places(
     if country_code and len(destination_boundaries) == 1:
         boundary = destination_boundaries[0]
         destination_id = boundary.get("destination_id")
-        selected: List[Dict[str, Any]] = []
         identity_envelope: Dict[str, Any] = {}
         for query in domain_queries(ResearchDomain.DINING, str(destination_id or "")):
             if query.query_kind is ResearchQueryKind.GENERIC_FALLBACK:
@@ -252,8 +240,6 @@ async def discover_and_resolve_required_places(
                 if not fallback_policy.is_allowed(
                     query,
                     executed_query_ids=set(executed_query_ids),
-                    admitted_candidate_count=0,
-                    required_candidate_count=1,
                     research_window_open=research_window_open,
                     run_budget_available=run_budget_available,
                 ):
@@ -294,80 +280,19 @@ async def discover_and_resolve_required_places(
                 if isinstance(identity_payload, dict)
                 else None
             )
-            selected = [
-                item
-                for item in (identity_results or [])[:3]
-                if isinstance(item, dict) and item.get("name") and item.get("place_id")
-            ]
-            if selected:
+            if identity_results:
                 break
 
-        locality_tokens_by_place = await resolve_dining_locality_tokens(selected)
-        verified_quality_envelopes: List[Dict[str, Any]] = []
-        for item in selected:
-            place_id = str(item["place_id"])
-            locality_tokens = locality_tokens_by_place.get(place_id) or []
-            if not locality_tokens:
-                logger.info(
-                    "[destination_researcher] dining quality unverifiable for %s (%s): no locality token",
-                    item.get("name"),
-                    place_id,
-                )
-                continue
-            aliases = (
-                item.get("aliases") if isinstance(item.get("aliases"), list) else []
-            )
-            quality_name = next(
-                (
-                    alias
-                    for alias in aliases
-                    if isinstance(alias, str) and re.search(r"[A-Za-z]", alias)
-                ),
-                str(item["name"]),
-            )
-            quality_envelope = await execute_tool(
-                discovery_name,
-                {
-                    "query": f'"{quality_name}" {" ".join(locality_tokens[:2])} reviews',
-                    "max_results": 10,
-                },
-                available_tools=available_tools,
-                node_name=_NODE_NAME,
-                activation_source="candidate_gate_deterministic_quality",
-                **tool_context,
-            )
-            if quality_envelope.get(
-                "status"
-            ) == "success" and dining_quality_source_matches_place(
-                item,
-                quality_envelope.get("sanitized_result") or {},
-                locality_tokens=locality_tokens,
-            ):
-                bound_quality = dict(quality_envelope)
-                quality_metadata = dict(bound_quality.get("metadata") or {})
-                quality_metadata[QUALITY_VERIFIED_PLACE_IDS_METADATA_KEY] = [place_id]
-                bound_quality["metadata"] = quality_metadata
-                verified_quality_envelopes.append(bound_quality)
-        if selected:
-            logger.info(
-                "[destination_researcher] dining options injected for %s: "
-                "%d identities, %d quality-verified",
-                boundary.get("name", ""),
-                len(selected),
-                len(verified_quality_envelopes),
-            )
-            for envelope in verified_quality_envelopes:
-                messages.append(
-                    {
-                        "role": "tool",
-                        "content": compact_tool_content_for_model(envelope),
-                    }
-                )
-                authoritative_tool_results.append(envelope)
-            messages.append(
-                {
-                    "role": "tool",
-                    "content": compact_tool_content_for_model(identity_envelope),
-                }
-            )
-            authoritative_tool_results.append(identity_envelope)
+    if identity_envelope:
+        logger.info(
+            "[destination_researcher] dining identities injected for %s: %d",
+            boundary.get("name", ""),
+            len(identity_results or []),
+        )
+        messages.append(
+            {
+                "role": "tool",
+                "content": compact_tool_content_for_model(identity_envelope),
+            }
+        )
+        authoritative_tool_results.append(identity_envelope)

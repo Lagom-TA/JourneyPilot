@@ -17,12 +17,10 @@ from travel_agent.memory.research_context import format_worker_research_context
 from travel_agent.planning.assignments import (
     assignment_research_round,
     resolve_agent_assignment,
-    resolve_scoped_research_output_key,
 )
 from travel_agent.planning.invalidation import generation_packet_key
 from travel_agent.planning.requirements.constraint_applicability import (
     active_hard_constraint_ids,
-    active_hard_constraints,
 )
 from travel_agent.planning.research.assignment_context import build_assignment_context
 from travel_agent.planning.research.domains import ResearchDomain
@@ -33,25 +31,19 @@ from travel_agent.planning.research.output.failures import (
     provider_round_capability_declared,
 )
 from travel_agent.planning.research.output.finalization import (
-    parse_or_repair_research_packet_output,
+    parse_research_packet,
 )
 from travel_agent.planning.research.output.metadata import (
     build_authoritative_research_packet_metadata,
 )
 from travel_agent.planning.research.output.options import provider_evidence_outcomes
 from travel_agent.planning.research.output.policy import packet_candidate_limit
-from travel_agent.planning.research.output.sources import (
-    authoritative_retry_source_records,
-)
 from travel_agent.planning.research.output.transcript import authoritative_tool_messages
 from travel_agent.planning.research.prompts import build_research_packet_prompt
 from travel_agent.planning.research.query_contracts import ResearchQueryKind
 from travel_agent.planning.research.query_planner import queries_by_ids
 from travel_agent.planning.research.reference_service_contracts import (
     ProviderReferenceService,
-)
-from travel_agent.planning.research.transport.local_routes import (
-    discover_required_local_route,
 )
 from travel_agent.planning.research.transport.prompts import build_transport_task_prompt
 from travel_agent.planning.research.transport.rail.binding import (
@@ -62,7 +54,6 @@ from travel_agent.planning.research.transport.scope import (
     constrain_cross_day_flight_tools,
     scope_initial_transport_tools,
     scope_long_distance_transport_tools,
-    scope_transport_gap_tools,
     transport_provider_assignments,
 )
 from travel_agent.planning.state import TravelAgentState
@@ -135,20 +126,10 @@ async def transport_researcher_node(
     )[:1000]
     recommended_tools = assignment.get("recommended_tools", [])
     excluded_tools = assignment.get("excluded_tools", [])
-    required_transport_classes = assignment.get("required_transport_classes")
-    connector_gaps = assignment.get("connector_gaps")
-    excluded_candidate_ids = assignment.get("excluded_candidate_ids")
-    require_current_candidate = bool(assignment.get("require_current_candidate"))
     provider_assignments = transport_provider_assignments(assignment, state)
     required_route_scopes = [
         item.scope for item in provider_assignments if item.scope.route_leg is not None
     ]
-    output_key = resolve_scoped_research_output_key(
-        state.research_packets,
-        _NODE_NAME,
-        output_key,
-        scoped_retry=require_current_candidate,
-    )
 
     if state.planning_generation is None:
         raise ValueError("transport research requires a planning generation")
@@ -160,14 +141,9 @@ async def transport_researcher_node(
         generation_id=generation_id,
         planned_queries=planned_queries,
         assignment=assignment,
-        gaps=state.candidate_research_gaps,
     )
 
     active_constraint_ids = active_hard_constraint_ids(
-        state.constraint_pack,
-        worker_kind=_NODE_NAME,
-    )
-    active_constraints = active_hard_constraints(
         state.constraint_pack,
         worker_kind=_NODE_NAME,
     )
@@ -181,7 +157,6 @@ async def transport_researcher_node(
         research_brief_context=research_brief_context,
         candidate_limit=packet_candidate_limit(
             _NODE_NAME,
-            required_transport_classes=required_transport_classes,
             required_route_scopes=required_route_scopes,
         ),
         upstream_packet_context=upstream_packet_context,
@@ -206,37 +181,18 @@ async def transport_researcher_node(
             "content": build_transport_task_prompt(
                 task_desc=task_desc,
                 user_query=user_query,
-                required_transport_classes=required_transport_classes,
-                connector_gaps=connector_gaps,
-                require_current_candidate=require_current_candidate,
                 required_route_scopes=required_route_scopes,
             ),
         }
     )
 
-    selected_servers = (
-        []
-        if require_current_candidate and recommended_tools
-        else state.selected_mcp_servers or []
-    )
-    available_tools = await get_available_tools(selected_servers)
+    available_tools = await get_available_tools(state.selected_mcp_servers or [])
     available_tools = filter_tools_for_agent(available_tools, _NODE_NAME)
     available_tools = exclude_tools(available_tools, excluded_tools)
-    available_tools = scope_initial_transport_tools(
-        available_tools,
-        require_current_candidate=require_current_candidate,
-        connector_gaps=connector_gaps,
-    )
+    available_tools = scope_initial_transport_tools(available_tools)
     available_tools = scope_long_distance_transport_tools(
         available_tools,
         controlled_trip_identity=state.controlled_trip_identity,
-        connector_gaps=connector_gaps,
-    )
-    available_tools = scope_transport_gap_tools(
-        available_tools,
-        recommended_tools,
-        required_transport_classes,
-        scoped_retry=require_current_candidate,
     )
     cross_day_required = bool(required_route_scopes) and all(
         scope.route_leg is not None and scope.route_leg.cross_day_required
@@ -273,7 +229,6 @@ async def transport_researcher_node(
         query_context={
             "objective": task_desc,
             "controlled_trip_identity": state.controlled_trip_identity or {},
-            "connector_gaps": connector_gaps or [],
             "required_route_legs": [
                 scope.route_leg.model_dump(mode="json")
                 for scope in required_route_scopes
@@ -290,34 +245,14 @@ async def transport_researcher_node(
 
     finalize_started_at: Optional[float] = None
     try:
-        provider_route_ready = False
-        if not connector_gaps and (
-            not required_transport_classes
-            or "long_distance" in required_transport_classes
-        ):
-            provider_route_ready = await discover_domestic_rail_route(
-                state=state,
-                messages=messages,
-                required_transport_classes=required_transport_classes,
-                connector_gaps=connector_gaps,
-                tool_context=tool_context,
-                authoritative_tool_results=authoritative_tool_results,
-                reference_services=reference_services,
-                required_route_scopes=required_route_scopes,
-            )
-        if (
-            not provider_route_ready
-            and require_current_candidate
-            and required_transport_classes
-        ):
-            provider_route_ready = await discover_required_local_route(
-                state=state,
-                messages=messages,
-                required_transport_classes=required_transport_classes,
-                connector_gaps=connector_gaps,
-                tool_context=tool_context,
-                authoritative_tool_results=authoritative_tool_results,
-            )
+        provider_route_ready = await discover_domestic_rail_route(
+            state=state,
+            messages=messages,
+            tool_context=tool_context,
+            authoritative_tool_results=authoritative_tool_results,
+            reference_services=reference_services,
+            required_route_scopes=required_route_scopes,
+        )
         if provider_route_ready:
             raw_response = ""
         else:
@@ -336,28 +271,13 @@ async def transport_researcher_node(
             authoritative_tool_results.extend(react.tool_results)
 
         finalize_started_at = time.perf_counter()
-        packet = await parse_or_repair_research_packet_output(
+        packet = await parse_research_packet(
             raw_response or "",
             expected_worker=_NODE_NAME,
             expected_run_id=run_id,
-            llm=llm,
-            context_messages=messages,
             authoritative_tool_results=authoritative_tool_results,
-            required_transport_classes=required_transport_classes,
-            excluded_candidate_ids=excluded_candidate_ids,
-            require_current_candidate=require_current_candidate,
             expected_active_constraint_ids=active_constraint_ids,
-            expected_active_constraints=active_constraints,
             authoritative_packet_metadata=authoritative_packet_metadata,
-            authoritative_source_records=authoritative_retry_source_records(
-                state.recommendation_catalog,
-                expected_worker=_NODE_NAME,
-                constraint_pack_revision=state.constraint_pack_revision,
-                fact_data_revision=state.fact_data_revision,
-            )
-            if require_current_candidate
-            else (),
-            required_route_scopes=required_route_scopes,
         )
 
         logger.info(
@@ -371,7 +291,7 @@ async def transport_researcher_node(
 
         return {
             "messages": [
-                AIMessage(content=f"已核验 {len(packet.candidates)} 个交通候选")
+                AIMessage(content=f"已整理 {len(packet.candidates)} 个交通候选")
             ],
             "research_packets": {packet_state_key: packet},
             "agent_status": {output_key: "completed"},

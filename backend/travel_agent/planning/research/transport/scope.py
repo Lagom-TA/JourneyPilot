@@ -51,46 +51,11 @@ def constrain_cross_day_flight_tools(
     return constrained
 
 
-def scope_transport_gap_tools(
-    available_tools: List[Dict[str, Any]],
-    recommended_tools: List[str],
-    required_transport_classes: List[str] | None,
-    *,
-    scoped_retry: bool = False,
-) -> List[Dict[str, Any]]:
-    """Expose the small recommended tool set directly for any scoped retry."""
-    if not (required_transport_classes or scoped_retry) or not recommended_tools:
-        return available_tools
-    recommended_set = set(recommended_tools)
-
-    long_distance_scope = "long_distance" in (required_transport_classes or ())
-    if not long_distance_scope:
-        global_provider = [
-            tool
-            for tool in available_tools
-            if tool.get("schema", {}).get("function", {}).get("name", "")
-            == "global_route_search"
-            and "global_route_search" in recommended_set
-        ]
-        if global_provider:
-            return global_provider
-    scoped = [
-        tool
-        for tool in available_tools
-        if tool.get("schema", {}).get("function", {}).get("name", "") in recommended_set
-    ]
-    return scoped or available_tools
-
-
 def scope_initial_transport_tools(
     available_tools: List[Dict[str, Any]],
-    *,
-    require_current_candidate: bool,
-    connector_gaps: List[Dict[str, Any]] | None,
 ) -> List[Dict[str, Any]]:
-    """Hide local-route providers until an exact placement gap exists."""
-    if require_current_candidate or connector_gaps:
-        return available_tools
+    """完整调研轮只保留长途 Provider：placement skeleton 尚未形成，
+    市内路线工具一律隐藏，避免对未确定的端点发起市内路线查询。"""
     return [
         tool
         for tool in available_tools
@@ -139,10 +104,9 @@ def scope_long_distance_transport_tools(
     available_tools: List[Dict[str, Any]],
     *,
     controlled_trip_identity: Dict[str, Any] | None,
-    connector_gaps: List[Dict[str, Any]] | None,
 ) -> List[Dict[str, Any]]:
     """本地/同城行程（无城际腿）时移除 12306/duffel，避免空参数误调。"""
-    if connector_gaps or has_intercity_leg(controlled_trip_identity) is not False:
+    if has_intercity_leg(controlled_trip_identity) is not False:
         return available_tools
     return [
         tool

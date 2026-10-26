@@ -110,27 +110,15 @@ def _check_preference_leaves_a_way_back(
     current: TransportLeg,
     preference: TransportModePreference,
 ) -> None:
-    """Refuse a mode preference that would strand this leg with no route.
+    """拒绝会让该行程段无路可走（不含已选方案）的交通偏好。
 
-    The invariant this defends: **after any accepted preference change, the leg
-    still has at least one entrance that can put it back to ``ready``.**  That
-    entrance is always the same one — ``select_option`` on the leg's slot — and
-    ``_check_transport_replacement`` decides which of the slot's options it will
-    accept.  Lock a mode the catalog cannot serve, or exclude every mode it can,
-    and every option is refused: the leg's ``route_status`` sticks at
-    ``pending`` with no duration and no cost, and nothing short of undoing the
-    preference reaches it again.
+    防守的不变量：偏好变更被接受后，该行程段在它的 selection slot 里必须
+    仍有至少一个候选能通过 ``_check_transport_replacement`` 的替换校验，
+    否则 ``select_option`` 无路可回，行程段的 ``route_status`` 永远停在
+    ``pending``。检查放在这里而不是两个调用点，是因为两者写同一个字段。
 
-    Checked here rather than at the two call sites because both of them set the
-    same field, and the previous split — ``set_transport_mode`` guarding nothing
-    and ``update_transport_mode_preference`` guarding nothing either — is how the
-    hole stayed open through two rounds.
-
-    A leg with no slot is exempt, and deliberately so: it has no options to
-    refuse, so the preference cannot be what strands it.  Those are the
-    planner-authored connectors, which never had a selection entrance to lose.
+    没有 slot 的行程段不受影响：它没有可拒绝的选项，偏好不可能卡住它。
     """
-
     slot = next(
         (
             item
@@ -144,15 +132,9 @@ def _check_preference_leaves_a_way_back(
         return
     probe = current.model_copy(update={"mode_preference": preference})
     candidates = workspace.recommendation_catalog.candidate_index()
-    admissions = workspace.recommendation_catalog.admission_index()
     for option in slot.options:
         candidate = candidates.get(option.candidate_id)
-        admission = admissions.get((option.candidate_id, slot.selection_slot_id))
-        if (
-            not isinstance(candidate, TransportCandidate)
-            or admission is None
-            or admission.status != "passed"
-        ):
+        if not isinstance(candidate, TransportCandidate):
             continue
         try:
             _check_transport_replacement(probe, candidate)
@@ -161,7 +143,7 @@ def _check_preference_leaves_a_way_back(
         return
     raise WorkspaceV2MutationError(
         "transport_preference_strands_leg",
-        "No admitted option for this leg survives the requested mode preference",
+        "候选目录中没有该行程段在新偏好下仍可替换的方案",
     )
 
 

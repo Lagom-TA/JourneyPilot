@@ -19,7 +19,6 @@ from travel_agent.planning.itinerary.node import itinerary_planner_node
 from travel_agent.planning.nodes import (
     NODE_ACCOMMODATION,
     NODE_BUDGET_ESTIMATE,
-    NODE_CANDIDATE_GATE,
     NODE_CLARIFIER,
     NODE_DELIVERY_FINALIZER,
     NODE_DELIVERY_PROJECTOR,
@@ -57,10 +56,6 @@ from travel_agent.planning.research.destination.node import destination_research
 from travel_agent.planning.research.dispatch import (
     dispatcher_node,
     route_after_dispatcher,
-)
-from travel_agent.planning.research.node import (
-    candidate_gate_node,
-    route_after_candidate_gate,
 )
 from travel_agent.planning.research.plan import planner_node
 from travel_agent.planning.research.transport.node import transport_researcher_node
@@ -100,12 +95,6 @@ def _route_after_dispatcher_with_amendments(state: TravelAgentState):
     if state.pending_intent_amendments:
         return NODE_INTENT_AMENDMENT_ROUTER
     return route_after_dispatcher(state)
-
-
-def _route_after_candidate_gate_with_amendments(state: TravelAgentState) -> str:
-    if state.pending_intent_amendments:
-        return NODE_INTENT_AMENDMENT_ROUTER
-    return route_after_candidate_gate(state)
 
 
 def route_after_intent_amendment(state: TravelAgentState) -> str:
@@ -156,10 +145,6 @@ def build_travel_workflow() -> StateGraph:
     graph.add_node(NODE_PLAN_GATE, with_run_control(NODE_PLAN_GATE, plan_gate_node))
 
     graph.add_node(NODE_DISPATCHER, with_run_control(NODE_DISPATCHER, dispatcher_node))
-    graph.add_node(
-        NODE_CANDIDATE_GATE,
-        with_run_control(NODE_CANDIDATE_GATE, candidate_gate_node),
-    )
     from travel_agent.planning.recovery import with_worker_recovery
 
     graph.add_node(
@@ -270,7 +255,6 @@ def build_travel_workflow() -> StateGraph:
         NODE_PLANNER,
         NODE_PLAN_GATE,
         NODE_DISPATCHER,
-        NODE_CANDIDATE_GATE,
         NODE_DESTINATION,
         NODE_TRANSPORT,
         NODE_ACCOMMODATION,
@@ -291,25 +275,10 @@ def build_travel_workflow() -> StateGraph:
         {
             NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
             "to_check": NODE_BUDGET_ESTIMATE,
-            NODE_CANDIDATE_GATE: NODE_CANDIDATE_GATE,
             NODE_DESTINATION: NODE_DESTINATION,
             NODE_TRANSPORT: NODE_TRANSPORT,
             NODE_ACCOMMODATION: NODE_ACCOMMODATION,
             NODE_ITINERARY: NODE_ITINERARY,
-        },
-    )
-
-    graph.add_conditional_edges(
-        NODE_CANDIDATE_GATE,
-        _route_after_candidate_gate_with_amendments,
-        {
-            NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
-            "passed": NODE_DISPATCHER,
-            NODE_DESTINATION: NODE_DESTINATION,
-            NODE_TRANSPORT: NODE_TRANSPORT,
-            NODE_ACCOMMODATION: NODE_ACCOMMODATION,
-            NODE_ITINERARY: NODE_ITINERARY,
-            "composition_repair": NODE_ITINERARY,
         },
     )
 
