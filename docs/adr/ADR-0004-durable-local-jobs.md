@@ -1,8 +1,8 @@
 # ADR-0004：用 PostgreSQL 做单机 durable 命令与任务存储
 
 状态：已采纳
-影响：`trip_run_commands`、`background_jobs`、`run_execution`、
-`services/run_commands.py`、`services/background_jobs.py`、`runtime/cancellation.py`、`planning/execution.py`
+影响：`trip_run_commands`、`background_jobs`、`trip_run_executions`、
+`runtime/run_commands.py`、`runtime/background_jobs.py`、`storage/run_command_store.py`、`storage/background_job_store.py`、`runtime/cancellation.py`、`planning/execution.py`
 
 ## 决定
 

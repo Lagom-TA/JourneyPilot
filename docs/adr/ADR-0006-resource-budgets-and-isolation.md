@@ -1,7 +1,7 @@
 # ADR-0006：每条高成本通道都有显式预算与隔离
 
 状态：已采纳
-影响：`runtime/events.py`、`services/blocking_work.py`、`utils/concurrency.py`、
+影响：`runtime/events.py`、`runtime/blocking_work.py`、`runtime/concurrency.py`、
 `knowledge/sources/document_parse.py`、`runtime/budget.py`
 
 ## 决定

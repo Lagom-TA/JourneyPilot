@@ -618,12 +618,12 @@ def _dict_summary(value: Dict[str, Any]) -> str:
 
 
 def looks_like_machine_payload(text: str) -> bool:
-    """这一行读起来是载荷而不是话吗。
+    """判断一行文本是否是机器载荷而不是自然语言。
 
-    判据只有一条、也只能有一条：**以 `{` 或 `[` 开头**。MCP 那批工具把 JSON 装在
-    text content 里返回，压缩到这一步时它仍然是一个字符串，形状认不出来就会原样上屏。
-    前端 `lib/toolDisplay.ts` 有同一条判据的镜像 —— 那是给历史会话里已经存下的
-    摘要用的最后一道闸（见 INV-UI-003）。
+    判据：以 `{` 或 `[` 开头。部分 MCP 工具把 JSON 放在 text content 里返回，
+    摘要若原样保留这种字符串，前端会把它当成正文显示。
+    前端 `frontend/src/features/chat/model/toolDisplay.ts` 对历史会话中
+    已存下的摘要使用同一判据。
     """
     return text.lstrip().startswith(("{", "["))
 

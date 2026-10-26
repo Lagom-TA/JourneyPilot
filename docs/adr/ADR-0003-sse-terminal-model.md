@@ -1,18 +1,21 @@
-# ADR-0003：每个请求恰好一个终态帧
+# ADR-0003：Run 状态只转移一次，终态帧不重复发布
 
 状态：已采纳
-影响：`runtime/events.py`、`api/routes/chat.py`、`chat_requests` 表、前端 `lib/sse.ts`
+影响：`runtime/events.py`、`conversation/chat/lifecycle.py`、`conversation/chat/completion.py`、
+`conversation/chat/failures.py`、`trip_runs`、前端 `frontend/src/app/session/streamEvents.ts`
 
 ## 决定
 
-一次聊天请求的 SSE 流**恰好**以一个终态帧结束（`stream_end` 及其携带的终态），
-且终态在数据库里是一次单向状态转移。已经 completed 的请求之后不许再发 error。
+一次聊天请求的 Run 状态只发生一次终态转移。终态 SSE 帧包括 `chat_complete`、
+`run_terminal`、`run_cancelled`、`run_failed` 与 `error`；deep 路径先发 `delivery_ready`，
+再发 `run_terminal`。同一终态帧不重复发布。失败收口时可以在 `run_failed` 或
+`run_terminal` 之后追加 `error` 帧；`error` 携带失败详情，不构成第二次状态转移。
 
 ## 为什么
 
 浏览器会断流、会休眠、会在半路重连。如果终态可以出现零次，客户端只能靠超时猜；
-如果可以出现多次，客户端会先渲染成功再渲染失败 —— 而用户看到的最后一帧是错的。
-「恰好一次」是唯一能让客户端**不必猜**的合同。
+如果同一状态可以反复转移，客户端会先渲染成功再渲染失败 —— 而用户看到的最后一帧是错的。
+状态只转移一次、终态帧不重复，是让客户**不必猜**的合同。
 
 ## 替代方案与为什么没选
 
@@ -21,6 +24,7 @@
 
 ## 后果
 
-- 生产者侧只有一个终态发布点（`cleanup_stream_exit` 收敛所有退出路径）。
+- 生产者侧的退出收敛点是 `conversation/chat/lifecycle.py` 的 `cleanup_stream_exit`；
+  `delivery_ready_emitted` 与 `run_terminal_emitted` 防止重复发布终态帧。
 - 背压不允许丢终态：`EventBuffer` 的 critical 队列满时生产者**等待**，不丢
   （见 [ADR-0006](ADR-0006-resource-budgets-and-isolation.md)）。

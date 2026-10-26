@@ -194,7 +194,7 @@ Same volume, same port, same service name. Rebuild the lexical indexes after swi
 
 ## How it works
 
-JourneyPilot chooses an execution path based on the request. Simple travel questions use a fast-answer workflow. Multi-day trips enter a research workflow that clarifies the brief, resolves constraints, gathers provider data in parallel, checks the results, and assembles the final delivery.
+JourneyPilot chooses an execution path based on the request. Simple travel questions use a fast-answer workflow. Multi-day trips enter a research workflow that clarifies the brief, resolves constraints, gathers provider data in parallel, composes the itinerary, and assembles the final delivery.
 
 ```mermaid
 flowchart LR
@@ -205,14 +205,14 @@ flowchart LR
     Research --> Places["Places and stays"]
     Research --> Transport["Transport and routes"]
     Research --> Context["Weather and web context"]
-    Places --> Checks["Quality checks"]
-    Transport --> Checks
-    Context --> Checks
-    Checks --> Delivery["Delivery Bundle"]
+    Places --> Compose["Compose itinerary"]
+    Transport --> Compose
+    Context --> Compose
+    Compose --> Delivery["Delivery Bundle"]
     Delivery --> Workspace["Itinerary · map · sources · report · PDF"]
 ```
 
-Research workers return typed candidates rather than free-form itinerary text. Deterministic checks preserve source lineage, verify that required parts of the trip are covered, and request targeted follow-up research when something is missing. Once the result is ready, it is committed as a single `DeliveryBundle` and projected to every user-facing surface.
+Research workers return typed packets rather than free-form itinerary text. The dispatcher collects the packets into a candidate catalog, and the model composes the itinerary directly from that catalog. Structural parsing keeps the data readable and preserves source records next to the facts they support; content quality is the model's responsibility. Once the result is ready, it is committed as a single `DeliveryBundle` and projected to every user-facing surface.
 
 Under the hood, JourneyPilot combines a LangGraph workflow with FastAPI, PostgreSQL, Redis, Model Context Protocol tools, hybrid retrieval, and a React workspace. Checkpoints and durable run records keep longer planning sessions recoverable.
 
@@ -251,7 +251,7 @@ startup — a typo should not be a silent no-op.
 
 ### Data sources
 
-JourneyPilot can be useful with the providers that require no credentials, then gain broader coverage as more services are configured.
+JourneyPilot can be useful with the providers that require no credentials, then gain access to more data sources as more services are configured.
 
 | Area | Included providers | Optional providers |
 |---|---|---|

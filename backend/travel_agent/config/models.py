@@ -122,8 +122,8 @@ class DatabaseConfig(StrictConfig):
 class MaintenanceConfig(StrictConfig):
     """备份 / 迁移 / 恢复这类维护动作的配置。
 
-    只被 `journeypilot` CLI 与启动编排器读取，API 进程不用它 —— 那条边界是
-    ADR-P0-03（API 进程不改 Schema、不改物理数据库）。
+    只被 `journeypilot` CLI 与启动编排器读取，API 进程不用它；
+    API 进程不改 Schema、不改物理数据库。
     """
 
     #: 备份根目录。相对路径按仓库根解析（不是当前工作目录 —— 从哪个目录敲命令
@@ -265,7 +265,7 @@ class RunControlConfig(StrictConfig):
 
 
 class RunDeadlineConfig(StrictConfig):
-    """一次 Deep Run 的四段时间窗（秒）。**全仓唯一定义处**（ADR-0008）。
+    """一次 Deep Run 的四段时间窗（秒），全仓唯一定义处。
 
     ``closeout`` 关研究，``composition`` 关行程编排，``delivery`` 是投影与持久化的外界。
     已经开始的 Run 用它自己封存的快照，改这里不影响在跑的 Run。

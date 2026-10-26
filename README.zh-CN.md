@@ -191,7 +191,7 @@ POSTGRES_IMAGE=journeypilot-postgres:pg18-zhparser docker compose -f infra/compo
 
 ## 工作方式
 
-JourneyPilot 会先判断请求适合快速回答还是完整规划。签证、汇率等简单问题会直接进入快速流程；多日行程则会先梳理需求和硬性限制，再并行查询地点、住宿、交通、路线、天气和公开资料，检查结果后生成最终行程。
+JourneyPilot 会先判断请求适合快速回答还是完整规划。签证、汇率等简单问题会直接进入快速流程；多日行程则会先梳理需求和硬性限制，再并行查询地点、住宿、交通、路线、天气和公开资料，组合行程后生成最终交付。
 
 ```mermaid
 flowchart LR
@@ -202,14 +202,14 @@ flowchart LR
     Research --> Places["地点与住宿"]
     Research --> Transport["交通与路线"]
     Research --> Context["天气与网络资料"]
-    Places --> Checks["结果检查"]
-    Transport --> Checks
-    Context --> Checks
-    Checks --> Delivery["交付结果"]
+    Places --> Compose["组合行程"]
+    Transport --> Compose
+    Context --> Compose
+    Compose --> Delivery["交付结果"]
     Delivery --> Workspace["行程 · 地图 · 来源 · 报告 · PDF"]
 ```
 
-调研阶段返回的是带有明确字段和来源的候选结果，而不是直接写一篇行程。系统会检查各个部分是否完整、来源是否保留下来；发现缺项时，只补查对应的内容。确认完成后，结果会写入一份 `DeliveryBundle`，再生成工作台里的所有内容。
+调研阶段返回的是带明确字段和来源的数据包（ResearchPacket），而不是直接写一篇行程。调度器（dispatcher）收齐结果后构建候选目录，模型直接从目录组合行程。服务端负责结构解析，保证数据可读，并把来源记录保留在它支持的事实旁边；内容质量由模型负责。结果写入一份 `DeliveryBundle`，再生成工作台里的所有内容。
 
 JourneyPilot 的后端使用 LangGraph 和 FastAPI，数据保存在 PostgreSQL 和 Redis 中，通过 MCP 工具连接外部服务，并结合混合检索与 React 工作台完成整个规划流程。检查点和持久化的运行记录让耗时较长的任务可以继续恢复。
 
@@ -246,7 +246,7 @@ UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/jour
 
 ### 数据来源
 
-无需密钥的数据源已经可以覆盖基础功能；继续配置其他服务后，可以获得更广的搜索和路线覆盖。
+无需密钥的数据源已经可以支撑基础功能；继续配置其他服务后，可以获得更多搜索和路线数据源。
 
 | 类型 | 自带数据源 | 可选数据源 |
 |---|---|---|
