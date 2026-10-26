@@ -5,8 +5,7 @@
 `backend/travel_agent/resources/providers/*.yaml` —— 把某家 provider 的 base_url 写成这里的默认值，等于
 让一次私人部署成为所有人的默认。
 
-每个模型都 ``extra="forbid"``：一个拼错的字段名静默什么都不做，是「我改了 YAML
-为什么没生效」这类问题的唯一来源。
+每个模型都 ``extra="forbid"``：拼错的字段名会直接报错，而不是静默忽略。
 """
 
 from __future__ import annotations
@@ -37,13 +36,12 @@ class LoggingConfig(StrictConfig):
     file: FileLogConfig = Field(default_factory=FileLogConfig)
 
 
-# How many tokens one completion may emit.  **One definition site**: the two
-# tier configs below and ``api/schemas/system.ModelConfigRequest`` all read it from
-# here, because three independent copies of the same ceiling is how a POST that
-# omits the field silently downgrades a running deployment.
+# 一次补全允许输出的 token 上限。**唯一定义处**：下面两档模型配置与
+# ``api/schemas/system.ModelConfigRequest`` 都从这里读取，避免三份独立副本
+# 在 POST 省略该字段时把运行中的部署静默降级。
 #
-# This is a request default, not a run quota or a universal model ceiling.
-# A deployment can select a different positive value supported by its model.
+# 这只是请求默认值，不是 Run 配额，也不是模型的通用上限。部署可以按模型支持
+# 选择其他正数。
 MAX_COMPLETION_TOKENS = 65536
 
 
@@ -134,7 +132,7 @@ class MaintenanceConfig(StrictConfig):
     #: 跑 pg_dump / pg_restore 的容器名。空 = 按「谁发布了数据库端口」自动探测。
     #: 需要显式指定的场合：一台机器上跑着多个 PostgreSQL 容器共用端口映射。
     postgres_container: str = ""
-    #: 迁移锁最长等待秒数。超时报错，绝不无锁继续。
+    #: 迁移锁最长等待秒数。超时报错，不会在无锁状态下继续。
     migration_lock_timeout_seconds: float = Field(default=30.0, gt=0)
 
 
@@ -175,26 +173,23 @@ class RAGConfig(StrictConfig):
     # 语义分块相关参数
     semantic_split_threshold: float = 0.5   # 相似度低于此值视为语义边界
 
-    # --- 逐项调模型的分块要有界 --------------------------------------------- #
-    # semantic / contextual 两档分块的**调用条数由文档大小决定**：逐句 embedding
-    # 一次、逐段 LLM 一次。一份合法的 10 MB 上传因此可以排出上万条模型调用，而它们
-    # 与全站共用同一条 fast 档 httpx 连接池（``langchain_openai`` 按
-    # (base_url, timeout) lru_cache 一个 AsyncClient）——**一个用户的一次上传把所有
-    # 人的模型调用排到队尾**，实测服务不可达 7 分半并需重启。
+    # --- 分块调用的上界 ---
+    # semantic / contextual 分块按文档大小逐句 embedding、逐段调用 LLM。一份
+    # 10 MB 的上传可以产生上万条模型调用，并与在线 fast 请求共用同一条 httpx
+    # 连接池（``langchain_openai`` 按 (base_url, timeout) 缓存一个 AsyncClient）。
+    # 不设上界会让一次上传占满该连接池，阻塞其他用户的模型调用。
     #
-    # 重试与退避**不在这里**：那是 transport 的事（openai SDK 指数退避 +
-    # max_retries=2，实测在跑）。这两个数管的是 transport 管不到的那一半 ——
-    # 「一次入库允许发多少条、失败几条就不再发」。同时在飞的条数归
-    # ``ProviderChannelConfig.ingest_contextual_llm``：并发是**通道**的属性，
-    # 而入库与在线 fast 请求共用一个上游。
+    # 重试与退避由 transport 负责（openai SDK 指数退避 + max_retries=2）。下面
+    # 两个数限制单次入库允许发起的调用条数，以及连续失败多少条后停止调用。同时
+    # 在飞的条数归 ``ProviderChannelConfig.ingest_contextual_llm``：并发属于通道，
+    # 入库与在线 fast 请求共用一个上游。
     #
-    # ``model_chunking_max_chars``：超过它的正文一次模型都不调，直接按固定窗口
-    # 分块。这个数必须在**花掉任何一次调用之前**可判，所以它的单位是字符而不是段数。
-    # 60000 的来处：出厂语料里最大的一篇（travel_tips/voyage-zh-青岛）约 25000 字符
-    # / 197 段，取两倍余量；再往上是「入库很慢」换「检索前缀更好」，不划算。
+    # ``model_chunking_max_chars``：超过该长度的正文不调用模型，直接按固定窗口
+    # 分块。这个判断必须在发起任何调用之前完成，因此单位是字符而不是段数。
+    # 60000 取出厂语料最大单篇（约 25000 字符 / 197 段）的两倍余量。
     model_chunking_max_chars: int = Field(default=60_000, ge=1)
-    # 本篇累计失败多少条就熔断（其余段不再调 LLM，保留原文入库）。上游在限流时
-    # 继续发等于替它放大，而一篇资料少几条上下文前缀只是检索差一点。
+    # 本篇累计失败达到该条数就停止调用 LLM，其余段落保留原文入库。上游限流时
+    # 继续发送只会加重限流，而少几条上下文前缀只影响检索效果。
     contextual_failure_threshold: int = Field(default=8, ge=1)
 
 
@@ -212,42 +207,37 @@ class RerankConfig(StrictConfig):
 
 
 class DataSnapshotsConfig(StrictConfig):
-    """Governance thresholds for upstream data committed into the repo.
+    """仓库内上游数据的时效阈值。
 
-    ``station_max_age_days``: 90 days is a threshold, not a fact — 12306 publishes
-    no version token, so age is the only proxy available and the number expresses
-    how long the repo is willing to answer station questions from a table nobody
-    has re-checked.  A configuration item rather than a constant because the
-    tolerable staleness is an operating decision (a demo week and a quiet month are
-    not the same), and because a hardcoded 90 is one more hand-maintained number
-    with no way to change it in the field.
+    ``station_max_age_days``：12306 不发布版本号，只能按天数判断站表是否过期。
+    可容忍的过期程度是运维决策，因此作为配置项而不是常量。
     """
 
     station_max_age_days: int = Field(default=90, gt=0)
 
 
 class CheckpointRetentionConfig(StrictConfig):
-    """LangGraph checkpoint retention policy."""
+    """LangGraph checkpoint 的保留策略。"""
 
     completed_days: int = 30
     cancelled_days: int = 30
     failed_interrupted_days: int = 90
     batch_size: int = 100
-    # When True, AppBuilder refuses to start if Postgres checkpointer init fails.
+    # 为 True 时，Postgres checkpointer 初始化失败会阻止应用启动。
     require_on_startup: bool = False
 
 
 class RunControlConfig(StrictConfig):
-    """JourneyPilot run-control feature flags and execution lease bounds."""
+    """Run 控制开关与执行租约边界。"""
 
     plan_gate_enabled: bool = True
     #: 租约有效期。过期即视为「执行器不在了」，由恢复扫描接管。
     lease_seconds: int = Field(default=45, gt=0)
-    #: 心跳间隔。必须显著小于 lease_seconds，否则一次慢查询就会让活着的 run 被判成孤儿。
+    #: 心跳间隔。必须显著小于 lease_seconds，否则一次慢查询就会让仍在执行的 run 被误判为失去执行器。
     lease_heartbeat_seconds: int = Field(default=10, gt=0)
     #: 连续心跳失败达到这个次数后，执行器停止发起新的外部调用。
     lease_heartbeat_failure_threshold: int = Field(default=3, gt=0)
-    #: 孤儿扫描间隔。启动时先扫一次，之后按这个周期复扫 —— 上一个进程死时租约可能还剩
+    #: 失去执行器的 Run 的扫描间隔。启动时先扫一次，之后按这个周期复扫 —— 上一个进程死时租约可能还剩
     #: 几十秒，只在启动扫一次会把那些 run 永久留在 running。
     recovery_sweep_seconds: int = Field(default=60, gt=0)
     #: durable command 的轮询间隔。同进程的 API 会立刻唤醒执行器，所以这个值是通知丢失
@@ -328,8 +318,8 @@ class IngestConfig(StrictConfig):
     """上传与文档解析的硬输入边界。
 
     只限制原始字节不够：DOCX 是 ZIP，一份 200 KB 的上传展开后可以是几个 GB。
-    每一项都必须在**读进内存之前或读进内存的过程中**可判，不能靠超时兜底 ——
-    线程里的解析器杀不掉，超时只停止等待。
+    每一项都必须在**读进内存之前或读进内存的过程中**可判，不能依赖超时机制 ——
+    线程里的解析器无法终止，超时只停止等待。
     """
 
     max_upload_bytes: int = Field(default=10 * 1024 * 1024, ge=1024)
@@ -371,7 +361,7 @@ class RunBudgetConfig(StrictConfig):
 class ProviderChannelConfig(StrictConfig):
     """按上游通道分配的同时在飞条数。**连接池容量不是产品预算。**
 
-    底层 httpx 连接池上限 1000 不代表允许一次入库发 1000 条模型调用。速率闸
+    底层 httpx 连接池上限 1000 不代表允许一次入库发 1000 条模型调用。限速器
     （`utils/rate_gate.py`）管两次请求之间的间隔，这里管同时在飞的条数，两件事。
     """
 
@@ -410,21 +400,17 @@ class GeocodingConfig(StrictConfig):
     # Nominatim 合规要求明确标识应用的 User-Agent（禁用 http 库默认 UA）。
     user_agent: str = "JourneyPilot/1.0 (travel itinerary geocoder; https://github.com/journeypilot)"
     # /lookup（批量 osm_id，双语两轮）与 Overpass 的基准超时。这两个端点本来就慢：
-    # /lookup 一次要 5 个对象的 addressdetails+namedetails，Overpass 底线另有
-    # ``max(30.0, timeout_seconds)`` 兜住。两者都只在身份 fallback 里跑，那条路径
+    # /lookup 一次要 5 个对象的 addressdetails+namedetails，Overpass 另有
+    # ``max(30.0, timeout_seconds)`` 作为下限。两者都只在身份 fallback 里跑，那条路径
     # 自带 20s 时间片（``_IDENTITY_FALLBACK_BUDGET_SECONDS``），不在首跳同步路径上。
     timeout_seconds: float = Field(default=10.0, gt=0)
-    # /search 单独的超时，因为它是「用户敲下目的地」这一跳的同步阻塞点。
-    # 本机对公共实例实测健康往返（每次新建 client，含 DNS+TLS）
-    # 0.77 / 中位 1.34 / 最慢 2.51 秒，3.4s 覆盖到实测最慢值之上。
-    # 上界不是拍的：整条阶梯（速率闸 1.1 + 2 次尝试，见
-    # ``nominatim_place_search._PROVIDER_MAX_ATTEMPTS``）要压在 8s 内，
-    # 1.1 + 2 × 3.4 = 7.9s，3.4 就是满足这个上界的最大单次超时。
-    # 再往上等只是替一个正在 brownout 的公共实例买单，而调用方（intake 路由 /
-    # authored 阶梯）宁愿早点拿到一个诚实的失败或换下一条 rung；偶发的一次超时
-    # 由第二次尝试兜住，成功后进缓存，同一查询此后不再付这笔钱。
+    # /search 单独的超时：它是「用户敲下目的地」这一跳的同步阻塞点。
+    # 上界由重试序列决定：限速器 1.1s 加 2 次尝试（见
+    # ``nominatim_place_search._PROVIDER_MAX_ATTEMPTS``）要控制在 8s 内，
+    # 1.1 + 2 × 3.4 = 7.9s，3.4 是满足该上界的最大单次超时。调大只会让调用方
+    # 更晚拿到超时结果；偶发超时由第二次尝试覆盖，成功后写入缓存。
     search_timeout_seconds: float = Field(default=3.4, gt=0)
-    # 公共 Nominatim ≤1 req/s；1.1s 留安全裕量（全局速率闸串行保证）。
+    # 公共 Nominatim ≤1 req/s；1.1s 留安全裕量（全局限速器串行保证）。
     min_interval_seconds: float = 1.1
     # 原始 /search 响应的复用窗口。OSM 的城市/车站/景点 relation 不会移动，与既有的
     # ``provider_snapshot_cache.place_identity_ttl_seconds`` 同为 7 天口径。
@@ -437,13 +423,10 @@ class GeocodingConfig(StrictConfig):
 
 
 class RoutingConfig(StrictConfig):
-    """Street/public-transit routing provider configuration.
+    """步行与公共交通路线 provider 配置。
 
-    Two upstreams behind one tool, split by geography rather than by preference:
-    amap answers inside the China coordinate box, Transitous/MOTIS answers the
-    rest of the world. That is not a taste —     MOTIS carries no mainland-China
-    transit feed at all (measured: zero routes visited for a 7.9 km
-    Shenzhen hop), and amap covers nowhere else.
+    两个上游按地理范围分工：amap 负责中国坐标系内的请求，Transitous/MOTIS
+    负责其他地区。MOTIS 不含中国大陆的公共交通数据，amap 也不覆盖境外。
     """
 
     transitous_base_url: str = "https://api.transitous.org"
@@ -454,7 +437,7 @@ class RoutingConfig(StrictConfig):
 
 
 class ProviderSnapshotCacheConfig(StrictConfig):
-    """Strict Redis policy for reusable, evidence-eligible Provider snapshots."""
+    """可复用 Provider 快照的 Redis 缓存策略。"""
 
     enabled: bool = True
     redis_key_prefix: str = Field(
@@ -462,7 +445,7 @@ class ProviderSnapshotCacheConfig(StrictConfig):
         min_length=1,
     )
     redis_timeout_seconds: float = Field(default=0.25, gt=0)
-    # Low-volatility identity can live longer; route results remain short lived.
+    # 变动性低的实体身份可以缓存更久；路线结果保持较短有效期。
     place_identity_ttl_seconds: int = Field(default=7 * 24 * 60 * 60, gt=0)
     route_ttl_seconds: int = Field(default=300, gt=0)
 
@@ -481,11 +464,11 @@ class ToolExposureConfig(StrictConfig):
     默认 ``deferred``：worker agent 不再全量注入工具 schema，只带压缩目录（名称+一行
     描述）进 system prompt，由 ``search_tools`` 元工具按需激活完整 schema。
 
-    - ``mode``: ``deferred`` 走按需曝光；``full`` 一键回退到全量注入（出问题时兜底）。
+    - ``mode``: ``deferred`` 走按需曝光；``full`` 切换为全量注入，便于排障。
     - ``worker_only``: 仅对 worker agent（destination/transport/accommodation/itinerary）
       启用；scope/orchestrator 等治理节点不动。
-    - ``min_tools_threshold``: 该 agent 可用工具数 ``>=`` 阈值才 defer；阈值以下工具少、
-      多一跳 search 得不偿失，自动回落 full。
+    - ``min_tools_threshold``: 该 agent 可用工具数 ``>=`` 阈值才 defer；阈值以下工具少，
+      多一次 search 调用不划算，自动回落 full。
     """
 
     mode: str = "deferred"          # "deferred" | "full"
@@ -521,11 +504,10 @@ class MCPServerItem(StrictConfig):
     disabled: bool = False
     description: Optional[str] = None
     required_env: List[str] = Field(default_factory=list)
-    # 该 server 两次调用之间的最小间隔。默认 0 = 不限速：绝大多数 server 的配额
-    # 是按天算的，间隔闸解决的是「每秒并发超限」这一类拒绝（高德 CUQPS）。
-    # 数值必须从供应商控制台现读后写进 config.yaml，**不写死在代码里**——写死就是
-    # 又一份会过期的手工数据。不加信号量：MCPManager 的 per-server
-    # 锁已经把同一个 server 的调用串起来了，间隔闸只补「相隔多久」这一维。
+    # 该 server 两次调用之间的最小间隔。默认 0 表示不限速：多数 server 的配额
+    # 按天计算，间隔限制针对每秒并发超限这一类拒绝（高德 CUQPS）。数值应从
+    # 供应商控制台读取后写入 config.yaml，不要写死在代码里。MCPManager 的
+    # per-server 锁已保证同一 server 的调用串行，这里只补调用间隔。
     min_interval_seconds: float = Field(default=0.0, ge=0)
 
 

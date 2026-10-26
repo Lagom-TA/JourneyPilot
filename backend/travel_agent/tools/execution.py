@@ -62,7 +62,7 @@ async def execute_tool(tool_name, arguments, *args, **kwargs):
     if previous and "result" in previous:
         return deepcopy(previous["result"])
     if previous and manifest.side_effecting:
-        # A started write may have completed before the result was committed.
+        # 已开始的写操作可能在结果提交前完成，因此不能直接重放。
         result = build_tool_execution_envelope(
             tool_name=tool_name,
             arguments=arguments,
@@ -139,7 +139,7 @@ async def _execute_tool_once(
         max_retries = 0
         allow_fallback = False
 
-    # Gateway permissions and date capabilities must be decided before spending budget.
+    # Gateway 权限与日期能力必须在消耗预算之前判定。
     try:
         remaining_model_seconds(f"tool.{tool_name}")
     except ModelWindowClosed as exc:

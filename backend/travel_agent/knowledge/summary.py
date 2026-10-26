@@ -1,8 +1,7 @@
-"""RetrievalSummary v1 bridge helpers.
+"""RetrievalSummary v1 的桥接辅助函数。
 
-These helpers convert raw retrieved chunks into trace/eval-safe summaries:
-counts, methods, source metadata, and short snippets. Raw chunks are never
-required by the bridge output.
+把原始检索分块转换成可安全写入 trace/eval 的摘要：计数、检索方法、来源元数据
+与短片段。桥接输出不保留原始分块。
 """
 
 from __future__ import annotations
@@ -164,7 +163,7 @@ def build_retrieval_summary(
     collections: Optional[Iterable[str]] = None,
     top_n: int = 5,
 ) -> RetrievalSummary:
-    """Build a trace/eval-safe RetrievalSummary v1."""
+    """构建可安全写入 trace/eval 的 RetrievalSummary v1。"""
     selected = selected_docs if selected_docs is not None else docs
     mode_dict = mode_decision.to_dict() if hasattr(mode_decision, "to_dict") else (mode_decision or {})
     retriever_used = list(mode_dict.get("enabled_features") or [])
@@ -219,7 +218,7 @@ def build_retrieval_summary(
 
 
 def retrieval_summary_to_evidence_sources(summary: RetrievalSummary) -> List[Dict[str, Any]]:
-    """Project top sources into the Fast Answer external-source shape."""
+    """把 top sources 投影成 Fast Answer 使用的外部来源结构。"""
     out: List[Dict[str, Any]] = []
     for src in summary.top_sources:
         ev_id = f"rag_{_short_hash(summary.query + src.source_id)}"

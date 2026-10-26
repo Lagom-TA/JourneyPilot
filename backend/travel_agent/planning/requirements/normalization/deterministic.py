@@ -1,4 +1,4 @@
-"""Planning requirements normalization deterministic."""
+"""确定性需求归一化。"""
 
 from __future__ import annotations
 

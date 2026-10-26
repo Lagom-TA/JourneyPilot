@@ -1,8 +1,8 @@
-"""启动恢复：进程死掉之后每一种残局各自收敛到什么。
+"""启动恢复：进程异常退出后各种数据库状态如何收敛。
 
-kill-point 在这里用**数据库层的残局**表达：一个被 SIGKILL 的进程留下的全部痕迹就是
-「trip_runs 说 running、租约过期、checkpoint 在或不在」。造出这些行比真去 kill 一个
-uvicorn 更准 —— 每一种残局都能精确复现，而不是靠时序碰运气。
+崩溃点在这里用数据库层的状态表达：一个被 SIGKILL 的进程留下的全部痕迹就是
+「trip_runs 说 running、租约过期、checkpoint 在或不在」。造出这些行比真的终止一个
+uvicorn 进程更准——每一种状态都能精确复现，而不是靠时序碰运气。
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ async def _orphan_run(
     resume_policy: str = "checkpoint",
     with_execution_row: bool = True,
 ) -> str:
-    """造一个「没有活着的执行器」的 run。"""
+    """造一个「没有正在运行的执行器」的 run。"""
 
     store = TripRunStore()
     run = await store.create_run(
@@ -112,7 +112,7 @@ async def test_running_without_checkpoint_is_non_resumable(migrated_async_databa
     run = await TripRunStore().get_run(run_id)
     execution = await RunExecutionStore().get(run_id)
     assert run is not None and run.status is TripRunStatus.INTERRUPTED
-    # 不可恢复的 run 不许亮着「继续」：点下去只会拿到 409。
+    # 不可恢复的 run 不能提供「继续」：点击只会拿到 409。
     assert available_run_actions(run, execution) == []
 
 
@@ -126,7 +126,7 @@ async def test_running_without_checkpointer_is_non_resumable(migrated_async_data
 
 
 async def test_checkpoint_contract_mismatch_is_non_resumable(migrated_async_database):
-    """当前合同读不懂旧 checkpoint → 明确不可恢复，而不是在工作流中途炸开。"""
+    """当前合同读不懂旧 checkpoint → 明确不可恢复，而不是在工作流中途抛错。"""
 
     await _orphan_run(status=TripRunStatus.RUNNING)
 
@@ -244,7 +244,7 @@ async def test_completed_run_is_never_downgraded(migrated_async_database):
     store = TripRunStore()
     async with get_db_session() as session:
         # 深度 Run 的 COMPLETED 只能由 complete_delivery() 写，这里直接造终态行以
-        # 表达「Bundle 已原子完成，只是执行行还留着」这个残局。
+        # 表达「Bundle 已原子完成，只是执行行还留着」这一状态。
         await session.execute(
             text("UPDATE trip_runs SET status = 'completed' WHERE run_id = :run_id"),
             {"run_id": run_id},
@@ -286,7 +286,7 @@ async def test_completed_without_bundle_is_a_contract_failure(migrated_async_dat
 async def test_running_run_without_any_execution_row_is_recovered(
     migrated_async_database,
 ):
-    """P1 之前的历史 run 没有执行行。它们同样不许永久停在 running。"""
+    """没有执行行的 run 也必须收敛，不许永久停在 running。"""
 
     run_id = await _orphan_run(status=TripRunStatus.RUNNING, with_execution_row=False)
 
@@ -299,7 +299,7 @@ async def test_running_run_without_any_execution_row_is_recovered(
 
 
 async def test_live_lease_is_left_alone(migrated_async_database):
-    """租约还活着就不是孤儿 —— 否则第二个进程一启动就会掐死第一个进程的运行。"""
+    """租约仍有效时该 Run 仍有执行者，第二个进程不得接管，否则会终止第一个进程的运行。"""
 
     store = TripRunStore()
     run = await store.create_run(

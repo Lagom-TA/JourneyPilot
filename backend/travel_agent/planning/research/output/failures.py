@@ -1,5 +1,3 @@
-"""Research packet failures responsibilities."""
-
 from __future__ import annotations
 
 import hashlib
@@ -27,7 +25,7 @@ def _failed_tool_sources(
     context_messages: Sequence[Mapping[str, Any]],
     default_retrieved_at: datetime,
 ) -> list[SourceRecord]:
-    "Compile rejected failure records directly from Tool Gateway envelopes."
+    """从 Tool Gateway 信封直接编译被拒绝的失败来源记录。"""
     additions: list[SourceRecord] = []
     for message in context_messages:
         if message.get("role") != "tool":
@@ -91,7 +89,7 @@ def _merge_failed_tool_sources(
     packet: ResearchPacket,
     context_messages: Sequence[Mapping[str, Any]],
 ) -> ResearchPacket:
-    "Persist execution failures independently of model-authored packet JSON."
+    """把执行失败记录写入 packet，不依赖模型撰写的 JSON。"""
     existing_audit_ids = {
         str(source.tool_audit_id or source.snapshot.get("audit_id") or "")
         for source in packet.source_records
@@ -118,7 +116,7 @@ def _controlled_worker_return_failure_source(
     controlled_worker_return_failure: Mapping[str, Any],
     default_retrieved_at: datetime,
 ) -> SourceRecord | None:
-    "Build one rejected source for the fixed eval worker-return boundary."
+    """为固定的 eval worker 返回边界失败生成一条 rejected 来源记录。"""
     target = controlled_worker_return_failure.get("eval_target")
     expected_worker = authoritative_packet_metadata.get("worker_kind")
     node_name = controlled_worker_return_failure.get("eval_worker_return_node")
@@ -186,7 +184,7 @@ def build_failure_only_research_packet(
     context_messages: Sequence[Mapping[str, Any]],
     controlled_worker_return_failure: Mapping[str, Any] | None = None,
 ) -> ResearchPacket | None:
-    "Persist rejected execution failures when Packet serialization fails."
+    """packet 序列化失败时，单独持久化被拒绝的执行失败记录。"""
     generated_at_value = authoritative_packet_metadata.get("generated_at")
     if isinstance(generated_at_value, datetime):
         generated_at = generated_at_value
@@ -230,7 +228,7 @@ def provider_round_answered_empty(
     *,
     outcomes: Mapping[str, ProviderEvidenceOutcome],
 ) -> bool:
-    'Whether this worker round is purely "the Provider answered, found nothing".'
+    """判断本轮是否仅为「Provider 正常应答但没有结果」。"""
     saw_empty_success = False
     for message in context_messages:
         envelope = _parse_tool_envelope(message)
@@ -260,7 +258,7 @@ def provider_round_capability_declared(
     *,
     outcomes: Mapping[str, ProviderEvidenceOutcome],
 ) -> bool:
-    'Whether this worker round is purely "the Provider cannot answer this date".'
+    """判断本轮是否仅为「Provider 声明无法回答该日期」。"""
     saw_capability = False
     for message in context_messages:
         envelope = _parse_tool_envelope(message)

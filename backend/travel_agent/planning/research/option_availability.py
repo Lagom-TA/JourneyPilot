@@ -1,5 +1,3 @@
-"""Planning research option availability."""
-
 from __future__ import annotations
 
 from travel_agent.planning.research.candidates import ResearchCandidate
@@ -7,16 +5,11 @@ from travel_agent.planning.research.candidates import VisitCandidate
 
 
 def candidate_option_availability(candidate: ResearchCandidate) -> str:
-    """State what a reader still has to check before turning up.
+    """返回旅行者到场前仍需确认的事项。
 
-    Dining and lodging candidates carry a supplier's answer about inventory, so
-    the option repeats it **verbatim** — including ``"unavailable"``, which
-    ``SelectionOption`` then rejects outright.  That refusal is the existing
-    behaviour and is left alone: an unusable candidate must not be quietly
-    relabelled into a slot a traveller can pick.
-
-    An attraction has no inventory anyone could hold, so the honest question is
-    the other one: does it have to be booked ahead.
+    餐饮与住宿候选沿用供应商给出的库存状态，包括 ``"unavailable"``；
+    ``SelectionOption`` 会直接拒绝不可用候选，不把它改写成可选项。
+    景点没有可预订库存，只表示是否需要提前预约。
     """
 
     if isinstance(candidate, VisitCandidate):

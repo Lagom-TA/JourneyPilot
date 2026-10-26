@@ -365,7 +365,7 @@ class SemanticChunker:
 
 
 # ---------------------------------------------------------------------------
-# ContextualChunker — Anthropic Contextual Retrieval（Step 2）
+# ContextualChunker — 带上下文前缀的分块器
 # ---------------------------------------------------------------------------
 
 _CONTEXTUAL_PROMPT = """你是一个文档理解专家。请用1-2句简洁中文说明以下段落在原文中所属的主题和位置，帮助检索系统更好地找到这段内容。
@@ -380,10 +380,10 @@ _CONTEXTUAL_PROMPT = """你是一个文档理解专家。请用1-2句简洁中�
 
 
 def _chunk_without_prefix(chunk: Dict[str, Any]) -> Dict[str, Any]:
-    """ContextualChunker 没能（或不该）为这一段调模型时，它交出的形状。
+    """ContextualChunker 不为这一段调用模型时交出的形状。
 
-    ``original_content`` 照样写上：这个分块器的返回形状**只有一种**，缺了这个键就
-    等于让下游去分辨「这一段有没有前缀」，而那正是「字段缺失则走旧逻辑」。
+    这个分块器的返回形状只有一种：``original_content`` 始终存在，下游无需判断
+    某一段是否带前缀。
     """
 
     plain = dict(chunk)
@@ -393,36 +393,30 @@ def _chunk_without_prefix(chunk: Dict[str, Any]) -> Dict[str, Any]:
 
 class ContextualChunker:
     """
-    Contextual Retrieval 分块器（参考 Anthropic 2024.09 研究）。
+    Contextual Retrieval 分块器。
 
-    在 SemanticChunker（或 TextChunker）之上包装 LLM 上下文前缀注入层：
-    - content（用于 embedding + lexical full-text）= 上下文前缀 + 原始内容
-    - original_content（用于 UI 展示）= 原始内容
+    在 SemanticChunker（或 TextChunker）之上注入 LLM 上下文前缀：
+    - content（embedding 与 lexical 全文检索）= 上下文前缀 + 原始内容
+    - original_content（UI 展示）= 原始内容
 
-    传统 RAG 分块后，"其超过385万居民使其成为欧盟人口最多的城市"这样的 chunk
-    完全失去了关于"哪座城市"的上下文，导致检索失败。Contextual Chunking 通过
-    LLM 为每个 chunk 注入文档级上下文说明，Anthropic 实测：Contextual
-    Embedding 单独减少检索失败 35%；配合词法全文检索进一步提升关键词命中；再加
-    Rerank 形成二阶段检索。本项目走的是"Embedding + lexical full-text + Rerank"三
-    项组合路径（见 retriever.py 的 hybrid + reranker 流水线）。
-    关键取舍：embedding 和 lexical full-text 都使用带前缀的 content，original_content 仅
-    供展示；成本控制上复用已有 fast_model 而非专用模型。
+    分块后单独一段常缺少「这是哪座城市」一类文档级信息，导致检索失败；注入前缀
+    可补齐这部分上下文。embedding 与 lexical 全文检索都使用带前缀的 content，
+    original_content 仅供展示；模型复用 fast_model。
 
-    **这一步的模型调用条数由文档大小决定，所以它自己带界**，三道：
+    模型调用条数由文档大小决定，因此这里有三项限制：
 
-    1. 规模 —— 正文超过 ``RAGConfig.model_chunking_max_chars`` 就一次模型都不调
+    1. 规模：正文超过 ``RAGConfig.model_chunking_max_chars`` 时不调用模型
        （见 ``_exceeded_model_chunking_budget``）；
-    2. 并发 —— 走 ``ingest_contextual_llm`` 通道
-       （``ProviderChannelConfig``，`llm/router.llm_channel`）。这一档共用的是
-       **全站 fast 档那一个 httpx 连接池**（``langchain_openai`` 按
-       (base_url, timeout) lru_cache 一个 AsyncClient），所以「一次入库排出上万条
-       并发请求」的后果不是这次入库慢，是**所有人的模型调用排到队尾**；
-    3. 失败 —— 本篇累计失败到 ``RAGConfig.contextual_failure_threshold`` 条就熔断，
-       其余段直接留原文。上游在限流时继续发等于替它放大。
+    2. 并发：走 ``ingest_contextual_llm`` 通道
+       （``ProviderChannelConfig``，`llm/router.llm_channel`）。该通道与全站
+       fast 档共用同一个 httpx 连接池（``langchain_openai`` 按
+       (base_url, timeout) 缓存一个 AsyncClient），一次入库的并发调用会占用
+       在线请求的连接；
+    3. 失败：本篇累计失败到 ``RAGConfig.contextual_failure_threshold`` 条即停止
+       调用，其余段保留原文。上游限流时继续发送会加重限流。
 
-    **重试与退避不在这里**：那是 transport 的事（openai SDK 指数退避 +
-    ``max_retries``），而 transport 管不了「一次上传发几千条请求」。在这里再加一层
-    退避就是同一件事的第二份账。
+    重试与退避由 transport 负责（openai SDK 指数退避 + ``max_retries``），这里
+    只限制单次入库的调用规模。
     """
 
     def __init__(self, base_chunker=None, llm=None) -> None:

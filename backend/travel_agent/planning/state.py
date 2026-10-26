@@ -1,4 +1,4 @@
-"""Planning state."""
+"""规划阶段的共享图状态。"""
 
 from __future__ import annotations
 
@@ -55,17 +55,11 @@ from typing import Optional
 
 
 def _merge_dicts(a: Dict, b: Dict) -> Dict:
-    """LangGraph fan-in reducer for dict fields.
+    """字典字段的 fan-in 归并器，按 ``{**a, **b}`` 后写覆盖同键。
 
-    Semantics: **last-writer-wins** via ``{**a, **b}`` (right side overwrites
-    same keys). Fan-in order is not a business "later completion" clock, so
-    concurrent writers must **not** share keys.
-
-    Contract for worker-owned maps (``research_packets``, ``agent_status``,
-    …): each parallel branch writes **only its agent
-    key** (or a round-suffixed key owned by that branch). Same-key dual write
-    is undefined and must not appear in production paths; tests document
-    last-wins under both merge orders.
+    fan-in 顺序不表示业务上的完成先后，因此并行分支不得写同一个 key。
+    `research_packets`、`agent_status` 等由 Worker 独占的映射中，每个分支只写
+    自己的 agent key 或带该分支轮次后缀的 key。
     """
     return {**a, **b}
 
@@ -77,7 +71,7 @@ def _merge_dicts_allow_clear(a: Dict, b: Dict) -> Dict:
 
 
 def _merge_lists(a: List[Any], b: List[Any]) -> List[Any]:
-    """Append-only list reducer for lightweight bridge summaries."""
+    """轻量 bridge 摘要的追加式列表归并器。"""
     return list(a or []) + list(b or [])
 
 
@@ -124,13 +118,10 @@ def _merge_amendment_rejections(
 def _merge_reference_services(
     a: List["ProviderReferenceService"], b: List["ProviderReferenceService"]
 ) -> List["ProviderReferenceService"]:
-    """Keep one reference service per responsibility, latest round wins.
+    """每个责任只保留一个 reference service，后一轮覆盖前一轮。
 
-    A later targeted round re-answers the same leg, so appending would leave two
-    sentences about one leg on the plan.  The key is the responsibility the
-    reference stands in for — leg role and the date the traveller asked about —
-    not the service number, which is exactly the value a second round may
-    change.
+    key 取 leg_role 与 requested_date 的组合，而不是第二轮可能改写的 service
+    编号；直接追加会让同一程出现两条说明。
     """
     merged: Dict[Any, "ProviderReferenceService"] = {}
     for item in [*(a or []), *(b or [])]:
@@ -168,16 +159,15 @@ def _prefer_pending_choice(
 def _prefer_latest_dict(
     a: Optional[Dict[str, Any]], b: Optional[Dict[str, Any]]
 ) -> Optional[Dict[str, Any]]:
-    """Prefer the latest non-empty control payload."""
+    """优先返回最新的非空控制载荷。"""
     return b or a
 
 
 def _take_latest_value_allow_clear(_a: Any, b: Any) -> Any:
-    """Whole-generation replacement reducer, including ``None`` and ``{}``.
+    """按世代整体替换的归并器，``None`` 与 ``{}`` 也参与替换。
 
-    Completion-control values all belong to one Draft generation.  A merge
-    would let an edit retain a deadline/budget from an obsolete generation, so
-    these fields deliberately use single-writer replacement semantics.
+    completion-control 字段都属于同一个 Draft 世代；若用合并，编辑后的状态会
+    保留其他世代的 deadline 与 budget，因此这些字段采用单写者替换语义。
     """
     return b
 
@@ -186,7 +176,7 @@ def _merge_run_deadline_allow_clear(
     a: Optional[RunDeadlineSnapshot],
     b: Optional[RunDeadlineSnapshot],
 ) -> Optional[RunDeadlineSnapshot]:
-    """Merge same-generation parallel observations without rolling time back."""
+    """归并同一世代的并行观测，时间不回退。"""
     if b is None or a is None or a.draft_id != b.draft_id:
         return b
     return b.model_copy(
@@ -362,11 +352,10 @@ class TravelAgentState(BaseModel):
 
     @model_validator(mode="after")
     def validate_completion_generation(self) -> "TravelAgentState":
-        """Reject checkpoint state that mixes Draft generations.
+        """拒绝混用不同 Draft 世代的 checkpoint 状态。
 
-        This validation is intentionally at the shared-state boundary: a
-        malformed or older checkpoint must not resume with a fresh eight-minute
-        budget attached to an unrelated Draft.
+        校验放在共享状态边界：格式不合法的 checkpoint 不应恢复出与 Draft
+        不匹配的预算。
         """
         if self.request_contract is not None:
             if self.intent_spec is None or self.planning_generation is None:

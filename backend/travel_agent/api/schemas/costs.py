@@ -78,9 +78,9 @@ class RunCostSummaryResponse(BaseModel):
     by_node: List[Dict[str, Any]] = Field(default_factory=list)
     bottleneck_by_cost: List[Dict[str, Any]] = Field(default_factory=list)
     bottleneck_by_latency: List[Dict[str, Any]] = Field(default_factory=list)
-    # Tool Search 上下文节省量：run 终结时随 SSE run_cost_summary 下发实测值
+    # Tool Search 上下文节省量：run 终结时随 SSE run_cost_summary 下发
     # {mode, schema_tokens_injected, schema_tokens_full_baseline, tool_context_saving, ...}；
-    # DB 台账（REST 事后查询）不持有进程内曝光计量，故此路径为 null。
+    # REST 成本台账不保存进程内曝光计量，因此该路径为 null。
     tool_context_saving: Optional[Dict[str, Any]] = None
 
 

@@ -126,9 +126,8 @@ class KnowledgeIndexer:
     async def count_source_chunks(self, collection: str, source: str) -> int:
         """这个来源名下现在有多少段。
 
-        它存在的理由是**区分「没有这一篇」与「这一篇的正文没有留存」**：
-        `knowledge_documents` 之前入库的资料只有段、没有正文行，读正文必须报出那件事
-        本身，而不是回落去拼段（拼出来的不是原文，见建表处的注释）。
+        用于区分「没有这一篇」与「这一篇的正文没有留存」：只有段、没有正文行的
+        资料读不到原文，而用段拼出来的内容不是原文。
         """
         normalized_source = _normalize_source(source)
         async with get_db_session() as session:
@@ -147,10 +146,9 @@ class KnowledgeIndexer:
     async def delete_source(self, collection: str, source: str) -> Dict[str, Any]:
         """删除一篇资料（正文行 + 它的全部段）。
 
-        返回 `{"deleted_chunks": int, "existed": bool}`。**两个数都要交出去**：
+        返回 `{"deleted_chunks": int, "existed": bool}`。两个数都要交出去：
         「删掉了 0 段」不等于「这一篇不存在」（一篇正文可以一段都没有），
-        少了 `existed`，调用方只能拿段数猜，而猜错的那一次会把一次成功的删除
-        报成 404。
+        调用方需要 `existed` 才能区分两者。
 
         正文与段在同一个事务里一起消失：留下没有正文的段等于留下一份检索得到、
         界面打不开的资料。

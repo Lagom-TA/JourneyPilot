@@ -40,8 +40,7 @@ async def present_chat_events(events: AsyncIterator[dict[str, Any] | None]):
                 projected = project_sse_payload(payload)
                 frame = encode_sse_event(projected) if projected is not None else ""
             except Exception as error:
-                # Projection used to execute at the domain yield site. Throw it
-                # back there so the same terminal/recovery path still owns it.
+                # 投影异常交回事件源抛出，由领域层现有终态/恢复路径处理。
                 projection_error = error
                 continue
             yield frame
@@ -110,7 +109,7 @@ async def optimize_prompt(request_body: dict):
     提示词优化 API：使用 Fast 模型对用户输入的旅行提示词进行扩充和结构化优化。
     请求体：{ "prompt": string }
     成功返回：{ "optimized_prompt": string, "success": boolean, "error_message"?: string }
-    依赖不可用时返回 503，避免把真实服务故障伪装成可用的业务失败。
+    依赖不可用时返回 503，不把服务故障当作业务失败返回。
     """
     prompt = (request_body.get("prompt") or "").strip()
 
@@ -121,7 +120,7 @@ async def optimize_prompt(request_body: dict):
             "error_message": "提示词太短，请补充更多信息后重试",
         }
 
-    # Same InputGuard as chat — do not let optimize-prompt bypass injection checks.
+    # 与聊天入口共用同一 InputGuard，提示词优化不能绕过注入检查。
     guard_result = await check_input_guard(prompt)
     if guard_result.is_blocked:
         logger.warning("InputGuard blocked optimize-prompt: %s", guard_result.reason)

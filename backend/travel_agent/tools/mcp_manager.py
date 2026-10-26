@@ -28,35 +28,31 @@ logger = logging.getLogger(__name__)
 
 INIT_TIMEOUT_SECONDS = int(os.getenv("MCP_INIT_TIMEOUT_SECONDS", "45"))
 CALL_TIMEOUT_SECONDS = int(os.getenv("MCP_CALL_TIMEOUT_SECONDS", "60"))
-# Per-server leased session idle TTL. 0 disables idle eviction.
+# 每个 server 的会话租约空闲 TTL。0 表示不因空闲而回收。
 SESSION_IDLE_TTL_SECONDS = float(os.getenv("MCP_SESSION_IDLE_TTL_SECONDS", "60"))
 _DUCKDUCKGO_RESULT_TITLE = re.compile(r"^\s*\d+\.\s+(.+?)\s*$")
 
-# Stamped onto a tool result whose server declared an ``outputSchema`` that its
-# own answer violates.  Present only on such a round, so its absence is the
-# normal case rather than an assumption.
+# 当 server 声明了 ``outputSchema`` 但自己的回答违反该声明时，写入工具结果的标记。
+# 只在这样的轮次出现，因此标记缺失是正常情况，不能作为默认假设。
 PROVIDER_OUTPUT_SCHEMA_VIOLATION_KEY = "provider_output_schema_violation"
 
 
 class _OutputSchemaTolerantSession(ClientSession):
-    """Treat a server's self-contradicting ``outputSchema`` as no schema at all.
+    """把 server 自相矛盾的 ``outputSchema`` 当作没有声明。
 
-    The MCP SDK validates ``structuredContent`` against the tool's declared
-    output schema and raises a bare ``RuntimeError`` on mismatch — from inside
-    ``call_tool``, discarding the whole ``CallToolResult`` including the text
-    content.  Our caller cannot tell that apart from a dead pipe, so it tore the
-    lease down and marked the entire server unhealthy: an application-layer
-    verdict reported as a transport fault.
+    MCP SDK 会用工具声明的 output schema 校验 ``structuredContent``，不匹配时从
+    ``call_tool`` 内部抛出裸 ``RuntimeError``，并丢弃整个 ``CallToolResult``
+    （包括文本内容）。调用方无法把它与管道断开区分，因此会关闭租约并把整个 server
+    标记为不健康：一个应用层判定被报告成传输故障。
 
-    A declaration a server breaks on every call carries no information.  The
-    honest reading is the one already applied to the majority of tools that ship
-    no ``outputSchema`` whatsoever — take the answer, and say plainly that the
-    declaration was unusable (see ``PROVIDER_OUTPUT_SCHEMA_VIOLATION_KEY``).
-    Live case: ``@brave/brave-search-mcp-server`` 2.1.0 declares
-    ``outputSchema: <zod>.shape``, which drops the ``looseObject`` catchall and
-    closes the schema, so Brave's own ``mixed`` field is rejected every time.
+    server 每次调用都违反的声明不携带有效信息。处理方式与多数未声明
+    ``outputSchema`` 的工具一致：接受回答，并明确记录声明不可用
+    （见 ``PROVIDER_OUTPUT_SCHEMA_VIOLATION_KEY``）。例如
+    ``@brave/brave-search-mcp-server`` 2.1.0 声明
+    ``outputSchema: <zod>.shape``，丢掉了 ``looseObject`` catchall 并封闭 schema，
+    因此 Brave 自己的 ``mixed`` 字段每次都会被拒绝。
 
-    Anything that is not the SDK's validation verdict propagates untouched.
+    不是 SDK 校验判定的异常会原样向外传播。
     """
 
     def __init__(self, *args: Any, server_name: str, **kwargs: Any) -> None:
@@ -78,7 +74,7 @@ class _OutputSchemaTolerantSession(ClientSession):
             )
 
     def take_output_schema_violation(self) -> Optional[str]:
-        """Return the pending violation and clear it (leases outlive one call)."""
+        """返回并清除待处理的违规信息（租约跨多次调用存活）。"""
         violation = self._output_schema_violation
         self._output_schema_violation = None
         return violation
@@ -86,7 +82,7 @@ class _OutputSchemaTolerantSession(ClientSession):
 
 @dataclass
 class _ServerSessionLease:
-    """Long-lived MCP session for one server (serialized by per-server lock)."""
+    """一个 server 的长驻 MCP 会话（由 per-server 锁串行化）。"""
 
     server_name: str
     session: Any
@@ -96,7 +92,7 @@ class _ServerSessionLease:
 
 
 def _normalized_duffel_result(server_name: str, tool_name: str, payload: Any) -> Any:
-    """Unwrap this repo's JSON TextContent into the canonical route result."""
+    """把本仓 JSON TextContent 解包成规范的路线结果。"""
     if server_name != "duffel-flights" or tool_name != "search_flights":
         return None
     if not isinstance(payload, dict):
@@ -126,7 +122,7 @@ def _normalized_duckduckgo_result(
     tool_name: str,
     payload: Any,
 ) -> Any:
-    """Project the repo search MCP text into complete bounded result records."""
+    """把本仓搜索 MCP 的文本投影成完整且有界的结果记录。"""
     if server_name != "duckduckgo-search" or tool_name != "free_web_search":
         return None
     if not isinstance(payload, dict):
@@ -172,18 +168,17 @@ def _normalized_duckduckgo_result(
 
 
 def _normalized_rail_result(server_name: str, tool_name: str, payload: Any) -> Any:
-    """Unwrap the repo 12306 server's JSON TextContent into the ticket payload.
+    """把本仓 12306 server 的 JSON TextContent 解包成车票载荷。
 
-    Without this the payload stays a JSON *string* nested at content[0].text, and
-    ``tools/governance.py::_sanitize_value`` collapses it to one 900-char line — a
-    389-train answer then reaches the deterministic rail binder as a single train.
-    Lifting it here keeps every flat record (the ``results`` key earns the 20-item cap
-    instead of the 5-item one) intact for
-    ``agents/transport_researcher/node.py::_rail_train_records``.
+    不解包时，载荷是嵌套在 content[0].text 里的 JSON 字符串，
+    ``tools/governance.py::_sanitize_value`` 会把它压成一行 900 字符的文本，
+    几百趟车次的回答到达确定性铁路绑定时只剩一趟。在这里解包可以让每条扁平记录
+    （``results`` 键使用 20 条上限而不是 5 条）完整传给
+    ``agents/transport_researcher/node.py::_rail_train_records``。
 
-    Only ``get-tickets`` is structured: ``get-interline-tickets`` is model-facing
-    prose and ``get-station-code-of-citys`` is a short JSON string its own parser
-    reads, so both keep the raw passthrough.
+    只有 ``get-tickets`` 是结构化输出：``get-interline-tickets`` 是面向模型的
+    文本，``get-station-code-of-citys`` 是短 JSON 字符串且由自己的解析器读取，
+    两者都保持原始透传。
     """
     if server_name != "12306-train" or tool_name != "get-tickets":
         return None
@@ -225,12 +220,10 @@ _AMAP_REFUSAL_MARKERS = (" failed:", "cuqps", "over_direction_range", "invalid_u
 
 
 def _amap_stated_failure(tool_name: str, text: str) -> Optional[Dict[str, Any]]:
-    """A refusal amap stated in prose, or ``None`` for any other undecodable text.
+    """amap 在文本中说明的拒绝，或无法解码的其他文本返回 ``None``。
 
-    amap words every handler's refusal as ``"<what> failed: <info|infocode>"``.
-    Text that says nothing of the kind stays on the generic passthrough it has
-    always taken — inventing a failure from an unrecognized shape would be the
-    same guess in the other direction.
+    amap 把每个 handler 的拒绝写成 ``"<what> failed: <info|infocode>"``。其他文本
+    走通用透传；从无法识别的形状推断失败同样是一种猜测。
     """
 
     lowered = text.casefold()
@@ -240,14 +233,11 @@ def _amap_stated_failure(tool_name: str, text: str) -> Optional[Dict[str, Any]]:
 
 
 def _amap_failure(tool_name: str, detail: str) -> Optional[Dict[str, Any]]:
-    """The failure shape for an amap answer that states a rejection.
+    """amap 明确拒绝请求时的失败形状。
 
-    ``status="0"`` is amap's own "this request was refused" and ``infocode``
-    carries which refusal it was — a quota allowance above all.  Returning the
-    same ``success: False`` shape a protocol error produces is what lets the round
-    keep a failure signature instead of a zero-result success: the deterministic
-    lodging binder drops both, but only one of them tells Candidate Gate that a
-    provider refused and that a retry must not re-use the same exhausted key.
+    ``status="0"`` 是 amap 的「请求被拒绝」，``infocode`` 说明拒绝原因（最常见是
+    配额）。返回与协议错误相同的 ``success: False`` 形状，使这一轮保留失败签名而
+    不是零结果成功：下游据此知道 provider 拒绝过，重试时不应复用同一个已耗尽的 key。
     """
 
     text = detail.strip()
@@ -262,7 +252,7 @@ def _amap_failure(tool_name: str, detail: str) -> Optional[Dict[str, Any]]:
 
 
 def _amap_declared_failure(tool_name: str, parsed: Any) -> Optional[Dict[str, Any]]:
-    """Read amap's own refusal out of a decoded response body."""
+    """从已解码的响应体读取 amap 自己声明的拒绝。"""
 
     if not isinstance(parsed, dict):
         return None
@@ -278,14 +268,12 @@ def _amap_declared_failure(tool_name: str, parsed: Any) -> Optional[Dict[str, An
 
 
 def _normalized_amap_place_result(server_name: str, tool_name: str, payload: Any) -> Any:
-    """Flatten amap POI TextContent into a shallow structured record list.
+    """把 amap POI TextContent 展平成浅层结构化记录列表。
 
-    amap returns its POIs as a big JSON string nested at content[0].text.  Left
-    as-is the governance sanitizer compacts that deeply-nested string to ~120
-    chars, destroying the POIs.  Mirroring the Duffel normalizer, we lift the
-    POIs to a top-level ``results`` list of small dicts so their id/name/address/
-    typecode (and, for detail lookups, the point geometry) survive sanitization
-    for the deterministic lodging binder and the map projection.
+    amap 把 POI 放在 content[0].text 的大 JSON 字符串里。原样保留时 governance
+    清洗器会把这个深层嵌套字符串压到约 120 字符，丢失 POI。与 Duffel 归一化一致，
+    这里把 POI 提升到顶层 ``results`` 列表，使 id/name/address/typecode（详情查询
+    还包括点坐标）经过清洗后仍能到达确定性住宿绑定与地图投影。
     """
     if server_name != "amap-maps" or tool_name not in {
         "maps_text_search",
@@ -299,17 +287,14 @@ def _normalized_amap_place_result(server_name: str, tool_name: str, payload: Any
     try:
         parsed = json.loads(text)
     except json.JSONDecodeError:
-        # amap states a rejection in prose ("Text Search failed: <infocode>"),
-        # which is not JSON.  The pinned server marks those with ``isError``, so
-        # ``_mcp_result_error`` has already turned them into a failure by the time
-        # this runs — but that guarantee belongs to one provider version, and the
-        # generic passthrough below would read the prose as a successful answer.
-        # Answer for the shape, not for the version.
+        # amap 会把拒绝写成文本（"Text Search failed: <infocode>"），不是 JSON。
+        # 已固定的 server 版本会用 ``isError`` 标记这类回答，``_mcp_result_error``
+        # 通常已将其转成失败；但那是某一个 provider 版本的保证，通用透传会把这段
+        # 文本当作成功回答。按形状处理，而不是按版本来处理。
         return _amap_stated_failure(tool_name, text)
 
-    # maps_search_detail resolves a single POI id to its full detail, including
-    # the ``location`` ("lng,lat") that text/around search omit.  Lift that one
-    # record so a bound hotel can carry a map pin.
+    # maps_search_detail 把单个 POI id 解析为完整详情，包括 text/around search
+    # 不返回的 ``location``（"lng,lat"）。提升这条记录，使已绑定的酒店能带地图坐标。
     if tool_name == "maps_search_detail":
         if not isinstance(parsed, dict):
             return None
@@ -336,13 +321,10 @@ def _normalized_amap_place_result(server_name: str, tool_name: str, payload: Any
         record = _amap_record(poi)
         if record is not None:
             records.append(record)
-    # Use the ``results`` key (not ``pois``): ``classify_tool_result`` only treats
-    # content/result/results/routes/data/text as substantive, so a ``pois`` key
-    # would classify a POI-bearing answer as EMPTY_SUCCESS — the round would be
-    # attributed as "the Provider found nothing" while the deterministic lodging
-    # binder and the map projection silently lose every POI.  (These three tools
-    # have no web-search fallback edge; an empty verdict is a misattribution now,
-    # not a substitution.)
+    # 使用 ``results`` 键（而不是 ``pois``）：``classify_tool_result`` 只把
+    # content/result/results/routes/data/text 视为实质内容，``pois`` 键会让带 POI 的
+    # 回答被分类为 EMPTY_SUCCESS，导致确定性住宿绑定与地图投影丢失全部 POI。
+    # 这三个工具没有 web 搜索 fallback 边，空判定就是误归类。
     return {
         "success": True,
         "provider": "amap",
@@ -352,7 +334,7 @@ def _normalized_amap_place_result(server_name: str, tool_name: str, payload: Any
 
 
 def _amap_record(poi: Any) -> Optional[Dict[str, Any]]:
-    """Project one amap POI dict into a shallow id/name/address/typecode record."""
+    """把一条 amap POI 投影为浅层 id/name/address/typecode 记录。"""
     if not isinstance(poi, dict):
         return None
     record: Dict[str, Any] = {
@@ -361,9 +343,8 @@ def _amap_record(poi: Any) -> Optional[Dict[str, Any]]:
         "address": str(poi.get("address") or "").strip(),
         "typecode": str(poi.get("typecode") or "").strip(),
     }
-    # amap encodes the point geometry as a GCJ-02 "lng,lat" string; lift it to
-    # numeric WGS-84 latitude/longitude so it pins against the same OSM tiles
-    # every other place in the bundle does.
+    # amap 用 GCJ-02 的 "lng,lat" 字符串表示点坐标；这里转换成数值 WGS-84
+    # 经纬度，使其与 bundle 中其他地点使用同一套 OSM 瓦片。
     latitude, longitude = amap_location_to_wgs84(poi.get("location"))
     if latitude is not None and longitude is not None:
         record["latitude"], record["longitude"] = latitude, longitude
@@ -379,7 +360,7 @@ def _mcp_error_message(exc: Exception) -> str:
 
 
 def _mcp_result_error(payload: Any) -> Optional[str]:
-    """Return the protocol-level error reported by an MCP CallToolResult."""
+    """返回 MCP CallToolResult 报告的协议级错误。"""
     if not isinstance(payload, dict):
         return None
     if not (payload.get("isError") is True or payload.get("is_error") is True):
@@ -436,11 +417,11 @@ class MCPManager:
         self._initialized = False
         self._server_configs: Dict[str, Any] = {}
         self._server_states: Dict[str, MCPServerState] = {}
-        # Per-server session lease (single session + lock, not a multi-conn pool).
+        # 每个 server 的会话租约（单会话 + 锁，不是多连接池）。
         self._session_leases: Dict[str, _ServerSessionLease] = {}
         self._server_call_locks: Dict[str, asyncio.Lock] = {}
         self._lease_meta_lock = asyncio.Lock()
-        # Survives lease drop so create_count is monotonic per server process lifetime.
+        # 租约关闭后仍保留，使 create_count 在 server 进程生命周期内单调递增。
         self._session_lease_create_totals: Dict[str, int] = {}
 
     async def initialize(self, mcp_servers: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -635,13 +616,13 @@ class MCPManager:
             )
 
     async def close_all_sessions(self) -> None:
-        """Drop all leased MCP sessions (re-init / process teardown)."""
+        """关闭所有已租用的 MCP 会话（重新初始化 / 进程退出）。"""
         names = list(self._session_leases.keys())
         for name in names:
             await self._close_session_lease(name)
 
     def session_lease_create_count(self, server_name: str) -> int:
-        """Test/observability helper: how many times a lease was created for server."""
+        """测试/观测辅助：这个 server 创建过多少次租约。"""
         return int(self._session_lease_create_totals.get(server_name, 0))
 
     async def _acquire_session_lease(
@@ -649,7 +630,7 @@ class MCPManager:
         server_name: str,
         server_config: Any,
     ) -> _ServerSessionLease:
-        """Return a live per-server session; caller must hold the server call lock."""
+        """返回一个存活的 per-server 会话；调用方必须持有该 server 的调用锁。"""
         existing = self._session_leases.get(server_name)
         if existing is not None and not self._lease_is_idle_expired(existing):
             existing.last_used_monotonic = time.monotonic()
@@ -690,7 +671,7 @@ class MCPManager:
         return lease
 
     async def _list_server_tools(self, server_name: str, server_config: Any) -> List[Any]:
-        # Startup probe keeps a short-lived session (does not share the call lease).
+        # 启动探测使用短生命周期会话，不复用调用租约。
         async def _probe() -> List[Any]:
             async with self._open_session(server_name, server_config) as session:
                 await session.initialize()
@@ -742,11 +723,10 @@ class MCPManager:
         tool_name: str,
         arguments: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Perform one live diagnostics call without changing MCP health state.
+        """执行一次实时诊断调用，不改变 MCP 健康状态。
 
-        Production tool execution deliberately refreshes the manager's health
-        telemetry. Operator preflight needs the same live protocol check but
-        must not rewrite even that process-local state merely by observing it.
+        生产工具执行会刷新管理器的健康遥测；运维预检需要同样的实时协议检查，
+        但不应因为观察而改写进程内状态。
         """
 
         return await self._execute_tool(
@@ -776,18 +756,16 @@ class MCPManager:
         call_lock = await self._server_call_lock(server_name)
 
         async with call_lock:
-            # Spacing, inside the serialization that already exists.  A server
-            # with no configured interval waits zero, which is what every server
-            # but amap does; amap rejects a breached per-second allowance with
-            # ``CUQPS_HAS_EXCEEDED_THE_LIMIT`` and that rejection costs the round
-            # a whole domain's worth of lodging candidates.
+            # 在已有的串行化之内追加请求间隔。未配置间隔的 server 等待 0 秒；
+            # amap 在超过每秒配额时返回 ``CUQPS_HAS_EXCEEDED_THE_LIMIT``，一次
+            # 拒绝会损失该轮全部住宿候选。
             min_interval = float(getattr(server_config, "min_interval_seconds", 0.0) or 0.0)
             if min_interval > 0:
                 await rate_gate_for(f"mcp:{server_name}").acquire(min_interval)
             try:
                 async def _call() -> Any:
                     lease = await self._acquire_session_lease(server_name, server_config)
-                    # A lease outlives one call; drop anything a previous call left.
+                    # 租约跨多次调用存活；丢弃上一次调用留下的违规信息。
                     lease.session.take_output_schema_violation()
                     result = await lease.session.call_tool(tool_name, arguments)
                     lease.last_used_monotonic = time.monotonic()
@@ -801,7 +779,7 @@ class MCPManager:
 
                 protocol_error = _mcp_result_error(payload)
                 if protocol_error:
-                    # Business/protocol error payload: keep lease (connection still usable).
+                    # 业务/协议错误载荷：保留租约（连接仍可用）。
                     return {
                         "success": False,
                         "server_name": server_name,
@@ -845,7 +823,7 @@ class MCPManager:
                     answer[PROVIDER_OUTPUT_SCHEMA_VIOLATION_KEY] = schema_violation
                 return answer
             except Exception as exc:
-                # Transport/timeout/runtime failure: drop lease so the next call rebuilds.
+                # 传输/超时/运行时失败：关闭租约，下次调用重建。
                 await self._close_session_lease(server_name)
                 error = _mcp_error_message(exc)
                 state = self._server_states.get(server_name)

@@ -1,4 +1,4 @@
-"""Runtime background jobs."""
+"""后台任务 worker：轮询数据库队列并交给领域处理器。"""
 
 from __future__ import annotations
 
@@ -157,11 +157,10 @@ class BackgroundJobWorker:
         handler_task: asyncio.Task,
         lease_lost: asyncio.Event,
     ) -> None:
-        """续租，续不上就把处理器停掉。
+        """续租，续租失败时停止处理器。
 
-        `renew_lease` 返回 False 意味着这条任务已经被另一个 worker 领走。丢掉这个返回值
-        等于让两个 worker 同时跑同一次抽取：双份模型花费、双份画像写入，而先完成的那个
-        把另一个的结果盖掉。
+        `renew_lease` 返回 False 表示这条任务已被另一个 worker 领走。忽略该返回值
+        会让两个 worker 同时执行同一次抽取，产生重复的模型调用与画像写入。
         """
 
         interval = max(1.0, self._lease_seconds / 3)

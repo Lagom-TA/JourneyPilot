@@ -1,4 +1,4 @@
-"""Planning weather node."""
+"""天气节点。"""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from travel_agent.planning.weather.geography_contracts import DestinationGeoPoin
 
 
 def destination_geo_resolver_node(state: TravelAgentState) -> Dict[str, Any]:
-    """Use confirmed PlaceIdentity coordinates; never re-geocode or guess destinations."""
+    """使用已确认的 PlaceIdentity 坐标，不重新地理编码，也不猜目的地。"""
 
     identity = ControlledTripIdentity.model_validate(state.controlled_trip_identity)
     existing_timezones = {
@@ -52,7 +52,7 @@ async def weather_context_builder_node(
     state: TravelAgentState,
     config: Optional[RunnableConfig] = None,
 ) -> Dict[str, Any]:
-    """Build one destination/date weather grid before any planning or research."""
+    """在任何规划或调研之前构建一张目的地/日期天气网格。"""
 
     identity = ControlledTripIdentity.model_validate(state.controlled_trip_identity)
     if not state.destination_geo:

@@ -1,8 +1,7 @@
-"""Task-scoped model views of durable Research Packets.
+"""面向任务的 Research Packet 模型视图。
 
-Coordination keeps planning values and fact/source references, without repeating
-raw evidence snapshots. The result is a separate context contract, never an
-authoritative Research Packet.
+协调视图保留规划值与事实/来源引用，不重复原始证据快照；它是一种独立的上下文
+契约，不是权威的 Research Packet。
 """
 
 from __future__ import annotations
@@ -72,8 +71,8 @@ def project_research_context(
         for query in planned_queries
         if query.generation_id == generation_id
     }
-    # Newest packet owns a candidate's visible revision. Never mix generations
-    # or introduce unrelated destinations merely to fill the context.
+    # 最新 packet 决定候选的可见版本。不混合不同 generation，也不为填充上下文
+    # 引入无关目的地。
     current = sorted(
         (
             packet

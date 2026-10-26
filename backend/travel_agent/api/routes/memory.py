@@ -1,4 +1,4 @@
-"""User-facing memory lifecycle APIs."""
+"""面向用户的记忆生命周期 API。"""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def _fact_item(row: dict) -> MemoryFactItem:
 
 @router.get("/memory/facts", response_model=MemoryFactListResponse)
 async def list_memory_facts():
-    """List every long-term memory fact (newest first)."""
+    """列出全部长期记忆事实（最新在前）。"""
     try:
         rows = await MemoryStore().list_facts(LOCAL_USER_ID)
         facts = [_fact_item(row) for row in rows]
@@ -73,17 +73,15 @@ async def list_memory_facts():
 
 @router.post("/memory/facts", response_model=AddMemoryFactResponse)
 async def add_memory_fact(request: AddMemoryFactRequest = Body(...)):
-    """
-    Add one memory the traveller wants JourneyPilot to always follow.
+    """新增一条用户希望长期遵循的记忆。
 
-    手动记忆用固定 session_id 打标，importance 取最高档，
-    规划时无条件全量注入（不依赖语义匹配）。
+    手动记忆用固定 session_id 标记，importance 取最高档，规划时无条件全量注入，
+    不依赖语义匹配。
 
-    **幂等**：同一句话加两次，库里只留一条，两次拿回同一个 `fact_id`，
-    第二次的 `status` 是 `existing`。    这条去重规则只写在这一处，调用方
-    不许各自再写一份。
+    幂等：同一句话添加两次只保留一条，两次返回同一个 `fact_id`，第二次的
+    `status` 为 `existing`。去重规则只在此处定义。
     """
-    # 「空白算不算一个值」全仓一条口径（`utils/user_text.py`）：不算。
+    # 空白判定统一使用 `utils/user_text.py` 的口径。
     if is_blank(request.content or ""):
         raise HTTPException(status_code=422, detail="memory content is required")
     content = (request.content or "").strip()
@@ -109,7 +107,7 @@ async def delete_memory_fact(
     fact_id: str,
     options: MemoryDeleteOptions = Body(default_factory=MemoryDeleteOptions),
 ):
-    """Physically delete one long-term memory fact."""
+    """物理删除一条长期记忆事实。"""
     components = get_components()
     try:
         summary = await components.memory_lifecycle_store.delete_one_fact(
@@ -129,7 +127,7 @@ async def delete_memory_category(
     category: str,
     options: MemoryDeleteOptions = Body(default_factory=MemoryDeleteOptions),
 ):
-    """Physically delete long-term memory facts by category."""
+    """按分类物理删除长期记忆事实。"""
     components = get_components()
     try:
         summary = await components.memory_lifecycle_store.delete_by_category(
@@ -151,7 +149,7 @@ async def delete_memory_category(
 async def delete_all_user_memory(
     options: MemoryDeleteAllOptions = Body(default_factory=MemoryDeleteAllOptions),
 ):
-    """Physically delete all first-party long-term memory."""
+    """物理删除该用户的全部第一方长期记忆。"""
     components = get_components()
     try:
         summary = await components.memory_lifecycle_store.delete_all_user_memory(
@@ -172,7 +170,7 @@ async def delete_all_user_memory(
 async def cleanup_expired_memory(
     request: MemoryRetentionCleanupRequest = Body(default_factory=MemoryRetentionCleanupRequest),
 ):
-    """Manually run retention cleanup for expired facts; no scheduler is implied."""
+    """手动清理已过期的记忆事实；不隐含定时调度。"""
     components = get_components()
     try:
         summary = await components.memory_lifecycle_store.delete_expired(
@@ -189,7 +187,7 @@ async def cleanup_expired_memory(
 
 @router.get("/memory/forgetting-audits", response_model=MemoryForgettingAuditListResponse)
 async def list_memory_forgetting_audits(limit: int = Query(default=50, ge=1, le=200)):
-    """Read audit-safe forgetting records."""
+    """读取脱敏的遗忘审计记录。"""
     components = get_components()
     try:
         audits = await components.memory_lifecycle_store.list_audits(LOCAL_USER_ID, limit=limit)

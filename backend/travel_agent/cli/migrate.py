@@ -19,7 +19,7 @@ def cmd_migrate(args: argparse.Namespace) -> int:
     if args.sql:
         print(
             "# 离线预览：以下 SQL 未经任何数据库探测生成，也没有经过 census、"
-            "备份和破坏性授权这几道闸门。\n"
+            "备份和破坏性授权这些检查。\n"
             "# 它用来回答「迁移要做什么」，不是用来手工执行的部署脚本 —— "
             "真正的升级请用 `journeypilot migrate`。",
             file=sys.stderr,

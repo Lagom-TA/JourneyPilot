@@ -1,4 +1,4 @@
-"""Planning requirements constraint applicability."""
+"""约束适用域。"""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def active_hard_constraint_ids(
     *,
     worker_kind: str | None = None,
 ) -> tuple[str, ...]:
-    """Return the active hard constraints applicable to one worker domain."""
+    """返回适用于某个 Worker 领域的活动硬约束 id。"""
 
     identifiers: list[str] = []
     for item in _scoped_active_constraints(constraint_pack, worker_kind=worker_kind):
@@ -51,6 +51,6 @@ def active_hard_constraints(
     *,
     worker_kind: str,
 ) -> tuple[Mapping[str, object], ...]:
-    """Return the canonical candidate-local hard payload for one worker."""
+    """返回某个 Worker 可用的 canonical 硬约束载荷。"""
 
     return tuple(_scoped_active_constraints(constraint_pack, worker_kind=worker_kind))

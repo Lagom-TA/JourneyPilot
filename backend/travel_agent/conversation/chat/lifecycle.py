@@ -68,7 +68,7 @@ class ChatLifecycle:
             raise
 
     async def converge_stream_exit(self, reason: str) -> None:
-        """Ensure an abandoned response cannot leave an active TripRun behind."""
+        """确保中止的响应不会留下处于活动状态的 TripRun。"""
         for _ in range(3):
             current_run = await self.trip_run_store.get_run(self.run_id)
             if current_run is None:
@@ -183,9 +183,9 @@ class ChatLifecycle:
             self.clear_process_run_state()
 
     async def mark_safe_boundary(self) -> None:
-        """把一个已经落盘的 checkpoint 记成安全边界。
+        """把一个已经落盘的 checkpoint 记为安全边界。
 
-        LLM 调用刚开始时不算 —— 那时还没有任何东西被持久化。
+        LLM 调用刚开始时没有持久化内容，不计为安全边界。
         """
         probe = getattr(self.travel_workflow, "probe_checkpoint", None)
         if probe is None or not self.use_deep_research:
@@ -201,10 +201,10 @@ class ChatLifecycle:
             await self.lease_keeper.mark_safe_checkpoint(checkpoint_id)
 
     async def settle_run_commands(self) -> None:
-        """给这个 Run 留下的控制命令一个结论。
+        """给该 Run 留下的控制命令一个结论。
 
-        **不许留成永远 pending**：一条没人再消费的追加要求，回执接口会一直答「还在等」。
-        结论按 durable 状态给，不按这次响应经历了什么。
+        不能留成永久 pending：无人消费的追加要求会让回执接口一直返回等待中。
+        结论按持久状态给出，不根据本次响应的过程判断。
         """
 
         if self.command_coordinator is None:
@@ -225,7 +225,7 @@ class ChatLifecycle:
             )
 
     async def cleanup_stream_exit(self, reason: str) -> None:
-        """Persist exit truth before bounded best-effort workflow shutdown."""
+        """在限时尽力关闭工作流之前，先持久化退出结果。"""
         if (
             self.workflow_task is not None
             and not self.workflow_task.done()

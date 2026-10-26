@@ -24,13 +24,13 @@
   # 查看所有集合的统计信息
   python backend/scripts/index_knowledge.py --stats
 
-集合说明（旧路径）：
+集合说明：
   destinations  - 目的地基础信息（来源：Wikipedia）
   visa_policies - 签证要求、入境政策（来源：Wikitravel）
   travel_tips   - 实用攻略、预算参考（来源：Wikitravel）
   local_culture - 文化习俗、注意事项（来源：Wikipedia/Wikitravel）
 
-RAG 实验对照路径（v1.1 retrieval-set v0.1）：
+分块对照集合：
   knowledge_text       - TextChunker 入库（固定窗口分块）
   knowledge_semantic   - SemanticChunker 入库（语义边界分块）
   knowledge_contextual - ContextualChunker 入库（Anthropic Contextual Retrieval）
@@ -46,10 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from travel_agent.knowledge.collections import FACTORY_KNOWLEDGE_COLLECTIONS  # noqa: E402
 
-# 出厂集合名只有一处定义。这里此前抄了一份写死的四集合清单（--stats 用），
-# 与 `knowledge/collections.py` 靠上面那段 docstring 手工同步 —— 清单一漂，运维照着
-# `--stats` 读到的「知识库统计」就少一个集合。这个常量直接复用唯一定义处。
-#
+# 出厂集合名只有一处定义，这里直接复用。
 # 注意这里用的是**全部**出厂集合名，不是 `seeded_factory_collections()`：
 # `--stats` 要的正是「每个出厂集合各有几段」，一个 0 段的集合印成「(空)」是它的答案。
 COLLECTIONS = FACTORY_KNOWLEDGE_COLLECTIONS
@@ -133,7 +130,7 @@ async def index_file(file_path: str, collection: str) -> None:
 
 
 def resolve_default_chunker_type() -> str:
-    """The chunker the project configured, for callers that did not name one."""
+    """调用方未指定分块方式时，返回项目配置中的分块器类型。"""
     from travel_agent.config.loader import get_settings
 
     return get_settings().rag.chunker_type
@@ -311,9 +308,8 @@ def main():
     elif args.file:
         asyncio.run(index_file(args.file, args.collection))
     elif args.from_jsondir:
-        # 说到就要做到：--help 与下面这行告警都承诺「未指定就读 config」，所以这里**不许
-        # 硬编码**一种分块策略。分块策略是检索质量的最大单一变量，默认值悄悄换掉一种策略，
-        # 建出来的语料库就和配置声明的不是同一份东西。
+        # 未指定分块方式时必须读取配置，不能硬编码。分块策略直接影响检索质量，
+        # 默认值若在未声明时换成另一种策略，建出的语料库就与配置声明的不一致。
         chunker_type = args.chunker_type or resolve_default_chunker_type()
         if not args.chunker_type:
             print("⚠ --from-jsondir 建议显式 --chunker-type {text|semantic|contextual}；")

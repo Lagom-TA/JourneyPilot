@@ -1,4 +1,4 @@
-"""Planning requirements constraints sources."""
+"""约束来源。"""
 
 from __future__ import annotations
 

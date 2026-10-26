@@ -1,5 +1,4 @@
-"""
-Memory Extractor（应用层）
+"""记忆抽取器（应用层）。
 
 由 `background_jobs` 的 memory_extraction 任务调用，单次 fast model 调用同时产出：
   - facts[]   : 结构化转述的具体事实（保留关键参数，短期可用）
@@ -24,19 +23,11 @@ from .extraction_stats import get_memory_extraction_stats
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# 局部配置常量
-# ---------------------------------------------------------------------------
-
 _USER_MSG_TRUNCATE = 600
 _PORTRAIT_TRUNCATE = 400
 _PORTRAIT_FALLBACK = "暂无"
 _IMPORTANCE_MIN = 1
 _IMPORTANCE_MAX = 10
-
-# ---------------------------------------------------------------------------
-# Prompt
-# ---------------------------------------------------------------------------
 
 _EXTRACTION_PROMPT = """你是一个专业的用户画像分析师。请只从当前用户亲自写下的消息中提取长期记忆候选。
 
@@ -146,13 +137,9 @@ def _parse_extraction_result(
     return facts, portraits
 
 
-# ---------------------------------------------------------------------------
-# MemoryExtractor
-# ---------------------------------------------------------------------------
-
 @dataclass(frozen=True)
 class MemoryExtractionOutcome:
-    """一次抽取的结果。调用方是 durable job，所以失败要抛，不要压成 False。"""
+    """一次抽取的结果。调用方为持久任务，失败时应抛出异常，不能编码为 False。"""
 
     facts_written: int = 0
     portraits_written: int = 0
@@ -163,13 +150,13 @@ class MemoryExtractionOutcome:
 
 
 class MemoryExtractionFailed(RuntimeError):
-    """抽取本身没跑成（模型调用或解析失败）。可重试。"""
+    """抽取未完成（模型调用或解析失败），可重试。"""
 
 
 class MemoryExtractor:
-    """
-    推理式记忆提取器。
-    由 `background_jobs` 的 memory_extraction 任务调用，写入 memory_facts 和知识图谱。
+    """记忆提取器。
+
+    由 `background_jobs` 的 memory_extraction 任务调用，写入 memory_facts 与知识图谱。
     """
 
     async def extract_from_turn(
@@ -220,7 +207,7 @@ class MemoryExtractor:
                     if fact_id is not None:
                         facts_written += 1
 
-            # 图谱 upsert 与画像聚合都是可重算的：重复执行不会长出第二份画像。
+            # 图谱 upsert 与画像聚合均可重复执行，不会产生重复画像。
             if portrait:
                 from .memory_graph import MemoryGraph
                 graph = MemoryGraph()
@@ -233,7 +220,7 @@ class MemoryExtractor:
                 await graph.save_portrait_to_profile(user_id, portrait_text)
                 portraits_written = len(portrait)
 
-            # 事实已真正写入但没有可聚合 portrait 时，也要留下可追溯的真实用户画像。
+            # 事实已写入且没有可聚合画像时，仍创建用户画像记录。
             if facts_written and not portraits_written:
                 from .user_profile import UserProfileMemory
                 await UserProfileMemory().ensure_profile_for_write(user_id)
@@ -269,15 +256,14 @@ class MemoryExtractor:
         user_msg: str,
         existing_portrait: str,
     ) -> Optional[Dict[str, Any]]:
-        """调用 fast model 提取事实和画像，返回解析后的字典（解析不出返回 None）。
+        """调用 fast model 提取事实和画像，返回解析后的字典；解析失败返回 None。
 
-        调用异常原样抛出：job 层要凭它区分「Provider 超时」与「答非所问」。
+        调用异常原样抛出，供 job 层区分供应商超时与输出格式错误。
         """
         from ..llm.router import get_model_router
         router = get_model_router()
         llm = router.get_fast()
 
-        # 截断过长内容，控制 token 消耗
         user_truncated = user_msg[:_USER_MSG_TRUNCATE]
         portrait_truncated = existing_portrait[:_PORTRAIT_TRUNCATE] if existing_portrait else _PORTRAIT_FALLBACK
 

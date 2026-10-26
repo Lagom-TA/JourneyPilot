@@ -1,4 +1,4 @@
-"""Tools manifest inference."""
+"""根据工具名称与描述推断 Tool Manifest。"""
 
 from __future__ import annotations
 

@@ -1,19 +1,13 @@
-"""The inspect/diagnostics projection: labels and counters, never raw I/O.
+"""检视与诊断数据的脱敏投影。
 
-This is the sibling boundary to ``services/public_delivery.py`` and deliberately
-a different one.  The product surface is *constructed* from typed Bundle models,
-because its shape is a contract.  Diagnostics are not: the inspect surface
-carries open-ended durable payloads (node lifecycle records, run state summaries,
-tool audit metadata) whose keys are authored across many call sites and change
-with the pipeline.  There is no model to construct from, so this projection
-scrubs by key instead — and unlike the deleted product blacklist, scrubbing is
-the correct shape here: an unrecognized diagnostic key is far more likely to be
-new raw I/O than a new product field, so dropping it fails safe.
+产品接口按 Bundle 模型构造载荷，检视接口则承载节点生命周期、运行状态摘要、
+工具审计元数据等开放结构，字段分散在多个调用点且随流程变化。此处没有可用的
+构造模型，因此按字段名剔除原始数据：未识别的诊断字段更可能是新增的原始 I/O
+而非新产品字段，丢弃它是安全的。
 
-What it may expose: provider/cache/gap classifications, deadline controls,
-hashes, normalized reason codes, counters.  What it must never become: a bypass
-for prompts, messages, tool arguments/results, provider snapshots, HTTP bodies,
-or provider error text.
+允许保留：供应商/缓存/缺口分类、截止控制、哈希、归一化原因码、计数。
+不得透出：prompt、消息正文、工具参数与结果、供应商快照、HTTP 请求/响应体、
+供应商错误文本。
 """
 
 from __future__ import annotations
@@ -59,7 +53,7 @@ _AUDIT_RAW_KEYS = frozenset(
 
 
 def _audit_key_is_raw(key: str) -> bool:
-    """Return whether a diagnostic mapping key can carry raw user/model data."""
+    """判断诊断数据字段名是否可能承载用户或模型的原始内容。"""
 
     normalized = key.lower()
     if normalized in _AUDIT_RAW_KEYS:
@@ -76,7 +70,7 @@ def _audit_key_is_raw(key: str) -> bool:
 
 
 def audit_safe_value(value: Any) -> Any:
-    """Project inspect/diagnostics to labels and counters, never raw I/O or prose."""
+    """将检视/诊断数据投影为标签与计数，剔除原始 I/O 与文本。"""
 
     if isinstance(value, Mapping):
         return {

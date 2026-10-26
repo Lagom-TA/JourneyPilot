@@ -32,7 +32,7 @@ class TransportLegRef(StrictModel):
 
 
 class EntityLineage(StrictModel):
-    # Reference entities identify returned services without confirming dated claims.
+    # reference 实体只标识返回的服务，不确认带日期的断言。
     lineage_kind: Literal["candidate_entity", "authored_entity", "reference_entity"] = (
         "candidate_entity"
     )

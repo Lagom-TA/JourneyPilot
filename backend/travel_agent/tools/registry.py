@@ -103,7 +103,7 @@ class ToolRegistry:
         name: str,
         description: str,
         parameters_schema: Dict[str, Any],
-        executor,  # callable: async fn(**kwargs) -> dict
+        executor,  # 可调用对象：async fn(**kwargs) -> dict
         source: str = "local",  # "local" | "mcp"
         server_name: Optional[str] = None,
         manifest: Optional[ToolManifest | Dict[str, Any]] = None,

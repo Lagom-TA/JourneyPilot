@@ -24,8 +24,8 @@ CHUNKS_FILE = "factory-chunks.jsonl"
 VECTORS_FILE = "factory-vectors.f32"
 MANIFEST_FILE = "manifest.json"
 
-# 一次 executemany 的行数。3000 行一次性提交会让单条 INSERT 语句的参数表大到
-# 驱动层重新规划，分批反而更快，也让失败时的回滚范围小一点。
+# 一次 executemany 的行数。分批提交可以减小单条 INSERT 语句的参数规模，
+# 也缩小失败时的回滚范围。
 _INSERT_BATCH = 200
 
 
@@ -422,19 +422,17 @@ async def load_seed(
 
 
 async def ensure_factory_corpus(seed_dir: Optional[Path] = None) -> LoadReport:
-    """开机自举入口：缺什么补什么，补不上就把话说明白。
+    """开机自举入口：只补空集合，无法补齐时返回可执行的说明。
 
-    「补不上」的判据只看**种子声称有货的集合**（`seeded_factory_collections()`）：
-    `visa_policies` 是一个刻意留空的已知缺口，
-    把它算进降级只会训练运营者忽略这行日志。
+    降级判据只看种子声称有内容的集合（`seeded_factory_collections()`）：
+    `visa_policies` 是刻意留空的已知缺口，把它算进降级会让这行日志失去意义。
     """
 
     report = await load_seed(seed_dir, force=False)
     manifest = read_manifest(seed_dir)
     if manifest is None:
-        # 整个种子目录都不在时，「缺 manifest.json / 缺 chunks / 缺 vectors」三行是同一件事
-        # 说三遍，而运营者要的是能照着做的那一句。**换掉**而不是追加：一条结论配三行噪声，
-        # 读的人会把整段当噪声。
+        # 种子目录不存在时只报一条结论，而不是分别报告缺 manifest、缺 chunks
+        # 与缺 vectors 三行。
         report.problems = [
             f"未提供本地出厂语料种子（{Path(seed_dir or DEFAULT_SEED_DIR)}）——知识库将是空的，"
             "检索会静默返回 0 条；需要时运行 `python backend/scripts/factory_corpus_seed.py --export` 生成"

@@ -1,11 +1,12 @@
 # DeepSeek 官方 endpoint。
 #
-# capability 全部来自真实调用观察，不是文档摘抄：
-#   json_schema  —— 直连 endpoint 拒绝 json_schema（400 "This response_format type
-#                   is unavailable now"），所以走 json_object + prompt 里明写 schema。
-#   token 字段   —— 只读 max_tokens；langchain-openai 无条件把它改名成
-#                   max_completion_tokens，两者相乘会让输出上限彻底空转。
-#   reasoning    —— 直连读请求体里的 thinking 开关。
+# capability 按直连 endpoint 的实际接口声明：
+#   json_schema  —— 直连 endpoint 拒绝 json_schema（返回 400
+#                   "This response_format type is unavailable now"），因此使用
+#                   json_object，并在 prompt 内写明 schema。
+#   token 字段   —— 只读 max_tokens；langchain-openai 会无条件把它改名成
+#                   max_completion_tokens，两者同时生效会让输出上限失效。
+#   reasoning    —— 直连读取请求体里的 thinking 开关。
 id: deepseek
 label: DeepSeek Official
 base_url: https://api.deepseek.com

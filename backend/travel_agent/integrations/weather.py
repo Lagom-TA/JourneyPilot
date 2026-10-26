@@ -1,4 +1,4 @@
-"""Typed weather provider boundary for the JourneyPilot v2 planning context."""
+"""规划上下文使用的类型化天气 Provider 边界。"""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from travel_agent.tools.temporal import EXACT_WEATHER_FORECAST_DAYS
 
 
 class WeatherProviderError(RuntimeError):
-    """Base error whose retry semantics are explicit at the provider boundary."""
+    """Provider 边界的基类异常，重试语义在边界处明确声明。"""
 
     retryable = False
 
@@ -34,7 +34,7 @@ class WeatherProviderInvalidResponse(WeatherProviderError):
 
 
 class WeatherProviderNotApplicable(WeatherProviderError):
-    """The provider is intentionally not valid for the requested date window."""
+    """该 Provider 对请求的日期窗口不适用。"""
 
 
 class WeatherProviderRequest(StrictModel):
@@ -151,7 +151,7 @@ _WMO_LABELS = {
 
 
 def wmo_condition_label(code: Optional[int]) -> Optional[str]:
-    """Return no claim for unknown WMO codes instead of fabricating cloud cover."""
+    """未知 WMO 代码不给出描述，不推测云量。"""
 
     return _WMO_LABELS.get(code) if code is not None else None
 
@@ -354,11 +354,10 @@ class OpenMeteoWeatherProvider:
 
 
 class OpenMeteoSeasonalBaselineProvider:
-    """Historical same-month climatology for dates outside a forecast horizon.
+    """预报窗口之外日期的同月历史气候基线。
 
-    This provider deliberately produces no date-specific condition, probability,
-    or hourly claim. Each returned target date receives the same deterministic
-    same-month aggregate backed by the complete external response snapshot.
+    这个 Provider 刻意不生成具体日期的天气现象、概率或逐小时结论。每个目标日期
+    使用相同的、由完整外部响应快照支持的确定性同月聚合值。
     """
 
     name = "open_meteo_historical_baseline"
@@ -552,6 +551,6 @@ class OpenMeteoSeasonalBaselineProvider:
 
 
 def default_weather_providers() -> List[WeatherProvider]:
-    """Production ordering: exact forecast first, qualified far-future baseline second."""
+    """生产环境的 Provider 顺序：先精确预报，再合格的远期同月基线。"""
 
     return [OpenMeteoWeatherProvider(), OpenMeteoSeasonalBaselineProvider()]

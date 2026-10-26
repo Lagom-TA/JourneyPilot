@@ -1,4 +1,4 @@
-"""Lifecycle policy with fake persistent-resource boundaries."""
+"""生命周期策略，持久化资源用假边界替代。"""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock

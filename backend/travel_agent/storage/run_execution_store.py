@@ -24,7 +24,7 @@ from travel_agent.runtime.time import iso_or_none as _iso
 def _build_executor_id() -> str:
     """hostname + 进程随机 id + 进程启动时刻。
 
-    **不用 PID**：PID 会被复用，而复用的 PID 会让一个新进程冒充上一个进程的租约持有者。
+    **不用 PID**：PID 会被复用，复用后新进程会被误认为上一个租约持有者。
     """
 
     started_at = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
@@ -97,7 +97,7 @@ class RunExecutionStore:
         lease_seconds: int,
         last_safe_checkpoint_id: Optional[str] = None,
     ) -> Optional[RunExecution]:
-        """抢占执行权。返回 None 表示已有活着的其他执行器。
+        """抢占执行权。返回 None 表示已有其他仍在运行的执行器。
 
         条件写而不是「先读再写」：单机产品也可能被开两个终端，而那两个进程之间没有
         任何协调手段，只有这一条 UPDATE 的 WHERE 子句。
@@ -131,9 +131,9 @@ class RunExecutionStore:
                         recovery_status = EXCLUDED.recovery_status,
                         recovery_reason = NULL,
                         updated_at = NOW()
-                    -- 只接管没主的行：租约已释放（release 置 NULL）或已过期。
+                    -- 只接管没有持有者的行：租约已释放（release 置 NULL）或已过期。
                     -- 不判 executor_id：它是进程常量，同进程的第二次 claim 会无条件
-                    -- 命中，于是双执行守卫在最需要它的那个场景里恰好不生效。
+                    -- 命中，使双执行保护在该场景下失效。
                     WHERE trip_run_executions.lease_expires_at IS NULL
                        OR trip_run_executions.lease_expires_at < NOW()
                     RETURNING *
@@ -289,20 +289,19 @@ class RunExecutionStore:
             return _execution_from_row(dict(result.mappings().first()))
 
     async def list_recovery_candidates(self, *, limit: int = 200) -> List[RunRecoveryCandidate]:
-        """所有「没有活着的执行器」的 run。
+        """所有「没有仍在运行的执行器」的 run。
 
-        两类都要：活跃状态却没人在跑（真孤儿），以及已经收口却留着租约的行（残留）。
+        两类都要：活跃状态却没有执行器，以及已经收口却留着租约的行。
         判据是数据库自己的 `NOW()`，不是调用方的墙钟。
 
-        **已经判定过的不再返回**：否则每一轮扫描都会重新报告同一批已收口的 Run，
-        「扫两次结果相同」就退化成「扫两次各说一遍」。
+        **已经判定过的不再返回**：否则每一轮扫描都会重新报告同一批已收口的 Run。
         """
 
         statement = text(
             """
-            -- 先用两条各自走索引的分支圈出候选，再对候选做原来的判定。
-            -- 直接把两张表的谓词 OR 在一起，没有任何索引能服务它：这个每 60 秒跑一次
-            -- 的扫描于是变成一次全表扫 + 排序，而正常情况下它的结果是空的。
+            -- 先用两条各自走索引的分支圈出候选，再对候选做最终判定。
+            -- 直接把两张表的谓词 OR 在一起，没有索引能服务它：这个每 60 秒运行一次
+            -- 的扫描会变成全表扫 + 排序，而正常情况下结果为空。
             WITH candidates AS (
                 SELECT run_id FROM trip_runs WHERE status IN :active_statuses
                 UNION
@@ -374,10 +373,10 @@ class RunExecutionStore:
             return candidates
 
     async def has_live_lease(self, run_id: str) -> bool:
-        """这个 run 现在有没有活着的执行器。
+        """这个 run 现在是否有仍在运行的执行器。
 
         判据是数据库的 `NOW()` 与租约到期时间，不是「本进程内存里有没有 handle」——
-        后者只说明不是这个进程在跑，把它当成「没人在跑」会让另一个进程的执行被当作不存在。
+        后者只说明不是这个进程在跑，不能当作「没有执行器」。
         """
 
         async with get_db_session() as session:

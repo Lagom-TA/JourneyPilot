@@ -1,4 +1,4 @@
-"""Integrations currency."""
+"""Frankfurter 汇率换算。"""
 
 from __future__ import annotations
 
@@ -34,12 +34,12 @@ _rate_cache: dict[str, tuple[float, str, float]] = {}
 
 
 class CurrencyConversionUnavailable(RuntimeError):
-    """The rate this conversion needs was not published or not reachable."""
+    """本次换算需要的汇率未发布或不可达。"""
 
 
 @dataclass(frozen=True)
 class ConvertedAmount:
-    """One Provider amount in CNY, plus everything needed to re-derive it."""
+    """一笔 Provider 金额折算成 CNY 的结果，以及重新推导所需的全部字段。"""
 
     amount_cny: float
     source_amount: float
@@ -50,18 +50,16 @@ class ConvertedAmount:
 
 
 def _default_client() -> httpx.AsyncClient:
-    """The client used when a caller injects none.
+    """调用方未注入客户端时使用的默认客户端。
 
-    Its own function so callers can supply a fake client for the network without
-    taking injected clients away too, the same guard the two Redis-backed caches
-    already have.
+    单独成函数，使调用方既能注入假客户端进行网络测试，也能保留真实默认值。
     """
 
     return httpx.AsyncClient(timeout=httpx.Timeout(15.0))
 
 
 def reset_rate_cache() -> None:
-    """Forget every cached rate (tests, and any process that must re-fetch)."""
+    """清空全部汇率缓存（测试或需要重新抓取的进程）。"""
 
     _rate_cache.clear()
 
@@ -111,12 +109,11 @@ async def convert_to_cny(
     *,
     client: Optional[httpx.AsyncClient] = None,
 ) -> ConvertedAmount:
-    """Express one Provider amount in CNY at the latest published rate.
+    """按最新已发布汇率把一笔 Provider 金额折算成 CNY。
 
-    Raises ``CurrencyConversionUnavailable`` rather than returning ``None``: the
-    caller has to decide what an unconvertible quote means for its own contract,
-    and a ``None`` that looks like "the supplier quoted nothing" is exactly the
-    confusion this module must not create.
+    无法换算时抛出 ``CurrencyConversionUnavailable`` 而不是返回 ``None``：调用方
+    需要自行决定不可换算的报价在其合同中的含义，而返回 ``None`` 会与「供应商没有
+    报价」混淆。
     """
 
     try:

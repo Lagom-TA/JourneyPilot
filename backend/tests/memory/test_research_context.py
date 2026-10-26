@@ -1,4 +1,4 @@
-"""Research context is a task view; durable evidence remains intact."""
+"""研究上下文是任务视图，持久证据保持不变。"""
 
 from __future__ import annotations
 
@@ -94,7 +94,7 @@ def test_coordination_preserves_values_units_validity_and_source_links_without_s
     for source in sources.values():
         assert "snapshot" not in source and "public_excerpt" not in source
     assert packet.model_dump(mode="json") == before
-    # View values are copies, so a prompt consumer cannot rewrite durable evidence.
+    # 视图值是副本，读取 prompt 的代码无法改写持久证据。
     candidate["name"] = "changed"
     facts["estimated_cost_cny"]["asserted_value"] = 0
     facts["accessibility_metadata"]["asserted_value"]["routes"].append("changed")

@@ -1,4 +1,4 @@
-"""Planning run summary."""
+"""规划 Run 状态摘要。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Optional
 
 
 def build_trip_run_state_summary(state: Any) -> Dict[str, Any]:
-    """Return a trace-safe latest-state projection for TripRunState."""
+    """生成 TripRunState 的可写入追踪的最新状态投影。"""
     if state is None:
         return {}
     if hasattr(state, "model_dump"):
@@ -50,7 +50,7 @@ def with_pending_choice_summary(
     *,
     pending: bool,
 ) -> Dict[str, Any]:
-    """Return a copy of a trace-safe summary with the interaction flag corrected."""
+    """返回修正过交互标记的追踪摘要副本。"""
     data = dict(summary) if isinstance(summary, dict) else {}
     data["pending_user_choice"] = bool(pending)
     return data

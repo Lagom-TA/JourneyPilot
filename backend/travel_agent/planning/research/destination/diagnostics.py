@@ -1,5 +1,3 @@
-"""Planning research destination diagnostics."""
-
 from __future__ import annotations
 
 import logging
@@ -25,7 +23,7 @@ def _log_rag_place_funnel(
     candidates: Sequence[Any],
     corpus: GroundingCorpus,
 ) -> None:
-    """Print how far this round's knowledge-base nominations got, per corpus."""
+    """按语料来源记录本轮知识库提名地点的转化情况。"""
 
     by_collection = chunk_texts_by_collection(injected_rag_sources)
     user_texts = tuple(

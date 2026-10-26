@@ -1,4 +1,4 @@
-"""Conversation titles."""
+"""会话标题。"""
 
 from __future__ import annotations
 
@@ -27,12 +27,10 @@ _DATE_RANGE_DASH = "–"
 
 
 def _place_name(place: Any) -> Optional[str]:
-    """The provider's own name for a place, or nothing.
+    """返回地点在数据源中的原始名称；没有名称时返回 None。
 
-    Deliberately **not** normalised.  ``东京都/東京都`` is the name OSM answers with, and
-    a client-side rewrite (简繁归一 included) would be a second authority for a
-    user-visible string that the itinerary, the map and the report all print from the
-    provider.
+    不做归一化：``东京都/東京都`` 是 OSM 返回的名称，行程、地图与报告都直接使用
+    该字符串，客户端改写会成为同一用户可见文案的第二个来源。
     """
 
     if not isinstance(place, Mapping):
@@ -61,11 +59,9 @@ def _destinations_label(names: Sequence[str]) -> Optional[str]:
 
 
 def _short_date(value: Any) -> Optional[str]:
-    """``2026-08-05`` → ``8/5``.
+    """``2026-08-05`` → ``8/5``。
 
-    Month and day only: the year is the same on both ends of every trip this
-    product plans (≤14 days), so printing it twice spends a third of the title
-    on a constant.
+    只保留月和日：本产品规划的行程都在 14 天以内，标题两端的年份相同。
     """
 
     text = str(value or "").strip()
@@ -90,11 +86,9 @@ def _date_range_label(identity: Mapping[str, Any]) -> Optional[str]:
 
 
 def trip_shaped_title(identity: Optional[Mapping[str, Any]]) -> Optional[str]:
-    """``上海市 → 东京都/東京都 · 8/5–8/8``, or nothing when there is no trip.
+    """``上海市 → 东京都/東京都 · 8/5–8/8``；没有旅程信息时返回 None。
 
-    Nothing is returned unless a **destination** is known: an origin and a date
-    range with no destination names no trip, and a bare date range names any
-    trip at all — which is the defect this module exists to remove.
+    只有知道目的地时才返回标题：只有出发地和日期范围无法指代具体旅程。
     """
 
     if not isinstance(identity, Mapping) or not identity:
@@ -124,7 +118,7 @@ def derive_session_title(
     user_message: str,
     controlled_trip_identity: Optional[Mapping[str, Any]] = None,
 ) -> str:
-    """Name a session after its subject — the trip if there is one, else the ask."""
+    """以会话主题命名：有旅程时使用旅程信息，否则使用用户问题。"""
 
     shaped = trip_shaped_title(controlled_trip_identity)
     if shaped:

@@ -1,1 +1,1 @@
-"""Runtime diagnostics independent of HTTP representations."""
+"""不依赖 HTTP 表示形式的运行时诊断。"""

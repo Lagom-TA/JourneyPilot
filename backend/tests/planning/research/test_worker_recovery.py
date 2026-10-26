@@ -73,7 +73,7 @@ async def test_resume_between_tools_keeps_pairing_and_completed_results(monkeypa
     finally:
         current_worker_journal.reset(token)
     assert executed == [1, 2]
-    assert len(llm.requests) == 2  # complete assistant tool call is never regenerated
+    assert len(llm.requests) == 2  # 完整的助手工具调用不会重新生成
     assert result.content == "packet" and len(result.tool_results) == 2
     assert [m["tool_call_id"] for m in transcript if m["role"] == "tool"] == ["tc1", "tc2"]
     assert transcript[1]["assistant_replay"]["reasoning_content"] == "opaque"
@@ -246,8 +246,8 @@ async def test_langgraph_fan_in_resume_preserves_typed_worker_updates(crash_boun
         await graph.ainvoke(TravelAgentState(run_id="run_test", agent_assignments={
             name: {"objective": f"research {name}"} for name in ("visit", "lodging")
         }), config)
-    # Reconstruct the graph as a new executor would. The saver keeps typed
-    # checkpoint/pending writes; the journal keeps the pre-Pregel result.
+    # 像新的执行器那样重建图。saver 保留带类型的 checkpoint 与 pending writes，
+    # journal 保留进入 Pregel 之前的结果。
     result = await compile_graph().ainvoke(None, config)
     assert sorted(calls) == ["lodging", "visit"]
     assert len(gate_calls) == 1

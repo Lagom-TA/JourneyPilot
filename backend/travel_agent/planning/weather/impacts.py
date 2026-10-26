@@ -1,4 +1,4 @@
-"""Planning weather impacts."""
+"""天气影响评估。"""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ class WeatherRiskProfile:
 
 
 def risk_profile_from_constraint_pack(pack: Mapping[str, object]) -> WeatherRiskProfile:
-    """Reduce active hard constraints to threshold modifiers without LLM judgment."""
+    """把活动硬约束归约为阈值修正项，不依赖模型判断。"""
     heat = cold = mobility = vulnerable = False
     affected: list[str] = []
     items = pack.get("hard_constraints", []) if isinstance(pack, Mapping) else []
@@ -73,7 +73,7 @@ DAY_FIT_BY_SEVERITY = {"high": 0.0, "medium": 0.6, "low": 0.9}
 
 
 def day_weather_fit(impacts: Iterable[WeatherImpact]) -> float:
-    """Score how well one day suits a candidate, 0 (poor) to 1 (clear)."""
+    """为某一天与候选的匹配程度打分，0（不合适）到 1（合适）。"""
 
     return min(
         (DAY_FIT_BY_SEVERITY.get(impact.severity, 1.0) for impact in impacts),
@@ -82,7 +82,7 @@ def day_weather_fit(impacts: Iterable[WeatherImpact]) -> float:
 
 
 class WeatherImpactEngine:
-    """Turn sourced weather fields into machine-enforceable impacts."""
+    """把有来源的天气字段转成可执行的机器判定。"""
 
     def evaluate(
         self,

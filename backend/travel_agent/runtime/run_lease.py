@@ -1,4 +1,4 @@
-"""Runtime run lease."""
+"""Run 执行租约的持有、续租与释放。"""
 
 from __future__ import annotations
 
@@ -164,10 +164,10 @@ _active_keepers: dict[str, RunLeaseKeeper] = {}
 
 
 def _drop_active_keeper(keeper: "RunLeaseKeeper") -> None:
-    """只在这一格还是自己的时候摘掉。
+    """只在这一格仍是自己的 keeper 时移除。
 
-    盲删按 run_id 摘，摘掉的会是接管者；关闭时 `release_all_leases` 就看不见它，
-    它的租约留着一个未来的过期时间，下一个进程要白等一个租约周期。
+    按 run_id 盲删会移除接管者的 keeper；关闭时 `release_all_leases` 就看不到它，
+    它的租约保留一个未来的过期时间，下一个进程需要等到租约过期。
     """
 
     if _active_keepers.get(keeper._run_id) is keeper:
@@ -177,8 +177,8 @@ def _drop_active_keeper(keeper: "RunLeaseKeeper") -> None:
 async def release_all_leases(*, reason: str = "process_shutdown") -> int:
     """进程关闭时交还所有租约。
 
-    状态收敛不在这里做：SSE 协程各自的退出路径拥有那件事。这里只保证下一次启动的
-    census 立刻就能看见「没有执行器」，而不是先干等一个租约周期。
+    状态收敛不在这里做：SSE 协程各自的退出路径负责那件事。这里只保证下一次启动
+    的恢复扫描立刻能看见「没有执行器」，而不是等到租约过期。
     """
 
     keepers = list(_active_keepers.values())

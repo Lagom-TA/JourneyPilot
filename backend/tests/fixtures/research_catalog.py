@@ -357,8 +357,7 @@ def make_local_transport_packet(
         freshness_status="current",
         route_id=f"route_{candidate_id}",
         transport_class="public_transit",
-        # Local connector identity is its directed endpoint pair; unlike a
-        # long-distance responsibility it deliberately carries no broad scope id.
+        # 本地连接的身份由有向端点对确定；与长途责任不同，它不携带大范围 scope id。
         provider_evidence_scope_id=None,
         selected_mode=TransportMode.BUS,
         from_endpoint=from_endpoint,

@@ -1,4 +1,4 @@
-"""Execution, job backlog and resource diagnostics."""
+"""执行状态、任务积压与资源诊断。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 
 async def _probe_run_execution(components: Any) -> Dict[str, Any]:
-    """A failed or unrecoverable run does not prevent accepting other work."""
+    """单个 Run 失败或无法恢复不影响接收其他任务。"""
 
     recovery = components.run_recovery_service
     report = recovery.last_report if recovery is not None else None
@@ -36,7 +36,7 @@ async def _probe_run_execution(components: Any) -> Dict[str, Any]:
 
 
 async def _probe_background_jobs(components: Any) -> Dict[str, Any]:
-    """Memory-job failures remain visible without blocking conversation readiness."""
+    """记忆抽取失败只展示计数，不阻断问答就绪。"""
 
     worker = components.background_job_worker
     payload: Dict[str, Any] = {"ready": True, "worker_running": worker is not None}
@@ -54,7 +54,7 @@ async def _probe_background_jobs(components: Any) -> Dict[str, Any]:
 
 
 def _probe_resource_limits(settings: Any) -> Dict[str, Any]:
-    """Saturation of one resource channel must not gate the entire service."""
+    """单个资源通道饱和不阻断整个服务。"""
 
     from travel_agent.runtime.blocking_work import blocking_work_metrics
     from travel_agent.runtime.concurrency import channel_metrics

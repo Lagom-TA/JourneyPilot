@@ -1,18 +1,13 @@
 """
-离线知识库构建脚本 — 非主调用路径。
+离线知识库构建脚本，不属于运行时主路径。
 
-由 backend/scripts/index_knowledge.py --wikipedia 调用；FastAPI 运行时不会触达此模块。
-通过 Wikipedia REST API 的 ``/page/summary/`` 端点获取目的地摘要并索引到知识库。
-API 文档: https://www.mediawiki.org/wiki/API:REST_API
+由 backend/scripts/index_knowledge.py --wikipedia 调用；FastAPI 运行时不会触达
+此模块。通过 Wikipedia REST API 的 ``/page/summary/`` 端点获取目的地摘要并索引
+到知识库。API 文档: https://www.mediawiki.org/wiki/API:REST_API
 
-**一篇文章一个摘要块，就是这个模块能做到的全部。** 分段抓取路径已删除：它打的
-``/page/mobile-sections/`` 被 Wikimedia 下线（``403 Mobile Content Service is
-decommissioned``，phabricator T328036），中英双语臂返回同一个 403，恒定产出 0 块
-并记为 failed。留着一条 100% 失败的路径只会让下一个人以为自己用错了参数。
-
-需要整篇正文（也就是需要有深度的语料库）时走另一条已在仓内且健康的路径：
-``backend/scripts/dump_wikimedia.py`` 用 MediaWiki Action API（``prop=extracts&explaintext=1``）
-把条目落成本地 JSON，再用 ``backend/scripts/index_knowledge.py --from-jsondir`` 入库。
+每篇文章生成一个摘要块。需要整篇正文时使用 ``backend/scripts/dump_wikimedia.py``
+（MediaWiki Action API，``prop=extracts&explaintext=1``）把条目落成本地 JSON，
+再用 ``backend/scripts/index_knowledge.py --from-jsondir`` 入库。
 """
 
 from __future__ import annotations

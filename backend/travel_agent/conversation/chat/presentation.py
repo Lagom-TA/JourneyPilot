@@ -9,8 +9,8 @@ from travel_agent.planning.trace import make_trace_event
 class ChatPresentation:
     """SSE 流处理器的可变状态容器。
 
-    由 generate_sse 创建, 跨 handler 共享状态。
-    所有 handler 只通过 ctx 读写状态, 避免闭包变量散落。
+    由 generate_sse 创建并跨 handler 共享；所有 handler 只通过 ctx 读写状态，
+    避免闭包变量分散。
     """
 
     message_id: str
@@ -49,7 +49,7 @@ class ChatPresentation:
         ts_ms: Optional[float] = None,
         duration_ms: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """Create and remember a trace event SSE payload."""
+        """创建并记录一条 trace 事件的 SSE 载荷。"""
         self.trace_sequence += 1
         event = make_trace_event(
             run_id=self.trace_run_id or self.message_id,
@@ -71,7 +71,7 @@ class ChatPresentation:
 
 
 def _trace_event_payload(event: Dict[str, Any]) -> Dict[str, Any]:
-    """Whitelist the trace event fields that are safe for durable run events."""
+    """筛选可安全写入持久运行事件的 trace 字段。"""
     allowed = {
         "schema_version",
         "event_id",

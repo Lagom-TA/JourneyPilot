@@ -1,6 +1,6 @@
-"""Prune expired LangGraph checkpoint threads.
+"""清理过期的 LangGraph checkpoint 线程。
 
-Intended for cron or one-off maintenance:
+用于定时任务或一次性维护：
     python backend/scripts/prune_checkpoints.py
 """
 

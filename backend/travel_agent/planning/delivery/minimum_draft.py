@@ -1,4 +1,4 @@
-"""Planning delivery minimum draft."""
+"""最低交付 Draft 的构建与封存。"""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def _canonical_hash(payload: Dict[str, Any]) -> str:
 
 
 def _json_value(value: Any) -> Any:
-    """Keep Draft anchors JSON-safe for checkpoint replay."""
+    """把 Draft anchor 转成可 JSON 序列化的值，供 checkpoint 重放。"""
     return json.loads(
         json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
     )
@@ -227,7 +227,7 @@ def build_minimum_delivery_draft(
     *,
     policy_version: str = MINIMUM_DELIVERY_POLICY_VERSION,
 ) -> Optional[MinimumDeliveryDraft]:
-    """Build a stable unsealed Draft for the current state generation."""
+    """为当前状态世代构建稳定的未封存 Draft。"""
     raw_identity = getattr(state, "controlled_trip_identity", None)
     if not raw_identity:
         return None
@@ -286,7 +286,7 @@ def _clear_completion_generation() -> Dict[str, Any]:
 
 
 async def minimum_delivery_draft_builder_node(state: Any) -> Dict[str, Any]:
-    """Persist the deterministic seed before geo/weather/planner work begins."""
+    """在地理、天气与规划工作开始前持久化确定性种子。"""
     draft = build_minimum_delivery_draft(state)
     existing = getattr(state, "minimum_delivery_draft", None)
     if draft is None:
@@ -320,7 +320,7 @@ def seal_minimum_delivery_draft(
     *,
     authorized_at: Optional[datetime] = None,
 ) -> Dict[str, Any]:
-    """Seal the current Draft after an explicit user approval."""
+    """用户明确批准后封存当前 Draft。"""
     draft = getattr(state, "minimum_delivery_draft", None)
     if draft is None:
         raise ValueError("cannot authorize a run without a minimum delivery draft")

@@ -1,5 +1,3 @@
-"""Planning research destination node."""
-
 from __future__ import annotations
 
 import datetime

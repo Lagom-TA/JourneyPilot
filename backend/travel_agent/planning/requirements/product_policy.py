@@ -1,4 +1,4 @@
-"""Planning requirements product policy."""
+"""产品策略。"""
 
 from __future__ import annotations
 
@@ -49,11 +49,10 @@ _VISIT_STYLE_MARKERS = _style_markers(
 def style_selected_physical_candidate_kinds(
     controlled_trip_identity: Mapping[str, Any] | None,
 ) -> set[str]:
-    """Return the physical domains the user's style selection asks about.
+    """返回用户风格选择涉及的实体领域。
 
-    This is the interest signal that steers what research goes looking for.
-    It carries no delivery obligation: a domain missing from the result is a
-    research gap the model reasons about, not a contract breach.
+    这是引导研究方向的兴趣信号，不构成交付义务：结果中缺少某个领域时，模型按
+    研究缺口处理，不视为违反契约。
     """
     identity = controlled_trip_identity or {}
     style = identity.get("style")

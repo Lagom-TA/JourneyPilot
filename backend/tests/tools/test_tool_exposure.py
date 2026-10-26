@@ -1,4 +1,4 @@
-"""Stable tool definitions, invocation isolation and complete ReAct transcripts."""
+"""工具定义稳定、调用隔离与完整 ReAct 记录。"""
 
 from __future__ import annotations
 
@@ -225,7 +225,7 @@ async def test_search_execution_and_replay_preserve_worker_transcript_and_gatewa
         "tool_done",
     ]
     assert events[-1][2]["audit_id"] == envelope["audit_id"]
-    # A later invocation starts with its own exposure, even on the same working transcript.
+    # 后续调用有自己的一份工具暴露，即使共用同一份工作记录。
     later = _ScriptedLLM([{"content": "next", "tool_calls": []}])
     await react.streaming_react_loop(
         later, messages, registry.get_tools_as_schemas(), None, "destination_researcher"

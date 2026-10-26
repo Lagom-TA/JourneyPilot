@@ -1,4 +1,4 @@
-"""Planning weather adjustments."""
+"""天气调整建议。"""
 
 from __future__ import annotations
 
@@ -127,7 +127,7 @@ def _reschedule_operation(
 def _candidate_day_fit(
     candidate, day, entity_type: EntityType, entity_id: str
 ) -> float:
-    """Score how well a replacement suits the affected day, 0 (poor) to 1 (clear)."""
+    """为替换项与受影响 Day 的匹配程度打分，0（不合适）到 1（合适）。"""
     return day_weather_fit(
         WeatherImpactEngine().evaluate(
             weather_day=day,
@@ -278,23 +278,17 @@ def build_weather_adjustment_proposals(
     carried_over_impact_ids: frozenset[str] = frozenset(),
     previous_impacts: Optional[dict[str, WeatherImpact]] = None,
 ) -> list[WeatherAdjustmentProposal]:
-    """Build one concrete proposal per affected day without mutating Workspace.
+    """为每个受影响的 Day 生成一条具体建议，不修改 Workspace。
 
-    ``carried_over_impact_ids`` names impacts that are present in ``weather`` only
-    because a frozen record still points at them — this refresh did not re-evaluate
-    them, and the condition they describe may well have cleared.  They must read as
-    *absent* here, or the surviving-proposal pass below would rebase a suggestion
-    for a storm that is no longer forecast onto the new weather revision, and tell
-    the traveller to change their plans for weather nobody expects any more.  The
-    set is passed between functions for the length of one refresh call and stored
-    nowhere: it is re-derived from set arithmetic on every refresh.
+    ``carried_over_impact_ids`` 标出只因冻结记录仍引用而留在 ``weather`` 中的
+    影响：本次刷新没有重新评估它们，其描述的条件可能已经解除。这些影响在此必须
+    按不存在处理，否则后续保留建议的逻辑会把已不再预报的天气建议改挂到新天气
+    版本上。该集合只在一次刷新调用内传递，不持久化，每次刷新重新计算。
 
-    ``previous_impacts`` overrides the baseline against which ``_material_change``
-    measures whether an impact is new.      The refresh path leaves it ``None`` and
-    derives the baseline from ``bundle.weather_snapshot.impacts`` (proposals are a
-    *delta* over what was already delivered).  The delivery path passes ``{}`` to
-    express there is no prior baseline — delivery is the first projection, so every
-    qualifying forecast impact is material and becomes a proposal.
+    ``previous_impacts`` 指定 ``_material_change`` 判断影响是否新出现的基线。
+    刷新路径传 ``None``，以 ``bundle.weather_snapshot.impacts`` 为基线（建议是
+    相对已交付内容的增量）；交付路径传 ``{}``，表示没有先前基线，所有符合条件
+    的预报影响都算新出现并生成建议。
     """
 
     previous = (

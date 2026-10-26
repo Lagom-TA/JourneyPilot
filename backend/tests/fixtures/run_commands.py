@@ -1,4 +1,4 @@
-"""In-memory command store shared by isolated behavior tests."""
+"""供隔离行为测试共享的内存版命令存储。"""
 
 from __future__ import annotations
 

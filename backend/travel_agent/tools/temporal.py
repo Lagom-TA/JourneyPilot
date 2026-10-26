@@ -1,8 +1,7 @@
-"""Deterministic date-capability policy for external tools.
+"""外部工具的确定性日期能力策略。
 
-The policy runs before network execution.  An out-of-horizon request is a
-capability decision, not a provider failure, and must never consume retries or
-fall through to web search.
+策略在网络执行之前运行。超出能力窗口的请求属于能力判定，不是 provider 失败，
+不消耗重试，也不应转入 web 搜索。
 """
 
 from __future__ import annotations
@@ -167,7 +166,7 @@ def temporal_schema_contract_errors(
     server_name: str,
     tool_definitions: Sequence[Mapping[str, Any]],
 ) -> list[str]:
-    """Return deterministic startup errors for pinned date-sensitive MCPs."""
+    """为固定的日期敏感 MCP 返回确定性的启动错误。"""
 
     requirements = _PINNED_MCP_SCHEMA_REQUIREMENTS.get(server_name)
     if requirements is None:
@@ -249,9 +248,8 @@ def evaluate_temporal_request(
 
     requested = _date_value(arguments, tool_name)
     if requested is None:
-        # Several current-condition tools do not accept a target date at all.
-        # Their returned dates remain provider-owned; there is no request date
-        # to reject at this boundary.
+        # 若干当前状态工具不接受目标日期，其返回日期由 provider 决定，
+        # 这个边界没有可拒绝的请求日期。
         return TemporalPreflightDecision(status=TemporalPreflightStatus.EXECUTABLE)
 
     today = _local_today(capability, now)

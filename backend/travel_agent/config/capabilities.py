@@ -1,4 +1,4 @@
-"""Config capabilities."""
+"""配置声明的增强能力与依赖检查。"""
 
 from __future__ import annotations
 
@@ -92,8 +92,8 @@ def capability_gaps(settings: Any) -> List[CapabilityGap]:
 def capability_report(settings: Any) -> Dict[str, Any]:
     """readiness 里 `optional_capabilities` 那一项。
 
-    ``ready`` 为 false 时**拦门禁**：这不是「质量下降」而是「这个配置在这台机器上跑不
-    起来」—— 与空语料那一类不同，它会在第一次真正调用时抛异常。
+    ``ready`` 为 false 会让 readiness 不就绪：这不是质量下降，而是这个配置在这台
+    机器上跑不起来，第一次真正调用时就会抛异常。
     """
 
     gaps = capability_gaps(settings)

@@ -25,8 +25,8 @@ STATUS_ACTIVE = "active"
 STATUS_INTERRUPTED = "interrupted"
 
 _PREVIEW_MAX_LEN = 120   # 会话预览截断长度
-# 一页最多几个 turn，以及这一页的事件总量上限。两道边界都要有：一个 turn 里可以塞
-# 几百个思考步，只限 turn 数的响应仍然可以大到没人能解析。
+# 一页最多几个 turn，以及这一页的事件总量上限。单个 turn 可能包含数百个
+# 思考步，只限制 turn 数不足以控制响应体大小。
 TURN_PAGE_LIMIT = 30
 TURN_PAGE_MAX_EVENTS = 1500
 # 标题上限只有一个，判据与派生都在 `entities/session_title.py`；
@@ -135,7 +135,7 @@ def _normalize_choice_question(value: Any, index: int) -> Dict[str, Any]:
 
 
 def _normalize_context_compaction_event(value: Any) -> Optional[Dict[str, Any]]:
-    """Validate the immutable compression snapshot stored in the event log."""
+    """校验事件日志中保存的不可变压缩快照。"""
     if not isinstance(value, dict):
         return None
 
@@ -169,11 +169,10 @@ def _normalize_context_compaction_event(value: Any) -> Optional[Dict[str, Any]]:
 
 
 def _project_events_to_messages(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """把一段会话事件投影成前端读的消息列表。
+    """把一段会话事件投影成前端读取的消息列表。
 
-    **两遍**：思考步在事件顺序上排在它所属的助手消息**之前**（一轮的写入顺序就是
-    message.user → thinking.step* → message.assistant），一遍扫的话它们到达时还没有
-    可挂靠的消息，整条思维链会在回看时消失。
+    思考步在事件顺序上早于所属的助手消息，因此分两遍处理：第一遍收集消息与思考步，
+    第二遍把思考步挂到对应消息的 ``thinking_steps`` 上。
     """
 
     messages: List[Dict[str, Any]] = []
@@ -236,10 +235,9 @@ def _project_events_to_messages(rows: List[Dict[str, Any]]) -> List[Dict[str, An
             thinking_rows.append(payload)
             continue
 
-        # 历史会话里可能仍有 clarify.requested / clarify.resolved 事件行：产品面
-        # 已删除，没有任何消费者。这里不投影它们——把 type="clarify" 或 choice_data
-        # 塞进 messages（无类型 dict，能穿过响应模型）会让前端收到一个类型联合里
-        # 已经不存在的形状。两条消息本体照常渲染，只是不再带澄清卡的元数据。
+        # 不投影 clarify.requested / clarify.resolved 事件：当前消息类型联合
+        # 不包含澄清卡，投影它们会让前端收到无效形状。两条消息本体照常渲染，
+        # 只是不携带澄清卡元数据。
         if event_type in ("clarify.requested", "clarify.resolved"):
             continue
 
@@ -257,7 +255,7 @@ def _project_events_to_messages(rows: List[Dict[str, Any]]) -> List[Dict[str, An
             "timestamp": payload.get("timestamp") or _utc_now_iso(),
             "end_time": payload.get("end_time"),
         }
-        # 工具调用字段（仅当存在时才写入，避免历史数据污染）
+        # 工具调用字段，仅对工具调用步骤写入。
         if payload.get("is_tool_call"):
             step_record["is_tool_call"] = True
             step_record["tool_name"] = payload.get("tool_name", "")
@@ -379,23 +377,14 @@ class ChatSessionMemory:
         model: str = "gpt-4o",
         page_size: int = 50,
     ) -> List[Dict[str, Any]]:
-        """取**压缩点之后**、且不超过 token 预算的会话历史，时间正序返回。
+        """取压缩点之后、且不超过 token 预算的会话历史，按时间正序返回。
 
-        两道边界，各自守一件事，谁都不许兼职：
+        压缩点（``compaction_boundary_event_order``）是当前 Anchor 摘要覆盖到的
+        最后一条会话事件。该点及更早的消息已折叠进摘要，不再逐条取回，否则同一段
+        历史会在 prompt 中出现两次。
 
-        1. **压缩点**（``compaction_boundary_event_order``）：被当前 Anchor 摘要覆盖
-           到的最后一条会话事件。摘要已经把那一段说过一遍了，再逐条取回来就是同一段
-           历史在 prompt 里印两遍 —— 而摘要是**净加**在 system prompt 上的（预算表里
-           那 2,000）。这条边界不存在的时候，压缩是**净亏**的：实测压缩后那次调用
-           input 102,121 token，比压缩前的 101,405 还多。
-        2. **token 预算**：而不是写死条数。自动压缩的触发判据是「组装后总估算 ≥
-           60,000 token」，调用方过去写死取 20 条 —— 实测 30 轮真实会话下 20 条 =
-           4,247 token，只有阈值的 7%，压缩层在结构上永远等不到自己的触发条件。
-           写死的条数是加在预算层之外的第二道上限，而「这一层能装多少」本来就是
-           预算层的职责。
-
-        分页 50 条一取（``ORDER BY event_order DESC``，即由新到旧），碰到压缩点或者
-        累计估算越过预算就停 —— 两者都在「由新到旧」这个方向上是提前终止，不会白翻页。
+        长度由 token 预算控制，不设置固定条数。分页按由新到旧读取，累计估算超过
+        预算或遇到压缩点即停止。
         """
 
         summary = await self.get_session_summary(user_id, session_id)
@@ -454,10 +443,9 @@ class ChatSessionMemory:
     async def get_message_content(
         self, *, session_id: str, message_id: str
     ) -> Optional[str]:
-        """按消息 id 读回正文。会话或消息不在了返回 None。
+        """按消息 id 读回正文；会话或消息不存在时返回 None。
 
-        后台抽取任务只带引用，正文永远从这里读 —— payload 里复制一份原文就会有两份
-        会各自漂移的真相。
+        后台抽取任务只保存消息引用，正文统一从这里读取，避免出现两份副本。
         """
         if not session_id or not message_id:
             return None
@@ -506,9 +494,9 @@ class ChatSessionMemory:
         全部共用一个 turn_id。上下文整理的快照不在这里写 —— 它由 `CompactionService`
         与摘要、新边界同事务落库，自己成一个 turn。
 
-        `controlled_trip_identity` 只为 `ensure_session` 而来：这条路径也会创建会话
-        （安全拦截那条路不走 `load_session_history`），少传一层就会让同一列出现两种
-        命名口径。**必传**。
+        `controlled_trip_identity` 供 `ensure_session` 使用：这条路径也会创建会话
+        （安全拦截路径不经过 `load_session_history`），因此必须显式传入，
+        保证标题命名来源一致。
         """
         await self.ensure_session(
             session_id=session_id,
@@ -682,10 +670,10 @@ class ChatSessionMemory:
     async def get_session_detail(
         self, user_id: str, session_id: str
     ) -> Optional[Dict[str, Any]]:
-        """会话详情 = **最新一页 turn**，不是全量历史。
+        """返回会话详情，只包含最新一页 turn。
 
-        一个用了半年的会话有上万条事件，把它们一次投影出来既慢又没人读得完。
-        更早的历史由 `list_turns` 按游标往回取。
+        会话事件可能很多，全量投影开销大且没有必要；更早的历史由 `list_turns`
+        按游标分页读取。
         """
         summary = await self.get_session_summary(user_id, session_id)
         if not summary:
@@ -709,10 +697,10 @@ class ChatSessionMemory:
     ) -> Dict[str, Any]:
         """按 turn 游标往回翻页，时间正序返回这一页。
 
-        **一个 turn 永远整份返回**。游标是这个 turn 第一条事件的 `event_order`：
-        它不随新消息插入而漂移，offset 会。
+        一个 turn 始终整份返回。游标是该 turn 第一条事件的 `event_order`，
+        不随新事件插入而变化，因此不使用 offset 分页。
 
-        ``summary`` 由已经查过它的调用方传进来，省一次重复查询。
+        ``summary`` 可由已查询过它的调用方传入，省去一次重复查询。
         """
 
         if summary is None:
@@ -722,9 +710,8 @@ class ChatSessionMemory:
 
         page_size = max(1, min(int(limit), TURN_PAGE_LIMIT))
         cursor = _cursor_to_order(before_turn)
-        # 先按 (session_id, event_order) 倒序取**有界的一窗**再分组，而不是对整个会话
-        # GROUP BY turn_id：后者的代价随会话长度线性增长，于是「按 turn 分页」在一个
-        # 上万条事件的会话里和分页之前一样慢。窗口装得下一页的事件预算 + 一个 turn。
+        # 先按 (session_id, event_order) 倒序读取有界窗口再分组，避免对整个会话
+        # GROUP BY turn_id 带来的线性开销。窗口容量为一页事件预算加一个 turn。
         scan_limit = TURN_PAGE_MAX_EVENTS + 1
         async with get_db_session() as session:
             turn_rows = await session.execute(
@@ -755,14 +742,13 @@ class ChatSessionMemory:
                 },
             )
             candidates = [dict(row) for row in turn_rows.mappings().all()]
-            # 窗口被填满时，最老的那个 turn 可能只截到一半，它的 event_count 偏小。
-            # 丢掉它：窗口外一定还有更多 turn，has_more 本来就成立。
+            # 窗口被填满时，最老的 turn 可能被截断，event_count 偏小；丢弃它，
+            # 因为窗口之外还有 turn，has_more 已经成立。
             window_saturated = sum(int(row["event_count"]) for row in candidates) >= scan_limit
             if window_saturated and len(candidates) > 1:
                 candidates = candidates[:-1]
 
-            # 页面还有第二道上限：事件总数。一个 turn 里塞了几百个思考步时，
-            # 「30 个 turn」可以是一份没人能解析的响应。
+            # 页面另有事件总数上限，避免单个 turn 包含大量思考步时响应过大。
             selected: List[Dict[str, Any]] = []
             events_budget = 0
             for candidate in candidates[:page_size]:
@@ -808,7 +794,7 @@ class ChatSessionMemory:
 
 
     # -----------------------------------------------------------------------
-    # 上下文压缩 (v3)
+    # 上下文压缩
     # -----------------------------------------------------------------------
 
     async def get_anchor(
@@ -840,13 +826,11 @@ class ChatSessionMemory:
         return anchor_data, compression_count
 
     async def get_compaction_boundary(self, user_id: str, session_id: str) -> int:
-        """当前 Anchor 摘要覆盖到的最后一条会话事件的 ``event_order``（没压缩过则 0）。
+        """返回当前 Anchor 摘要覆盖到的最后一条会话事件的 ``event_order``。
 
-        **这个数的负责层就是这里，全仓只写这一次。** 它由 :meth:`commit_compaction` 与
-        摘要在同一个事务里落库，读它的是 :meth:`get_recent_messages_within_token_budget`
-        与 :meth:`read_messages_for_compaction`。
-        把它算在调用方（比如让每个节点自己数「摘要压了多少条」）就是这个仓最熟的那个
-        形状：同一件事定义在多处，其中一份静默胜出。
+        未压缩过时返回 0。该值只由 :meth:`commit_compaction` 与摘要在同一事务中写入，
+        读取方为 :meth:`get_recent_messages_within_token_budget` 与
+        :meth:`read_messages_for_compaction`，调用方不应自行推算。
         """
         async with get_db_session() as session:
             result = await session.execute(
@@ -871,11 +855,10 @@ class ChatSessionMemory:
         max_messages: int,
         model: str = "gpt-4o",
     ) -> tuple[List[Dict[str, Any]], int, int]:
-        """取**压缩点之后**、预算之内的消息，返回 `(消息, 起始边界, 实际读到哪一条)`。
+        """读取压缩点之后、预算之内的消息。
 
-        往前读、读到预算为止 —— 压缩不再一次加载全部历史。第三个返回值是**真正进了
-        摘要的最后一条**的 `event_order`：把边界推到全部历史的末尾会永久丢掉没进摘要
-        的那一段。
+        返回 ``(消息, 起始边界, 最后纳入的消息 event_order)``。第三个值只推进到
+        真正进入摘要的最后一条事件，避免边界越过未纳入摘要的消息。
         """
 
         from .context_builder import count_tokens
@@ -923,13 +906,13 @@ class ChatSessionMemory:
         new_boundary: int,
         event: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
-        """**一个事务**写下摘要、新边界和时间线上的压缩快照。
+        """在同一事务中写入摘要、新边界与时间线压缩快照。
 
-        三者拆开写就会有一个中间态：只写摘要等于给 prompt 净加 2,000 token 而一条旧
-        消息都不减，只写边界等于把没进摘要的历史丢掉。
+        三者必须一起提交：只写摘要会让 prompt 增加摘要开销而旧消息不减少，
+        只写边界会丢掉未纳入摘要的历史。
 
-        `expected_boundary` 是 CAS：边界在读取与提交之间被另一次压缩推走了，这一次就
-        整个作废（返回 None），旧摘要原样保留。
+        ``expected_boundary`` 用于 CAS：若边界在读取与提交之间已被另一次压缩推进，
+        本次提交作废并返回 None，旧摘要保持不变。
         """
 
         normalized = _normalize_context_compaction_event(event)
@@ -1015,8 +998,8 @@ class ChatSessionMemory:
     ) -> Optional[Dict[str, Any]]:
         """重命名会话标题。会话不存在返回 None；非本人会话抛 PermissionError。
 
-        标题按 _TITLE_MAX_LEN 截断，与自动生成标题共用同一上限；updated_at 顺带刷新，
-        使重命名后的会话在列表里回到 updated_at 倒序的顶部（与用户心智一致）。
+        标题按 _TITLE_MAX_LEN 截断，与自动生成标题共用同一上限；同时刷新
+        updated_at，使重命名后的会话在 updated_at 倒序列表中排到最前。
         """
         title = (new_title or "").strip()[:_TITLE_MAX_LEN]
         async with get_db_session() as session:
@@ -1045,11 +1028,10 @@ class ChatSessionMemory:
         user_id: str,
         session_id: Optional[str] = None,
     ) -> int:
-        """Clear compressed session anchors without deleting chat history.
+        """清空已压缩的会话摘要，不删除聊天历史。
 
-        压缩点跟着摘要一起归零：摘要没了，被它覆盖的那一段历史就必须重新逐条取回，
-        否则「忘记摘要」会把那一段对话一并从模型的视野里删掉 —— 而界面上只说了
-        清空摘要。这两个值由同一个 UPDATE 写，不许分开。
+        压缩点随摘要一起归零，否则被摘要覆盖的那段历史会永久排除在模型上下文之外。
+        两个值必须由同一条 UPDATE 写入。
         """
         if not user_id:
             return 0

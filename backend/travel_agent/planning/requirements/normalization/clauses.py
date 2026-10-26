@@ -1,4 +1,4 @@
-"""Planning requirements normalization clauses."""
+"""需求分句。"""
 
 from __future__ import annotations
 

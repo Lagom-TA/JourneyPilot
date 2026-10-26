@@ -1,4 +1,4 @@
-"""Integrations rail snapshot diagnostics."""
+"""站表快照的来源与一致性诊断。"""
 
 from __future__ import annotations
 
@@ -14,11 +14,11 @@ import json
 
 
 def station_snapshot_metadata() -> Optional[dict[str, Any]]:
-    """Read the snapshot's sidecar provenance, or ``None`` if it cannot be read.
+    """读取快照的来源侧车文件；无法读取时返回 ``None``。
 
-    Deliberately total: a governance probe must be able to report "unreadable"
-    rather than take down whatever asked.  ``station_snapshot_freshness`` turns
-    ``None`` into an explicit ``unknown`` verdict — never into "current".
+    刻意不抛异常：治理探针需要能够报告「不可读」，而不是让调用方失败。
+    ``station_snapshot_freshness`` 会把 ``None`` 转成明确的 ``unknown`` 判定，
+    不会转成「最新」。
     """
 
     try:
@@ -28,11 +28,10 @@ def station_snapshot_metadata() -> Optional[dict[str, Any]]:
 
 
 def station_snapshot_fingerprint_drift() -> list[str]:
-    """Ways the committed snapshot disagrees with the fingerprint it declares.
+    """已提交快照与其声明指纹不一致的地方。
 
-    Byte size and record count are the only fingerprint 12306 hands out, so they
-    are the only thing that can catch a truncated or half-replaced refresh — the
-    failure mode that otherwise shows up as a city quietly missing its stations.
+    12306 只提供字节数与记录数两种指纹，因此它们用于发现截断或只替换了一半的
+    刷新；这类问题否则会表现为某个城市悄悄缺少车站。
     """
 
     metadata = station_snapshot_metadata()
@@ -59,17 +58,14 @@ def station_snapshot_fingerprint_drift() -> list[str]:
 def city_station_membership_drift(
     table: Mapping[str, Sequence[str]],
 ) -> list[str]:
-    """Name every hand-maintained telecode the official snapshot disagrees with.
+    """列出手工维护的电报码中与官方快照不一致的项。
 
-    Membership — does this telecode exist, and does 12306 file it under this city —
-    is decidable offline from the committed snapshot in milliseconds, so the
-    hand-written hub table never has to be trusted on that point ("no
-    shape-level alternative criterion" holds only for the *ordering*,
-    which upstream does not publish).
+    成员关系（电报码是否存在、12306 是否把它归在该城市）可以直接从已提交快照
+    离线判断，因此手工枢纽表在这点上不需要被信任；上游未发布排序，因此排序仍由
+    手工表决定。
 
-    Returns the drift instead of raising, and there is no "skip on drift" branch
-    anywhere: a caller either reports it or fails, and the fix is to correct the
-    table.
+    返回差异而不是抛异常，且没有「遇到差异就跳过」的分支：调用方要么报告差异，
+    要么失败，修复方式是改正手工表。
     """
 
     stations = station_table()

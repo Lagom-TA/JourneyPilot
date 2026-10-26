@@ -1,4 +1,4 @@
-"""Runtime run contracts."""
+"""TripRun 与执行租约的数据契约。"""
 
 from __future__ import annotations
 

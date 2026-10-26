@@ -1,4 +1,4 @@
-"""Planning requirements route legs."""
+"""长途交通段判定。"""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ _EXPLICIT_CROSS_DAY_RETURN = re.compile(
 
 
 def explicit_cross_day_return_required(text: str) -> bool:
-    """Classify an explicit cross-calendar-day return requirement."""
+    """判断是否明确要求跨日历日的返程。"""
 
     return bool(_EXPLICIT_CROSS_DAY_RETURN.search(text or ""))
 
@@ -46,22 +46,16 @@ def build_required_long_distance_legs(
     *,
     cross_day_return_required: bool,
 ) -> list[ProviderRouteLegScope]:
-    """Derive the itinerary chain's exact long-distance leg responsibilities.
+    """推导行程链上每个长途交通段的职责。
 
-    Multi-destination trips are a **chain over the ordered visit list**, not a
-    simple round trip.  For ``[origin, *destinations, origin]`` every adjacent
-    pair is owed a long-distance leg: ``origin→city_1`` (outbound),
-    ``city_i→city_{i+1}`` (inter_destination) for each interior boundary, and
-    ``city_M→origin`` (return) when the last destination is not the origin.
-    The interior city-to-city legs (e.g. 杭州→苏州 in a 上海→杭州→苏州 trip) are
-    built too, not just the outbound and return: they must be researched and bound.
+    多目的地行程是访问顺序上的链，而不是简单往返。对
+    ``[origin, *destinations, origin]``，每个相邻对都需要一个长途段：
+    ``origin→city_1``（outbound）、每个中间边界 ``city_i→city_{i+1}``
+    （inter_destination），以及末站不是出发地时的 ``city_M→origin``（return）。
+    中间城市之间的段同样需要研究和绑定。
 
-    Each destination's stay is assigned **evenly** over the trip span:
-    ``span_days`` is divided across the
-    destinations by far-forward positions, with the remainder given to the
-    earliest cities.  The handover (inter_destination) leg for ``city_i``
-    departs on the **first day of the next city's stay**, so transport research
-    happens on the actual handover day.
+    每个目的地的停留天数在行程跨度内平均分配，余数给较早的城市；
+    inter_destination 段在下一城市停留的第一天出发。
     """
 
     origin_id, destination_ids = _identity_parts(controlled_trip_identity)
@@ -134,31 +128,18 @@ def missing_long_distance_leg_roles(
     day_dates: AbstractSet[date],
     dates_with_long_distance: AbstractSet[date],
 ) -> Optional[list[str]]:
-    """Name the required long-distance legs no planned Day ever delivered.
+    """列出计划中的 Day 未交付的必需长途交通段角色。
 
-    ``None`` means the round trip is not assessable and every reader must stay
-    silent.  Three ways that happens:
+    返回 ``None`` 表示无法评估，所有读取方必须保持沉默。三种情况：Run 本身
+    不承担长途段；组合出的 Day 没有覆盖某个必需服务日期（身份与行程描述的不
+    是同一趟旅行）；某个服务日期承担多段且至少已有一段（同日往返时「当天有
+    长途段」无法区分一段到达还是两段到达）。
 
-    - the Run owes no long-distance leg at all;
-    - the composed Days do not even cover a required service date, in which case
-      the identity and the itinerary describe different trips and no per-leg
-      verdict read from them would be honest;
-    - one service date owes more than one leg and carries at least one.  A
-      same-day round trip is the real case: both owed legs fall on the trip's
-      single date, so "this date has a long-distance leg" cannot separate *one
-      of the two arrived* from *both arrived*, and an empty list would assert
-      the stronger of the two.  A date that owes two and carries none is still
-      assessable — nothing arrived — and both roles are named.
+    沉默与空列表含义不同：空列表断言所有必需段都已交付。
 
-    That silence is deliberately distinct from an empty list, which asserts
-    that every owed leg was delivered.
-
-    Naming which of two same-day legs is the missing one needs per-leg delivery
-    identity, and the delivered leg does not carry one: its endpoints are
-    station-scoped ids minted by the provider binder (``12306:{telecode}``,
-    airport codes) while a required leg's endpoints are the city-scoped ids of
-    the controlled identity (``osm:relation:…``).  The two never compare equal,
-    so matching a delivered leg to a direction would have to be guessed.
+    区分同日两段中哪一段缺失需要逐段的交付身份，而交付段的端点是 provider
+    binder 生成的站点级 id（``12306:{telecode}``、机场代码），必需段的端点是
+    受控身份的城市级 id（``osm:relation:…``）；两者不会相等，强行匹配只能靠猜。
     """
 
     if not required_legs or any(

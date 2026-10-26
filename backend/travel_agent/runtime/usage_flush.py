@@ -1,4 +1,4 @@
-"""Runtime usage flush."""
+"""把用量记录批量刷入成本台账。"""
 
 from __future__ import annotations
 

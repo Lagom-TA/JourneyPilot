@@ -26,7 +26,7 @@ def test_overflow_never_evicts_and_drain_survives_process_reopen(tmp_path):
     batch = recorder.drain()
     assert len(batch) == 2
     reopened = UsageRecorder(spool_path=path)
-    assert len(reopened.snapshot()) == 7  # drain never removes before DB commit
+    assert len(reopened.snapshot()) == 7  # drain 在数据库提交之前不删除记录
     reopened.ack(batch)
     assert len(reopened.snapshot()) == 5
     assert path.stat().st_mode & 0o777 == 0o600

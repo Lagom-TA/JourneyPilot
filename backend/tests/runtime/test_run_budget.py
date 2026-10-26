@@ -106,7 +106,7 @@ def test_a_failed_call_still_consumes_a_call_slot():
 
 
 def test_a_new_snapshot_starts_a_new_ledger():
-    """编辑行程后重新授权是新的一代 Draft，旧的消耗属于上一代。"""
+    """编辑行程后重新授权会生成新的 Draft，之前那一代的消耗不延续。"""
 
     first = ledger_for("run_b", _snapshot(max_llm_calls=5))
     first.record_llm_call(input_tokens=10, output_tokens=10, cost_usd=0.1)
@@ -250,8 +250,7 @@ def test_release_drops_the_process_local_ledger():
 
 
 # ── 维度清单与它的两个反射面 ──────────────────────────────────────────────
-#
-# `max_tool_retries_per_target` 在 RunBudgetSnapshot 上，但**不是**一个预算维度：
+# `max_tool_retries_per_target` 在 RunBudgetSnapshot 上，但不是预算维度：
 # 它是「同一个工具目标最多重试几次」的局部上限，由 run_budget 的重试计数单独执行，
 # 不进 `remaining_budget`、不进 `exhausted_dimension`、也不会成为一个耗尽原因码。
 # 所以下面两条是单向包含（每一维都要有字段），不是双向相等。
@@ -286,10 +285,10 @@ def test_every_budget_dimension_has_a_limit_field_to_reflect_onto():
 
 
 def test_remaining_budget_reports_every_dimension_and_nothing_else():
-    """从 BUDGET_DIMENSIONS 里删掉一维，原来 23 个用例全绿，那一维静默停止执行。
+    """从 BUDGET_DIMENSIONS 中删掉一维时，现有用例不会失败，那一维会静默停止执行。
 
-    反射绑定写错会当场红一片（好几条现有用例直接读 `remaining["cost_usd"]`），
-    但「少一维」不会 —— 没有任何断言说得出这个字典**应该**有几个键。这一条说。
+    反射绑定写错会立刻失败（多条用例直接读 `remaining["cost_usd"]`），
+    但「少一维」没有断言能发现。这一条补上这个断言。
 
     右边取 `get_args`，不取 `BUDGET_DIMENSIONS`：被守的那张表不能同时当标尺。
     """

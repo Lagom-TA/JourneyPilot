@@ -1,4 +1,4 @@
-"""Memory preference contracts."""
+"""记忆偏好契约。"""
 
 from __future__ import annotations
 
@@ -15,17 +15,12 @@ from typing import Tuple
 
 
 class PreferenceOptionGroup(BaseModel):
-    """一组偏好的**全部合法取值**，以及它在界面上怎么被称呼。
+    """一组偏好的全部合法取值及其界面称呼。
 
-    **这是那张选项表在全仓的唯一定义处。**
+    选项表只在此处定义。取值原文会经 Constraint Pack 进入模型，界面通过服务端
+    接口读取该表，不自行复制。
 
-    定义处定在后端而不是那一屏，理由是**取值本身要进模型**：
-    ``panels/constraint.py::_map_manual_profile`` 把这些字符串**原文**映成 Constraint Pack
-    的 item，快慢两条路径读的都是它。模型侧看到的是后端这一份，所以界面必须从服务端拿这张表
-    （与「地点必须整条来自服务端」同一条口径），不许自己抄。
-
-    ``multi`` 与字段注解是同一件事的两面（``List[str]`` ↔ 多选、``str`` ↔ 单选），
-    不许在这里写成第二种说法。
+    ``multi`` 与字段类型对应：``List[str]`` 为多选，``str`` 为单选。
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -91,17 +86,11 @@ PREFERENCE_GROUPS_BY_KEY: Dict[str, PreferenceOptionGroup] = {
 
 
 def _the_one_allergy_option() -> str:
-    """饮食那一组里表示「这个人有食物过敏」的**那一个**选项。
+    """返回饮食组中表示「有食物过敏」的选项。
 
-    **现算自上面那张表，不在这里再抄一个字面量。** 抄一份就是「一个角色两套值」：
-    静默胜出的会是 ``_map_manual_profile`` 手上那一份，而界面画的是表里那一份，
-    于是勾了过敏而约束里没有过敏。
-
-    ``!= 1`` 直接抛而不是挑一个，因为这里守的是一条硬要求：
-    **固定选项表达不了过敏原**。表里出现第二个带「过敏」的选项（比如有人图省事加一个
-    ``花生过敏``）就意味着这条要求破了 —— 那种表会让「花生过敏的人」勾得出、
-    「荞麦过敏的人」勾不出，而且 ``food_allergy`` 的过敏原从此有两个产地
-    （选项字面量与 LLM 抽取）。起不来比悄悄跑着好。
+    该值从 ``TRAVEL_PREFERENCE_GROUPS`` 计算，不重复写字面量。带「过敏」的选项
+    必须恰好一个，否则抛出异常：固定选项只允许一个「有过敏、过敏原未知」入口，
+    具体过敏原通过对话提取。
     """
 
     group = PREFERENCE_GROUPS_BY_KEY["dietary_restrictions"]
@@ -118,31 +107,24 @@ DIETARY_ALLERGY_OPTION: str = _the_one_allergy_option()
 
 
 def _out_of_table(group: PreferenceOptionGroup, value: str) -> str:
-    """一句给客户端看的话：这一组没有这个取值，可选的是哪些。
+    """返回面向客户端的提示：该组不包含此取值，并列出全部可选项。
 
-    句子里带上全部可选项，因为收到这句话的人（人或脚本）**下一步就要重新发一次**，
-    而「不认识」本身给不出下一步。
+    收到提示的调用方需要重新发送合法取值，因此提示中包含完整选项列表。
     """
 
     return f"{group.label}没有「{value}」这一项，可选：{'、'.join(group.options)}"
 
 
 class TravelPreference(BaseModel):
-    """用户在「我的偏好」那一屏亲手声明的旅行偏好。
+    """用户在偏好设置页声明的旅行偏好。
 
-    **这里的每一个字段都必须有产品内的写入方。** 唯一的写入方是
-    ``api/routes/user.py``：六组偏好走 ``PATCH /api/user/preferences``，
-    出发地走 ``PUT /api/user/default-origin``。记忆抽取器
-    （``memory/memory_extractor.py``）**不写任何偏好键** —— 它写记忆事实、
-    知识图谱与 ``auto_portrait``，这是两套东西。
+    每个字段都有产品内的写入方：``api/routes/user.py`` 的
+    ``PATCH /api/user/preferences``（六组偏好）与 ``PUT /api/user/default-origin``
+    （常用出发地）。记忆抽取器不写入任何偏好键，它只写记忆事实、知识图谱与
+    ``auto_portrait``。
 
-    界面上能编辑的那六组是唯一有写入方的合同，两条路径都只认它。
-
-    **每一组的合法取值也在这个文件里**（``TRAVEL_PREFERENCE_GROUPS``），界面从
-    ``GET /api/user/preference-options`` 拿它 —— 那一屏不许自己写一份选项表。
-
-    这些字段抵达模型的通道**只有一条**：Constraint Pack 的
-    ``panels/constraint.py::_map_manual_profile``，快慢两条路径共用。
+    合法取值定义在 ``TRAVEL_PREFERENCE_GROUPS``，界面通过
+    ``GET /api/user/preference-options`` 读取。字段经 Constraint Pack 进入模型。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -161,16 +143,13 @@ class TravelPreference(BaseModel):
 
     @model_validator(mode="after")
     def _values_come_from_the_option_table(self) -> "TravelPreference":
-        """六组取值必须出自 `TRAVEL_PREFERENCE_GROUPS`，一个不多。
+        """校验六组取值均来自 `TRAVEL_PREFERENCE_GROUPS`。
 
-        **这是那条规则唯一的执行点**，读写两侧共用：写入侧
-        （`memory/user_profile.py::update_preferences` → 这里）拦住表外的值，
-        读取侧（`_row_to_profile` → 这里）保证「库里存着的，界面一定画得出来」。
-        只在路由上校验会让缺陷在全绿里活下来 —— 别的写入方（播种脚本、验收脚本、
-        真库里的旧行）都不经过那道门。
+        这是该规则的唯一执行点，读写两侧共用：写入侧（`update_preferences`）拦截
+        表外取值，读取侧（`_row_to_profile`）保证库中数据可以被界面渲染。
 
-        单选组的空串是「没选」，是合法值；**一串空白不是**（口径在
-        `utils/user_text.py`，记忆与资料两处同一条）。
+        单选组的空串表示未选择，属于合法值；纯空白不是合法值（判定见
+        `utils/user_text.py`）。
         """
 
         for group in TRAVEL_PREFERENCE_GROUPS:

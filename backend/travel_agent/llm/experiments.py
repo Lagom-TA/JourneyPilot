@@ -1,4 +1,4 @@
-"""Reproducible trial aggregation; unknown bills and delivery stay unknown."""
+"""可复现的试验汇总；未知费用与投递结果保持未知。"""
 from collections import defaultdict
 import math
 

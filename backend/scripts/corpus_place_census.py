@@ -1,50 +1,9 @@
-"""How much of the indexed corpus can nominate a place at all.
+"""统计已索引语料中有多少文本块能提名一个可解析的具体地点。
 
-This answers the gate question of the「让知识库真正参与结果生成」topic: a chunk can
-only ever *nominate* — identity stays the Provider's — so a corpus whose chunks
-name no resolvable places cannot influence selection no matter what the prompt
-says, and changing the prompt would be a guaranteed no-op.
-
-**Criterion.** A chunk names a concrete place iff at least one string proposed by
-``rag.place_mentions.propose_place_mentions`` resolves, through the repo's own
-place path (``search_nominatim_raw`` -> ``normalize_nominatim_place`` ->
-``is_concrete_visit_place`` / ``is_concrete_dining_place``), to a Provider identity
-that
-
-1. actually bears that name (``mention_matches_name`` — Nominatim's index is
-   fuzzy, and without this a junk string matches an unrelated record), and
-2. lies within ``SCOPE_KM`` of one of the destinations the corpus is about (the
-   topic's own truth definition is "属于本次目的地的具体地点").
-
-Each centre carries the country its ``/search`` calls are narrowed to, because
-the corpus spans two of them. The country is a search parameter, not part of the
-criterion: a corpus about Tokyo scored with a hardcoded ``cn`` filter would
-report zero and the number would stop being comparable with the Chinese half.
-
-Two numbers come out, because they answer different questions. OSM types a
-motorway, a rail line and a canal as perfectly real places, and they pass the
-pipeline's ``visit`` rule (visit = not dining, not lodging) — but nobody plans a
-day around 杭州绕城高速公路. So a **stop** (anything not under OSM's
-``highway``/``railway``/``aeroway``/``waterway`` keys) is counted separately from
-infrastructure. The stop number is the one that bounds what a prompt change could
-possibly achieve.
-
-**Why it is recomputable.** The proposer is deterministic and lives in the
-product tree, so it cannot drift away from what the runtime funnel measures.
-Provider answers are memoized to ``--out``, and ``search_nominatim_raw`` memoizes
-the raw bodies in Redis for a week on top of that, so a re-run costs nothing until
-the corpus or the proposer changes.
-
-**Cost control.** The metric is existential per chunk ("at least one"), so a
-chunk stops at its first stop-grade hit. Proposals are ranked clean-edge-first by
-``propose_place_mentions``, and a chunk gives up after ``--cap`` lookups — a
-chunk that hits the cap is reported as ``capped`` rather than silently as "names
-no place". Chunks are visited in a seeded shuffle, so an interrupted run is still
-an unbiased sample of the corpus rather than a prefix of whatever order the table
-returned.
-
-The public Nominatim instance answers 429 under sustained load: this runs at a
-slower courtesy interval than production and waits rather than pressing.
+判据：文本块中的某个候选名称经产品自身的提名与解析链路，能在 Provider 记录中找到同名、
+且位于目的地 ``SCOPE_KM`` 范围内的具体地点。stop（非交通基础设施）与基础设施分开统计，
+结果按集合和 manifest 批次分组；Provider 答案写入 ``--out``，可用 ``--report-only``
+从已有结果重新出报告。
 
     python backend/scripts/corpus_place_census.py --limit 60
 """
@@ -73,23 +32,20 @@ from travel_agent.integrations.places.contracts import NominatimPlaceSearchError
 from travel_agent.integrations.places.normalization import is_concrete_dining_place, is_concrete_visit_place, normalize_nominatim_place
 from travel_agent.integrations.places.nominatim import search_nominatim_raw
 
-# The local factory corpus, read from the one place that names it. This census scores
-# the optional local corpus, so it deliberately excludes the per-user uploaded
-# library that ``grounding_corpus`` adds at retrieval time: that library differs per
-# machine and per user, and folding it in would make criterion D irreproducible.
+# 本地出厂语料，集合名取自唯一定义处。本次普查只统计本地出厂语料，不包含
+# ``grounding_corpus`` 在检索时按用户加入的上传库：那部分随机器与用户变化，
+# 计入后结果不可复现。
 COLLECTIONS = FACTORY_KNOWLEDGE_COLLECTIONS
 
-# OSM's own top-level keys for transport infrastructure.
+# OSM 中表示交通基础设施的顶层键。
 INFRASTRUCTURE_KEYS = ("highway", "railway", "aeroway", "waterway")
 
 SEED = 20260801
 COURTESY_INTERVAL_SECONDS = 2.5
 BACKOFF_SECONDS = (30.0, 120.0, 300.0)
 
-# The destinations the corpus is about, each with the country its Provider
-# lookups are narrowed to. The country is *not* part of the criterion — it only
-# narrows ``/search`` — but it has to travel with the centre, because a corpus
-# spanning two countries cannot be scored by one hardcoded filter.
+# 语料涉及的目的地，以及 Provider 查询限定的国家。国家不参与判据，只用于缩小
+# ``/search`` 范围；它必须与中心点一起传递，因为跨两国的语料不能用同一个固定过滤器评分。
 DEFAULT_CENTRES = ("杭州市:cn", "苏州市:cn", "绍兴市:cn", "東京都:jp")
 
 
@@ -109,7 +65,7 @@ def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def place_bears_name(mention: str, place: dict) -> bool:
-    """The Provider record must be one of the names the corpus actually wrote."""
+    """Provider 记录的名称或别名必须与语料中的提及一致。"""
     for candidate in (place.get("name"), *(place.get("aliases") or ())):
         if mention_matches_name(mention, str(candidate or "")):
             return True
@@ -131,16 +87,15 @@ async def _search(query: str, country_code: str):
 
 
 def parse_centre(spec: str) -> tuple[str, str]:
-    """``"東京都:jp"`` -> ``("東京都", "jp")``; a bare name stays Chinese."""
+    """``"東京都:jp"`` -> ``("東京都", "jp")``；只写名称时默认国家为中国。"""
     name, _, country = spec.partition(":")
     return name.strip(), (country.strip() or "cn").casefold()
 
 
 async def load_centres(specs: tuple[str, ...]) -> dict[str, tuple[float, float, str]]:
-    """Destination centres, resolved from the Provider rather than hand-copied.
+    """目的地中心点，由 Provider 解析得到，不手工维护坐标。
 
-    A hardcoded coordinate table is a second source of truth that goes stale in
-    silence — the shape of 口子 9 and 口子 26.
+    手写坐标表会成为第二份来源，并可能在无人察觉时过期。
     """
     centres: dict[str, tuple[float, float, str]] = {}
     for spec in specs:
@@ -157,11 +112,10 @@ async def load_centres(specs: tuple[str, ...]) -> dict[str, tuple[float, float, 
 
 
 async def resolve(mention: str, country: str, centres: dict, scope_km: float) -> dict:
-    """One mention against one country's Provider index.
+    """一次提及在一个国家的 Provider 索引中的解析结果。
 
-    Only centres in ``country`` are candidates for the scope test: a Hangzhou
-    centre can never be within ``scope_km`` of a Japanese record anyway, and
-    saying so here keeps the reported distance meaningful.
+    范围判定只使用同一国家的中心点：外国的中心点不可能落在 ``scope_km`` 内，
+    限定国家后报告的距离才有意义。
     """
     try:
         observation = await _search(mention, country)
@@ -234,16 +188,11 @@ def report(rows: list, resolutions: dict, total: int) -> None:
         f"    names any concrete place at all: {anywhere}/{n} = {anywhere / n:.1%}",
         flush=True,
     )
-    # Per-collection, because the corpus is not one thing: the two halves are
-    # chunked differently (500-char windows vs contextual sentence slices), and a
-    # corpus-wide number that moved could otherwise be read as a density gain
-    # when it was really a change in the mix.
+    # 按集合分组：两部分语料的分块方式不同（500 字符窗口与上下文字句切片），
+    # 只看总体数字会把语料构成的变化误读成密度提升。
     _breakdown(rows, "collection", lambda row: row["collection"])
-    # Per manifest batch, which is also per destination. This one matters more:
-    # the criterion resolves names through a Provider that answers in Japanese
-    # for Japan, so it is structurally blind to the Tokyo half .
-    # One corpus-wide number silently averages a measurable half with an
-    # unmeasurable one.
+    # 按 manifest 批次分组，也就是按目的地分组。判据对日本一半依赖返回日文名称的
+    # Provider，存在结构性盲区；总体数字会把可测的一半与不可测的一半平均掉。
     batches = load_batches()
     if batches:
         _breakdown(rows, "batch", lambda row: batches.get(row["source"], "(未登记批次)"))
@@ -266,14 +215,12 @@ _REPO_ROOT = str(REPO_ROOT)
 
 
 def load_batches(root: str = "") -> dict[str, str]:
-    """``doc_source`` -> which manifest batch listed it.
+    """``doc_source`` -> 登记它的 manifest 批次。
 
-    The mapping is the manifest itself rather than a table written here, so a
-    batch cannot drift away from the titles it actually indexed.
+    映射直接来自 manifest，而不是在这里另写一张表，因此批次不会与它实际索引的标题脱节。
     """
-    # Anchored to the repo, not to the caller's cwd: the census is run from
-    # wherever, and a batch breakdown that silently vanishes outside the repo
-    # root reads as "no batches" rather than as a broken path.
+    # 以仓库根目录为基准而不是调用者的 cwd：脚本可能在任意目录运行，
+    # 批次分组不能因为路径失效而显示成「没有批次」。
     root = root or os.path.join(_REPO_ROOT, "data", "corpus")
     prefixes = {"wikipedia": "wiki", "wikivoyage": "voyage"}
     batches: dict[str, str] = {}
@@ -343,15 +290,14 @@ async def main() -> None:
     if args.report_only:
         state = json.load(open(args.out, encoding="utf-8"))
         rows = state.get("chunks", [])
-        # The corpus this census ran against, not whatever is in the table now:
-        # re-reporting an old census after the corpus grew would otherwise print
-        # a denominator that never applied to it.
+        # 使用本次普查运行时的语料总量，而不是当前表里的数量：
+        # 语料增长后重出旧报告会得到一个当时并不适用的分母。
         report(rows, state.get("resolutions", {}), state.get("corpus_total", len(rows)))
         return
 
     get_settings().geocoding.min_interval_seconds = args.interval
     centres = await load_centres(tuple(args.centre or DEFAULT_CENTRES))
-    # Fixed order, so the census is deterministic no matter how --centre was typed.
+    # 固定顺序，使普查结果与 --centre 的输入顺序无关。
     countries = tuple(dict.fromkeys(cc for _, _, cc in centres.values()))
 
     chunks = await load_chunks()
@@ -387,10 +333,9 @@ async def main() -> None:
         hit_stop = hit_infrastructure = None
         hit_anywhere = False
         for mention in proposals[: args.cap]:
-            # Countries in a fixed order, and a stop in the first one skips the
-            # rest. That short-circuit cannot change any of the three reported
-            # aggregates: it only ever fires once ``hit_stop`` is set, and a stop
-            # already implies both weaker verdicts.
+            # 国家按固定顺序遍历，在第一个国家命中 stop 就跳过其余国家。这一短路
+            # 不改变三个汇总数字：它只在 ``hit_stop`` 已置位后触发，而 stop 命中
+            # 已经蕴含两个更弱的结论。
             for country in countries:
                 key = f"{country}|{mention}"
                 if key not in resolutions or "error" in resolutions[key]:
@@ -408,9 +353,8 @@ async def main() -> None:
                 if scoped and hit_infrastructure is None:
                     hit_infrastructure = mention
             if hit_stop:
-                # Only a stop ends the chunk: stopping at an infrastructure hit
-                # recorded "this chunk names roads only" for chunks whose museum
-                # merely sat further down the ranking.
+                # 只有 stop 命中才结束该文本块：在基础设施命中处停止，会把
+                # 「博物馆排在更后面」的文本块记成「只提到道路」。
                 break
         rows.append(
             {

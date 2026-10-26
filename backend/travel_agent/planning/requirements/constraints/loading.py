@@ -1,4 +1,4 @@
-"""Planning requirements constraints loading."""
+"""约束来源加载。"""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class ConstraintSourceLoader:
-    """Assemble the sources consumed once by request-contract normalization."""
+    """组装请求契约归一化只消费一次的来源数据。"""
 
     def __init__(
         self,
@@ -221,7 +221,7 @@ async def build_run_constraint_pack(
     loaded: Optional[LoadedConstraintSources] = None,
     precomputed_free_text_constraints: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
-    """本轮 Constraint Pack 的**唯一装配处**，深度与快问快答两条路径共用。"""
+    """本轮 Constraint Pack 的唯一装配入口，深度调研与快问快答两条路径共用。"""
     loaded = loaded or await load_constraint_sources(state)
 
     loader = ConstraintSourceLoader.from_loaded(

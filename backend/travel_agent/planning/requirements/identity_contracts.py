@@ -1,4 +1,4 @@
-"""Planning requirements identity contracts."""
+"""行程身份契约。"""
 
 from __future__ import annotations
 

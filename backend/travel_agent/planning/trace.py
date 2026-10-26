@@ -1,4 +1,4 @@
-"""Planning trace."""
+"""规划工作流追踪事件。"""
 
 from __future__ import annotations
 
@@ -35,12 +35,12 @@ NODE_PHASES: Dict[str, str] = {
 
 
 def infer_trace_phase(node: str, fallback: str = "postprocess") -> str:
-    """Return a stable JourneyPilot phase for a workflow node."""
+    """返回工作流节点对应的稳定 JourneyPilot 阶段名。"""
     return NODE_PHASES.get(str(node or ""), fallback)
 
 
 def compact_summary(value: Any, *, limit: int = 180) -> str:
-    """Build a short, single-line summary without exposing raw payloads."""
+    """生成单行摘要，不暴露原始载荷。"""
     if value is None:
         return ""
     text = value if isinstance(value, str) else str(value)
@@ -52,7 +52,7 @@ def compact_summary(value: Any, *, limit: int = 180) -> str:
 
 @dataclass
 class WorkflowTraceEvent:
-    """A lightweight v1 trace event for SSE and debug timelines."""
+    """供 SSE 与调试时间线使用的轻量 v1 追踪事件。"""
 
     run_id: str
     sequence: int
@@ -124,7 +124,7 @@ def make_trace_event(
 
 
 def summarize_state_update(node: str, state_update: Dict[str, Any]) -> Dict[str, Any]:
-    """Derive trace-safe summaries from a LangGraph state update frame."""
+    """从 LangGraph 状态更新帧提取可写入追踪的摘要。"""
     if not isinstance(state_update, dict):
         return {"output_summary": "node completed"}
 
@@ -162,7 +162,7 @@ def summarize_state_update(node: str, state_update: Dict[str, Any]) -> Dict[str,
 
 
 def trace_summary(events: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Return a compact summary suitable for chat completion and developer diagnostics."""
+    """生成适合聊天完成事件与开发诊断的精简汇总。"""
     phase_counts: Dict[str, int] = {}
     statuses: Dict[str, int] = {}
     for event in events:

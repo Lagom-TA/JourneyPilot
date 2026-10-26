@@ -1,5 +1,3 @@
-"""Planning research transport endpoints."""
-
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
@@ -16,7 +14,7 @@ def _containing_destination_id(
     latitude: float,
     longitude: float,
 ) -> Optional[str]:
-    """Which controlled destination this point belongs to, or None."""
+    """返回该坐标所属的受控目的地；无法归属时返回 None。"""
     for place_id, (dest_lat, dest_lon) in sorted(
         destination_points(state.controlled_trip_identity).items()
     ):
@@ -28,7 +26,7 @@ def _containing_destination_id(
 def _routable_connector_endpoints(
     state: TravelAgentState,
 ) -> List[Dict[str, Any]]:
-    """Every located endpoint a connector gap may be routed from or to."""
+    """返回接驳缺口可用的全部已定位端点，可作为起点或终点。"""
     catalog = state.recommendation_catalog
     if catalog is None:
         return []

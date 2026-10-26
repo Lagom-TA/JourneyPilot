@@ -1,15 +1,12 @@
 """
-Reranking 精排模块（Step 4: 二阶段精排）
+Reranking 精排模块（二阶段精排）
 
-架构：策略模式
-  CrossEncoderReranker — BGE-Reranker-v2-m3（需要 pip install sentence-transformers）
-                         本地 ONNX-like 推理，零成本高精度
-  LLMReranker          — 复用现有 LLM 做相关性评分，开箱即用
+策略模式：
+  CrossEncoderReranker — BGE-Reranker-v2-m3（需要安装 sentence-transformers）
+  LLMReranker          — 复用现有 LLM 做相关性评分（默认）
 
-初检（Hybrid Search）top_k=20 保证召回，精排（Reranker）top_k=5 保证精度。
-策略模式允许在 cross_encoder 和 llm 之间通过配置切换，无需改代码。
-关键取舍：cross-encoder 对 20 个文档约需 200ms（CPU），我们在 fast_answer
-路径关闭 reranking，knowledge_agent 路径开启，根据延迟 SLO 动态适配。
+初检（Hybrid Search）扩大候选集，精排缩小到最终数量。provider 可在
+cross_encoder 与 llm 之间通过配置切换，无需改代码。
 """
 
 from __future__ import annotations
@@ -38,11 +35,11 @@ class Reranker(ABC):
     ) -> List[Dict[str, Any]]:
         """
         对候选文档精排。
-        Args:
+        参数：
             query: 用户查询
             docs: 候选文档列表（每项含 content, score 等字段）
             top_k: 精排后返回数量
-        Returns:
+        返回：
             精排后的文档列表，按相关性降序，每项新增 rerank_score 字段
         """
         ...
@@ -147,7 +144,7 @@ _LLM_RERANK_PROMPT = """你是一个文档相关性评估专家。请评估以�
 
 class LLMReranker(Reranker):
     """
-    基于 LLM 的相关性评分精排器（fallback / 默认方案）。
+    基于 LLM 的相关性评分精排器（默认方案）。
     复用现有 fast_model 做批量评分，单次 LLM 调用处理所有候选文档。
     """
 

@@ -1,4 +1,4 @@
-"""One agent-selected query, cross-collection fusion, and at most one rerank."""
+"""单条查询的跨集合融合，以及最多一次精排。"""
 
 from __future__ import annotations
 

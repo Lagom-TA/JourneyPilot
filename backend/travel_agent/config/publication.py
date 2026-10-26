@@ -1,4 +1,4 @@
-"""Explicit, release-only publication of system product configuration."""
+"""系统产品配置的显式发布，只在发布流程中使用。"""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def _digest(payload: Any) -> str:
 
 
 def build_publication_summary() -> Dict[str, Any]:
-    """Validate release data and return a stable, reviewable publication plan."""
+    """校验发布数据并返回稳定、可核对的发布摘要。"""
     trip_planner = validated_trip_planner_seed().model_dump(mode="json")
     system_presets = [
         preset.model_dump(mode="json", exclude_unset=True)
@@ -43,11 +43,10 @@ def build_publication_summary() -> Dict[str, Any]:
 
 
 async def publish_seed() -> Dict[str, Any]:
-    """Validate and explicitly replace release-managed product data in the DB.
+    """校验并显式替换数据库中由发布流程管理的产品数据。
 
-    Publishing writes rows; it never creates tables. An unmigrated database is
-    refused up front with the command that fixes it, rather than failing halfway
-    through on the first INSERT.
+    发布只写入行，不创建表。数据库尚未迁移时直接拒绝并给出修复命令，而不是在
+    第一次 INSERT 时中途失败。
     """
     summary = build_publication_summary()
     await require_database_contract()

@@ -1,5 +1,3 @@
-"""Planning research accommodation prompts."""
-
 from __future__ import annotations
 
 

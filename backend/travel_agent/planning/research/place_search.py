@@ -1,5 +1,3 @@
-"""Planning research place search."""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -33,12 +31,11 @@ async def global_place_search(
     candidate_kind: Optional[str] = None,
     aliases: Optional[list[str]] = None,
 ) -> Dict[str, Any]:
-    """Tool executor returning only identities inside the requested country.
+    """只返回指定国家内的地点身份。
 
-    ``destination_latitude`` / ``destination_longitude`` must reach the primary text
-    search, not just the Overpass rung below: the text search is the rung that actually
-    answers, and without them it runs with no idea where the destination is.  Every
-    caller already supplies them.
+    ``destination_latitude`` / ``destination_longitude`` 会传给主文本检索，而
+    不只用于下方的 Overpass 回退；缺少坐标时文本检索无法判断目的地位置。
+    调用方均会提供这两个参数。
     """
     normalized_country = normalize_country_code(country_code)
     if normalized_country is None:

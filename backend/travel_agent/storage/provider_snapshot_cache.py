@@ -1,9 +1,8 @@
-"""Durable, evidence-only cache for bounded Provider fact snapshots.
+"""可复用的 Provider 事实快照缓存（Redis）。
 
-This is deliberately narrower than the workflow ``tool_cache``.  It stores a
-sanitized Provider response with its exact request scope and validity window;
-it never stores a ToolExecutionEnvelope, Candidate, Selection, or Delivery
-Bundle.  Redis loss is a cache miss, not a workflow failure.
+范围刻意比工作流 ``tool_cache`` 窄：只保存清洗后的 Provider 响应及其请求范围与
+有效期，不保存 ToolExecutionEnvelope、Candidate、Selection 或 Delivery Bundle。
+Redis 不可用只相当于缓存未命中，不影响工作流。
 """
 
 from __future__ import annotations
@@ -52,11 +51,9 @@ _FORBIDDEN_SNAPSHOT_KEYS = frozenset(
         "result_summary",
     }
 )
-# Tools whose answer is a *place identity*: low volatility, and the answer is the
-# same for everyone who asks.  amap's two POI lookups belong here for the same
-# reason Nominatim's does — a hotel's id, name and address do not move — and the
-# alias ladder is what makes it worth caching: one authored place can cost up to
-# 16 calls, all of them repeats of a question already answered.
+# 回答「地点身份」的工具：变动性低，且同一问题对所有人答案相同。amap 的两个 POI
+# 查询与 Nominatim 同理：酒店 id、名称与地址不会频繁变化。别名序列让缓存更有价值：
+# 一次 authored place 可能发起多次调用，都是已答过的问题的重复。
 _IDENTITY_TOOLS = frozenset(
     {"global_place_search", "maps_text_search", "maps_search_detail"}
 )
@@ -127,7 +124,7 @@ def _contains_forbidden_snapshot_shape(value: Any) -> bool:
 
 
 class ProviderSnapshotScope(BaseModel):
-    """All semantic dimensions required to reuse a Provider fact snapshot."""
+    """复用 Provider 事实快照所需的全部语义维度。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -205,7 +202,7 @@ class ProviderSnapshotScope(BaseModel):
 
 
 class ProviderSnapshotRecord(BaseModel):
-    """A sanitized Provider response with an explicit revalidation boundary."""
+    """清洗后的 Provider 响应及其重新验证边界。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -282,7 +279,7 @@ class ProviderSnapshotRecord(BaseModel):
         origin: Literal["live", "provider_snapshot_cache"],
         outcome: str,
     ) -> dict[str, Any]:
-        """Return audit-safe metadata without query text or Provider payload."""
+        """返回可安全审计的元数据，不含查询文本与 Provider 载荷。"""
         return {
             "origin": origin,
             "outcome": outcome,
@@ -310,7 +307,7 @@ class ProviderSnapshotLookup(BaseModel):
 
 
 class ProviderSnapshotCache:
-    """Redis-backed cache that degrades safely to an explicit live miss."""
+    """Redis 缓存；不可用时返回明确的实时未命中。"""
 
     def __init__(
         self,
@@ -393,7 +390,7 @@ class ProviderSnapshotCache:
         )
 
     async def write(self, record: ProviderSnapshotRecord) -> bool:
-        """Persist a snapshot only after the caller established evidence eligibility."""
+        """调用方确认证据资格后才写入快照。"""
         if not self._enabled:
             return False
         if record.status != "success":
@@ -457,15 +454,14 @@ def provider_snapshot_scope_for_tool(
     tool_name: str,
     arguments: dict[str, Any],
 ) -> Optional[ProviderSnapshotScope]:
-    """Build the exact cache scope for one supported Provider tool."""
+    """为一个受支持的 Provider 工具构造精确的缓存范围。"""
     if tool_name not in _SUPPORTED_TOOLS or not isinstance(arguments, dict):
         return None
     if tool_name in {"maps_text_search", "maps_search_detail"}:
-        # amap scopes by tool arguments alone: the request carries no endpoint of
-        # ours (the MCP server owns the URL) and no party or currency.  ``id`` is
-        # the detail lookup's whole question; ``keywords``/``city`` are the text
-        # search's.  ``arguments`` is in the digest too, so a new argument the
-        # server starts honouring is a cache miss rather than a stale hit.
+        # amap 仅按工具参数确定范围：请求不携带我们的 endpoint（URL 由 MCP server
+        # 持有），也没有 party 或 currency。``id`` 是详情查询的全部问题；
+        # ``keywords``/``city`` 是文本搜索的输入。``arguments`` 也进入摘要，因此
+        # server 开始使用的新参数会导致缓存未命中，而不是返回旧结果。
         return ProviderSnapshotScope(
             provider_name="amap",
             tool_name=tool_name,
@@ -505,28 +501,20 @@ def provider_snapshot_scope_for_tool(
             party=arguments.get("party") or arguments.get("party_size"),
             currency=arguments.get("currency"),
             provider_contract_version="nominatim.jsonv2",
-            # v2: the same arguments now produce a different provider request —
-            # a destination point became a ``viewbox`` on the primary search.
-            # The scope digest covers this string, so every v1 snapshot becomes
-            # unreachable at once rather than replaying an unfocused answer for
-            # arguments that would no longer produce it.
+            # v2：相同参数现在会产生不同的 Provider 请求——目的地坐标变成主搜索的
+            # ``viewbox``。范围摘要包含这个版本串，因此所有 v1 快照会同时失效。
             #
-            # v3: each result now carries ``destination_distance_km``, and
-            # the layers that decide which places a worker may select read it off
-            # the record.  A replayed v2 body has no such key, and "key absent"
-            # legitimately means "distance unanswerable" — so replaying one would
-            # silently re-open the very hole this closes, for up to the 7-day TTL.
-            # Hard break, no double read.
+            # v3：每条结果新增 ``destination_distance_km``，判断 worker 可选地点的
+            # 层会读取它。v2 的响应没有该键，而「键缺失」表示「距离不可判定」，
+            # 重放低版本响应会让该问题重新出现。这里硬切换，不读取低版本。
             payload_schema_version="global_place_search.v3",
             arguments=copy.deepcopy(arguments),
             auth_boundary="none",
         )
-    # ``global_route_search`` has two upstreams split by geography (amap inside the
-    # China coordinate box, Transitous elsewhere), and the scope has to name the one
-    # that will actually answer.  Reading it off the same box the executor reads
-    # keeps one definition; hardcoding "transitous" here would stamp a false
-    # provenance on every mainland route record — the endpoint, the contract version
-    # and the supplier name would all describe a provider that never saw the query.
+    # ``global_route_search`` 有两个按地理范围分工的上游（中国坐标框内为 amap，
+    # 其余为 Transitous），范围必须标注实际回答的那个。读取同一个坐标判断保持
+    # 单一定义；若这里写死 "transitous"，中国大陆路线记录会带上错误的 provider
+    # 名称、endpoint 与合同版本。
     china_route = all(
         within_china_coordinate_box(longitude, latitude)
         for longitude, latitude in (
@@ -562,10 +550,9 @@ def provider_snapshot_scope_for_tool(
         party=arguments.get("party") or arguments.get("party_size"),
         currency=arguments.get("currency"),
         provider_contract_version="amap.direction-v3" if china_route else "transitous.motis-v6",
-        # v2: a mainland route is now answered by amap and normalized from a
-        # different provider shape, so a replayed v1 body under the same arguments
-        # would be a Transitous answer for a query Transitous can no longer be asked.
-        # Hard break for both branches at once; no double read.
+        # v2：中国大陆路线改由 amap 回答并按不同的 Provider 结构归一化，因此在
+        # 相同参数下重放 v1 响应会得到 Transitous 对一条它已无法回答的查询的答案。
+        # 两个分支同时硬切换，不读取低版本。
         payload_schema_version="global_route_search.v2",
         arguments=copy.deepcopy(arguments),
         auth_boundary="none",
@@ -577,7 +564,7 @@ def build_provider_snapshot_record(
     scope: ProviderSnapshotScope,
     envelope: dict[str, Any],
 ) -> Optional[ProviderSnapshotRecord]:
-    """Build a record from a post-Gateway envelope, or reject it safely."""
+    """从 Gateway 处理后的 envelope 构建记录；不满足条件时返回 None。"""
     metadata = envelope.get("metadata") if isinstance(envelope.get("metadata"), dict) else {}
     result = envelope.get("sanitized_result")
     if (
@@ -591,10 +578,9 @@ def build_provider_snapshot_record(
         or result.get("success") is not True
         or result.get("error")
         or result.get("identity_fallback_failure")
-        # A provider that answered "nothing found" is a successful answer
-        # (tools/result.py: ToolResultOutcome.EMPTY_SUCCESS), so such envelopes
-        # now reach this hook.  Not cacheable, but also not an error: reject it
-        # here so ``write`` never has to raise for an ordinary empty round.
+        # Provider 回答「没有找到」也是成功答案（tools/result.py:
+        # ToolResultOutcome.EMPTY_SUCCESS），这类 envelope 会到达这里。它不可缓存，
+        # 但也不是错误：在此拒绝，``write`` 无需为普通空结果抛异常。
         or not _provider_snapshot_has_content(result)
     ):
         return None

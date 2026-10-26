@@ -1,4 +1,4 @@
-"""Generate a structured travel-style preset with the configured fast model."""
+"""使用配置的 fast 模型生成结构化旅行风格预设。"""
 
 
 async def generate_preset_instructions(description: str) -> dict:

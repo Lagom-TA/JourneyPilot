@@ -35,4 +35,4 @@ def test_matrix_labels_do_not_fabricate_live_metrics():
     assert len(rows) == 24
     assert all(row["measurement"] == "offline_fixture" for row in rows)
     assert all(row["input_tokens"] is None and row["cost_usd"] is None for row in rows)
-    assert len({row["stable_system_sha256"] for row in rows}) == 2  # full/deferred catalogs
+    assert len({row["stable_system_sha256"] for row in rows}) == 2  # full 与 deferred 两套工具目录

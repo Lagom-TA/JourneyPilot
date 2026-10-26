@@ -1,8 +1,8 @@
 """API 进程唯一被允许调用的数据库生命周期模块：只读合同校验。
 
-只跑 SELECT，回答「版本号是什么、结构对不对、缺什么」。结论进启动日志，并决定
-`GET /api/health/ready` 放不放行。真正「不启动」的闸门在编排器一侧
-（`journeypilot migrate` 不通过就不 exec API）。
+只执行 SELECT，回答版本号是什么、结构对不对、缺什么。结论进入启动日志，并决定
+`GET /api/health/ready` 是否放行。真正阻止 API 启动的判断在编排器一侧
+（`journeypilot migrate` 不通过就不启动 API）。
 """
 
 from __future__ import annotations

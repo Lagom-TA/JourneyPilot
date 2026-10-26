@@ -1,4 +1,4 @@
-"""Memory lifecycle."""
+"""记忆生命周期。"""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ class ForgettingAuditStatus(str, Enum):
 
 @dataclass(frozen=True)
 class MemoryRetentionPolicy:
-    """Deterministic retention policy for long-term memory facts."""
+    """长期记忆事实的确定性保留策略。"""
 
     default_ttl_days: int = 180
     category_ttl_days: Dict[str, int] = field(
@@ -149,7 +149,7 @@ _SENSITIVE_KEY_RE = re.compile(
 
 
 def sanitize_forgetting_metadata(value: Any, *, depth: int = 0) -> Any:
-    """Return audit-safe JSON without raw memory content or sensitive values."""
+    """返回脱敏 JSON，不包含原始记忆内容或敏感值。"""
 
     if value is None or isinstance(value, (int, float, bool)):
         return value
@@ -184,15 +184,13 @@ def default_forgetting_boundary(
     graph_cleared: bool = False,
     session_anchor_cleared: bool = False,
 ) -> Dict[str, Any]:
-    """这次删除到底动了什么，落进 ``memory_forgetting_audits.boundary``。
+    """记录本次删除实际涉及的边界，写入 ``memory_forgetting_audits.boundary``。
 
-    **这是一份合规记录，每一位的名字都得对得起它的内容。** 全仓没有任何代码按
-    这些键取值，所以名字错了不会有人报错，只会一直记下去 —— 读账的是人
-    （合规、用户导出、事后追责），不是代码。
+    这些字段供合规审计、用户导出与事后追查阅读，没有代码按键取值，因此字段名必须
+    准确描述实际清理的内容。
 
-    ``auto_portrait_cleared`` 只意味着 ``auto_portrait`` 被清：
-    六组手填偏好与常用出发地一个字都没动，profile 行也
-    还在。叫 profile_cleared 就是在记假账。
+    ``auto_portrait_cleared`` 仅表示 ``auto_portrait`` 被清空；六组手填偏好与
+    常用出发地不受影响，profile 行仍然存在。
     """
     return {
         "physical_delete": physical_delete,

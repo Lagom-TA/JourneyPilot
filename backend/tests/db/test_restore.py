@@ -1,8 +1,7 @@
 """恢复：验证通过才切换，失败绝不动当前数据库。
 
-dev docs 02 §6 的那条禁令（「不要直接覆盖当前 volume 后祈祷成功」）只有一种验证方式：
-**让恢复失败，然后检查当前数据库有没有被改**。所以这里的重点不是「恢复成功」那条路，
-而是坏备份、坏 checksum、活动连接这三种失败下当前数据仍然完好。
+只有让恢复失败并检查当前数据库未被修改，才能验证「不要直接覆盖当前数据库」这一约束。
+重点不是恢复成功的路径，而是坏备份、坏 checksum、活动连接这三种失败下当前数据仍然完好。
 """
 
 from __future__ import annotations
@@ -61,7 +60,7 @@ def test_restore_replaces_database_and_retains_the_old_one(
             label="before-change",
         )
 
-    # 备份之后又写了一行：恢复必须把它抹掉（回到备份那一刻）。
+    # 备份之后又写了一行：恢复必须删除它（回到备份那一刻）。
     _add_profile(temp_database, "third")
     assert _profile_count(temp_database) == 3
 
@@ -144,7 +143,7 @@ def test_active_connections_block_the_switch(
     assert "--terminate-active" in str(excinfo.value)
     assert _profile_count(temp_database) == 1
 
-    # staging 库必须已经被收掉，不能留一堆 `_restore_<时间戳>` 垃圾。
+    # staging 库必须已经被删除，不能留下 `_restore_<时间戳>` 残留库。
     with connect_maintenance(temp_database) as conn:
         with conn.cursor() as cur:
             cur.execute(

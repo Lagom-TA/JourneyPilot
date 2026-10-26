@@ -54,7 +54,7 @@ async def _author_connector_routes(
     llm: Any,
     gaps: List[LocalConnectorGap],
 ) -> Dict[str, AuthoredRoute]:
-    """Write one door-to-door connector per adjacency with no Provider route."""
+    """为没有 Provider 路线的每段相邻关系撰写一条门到门接驳。"""
     gap_ids = [gap.gap_id for gap in gaps]
     described = [
         {

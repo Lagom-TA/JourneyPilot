@@ -19,7 +19,7 @@ def _composition_response_schema(
     skeleton_only: bool = False,
     strict_wire: bool = True,
 ) -> Dict[str, Any]:
-    """Bind each placement branch to the selected candidates of the same kind."""
+    """把每种落位分支绑定到同类型的已选候选。"""
     schema = ItineraryCompositionDraft.model_json_schema()
     definitions = schema.get("$defs", {})
 
@@ -44,8 +44,7 @@ def _composition_response_schema(
             for child in value:
                 remove_branch(child, ref, mapping_key)
 
-    # The place-provider resolution step owns every ``resolved_*`` field; it is
-    # never model input.
+    # 地点 Provider 解析步骤负责全部 ``resolved_*`` 字段，模型不能填写。
     for def_name in _AUTHORED_PLACE_DEFS + ("AuthoredRoute",):
         authored_schema = definitions.get(def_name)
         if not isinstance(authored_schema, dict):
@@ -73,7 +72,7 @@ def _composition_response_schema(
             placement_schema.get("properties", {}).pop("connector_gap_id", None)
         properties = placement_schema.get("properties", {})
         if candidate_kind == "transport" and skeleton_only:
-            # The skeleton carries no local connectors at all.
+            # 骨架不包含任何市内接驳。
             properties.pop("authored_route", None)
         if ids_by_kind is not None:
             selected = ids_by_kind[candidate_kind]
@@ -95,7 +94,7 @@ def _composition_response_schema(
         if strict_wire:
             placement_schema["required"] = list(properties)
         else:
-            # Require the discriminator, but keep mutually exclusive origins optional.
+            # 必须保留判别字段，但互斥的来源字段保持可选。
             required = set(placement_schema.get("required") or [])
             required.add("placement_kind")
             placement_schema["required"] = [
@@ -109,5 +108,5 @@ def _composition_response_schema(
             if lodging_ids
             else {"type": "array", "items": {"type": "string"}, "maxItems": 0}
         )
-    # Strict providers need a legalized union; parsing still enforces its discriminator.
+    # 严格 JSON Schema 需要合法化的联合类型；解析阶段仍校验判别字段。
     return as_strict_schema(schema) if strict_wire else schema

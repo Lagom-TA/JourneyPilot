@@ -7,7 +7,7 @@ from .errors import ExecutionAlreadyOwned
 
 
 class RequestExecutionLease:
-    """Lease-loss callbacks target only this request's executor handle."""
+    """租约丢失回调只作用于本次请求的执行句柄。"""
 
     def __init__(self, execution_store):
         self.execution_store = execution_store
@@ -19,8 +19,10 @@ class RequestExecutionLease:
         *,
         checkpoint_id: Optional[str] = None,
     ) -> RunLeaseKeeper:
-        """抢下这个 Run 的执行权。抢不到就不开始 —— 两个执行器同时跑一个 Run 会写出
-        两份互相覆盖的状态，而用户看到的是随机一份。"""
+        """获取该 Run 的执行权；获取失败则不启动。
+
+        两个执行器同时运行一个 Run 会写入两份互相覆盖的状态，最终展示哪一份不确定。
+        """
 
         lease_settings = get_settings().run_control
         keeper = RunLeaseKeeper(

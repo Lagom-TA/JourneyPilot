@@ -1,4 +1,4 @@
-"""Durable background jobs：去重入队、租约过期后重新可领、退避与死信、清理边界。
+"""持久化后台任务：去重入队、租约过期后重新可领、退避与死信、清理边界。
 
 这些不变量都靠真实 PostgreSQL 才成立：`(job_type, dedupe_key)` 唯一约束、
 `FOR UPDATE SKIP LOCKED` 的领取、以及全部以数据库 `NOW()` 为准的租约判定。
@@ -223,7 +223,7 @@ async def test_oldest_pending_seconds_reports_backlog(migrated_async_database):
 
 
 async def test_the_same_fact_from_the_same_turn_lands_once(migrated_async_database):
-    """至少一次执行的代价由业务写入这一侧兜住：同一条来源消息的同一句事实只有一行。"""
+    """至少一次执行的代价由业务写入侧承担：同一条来源消息的同一句事实只有一行。"""
 
     from travel_agent.memory.extraction_jobs import memory_fact_digest
 

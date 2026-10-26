@@ -1,4 +1,4 @@
-"""Conversation answer prompts."""
+"""会话回答提示词。"""
 
 from __future__ import annotations
 

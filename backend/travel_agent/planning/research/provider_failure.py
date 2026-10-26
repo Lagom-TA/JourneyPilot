@@ -1,4 +1,4 @@
-"""Pure provider failure classification for research and orchestration."""
+"""调研与编排共用的 Provider 失败分类；分类结果不构成证据。"""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ _EXPLICIT_EXTERNAL_FAILURE_MARKERS = (
 
 
 def classify_provider_failure(value: object) -> ProviderFailureClassification:
-    "Classify an external/provider failure without treating it as evidence."
+    """归类外部或 Provider 失败，且不把失败文本当作证据。"""
     raw = str(value or "")
     text = raw.casefold()
     if text.startswith(PREFIX_PROVIDER_DETERMINISTIC):
@@ -116,7 +116,7 @@ def classify_provider_failure(value: object) -> ProviderFailureClassification:
 
 
 def is_provider_or_model_failure(value: object) -> bool:
-    "Return whether a worker failure carries an explicit external/model signal."
+    """判断 worker 失败是否带有明确的外部或模型失败信号。"""
     text = str(value or "").casefold()
     if not text:
         return False

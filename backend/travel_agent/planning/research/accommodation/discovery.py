@@ -1,5 +1,3 @@
-"""Planning research accommodation discovery."""
-
 from __future__ import annotations
 
 import logging
@@ -37,7 +35,7 @@ async def discover_deterministic_hotels(
     planned_queries: List[ResearchQuery],
     executed_query_ids: List[str],
 ) -> bool:
-    """Ground lodging identity for every controlled destination from real Provider data."""
+    """用真实 Provider 数据为每个受控目的地确定住宿地点身份。"""
     identity = state.controlled_trip_identity or {}
     if not isinstance(identity, Mapping):
         logger.info(
@@ -85,7 +83,7 @@ async def discover_deterministic_hotels(
             if query.query_kind is ResearchQueryKind.GENERIC_FALLBACK
         ]
         injected = False
-        # These provider paths are mutually exclusive, not fallbacks for each other.
+        # 两种 Provider 路径互斥，不能互相作为回退。
         provider = (
             "amap"
             if str(dest.get("country_code") or "").lower() == "cn"

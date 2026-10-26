@@ -28,8 +28,7 @@ class RunBudgetSnapshot(StrictModel):
     """Run 授权时封存的上限。跨进程的最终事实，随 checkpoint 一起走。"""
 
     policy_version: str = RUN_BUDGET_POLICY_VERSION
-    # Missing in old checkpoints means observation only, so resumed runs also
-    # stop inheriting the former implicit quotas.
+    # 旧 checkpoint 缺少该字段时按只观察处理，恢复的 Run 也不会继承隐式配额。
     enforce_limits: bool = False
     max_llm_calls: Optional[int] = Field(default=None, ge=1)
     max_tool_calls: Optional[int] = Field(default=None, ge=1)
@@ -92,8 +91,8 @@ def exhausted_dimension(
     第 101 次调用之后再发现超了 100 次上限，那 101 次已经花掉了。
 
     费用这一维在 ``cost_complete=False`` 时不参与判定：价格表没命中的调用让费用低报，
-    而一个低报的读数拦不住真正的超支，却会在别处误伤。低报这件事本身由
-    ``cost_complete`` 报出去（readiness / 成本摘要），不在这里假装成一个上限。
+    而一个低报的读数拦不住真正的超支，却会在别处误伤。低报本身由
+    ``cost_complete`` 报给 readiness 与成本摘要，不在这里当作上限。
     """
 
     if not snapshot.enforce_limits:

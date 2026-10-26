@@ -61,11 +61,11 @@ class PreparedChat:
 
 
 def _resume_blocked_by_projection_failure(detail: Any) -> bool:
-    """这个 Run 是否死于公开投影失败，读 durable 的 last_error_code。
+    """判断该 Run 是否因公开投影失败而终止，读取持久化的 last_error_code。
 
-    finalizer 落 FAILED 时把失败分类写进 ``last_error_code``；投影失败的
-    Run 的 checkpoint 内容不会变，继续跑只会得到同一个结果，所以在进入
-    恢复流程之前直接拒绝。
+    finalizer 置为 FAILED 时把失败分类写入 ``last_error_code``；投影失败的 Run
+    的 checkpoint 内容不会变化，继续运行只会得到相同结果，因此在进入恢复流程
+    之前直接拒绝。
     """
 
     run = getattr(detail, "run", None)
@@ -446,7 +446,7 @@ async def prepare_chat(
 
 
 def _extract_interrupt_payload(value: Any) -> Dict[str, Any]:
-    """Normalize LangGraph v1 __interrupt__ update payloads for SSE."""
+    """将 LangGraph v1 的 __interrupt__ 更新载荷归一化为 SSE 格式。"""
     interrupts = list(value or []) if isinstance(value, (list, tuple)) else [value]
     first = interrupts[0] if interrupts else None
     payload = getattr(first, "value", first)

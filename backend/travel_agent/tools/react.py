@@ -45,7 +45,7 @@ _SUCCEEDED_TOOL_STATUSES = frozenset(
 
 
 def _normalize_tool_arguments(arguments: Dict[str, Any]) -> str:
-    """Return a stable JSON representation for idempotent tool replay keys."""
+    """返回参数用于幂等工具重放键的稳定 JSON 表示。"""
     return json.dumps(
         arguments or {},
         sort_keys=True,
@@ -108,7 +108,7 @@ async def streaming_react_loop(
     last_text_content = ""
     tool_context = tool_context or {}
 
-    # Only this invocation may reuse envelopes; durable replay requires journal checks.
+    # 只有本次调用可以复用 envelope；跨轮重放需要 journal 校验。
     invocation_cache: Dict[str, Any] = {}
     allowed_names = {item["schema"]["function"]["name"] for item in available_tools}
 

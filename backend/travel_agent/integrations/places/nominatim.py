@@ -1,4 +1,4 @@
-"""Integrations places nominatim."""
+"""Nominatim 的搜索与 OSM id 查询。"""
 
 from __future__ import annotations
 
@@ -30,25 +30,19 @@ async def search_nominatim_raw(
     focus_longitude: Optional[float] = None,
     client: Optional[httpx.AsyncClient] = None,
 ) -> NominatimSearchObservation:
-    """Return the complete bounded provider response for one global place query.
+    """返回一次全球地点查询的完整有界 Provider 响应。
 
-    Every caller of the ``/search`` endpoint goes through here — the intake
-    route, the authored-place ladder and the ``global_place_search`` tool — so
-    this is where reuse belongs. The answer carries its own ``observed_at``: a
-    reused body reports the instant the provider produced it, and the caller is
-    responsible for publishing that instead of ``now``.
+    所有调用 ``/search`` 的路径（intake 路由、authored-place 查询序列与
+    ``global_place_search`` 工具）都经过这里，因此缓存复用也放在这里。返回结果
+    自带 ``observed_at``：复用缓存时它是 Provider 生成该响应的时刻，调用方应发布
+    该时间，而不是 ``now``。
 
-    ``focus_latitude`` / ``focus_longitude`` are the controlled destination's own
-    provider point, when the caller has one.  They become a soft
-    :func:`destination_focus_viewbox`, which is why they belong here and not at
-    each call site: the box is derived from the point exactly once, and the two
-    callers that hold a destination point (the ``global_place_search`` tool and
-    the authored-place ladder) cannot end up focusing differently.  The intake
-    route is the caller that legitimately has none — it is the request that
-    *resolves* the destination, so there is no destination to focus on yet.
+    ``focus_latitude`` / ``focus_longitude`` 是受控目的地自身的 Provider 坐标。
+    它们会转换成 :func:`destination_focus_viewbox`；转换只在这里做一次，持有目的地
+    坐标的两个调用方（``global_place_search`` 工具与 authored-place 查询序列）因此不会
+    得到不同的聚焦范围。intake 路由可以没有坐标：它正是要解析目的地的请求。
 
-    Half a point is not a point: a lone latitude focuses nothing rather than
-    silently focusing on the prime meridian.
+    只有半个坐标时不聚焦，避免默认聚焦到本初子午线。
     """
     normalized_query = " ".join((query or "").split())
     if not normalized_query:
@@ -121,11 +115,10 @@ async def lookup_nominatim_osm_ids(
     accept_language: Optional[str] = "zh-CN,zh,en",
     client: Optional[httpx.AsyncClient] = None,
 ) -> list[Dict[str, Any]]:
-    """Fetch complete address/country/type facts for exact OSM identities.
+    """为精确的 OSM 身份读取完整地址、国家与类型事实。
 
-    ``accept_language`` is the provider's own parameter name: the default is the
-    identity posture the rest of the pipeline stores places under, ``None`` omits
-    the parameter so the provider answers in each place's local script.
+    ``accept_language`` 是 Provider 自己的参数名：默认值是流水线其余部分存储地点
+    时使用的身份语言；传 ``None`` 时省略该参数，由 Provider 按各地本地文字回答。
     """
     if not osm_ids:
         return []
@@ -181,10 +174,10 @@ _OSM_LOOKUP_PREFIXES = {"node": "N", "way": "W", "relation": "R"}
 
 
 def osm_lookup_id(place_id: str) -> Optional[str]:
-    """Convert a stable ``osm:{type}:{id}`` place_id into a ``/lookup`` token.
+    """把 ``osm:{type}:{id}`` 形式的 place_id 转成 ``/lookup`` token。
 
-    The inverse of ``stable_place_id_osm``; non-OSM namespaces (12306, amap POI)
-    have no OSM object and fail closed with None.
+    与 ``stable_place_id_osm`` 互逆；非 OSM 命名空间（12306、amap POI）没有
+    对应 OSM 对象，返回 None。
     """
     match = _OSM_PLACE_ID.fullmatch(str(place_id or "").strip())
     if match is None:
@@ -195,17 +188,15 @@ def osm_lookup_id(place_id: str) -> Optional[str]:
 async def lookup_typed_addresses_bilingual(
     place_ids: list[str],
 ) -> Dict[str, list[Dict[str, Any]]]:
-    """Return each place's typed ``address`` dicts in local script and in English.
+    """返回每个地点的结构化 ``address``，分别使用本地文字与英文。
 
-    Two batched provider calls total, whatever the number of places: one without
-    ``accept-language`` (each place answers in its own script) and one pinned to
-    English.  Callers need both because a locality name only helps cross-checking
-    an external page when it is spelled the way that page spells it — a Paris
-    review page writes "Rue Saint-Dominique", never the zh-CN "圣多米尼克路" the
-    stored identity carries.
+    无论地点数量多少，总共两次批量 Provider 调用：一次不带
+    ``accept-language``（各地按本地文字回答），一次固定为英文。调用方需要两份，
+    因为只有当地名的拼写与外部网页一致时，它才能用于交叉核对；例如巴黎的评论页
+    写 "Rue Saint-Dominique"，不会写存储身份里的中文译名。
 
-    Provider failures propagate as ``NominatimPlaceSearchError``: an empty answer
-    and an unavailable provider are different facts, and the caller decides.
+    Provider 失败以 ``NominatimPlaceSearchError`` 传播：空结果与 Provider 不可用
+    是不同事实，由调用方决定如何处理。
     """
     lookup_ids: Dict[str, str] = {}
     for place_id in place_ids:

@@ -9,15 +9,15 @@ def resolve_agent_assignment(
     base_name: str,
 ) -> Tuple[str, Dict[str, Any]]:
     """
-    为 Worker 节点查找正确的任务分配。
+    为 Worker 节点查找当前轮次的任务分配。
 
-    精炼/补研轮次中，Candidate Gate 写入的 assignment key 带有 round suffix
-    （如 destination_researcher_r2）。Worker 节点用 base_name 注册，需要找到
-    当前轮次对应的 assignment。
+    精炼/补研轮次的 assignment key 带轮次后缀（如 destination_researcher_r2），
+    而 Worker 节点以 base_name 注册；存在 `_rN` 形式的 key 时取编号最大者，
+    否则退回 base_name。
 
     返回 (output_key, assignment_dict)：
     - output_key: 存储输出时使用的 key（base_name 或 base_name_rN）
-    - assignment_dict: 完整的 capability assignment 合同
+    - assignment_dict: 完整的 capability assignment 契约
     """
 
     def require_assignment(key: str) -> Tuple[str, Dict[str, Any]]:

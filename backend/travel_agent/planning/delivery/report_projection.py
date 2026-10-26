@@ -1,4 +1,4 @@
-"""Planning delivery report projection."""
+"""交付报告的投影。"""
 
 from __future__ import annotations
 
@@ -55,14 +55,11 @@ from typing import Sequence
 def _reportable_selection_options(
     slots: Sequence[SelectionSlot],
 ) -> list[list[SelectionOption]]:
-    """Keep every decision, but publish each unused candidate at most once.
+    """保留每个待决策项，但同一未选候选只发布一次。
 
-    Workspace slots are contextual and may lawfully offer the same candidate in
-    more than one position.  The report's ``其它合格选择`` section is flattened,
-    though, so repeating that candidate there is duplicate product content.  A
-    candidate already selected anywhere in the itinerary is not an "other" choice
-    either.  This projection-only filter preserves the richer workspace mutation
-    model while giving the public report one unambiguous list.
+    Workspace 的 selection slot 与上下文相关，同一候选可以合法出现在多个位置；
+    报告中的「其它合格选择」是平铺列表，重复出现即为重复内容。已在行程中选中的
+    候选同样不算「其它」。该过滤只作用于投影层。
     """
 
     selected_candidate_ids = {
@@ -115,7 +112,7 @@ _BOOKING_CONFIRMATION_TITLE_MARKERS = (
 
 
 def _public_selection_text(value: str) -> str:
-    """Keep model planning rationale while hiding orchestration vocabulary."""
+    """保留模型的选点理由，同时隐藏编排用词。"""
     return public_selection_text(value)
 
 
@@ -171,7 +168,7 @@ _UNBOUND_LONG_DISTANCE_NOTE = (
 def _controlled_trip_identity(
     workspace: TripWorkspaceV2,
 ) -> Mapping[str, object] | None:
-    """The Draft-authored trip identity every composed Workspace carries."""
+    """返回每个已组合 Workspace 携带的 Draft 行程身份。"""
 
     for anchor in workspace.user_input_anchors:
         if (
@@ -186,12 +183,10 @@ def _controlled_trip_identity(
 def _long_distance_legs_by_date(
     itinerary: StructuredItineraryV2,
 ) -> dict[date, list[TransportLeg]]:
-    """Index the delivered long-distance legs by the Day they are projected on.
+    """按投影所在 Day 索引已交付的长途交通段。
 
-    ``StructuredItineraryV2.validate_references`` already forces every
-    long-distance leg onto the planned Day(s) carrying its service dates, so
-    the Day timeline is the server-anchored place to read a leg's service date
-    from — no leg reaches a reader outside its own Day.
+    ``StructuredItineraryV2.validate_references`` 已要求每个长途段落在承载其
+    服务日期的 Day 上，因此从 Day 时间线读取服务日期即可。
     """
 
     legs = {
@@ -213,16 +208,12 @@ def _long_distance_legs_by_date(
 def _long_distance_path_notes(
     workspace: TripWorkspaceV2, generated_at: datetime
 ) -> list[str]:
-    """Tell the reader when the round trip has no usable path, or an unbound one.
+    """在往返缺少可用路径或路径未绑定班次时给出提示。
 
-    ``build_required_long_distance_legs`` is the same authority the Planner and
-    the Candidate Gate use to decide what the Run owed the traveller, so the
-    report never invents a responsibility the Run was not given.  Only the
-    ``leg_role``/``service_date`` of each required leg is read here, which is
-    why ``cross_day_return_required`` — a research-scope detail with no bearing
-    on which legs exist — is not consulted.  ``missing_long_distance_leg_roles``
-    is the single judgement of what went undelivered, shared verbatim with the
-    TripRun completion audit so the two never disagree about one Workspace.
+    必需的交通段由 ``build_required_long_distance_legs`` 判定，报告不会增加该
+    Run 未承担的责任；这里只读取每段的 ``leg_role``/``service_date``，不参考与
+    具体交通段无关的 ``cross_day_return_required``。哪些段未交付由
+    ``missing_long_distance_leg_roles`` 统一判定。
     """
 
     identity = _controlled_trip_identity(workspace)
@@ -260,17 +251,11 @@ def _long_distance_path_notes(
 
 
 def _report_destinations(workspace: TripWorkspaceV2) -> list[ReportDestination]:
-    """Resolve every internal destination id to its controlled public name.
+    """把每个内部目的地 id 解析为受控的公开地名。
 
-    The public name is the place's ``name``, **not** its ``display_name``.
-    A provider ``display_name`` is a full administrative path — ``深圳市, 广东省, 中国``
-    — and this value is the subject of a sentence on three product surfaces: the
-    report cover's destination readout, every day heading, and each weather row.
-    Printed there it reads ``深圳市, 广东省, 中国 · 交通日``: a whole address where a
-    place name belongs.
-
-    ``admin_path`` stays on the anchor for anyone who genuinely needs to
-    disambiguate, so nothing is lost by not carrying the joined string here.
+    公开地名取 anchor 的 ``name`` 而非 provider 的 ``display_name``：后者是
+    ``深圳市, 广东省, 中国`` 这样的完整行政路径，不适合作为报告封面、每日标题
+    和天气行的主语。需要消歧时可继续读取 anchor 上的 ``admin_path``。
     """
 
     names: dict[str, str] = {}
@@ -322,13 +307,10 @@ def _weather_observed_at(
     fact_index: Mapping[str, FactAssertion],
     snapshot_retrieved_at: datetime,
 ) -> datetime | None:
-    """When this Day's weather was actually observed.
+    """该 Day 天气的实际观测时间。
 
-    The per-field assertions carry the provider's own retrieval time, which is the
-    closest thing to an observation timestamp the pipeline has.  A Day whose
-    assertions are not in this snapshot falls back to the snapshot's retrieval,
-    which is still a truthful "obtained no later than".  A Day with no weather has
-    no observation, and says so rather than borrowing one.
+    优先取逐字段断言携带的 provider 检索时间；断言不在本快照中时退回快照的检索
+    时间。没有天气数据的 Day 返回 ``None``。
     """
 
     if day.data_kind == "unavailable":
@@ -345,20 +327,13 @@ def _weather_observed_at(
 def _weather_data_state(
     day: WeatherDayContext, historical_days: frozenset[tuple[str, date]]
 ) -> str:
-    """Whether the Day shows current weather or historical data, decided once.
+    """判断 Day 展示当前天气还是历史数据，只在此处判定一次。
 
-    Three ways a Day is historical, and they are all the same statement to a
-    reader — "what you are looking at is not from this refresh".  A seasonal
-    baseline is month-level climatology, not a forecast for the traveller's date.
-    A Day whose provider came back unavailable keeps the previous snapshot's
-    values.  And a Day that still carries an impact this refresh did not
-    re-evaluate is showing a forecast alongside a carried-forward history.
-
-    The last two are known only to the refresh that produced the snapshot, so it
-    passes them in for the length of one call; nothing about them is stored, and
-    every refresh re-derives them from set arithmetic.  The decision is made here,
-    once, not by each of the three renderers — otherwise the workspace badge, the
-    report and the PDF could reach different verdicts about one Day.
+    三种情况都表示数据并非本次刷新所得：月度气候基线不是出行日期的预报；
+    provider 不可用的 Day 保留上一快照的值；本次刷新未重新评估的天气影响保留
+    上一快照的结论。后两种情况只在产生快照的那次调用内由 refresh 传入，不写入
+    状态。三个渲染方共用此判定，避免 workspace 徽标、报告和 PDF 对同一 Day
+    给出不同结论。
     """
 
     if day.data_kind == "seasonal_baseline":
@@ -369,7 +344,7 @@ def _weather_data_state(
 
 
 def _public_report_title(title: str) -> str:
-    """Keep a formal delivery document from implying a reservation record."""
+    """避免正式交付文档的标题被读作预订记录。"""
 
     if any(
         marker in title.casefold() for marker in _BOOKING_CONFIRMATION_TITLE_MARKERS
@@ -466,7 +441,7 @@ def _entity_block(
 
 
 def _preparation_notes(itinerary: StructuredItineraryV2) -> list[str]:
-    """Name unresolved preparations without claiming the trip has been booked."""
+    """列出尚未完成的准备事项，不暗示行程已预订。"""
     notes: list[str] = []
     for entity in [
         *itinerary.visit_stops,

@@ -1,5 +1,3 @@
-"""Planning research prompts."""
-
 from __future__ import annotations
 
 import json
@@ -66,7 +64,7 @@ def build_research_packet_prompt(
     state: Any = None,
     recommended_tools: Sequence[str] = (),
 ) -> ResearchPrompt:
-    """``candidate_limit`` is required on purpose: it is the schema's number."""
+    """``candidate_limit`` 必须显式传入，取值与包内 schema 的候选上限一致。"""
     schema = _packet_schema()
     nomination = _KNOWLEDGE_BASE_NOMINATION.get(worker_kind)
     nomination_clause = f"\n- {nomination}" if nomination else ""

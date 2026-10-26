@@ -1,4 +1,4 @@
-// Deterministic component fixture. No model or provider requests are made.
+// 确定性的组件 fixture，不调用模型或 provider。
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ThinkingChain } from '../../src/features/chat/components/ThinkingChain';

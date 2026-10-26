@@ -1,4 +1,4 @@
-"""Runtime command contracts."""
+"""运行控制命令的类型、状态与摘要规则。"""
 
 from __future__ import annotations
 

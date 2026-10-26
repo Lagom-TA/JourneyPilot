@@ -3,8 +3,7 @@
 支持 Markdown / TXT / JSON / PDF / DOCX 格式的知识库数据导入。
 
 PDF/DOCX 走 `document_parse.py`：批量导入与上传共用同一组输入边界与同一个受限
-解析子进程。给批量那一路开一条没有上限的旁路，等于让「本地目录」成为绕过全部
-边界的入口。
+解析子进程，避免批量导入绕过上传时施加的限制。
 """
 
 from __future__ import annotations
@@ -141,7 +140,7 @@ class DocumentLoader:
             raise ValueError(f"文档解析被拒（{exc.code}）：{path.name}") from exc
         if not has_indexable_text(parsed.text):
             # 扫描版 PDF 是这条路上最常见的一种：pypdf 不报错、逐页返回空串。
-            # 不拦的话它变成一次「成功索引 0 个块」，还被计进 indexed。
+            # 不拦截时会得到一次「成功索引 0 个块」，并被计进 indexed。
             raise ValueError(f"未提取到可索引正文：{path.name}")
         if parsed.truncated:
             logger.warning("批量导入正文被截断 [%s]", path)

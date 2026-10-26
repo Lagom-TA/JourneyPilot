@@ -1,6 +1,6 @@
-"""Verify only the changed ledger table in a disposable PostgreSQL cluster.
+"""在一次性 PostgreSQL 集群中只验证本次涉及的台账表。
 
-No connection to JourneyPilot's configured database; no model API calls.
+不连接 JourneyPilot 配置的数据库，也不调用模型 API。
 """
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ async def check_store(sock_dir):
             await store.record_calls([record], pricing=[price])
             await store.record_calls([record], pricing=[price])
             calls = await store.list_calls('run_probe')
-            assert len(calls) == 2  # one preserved legacy row and one exact row
+            assert len(calls) == 2  # 一行保留为旧格式，一行是完整格式
             exact = next(call for call in calls if call.id == 'call_exact')
             assert exact.cache_write_input_tokens == 30000
             assert exact.attempt_number == 2 and exact.logical_call_id == 'logical'
@@ -86,7 +86,7 @@ async def check_store(sock_dir):
                 raise AssertionError('Conflicting replay was accepted')
             summary = await store.run_summary('run_probe')
             assert summary['total_cache_write_input_tokens'] == 30000
-            assert summary['cost_complete'] is False  # legacy row remains incomplete
+            assert summary['cost_complete'] is False  # 旧格式行缺少完整计量
             RESULT['sql_store_roundtrip'] = {
                 'row_count': len(calls), 'cache_write_tokens': exact.cache_write_input_tokens,
                 'attempt_number': exact.attempt_number, 'mixed_bucket_cost_usd': exact.cost_usd,

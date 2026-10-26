@@ -42,7 +42,7 @@ def _lineage(
 
 
 def _authored_lineage() -> EntityLineage:
-    """The only lineage an authored entry may carry."""
+    """撰写条目唯一可以携带的来源标记。"""
     return EntityLineage(lineage_kind="authored_entity")
 
 

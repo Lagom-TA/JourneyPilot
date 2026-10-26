@@ -1,4 +1,4 @@
-"""Real readiness composition behind fake dependency I/O boundaries."""
+"""真实 readiness 组合逻辑，依赖项的 I/O 用假实现。"""
 
 from contextlib import asynccontextmanager
 from types import SimpleNamespace

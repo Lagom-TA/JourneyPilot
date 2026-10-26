@@ -29,7 +29,7 @@ def long_distance_anchor_day_role(
     day: DayComposition,
     days: Sequence[DayComposition],
 ) -> Literal["arrives", "departs"]:
-    # Cross-night dates take precedence; same-day direction follows the city stay.
+    # 跨夜班次按日期判断；同日班次按在该城市的首日判断方向。
     assert candidate.departure_at is not None and candidate.arrival_at is not None
     departure_date = candidate.departure_at.date()
     arrival_date = candidate.arrival_at.date()
@@ -45,7 +45,7 @@ def _long_distance_anchor(
     placement: CompositionPlacement,
     candidates: Mapping[str, ResearchCandidate],
 ) -> Optional[TransportCandidate]:
-    """The admitted long-distance leg this placement selects, if it is one."""
+    """返回该落位选中的长途班次；不是长途落位时返回 None。"""
 
     if placement.placement_kind != "transport" or not placement.candidate_id:
         return None
@@ -90,7 +90,7 @@ def selected_lodging_by_night(
     composition: ItineraryCompositionDraft,
     candidates: Mapping[str, ResearchCandidate],
 ) -> dict[date, LodgingCandidate]:
-    """Use the same stay-window selection as workspace materialization."""
+    """住宿夜次的选择规则与 workspace 物化阶段一致。"""
     nights: dict[date, LodgingCandidate] = {}
     selected_windows: set[tuple[str, date, date]] = set()
     for candidate_id in composition.lodging_candidate_ids:

@@ -1,4 +1,4 @@
-"""Planning requirements destination scope."""
+"""目的地范围判定。"""
 
 from __future__ import annotations
 
@@ -24,10 +24,10 @@ def is_within_destination(
     *,
     limit_km: float = MAX_DESTINATION_DISTANCE_KM,
 ) -> bool:
-    """Whether a place is close enough to be this destination's own stop.
+    """判断地点是否足够接近、可作为该目的地的自有站点。
 
-    Unanswerable is permissive — see :func:`distance_from_destination_km` for why
-    an absent point must not read as an out-of-scope one.
+    无法计算距离时按在范围内处理，原因见 :func:`distance_from_destination_km`：
+    缺少坐标不应被读成超出范围。
     """
     distance = distance_from_destination_km(
         latitude, longitude, destination_latitude, destination_longitude
@@ -41,23 +41,15 @@ def annotate_destination_distance(
     destination_latitude: Any,
     destination_longitude: Any,
 ) -> None:
-    """Write each place record's own distance from the destination it was searched for.
+    """写入每个地点相对于其检索目的地的距离。
 
-    Every layer that hands a server-normalized place record downstream holds both
-    halves at that moment — the place and the destination it asked about — and is
-    therefore the only layer that can state the distance.  Downstream reads it off
-    the record; it is never recomputed, because the trip identity does not travel
-    with a tool envelope.
+    每一层向下传递服务端归一化地点记录时都同时持有地点与被检索的目的地，因此
+    只有这一层能给出距离；下游直接读取该字段，不再重算，因为行程身份不会随工具
+    信封一起传递。
 
-    Written onto a server-normalized record, so it is evidence rather than a model
-    claim.  Absent — not zero, not infinity — when either point is missing: an
-    unanswerable distance must stay unanswerable all the way down, because "no
-    destination point" is a supply gap and "80 km away" is an out-of-scope stop,
-    and collapsing them would delete every candidate for a destination whose
-    geocode failed.
-
-    Idempotent by construction, so a record that already carries the annotation
-    from its own provider is written with the same value rather than two.
+    结果写进服务端归一化记录，属于证据而不是模型声明。任一端点缺失时不写入：
+    距离无法计算与超出范围是两回事，合并会删掉地理编码失败目的地的全部候选。
+    写入是幂等的，记录已有相同标注时不会产生两个值。
     """
     if destination_latitude is None or destination_longitude is None:
         return
@@ -75,7 +67,7 @@ def annotate_destination_distance(
 def destination_points(
     controlled_trip_identity: Mapping[str, Any] | None,
 ) -> dict[str, tuple[float, float]]:
-    """Omit incomplete coordinates so callers cannot mistake them for a usable point."""
+    """省略坐标不完整的目的地，避免调用方将其当作可用坐标。"""
     destinations = (controlled_trip_identity or {}).get("destinations") or []
     points: dict[str, tuple[float, float]] = {}
     for item in destinations:

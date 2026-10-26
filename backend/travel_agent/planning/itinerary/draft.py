@@ -20,7 +20,7 @@ _SERVER_OWNED_PLACE_FIELDS = (
 
 
 class AuthoredPlaceBase(StrictModel):
-    """Authored identity whose resolved fields belong to the place provider."""
+    """撰写实体的身份；其中 ``resolved_*`` 字段由地点 Provider 填充。"""
 
     name: str = Field(min_length=1)
     local_name: str = Field(min_length=1)
@@ -66,7 +66,7 @@ AUTHORED_ROUTE_CLASS_BY_MODE: dict[str, str] = {
 
 
 class AuthoredRoute(StrictModel):
-    """Authored mode and duration; adjacent stops determine the endpoints."""
+    """撰写的出行方式与时长；起终点由相邻停留点决定。"""
 
     mode: Literal[
         "walk", "bike", "drive", "taxi", "ride_hailing", "metro", "bus", "tram"
@@ -144,7 +144,7 @@ PhysicalPlacement = Union[VisitPlacement, DiningPlacement]
 
 @dataclass(frozen=True)
 class LodgingBoundary:
-    """A dated routing endpoint derived from the selected overnight stay."""
+    """由选定住宿生成的带日期路线端点。"""
 
     candidate_id: str
     role: Literal["morning", "evening"]
@@ -287,7 +287,7 @@ def _stable_id(prefix: str, *parts: object) -> str:
 
 @dataclass(frozen=True)
 class AuthoredPlaceRef:
-    """One authored place together with the Day context that resolves it."""
+    """一个撰写地点及其解析所需的天上下文。"""
 
     place: AuthoredPlaceBase
     destination_id: str
@@ -295,7 +295,7 @@ class AuthoredPlaceRef:
 
 
 def authored_places(composition: ItineraryCompositionDraft) -> list[AuthoredPlaceRef]:
-    """List every authored place in itinerary order, with its Day context."""
+    """按行程顺序列出全部撰写地点，并带上所属天的上下文。"""
     return [
         AuthoredPlaceRef(
             place=placement.authored_place,
@@ -317,7 +317,7 @@ def map_authored_places(
     composition: ItineraryCompositionDraft,
     replace: Callable[[AuthoredPlaceBase], AuthoredPlaceBase],
 ) -> ItineraryCompositionDraft:
-    """Rebuild the composition with every authored place passed through ``replace``."""
+    """重建 composition，对每个撰写地点调用 ``replace``。"""
     days: list[DayComposition] = []
     for day in composition.days:
         placements: list[CompositionPlacement] = []

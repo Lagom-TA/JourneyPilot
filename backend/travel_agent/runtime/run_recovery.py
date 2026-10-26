@@ -1,4 +1,4 @@
-"""Runtime run recovery."""
+"""失去执行器的 Run 的扫描与恢复判定。"""
 
 from __future__ import annotations
 
@@ -83,10 +83,10 @@ class RunRecoveryReport:
 
 
 class RunRecoveryService:
-    """启动扫一次，之后按周期复扫。
+    """启动时扫描一次，之后按周期复扫。
 
-    只在启动扫一次是不够的：上一个进程死的那一刻租约可能还剩几十秒，那批 Run 会被
-    第一次扫描正确地跳过（它们的租约还没过期），然后永远没人再看它们一眼。
+    只在启动时扫描不够：租约可能在启动时仍未过期，那批 Run 会被第一次扫描跳过，
+    之后没有扫描再处理它们。
     """
 
     def __init__(
@@ -261,9 +261,9 @@ class RunRecoveryService:
     ) -> None:
         """给这个 Run 留下的控制命令一个结论。
 
-        没有执行器的 Run 上，pending 命令永远等不到消费者。**不许留成永远 pending**：
-        回执接口会一直答「还在等」，而实际上没有任何人会来。判据与还活着的协调器共用
-        同一份（`settle_run_terminal_commands`）。
+        没有执行器的 Run 上，pending 命令等不到消费者。不能留成永远 pending：
+        回执接口会一直答「还在等」，实际上没有执行器会来消费。判据与仍存活的
+        协调器共用同一份（`settle_run_terminal_commands`）。
         """
 
         if self._command_store is None:

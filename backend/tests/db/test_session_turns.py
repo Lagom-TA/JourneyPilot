@@ -141,8 +141,7 @@ async def test_ten_thousand_events_still_page_in_one_screen(migrated_async_datab
 async def test_paging_backwards_walks_the_whole_session(migrated_async_database):
     """有界窗口不能漏 turn：一路往回翻要能走完全部 40 轮。
 
-    分组从「整个会话 GROUP BY」改成「倒序一窗再分组」之后，窗口边界上那个可能被截断
-    的 turn 是唯一的风险点。
+    倒序取一窗再分组时，窗口边界上可能被截断的 turn 是唯一风险点。
     """
 
     memory = ChatSessionMemory()

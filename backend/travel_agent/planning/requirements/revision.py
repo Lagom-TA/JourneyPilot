@@ -1,4 +1,4 @@
-"""Planning requirements revision."""
+"""需求修订与补充。"""
 
 from __future__ import annotations
 
@@ -325,13 +325,11 @@ def _intent_slot(item: IntentItem) -> tuple[object, ...] | None:
 
 
 def _semantically_equivalent(left: IntentItem, right: IntentItem) -> bool:
-    """Collapse the same structured intent across request-context sources.
+    """按请求上下文来源合并相同的结构化意图。
 
-    Semantic interpretation has already happened before this boundary: the LLM
-    authored the typed ``kind``, ``target`` and discriminated ``value``.  Source
-    text, summaries and ids deliberately do not participate, because a current
-    request and a saved preference can express the same meaning with different
-    prose.  The normal precedence rules then keep the authoritative source.
+    语义解释在此边界之前已由模型完成：``kind``、``target`` 与判别式 ``value``
+    已经定型。源文本、摘要与 id 不参与比较，因为当前请求与已保存偏好可以用
+    不同措辞表达同一含义；随后由常规优先级规则保留权威来源。
     """
 
     return (

@@ -1,4 +1,4 @@
-"""Integrations rail snapshot freshness."""
+"""站表快照的时效判定。"""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ FreshnessCriterion = Literal["upstream_version", "age", "unreadable"]
 
 @dataclass(frozen=True)
 class SnapshotFreshness:
-    """One snapshot's verdict, and which question the verdict answers."""
+    """一份快照的判定结果，以及该判定回答的是哪个问题。"""
 
     verdict: FreshnessVerdict
     criterion: FreshnessCriterion
@@ -54,11 +54,10 @@ def station_snapshot_freshness(
     max_age_days: int,
     upstream_version: Optional[str] = None,
 ) -> SnapshotFreshness:
-    """Judge a committed station snapshot from its own metadata.
+    """根据快照自身的元数据判断已提交站表的新鲜度。
 
-    ``unknown`` is never treated as ``current``: an unreadable or undated sidecar
-    means nobody can say how old the table is, and a governance check that reports
-    the reassuring answer when it has no answer is worse than no check.
+    ``unknown`` 不等于 ``current``：侧车文件不可读或没有日期时，无法判断表格
+    有多旧；治理检查在没有答案时给出最乐观的答案，比没有检查更糟。
     """
 
     if not isinstance(metadata, Mapping) or not metadata:

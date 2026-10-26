@@ -1,4 +1,4 @@
-"""Planning weather geography contracts."""
+"""天气地理契约。"""
 
 from __future__ import annotations
 

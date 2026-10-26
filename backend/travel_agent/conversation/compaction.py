@@ -1,4 +1,4 @@
-"""Conversation compaction."""
+"""会话上下文压缩。"""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ async def _measure_session_size(
     state: TravelAgentState,
     system_prompt: str,
 ) -> Optional[Any]:
-    """量本次会话有多大，只为回答「该不该压缩」这一个问题。"""
+    """估算本次会话的上下文大小，用于判断是否需要压缩。"""
     from travel_agent.memory.compressor import AnchorSummary
     from travel_agent.memory.context_builder import ContextBuilder
 
@@ -49,7 +49,7 @@ async def _check_and_handle_compaction_deep(
     stream_queue: Optional["EventBuffer"],
     system_prompt: str,
 ) -> dict:
-    """Deep 模式入口：检测是否需要压缩上下文，返回需要更新到 state 的压缩字段。"""
+    """Deep 模式入口：检测是否需要压缩上下文，返回要更新到 state 的压缩字段。"""
 
     built_ctx = await _measure_session_size(state, system_prompt)
     if built_ctx is None:

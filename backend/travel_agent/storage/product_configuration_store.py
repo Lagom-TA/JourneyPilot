@@ -1,4 +1,4 @@
-"""Persistence of trip planner product configuration."""
+"""旅行规划产品配置的持久化。"""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from travel_agent.storage.database import get_db_session
 
 class ProductConfigurationStore:
     async def ensure_seed(self) -> None:
-        """Bootstrap a missing configuration without changing an existing environment."""
+        """配置缺失时写入种子；已有配置不覆盖。"""
         payload = validated_trip_planner_seed().model_dump(mode="json")
         async with get_db_session() as session:
             await session.execute(
@@ -35,11 +35,10 @@ class ProductConfigurationStore:
             )
 
     async def publish_seed(self) -> None:
-        """Explicitly publish the reviewed seed to an existing environment.
+        """把已校验的种子显式发布到现有环境。
 
-        This method is deliberately separate from ``ensure_seed``: applications
-        may bootstrap an empty database at startup, but only the release command
-        is allowed to replace existing product data.
+        与 ``ensure_seed`` 分开：应用启动时可以为空库写入初始配置，但只有发布
+        命令可以替换已有产品数据。
         """
         payload = validated_trip_planner_seed().model_dump(mode="json")
         async with get_db_session() as session:

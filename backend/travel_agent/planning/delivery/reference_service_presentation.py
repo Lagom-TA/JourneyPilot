@@ -1,4 +1,4 @@
-"""Planning delivery reference service presentation."""
+"""参考班次的交付文案。"""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def _price_clause(price: Optional[float]) -> str:
 
 
 def reference_service_note(service: ProviderReferenceService) -> str:
-    """The one sentence every delivery surface prints for a reference service."""
+    """每个交付界面为参考班次统一使用的一句话。"""
 
     claims = "、".join(
         _CLAIM_LABELS.get(claim, claim) for claim in service.unconfirmed_claims

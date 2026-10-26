@@ -1,10 +1,9 @@
 """运行控制命令的持久化。
 
 **最终事实在 `trip_run_commands`**：API 接受一次 cancel 或 supplement 就是往这张表写一行，
-之后执行器在协作边界读它。发请求的那一刻进程内有没有 handle 不再决定命令存不存在 ——
-在此之前它决定，于是「已接受」经常是一句在进程重启后不成立的话。
+之后执行器在协作边界读它。进程内有没有 handle 不决定命令是否存在。
 
-时间判断交给 PostgreSQL 的 `NOW()`，与执行租约同一个理由：判据只能有一个时钟。
+时间判断交给 PostgreSQL 的 `NOW()`，与执行租约同理：判据只能来自一个时钟。
 """
 
 from __future__ import annotations
@@ -47,10 +46,9 @@ def _command_from_row(row: Mapping[str, Any]) -> RunCommand:
     )
 
 
-#: 收口时写的那些列。**只写一次**：这段原本在 `settle` 与 `settle_open_for_run` 里各一份，
-#: 连注释都一样，而里面那个 `'consumed'` 字面量是 `RunCommandStatus.CONSUMED` 的复制。
-#: 只有真的被执行过才有 consumed_at —— 给一条被拒绝的命令盖上「消费于」会让回执读起来
-#: 像是它生效过。
+#: 收口时写的那些列。只在 `_SETTLE_SET_CLAUSE` 一处定义，供 `settle` 与
+#: `settle_open_for_run` 共用。只有真的被执行过才写 consumed_at：给一条被拒绝的
+#: 命令盖上「消费于」会让回执读起来像是它生效过。
 _SETTLE_SET_CLAUSE = f"""
     status = :status,
     consumed_at = CASE
@@ -192,9 +190,9 @@ class RunCommandStore:
     async def release_claims(self, command_ids: Sequence[str]) -> int:
         """把还没生效的 claimed 行放回 pending。
 
-        执行器停下来（Run 停在门上、进程要退出）时，它手里没落地的那几条要在下一个
-        执行器 claim 得到的位置上 —— 否则回执永远停在 claimed，而那条追加要求既不生效
-        也不被拒绝。
+        执行器停止（Run 等待输入、进程退出）时，它手里尚未落地的命令要回到
+        pending，以便下一个执行器 claim —— 否则回执会一直停在 claimed，那条追加
+        要求既不生效也不被拒绝。
         """
 
         ids = [str(value) for value in command_ids if str(value).strip()]
@@ -232,8 +230,8 @@ class RunCommandStore:
     ) -> int:
         """给命令一个结论。已经有结论的行不再改动。
 
-        「只改还没收口的行」就是重复消费的防线：执行器在标记之后崩溃，重启后再标一次
-        什么也不会发生，而结论本身不会被后来的那一次覆盖成另一个答案。
+        「只改还没收口的行」用于防止重复消费：执行器在标记之后崩溃，重启后再标一次
+        不会改动任何行，结论也不会被后来的那一次覆盖。
         """
 
         ids = [str(value) for value in command_ids if str(value).strip()]

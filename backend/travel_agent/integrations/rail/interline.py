@@ -1,4 +1,4 @@
-"""Integrations rail interline."""
+"""12306 中转行程的解析与格式化。"""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ _ALL_LISHI_RE = re.compile(r"(?:(\d+)小时)?(\d+)分钟")
 
 
 def normalize_all_lishi(all_lishi: str) -> str:
-    """``9小时37分钟`` → ``09:37``, matching the get-tickets 历时 shape."""
+    """``9小时37分钟`` → ``09:37``，与 get-tickets 的历时格式一致。"""
 
     match = _ALL_LISHI_RE.search(all_lishi or "")
     if match is None:
@@ -55,7 +55,7 @@ def _interline_legs(itinerary: Mapping[str, Any]) -> list[RailTicket]:
 
 
 def format_interline_text(itineraries: Sequence[Mapping[str, Any]]) -> str:
-    """Nested per-itinerary text: header line, then tab-indented legs."""
+    """按行程嵌套的文本：一行表头，随后是制表符缩进的各段。"""
 
     if not itineraries:
         return NO_TRAIN_MESSAGE

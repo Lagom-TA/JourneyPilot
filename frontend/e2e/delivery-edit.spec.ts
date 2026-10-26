@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { writeFile } from 'node:fs/promises';
 
-// Supply only a disposable trip created by the live suite, never a user's trip.
+// 只使用 live 套件创建的一次性行程，不要指向用户的行程。
 test('真实交付修改：添加安排 → 报告同步 → 刷新 → 撤销', async ({ page, request }, testInfo) => {
   const runId = process.env.JP_EDIT_RUN_ID;
   test.skip(!runId, 'Set JP_EDIT_RUN_ID to a disposable completed test trip');

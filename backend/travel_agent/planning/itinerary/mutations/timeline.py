@@ -1,5 +1,3 @@
-"""Planning itinerary mutations timeline."""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -55,7 +53,7 @@ def _move_scheduled_item_to_day(item, day):
 def _drop_stale_day_notes(
     workspace: TripWorkspaceV2, itinerary: StructuredItineraryV2
 ) -> StructuredItineraryV2:
-    """Authored daily rationale needs replanning when the day's decisions change."""
+    """当天的决策变化后，移除针对该天撰写的旧说明。"""
     previous = workspace.itinerary
     old_days = {day.day_id: day for day in previous.day_plans}
     old_entities = {

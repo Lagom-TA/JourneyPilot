@@ -91,7 +91,7 @@ async def _handle_node_activity(
 async def _handle_synthesis_start(
     item: tuple, ctx: ChatPresentation
 ) -> AsyncIterator[Dict[str, Any]]:
-    """'synthesis_start' kind: Synthesizer 开始 LLM 调用前的过渡信号。"""
+    """synthesis_start 事件：Synthesizer 开始 LLM 调用前的过渡信号。"""
     _, node_name, _ = item
 
     yield {
@@ -109,9 +109,9 @@ async def _handle_synthesis_start(
 async def _handle_context_report(
     item: tuple, ctx: ChatPresentation
 ) -> AsyncIterator[Dict[str, Any]]:
-    """'context_report' kind: 六层记忆按预算装配的上下文报告。
+    """context_report 事件：按预算装配的上下文报告。
 
-    随本轮助手消息持久化(save_turn)，会话历史加载时可取回。
+    随本轮助手消息持久化（save_turn），加载会话历史时可取回。
     """
     _, _node, report = item
     ctx.context_report = report
@@ -125,7 +125,7 @@ async def _handle_context_report(
 async def _handle_context_compaction(
     item: tuple, ctx: ChatPresentation
 ) -> AsyncIterator[Dict[str, Any]]:
-    """Persist and emit the full, user-visible compaction snapshot for this turn."""
+    """持久化并下发本轮完整的上下文压缩快照。"""
     _, _node, event = item
 
     yield {
@@ -138,13 +138,13 @@ async def _handle_context_compaction(
 async def _handle_state_update(
     item: tuple, ctx: ChatPresentation
 ) -> AsyncIterator[Dict[str, Any]]:
-    """'state' kind: 节点完成事件(最复杂的 handler)。
+    """state 事件：节点完成处理。
 
-    内部分为 4 个阶段:
-      1. stripper flush 残留(若节点曾流式输出)
-      2. planner 节点: 发送 thinking / 记录执行计划
-      3. 其他节点: 处理 pending_user_choice / deep worker / 最终输出
-      4. 记录节点完成 trace
+    处理顺序：
+      1. 若节点曾流式输出，flush stripper 残留；
+      2. planner 节点：发送 thinking 并记录执行计划；
+      3. 其他节点：处理 pending_user_choice、深度 Worker 与最终输出；
+      4. 记录节点完成 trace。
     """
     _, node_name, state_update = item
     if state_update is None:

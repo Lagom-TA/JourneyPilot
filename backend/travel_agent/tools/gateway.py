@@ -1,4 +1,4 @@
-"""Production-style Tool Gateway policy boundary."""
+"""工具执行的策略边界。"""
 
 from __future__ import annotations
 
@@ -72,18 +72,13 @@ def _scan_tool_result_for_poisoning(envelope: Dict[str, Any]) -> list[str]:
 
 
 class ToolGateway:
-    """Policy gateway around tool execution.
+    """工具执行外层的策略边界。
 
-    The gateway is intentionally in-process. It establishes the contract for
-    manifest enforcement, temporal preflight, audit persistence, and untrusted
-    result isolation without claiming a full external gateway.
+    gateway 刻意保持在进程内，负责 manifest 约束、时间预检、审计持久化与不可信
+    结果隔离，不声称是完整的外部网关。
 
-    It does **not** gate a tool behind human approval.  That surface existed here
-    for two rounds and never fired once: no registered tool ever classified as
-    approval-required, nothing consumed the verdict, and no screen could answer
-    it.  This product searches and reads; it does not book, pay, or handle
-    identity documents, so the honest shape is no gate at all.  A future booking
-    tool has to decide its own guard here, deliberately.
+    它不要求人工批准工具调用：当前产品只做搜索与读取，不预订、不支付，也不处理
+    身份证件。未来加入预订工具时，需要在这里明确设计对应的保护措施。
     """
 
     async def before_call(
@@ -166,7 +161,7 @@ class ToolGateway:
             if reference_only
             else ToolExecutionStatus.NOT_APPLICABLE.value
         )
-        # An unsupported date is not a failed call and must not create rejected evidence.
+        # 不支持的日期不是调用失败，也不能生成被拒绝的证据。
         envelope = build_tool_execution_envelope(
             tool_name=manifest.tool_name,
             arguments=arguments,
@@ -256,14 +251,13 @@ class ToolGateway:
             ev_meta["quarantine_result"] = quarantined
             ev_meta["tool_poisoning_flags"] = flags
 
-        # This hook is intentionally after all evidence/quarantine decisions but
-        # before audit persistence.  Provider Snapshot Cache uses it to store
-        # only an admitted fact snapshot and to make the live/cache marker part
-        # of the immutable audit record.  A hook failure never blocks delivery.
+        # 这个钩子在所有证据/隔离判定之后、审计持久化之前运行。Provider
+        # Snapshot Cache 用它只保存通过证据判定的事实快照，并把 live/cache 标记写入
+        # 不可变审计记录。钩子失败不阻断交付。
         if post_policy_hook is not None:
             try:
                 await post_policy_hook(envelope)
-            except Exception as exc:  # pragma: no cover - defensive cache boundary
+            except Exception as exc:  # pragma: no cover - 缓存边界的防御分支
                 logger.warning("ToolGateway post-policy hook failed safely: %s", exc)
 
         await self._record_audit_safe(

@@ -1,5 +1,3 @@
-"""Planning research provider scope ids."""
-
 from __future__ import annotations
 
 from travel_agent.planning.research.domains import ResearchDomain

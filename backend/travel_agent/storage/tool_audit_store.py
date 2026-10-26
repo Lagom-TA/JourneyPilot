@@ -1,4 +1,4 @@
-"""Audit-safe persistence for Tool Gateway execution records."""
+"""Tool Gateway 执行记录的可审计持久化。"""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class ToolAuditConflict(Exception):
-    """Same audit id already stored with different content."""
+    """同一个 audit id 已存有不同内容。"""
 
 
 _SENSITIVE_KEY_RE = re.compile(
@@ -179,27 +179,15 @@ def build_audit_record_from_envelope(
 
 
 def _audit_identity(record: ToolAuditRecord) -> Tuple[Any, ...]:
-    """Fields that must match for same-id idempotent replay.
+    """同 id 幂等重放时必须一致的字段。
 
-    Picked the same way ``cost_ledger_store._ledger_identity`` picks its own: the
-    written surface is wider than this tuple, and everything that legitimately
-    differs between two arrivals of one ``audit_id`` is deliberately left out.
-    Latency, retry counters and ``created_at`` all move on a replay, so comparing
-    them would only manufacture false conflicts.
+    只比较会影响审计结论的列；延迟、重试计数与 ``created_at`` 在重放时都会变化，
+    比较它们只会产生误报冲突。
 
-    ``run_id`` is excluded, and unlike the cost ledger it *must* be — the two
-    tables in this package do not share FK semantics:
-
-    * ``migrations/versions/0001_baseline_current_schema.py:593`` —
-      ``tool_execution_audits.run_id ... ON DELETE SET NULL``
-    * ``migrations/versions/0001_baseline_current_schema.py:647`` —
-      ``run_llm_calls.run_id NOT NULL ... ON DELETE CASCADE``
-
-    So a deleted parent run leaves the stored audit row behind with ``run_id``
-    nulled out, while a re-arriving envelope still carries its ``run_id``.  That
-    is a normal state for this table and not a content conflict.  The cost ledger
-    can afford ``run_id`` in its tuple only because its rows are cascaded away
-    with the parent, so the state cannot arise there.
+    ``run_id`` 不参与比较：``tool_execution_audits.run_id`` 在父 Run 删除时置
+    NULL（ON DELETE SET NULL），而成本台账的 ``run_id`` 是级联删除。父 Run 已删除
+    时，已存审计行的 ``run_id`` 为空，而重放的 envelope 仍带原值，这是该表的正常
+    状态，不是内容冲突。
     """
     return (
         record.tool_name,
@@ -215,7 +203,7 @@ def _audit_identity(record: ToolAuditRecord) -> Tuple[Any, ...]:
 def _assert_audit_idempotent(
     existing: ToolAuditRecord, incoming: ToolAuditRecord
 ) -> None:
-    """Refuse to silently drop a second, different envelope for one audit id."""
+    """同一个 audit id 的第二个不同 envelope 会被拒绝，不会静默丢弃。"""
     if _audit_identity(existing) != _audit_identity(incoming):
         logger.error(
             "tool audit id conflict: audit_id=%s existing_status=%s incoming_status=%s",
@@ -229,7 +217,7 @@ def _assert_audit_idempotent(
 
 
 class ToolAuditStore:
-    """PostgreSQL-backed tool audit repository."""
+    """PostgreSQL 工具审计仓储。"""
 
     async def record_envelope(
         self,
@@ -324,13 +312,13 @@ class ToolAuditStore:
 
 
 class InMemoryToolAuditStore(ToolAuditStore):
-    """In-memory tool audit store with idempotent audit_id behavior."""
+    """内存工具审计仓储，保持 audit_id 幂等语义。"""
 
     def __init__(self) -> None:
         self.records: Dict[str, ToolAuditRecord] = {}
 
     async def record_envelope(self, envelope: Dict[str, Any], **kwargs: Any) -> ToolAuditRecord:
-        # Fail fast if callers omit the required manifest kwarg.
+        # 调用方漏传必需的 manifest 时立即报错。
         if "manifest" not in kwargs:
             raise KeyError("manifest")
         record = build_audit_record_from_envelope(envelope, **kwargs)

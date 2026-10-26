@@ -1,25 +1,12 @@
-"""LLM usage capture layer（C 域遥测捕获）.
+"""LLM 用量捕获层。
 
-本模块做捕获与持久 outbox：把每一次 LLM 调用的 token（含缓存/推理细分）、
-wall time、TTFT、model、tier 以及 run/node/agent 归因收敛成一条 ``LLMCallRecord``，
-投进线程/协程安全的 ``UsageRecorder`` 缓冲区。落库、成本计算、价格表、SSE 暴露都不
-在这里。
+把每次 LLM 调用的 token（含缓存/推理细分）、耗时、TTFT、模型、档位以及
+run/node/agent 归因收敛为一条 ``LLMCallRecord``，写入线程安全的 ``UsageRecorder``
+缓冲。落库、成本计算、价格表与 SSE 暴露不在本模块。
 
-设计要点：
-
-- **归因**复用 run 控制层的 contextvars（``current_run_id`` / ``current_node`` /
-  ``current_agent``），无 run 上下文（run_id 为 None，例如离线 eval）时**静默跳过**，
-  以保证既有用例零回归。
-- **token 字段命名**向 OTel GenAI 语义约定（development 阶段）对齐：
-  ``input_tokens`` / ``output_tokens`` / ``cached_input_tokens`` /
-  ``reasoning_output_tokens``（不用 prompt/completion 旧名）。
-- **DeepSeek 缓存细分**是顶层 ``prompt_cache_hit_tokens``，LangChain 的标准
-  ``usage_metadata`` 映射会丢——需要时从 ``response_metadata["token_usage"]`` 原始
-  dict 补读（04 号 §4）。
-- **全零 usage 对象**（个别供应商的中间 chunk 回 0 而非 null）不视作真实计数：
-  input/output/total 全为 0/None 时判为「缺失」，走 estimated 降级。
-- **usage 缺失**：成功响应使用共享离线估算并标记 ``estimated=True``；错误或取消时
-  用量保持未知。估算不能替代实际账单。
+归因复用 run 控制层的 contextvars；无 run 上下文（如离线 eval）时静默跳过记账。
+token 字段命名与 OTel GenAI 语义约定对齐。全零 usage 对象视为缺失，成功响应改用
+离线估算并标记 ``estimated=True``；估算不能替代实际账单。
 """
 
 from __future__ import annotations
@@ -47,7 +34,7 @@ def generate_call_id() -> str:
 # --------------------------------------------------------------------------- #
 
 def read_attribution() -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """返回 (run_id, node, agent)。任一读取失败时退化为全 None（静默跳过记账）。"""
+    """返回 (run_id, node, agent)；任一读取失败时返回全 None，跳过记账。"""
     try:
         from travel_agent.runtime.context import current_agent, current_node, current_run_id
     except Exception:  # pragma: no cover - context 恒可用，仅作防御
@@ -56,7 +43,7 @@ def read_attribution() -> Tuple[Optional[str], Optional[str], Optional[str]]:
 
 
 def infer_provider(base_url: Optional[str], model_name: str = "") -> str:
-    """从 base_url / 模型名粗判供应商（08 定价按 provider 前缀匹配时用）。"""
+    """根据 base_url 与模型名推断供应商，用于按 provider 前缀匹配定价。"""
     host = (base_url or "").lower()
     model = (model_name or "").lower()
     for needle, name in (
@@ -84,7 +71,7 @@ def infer_provider(base_url: Optional[str], model_name: str = "") -> str:
 
 @dataclass
 class LLMCallRecord:
-    """一次 LLM 调用的计量记录（04 号 §3 的字段面，成本列留给 08 落库时计算）。"""
+    """一次 LLM 调用的计量记录；成本字段在落库时计算。"""
 
     id: str
     run_id: str
@@ -95,7 +82,7 @@ class LLMCallRecord:
     model_request: str
     method: str  # ainvoke | ainvoke_with_tools | astream | astream_with_tools
     stream: bool
-    start_ts: str  # ISO8601（wall clock，供 08 落库）
+    start_ts: str  # ISO8601 wall clock 时间戳
     model_response: Optional[str] = None
     input_tokens: Optional[int] = None
     output_tokens: Optional[int] = None
@@ -126,12 +113,11 @@ class LLMCallRecord:
 # --------------------------------------------------------------------------- #
 
 class UsageRecorder:
-    """Durable pending telemetry. Drain is a read; ack follows DB commit.
+    """待持久化的用量遥测。drain 是读取，ack 在数据库提交后调用。
 
-    maxlen is retained as a batch size, never an eviction limit. Isolated tests
-    use an in-memory SQLite database; the application singleton uses a file.
-    Disk failure retains unbounded volatile records and an explicit coverage
-    failure. That fallback cannot promise survival of a subsequent crash.
+    maxlen 用作批大小，不是淘汰上限。隔离测试使用内存 SQLite，应用单例使用文件。
+    磁盘写入失败时记录保留在内存并计入覆盖率失败；该降级路径不保证进程崩溃后记录
+    仍然存在。
     """
     def __init__(self, maxlen=DEFAULT_BUFFER_MAX, *, spool_path=":memory:"):
         self._lock = threading.Lock()
@@ -213,8 +199,7 @@ class UsageRecorder:
                 try:
                     if not write_failed:
                         self._spool.recover_abandoned()
-                    # Volatile records can lie beyond the durable batch boundary.
-                    # Check their IDs before returning either side of a conflict.
+                    # 内存记录可能位于持久批次边界之外；冲突处理前先按 id 核对。
                     volatile_ids = [
                         rec.id for phase, rec in self._volatile.values()
                         if phase == "complete" and rec.id not in self._conflicts
@@ -320,7 +305,7 @@ def get_usage_recorder() -> UsageRecorder:
 # --------------------------------------------------------------------------- #
 
 def _as_int(value: Any) -> Optional[int]:
-    """Accept nonnegative integer counts only; malformed telemetry is missing."""
+    """仅接受非负整数计数；格式非法的遥测视为缺失。"""
     if value is None or isinstance(value, bool):
         return None
     try:
@@ -347,11 +332,10 @@ def _raw_usage(message: Any) -> dict[str, Any]:
 
 
 def response_finish_reason(message: Any) -> Optional[str]:
-    """供应商的终止原因；``length`` 就是输出撞上 max_tokens 被截断的那个事实。
+    """返回供应商的终止原因；``length`` 表示输出达到 max_tokens 被截断。
 
-    截断的 JSON 不可解析，worker 定型只能报「不是精确 JSON 对象」——两端对不上时，
-    finish_reason 是唯一能把「模型没写对」和「输出被截断」分开的证据。流式路径读的是
-    累加后 chunk 的 ``response_metadata``（终结 chunk 带 finish_reason）。
+    截断的 JSON 无法解析，worker 只能报告「不是精确 JSON 对象」；finish_reason 用于
+    区分输出格式错误与输出截断。流式路径从累加 chunk 的 ``response_metadata`` 读取。
     """
     meta = _getter(message)("response_metadata") or {}
     if not isinstance(meta, dict):
@@ -376,16 +360,15 @@ def response_model_name(message: Any) -> Optional[str]:
 
 
 def _is_empty_usage(input_tokens: Optional[int], output_tokens: Optional[int], total: Optional[int]) -> bool:
-    """input/output/total 全为 None 或 0 → 视作缺失（全零 usage 对象不当真实计数用）。"""
+    """input/output/total 全为 None 或 0 时视为缺失。"""
     return all(v in (None, 0) for v in (input_tokens, output_tokens, total))
 
 
 def extract_usage(message: Any) -> Optional[Dict[str, Optional[int]]]:
-    """Normalize inclusive input/output totals from standard AND raw usage.
+    """从标准 usage 与原始 usage 归一化 input/output 总量。
 
-    Read/write are disjoint subsets of input. Reasoning is a subset of output,
-    never an additional completion charge. Anthropic-shaped raw input excludes
-    cache buckets; convert it once when standardized totals are unavailable.
+    读写缓存是 input 的子集；reasoning 是 output 的子集，不额外计入 completion。
+    Anthropic 风格的原始 input 不含缓存部分，在缺少标准总量时转换一次。
     """
     if message is None:
         return None
@@ -415,9 +398,9 @@ def extract_usage(message: Any) -> Optional[Dict[str, Optional[int]]]:
     output_tokens = _first_count(raw.get("completion_tokens"), raw.get("output_tokens"), get("output_tokens"))
     reported_total = _first_count(raw.get("total_tokens"), get("total_tokens"))
     if reported_total == 0 and "total_tokens" not in raw and ((input_tokens or 0) + (output_tokens or 0)) > 0:
-        reported_total = None  # Empty standard total is another adapter placeholder.
-    # Standard adapters may insert zero for an absent side. A positive raw
-    # total establishes that this placeholder is missing, rather than free.
+        reported_total = None  # 标准总量为 0 且原始 usage 无 total 时，视为占位值。
+    # 标准适配器可能为缺失的一侧填 0。原始 total 为正数时，说明该 0 是占位值
+    # 而不是免费额度。
     if reported_total is not None:
         if (not any(key in raw for key in ("prompt_tokens", "input_tokens"))
                 and input_tokens == 0 and output_tokens is not None
@@ -429,7 +412,7 @@ def extract_usage(message: Any) -> Optional[Dict[str, Optional[int]]]:
             output_tokens = None
     if _is_empty_usage(input_tokens, output_tokens, reported_total):
         return None
-    # Derive a missing side only when a genuine total and the other side exist.
+    # 仅在存在有效 total 与另一侧计数时推导缺失的一侧。
     if reported_total is not None:
         if input_tokens is None and output_tokens is not None and reported_total >= output_tokens:
             input_tokens = reported_total - output_tokens
@@ -449,7 +432,7 @@ def extract_usage(message: Any) -> Optional[Dict[str, Optional[int]]]:
 
 
 def error_usage_message(error: BaseException) -> Any:
-    """Expose only returned usage, without retaining an error body or prompt."""
+    """只暴露错误中返回的 usage，不保留错误体或 prompt。"""
     completion = getattr(error, "completion", None)
     if completion is not None:
         usage = getattr(completion, "usage", None)

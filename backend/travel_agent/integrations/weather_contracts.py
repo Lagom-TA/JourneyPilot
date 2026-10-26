@@ -1,4 +1,4 @@
-"""Integrations weather_contracts."""
+"""天气时间窗的共享契约类型。"""
 
 from __future__ import annotations
 

@@ -76,7 +76,7 @@ class VisitCandidate(CandidateBase):
     opening_window: Optional[str] = None
     reservation_required: Optional[bool] = None
 
-    # Leave unsupported descriptive claims empty rather than requiring invention.
+    # 描述性信息没有依据时留空，不要求模型补写。
     highlights: List[str] = Field(default_factory=list)
 
 

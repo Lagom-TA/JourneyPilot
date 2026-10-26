@@ -1,5 +1,3 @@
-"""Planning research transport rail selection."""
-
 from __future__ import annotations
 
 import logging
@@ -28,7 +26,7 @@ def _select_best_train(
     depart_after: Optional[str] = None,
     same_day_roundtrip: bool = False,
 ) -> Optional[Dict[str, Any]]:
-    """Select by explicit product policy, never by Provider return order."""
+    """按明确的选车策略选择，不依赖 Provider 返回顺序。"""
 
     if not trains:
         return None
@@ -99,7 +97,7 @@ def _rail_time_to_minutes(value: str) -> int:
 
 
 def _clock_plus_buffer(clock: str, buffer_minutes: int) -> str:
-    """Return an ``HH:MM`` clock shifted forward by ``buffer_minutes``."""
+    """返回向后推移 ``buffer_minutes`` 分钟的 ``HH:MM`` 时间。"""
     try:
         total = _rail_time_to_minutes(clock) + int(buffer_minutes or 0)
     except (TypeError, ValueError):
@@ -126,7 +124,7 @@ def _filter_rail_trains(
     trains: List[Dict[str, Any]],
     constraint_params: Mapping[str, Any],
 ) -> List[Dict[str, Any]]:
-    """Apply canonical transport hard constraints before anchor selection."""
+    """在挑选班次前应用标准的交通硬约束。"""
 
     earliest = str(constraint_params.get("earliest_departure_local") or "")
     latest = str(constraint_params.get("latest_arrival_local") or "")

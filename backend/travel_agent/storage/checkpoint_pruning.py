@@ -1,4 +1,4 @@
-"""Storage checkpoint pruning."""
+"""过期 TripRun 的 LangGraph checkpoint 清理。"""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ class CheckpointPruneResult:
 
 
 class CheckpointPruningService:
-    """Delete old LangGraph checkpoint threads for expired TripRuns."""
+    """删除已过期 TripRun 的 LangGraph checkpoint thread。"""
 
     def __init__(
         self,

@@ -1,3 +1,5 @@
+"""按需刷新已交付 Bundle 的天气。"""
+
 from __future__ import annotations
 from typing import Any
 from travel_agent.integrations.weather import default_weather_providers

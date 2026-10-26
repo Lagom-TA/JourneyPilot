@@ -1,4 +1,4 @@
-"""Planning delivery evidence basis."""
+"""交付证据基础。"""
 
 from __future__ import annotations
 
@@ -55,11 +55,11 @@ MICRO_TRANSPORT_MAX_DISTANCE_METERS = 800
 
 
 class PublicProjectionContractViolation(RuntimeError):
-    """A public surface found a Bundle shape its own contract forbids."""
+    """公开展示面遇到自身契约禁止的 Bundle 结构。"""
 
 
 def is_micro_transport_leg(leg: TransportLeg) -> bool:
-    """Whether a leg is a short connector rather than a planned movement."""
+    """判断交通段是否只是短接驳而非计划中的移动。"""
 
     return (
         leg.transport_class == "flexible"
@@ -77,7 +77,7 @@ def is_micro_transport_leg(leg: TransportLeg) -> bool:
 
 @dataclass(frozen=True)
 class EvidenceBasisView:
-    """One itinerary's evidence bases, derived once and read by every surface."""
+    """一份行程的证据基础，各展示面共用同一结果。"""
 
     basis_by_entity: Mapping[tuple[EntityType, str], str]
     micro_transport_leg_ids: frozenset[str]
@@ -100,12 +100,10 @@ class EvidenceBasisView:
         )
 
     def basis_for(self, entity_type: EntityType, entity_id: str) -> str:
-        """Read one entity's basis, failing closed on an unattributable entity.
+        """读取实体的证据基础；无法归属时直接报错。
 
-        ``DeliveryBundle`` already requires every report block to reference an
-        itinerary entity, so a miss here means the payload contradicts its own
-        contract.  Publishing it with a blank or guessed basis would let a
-        model-authored entry pass as sourced, so the surface names it instead.
+        ``DeliveryBundle`` 已要求每个报告条目引用行程实体，查不到说明载荷违反
+        自身契约。用空值或猜测值发布会让模型写入的条目看似有来源，因此直接抛错。
         """
 
         basis = self.basis_by_entity.get((entity_type, entity_id))
@@ -119,11 +117,10 @@ class EvidenceBasisView:
     def stated_basis_for(
         self, entity_type: EntityType, entity_id: str
     ) -> Optional[str]:
-        """The basis a rendered surface should state, or ``None`` to stay silent.
+        """展示面应写出的证据基础；返回 ``None`` 表示不展示。
 
-        Only two entities stay silent, matching ``evidenceBasisForEntity`` on the
-        client: a custom block is the traveller's own arrangement, and a micro
-        connector is a link between places rather than a claim about one.
+        只有两类实体不展示：custom block 是旅行者自己的安排，微型接驳是地点
+        之间的连接而非关于某个地点的断言。
         """
 
         if entity_type is EntityType.CUSTOM_BLOCK:

@@ -1,5 +1,3 @@
-"""Planning research destination discovery."""
-
 from __future__ import annotations
 
 import logging
@@ -43,7 +41,7 @@ async def discover_and_resolve_required_places(
     planned_queries: List[ResearchQuery],
     executed_query_ids: List[str],
 ) -> None:
-    """Deterministically close discovery -> stable Provider identity for scoped gaps."""
+    """为范围内缺失的地点领域执行确定性发现，并绑定稳定的 Provider 身份。"""
     required_kinds = list(dict.fromkeys(required_candidate_kinds or []))
     if not required_kinds or has_required_provider_place_selection(
         authoritative_tool_messages(authoritative_tool_results),
@@ -69,7 +67,7 @@ async def discover_and_resolve_required_places(
     discovered_domains: set[ResearchDomain] = set()
 
     async def discover_semantic_query(query: ResearchQuery) -> bool:
-        """Discovery text nominates names; it is never an identity lookup."""
+        """发现查询只提名名称，不用于查询地点身份。"""
         name = discovery_name
         arguments: Dict[str, Any] = {"query": query.query_text, "max_results": 5}
         if (

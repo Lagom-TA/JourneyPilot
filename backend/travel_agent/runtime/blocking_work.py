@@ -1,4 +1,4 @@
-"""Runtime blocking work."""
+"""受限线程与子进程中执行的同步工作，以及各自的并发通道。"""
 
 from __future__ import annotations
 

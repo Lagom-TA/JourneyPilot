@@ -1,5 +1,3 @@
-"""Planning research provider assignments."""
-
 from __future__ import annotations
 
 from travel_agent.planning.requirements.route_legs import _identity_parts
@@ -29,7 +27,7 @@ from typing import cast
 def scope_attempt_numbers(
     outcomes: Mapping[str, "ProviderEvidenceOutcome"],
 ) -> dict[str, int]:
-    """The run's highest recorded attempt per Provider evidence scope."""
+    """本次运行中每个 Provider 证据范围已记录的最高尝试序号。"""
     return {
         scope_id: outcome.attempt_number
         for scope_id, outcome in (outcomes or {}).items()
@@ -47,18 +45,12 @@ def build_provider_evidence_assignments(
     transport_classes: Optional[Sequence[str]] = None,
     long_distance_legs: Optional[Sequence[ProviderRouteLegScope]] = None,
 ) -> list[ProviderEvidenceAssignment]:
-    """Build explicit business scopes; callers must persist them on assignment.
+    """构建显式的业务范围，调用方必须把分配结果持久化。
 
-    ``prior_scope_attempts`` is the run's durable ``scope_id -> attempt_number``
-    map, so each assignment is numbered **per scope**: one past this scope's own
-    highest attempt, or ``0`` on its first.  The number must come from the scope
-    and not from the caller's retry budget, because those are keyed differently —
-    the targeted-research ledger is keyed per *product gap* while a local-transport
-    scope covers the whole destination set.  Number it from the caller's budget and two
-    connector rounds motivated by two different adjacencies both report "attempt 1" on
-    the same scope with different option counts, at which point
-    `merge_provider_evidence_outcomes` correctly refuses to merge them and
-    `same Provider evidence attempt produced conflicting outcomes` kills the run.
+    每个分配按范围自身的历史最高尝试序号编号（``prior_scope_attempts``），
+    首次分配为 0。编号不能取自调用方的重试预算：不同调用方的预算按不同键
+    计数，同一范围可能因此得到相同尝试序号而选项数不同，合并结果时会被判为
+    冲突并使运行失败。
     """
 
     origin_id, destination_ids = _identity_parts(controlled_trip_identity)

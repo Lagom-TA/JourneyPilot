@@ -25,12 +25,11 @@ logger = logging.getLogger(__name__)
 
 
 def _format_llm_error(e: Exception) -> str:
-    """
-    将 LLM 提供商异常格式化为用户友好的中文消息。
+    """从 LLM 提供商异常中提取可读消息。
 
-    openai SDK 抛出的 APIStatusError 将错误体序列化为 str(e)：
-      "Error code: 529 - {'type': 'error', 'error': {'type': 'overloaded_error', 'message': '...'}}"
-    此函数从中提取内层 message 字段；若无法提取则回退到原始 str(e)。
+    openai SDK 的 APIStatusError 会把错误体序列化为 str(e)，例如
+    "Error code: 529 - {'type': 'error', 'error': {'type': 'overloaded_error', 'message': '...'}}"。
+    本函数提取内层 message 字段；无法提取时返回原始 str(e)。
     """
     raw = str(e)
 

@@ -1,4 +1,4 @@
-"""Tools gateway contracts."""
+"""Tool Gateway 的合同类型。"""
 
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ class ToolAuthBoundary(str, Enum):
 
 
 class _StrictBoundaryModel(BaseModel):
-    """API/tool boundary DTOs: forbid unknown fields (not frozen)."""
+    """API 与工具边界的 DTO：拒绝未知字段，不冻结。"""
 
     model_config = ConfigDict(extra="forbid")
 

@@ -1,4 +1,4 @@
-"""EventBuffer：顺序、合并、不可丢、慢客户端下的内存边界。"""
+"""EventBuffer：顺序、合并、不丢事件、慢客户端下的内存边界。"""
 
 from __future__ import annotations
 

@@ -197,7 +197,7 @@ def _compact_sanitized_result(result: Any) -> Any:
 
 
 def _looks_like_tool_envelope(value: Mapping[str, Any]) -> bool:
-    """True for full ToolExecutionEnvelope or worker-injected partial envelopes."""
+    """匹配完整 ToolExecutionEnvelope 或 worker 注入的部分 envelope。"""
     if is_tool_execution_envelope(value):
         return True
     return (
@@ -241,7 +241,7 @@ def _compact_envelope_dict(envelope: Mapping[str, Any]) -> Dict[str, Any]:
 
 
 def compact_tool_content_for_model(tool_result: Any) -> str:
-    "Serialize a tool result for LLM / packet-transcript messages."
+    "把工具结果序列化为 LLM / packet 对话消息可用的文本。"
     if tool_result is None:
         return "null"
     if isinstance(tool_result, dict) and _looks_like_tool_envelope(tool_result):

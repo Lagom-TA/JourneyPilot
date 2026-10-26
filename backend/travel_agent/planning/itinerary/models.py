@@ -49,7 +49,7 @@ class TransportLeg(StrictModel):
 
     @model_validator(mode="after")
     def validate_route(self) -> "TransportLeg":
-        # Transfers count service changes, not segment boundaries.
+        # 换乘数按实际班次变化统计，不按分段边界统计。
         object.__setattr__(
             self, "transfer_count", count_service_transfers(self.segments)
         )
@@ -119,7 +119,7 @@ class LodgingStay(StrictModel):
     nightly_price_cny: Optional[float] = Field(default=None, ge=0)
     total_price_cny: Optional[float] = Field(default=None, ge=0)
 
-    # Reference estimates are planning inputs, never confirmed current quotes.
+    # 参考估价只是规划输入，不是已确认的当前报价。
     price_kind: Literal["reference_estimate", "live_quote"] = "reference_estimate"
     availability_status: Literal["confirmed", "needs_confirmation", "unavailable"] = (
         "needs_confirmation"
@@ -180,7 +180,7 @@ def classify_transport_projection_shape(
     arrival_at: Optional[datetime],
     itinerary_dates: Iterable[Date],
 ) -> TransportProjectionShape:
-    # A boundary-crossing service does not create an extra itinerary day.
+    # 跨日期边界的班次不会额外生成行程日。
     if (
         transport_class != "long_distance"
         or departure_at is None
@@ -203,7 +203,7 @@ class DayPlanV2(StrictModel):
     date: Date
     destination_id: str = Field(min_length=1)
 
-    # Derived from actual placements so later edits cannot leave an unrelated title.
+    # 标题由实际落位推导，后续编辑不会留下无关标题。
     theme: str = Field(min_length=1)
     timeline: List[TimelineEntryRef]
     time_structure: List[Literal["morning", "lunch", "afternoon", "evening"]] = Field(

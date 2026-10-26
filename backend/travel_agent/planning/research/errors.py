@@ -1,5 +1,3 @@
-"""Planning research errors."""
-
 from __future__ import annotations
 
 from travel_agent.planning.research.failure_protocol import (
@@ -35,7 +33,7 @@ def format_worker_last_error(
     provider_empty_round: bool = False,
     provider_capability_round: bool = False,
 ) -> str:
-    """Return a classifier-friendly last_error string for research workers."""
+    """把异常转换成调研 worker 可分类的 last_error 字符串。"""
     text = str(exc).strip() or type(exc).__name__
     if _already_prefixed(text):
         return text

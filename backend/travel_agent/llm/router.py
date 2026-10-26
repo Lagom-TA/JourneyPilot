@@ -1,8 +1,6 @@
-"""
-统一模型路由层。
+"""统一模型路由层。
 
-用单一入口管理 primary / fast 两档模型，避免散落的实例化逻辑。
-未配置真实模型时直接抛出 RuntimeError（不提供占位实现）。
+用单一入口管理 primary / fast 两档模型，未配置真实模型时抛出 RuntimeError。
 """
 
 from __future__ import annotations
@@ -60,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 class IncompleteModelResponse(RuntimeError):
-    """A Responses request ended without a completed response envelope."""
+    """Responses 请求结束时没有返回 completed 响应信封。"""
 
     def __init__(self, message: Any) -> None:
         self.message = message
@@ -69,7 +67,7 @@ class IncompleteModelResponse(RuntimeError):
 
 
 def estimate_output_text(response: Any) -> str:
-    """Visible output estimate includes function arguments as well as prose."""
+    """估算可见输出文本，包含函数参数而不只是正文。"""
     text = _coerce_text(response.content)
     tool_calls = (getattr(response, "tool_calls", None) or []) + (getattr(response, "invalid_tool_calls", None) or [])
     if tool_calls:
@@ -78,7 +76,7 @@ def estimate_output_text(response: Any) -> str:
 
 
 def _close_unstarted(awaitable: Any) -> None:
-    """关掉一个还没被 await 的协程。已经跑过的对象上是 no-op。"""
+    """关闭尚未 await 的协程；已运行过的对象上是 no-op。"""
 
     close = getattr(awaitable, "close", None)
     if callable(close):
@@ -90,7 +88,7 @@ def _close_unstarted(awaitable: Any) -> None:
 
 @runtime_checkable
 class BaseLLM(Protocol):
-    """本模块使用的 LLM 协议类型（duck typing，由各实现类自带签名对齐）。"""
+    """本模块使用的 LLM 协议类型（结构类型，由实现类对齐签名）。"""
 
     async def ainvoke(self, messages: List[Dict[str, Any]], **kwargs: Any) -> str: ...
 
@@ -131,8 +129,8 @@ _TIER_CHANNELS = {
     ModelTier.FAST: "online_fast_llm",
 }
 
-# 一次调用属于哪个通道。默认按档位，但**入库**要走自己的配额：它和在线快问快答用
-# 同一个 fast 上游，不分开的话一次上传就能把在线请求排到队尾。
+# 一次调用归属的并发通道。默认按档位；入库使用独立配额，避免与在线快问快答
+# 争用同一个 fast 上游。
 current_llm_channel: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "current_llm_channel",
     default=None,
@@ -141,7 +139,7 @@ current_llm_channel: contextvars.ContextVar[Optional[str]] = contextvars.Context
 
 @contextlib.contextmanager
 def llm_channel(name: str) -> Iterator[None]:
-    """把这一段里的模型调用记到 ``name`` 通道的配额上。"""
+    """把该作用域内的模型调用计入 ``name`` 通道的配额。"""
 
     token = current_llm_channel.set(name)
     try:
@@ -216,10 +214,10 @@ def _to_langchain_messages(messages: List[Dict[str, Any]]) -> List[Any]:
         raise RuntimeError("langchain 消息类不可用，无法构建真实模型消息")
 
     converted: List[Any] = []
-    # 合法的 tool 响应必须紧随拥有对应 tool_call_id 的 assistant tool_calls。
-    # worker 曾把预取的地点/缺口上下文以 role="tool" 注入；宽松 provider 接受，
-    # DeepSeek 则会 400。孤立、错配或已被后续普通消息隔开的 tool 结果降级为 user
-    # 上下文，避免伪造 tool 协议关系而不丢失文本。
+    # 合法的 tool 响应必须紧随带有对应 tool_call_id 的 assistant tool_calls。
+    # worker 可能把预取的地点/缺口上下文以 role="tool" 注入；宽松 provider 接受，
+    # DeepSeek 会返回 400。孤立、错配或已被普通消息隔开的 tool 结果降级为 user
+    # 上下文，保留文本但不伪造 tool 协议关系。
     pending_tool_call_ids: set[str] = set()
     for msg in messages:
         role = str(msg.get("role") or "user")
@@ -231,10 +229,11 @@ def _to_langchain_messages(messages: List[Dict[str, Any]]) -> List[Any]:
             continue
 
         if role == "assistant":
-            # tool_calls 必须进 AIMessage 的结构化字段：langchain 序列化时才会补全
-            # OpenAI wire 格式的 type="function" + function 包裹。塞进 additional_kwargs
-            # 会被原样透传、缺 type，触发 provider 400 `messages[N]: missing field type`
-            # ——ReAct 迭代 1 起每轮都携带上一轮的 assistant tool_calls，故必现。
+            # tool_calls 必须写入 AIMessage 的结构化字段，langchain 序列化时才会
+            # 补全 OpenAI wire 格式的 type="function" 与 function 包裹。写入
+            # additional_kwargs 会被原样透传且缺少 type，导致 provider 返回 400
+            # `messages[N]: missing field type`；ReAct 从第 1 轮起每轮都携带上一轮
+            # 的 assistant tool_calls，因此必然出现。
             tool_calls = [
                 {"name": tc["name"], "args": tc["arguments"], "id": tc["id"], "type": "tool_call"}
                 for tc in _normalize_tool_calls(msg.get("tool_calls"))
@@ -260,8 +259,8 @@ def _to_langchain_messages(messages: List[Dict[str, Any]]) -> List[Any]:
                 pending_tool_call_ids.remove(tool_call_id)
             else:
                 converted.append(HumanMessage(content=f"[工具结果] {content}"))
-                # 一条非协议 tool 消息已经把 assistant/tool 相邻关系打断；后续 tool
-                # 消息不能再借用更早 assistant 的 tool_calls。
+                # 非协议 tool 消息已打断 assistant/tool 相邻关系，后续 tool 消息
+                # 不能再复用更早 assistant 的 tool_calls。
                 pending_tool_call_ids.clear()
             continue
 
@@ -273,7 +272,7 @@ def _to_langchain_messages(messages: List[Dict[str, Any]]) -> List[Any]:
 def _provider_extra_body(
     capabilities: ProviderCapabilities, *, max_tokens: int, reasoning_effort: str = "low"
 ) -> Dict[str, Any]:
-    """Translate an enabled reasoning policy and output limit to the wire dialect."""
+    """将启用的推理策略与输出上限转换为对应 API 方言。"""
 
     body: Dict[str, Any] = {}
     control = capabilities.reasoning_control
@@ -295,14 +294,11 @@ _JSON_OBJECT_PROMPT_TOKEN = (
 def _normalize_response_format(
     kwargs: Dict[str, Any], *, capabilities: ProviderCapabilities
 ) -> Dict[str, Any]:
-    """按上游声明的 capability 决定要不要降级 response format。
+    """根据上游声明的 capability 决定是否降级 response format。
 
-    降级的判据从「base_url 长得像不像 api.deepseek.com」换成了一份**声明**
-    （`backend/travel_agent/resources/providers/*.yaml`）：前者在同一个模型搬到代理后面那天就不成立，
-    而失效是静默的 —— 开关不再命中，结构化输出退回一个形状正确但键名不对的对象。
-
-    认不出的上游走保守档（不声明支持 json_schema），走 json_object + 在 prompt 里
-    明写 schema 那条路。它更啰嗦但两边都能到；反过来（假设支持）拿到的是一次 400。
+    判据来自 `backend/travel_agent/resources/providers/*.yaml` 的声明，而不是
+    base_url 形态。未识别的上游按保守档处理（不支持 json_schema），改用
+    json_object 并在 prompt 中写明 schema；假设其支持会直接得到 400。
     """
     response_format = kwargs.get("response_format")
     if (
@@ -320,14 +316,11 @@ def _satisfy_json_object_prompt_requirement(
     *,
     dropped_schema: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    """Restore in the prompt what the ``json_object`` downgrade took away.
+    """在 prompt 中补回 json_object 降级丢失的信息。
 
-    Two things ride on a caller's ``json_schema``: the literal word ``json``
-    (DeepSeek rejects ``json_object`` without it) and the response shape itself.
-    ``json_object`` enforces neither, so a call site that relied on the schema
-    alone to convey its shape gets a well-formed object with the wrong keys.  The
-    router states both in the prompt instead.  Callers who already spell out JSON
-    and pass no schema are left untouched.
+    json_schema 承担两项作用：要求出现字面量 ``json``（DeepSeek 在缺少该词时拒绝
+    json_object）以及声明响应结构。json_object 不保证任何一项，因此由路由器在
+    prompt 中补上；已自行写明 JSON 且未传 schema 的调用方不受影响。
     """
     response_format = kwargs.get("response_format")
     if not isinstance(response_format, dict) or response_format.get("type") != "json_object":
@@ -352,15 +345,12 @@ def _satisfy_json_object_prompt_requirement(
 def _messages_already_contain_schema(
     messages: List[Dict[str, Any]], schema: Dict[str, Any]
 ) -> bool:
-    """Do not paste the same structured-output schema into a prompt twice.
+    """避免把同一份结构化输出 schema 重复写入 prompt。
 
-    Some high-context agents already render their response schema beside the
-    domain contract.  A provider downgrade from ``json_schema`` to
-    ``json_object`` used to append that schema a second time, adding thousands
-    of identical prompt tokens on every repair round.  Compare the canonical
-    compact JSON representation so whitespace differences do not defeat the
-    check; callers that do not carry the schema still receive the router-owned
-    instruction.
+    部分高上下文 Agent 已在领域契约旁渲染响应 schema；从 json_schema 降级到
+    json_object 时再次追加会在每轮修复中增加大量重复 token。比较规范化的紧凑
+    JSON 表示，避免空白差异影响判断；未携带 schema 的调用方仍会收到路由器
+    生成的指令。
     """
 
     compact = json.dumps(schema, ensure_ascii=False, separators=(",", ":"))
@@ -370,7 +360,7 @@ def _messages_already_contain_schema(
 def _downgraded_json_schema(
     kwargs: Dict[str, Any], *, capabilities: ProviderCapabilities
 ) -> Optional[Dict[str, Any]]:
-    """Return the schema `_normalize_response_format` is about to drop, if any."""
+    """返回 `_normalize_response_format` 即将丢弃的 schema；没有则返回 None。"""
     response_format = kwargs.get("response_format")
     if not (
         not capabilities.supports_json_schema
@@ -414,7 +404,8 @@ class OpenAICompatibleLLM(BaseLLM):
         self._use_responses_api = use_responses_api
         self._responses_streaming = use_responses_api and responses_streaming
         self.provider = infer_provider(base_url, model_name)
-        # 这个上游支持什么，来自 `backend/travel_agent/resources/providers/*.yaml` 的声明；认不出走保守档。
+        # 上游能力来自 `backend/travel_agent/resources/providers/*.yaml` 的声明；
+        # 未识别时使用保守配置。
         self.capabilities = capabilities_for(base_url)
         if token_limit_field is not None:
             self.capabilities = self.capabilities.model_copy(update={"token_limit_field": token_limit_field})
@@ -422,12 +413,12 @@ class OpenAICompatibleLLM(BaseLLM):
             model_name, reasoning_effort or ("medium" if tier == ModelTier.PRIMARY else "low")
         )
         self._usage_recorder = usage_recorder
-        # 预算守卫按「本次最坏输出」估账，而最坏输出就是这个上限。
+        # 预算守卫按本次最坏输出估算，最坏输出即该上限。
         self._max_tokens = int(max_tokens)
         self._max_retries = max(0, int(max_retries))
-        # ``request_timeout`` is this client's default per SDK attempt.  A call
-        # site needing a wider bound passes ``timeout=`` in its own kwargs; the
-        # SDK applies that to the single request instead of the shared client.
+        # ``request_timeout`` 是该客户端单次 SDK 尝试的默认超时。需要更长时限的
+        # 调用方在自己的 kwargs 中传入 ``timeout=``，SDK 会将其用于单次请求而不是
+        # 共享客户端。
         self._client = ChatOpenAI(
             api_key=api_key,
             model=model_name,
@@ -439,17 +430,17 @@ class OpenAICompatibleLLM(BaseLLM):
             ) else None,
             max_tokens=max_tokens,
             request_timeout=timeout,
-            # Retry in this layer so every attempt receives its own usage row.
+            # 在本层重试，使每次尝试各自产生一条 usage 记录。
             max_retries=0,
-            # langchain-openai 仅在默认 OpenAI base_url 下自动开启流式 usage，而本仓
-            # 全部模型自定义 base_url，不显式开则流式 usage 永远为空。
+            # langchain-openai 仅在默认 OpenAI base_url 下自动开启流式 usage；
+            # 本项目的模型均使用自定义 base_url，不显式开启时流式 usage 为空。
             stream_usage=self.capabilities.supports_stream_usage,
             use_responses_api=use_responses_api,
             streaming=self._responses_streaming,
             use_legacy_max_tokens=self.capabilities.token_limit_field == "max_tokens",
             store=False if use_responses_api else None,
-            # Responses has native reasoning/output fields; Chat dialect extras
-            # would overwrite them after the SDK serializes the request.
+            # Responses 有原生推理与输出字段；Chat 方言的 extra_body 会在 SDK
+            # 序列化后覆盖它们。
             extra_body={} if use_responses_api else _provider_extra_body(
                 self.capabilities, max_tokens=max_tokens, reasoning_effort=self._reasoning_effort
             ),
@@ -477,10 +468,9 @@ class OpenAICompatibleLLM(BaseLLM):
         *,
         output_tokens: Optional[int] = None,
     ) -> None:
-        """在花掉这次调用之前判预算，按最坏开销估账。
+        """在发起调用前检查预算，按最坏开销计算。
 
-        输入侧按字符数粗估（供应商还没告诉我们真实 token），输出侧按配置上限 ——
-        这次调用最多能吐出来的就是那么多。
+        输入侧按字符数粗估（供应商尚未返回真实 token），输出侧按配置上限。
         """
 
         guard_run_budget(
@@ -493,14 +483,12 @@ class OpenAICompatibleLLM(BaseLLM):
     def _apply_output_token_limit(
         self, kwargs: Dict[str, Any]
     ) -> tuple[Dict[str, Any], int]:
-        """Apply one task-scoped output ceiling in the configured API dialect.
+        """按配置的 API 方言应用任务级输出上限。
 
-        ``langchain-openai`` serializes ``max_tokens`` as
-        ``max_completion_tokens`` while DeepSeek-compatible providers may only
-        read the former inside ``extra_body``.  A per-call limit therefore has
-        to replace both fields together; changing just one leaves the client's
-        configured default active on the other path. Responses instead uses
-        its native ``max_output_tokens`` without Chat-specific body overrides.
+        langchain-openai 会把 max_tokens 序列化为 max_completion_tokens，而
+        DeepSeek 兼容供应商可能只读取 extra_body 中的 max_tokens。按次上限必须
+        同时替换两个字段，否则另一条路径仍使用客户端默认值。Responses 使用原生
+        max_output_tokens，不应用 Chat 方言的 body 覆盖。
         """
 
         kwargs = dict(kwargs)
@@ -521,8 +509,7 @@ class OpenAICompatibleLLM(BaseLLM):
             raise ValueError("max_output_tokens must be positive and supported by the model")
         scoped = dict(kwargs)
         if self._use_responses_api:
-            # LangChain stores the deployment default under this legacy key
-            # and maps it to max_output_tokens during Responses serialization.
+            # LangChain 在 Responses 序列化时将该旧键映射为 max_output_tokens。
             scoped["max_completion_tokens"] = limit
             return scoped, limit
         scoped["max_tokens"] = limit
@@ -534,11 +521,12 @@ class OpenAICompatibleLLM(BaseLLM):
         return scoped, limit
 
     async def _in_channel(self, awaitable: Awaitable[Any], *, operation: str) -> Any:
-        """在通道配额内发起一次调用，并受 Run 的时间窗约束。
+        """在通道配额内发起一次调用，并受 Run 时间窗约束。
 
-        排队等在时间窗**里面**：等不到位置和调用本身太慢对一个 Run 是同一件事 ——
-        窗口关了。没有窗口的那一档（快问快答、授权之前）由
-        `provider_channels.max_queue_wait_seconds` 兜底，否则通道满了这条请求永远不回来。
+        排队等待计入时间窗：等待过久与调用过慢对 Run 是同一结果，即窗口关闭。
+        无窗口的档位（快问快答、授权之前）使用
+        `provider_channels.max_queue_wait_seconds` 作为等待上限，避免通道满时
+        请求永久阻塞。
         """
 
         gate = self._channel()
@@ -549,8 +537,8 @@ class OpenAICompatibleLLM(BaseLLM):
             async with gate.hold(wait_seconds=wait_seconds):
                 return await await_model_operation(awaitable, operation=operation)
         except BaseException:
-            # 同步拒绝（窗口已关、已取消、通道满）时调用方构造好的那个协程还没被 await。
-            # 不关掉它就是一条 "coroutine was never awaited" 警告。
+            # 同步拒绝（窗口关闭、已取消、通道已满）时，调用方构造的协程尚未
+            # await；不关闭它会产生 "coroutine was never awaited" 警告。
             _close_unstarted(awaitable)
             raise
 
@@ -564,7 +552,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 raise IncompleteModelResponse(message)
 
     def _start_record(self, method: str, *, stream: bool) -> Optional[LLMCallRecord]:
-        """无 run 上下文（离线 eval 等）→ 返回 None，静默跳过记账。"""
+        """无 run 上下文（离线 eval 等）时返回 None，跳过记账。"""
         run_id, node, agent = read_attribution()
         if run_id is None:
             return None
@@ -624,7 +612,7 @@ class OpenAICompatibleLLM(BaseLLM):
             )
             record.usage_source = "reported" if record.usage_complete else "partial"
         elif status == "ok":
-            # usage 缺失（流被中断/供应商不回/全零对象）→ 字符数粗估并标记 estimated
+            # usage 缺失（流中断、供应商未返回、全零对象）时按字符数估算并标记 estimated
             in_est = record.request_input_tokens_estimate
             if in_est is None:
                 in_est = estimate_tokens(input_text, self.model_name)
@@ -639,12 +627,11 @@ class OpenAICompatibleLLM(BaseLLM):
             record.usage_complete = False
             record.usage_source = "missing"
         record.finish_reason = response_finish_reason(message)
-        # status=error 且无 usage：token 列留 null，绝不编数
+        # status=error 且无 usage 时，token 列保持 null，不填入估算值。
 
-        # 每次调用一行取证：finish_reason=length 即输出被 max_tokens 截断，配合
-        # output_tokens 就能判断当前输出设置是否把 Research Packet 切断。归因直接用
-        # record 的字段（run 控制层 contextvars），不另开一套通道；离线 eval 无 run 上下文
-        # 时上面已经返回，日志与记账同进同退。
+        # 每次调用记录一条日志：finish_reason=length 表示输出被 max_tokens 截断，
+        # 结合 output_tokens 可判断当前输出设置是否截断 Research Packet。
+        # 归因使用 record 字段（run 控制层 contextvars），不另开通道。
         logger.info(
             "LLM 调用完成 (call_id=%s, tier=%s, model=%s, method=%s, node=%s, agent=%s, "
             "status=%s, finish_reason=%s, output_tokens=%s, estimated=%s, latency_ms=%.0f)",
@@ -665,19 +652,20 @@ class OpenAICompatibleLLM(BaseLLM):
         self._charge_budget(record)
 
     def _charge_budget(self, record: Optional[LLMCallRecord]) -> None:
-        """把这一次调用记进 Run 的预算账本。
+        """把本次调用记入 Run 的预算账本。
 
-        费用用**同一个公式**（`cost_ledger_store.compute_cost_usd`）算：预算和台账
-        对同一次调用给两个价钱，就没有一个数字能当上限用。价格表没命中时账本记一次
-        未定价调用，而不是记 0 元。
+        费用使用与台账相同的公式（`cost_ledger_store.compute_cost_usd`），避免
+        预算与台账对同一次调用给出不同金额。价格表未命中时账本记为未定价调用，
+        而不是 0 元。
 
-        失败的调用也计数：它一样占了配额、一样可能被无限循环重复。
+        失败的调用也计入：它同样占用配额，也可能被循环重复。
         """
 
         ledger = current_budget_ledger()
         if ledger is None or record is None:
             return
-        # 延迟 import：台账层要经 `models.usage` 拿 LLMCallRecord，模块级引用会成环。
+        # 延迟 import：台账层通过 `models.usage` 引用 LLMCallRecord，模块级引用
+        # 会形成循环。
         from ..storage.cost_ledger_store import compute_cost_usd
 
         price = resolve_price(record.model_request, record.provider)
@@ -731,8 +719,8 @@ class OpenAICompatibleLLM(BaseLLM):
 
             async def invoke_admitted():
                 nonlocal record, started
-                # The channel/deadline guards must accept the operation before
-                # outbox admission: a rejected coroutine never reaches a provider.
+                # 通道与截止时间守卫必须在 outbox 入队之前接受操作：
+                # 被拒绝的协程不会到达供应商。
                 record = self._start_record(method, stream=self._responses_streaming)
                 if record is not None:
                     record.logical_call_id, record.attempt_number = logical_id, attempt + 1
@@ -831,8 +819,8 @@ class OpenAICompatibleLLM(BaseLLM):
                     async for chunk in self._client.astream(_to_langchain_messages(messages), **kwargs):
                         sample = extract_usage(chunk)
                         if sample is not None:
-                            # API usage samples are cumulative snapshots. Summing
-                            # repeated snapshots double-charges the same output.
+                            # API 返回的 usage 是累计快照，累加多个快照会重复
+                            # 计算同一段输出。
                             last_usage = sample
                         full = chunk if full is None else full + chunk
                         text = _coerce_text(getattr(chunk, "content", ""))
@@ -880,8 +868,8 @@ class OpenAICompatibleLLM(BaseLLM):
         tools: List[Dict[str, Any]],
         **kwargs: Any,
     ) -> AsyncIterator[Dict[str, Any]]:
-        # 为了保证接口稳定，这里优先返回完整 finish 事件；主流程仍能正确执行，不依赖
-        # 复杂的 tool chunk 解析。计量随委托的 ainvoke_with_tools 记一条非流式记录即可。
+        # 为保持接口稳定，这里委托 ainvoke_with_tools 后返回完整 finish 事件；
+        # 计量随该非流式调用记录一条。
         result = await self.ainvoke_with_tools(messages, tools, **kwargs)
         content = str(result.get("content") or "")
         for piece in _chunk_text(content):
@@ -979,7 +967,7 @@ class ModelRouter:
         return TaskLLM(self, route, self._get_or_create(ModelTier(route.tier)))
 
     def get_scope(self) -> BaseLLM:
-        """Scope owns one visible retry, so its transport must perform exactly one request per attempt."""
+        """Scope 自己负责一次可见重试，因此其传输层每次尝试只发起一次请求。"""
         if self._scope_client is None:
             self._scope_client = self._build_client(ModelTier.FAST, max_retries=0)
         return self._scope_client

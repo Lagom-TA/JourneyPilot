@@ -1,4 +1,4 @@
-"""Storage row values."""
+"""数据库行值与 JSON 列值的转换。"""
 
 from __future__ import annotations
 

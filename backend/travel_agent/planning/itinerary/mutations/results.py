@@ -1,5 +1,3 @@
-"""Planning itinerary mutations results."""
-
 from __future__ import annotations
 
 from travel_agent.planning.itinerary.models import StructuredItineraryV2

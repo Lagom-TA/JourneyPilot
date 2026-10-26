@@ -14,7 +14,7 @@ _FINAL_OUTPUT_NODES = {"fast_answer_agent"}
 async def _handle_token(
     item: tuple, ctx: ChatPresentation
 ) -> AsyncIterator[Dict[str, Any]]:
-    """'token' kind: Worker 节点 astream() 的实时 token(synthesizer 最终输出)。"""
+    """token 事件：Worker 节点 astream() 的实时 token（synthesizer 的最终输出）。"""
     _, node_name, chunk = item
     ctx.streamed_nodes.add(node_name)
     ctx.final_agent_name = get_agent_display_name(node_name)
@@ -36,6 +36,6 @@ async def _handle_token(
 async def _handle_react_thinking(
     item: tuple, ctx: ChatPresentation
 ) -> AsyncIterator[Dict[str, Any]]:
-    """Discard legacy raw model deltas, including JSON split across arbitrary chunks."""
+    """丢弃模型原始增量，包括被任意分块切开的 JSON。"""
     return
     yield

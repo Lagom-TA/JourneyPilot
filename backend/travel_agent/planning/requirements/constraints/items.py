@@ -1,4 +1,4 @@
-"""Planning requirements constraints items."""
+"""约束条目。"""
 
 from __future__ import annotations
 

@@ -1,5 +1,3 @@
-"""Planning research transport rail binding."""
-
 from __future__ import annotations
 
 import datetime
@@ -64,7 +62,7 @@ def _build_rail_route_envelope(
     from_point: Optional[tuple[float, float]],
     to_point: Optional[tuple[float, float]],
 ) -> Dict[str, Any]:
-    """Wrap one real 12306 train as a structured provider-route envelope."""
+    """把一条真实的 12306 班次包装成结构化的 Provider 路线信封。"""
     departure_at = _rail_iso(start_date, train["departure_time"])
     arrival_date = start_date
     if _rail_time_to_minutes(train["arrival_time"]) < _rail_time_to_minutes(
@@ -153,7 +151,7 @@ async def _bind_one_rail_leg(
     same_day_roundtrip: bool = False,
     bound_arrivals: Optional[Dict[str, Optional[str]]] = None,
 ) -> bool:
-    """Ground exactly one assigned long-distance leg from real 12306 data."""
+    """用真实 12306 数据为一条指定长途腿确定班次。"""
     route_origin = identity_by_place_id.get(scoped_leg.from_place_id)
     route_destination = identity_by_place_id.get(scoped_leg.to_place_id)
     if route_origin is None or route_destination is None:
@@ -233,7 +231,7 @@ async def _bind_one_rail_leg(
     rail_constraint_params = _rail_constraint_params(state.constraint_pack)
 
     async def resolve_station_codes() -> tuple[Optional[str], Optional[str], str]:
-        """Return (from_code, to_code, source) with live MCP preferred over table."""
+        """返回 (from_code, to_code, source)；优先实时 MCP 结果，其次内置站码表。"""
         from_code: Optional[str] = None
         to_code: Optional[str] = None
         source = "none"
@@ -333,7 +331,7 @@ async def _bind_one_rail_leg(
         def compliant_rail_trains(
             env: Mapping[str, Any], pair: tuple[str, str]
         ) -> List[Dict[str, Any]]:
-            """Trains that are both constraint-compliant and on the trip's endpoints."""
+            """同时满足硬约束、且端点属于本次行程的班次。"""
             return _filter_rail_trains(
                 _filter_rail_trains_by_station_scope(
                     _rail_train_records(env),
@@ -576,7 +574,7 @@ async def discover_domestic_rail_route(
     required_route_scopes: List[ProviderEvidenceScope],
     now: Optional[datetime.datetime] = None,
 ) -> bool:
-    """Deterministically ground every assigned domestic intercity rail leg."""
+    """为所有指定的国内城际铁路腿确定班次。"""
     classes = required_transport_classes or []
 
     if connector_gaps or (classes and "long_distance" not in classes):

@@ -1,11 +1,11 @@
 """迁移互斥锁：PostgreSQL advisory lock。
 
-即使是单用户本地应用也必须有这把锁（dev docs 02 §4.2）：用户重复敲 start、
-Docker restart policy 与手工启动重叠、两个终端同时跑、上一次 migration 还没退出 ——
-四种情况都会让两个 migrator 同时改同一个库。
+即使是单用户本地应用也需要这把锁：用户重复执行启动命令、Docker restart policy 与
+手工启动重叠、两个终端同时操作、上一次 migration 尚未退出，都可能让两个 migrator
+同时修改同一个库。
 
-**超时必须报错，不能降级成「那我不加锁跑」**：拿不到锁说明另一个 migrator 在跑，
-此时继续等于两个进程并发 DDL。
+**超时必须报错，不能退化为无锁执行**：拿不到锁说明另一个 migrator 在运行，继续执行
+会导致两个进程并发 DDL。
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ _POLL_INTERVAL_SECONDS = 0.5
 
 
 class MigrationLockTimeout(RuntimeError):
-    """拿不到迁移锁。调用方必须退出，不允许无锁继续。"""
+    """拿不到迁移锁。调用方必须退出，不能在无锁状态下继续。"""
 
 
 def _lock_key(conn: Any) -> int:
@@ -42,10 +42,9 @@ def migration_lock(
     """持有迁移锁的上下文。psycopg3 连接，必须是 autocommit。
 
     用 `pg_try_advisory_lock` 轮询而不是 `pg_advisory_lock` 阻塞等待：后者没有超时，
-    一个卡死的 migrator 会让用户看到一个永远不返回、也不说话的命令。
+    卡住的 migrator 会让命令一直不返回且没有输出。
 
-    锁是 session 级的 —— 进程崩掉时 PostgreSQL 自动释放，所以不存在「上次崩了、
-    锁留在库里、从此谁也迁不了」这种需要人工清理的状态。
+    锁是 session 级的：进程崩溃时 PostgreSQL 自动释放，因此不需要人工清理残留锁。
     """
 
     key = _lock_key(conn)

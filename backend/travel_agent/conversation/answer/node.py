@@ -1,4 +1,4 @@
-"""Conversation answer node."""
+"""会话回答节点。"""
 
 from __future__ import annotations
 

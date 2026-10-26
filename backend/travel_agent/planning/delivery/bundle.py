@@ -1,9 +1,11 @@
+"""交付 Bundle 的数据契约。"""
+
 from __future__ import annotations
 
 import hashlib
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -466,7 +468,7 @@ def canonical_content_hash(value: BaseModel) -> str:
 
 
 def _normalize_canonical_json_numbers(value: Any) -> Any:
-    # JSONB normalizes signed zero; hash equivalent numbers without changing evidence.
+    # JSONB 会把有符号零归一化；哈希时把等值数字视为同一个值，不改变证据内容。
     if isinstance(value, dict):
         return {
             key: _normalize_canonical_json_numbers(item) for key, item in value.items()

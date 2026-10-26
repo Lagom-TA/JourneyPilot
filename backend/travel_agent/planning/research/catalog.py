@@ -13,7 +13,7 @@ RECOMMENDATION_CATALOG_CONTRACT_VERSION = "journeypilot.recommendation_catalog.v
 
 
 class RecommendationCatalog(StrictModel):
-    # Checkpoint reconstruction can bypass nested validation with model_construct.
+    # checkpoint 重建可能用 model_construct 绕过嵌套校验，因此始终重新校验实例。
     model_config = ConfigDict(
         extra="forbid",
         frozen=True,

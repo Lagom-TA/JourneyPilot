@@ -1,4 +1,4 @@
-"""Runtime job contracts."""
+"""后台任务的类型、状态与重试退避规则。"""
 
 from __future__ import annotations
 
@@ -17,10 +17,9 @@ def generate_background_job_id() -> str:
 
 
 class BackgroundJobType(str, Enum):
-    """已经有真实消费者的任务类型。
+    """已经有真实处理器的任务类型。
 
-    `checkpoint_pruning` / `retention_cleanup` 等共享同一套 lease/attempt/backoff 语义，
-    但先用一个真实场景把语义跑通，不提前登记没有 handler 的类型。
+    只有存在消费者时才登记新类型；没有 handler 的类型会一直停在 pending。
     """
 
     MEMORY_EXTRACTION = "memory_extraction"

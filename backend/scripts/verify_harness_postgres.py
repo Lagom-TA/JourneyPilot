@@ -1,7 +1,8 @@
-"""Verify worker journal migration in a disposable PostgreSQL 14 cluster.
+"""在一次性 PostgreSQL 14 集群中验证 worker journal 迁移。
 
-PYTHONPATH=backend <test-venv>/bin/python backend/scripts/verify_harness_postgres.py
-No project database or model calls. Fingerprint is checked, never rewritten.
+    PYTHONPATH=backend <test-venv>/bin/python backend/scripts/verify_harness_postgres.py
+
+不访问项目数据库，也不调用模型；只校验指纹，不改写指纹。
 """
 
 import asyncio
@@ -37,7 +38,7 @@ BIN = Path("/usr/lib/postgresql/14/bin")
 
 
 async def check_graph(store, saver, boundary):
-    """Real Postgres pending writes + journal, without application admission."""
+    """在真实 PostgreSQL 上验证 pending writes 与 journal 的写入和恢复；gate 节点是 fixture。"""
     from tests.fixtures.research_packets import make_packet
 
     calls, admitted, crash = [], [], [True]
@@ -150,7 +151,7 @@ async def check(sock):
             assert (await store.load("run", "scope"))[0] == 1
             conninfo = make_conninfo(host=str(sock), port="65484", user="probe", dbname="postgres")
             async with AsyncPostgresSaver.from_conn_string(conninfo) as saver:
-                await saver.setup()  # disposable cluster only
+                await saver.setup()  # 仅用于一次性集群
                 for boundary in ("before_pending_write", "after_pending_write"):
                     await check_graph(store, saver, boundary)
     finally:

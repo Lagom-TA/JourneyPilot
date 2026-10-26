@@ -1,49 +1,28 @@
-"""What places a knowledge-base chunk names, and how far the run took them.
+"""知识库分块提到的地点，以及这些地点在一次 Run 中走到了哪一步。
 
-The knowledge base cannot put a place into an itinerary by itself: a Candidate's
-``place_id`` is pinned to a Provider result by the packet schema, and that is
-deliberate (identity is never the model's to author). What a chunk
-*can* do is **nominate**: name a place the worker then resolves through
-``global_place_search``, exactly the way a place the user asked for by name gets
-in. Nomination is therefore a chain with four hops::
+知识库不能直接把地点写进行程：Candidate 的 ``place_id`` 必须来自 Provider 结果
+（身份不由模型编写）。分块能做的是提名：写出一个地名，由 worker 通过
+``global_place_search`` 解析，与用户直接点名走同一条路径。链路有四步::
 
-    a chunk names X  ->  the worker looks X up  ->  X lands in
-    eligible_place_options  ->  X becomes a Candidate
+    分块提到 X  ->  worker 查询 X  ->  X 进入 eligible_place_options
+    ->  X 成为 Candidate
 
-Five rounds of measurement showed the chain producing nothing without anybody
-noticing, because **no number anywhere described it**. This module produces those
-numbers and nothing else: it decides nothing, filters nothing and blocks nothing.
+本模块只统计这条链路的数量：不做决策、不过滤、不阻断。
 
-Two halves, with very different standing:
+``propose_place_mentions`` 是分母，属于召回启发式：它会多报，包括并非地名的
+字符串。它不表示「这段正文包含这些地点」，只表示「这些字符串值得向 Provider
+查询」。字符串是否真实地点只能由 Provider 判断。
 
-* ``propose_place_mentions`` is the **denominator**, and it is a *recall
-  heuristic*. It over-generates on purpose — it proposes anything shaped like a
-  named place, including strings that are not places at all. It must never be
-  read as "this chunk contains these places"; it means "these are the strings
-  worth asking a Provider about". Precision is not its job and it does not have
-  any: only a Provider can say whether a string names a real place, and that is
-  the same boundary the rest of the pipeline holds.
-* the numerator is read off what actually happened in the run — the lookups the
-  worker sent, the options the Gateway admitted, the Candidates the packet
-  carried — so hops 2-4 are exact.
+分子来自 Run 的实际行为：worker 发出的查询、Gateway 放行的选项、packet 携带的
+Candidate，因此第 2-4 步是精确的。
 
-**A name comparison joins the first hop only** (``mention_matches_name``:
-does this proposal name the thing the worker asked the Provider about?). Both
-sides of that comparison are written in the corpus's own script, because the
-worker types the query out of the chunk it just read, so a spelling gap cannot
-open there.
+名称比较只用于第一步（``mention_matches_name``：这个提名是否就是 worker 查询的
+对象），两侧都使用语料自身的文字。查询之后一律按 ``place_id`` 连接
+（:class:`PlaceLookup`）：它记录身份来自哪次调用、该调用是否由提名触发。名称
+在查询之后不再比较：语料写 浅草寺、Provider 返回 淺草寺 或英文名时，名称比较
+会丢失结果，而 Provider 生成的身份没有这个问题。
 
-Everything downstream of the lookup is joined by ``place_id`` instead, through
-:class:`PlaceLookup` — *which call did this identity come out of, and was that
-call nominated*. That is the provenance the run already has, and it is what
-makes the measurement script-agnostic. Comparing names past the lookup is the
-pairing that failed: the corpus says 浅草寺, OSM answers 淺草寺 or ``Tokyo
-National Museum``, and every Japanese destination read zero at hops 3-5 while
-the packet plainly carried the Candidates. A folding table would have papered
-over the Chinese half of that and still lost the English half; the identity the
-Provider minted never had the problem in the first place.
-
-Every function here is pure: no clock, no provider, no I/O, no global state.
+本模块所有函数都是纯函数：不使用时钟、provider、I/O 或全局状态。
 """
 
 from __future__ import annotations
@@ -52,16 +31,13 @@ import re
 from dataclasses import dataclass
 from typing import Iterable, Mapping, Sequence
 
-# Category words a concrete, visitable place name ends with. This is a *recall*
-# vocabulary, not a definition of what a place is — a name it misses is a
-# nomination this measurement will under-count, and a name it wrongly proposes
-# costs one Provider lookup that comes back empty. Neither can admit anything,
-# so the list is allowed to be generous and is allowed to be incomplete.
+# 具体可访问地名常见的结尾词。这是召回词表，不是地名的定义：漏掉一个名字只
+# 会让测量少算，误报一个名字只多一次返回空的 Provider 查询；两者都不会放行
+# 任何内容，因此词表可以宽，也可以不完整。
 #
-# Region words (市 / 省 / 区 / 县 / 州) are deliberately absent, but nothing here
-# relies on that: "杭州" is rejected because the Provider types it
-# ``boundary;administrative;city``, which ``is_administrative_provider_type``
-# already knows is an area rather than a stop.
+# 地区词（市 / 省 / 区 / 县 / 州）刻意不在这里：即便出现，Provider 会把杭州
+# 标注为 ``boundary;administrative;city``，``is_administrative_provider_type``
+# 已能判断它是区域而非停靠点。
 CONCRETE_PLACE_SUFFIXES: tuple[str, ...] = tuple(
     sorted(
         {
@@ -91,44 +67,38 @@ CONCRETE_PLACE_SUFFIXES: tuple[str, ...] = tuple(
     )
 )
 
-# Characters that cannot occur inside a place name, used to find its left edge.
-# Deliberately narrow: an over-wide set decapitates real names.  Carrying 中 / 周 /
-# 绍 / 上 for the sake of 中间 / 周边 / 介绍 / 以上 cuts 中国茶叶博物馆, 周庄古镇,
-# 绍兴北站 and 上海虹桥站 at their first character.  Prefer leaving a verb attached
-# over cutting a name in half.
+# 不能出现在地名内部、用来确定左边界的字符。刻意取窄：范围过宽会截断真实
+# 名称——为了 中间 / 周边 / 介绍 / 以上 而收进 中 / 周 / 绍 / 上，会把
+# 中国茶叶博物馆、周庄古镇、绍兴北站、上海虹桥站截在首字。宁可让动词留在
+# 名字前，也不要截断名字。
 #
-# It follows that the set is *incomplete on purpose* and always will be — no
-# character list can enumerate every verb that can sit in front of a name, so
-# the corpus's own "该段落介绍苏州博物馆" comes out as one mention with the verb
-# still on it. That is deliberately not repaired here by generating stripped
-# variants: variants would triple the denominator with noise, and
-# ``mention_matches_name`` already joins such a mention to the Provider's
-# "苏州博物馆", so the chain stays connected end to end without them.
+# 因此这个集合刻意不完整：没有字符表能枚举所有可以出现在地名前的动词，
+# 语料里的「该段落介绍苏州博物馆」会带着动词成为一个提名。
+# ``mention_matches_name`` 仍能把它与 Provider 的「苏州博物馆」匹配上，
+# 不需要生成去掉动词的变体（变体会让分母增加大量噪声）。
 _NAME_BOUNDARY_CHARS = frozenset(
     "的和与及有是在为等或从把被让即将也都还很更最就才只再又如而但所因由此这那些"
     "位于拥有现有包括始建成其多余约共计据说达到超过并无"
     "一二三四五六七八九十百千万亿第年月日号处座条例比称作叫做"
 )
 
-# Anything that is not a CJK ideograph, a letter or a digit ends a segment: a
-# place name never spans punctuation, and the corpus writes its lists with 、.
+# 任何不是 CJK 汉字、字母或数字的字符都结束一个片段：地名不会跨标点，语料
+# 用 、 分隔列表。
 _SEGMENT_SPLIT = re.compile(r"[^一-鿿㐀-䶿 A-Za-z0-9]+".replace(" ", ""))
 
-# A proposal shorter than this cannot identify anything (西湖 is the shortest
-# real name in the corpus); longer than this is a sentence, not a name.
+# 短于该长度的提名无法标识任何地点（西湖是语料中最短的真实地名）；更长的是
+# 句子而不是名字。
 _MIN_MENTION_CHARS = 2
 _MAX_MENTION_CHARS = 10
 
 
 @dataclass(frozen=True)
 class PlaceMention:
-    """One string a chunk might be naming a place with.
+    """分块可能用来指代地点的字符串。
 
-    ``left_edge_is_clean`` records whether the name's left edge was found by a
-    boundary character or the start of a segment, rather than forced by
-    ``_MAX_MENTION_CHARS``. A forced edge means the proposal is a truncated
-    sentence far more often than it is a name, which is why callers that can
-    only afford a few Provider lookups should spend them on the clean ones first.
+    ``left_edge_is_clean`` 记录左边界是由边界字符或片段开头确定，还是被
+    ``_MAX_MENTION_CHARS`` 强制截断。强制截断的提名更可能是被截断的句子，
+    因此只能负担少量 Provider 查询的调用方应优先使用 clean 的提名。
     """
 
     text: str
@@ -136,17 +106,15 @@ class PlaceMention:
 
 
 def propose_place_mentions(text: str) -> tuple[PlaceMention, ...]:
-    """Every string in ``text`` shaped like the name of a visitable place.
+    """返回 ``text`` 中所有形似可访问地名的字符串。
 
-    Ranked: clean left edge first, then longer before shorter, so a caller that
-    truncates the list keeps the most place-like proposals. Deterministic — the
-    same text always yields the same list in the same order, which is what makes
-    a corpus census recomputable.
+    排序：左边界干净的在前，然后长者优先，因此截断列表时保留最像地名的提名。
+    结果是确定性的：同一文本总是得到相同顺序的列表。
     """
 
     proposals: dict[str, bool] = {}
-    # A wiki link renders as "大明山 (浙江)|大明山"; the bar separates two
-    # spellings of one name rather than joining two names.
+    # wiki 链接形如 "大明山 (浙江)|大明山"；竖线分隔的是同一个名称的两种写法，
+    # 不是两个名称。
     for segment in _SEGMENT_SPLIT.split(str(text or "").replace("|", " ")):
         if not segment:
             continue
@@ -188,20 +156,16 @@ def _normalize(value: object) -> str:
 
 
 def mention_matches_name(mention: str, name: str) -> bool:
-    """Whether ``name`` is another writing of the nomination ``mention``.
+    """``name`` 是否是提名 ``mention`` 的另一种写法。
 
-    Containment either way, because the two ends disagree in both directions: a
-    proposal can carry a verb the query does not ("该段落介绍苏州博物馆" vs
-    "苏州博物馆") and can be missing a character the query has ("州工艺美术博物馆"
-    vs "杭州工艺美术博物馆"). The length floor is what keeps that from collapsing
-    into "matches anything": without it a record literally named 公路 would
-    confirm every proposal containing 公路.
+    双向包含：提名可能带查询没有的动词（「该段落介绍苏州博物馆」对
+    「苏州博物馆」），也可能少一个字（「州工艺美术博物馆」对
+    「杭州工艺美术博物馆」）。长度下限避免退化成「匹配任何内容」：否则一个
+    名为 公路 的记录会确认所有包含 公路 的提名。
 
-    **This is a comparison between two strings written by the same side** — the
-    chunk and the query the worker typed out of it, or the chunk and a name a
-    corpus census asked a Provider for by that exact name. It is deliberately not
-    used to decide whether a Provider's answer is "the same place" as a mention;
-    see the module docstring for why that job belongs to ``place_id``.
+    这是同一侧写出的两个字符串之间的比较（分块与 worker 输入的查询，或分块
+    与语料普查按原名查询的名称），不用于判断 Provider 的答案是否同一地点；
+    该判断由 ``place_id`` 完成。
     """
 
     left, right = _normalize(mention), _normalize(name)
@@ -217,21 +181,13 @@ def mention_matches_any(mention: str, names: Iterable[object]) -> bool:
 
 
 def query_carries_mention(query: str, mention: str) -> bool:
-    """Whether the worker typed this nomination into that Provider query.
+    """worker 是否把这个提名写进了 Provider 查询。
 
-    A query is **composed**, not canonical: the worker routinely writes the name
-    it read plus a romanisation or a city — ``浅草寺 Sensoji``, ``灵隐寺 杭州``,
-    ``皇居 东京 Imperial Palace``. Against the whole string the length floor in
-    :func:`mention_matches_name` then rejects the nomination for being too short
-    a fraction of it, and where it lands is pure accident: ``灵隐寺 杭州`` passed
-    by one character while ``浅草寺 Sensoji`` failed, so an international run read
-    ``queried=0`` in a round that had asked about both of its temples by name.
-
-    So the comparison runs per segment, split exactly the way the proposer splits
-    a chunk — no new rule and no new threshold, just the recognition that a query
-    holding two names is holding two names. The floor keeps doing its job inside
-    each segment, which is where it was always meant to apply: ``公路`` still
-    cannot confirm ``杭金衢高速公路``.
+    查询是组合出来的，不是规范形式：worker 通常会写读到的名称加罗马字或城市，
+    如 ``浅草寺 Sensoji``、``灵隐寺 杭州``。对整串比较时，长度下限会因名称
+    占比过小而拒绝提名。因此按 ``_SEGMENT_SPLIT`` 分段比较，与提名器切分正文
+    的方式一致；每个片段内部仍受长度下限约束，``公路`` 仍然不能确认
+    ``杭金衢高速公路``。
     """
 
     if mention_matches_name(mention, query):
@@ -245,12 +201,10 @@ def query_carries_mention(query: str, mention: str) -> bool:
 
 @dataclass(frozen=True)
 class ProviderIdentity:
-    """One place a Provider returned: the id it minted, and what it calls it.
+    """Provider 返回的一个地点：它生成的身份 id 与它使用的名称。
 
-    ``place_id`` is what the whole chain downstream is keyed on — it is the only
-    thing about a place that every layer agrees on, and it is the same value the
-    packet schema pins a Candidate's identity to. ``name`` is carried for the log
-    line and nothing else; nothing is ever decided by comparing it.
+    ``place_id`` 是下游整条链路的键，也是 packet schema 用来固定 Candidate
+    身份的同一个值。``name`` 仅用于日志，不参与任何判断。
     """
 
     place_id: str
@@ -259,16 +213,13 @@ class ProviderIdentity:
 
 @dataclass(frozen=True)
 class PlaceLookup:
-    """One place-Provider call: what it was asked, and which identities came back.
+    """一次地点 Provider 调用：查询内容与返回的身份。
 
-    This object is what turns the funnel into a chain instead of four independent
-    string comparisons. A chunk nominates by naming something the worker then
-    *asks about*; whatever that particular call produced is downstream of that
-    nomination, whatever the Provider chose to call it.
+    这个对象把漏斗从四次独立的字符串比较变成一条链：分块提名一个名称，worker
+    查询它，该次调用返回的身份都属于这次提名。
 
-    A call that came back empty still belongs here with ``identities=()``: "asked
-    and found nothing" and "never asked" are the two states this measurement most
-    needs to tell apart, because only the second one means the prompt failed.
+    返回空的调用也保留在这里，``identities=()``：「查询了但没找到」与「从未
+    查询」是测量最需要区分的两种状态，只有后者说明提示词失败。
     """
 
     query: str
@@ -277,27 +228,20 @@ class PlaceLookup:
 
 @dataclass(frozen=True)
 class PlaceFunnel:
-    """One worker round's chunk-to-Candidate nomination chain, counted.
+    """一轮 worker 的分块到 Candidate 提名链，按地点计数。
 
-    **The hops are counted in places, not in mention strings.** The first real
-    run made the difference matter: one chunk sentence about 西湖 yields
-    「杭州西湖」「距离西湖」「西湖」「请见西湖」「中西湖」 as five separate proposals,
-    all naming one place. Counting the mention side turned one nominated place
-    into ``admitted=5`` — a number that reads like success and is off by 5x.
+    **各步按地点计数，而不是按提名字符串计数。** 同一句话里的「杭州西湖」
+    「距离西湖」「西湖」「请见西湖」「中西湖」是五个提名，但只指一个地点；
+    按提名计数会把一个地点报成五个。
 
-    Hops 3-5 hold ``ProviderIdentity`` rather than names, so two different places
-    the Provider happens to call the same thing count as two, and one place the
-    Provider spells differently from the corpus counts as one. ``queried`` stays
-    a list of query strings: at that hop no identity exists yet, and a lookup that
-    found nothing still has to be visible.
+    第 3-5 步保存 ``ProviderIdentity`` 而不是名称，因此 Provider 用同名表示的
+    两个不同地点计为两个，语料与 Provider 拼写不同的同一个地点计为一个。
+    ``queried`` 保持查询字符串：该步还没有身份，且查询后返回空的调用也必须
+    可见。
 
-    Each hop is a subset of the one before it, by construction rather than by
-    coincidence — so a drop between two numbers is always a real loss at that
-    step, and the chain can never again report a later hop as zero while a Candidate
-    from it sits in the packet.
+    每一步都是前一步的子集，因此两个数字之间的下降一定是该步的真实损失。
 
-    ``mentions`` stays on the proposal side because it is the denominator, and
-    it is the one heuristic number here — see the module docstring.
+    ``mentions`` 保留在提名侧，因为它是分母，也是这里唯一的启发式数字。
     """
 
     injected_chunks: int
@@ -309,13 +253,11 @@ class PlaceFunnel:
 
     def as_log_line(self) -> str:
         def names(identities: Sequence[ProviderIdentity]) -> list[str]:
-            """Provider names, with repeats folded into ``名字×N``.
+            """Provider 名称，重复项折叠成 ``名字×N``。
 
-            One query routinely returns several *distinct* places the Provider
-            spells the same way — 西湖 comes back as the lake, the district and
-            the scenic area. Those are genuinely three identities and the counts
-            must stay 3, but printing 西湖 three times reads like a bug in the
-            log rather than a fact about the Provider.
+            一次查询常返回多个不同地点而 Provider 用同一名称表示（西湖可以是
+            湖、区和景区）。计数必须保持 3，但日志里打印三次西湖会像程序错误，
+            而不是 Provider 的事实。
             """
             counted: dict[str, int] = {}
             for identity in identities:
@@ -341,14 +283,13 @@ def measure_place_funnel(
     selectable_place_ids: Iterable[str],
     admitted_place_ids: Iterable[str],
 ) -> PlaceFunnel:
-    """Count how many places this round's chunks nominated, and how far each got.
+    """统计本轮分块提名了多少地点，以及每个地点走到了哪一步。
 
-    Everything but ``injected_chunk_texts`` is an observation of what the run
-    actually did, so hops 2-5 are exact; only the denominator is heuristic.
+    除 ``injected_chunk_texts`` 外都是对 Run 实际行为的观察，因此第 2-5 步
+    是精确的；只有分母是启发式的。
 
-    The one judgement call is which lookups the chunks caused, and it is made
-    once, against the query string the worker typed. From there the chain follows
-    ``place_id``.
+    唯一的判断是哪些查询由这些分块触发，按 worker 输入的查询字符串判断一次；
+    之后整条链按 ``place_id`` 跟踪。
     """
 
     mentions = tuple(
@@ -392,23 +333,17 @@ def measure_place_funnel(
 def chunk_texts_by_collection(
     injected_rag_sources: Mapping[str, Mapping[str, object]],
 ) -> dict[str, tuple[str, ...]]:
-    """The full chunk bodies this round printed into the prompt, kept apart by collection.
+    """本轮写入 prompt 的完整分块正文，按集合分开。
 
-    ``rag_chunk_source_records`` already stores the complete chunk under
-    ``snapshot.content`` — the contract is "完整 RAG chunk，禁止裁剪成模型摘要" —
-    so the funnel reads it from there rather than keeping a second copy.
+    ``rag_chunk_source_records`` 已把完整分块存在 ``snapshot.content``，契约是
+    「完整 RAG chunk，禁止裁剪成模型摘要」，因此这里直接读取，不再保存第二份。
 
-    **Why the split is not cosmetic.** Two corpora now compete in one retrieval:
-    the optional local factory corpus, and the library this user
-    uploaded. A single pooled count answers "did the knowledge base contribute"
-    and cannot answer "did *theirs*" — and theirs is the half a user can see,
-    change, and be wrong about. One number covering both would report a healthy
-    funnel on a run where their upload was never read, which is exactly the state
-    this measurement exists to make impossible.
+    按集合分开是必要的：检索同时覆盖可选的本地出厂语料与用户上传的资料库。
+    合并计数只能回答「知识库有没有贡献」，不能回答「用户上传的资料有没有被
+    读到」；后者是用户可以看见、修改并判断对错的部分。
 
-    ``snapshot.collection`` is a **logical** name by the time it gets here; the
-    physical owner-scoped address is translated at the retrieval boundary and
-    never reaches a source record.
+    到这里 ``snapshot.collection`` 已经是逻辑名；物理的按 owner 划分的地址在
+    检索边界转换，不会进入 source record。
     """
 
     grouped: dict[str, list[str]] = {}

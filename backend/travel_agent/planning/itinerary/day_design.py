@@ -11,7 +11,7 @@ import hashlib
 
 
 def _final_day_note(day, stops, blocks):
-    """用已物化的停留点与休息时段拼出当天安排说明。"""
+    """用已物化的停留点与休息时段生成当天安排说明。"""
     parts = []
     for ref in day.timeline:
         stop = stops.get(ref.entity_id)

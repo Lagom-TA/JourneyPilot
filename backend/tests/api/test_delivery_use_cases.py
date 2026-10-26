@@ -1,4 +1,4 @@
-"""Delivery HTTP boundaries without providers, report rendering or app startup."""
+"""交付相关的 HTTP 边界，不接入 provider、报告渲染或应用启动。"""
 
 from __future__ import annotations
 

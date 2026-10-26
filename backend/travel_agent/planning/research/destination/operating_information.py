@@ -1,5 +1,3 @@
-"""Planning research destination operating information."""
-
 from __future__ import annotations
 
 import logging
@@ -27,7 +25,7 @@ async def collect_place_operating_information(
     authoritative_tool_results: List[Dict[str, Any]],
     messages: List[Dict[str, Any]],
 ) -> None:
-    """Look up venue operations after names are resolved, with real tools only."""
+    """在地点名称确定后，用真实工具查询场所运营信息。"""
     names = {
         tool.get("schema", {}).get("function", {}).get("name")
         for tool in available_tools

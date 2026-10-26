@@ -1,4 +1,4 @@
-"""Planning requirements summary."""
+"""旅行摘要卡。"""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ def _as_labels(value: Any, limit: int = 5) -> list[str]:
 
 
 def build_trip_summary_card(brief: Dict[str, Any], boundary: str) -> Dict[str, Any]:
-    """Project structured trip facts into the consumer card without an LLM call."""
+    """不调用模型，把结构化行程事实投影为面向用户的摘要卡。"""
     destination = _as_text(brief.get("destination"), 40) or "本次旅行"
     duration_days = brief.get("duration_days")
     duration = (

@@ -37,7 +37,7 @@ async def test_report_on_migrated_database_is_clean(temp_database, settings):
     assert report.problems == [], report.problems
     assert report.missing_tables == ()
     assert report.fingerprint_sha256
-    # 报告要把可选能力如实说出来（不静默假装中文词法完整）。
+    # 报告要如实列出可选能力，不能把中文词法能力报告成已具备。
     assert "zhparser" in report.optional_capabilities
     assert report.optional_capabilities["text_search_config"] in {"chinese", "simple"}
     assert set(report.embedding_columns) == {

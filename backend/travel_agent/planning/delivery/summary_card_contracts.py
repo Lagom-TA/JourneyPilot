@@ -1,4 +1,4 @@
-"""Planning delivery summary card contracts."""
+"""旅行摘要卡契约。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ class TripSummaryFact(BaseModel):
 
 
 class TripSummaryCard(BaseModel):
-    """Stable payload for the compact and expanded research-summary states."""
+    """紧凑与展开两种调研摘要状态共用的稳定载荷。"""
 
     headline: str = Field(min_length=1, max_length=80)
     summary: str = Field(min_length=1, max_length=240)

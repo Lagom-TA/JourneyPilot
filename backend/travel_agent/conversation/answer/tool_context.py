@@ -1,4 +1,4 @@
-"""Conversation answer tool context."""
+"""会话回答的工具上下文。"""
 
 from __future__ import annotations
 

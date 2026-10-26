@@ -1,4 +1,4 @@
-"""Planning requirements generation contracts."""
+"""规划生成契约。"""
 
 from __future__ import annotations
 

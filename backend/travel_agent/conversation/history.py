@@ -8,7 +8,7 @@ def append_recent_history(
     state: Any,
     limit: int = 8,
 ) -> None:
-    "将 state.messages 末 limit 条转为 role/content dict, 就地追加到 messages 列表。"
+    "将 state.messages 末尾 limit 条转为 role/content dict，并追加到 messages 列表。"
     recent = (getattr(state, "messages", None) or [])[-limit:]
     for msg in recent:
         if hasattr(msg, "type"):
@@ -21,7 +21,7 @@ def append_recent_history(
 
 
 def session_history_for_context_builder(state: Any) -> List[Dict[str, Any]]:
-    "Convert all loaded history; ContextBuilder owns the context budget."
+    "转换已加载的全部历史；上下文预算由 ContextBuilder 负责。"
 
     history: List[Dict[str, Any]] = []
     for msg in getattr(state, "messages", None) or []:

@@ -2,7 +2,7 @@
 知识库管理 API (Serving Layer)
 支持文档上传、索引、查询和删除。
 
-- Upload size cap
+- 上传大小上限
 - 集合归属由服务端的本地身份解析，客户端不声明所有者
 """
 
@@ -38,21 +38,16 @@ from travel_agent.api.schemas.knowledge import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
 
-# 阈值与判定在 `knowledge/sources/document_parse.py`：上传与批量导入两条入口共用一份，
-# 否则扫描版 PDF 在一条路上被拒、在另一条路上变成一次「成功索引 0 个文本块」。
+# 阈值与判定在 `knowledge/sources/document_parse.py`，上传与批量导入共用同一份。
 
-
-# 这条路上每一个 4xx 都带一个 `code`，**一个都不许少**。少一个的后果不是「少一句话」，
-# 是**画成另一句话**：界面读不到 code 就按状态码回落，而 422 那一档的回落是
-    # 「请求的信息不完整，请刷新页面后重试」—— 一份损坏的 PDF 刷一百次还是损坏的。
-    # `message` 只给日志与其他客户端，**界面自己说话**，
-# 那一侧的表在 `frontend/src/lib/knowledgeIngestFailure.ts`，两张表逐条对齐。
+# 本模块的每个 4xx 都带 `code`：界面按 code 识别失败类型，缺少 code 时按状态码
+# 回落，422 会显示为「请求的信息不完整」，与文档解析失败不符。
+# 前端对照表在 `frontend/src/features/knowledge/model/knowledgeIngestFailure.ts`。
 #
-# `message` 里**不许**出现被 catch 到的异常原文：它是给这台机器看的（已经进
-# `logger.warning`），发出去只会变成一句没人能照着做的话。
+# `message` 不得包含被捕获的异常原文；异常已写入 `logger.warning`。
 
-# 每一种 code 对应的 HTTP 状态码与那句给日志的话。上限值从 `IngestConfig` 读，
-# 不在这里再写一遍。
+# 每种 code 对应的 HTTP 状态码与日志文案。上限值从 `IngestConfig` 读取，
+# 不在此重复定义。
 _REJECTION_STATUS = {
     "unsupported_file_type": 400,
     "file_too_large": 413,
@@ -82,7 +77,7 @@ def _require_vector_knowledge() -> None:
 
 
 def _logical_collection_name(collection: str) -> str:
-    """Project the shared collection contract to an HTTP 400 boundary."""
+    """将共享集合契约投影到 HTTP 400 边界。"""
     try:
         return normalize_collection(collection)
     except CollectionAddressInvalid as exc:
@@ -101,12 +96,9 @@ def _require_indexable_text(text: str) -> str:
 
 
 def _rejection_to_http(rejection: DocumentRejected) -> HTTPException:
-    """把解析边界的判决投影到 HTTP，**不转发解析器的原话**。
+    """把解析边界的拒绝结果投影为 HTTP 响应，不转发解析器原文。
 
-    界面那一侧按 code 分辨失败种类，读不到就只能按状态码回落到「请求的信息不完整，
-    请刷新页面后重试」，而请求是完整的、刷新也不会让一份损坏的 PDF 变好。解析器那句
-    原话（`Stream has ended unexpectedly` / `File is not a zip file`）已经进了
-    `document_parse` 的日志，那是它该待的地方。
+    界面按 code 区分失败类型；解析器原文已记录在 `document_parse` 的日志中。
     """
 
     code = rejection.code
@@ -125,7 +117,7 @@ async def index_text(request: KnowledgeUploadRequest):
     _require_vector_knowledge()
     logical_collection = _logical_collection_name(request.collection)
     collection = scope_collection(logical_collection)
-    # 手输那一路和上传文件走同一道界：空内容不许换来一句「成功索引 0 个文本块」。
+    # 手输内容与上传文件共用同一正文下界校验。
     _require_indexable_text(request.content or "")
     components = get_components()
     try:
@@ -168,9 +160,8 @@ async def upload_file(
             },
         )
 
-    # 先看 content-length 再看真读进来多少：前者能在读进内存之前拒掉一份超限文件。
-    # 413 必须带 code：界面那张按状态码说话的表没有 413 这一档时，一份超限文件
-    # 只会换来「无法连接服务，请检查网络」。带上 code 之后它有自己的一句话。
+    # 先检查 content-length 再读取正文，可在读入内存前拒绝超限文件。
+    # 413 响应必须带 code，界面才能显示对应的提示文案。
     declared = file.headers.get("content-length") if file.headers else None
     if declared is not None:
         try:
@@ -272,10 +263,10 @@ async def get_source_document(
     collection_name: str,
     source: str = Query(..., min_length=1, description="来源名，就是列表里显示的那一行"),
 ):
-    """读一篇资料的正文（用户作用域）。
+    """读取一篇资料的正文（用户作用域）。
 
-    来源名走查询参数而不是路径段：它是用户给的文件名，可以带斜杠、点、空格 ——
-    放进路径就要跟路由分段规则打架，而一个被路由切开的来源名会变成一次 404。
+    来源名通过查询参数传递：文件名可能包含斜杠、点和空格，放进路径段会被路由
+    规则切断并导致 404。
     """
     logical_collection = _logical_collection_name(collection_name)
     scoped = scope_collection(logical_collection)
@@ -296,18 +287,17 @@ async def update_source_document(
 ):
     """改写一篇资料的正文，并按新正文重新分段入库。
 
-    **保存就是重新入库**：正文覆盖写、旧段全删、新段重算（会重新调 embedding，
-    contextual 分块还会逐段调一次 fast 模型）。只改正文不重算段的话，屏幕上是新正文、
-    规划时参考的仍是旧内容 —— 那是这个仓明令禁止的半修。
+    保存即重新入库：覆盖正文、删除旧段并重新计算新段（会重新调用 embedding；
+    contextual 分块还会逐段调用 fast 模型）。只改正文不重算分段，会导致展示内容
+    与规划参考内容不一致。
 
-    先确认这一篇存在再写：这个接口是「改」不是「建」，让它顺手建一篇会让一个打错的
-    来源名静默变成一篇新资料。
+    先确认资料存在再写入：该接口只修改已有资料，不会创建新资料。
     """
     _require_vector_knowledge()
     logical_collection = _logical_collection_name(collection_name)
     scoped = scope_collection(logical_collection)
     await _require_source_document(scoped, source)
-    # 手输那一路、上传那一路、改写这一路共用同一道正文下界。
+    # 手输、上传与改写共用同一正文下界校验。
     content = _require_indexable_text(request.content or "")
     components = get_components()
     try:

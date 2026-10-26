@@ -40,8 +40,7 @@ class KnowledgeCollectionStatsResponse(BaseModel):
 class KnowledgeSourceDocumentResponse(BaseModel):
     """一篇资料的正文。
 
-    `chunk_count` 与列表那一行印的是同一个数（都来自段表），所以打开一篇资料不会
-    看到和列表不一致的段数。
+    `chunk_count` 与列表行使用同一来源（段表），打开资料时不会出现段数不一致。
     """
 
     collection: str
@@ -54,8 +53,8 @@ class KnowledgeSourceDocumentResponse(BaseModel):
 class KnowledgeSourceUpdateRequest(BaseModel):
     """改写一篇资料的正文。
 
-    只有正文 —— 来源名不在这里改：它是这一篇的身份（`(collection, source)` 唯一），
-    改名是另一件事，产品目前没有那个入口，所以这里也不留一个没人拨的旋钮。
+    只包含正文；来源名是资料的标识（`(collection, source)` 唯一），改名不属于
+    该接口。
     """
 
     content: str

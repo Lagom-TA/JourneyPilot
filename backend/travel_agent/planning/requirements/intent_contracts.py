@@ -1,4 +1,4 @@
-"""Planning requirements intent contracts."""
+"""用户意图契约。"""
 
 from __future__ import annotations
 

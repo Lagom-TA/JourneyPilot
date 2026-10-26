@@ -20,10 +20,10 @@ class ChatAccounting:
         self.trip_run_store = trip_run_store
 
     async def flush_usage_updates(self) -> List[Dict[str, Any]]:
-        """周期性 drain 捕获层 → 算成本落库 → 返回本 run 的 usage_update SSE 事件。
+        """周期性排空用量捕获层，计算成本后落库，并返回本 run 的 usage_update 事件。
 
-        recorder 是进程单例、并发 run 共用：drain 出的记录按各自 run_id 落库（都持久化），
-        但只有本 run 的记录发 usage_update（audit-safe：只有计数与成本，无内容）。
+        recorder 是进程单例、被并发 run 共用：排出的记录按各自 run_id 落库，
+        但只有本 run 的记录生成 usage_update（仅含计数与成本，无内容）。
         """
         if self.cost_ledger_store is None or self.usage_recorder is None:
             return []
@@ -62,11 +62,11 @@ class ChatAccounting:
     async def finalize_cost_summary(
         self, *, terminal: bool
     ) -> Optional[Dict[str, Any]]:
-        """终结时兜底 drain + 落库，返回 run 级成本汇总。
+        """终结时排空捕获层并落库，返回 run 级成本汇总。
 
-        终态按落库真实结果分流事件（CB-02）：全部落库成功发 run.cost_recorded；有本 run 记录
-        落库失败则保留待重试 + 发 run.cost_record_failed（携 record_failed 计数），事件流不再撒谎。
-        record_failed 一并随 run_cost_summary 下发供前端诚实呈现。
+        按落库结果选择终态事件：全部成功写入 run.cost_recorded；本 run 有记录落库
+        失败时保留待重试，并写入 run.cost_record_failed（携带 record_failed 计数）。
+        record_failed 同时随 run_cost_summary 下发。
         """
         if self.cost_ledger_store is None:
             return None

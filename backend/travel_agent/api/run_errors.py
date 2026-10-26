@@ -13,12 +13,11 @@ from travel_agent.planning.run_errors import (
 
 
 async def raise_workspace_mutation_conflict(run_id: str, bundle_store) -> None:
-    """Answer a lost CAS race from head metadata alone.
+    """仅根据头部元数据返回 CAS 冲突。
 
-    A conflict response is most needed when the run is already in an unexpected
-    state, so it must not re-read and re-project the persisted Bundle: the client
-    is told which Bundle is current and re-reads it through the current-Bundle
-    route.  Same detail shape as ``report_out_of_date``.
+    冲突发生时 run 可能已处于异常状态，因此不再读取并重新投影持久化的 Bundle；
+    响应告知客户端当前 Bundle id，由客户端通过当前 Bundle 路由重新读取。
+    detail 结构与 ``report_out_of_date`` 一致。
     """
     current_bundle_id = await bundle_store.get_current_bundle_id(run_id)
     raise HTTPException(
@@ -31,12 +30,10 @@ async def raise_workspace_mutation_conflict(run_id: str, bundle_store) -> None:
 
 
 def raise_bundle_contract_superseded(exc: BundleContractSuperseded) -> None:
-    """Refuse a stored Bundle the current contract no longer describes.
+    """拒绝当前契约无法描述的已存 Bundle。
 
-    A refusal, not a fallback.  Reading the old shape "just for this run" would be a
-    compatibility layer; what such a row needs is a data decision, taken once, not a
-    second code path.  The client is told the plain fact so it stops asking —
-    re-reading returns the same answer, so no automatic resync.
+    这里直接拒绝，不做兼容读取：兼容旧结构会引入第二条代码路径，这类数据需要
+    一次性迁移处理。客户端收到明确结果后不会自动重试，因为重新读取结果相同。
     """
 
     raise HTTPException(

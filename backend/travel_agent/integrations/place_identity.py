@@ -1,4 +1,4 @@
-"""Integrations place identity."""
+"""不同类型 Provider 地点身份的统一格式。"""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ _OSM_TYPE = re.compile(r"^(node|way|relation)$")
 
 
 def stable_place_id_12306(station_telecode: str) -> Optional[str]:
-    """Return ``12306:{telecode}`` or None when the telecode is empty.
+    """返回 ``12306:{telecode}``；telecode 为空时返回 None。
 
-    Telecodes are usually three Latin letters (e.g. BJP), but providers may
-    emit other non-empty station codes; only emptiness fails closed.
+    telecode 通常是三个拉丁字母（如 BJP），但 provider 也可能返回其他非空车站
+    代码；只有空值会被拒绝。
     """
     code = str(station_telecode or "").strip().upper()
     if not code:
@@ -22,7 +22,7 @@ def stable_place_id_12306(station_telecode: str) -> Optional[str]:
 
 
 def stable_place_id_amap_poi(poi_id: str) -> Optional[str]:
-    """Return ``amap:poi:{poi_id}`` or None when poi_id is empty."""
+    """返回 ``amap:poi:{poi_id}``；poi_id 为空时返回 None。"""
     poi = str(poi_id or "").strip()
     if not poi:
         return None
@@ -32,7 +32,7 @@ def stable_place_id_amap_poi(poi_id: str) -> Optional[str]:
 
 
 def stable_place_id_osm(osm_type: str, osm_id: str | int) -> Optional[str]:
-    """Return ``osm:{type}:{id}`` or None when type/id are invalid."""
+    """返回 ``osm:{type}:{id}``；type 或 id 不合法时返回 None。"""
     kind = str(osm_type or "").strip().lower()
     raw_id = str(osm_id or "").strip()
     if not _OSM_TYPE.fullmatch(kind):

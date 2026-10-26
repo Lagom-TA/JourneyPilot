@@ -1,4 +1,4 @@
-"""Planning costs estimate."""
+"""预算估算节点。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from travel_agent.planning.workspace import TripWorkspaceV2
 
 
 async def budget_estimate_node(state: TravelAgentState) -> dict[str, Any]:
-    """Remove a legacy unsupported total, without a model or provider call."""
+    """清除模型推断的总额，不调用模型或 provider。"""
     workspace = state.trip_workspace_v2
     if (
         workspace is None

@@ -1,5 +1,3 @@
-"""Planning research accommodation binding."""
-
 from __future__ import annotations
 
 import datetime
@@ -31,7 +29,7 @@ async def _enrich_amap_hotel_coordinates(
     available_tools: List[Dict[str, Any]],
     tool_context: Dict[str, Any],
 ) -> None:
-    """Resolve each amap lodging POI's point geometry via maps_search_detail."""
+    """通过 maps_search_detail 补齐每个 amap 住宿 POI 的坐标。"""
     for hotel in hotels:
         if hotel.get("latitude") is not None and hotel.get("longitude") is not None:
             continue
@@ -86,7 +84,7 @@ async def _bind_amap_lodging(
     authoritative_tool_results: List[Dict[str, Any]],
     query_text: str,
 ) -> bool:
-    """Bind one CN destination's lodging identity from real amap POI data."""
+    """用真实 amap POI 数据为国内目的地确定住宿地点身份。"""
     dest_name = str(dest.get("name") or "").strip()
     try:
         env = await execute_tool(
@@ -176,7 +174,7 @@ async def _bind_nominatim_lodging(
     authoritative_tool_results: List[Dict[str, Any]],
     query_text: str,
 ) -> bool:
-    """Bind one non-CN destination's lodging identity from real Nominatim data."""
+    """用真实 Nominatim 数据为非国内目的地确定住宿地点身份。"""
     dest_name = str(dest.get("name") or "").strip()
     country_code = str(dest.get("country_code") or "").strip().lower()
     if not dest_name or len(country_code) != 2:

@@ -1,4 +1,4 @@
-"""Durable run commands：幂等入队、只被消费一次、结论不可改写、终结时不留 pending。
+"""持久化 run 命令：幂等入队、只被消费一次、结论不可改写、终结时不留 pending。
 
 这些不变量只在真实 PostgreSQL 上才有意义：重发落回同一行靠的是一个唯一约束，
 「同一条命令不会被两个协程各消费一次」靠的是 `FOR UPDATE SKIP LOCKED`。
@@ -236,7 +236,7 @@ async def test_a_finished_run_is_not_cancelled_after_the_fact(migrated_async_dat
 
 
 async def test_commands_disappear_with_their_run(migrated_async_database):
-    """外键级联：run 被删掉时命令不该留成孤儿。"""
+    """外键级联：run 被删除时命令不应留下失去父行的记录。"""
 
     store = RunCommandStore()
     run_id = await _create_run()

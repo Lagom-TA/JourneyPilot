@@ -1,20 +1,13 @@
-"""WGS-84 ⇄ GCJ-02 datum conversion for amap-sourced coordinates.
+"""amap 坐标的 WGS-84 ⇄ GCJ-02 转换。
 
-amap speaks GCJ-02 ("火星坐标") in both directions. The map projection and every
-OSM-sourced place identity are WGS-84, and the frontend renders OSM tiles, so an
-amap point must be converted before it joins them — otherwise it lands a few
-hundred metres off — and a WGS-84 point must be converted before it is handed
-back to amap as a query. The offset only exists inside China;
-:func:`within_china_coordinate_box` makes both conversions a no-op elsewhere,
-which is what amap already returns overseas.
+amap 使用 GCJ-02，地图投影与其他 OSM 地点身份使用 WGS-84，前端渲染 OSM 瓦片：
+amap 坐标在合并前必须转换，WGS-84 坐标在作为 amap 查询前也必须转换。偏移只在
+中国境内存在，:func:`within_china_coordinate_box` 使境外转换为空操作，与 amap
+在境外的返回一致。
 
-That box has a second reader: choosing which routing provider can answer a
-route at all (``services/global_route_search``). It is deliberately the *same*
-box and not a second copy of "is this China" — one definition, checked in one
-place, is the whole point of that discipline. The box is a rectangle
-rather than a border, so it takes in slices of neighbouring countries; for both
-readers that is the safe direction to err, because those slices are exactly
-where amap has data and the global transit aggregator has none.
+该坐标框也用于判断哪个路线 Provider 能回答请求。两个用途共用同一个框，避免维护
+两份「是否中国」的定义。框是矩形而不是国界，因此包含邻国部分地区；对这两个用途
+而言，这些区域正是 amap 有数据而全球公交聚合器没有数据的区域。
 """
 
 from __future__ import annotations
@@ -27,7 +20,7 @@ _GCJ_EE = 0.00669342162296594323      # 第一偏心率平方
 
 
 def within_china_coordinate_box(lng: float, lat: float) -> bool:
-    """Whether this point is inside the rectangle where GCJ-02 differs from WGS-84."""
+    """判断该点是否位于 GCJ-02 与 WGS-84 存在差异的矩形区域内。"""
     return 73.66 < lng < 135.05 and 3.86 < lat < 53.55
 
 
@@ -48,7 +41,7 @@ def _gcj_transform_lng(x: float, y: float) -> float:
 
 
 def _gcj_offset(lng: float, lat: float) -> Tuple[float, float]:
-    """The GCJ-02 offset at one point, as ``(dlng, dlat)`` in degrees."""
+    """某一点的 GCJ-02 偏移，返回以度为单位的 ``(dlng, dlat)``。"""
     dlat = _gcj_transform_lat(lng - 105.0, lat - 35.0)
     dlng = _gcj_transform_lng(lng - 105.0, lat - 35.0)
     radlat = lat / 180.0 * math.pi
@@ -61,7 +54,7 @@ def _gcj_offset(lng: float, lat: float) -> Tuple[float, float]:
 
 
 def wgs84_to_gcj02(lng: float, lat: float) -> Tuple[float, float]:
-    """Convert one WGS-84 point to amap's GCJ-02; outside China it is returned as-is."""
+    """把一个 WGS-84 点转换为 amap 的 GCJ-02；境外点原样返回。"""
     if not within_china_coordinate_box(lng, lat):
         return lng, lat
     dlng, dlat = _gcj_offset(lng, lat)
@@ -69,7 +62,7 @@ def wgs84_to_gcj02(lng: float, lat: float) -> Tuple[float, float]:
 
 
 def gcj02_to_wgs84(lng: float, lat: float) -> Tuple[float, float]:
-    """Convert one amap GCJ-02 point to WGS-84; a point outside China is returned as-is."""
+    """把一个 amap GCJ-02 点转换为 WGS-84；境外点原样返回。"""
     if not within_china_coordinate_box(lng, lat):
         return lng, lat
     dlng, dlat = _gcj_offset(lng, lat)
@@ -77,7 +70,7 @@ def gcj02_to_wgs84(lng: float, lat: float) -> Tuple[float, float]:
 
 
 def amap_location_to_wgs84(location: Any) -> Tuple[Optional[float], Optional[float]]:
-    """Parse one amap ``"lng,lat"`` string into a WGS-84 ``(latitude, longitude)``."""
+    """把一个 amap ``"lng,lat"`` 字符串解析为 WGS-84 的 ``(latitude, longitude)``。"""
     if not isinstance(location, str) or "," not in location:
         return None, None
     lng_text, _, lat_text = location.partition(",")

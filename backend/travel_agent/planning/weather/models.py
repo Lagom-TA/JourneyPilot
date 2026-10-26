@@ -1,3 +1,5 @@
+"""天气上下文数据契约。"""
+
 from __future__ import annotations
 
 from datetime import date as Date

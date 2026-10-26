@@ -1,4 +1,4 @@
-"""Usage, billing and request attempts, without a paid model call."""
+"""用量、计费与请求尝试，不调用付费模型。"""
 
 from dataclasses import replace
 from types import SimpleNamespace
@@ -146,7 +146,7 @@ def _price():
 
 def test_disjoint_cache_buckets_and_inclusive_reasoning_have_one_bill():
     price = _price()
-    # 30k ordinary + 40k cached + 30k written + 20k completion (contains reasoning).
+    # 30k 普通输入 + 40k 缓存命中 + 30k 缓存写入 + 20k 输出（含推理）。
     cost = compute_cost_usd(price, input_tokens=100000, output_tokens=20000,
                             cached_input_tokens=40000, cache_write_input_tokens=30000)
     assert cost == pytest.approx(0.339)

@@ -1,4 +1,4 @@
-"""Request-level reasoning and output budgets, verified without paid API calls."""
+"""请求级的推理与输出预算，不调用付费 API。"""
 
 from __future__ import annotations
 

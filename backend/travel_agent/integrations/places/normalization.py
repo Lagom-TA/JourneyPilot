@@ -1,4 +1,4 @@
-"""Integrations places normalization."""
+"""Nominatim 结果的归一化与具体性判断。"""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ _DISPLAY_NAME_PREFERENCE = ("name:zh", "name:zh-Hans")
 
 
 def _preferred_display_name(namedetails: Dict[str, Any], provider_name: str) -> str:
-    """Pick the name to show a Chinese-reading traveller, from what the provider has."""
+    """从 Provider 提供的名称中选出面向中文读者的展示名。"""
 
     for key in _DISPLAY_NAME_PREFERENCE:
         candidate = str(namedetails.get(key) or "").strip()
@@ -114,7 +114,7 @@ def _preferred_display_name(namedetails: Dict[str, Any], provider_name: str) -> 
 
 
 def normalize_nominatim_place(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Project one provider item without inventing identity or category fields."""
+    """投影一条 Provider 结果，不自行生成身份或类别字段。"""
     address = item.get("address") if isinstance(item.get("address"), dict) else {}
     country_code = str(address.get("country_code") or "").strip().casefold()
     osm_type = str(item.get("osm_type") or "").strip().casefold()
@@ -194,7 +194,7 @@ def normalize_nominatim_place(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def is_concrete_dining_place(place: Dict[str, Any]) -> bool:
-    """Reject category labels and multi-vendor collections as Dining entities."""
+    """拒绝类别标签与多商户集合作为 Dining 实体。"""
     name = " ".join(str(place.get("name") or "").split())
     lowered = name.casefold()
     return bool(
@@ -206,14 +206,12 @@ def is_concrete_dining_place(place: Dict[str, Any]) -> bool:
 
 
 def is_concrete_lodging_place(place: Dict[str, Any]) -> bool:
-    """Reject category labels and nameless OSM records as Lodging entities.
+    """拒绝类别标签与无名称的 OSM 记录作为 Lodging 实体。
 
-    The lodging sibling of ``is_concrete_dining_place``.  The provider-domain
-    boundary stays the single admission authority
-    (``provider_place_type_matches_candidate_kind``); this adds the concreteness
-    dimension a bound property identity needs.  An OSM lodging record with no
-    ``name`` tag normalizes its name from the first ``display_name`` component —
-    a house number such as "16" — which is not a property anyone can book.
+    这是 ``is_concrete_dining_place`` 的住宿侧对应实现。Provider 类型边界统一由
+    ``provider_place_type_matches_candidate_kind`` 判断；这里补充绑定住宿身份所需的
+    具体性维度。没有 ``name`` 标签的 OSM 住宿记录会从 ``display_name`` 的第一段
+    取名称，可能得到 "16" 这样的门牌号，无法作为可预订的住宿。
     """
     if not provider_place_type_matches_candidate_kind(
         str(place.get("provider_place_type") or ""),
@@ -227,13 +225,13 @@ def is_concrete_lodging_place(place: Dict[str, Any]) -> bool:
 
 
 def is_concrete_visit_place(place: Dict[str, Any]) -> bool:
-    """Reject areas and nameless records as Visit entities.
+    """拒绝区域与无名称记录作为 Visit 实体。
 
-    Visit 的具体性判据与 Visit 准入同哲学：排除法。这个域装得下博物馆、寺庙、公园、
-    观景台、商场和 amap 的中文类别，写 allowlist 会把没列到的真实场馆、以及测试里
-    ``attraction`` / ``商业街`` 一类裸类别全判假；能确定的只有反面——一条 provider
-    类型说自己是行政区划或边界时，返回的是一片区域，不是一个能安排进某一天的停留点。
-    "museum in <短名>" 这类区域内查询正是靠这条把目的地自身的边界记录挡在外面。
+    Visit 的具体性判断使用排除法：这个域包含博物馆、寺庙、公园、观景台、商场与
+    amap 的中文类别，写 allowlist 会漏掉未列出的真实场馆；能确定的是反面——当
+    Provider 类型表明自己是行政区划或边界时，返回的是一片区域，而不是可安排进
+    某一天的停留点。"museum in <短名>" 这类区域内查询正因此把目的地自身的边界
+    记录排除在外。
     """
     if not provider_place_type_matches_candidate_kind(
         str(place.get("provider_place_type") or ""),
@@ -259,24 +257,19 @@ _KM_PER_DEGREE_LATITUDE = 2 * math.pi * 6371.0088 / 360
 
 
 def _is_coordinate(value: Any) -> bool:
-    """Whether a value is a usable coordinate. ``True`` is an ``int``, not a point."""
+    """判断一个值是否是可用的坐标；``True`` 是 int，不是坐标。"""
 
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def destination_focus_viewbox(latitude: float, longitude: float) -> str:
-    """The Nominatim ``viewbox`` a destination's own point defines.
+    """目的地坐标定义的 Nominatim ``viewbox``。
 
-    A *preference*, never a filter: the caller must not pair it with
-    ``bounded=1``.  Soft is the whole point — a query that names a place outside
-    the box still resolves to that place (日光東照宮 120km north and 箱根神社 80km
-    south-west return byte-identical answers with and without it), while a query
-    that names no place stops being answered from the far edge of a prefecture.
-    Making it a filter would trade the defect for a worse one: a named stop the
-    traveller asked for by name would become unresolvable.
+    这是偏好范围，不是过滤器：调用方不能同时传 ``bounded=1``。它只提高区域内
+    查询的排序，不排除区域外的明确地名；若改成过滤器，用户按名称指定的地点会
+    变得无法解析。
 
-    The box is square in kilometres, not in degrees, so it does not stretch
-    east-west as the destination moves away from the equator.
+    范围按公里计算而不是按度数，因此目的地远离赤道时不会在东西方向被拉长。
     """
 
     latitude_span = _DESTINATION_FOCUS_HALF_SIZE_KM / _KM_PER_DEGREE_LATITUDE

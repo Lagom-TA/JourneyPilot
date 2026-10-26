@@ -1,4 +1,4 @@
-"""Planning delivery persistence."""
+"""交付 Bundle 持久化。"""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ async def _commit_initial_delivery_atomically(
     state: TravelAgentState,
     bundle: DeliveryBundle,
 ) -> DeliveryBundle:
-    """Commit the first Bundle and its visible terminal truth as one unit."""
+    """把首个 Bundle 与其可见终态作为同一事务提交。"""
 
     if bundle.manifest.run_id != state.run_id:
         raise ValueError("delivery bundle run id does not match finalizer state")
@@ -83,7 +83,7 @@ async def _commit_initial_delivery_atomically(
     ):
         raise RuntimeError("delivery finalizer requires matched persistence stores")
 
-    # Checkpoints use another pool; only this shared transaction proves delivery.
+    # checkpoint 使用另一个连接池；只有这个共享事务能证明交付完成。
     async with get_db_session() as session:
         commit = await await_delivery_operation(
             bundle_store.commit(**commit_kwargs, session=session),

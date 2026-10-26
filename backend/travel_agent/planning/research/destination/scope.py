@@ -1,5 +1,3 @@
-"""Planning research destination scope."""
-
 from __future__ import annotations
 
 import json
@@ -32,7 +30,7 @@ _SCOPED_DISCOVERY_TOOLS = (
 def build_destination_boundaries(
     controlled_trip_identity: Dict[str, Any] | None,
 ) -> List[Dict[str, Any]]:
-    """Project controlled destinations into the boundary shape workers query with."""
+    """把受控目的地投影成 worker 查询使用的边界结构。"""
     return [
         {
             "destination_id": str(item.get("place_id") or ""),
@@ -49,7 +47,7 @@ def build_destination_boundaries(
 def collect_offered_dining_place_ids(
     authoritative_tool_results: List[Dict[str, Any]],
 ) -> List[str]:
-    """Every restaurant the server put on this round's table."""
+    """返回服务端本轮提供给 worker 的全部餐厅 place_id。"""
     place_ids: List[str] = []
     for envelope in authoritative_tool_results:
         if not isinstance(envelope, dict):
@@ -78,7 +76,7 @@ def build_destination_task_prompt(
     offered_dining_place_ids: List[str],
     destination_boundaries: List[Dict[str, Any]] | None = None,
 ) -> str:
-    """Keep the destination task focused on provider-backed place records."""
+    """让目的地任务聚焦于有 Provider 记录支撑的地点。"""
     boundaries = json.dumps(destination_boundaries or [], ensure_ascii=False)
     dining_section = DINING_OPTIONS_TEMPLATE.format(
         place_ids="、".join(offered_dining_place_ids) or NO_DINING_OPTIONS,
@@ -105,7 +103,7 @@ def dining_intent_in_request(
     user_query: str,
     controlled_trip_identity: Dict[str, Any],
 ) -> bool:
-    """Did this round's request text or interests ask about food at all?"""
+    """本轮请求文本或兴趣中是否提到餐饮。"""
     style = controlled_trip_identity.get("style")
     interests = style.get("secondary_interests") if isinstance(style, dict) else []
     normalized_interests = {
@@ -140,7 +138,7 @@ def resolve_discovery_candidate_kinds(
     user_query: str,
     controlled_trip_identity: Dict[str, Any],
 ) -> List[str] | None:
-    """Return the domains the deterministic preflight *tries* to ground."""
+    """返回确定性预检尝试落实的领域。"""
     if assignment_required_kinds:
         return list(dict.fromkeys(assignment_required_kinds))
     discovery = style_selected_physical_candidate_kinds(controlled_trip_identity)

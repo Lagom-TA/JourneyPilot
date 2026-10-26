@@ -22,15 +22,11 @@ router = APIRouter(prefix="/api/user", tags=["user"])
 
 @router.get("/preference-options", response_model=list[PreferenceOptionGroup])
 async def get_preference_options() -> list[PreferenceOptionGroup]:
-    """六组偏好各有哪些可选项 —— 界面画 chip 用的那张表。
+    """返回六组偏好各自的可选项，供界面渲染选项。
 
-    **这条路由存在的理由就是「那张表只许有一份」。** 表放在后端，因为取值原文要进模型
-    （``panels/constraint.py``）。
-
-    **不走数据库、也不进 ``product_configurations``**：这不是可以被运营改的产品配置，
-    是 ``TravelPreference`` 自己的合同 —— 它的值决定模型读到什么。让它经过一张表只会
-    给一件恒定的东西加一个 503（``/api/product/trip-planner`` 那条是 DB 支撑的，
-    别把两者混成一副语法）。
+    选项定义放在后端，因为取值原文会经 Constraint Pack 进入模型。
+    这些定义属于 ``TravelPreference`` 的契约，不存入数据库，也不进入
+    ``product_configurations``：它们不是运营可改的产品配置。
     """
 
     return list(TRAVEL_PREFERENCE_GROUPS)
@@ -110,7 +106,7 @@ async def list_user_sessions():
 
 @router.get("/sessions/{session_id}", response_model=ChatSessionDetail)
 async def get_user_session_detail(session_id: str):
-    """获取单个会话详情（含消息回放与澄清状态）。"""
+    """获取单个会话详情（含消息回放）。"""
     components = get_components()
     try:
         detail = await components.chat_session_memory.get_session_detail(LOCAL_USER_ID, session_id)

@@ -1,4 +1,4 @@
-"""Planning requirements snapshot contracts."""
+"""需求快照契约。"""
 
 from __future__ import annotations
 

@@ -1,5 +1,4 @@
-"""
-Memory Store (Infrastructure Layer)
+"""记忆事实存储（Infrastructure Layer）。
 
 原子事实存储与三因子语义检索。
 
@@ -47,10 +46,10 @@ USER_MANUAL_IMPORTANCE = _IMPORTANCE_MAX
 
 
 def _fact_row(row: Any) -> Dict[str, Any]:
-    """一条记忆事实对外的样子 —— 列表、按 id 读回、按内容找回都只用这一份。
+    """记忆事实的对外结构，列表、按 id 读回与按内容查找共用。
 
-    ``source`` 是从 ``session_id`` 投影出来的，不是独立存的列：手动记忆用固定
-    ``USER_MANUAL_SESSION_ID`` 打标。
+    ``source`` 由 ``session_id`` 投影，不是独立列：手动记忆使用固定的
+    ``USER_MANUAL_SESSION_ID``。
     """
     return {
         "fact_id": str(row["fact_id"]),
@@ -98,15 +97,13 @@ class MemoryStore:
         retention_policy: Optional[MemoryRetentionPolicy] = None,
         source_message_id: str = "",
     ) -> Optional[int]:
-        """
-        计算 embedding 并将事实写入 memory_facts 表，**交回这一行的 ``fact_id``**。
+        """计算 embedding 并把事实写入 memory_facts 表，返回该行的 ``fact_id``。
 
-        写入必须自己说清楚它写的是哪一条：调用方要知道
-        「刚建的是哪一条」只能拿内容去全量回读里猜。失败时返回 ``None``
-        —— 非关键路径，仍然不抛。
+        返回写入行的标识，调用方无需按内容回读确认。失败时返回 ``None``；
+        该路径非关键，不抛出异常。
 
-        给出 ``source_message_id`` 时按 (user, 来源消息, 正文) 摘要去重：抽取任务是
-        at-least-once 的，重复消费不得让同一句事实在库里出现两遍。
+        传入 ``source_message_id`` 时按 (user, 来源消息, 正文) 摘要去重，
+        避免至少一次投递的任务重复写入同一句事实。
         """
         if not content or not user_id:
             return None
@@ -158,7 +155,7 @@ class MemoryStore:
                 )
                 fact_id = result.scalar_one_or_none()
                 if fact_id is None and digest is not None:
-                    # 这一句已经在库里 —— 重复消费，交回原来那一行。
+                    # 同一摘要已存在，重复投递时返回已有行。
                     existing = await session.execute(
                         text(
                             "SELECT fact_id FROM memory_facts "
@@ -191,19 +188,15 @@ class MemoryStore:
         include_score_breakdown: bool = False,
         # 三因子归一化范围: Relevance∈[0,1], Recency∈(0,1], Importance∈[0.1,1.0]
     ) -> List[Dict[str, Any]]:
-        """
-        三因子语义检索。
+        """三因子语义检索。
 
-        Args:
-            user_id:    仅检索该用户的记忆
-            query_text: 当前查询文本
-            top_k:      返回条数
-            alpha:      Relevance 权重
-            beta:       Recency 权重
-            gamma:      Importance 权重
+        user_id: 仅检索该用户的记忆。
+        query_text: 查询文本。
+        top_k: 返回条数。
+        alpha / beta / gamma: Relevance / Recency / Importance 权重。
 
-        Returns:
-            按综合分降序排列的事实列表，每条包含 content / category / importance / score / created_at
+        返回按综合分降序排列的事实，每条包含 content、category、importance、
+        score 与 created_at。
         """
         if not get_settings().embedding.enabled:
             return []
@@ -285,10 +278,10 @@ class MemoryStore:
         include_expired: bool = False,
         limit: int = 500,
     ) -> List[Dict[str, Any]]:
-        """
-        列出该用户全部记忆事实（按创建时间倒序），不走语义检索。
-        每条含 fact_id / content / category / importance / created_at / expires_at / source。
-        source: 'manual'（用户手动添加）| 'auto'（系统自动抽取）。
+        """列出该用户全部记忆事实（按创建时间倒序），不走语义检索。
+
+        每条包含 fact_id / content / category / importance / created_at /
+        expires_at / source。source 为 'manual'（用户手动添加）或 'auto'（系统自动抽取）。
         """
         if not user_id:
             return []
@@ -323,8 +316,7 @@ class MemoryStore:
     async def get_fact(self, user_id: str, fact_id: str | int) -> Optional[Dict[str, Any]]:
         """按身份读回一条记忆事实（含已过期的）。
 
-        写入交回 ``fact_id`` 之后，「刚建的是哪一条」由这里回答 —— 不是拿内容去
-        全量列表里扫一遍捡回来。
+        写入返回 ``fact_id`` 后，这里可直接读取刚创建的那一条，无需扫描全量列表。
         """
         if not user_id or fact_id is None:
             return None
@@ -345,11 +337,10 @@ class MemoryStore:
         return _fact_row(row) if row else None
 
     async def find_manual_fact(self, user_id: str, content: str) -> Optional[Dict[str, Any]]:
-        """找该用户**仍然有效的**同一句手动记忆，没有则返回 None。
+        """查找该用户仍然有效的同一句手动记忆；不存在时返回 None。
 
-        这是「同一句话只留一条」的判定依据。作用域刻意只到手动记忆：抽取器写下的
-        同一句话不该把用户手写的那条挡掉（两者的保留策略和展示分组都不一样）。
-        已过期的那条不算数 —— 它已经不在列表里，用户再写一遍要的是一条新的。
+        这是「同一句话只保留一条」的判定依据，作用域仅限手动记忆：抽取器写入的
+        同一句话不会阻止用户手动添加。已过期记录不参与判断。
         """
         if not user_id or not content:
             return None
@@ -371,13 +362,12 @@ class MemoryStore:
         return _fact_row(row) if row else None
 
     async def list_manual_facts(self, user_id: str, *, limit: int) -> List[Dict[str, Any]]:
-        """
-        列出该用户手动添加的记忆（session_id = USER_MANUAL_SESSION_ID），
-        按创建时间倒序，供注入链路无条件全量前置使用（不依赖语义匹配）。
+        """列出该用户手动添加的记忆（session_id = USER_MANUAL_SESSION_ID）。
 
-        ``limit`` **必填、且原样生效**：取多少条是调用方的预算问题，不是存储层的问题。
-        上限只有一处：``ContextBudget.manual_memory_facts_limit``，存储层不另设默认值
-        或夹值去和调用方写同一份预算。
+        按创建时间倒序，供注入链路无条件全量前置，不依赖语义匹配。
+
+        ``limit`` 必填且原样生效：条数由调用方的预算决定。上限只在
+        ``ContextBudget.manual_memory_facts_limit`` 定义，存储层不设默认值或夹值。
         """
         if not user_id:
             return []
@@ -522,7 +512,7 @@ class MemoryStore:
 
 
 class InMemoryMemoryStore(MemoryStore):
-    """Offline-safe memory store used by lifecycle tests."""
+    """生命周期测试使用的内存记忆存储。"""
 
     def __init__(self, retention_policy: Optional[MemoryRetentionPolicy] = None) -> None:
         self._facts: List[Dict[str, Any]] = []
@@ -539,7 +529,7 @@ class InMemoryMemoryStore(MemoryStore):
         retention_policy: Optional[MemoryRetentionPolicy] = None,
         source_message_id: str = "",
     ) -> Optional[int]:
-        # 与 SQL 那一半同一个合同：写入交回它写的那一行的 fact_id，摘要相同不写第二行。
+        # 与 SQL 实现相同契约：写入返回该行的 fact_id，摘要相同不写第二行。
         if not content or not user_id:
             return None
         importance = max(_IMPORTANCE_MIN, min(_IMPORTANCE_MAX, int(importance)))
@@ -663,7 +653,7 @@ class InMemoryMemoryStore(MemoryStore):
         return _fact_row(min(matches, key=lambda fact: fact["created_at"]))
 
     async def list_manual_facts(self, user_id: str, *, limit: int) -> List[Dict[str, Any]]:
-        # 与 DB 版同一份合同：``limit`` 必填、原样生效，存储层不替调用方决定条数。
+        # 与 DB 实现相同契约：``limit`` 必填且原样生效，存储层不替调用方决定条数。
         if not user_id:
             return []
         now = datetime.now(timezone.utc)

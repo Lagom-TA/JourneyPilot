@@ -273,7 +273,7 @@ async def knowledge_search(query: str, collection: str | None = None, limit: int
 
 
 def register_builtin_tools() -> None:
-    """Register controlled HITL and global place identity tools."""
+    """注册受控的 HITL 与全球地点身份工具。"""
     registry = get_tool_registry()
 
     registry.register(
@@ -306,8 +306,8 @@ def register_builtin_tools() -> None:
             "permission_class": "external_read",
             "operation_sensitivity": "medium",
             "auth_boundary": "none",
-            # 地点身份不接受替身：与 fallback._FALLBACK_MAP 里「没有 global_place_search
-            # 条目」是同一条约定的两半，缺一半就是一句无人执行的声明。
+            # 地点身份不允许离线替代；与 fallback._FALLBACK_MAP 中没有
+            # global_place_search 条目是同一约定的两部分。
             "allow_offline_fallback": False,
             "evidence_allowed": True,
             "side_effecting": False,
@@ -328,9 +328,9 @@ def register_builtin_tools() -> None:
         parameters_schema=GLOBAL_ROUTE_SEARCH_SCHEMA,
         executor=global_route_search,
         source="builtin",
-        # The tool has two upstreams behind it, so the server name is the tool's own
-        # dispatch layer rather than either supplier: naming one of them here would
-        # attribute every mainland route to a provider that never saw the query.
+        # 这个工具背后有两个上游，因此 server name 使用工具自己的分发层，
+        # 而不是任一供应商：写死其中一个会把每条中国大陆路线归给一个从未见过
+        # 该查询的 provider。
         server_name="route_search",
         manifest={
             "category": "data",

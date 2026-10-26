@@ -15,9 +15,9 @@ class TripRunControlRequest(BaseModel):
 
 
 class TripRunControlResponse(BaseModel):
-    """取消回执。`status` 是命令的状态，`run_status` 是运行的状态 —— 两件事。
+    """取消回执。`status` 是命令的状态，`run_status` 是运行的状态。
 
-    命令已经落库，所以断线之后可以拿 `command_id` 去查结果，不必猜。
+    命令已落库，断线后可凭 `command_id` 查询结果。
     """
 
     run_id: str
@@ -46,7 +46,7 @@ class TripRunSupplementResponse(BaseModel):
 
 
 class TripRunCommandResponse(BaseModel):
-    """一条控制命令此刻的结论。断线重连后查这里，而不是重发命令。"""
+    """一条控制命令当前的状态；断线重连后查询此接口，无需重发命令。"""
 
     command_id: str
     run_id: str

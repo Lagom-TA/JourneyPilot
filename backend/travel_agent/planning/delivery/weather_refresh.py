@@ -1,4 +1,4 @@
-"""Planning delivery weather refresh."""
+"""交付 Bundle 的天气刷新。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Behavioral coverage for graph metadata that directly drives UI and resume routing."""
+"""图元数据的行为覆盖：这些元数据直接驱动界面与恢复路由。"""
 
 from functools import lru_cache
 

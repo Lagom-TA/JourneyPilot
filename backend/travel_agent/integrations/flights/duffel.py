@@ -1,4 +1,4 @@
-"""Integrations flights duffel."""
+"""Duffel 航班搜索与归一化。"""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ _ISO_DURATION = re.compile(
 
 
 class DuffelFlightSearchError(RuntimeError):
-    """A Duffel request or response cannot support a formal route fact."""
+    """Duffel 请求或响应无法支持一条正式的路线事实。"""
 
 
 def _duration_minutes(value: object) -> int:
@@ -118,14 +118,10 @@ def _segment(raw: Mapping[str, Any], index: int) -> dict[str, Any]:
 
 
 def _quote(offer: Mapping[str, Any]) -> Optional[tuple[float, str]]:
-    """The offer's own price, in the currency Duffel priced it in.
+    """报价自身的价格与 Duffel 计价货币。
 
-    Duffel prices an offer in the *account's* currency — measured USD on this
-    project's account, for a PVG→HND search, on every one of 86 offers.  This
-    used to read ``total_amount`` only when ``total_currency == "CNY"``, so every
-    real quote was dropped and both flights of an international trip reached the
-    traveller with no fare at all.  Converting is
-    ``_price_routes_in_cny``'s job; naming what arrived is this one's.
+    Duffel 按账户货币给报价计价，并不保证是 CNY。这里只负责读出实际金额与货币；
+    换算由 ``_price_routes_in_cny`` 完成。
     """
 
     amount = offer.get("total_amount")
@@ -179,17 +175,14 @@ async def _price_routes_in_cny(
     *,
     client: Optional[httpx.AsyncClient] = None,
 ) -> dict[str, Any]:
-    """Put every quote Duffel returned onto its route, in CNY.
+    """把 Duffel 返回的每条报价换算成 CNY 并写回对应路线。
 
-    Returns the conversion basis for ``provider_response``, so the retained
-    Provider snapshot says which currency and which day's rate produced the
-    numbers rather than leaving them unexplained.
+    返回换算依据供 ``provider_response`` 使用，使保留的 Provider 快照能说明金额
+    来自哪种货币、哪一天的汇率。
 
-    A quote that arrives and cannot be expressed **announces itself**.  It does
-    not fail the search — a flight with no fare is still a flight the traveller
-    can take, whereas losing the flight loses the day — but an unannounced
-    ``None`` here is indistinguishable from an offer the supplier never priced,
-    and that is the confusion this function must not create.
+    无法换算的报价会记录警告但不让搜索失败：没有票价的航班仍是可乘坐的航班，
+    而丢失航班会丢失整天的行程。不过未记录的 ``None`` 无法与「供应商没有报价」
+    区分，因此这里必须留下日志。
     """
 
     basis: dict[str, Any] = {
@@ -264,7 +257,7 @@ async def search_duffel_flights(
     fx_client: httpx.AsyncClient | None = None,
     today: date | None = None,
 ) -> dict[str, Any]:
-    """Call Duffel v2 and retain at most five complete one-way Provider routes."""
+    """调用 Duffel v2，保留最多五条完整的单程 Provider 路线。"""
     resolved_token = token or os.getenv("DUFFEL_API_KEY_LIVE", "")
     if not resolved_token:
         raise DuffelFlightSearchError("DUFFEL_API_KEY_LIVE is not configured")

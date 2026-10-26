@@ -1,4 +1,4 @@
-"""Planning requirements entry."""
+"""需求处理入口。"""
 
 from __future__ import annotations
 

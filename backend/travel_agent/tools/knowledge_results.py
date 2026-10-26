@@ -25,7 +25,7 @@ def knowledge_tool_documents(
             "quarantine_result"
         ):
             continue
-        # Citations can reference only whole fragments retained in model-visible JSON.
+        # 引用只能指向模型可见 JSON 中保留的完整片段。
         shown = json.loads(compact_tool_content_for_model(dict(envelope)))
         result = shown.get("sanitized_result") or {}
         if not isinstance(result, dict) or result.get("success") is not True:

@@ -1,4 +1,4 @@
-"""Real place search used by controlled trip input."""
+"""受控旅行输入使用的地点搜索。"""
 
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ router = APIRouter(prefix="/api/places", tags=["places"])
 
 def _kind(item: Dict[str, Any]) -> Optional[PlaceKind]:
     value = str(item.get("addresstype") or item.get("type") or "").lower()
-    # Nominatim reports stations as addresstype="railway" / type="station", so the
-    # concrete facility can only be read off ``type``.
+    # Nominatim 将车站标记为 addresstype="railway" / type="station"，
+    # 具体设施类型只能从 ``type`` 读取。
     facility = str(item.get("type") or "").lower()
     category = str(item.get("category") or item.get("class") or "").lower()
     address = item.get("address") if isinstance(item.get("address"), dict) else {}
@@ -104,9 +104,8 @@ async def search_places(
     try:
         observation = await search_nominatim_raw(q, limit=5)
     except ValueError as exc:
-        # 参数非法是调用方的错，重试不会变好，所以它**不能和 provider 故障共用 503**：
-        # `?q=%20` 能过 `min_length=1`，但 `search_nominatim_raw` 归一化后为空 —— 报 503
-        # 前端只能说「稍后重试」，而正确的话是「你还没输入地点」。
+        # 参数非法是调用方错误，重试无效，因此返回 400 而非与 provider 故障共用 503：
+        # ``?q=%20`` 能通过 ``min_length=1``，但归一化后为空。
         logger.info("地点搜索参数非法：%s", exc)
         raise HTTPException(
             status_code=400,
@@ -116,9 +115,8 @@ async def search_places(
             },
         ) from exc
     except NominatimPlaceSearchError as exc:
-        # 三个抛出点在这里区分：日志留下 provider 到底怎么坏的（重试耗尽 / 非 JSON /
-        # 形状不对），对外只给一个码——三种坏法对用户的处置都是同一句「保留输入并重试」，
-        # 给三个码只会让前端写三条一样的分支。
+        # 具体原因（重试耗尽 / 非 JSON / 响应形状不符）写入日志，对外统一为一个
+        # 错误码：三种情况下用户的处置方式相同，都是保留输入并重试。
         logger.warning("地点搜索失败：provider %s（%s）", exc.code, exc)
         raise HTTPException(
             status_code=503,

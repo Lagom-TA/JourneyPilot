@@ -17,8 +17,8 @@ from travel_agent.runtime.time import iso_or_none as _iso
 from travel_agent.storage.row_values import json_dumps as _dumps
 
 _OPEN_STATUS_VALUES = tuple(sorted(status.value for status in OPEN_BACKGROUND_JOB_STATUSES))
-#: 可领取的状态。`running` 也在里面：一条租约已过期的 running 就是「上一个进程崩在
-#: 半路」，重新领走它是唯一的恢复路径。活着的执行中任务由租约条件挡住。
+#: 可领取的状态。`running` 也在里面：租约已过期的 running 行表示执行器已不在，
+#: 重新领取是唯一的恢复路径。仍在执行的任务由租约条件挡住。
 _CLAIMABLE_STATUS_VALUES = (
     BackgroundJobStatus.PENDING.value,
     BackgroundJobStatus.RETRY_WAIT.value,
@@ -216,8 +216,8 @@ class BackgroundJobStore:
                         last_error_summary = NULL,
                         completed_at = NOW(),
                         updated_at = NOW()
-                    -- 认租约主人：租约过期后任务会被另一个 worker 领走，而先跑完的
-                    -- 那个不该把后者的结果盖掉。
+                    -- 校验租约持有者：租约过期后任务会被另一个 worker 领走，先执行
+                    -- 完的 worker 不应覆盖后者的结果。
                     WHERE job_id = :job_id
                       AND status = :running
                       AND lease_owner = :lease_owner

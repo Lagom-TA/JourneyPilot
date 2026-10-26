@@ -55,7 +55,7 @@ def test_a_missing_enhancement_names_its_config_item_and_install_command(monkeyp
     gap = by_item["rerank.provider=cross_encoder"]
     assert gap.install_command == "uv sync --project backend --group cross-encoder"
     assert "sentence_transformers" in gap.missing_modules
-    # 还要给出另一条路：改配置也能解决，不是只能装依赖。
+    # 还要给出另一种解法：改配置也能解决，不是只能安装依赖。
     assert "rerank.provider" in gap.consequence
 
 
@@ -80,7 +80,7 @@ def test_a_remote_embedding_provider_needs_no_local_stack(monkeypatch):
 
 
 def test_the_report_blocks_readiness_when_a_gap_exists(monkeypatch):
-    """这一项与空语料那一类不同：它会在第一次真正调用时抛异常，所以拦门禁。"""
+    """这一项与空语料那一类不同：它会在第一次真正调用时抛异常，所以会阻止就绪。"""
 
     monkeypatch.setattr(
         "travel_agent.config.capabilities._missing",

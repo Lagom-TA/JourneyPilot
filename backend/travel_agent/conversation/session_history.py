@@ -23,8 +23,8 @@ async def load_session_history(
     确保会话存在并加载近期消息。
     返回 (history, anchor_data_or_None, is_compressed)。
 
-    `controlled_trip_identity` 原样转给 `ensure_session`——会话标题的判据在那里，
-    这一层只是它唯一的调用路径之一，不自己解释。
+    `controlled_trip_identity` 原样转给 `ensure_session`，会话标题的判据在那里；
+    本层不做解释。
     """
     try:
         await chat_session_memory.ensure_session(

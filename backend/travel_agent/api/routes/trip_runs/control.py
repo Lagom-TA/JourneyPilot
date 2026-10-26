@@ -31,13 +31,13 @@ router = APIRouter(prefix="/api/trip-runs", tags=["trip-runs"])
 async def add_trip_run_supplement(
     run_id: str, request: TripRunSupplementRequest
 ) -> TripRunSupplementResponse:
-    """Queue an auxiliary requirement at the next cooperative node boundary.
+    """在下一个可协作节点边界追加要求。
 
-    要求先落 `trip_run_commands` 再通知执行器：接受它不取决于这次请求恰好命中哪个进程的
-    内存。通知丢了或换了进程，执行器下一次轮询照样看得见。
+    要求先写入 `trip_run_commands` 再通知执行器，是否接受不取决于请求命中哪个进程。
+    通知丢失或进程切换后，执行器下一次轮询仍能读到该命令。
 
-    This surface intentionally cannot mutate controlled trip identity. Identity
-    changes must start a new TripRun so the brief, itinerary and map never drift.
+    该接口不能修改受控旅行身份；身份变更必须新建 TripRun，避免简报、行程与地图
+    出现不一致。
     """
     components = get_components()
     detail = await components.trip_run_store.get_detail(run_id, event_limit=0)
@@ -73,12 +73,11 @@ async def add_trip_run_supplement(
 async def control_trip_run(
     run_id: str, request: TripRunControlRequest
 ) -> TripRunControlResponse:
-    """取消一次运行：先落 durable command，再动状态，最后通知执行器。
+    """取消一次运行：先写入持久命令，再更新状态，最后通知执行器。
 
-    顺序是承重的。命令先落库，所以「已接受」这句话在进程重启后依然成立；状态转换紧随其后，
-    所以 `cancel_requested` 一旦写进 `trip_runs`，交付边界的 `FOR UPDATE` 就再也提交不了
-    completion（cancel/complete race 的权威规则）。进程内通知是最后一步，纯粹为了少等一个
-    轮询周期 —— 它没命中不改变任何结论。
+    顺序有依赖：命令先落库，保证「已接受」在进程重启后仍然成立；随后进行状态转换，
+    `cancel_requested` 写入 `trip_runs` 后，交付边界的 `FOR UPDATE` 无法再提交
+    completion。进程内通知是最后一步，仅用于减少一个轮询周期的等待，未命中不影响结果。
     """
 
     components = get_components()
@@ -115,7 +114,7 @@ async def read_trip_run_command(
     command_id: str,
     session_id: Optional[str] = Query(default=None),
 ) -> TripRunCommandResponse:
-    """一条控制命令的结论。断线之后查它，而不是重发一次取消。"""
+    """返回一条控制命令的结论；断线后查询即可，无需重复发送取消。"""
 
     components = get_components()
     run = await _get_authorized_run(run_id, session_id=session_id)

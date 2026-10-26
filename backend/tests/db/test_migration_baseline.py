@@ -1,6 +1,6 @@
 """baseline 迁移的硬约束：空库能迁出完整结构、既有库纳管而不重建、结构对不上就拒绝。
 
-迁移是现在唯一能建出业务结构的东西（API 进程不建表），所以这几条是承重墙。
+迁移是唯一能建出业务结构的东西（API 进程不建表），所以这几条约束必须成立。
 """
 
 from __future__ import annotations
@@ -71,14 +71,14 @@ def test_unmanaged_database_is_adopted_not_rebuilt(unmanaged_database, settings)
             conn, unmanaged_database, embedding_dimensions=settings.embedding.dimensions
         )
     assert after.current_revision == BASELINE_REVISION
-    # 表还在 —— 纳管不重复建表，也不删任何东西。判据是「与纳管前逐张相同」而不是
-    # 「一张不缺」：基线结构本来就没有后续 revision 新增的表，补上它们是 stamp 之后
-    # 那次 upgrade 的事，不是纳管这一步的事。
+    # 表还在——纳管不重复建表，也不删任何东西。判据是「与纳管前逐张相同」而不是
+    # 「一张不缺」：基线结构不包含后续 revision 新增的表，补上它们属于 stamp 之后
+    # 那次 upgrade，不属于纳管这一步。
     assert after.census.present_managed_tables == plan.census.present_managed_tables
 
 
 def test_unknown_schema_is_refused_not_stamped(unmanaged_database, settings):
-    """结构被改动过的未纳管库 → 拒绝纳管。**这是 §2.3 那条禁令的执行现场。**"""
+    """结构被改动过的未纳管库 → 拒绝纳管。"""
 
     with connect(unmanaged_database) as conn:
         with conn.cursor() as cur:

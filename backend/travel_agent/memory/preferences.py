@@ -1,4 +1,4 @@
-"""Validate preference groups and update the user's explicit selections."""
+"""校验偏好分组，并更新用户显式选择的偏好。"""
 
 from pydantic import ValidationError
 
@@ -11,11 +11,10 @@ class PreferenceRejected(ValueError):
 
 
 def preference_rejection(error: ValidationError) -> str:
-    """把 `TravelPreference` 的拒绝理由投影成一句客户端读得懂的话。
+    """把 `TravelPreference` 的校验失败原因转换为面向客户端的提示。
 
-    只取校验器自己写的那句（Pydantic 会给它加一个 ``Value error, `` 前缀），
-    **不带**类型名、字段路径与 ``errors.pydantic.dev`` 链接 —— 那些是内部实现细节，
-    不该整段发给客户端。
+    只保留校验器写入的消息（去掉 Pydantic 的 ``Value error, `` 前缀），不包含
+    类型名、字段路径或文档链接等内部实现细节。
     """
 
     messages = [

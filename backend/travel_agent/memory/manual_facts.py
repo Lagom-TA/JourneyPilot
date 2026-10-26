@@ -1,4 +1,4 @@
-"""Idempotent manual-memory creation with identity-based readback."""
+"""幂等的手动记忆创建，并按身份读回。"""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -41,7 +41,7 @@ async def save_manual_fact(
     )
     if fact_id is None:
         raise ManualFactSaveFailed("memory fact save failed")
-    # Resolve the profile only after a real write; reads and failures create no empty profile.
+    # 仅在真实写入后解析画像；读取与失败不创建空画像。
     await profile_for_write().ensure_profile_for_write(user_id)
     created = await store.get_fact(user_id, fact_id)
     if created is None:

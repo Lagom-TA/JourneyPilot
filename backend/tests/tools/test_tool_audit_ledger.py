@@ -1,14 +1,9 @@
-"""tool_execution_audits 的同 id 重复写自证一致（评审条目 A12）。
+"""tool_execution_audits 对同一 id 的重复写入保持自洽。
 
-同一个 ``infrastructure`` 包里两张台账原来处置相反：``cost_ledger_store`` 会拿一个
-身份元组比对、不一致就抛（``cost_ledger_store.py:_ledger_identity``），而
-``tool_audit_store`` 命中 ``audit_id`` 就直接把旧行返回，新 envelope 里的内容零比对
-地丢掉。这个文件把两边的语义拉平，并且**两个实现跑同一组断言**：语义分叉只会在
-「测试大多跑内存那个」的时候变成生产事故。
+内存实现与 PostgreSQL 实现跑同一组断言：同 id 同内容返回已存行，内容或状态不同则抛
+``ToolAuditConflict``，身份元组不包含 run_id 与 created_at。
 
-PostgreSQL 那半用一张假会话表跑，而不是标记成 ``postgres`` 后在没库的机器上跳过：
-要验的东西是 ``record_envelope`` 里那个分支的判定，不是 SQL 方言，假会话跑的是同一
-段真代码，而 skip 掉的那条什么都不验。
+PostgreSQL 分支用一张假会话表执行 ``record_envelope`` 的判定逻辑，不依赖真实数据库。
 """
 
 from __future__ import annotations
@@ -48,7 +43,7 @@ def _envelope(**overrides: Any) -> Dict[str, Any]:
 
 # ── 假 PostgreSQL 会话 ────────────────────────────────────────────────────────
 # `ToolAuditStore.record_envelope` 只用到 execute / mappings().first()，所以一个
-# 按 audit_id 索引的 dict 就够了：SELECT 命中就把那行喂回去，INSERT 把参数原样存下。
+# 按 audit_id 索引的 dict 就够了：SELECT 命中时返回该行，INSERT 时原样保存参数。
 
 
 class _FakeResult:
@@ -74,8 +69,8 @@ class _FakeSession:
         if str(statement).lstrip().upper().startswith("SELECT"):
             row = self.table.get(params.get("audit_id"))
             return _FakeResult([row] if row is not None else [])
-        # INSERT：落库后回读走的是同一批列名，created_at 由数据库的 NOW() 给，
-        # 这里留空让 `_record_from_row` 走它自己的兜底。
+        # INSERT：落库后回读走同一批列名，created_at 由数据库的 NOW() 提供，
+        # 这里留空，让 `_record_from_row` 使用自身默认值。
         self.table[params["audit_id"]] = {**params, "created_at": None}
         return _FakeResult([])
 
@@ -175,11 +170,11 @@ async def test_latency_only_difference_does_not_conflict(audit_store) -> None:
     assert replayed.audit_id == "tool_fixed_id"
 
 
-# ── 身份元组本身的钉子 ────────────────────────────────────────────────────────
+# ── 身份元组本身 ──────────────────────────────────────────────────────────────
 
 
 def test_identity_tuple_excludes_run_id_and_created_at() -> None:
-    """元组对 run_id / created_at 免疫：这两个字段变化不得改变身份。"""
+    """元组不受 run_id / created_at 影响：这两个字段变化不得改变身份。"""
 
     base = build_audit_record_from_envelope(
         _envelope(), manifest=_MANIFEST, run_id=None

@@ -1,8 +1,8 @@
-"""Worker snapshots are recovery aids for the planning graph.
+"""worker 快照是规划图的恢复辅助数据。
 
-Use the same typed serializer as LangGraph. Writes are version-CAS and fenced
-by the live execution lease, in one business database transaction. A graph
-checkpoint and this transaction are deliberately not treated as one commit.
+使用与 LangGraph 相同的类型化序列化器。写入按 version 做 CAS，并受活跃执行
+租约约束，全部在一个业务数据库事务内完成。图 checkpoint 与该事务不视为同一次
+提交。
 """
 from copy import deepcopy
 from functools import wraps
@@ -48,7 +48,7 @@ class WorkerJournalStore:
     async def save(self, run_id, scope_id, version, payload, *, lease_token):
         kind, data = JsonPlusSerializer().dumps_typed(payload)
         async with get_db_session() as session:
-            # Row lock also orders this commit against lease takeover/release.
+            # 行锁同时让本次提交与租约接管/释放按顺序执行。
             lease = await session.execute(text(
                 "SELECT run_id FROM trip_run_executions WHERE run_id=:run_id "
                 "AND lease_token=:lease_token AND lease_expires_at>NOW() FOR UPDATE"
@@ -76,7 +76,7 @@ class WorkerJournalStore:
 
 
 class InMemoryWorkerJournalStore:
-    """Fault injection adapter; production never falls back to this store."""
+    """故障注入用的内存实现；生产环境不会回退到它。"""
     def __init__(self):
         self.rows = {}
 

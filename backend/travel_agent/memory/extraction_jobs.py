@@ -1,4 +1,4 @@
-"""Memory extraction jobs."""
+"""记忆抽取后台任务。"""
 
 from __future__ import annotations
 
@@ -22,8 +22,8 @@ def memory_extraction_dedupe_key(session_id: str, assistant_message_id: str) -> 
 def memory_fact_digest(user_id: str, source_message_id: str, content: str) -> str:
     """同一条来源消息抽出的同一句事实只入库一次。
 
-    重复消费是 at-least-once 的常态（标记 completed 之前崩溃），所以幂等必须落在
-    业务写入这一侧，不能指望「job 只会消费一次」。
+    任务按至少一次投递（例如标记 completed 前崩溃会重跑），因此幂等由业务写入
+    这一侧保证，不能假定任务只消费一次。
     """
 
     material = "\x00".join([user_id, source_message_id, " ".join(content.split())])
@@ -76,15 +76,12 @@ def make_memory_extraction_handler(
 
 
 async def load_user_profile(user_profile_memory, user_id: str):
-    """加载用户画像对象；取不到就是 ``None``。
+    """加载用户画像对象；取不到时返回 None。
 
-    **这里不再拼任何「画像摘要」字符串。** 画像抵达模型的通道只有一条：
-    Constraint Pack 的统一装配入口自己读取 ``UserProfileMemory``
-    （``panels/constraint.py::_map_manual_profile`` 映六组偏好、``_auto_portrait_block``
-    映系统画像）。此前这里还会把偏好与画像拼成一段散文塞进 state，只有快路径读它 ——
-    于是同一份节奏 / 预算在快路径上是一句不参与仲裁的散文、在深度路径上是 pack 里可被
-    preset 压过的一条 item，两条路各有各的赢家。路由这一侧现在只把对象交出去，
-    唯一的读者是记忆抽取（它要 ``auto_portrait`` 当增量基线）。
+    画像抵达模型的唯一通道是 Constraint Pack 的统一装配入口
+    （``panels/constraint.py`` 中 ``_map_manual_profile`` 映射六组偏好、
+    ``_auto_portrait_block`` 映射系统画像）。本函数只返回画像对象，
+    供记忆抽取作为 ``auto_portrait`` 增量基线。
     """
     try:
         return await user_profile_memory.get_user_profile(user_id)
@@ -104,10 +101,10 @@ async def enqueue_memory_extraction(
     portrait_baseline: str,
     background_job_worker=None,
 ) -> None:
-    """把这一轮的记忆抽取排进 `background_jobs`。
+    """把本轮的记忆抽取排入 `background_jobs`。
 
-    在聊天保存事务之后调用：任务只带引用，正文由 worker 从会话记录读回。画像基线随
-    payload 固定，延迟几小时才执行的抽取不会改用另一版画像去判「这条已经知道了」。
+    在聊天保存事务之后调用：任务只保存引用，正文由 worker 从会话记录读回。
+    画像基线随 payload 固定，延迟执行的抽取仍使用入队时的画像版本。
     """
     if not get_settings().embedding.enabled:
         return

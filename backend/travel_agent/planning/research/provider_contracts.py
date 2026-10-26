@@ -1,5 +1,3 @@
-"""Planning research provider contracts."""
-
 from __future__ import annotations
 
 from datetime import date
@@ -48,7 +46,7 @@ class _StrictFrozenModel(BaseModel):
 
 
 class ProviderRouteLegScope(_StrictFrozenModel):
-    """One exact current-Run long-distance research responsibility."""
+    """当前运行中一条精确的长途交通调研职责。"""
 
     leg_role: ProviderRouteLegRole
     from_place_id: str = Field(min_length=1)
@@ -64,7 +62,7 @@ class ProviderRouteLegScope(_StrictFrozenModel):
 
 
 class ProviderEvidenceScope(_StrictFrozenModel):
-    """One independently resolvable Provider research responsibility."""
+    """一个可独立求解的 Provider 调研职责。"""
 
     scope_id: str = Field(
         min_length=64,
@@ -138,14 +136,14 @@ class ProviderEvidenceScope(_StrictFrozenModel):
 
 
 class ProviderEvidenceAssignment(_StrictFrozenModel):
-    """Server-owned assignment of one scope to a numbered worker attempt."""
+    """服务端把某个范围分配给带序号的 worker 尝试。"""
 
     scope: ProviderEvidenceScope
     attempt_number: int = Field(ge=0)
 
 
 class ProviderEvidenceOutcome(_StrictFrozenModel):
-    """Current result reported for one explicit Provider-evidence scope."""
+    """某个明确 Provider 证据范围的当前结果。"""
 
     scope: ProviderEvidenceScope
     attempt_number: int = Field(ge=0)

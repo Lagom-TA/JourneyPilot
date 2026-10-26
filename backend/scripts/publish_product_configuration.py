@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Review or explicitly publish release-managed JourneyPilot product data.
+"""查看或显式发布由发布流程管理的 JourneyPilot 产品数据。
 
-Usage:
+用法：
     uv run --project backend python backend/scripts/publish_product_configuration.py
     uv run --project backend python backend/scripts/publish_product_configuration.py --apply
 """

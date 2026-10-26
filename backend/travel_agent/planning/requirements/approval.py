@@ -1,4 +1,4 @@
-"""Planning requirements approval."""
+"""计划审批。"""
 
 from __future__ import annotations
 
@@ -176,7 +176,7 @@ def _projection_only_amendment(content: str) -> bool:
 async def plan_gate_node(
     state: TravelAgentState, config: Optional[RunnableConfig] = None
 ) -> Dict[str, Any]:
-    """Block after planning and before worker fan-out until the user decides."""
+    """在规划完成后、Worker 扇出前阻塞，等待用户决定。"""
     if not _is_plan_gate_enabled(config):
         raise RuntimeError("controlled planning requires an enabled approval gate")
 

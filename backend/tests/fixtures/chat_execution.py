@@ -1,4 +1,4 @@
-"""Shared isolated chat resources and execution helpers."""
+"""隔离的聊天资源与执行辅助函数，供多个测试共享。"""
 
 from __future__ import annotations
 

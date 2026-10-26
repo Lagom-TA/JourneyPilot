@@ -10,7 +10,7 @@ from travel_agent.schema import StrictModel
 
 
 class UserInputAnchor(StrictModel):
-    # Controlled user inputs are planning requirements, never external evidence.
+    # 受控用户输入属于规划需求，不是外部证据。
     anchor_id: str = Field(min_length=1)
     field_path: str = Field(min_length=1)
     value: Any

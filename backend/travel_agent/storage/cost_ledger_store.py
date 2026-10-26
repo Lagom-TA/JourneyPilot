@@ -1,13 +1,13 @@
-"""Cost ledger persistence（台账层 / 暴露层）.
+"""成本台账的持久化与聚合。
 
 把捕获层缓冲的每条 ``LLMCallRecord`` 落成 Postgres 台账行 ``run_llm_calls``，
-写入时按价格表**快照计算** ``cost_usd``（LangSmith 语义：价格表后改不追溯重算已落库行），
+写入时按价格表**快照计算** ``cost_usd``（价格表后改不追溯重算已落库行），
 再经 SSE（运行中）与 REST（历史）暴露 run 级成本汇总。
 
 设计要点：
 
 - **快照计算**：cost 在 ``record_calls`` 写入时算好并存库；``run_summary`` 只读库里的
-  cost 聚合，绝不重算——因此改价格表不影响历史行。
+  cost 聚合，不重算，因此改价格表不影响历史行。
 - **未命中价格 → cost_usd=None**：只报 token，不编造成本（``resolve_price`` 返回 None）。
 - **互斥输入桶**：``(input-read-write)×p_in + read×p_read + write×p_write + output×p_out``；
   reasoning 已含在 output_tokens 里，不另算。
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 class CostLedgerConflict(Exception):
-    """Same call id already stored with different content."""
+    """同一个 call id 已存有不同内容。"""
 
 
 
@@ -132,11 +132,11 @@ def compute_cost_usd(
     cached_input_tokens: Optional[int],
     cache_write_input_tokens: Optional[int] = None,
 ) -> Optional[float]:
-    """Price disjoint uncached/read/write input buckets and inclusive output."""
+    """按未缓存/缓存读/缓存写三个互斥输入桶与包含推理的输出计价。"""
     if price is None:
         return None
     if input_tokens is None or output_tokens is None:
-        return None  # Missing usage is unknown, never a zero-token side.
+        return None  # 缺少用量表示未知，不能按 0 token 处理。
     if any(value is not None and (
         isinstance(value, bool) or not isinstance(value, int) or value < 0
     ) for value in (input_tokens, output_tokens, cached_input_tokens, cache_write_input_tokens)):
@@ -146,13 +146,13 @@ def compute_cost_usd(
     cached = max(0, cached_input_tokens or 0)
     written = max(0, cache_write_input_tokens or 0)
     if cached + written > inp:
-        return None  # Invalid bucket counts cannot support an accurate bill.
+        return None  # 桶计数不合法时无法得到准确费用。
     if (cached_input_tokens is None and price.cached_input_per_1m is not None
             and price.cached_input_per_1m != price.input_per_1m):
         return None
     if (cache_write_input_tokens is None and price.cache_write_per_1m is not None
             and price.cache_write_per_1m != price.input_per_1m):
-        return None  # A surcharge exists, but its billed quantity is unknown.
+        return None  # 存在写入费，但计费数量未知。
     p_in = price.input_per_1m / 1_000_000.0
     p_cached = (
         price.cached_input_per_1m if price.cached_input_per_1m is not None else price.input_per_1m
@@ -468,7 +468,7 @@ def _norm_cost(value: Any) -> Optional[float]:
 
 
 def _ledger_identity(call: LLMCostCall) -> Tuple[Any, ...]:
-    """Fields that must match for same-id idempotent replay."""
+    """同 id 幂等重放时必须一致的字段。"""
     return (
         call.run_id,
         call.node,
@@ -489,8 +489,8 @@ def _ledger_identity(call: LLMCostCall) -> Tuple[Any, ...]:
         call.tool_schema_tokens_estimate,
         call.finish_reason,
         call.reasoning_output_tokens,
-        # Prices are a commit-time snapshot. A changed price configuration
-        # must not reject replay of the same captured telemetry after a crash.
+        # 价格是写入时的快照。价格配置变化不应导致崩溃后重放同一份捕获遥测
+        # 被拒绝。
         call.status,
         call.tier,
         call.estimated,
@@ -516,7 +516,7 @@ def _assert_ledger_idempotent(existing: LLMCostCall, incoming: LLMCostCall) -> N
 
 
 class CostLedgerStore:
-    """PostgreSQL-backed cost ledger repository."""
+    """PostgreSQL 成本台账仓储。"""
 
     async def record_calls(
         self,
@@ -645,7 +645,7 @@ class CostLedgerStore:
 
 
 class InMemoryCostLedgerStore(CostLedgerStore):
-    """In-memory cost ledger with the same async contract."""
+    """内存成本台账，提供相同的异步接口。"""
 
     def __init__(self) -> None:
         self.calls: List[LLMCostCall] = []

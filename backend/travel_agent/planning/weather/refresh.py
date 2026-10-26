@@ -1,4 +1,4 @@
-"""Planning weather refresh."""
+"""天气快照与影响刷新。"""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def expired_weather_destination_ids(
     now: datetime,
     forecast_horizon_days: int = 16,
 ) -> set[str]:
-    """Return destinations that need an execution-relevant refresh."""
+    """返回需要执行相关刷新的目的地。"""
     now = _aware(now)
     assertion_index = {
         item.fact_assertion_id: item for item in bundle.fact_snapshot.fact_assertions
@@ -232,24 +232,17 @@ def _frozen_weather_impact_refs(bundle: DeliveryBundle) -> set[str]:
 def _carry_over_frozen_impacts(
     bundle: DeliveryBundle, weather: WeatherContextSnapshot
 ) -> tuple[WeatherContextSnapshot, frozenset[str], frozenset[tuple[str, date]]]:
-    """Keep the impacts a frozen record still names, and say which Days they date.
+    """保留冻结记录仍引用的影响，并标出这些影响对应的 Day。
 
-    An impact id is content-addressed over the destination, the date, the target
-    and the *condition* — so a condition that clears between two refreshes deletes
-    the exact ids the itinerary was built around, and the Bundle contract then
-    refuses the whole refresh.  A Run's weather could therefore stop updating
-    forever, deterministically, because the sky improved.
+    影响 id 以目的地、日期、目标与 *条件* 为内容哈希；两次刷新之间条件消失会
+    删掉行程据以构建的 id，Bundle 契约随即拒绝整次刷新。
 
-    Carrying the old impact forward is honest bookkeeping: frozen lineage records
-    what the itinerary was planned against, which is a fact about the past that a
-    new forecast does not change.  The old assertions that support it are still in
-    the merged fact snapshot, so nothing dangles.
+    保留旧影响是如实的记账：冻结的 lineage 记录行程按什么条件规划，这是新预报
+    不会改变的事实。支撑它的旧断言仍在合并后的事实快照中，引用不会悬空。
 
-    Also returns the ``(destination_id, date)`` of each carried impact, taken from
-    the previous snapshot's own Day — an impact carries that Day's assertion ids,
-    so the match is exact and needs no id archaeology.  That is what tells the
-    projection a Day is showing a carried-forward history rather than only this
-    refresh's forecast.
+    同时返回每个保留影响的 ``(destination_id, date)``，取自上一快照自身的 Day；
+    影响携带该 Day 的断言 id，因此匹配是精确的。投影据此判断某个 Day 展示的是
+    沿用数据而非本次预报。
     """
 
     previous = {

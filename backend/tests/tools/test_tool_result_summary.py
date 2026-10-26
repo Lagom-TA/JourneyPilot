@@ -1,14 +1,8 @@
-"""工具轮次的那一行摘要：读得懂，而且永远不是一坨载荷。
+"""工具轮次的那一行摘要必须可读，且不得输出原始载荷。
 
-`result_summary` 是 ToolExecutionEnvelope 里**给人读的**那一行 —— 它落在思维链上、
-落在 evidence 的 title/snippet 上。它认不出形状时曾经 `json.dumps` 整个 provider 返回，
-于是屏幕上出现过两条真实事故：
-
-- `{"success": true, "provider": "nominatim", "resolution_method": …}`（地点查询零结果）
-- `{"freshness_hint": {…}, "observed_at": …}`（路线查询命中快照缓存）
-
-两条都不是失败：provider 答了，只是这一份摘要器认不出它答的形状。所以这里钉三件事 ——
-认得出的形状读成人话、零结果与失败分开说、认不出时也绝不把载荷印出去。
+`result_summary` 是 ToolExecutionEnvelope 中面向人的那一行，会出现在思维链和 evidence 的
+title/snippet 上。这里验证三件事：可识别的形状读成一句话，零结果与失败分开表达，
+无法识别的形状也不把载荷原样印出。
 """
 
 from __future__ import annotations
@@ -95,7 +89,7 @@ _NORMALIZED_ROUTE = {
     ],
 )
 def test_a_summary_is_never_a_payload(result):
-    """认不认得出形状，摘要都不许以 `{` / `[` 开头。"""
+    """无论能否识别形状，摘要都不得以 `{` / `[` 开头。"""
 
     summary = summarize_tool_result(result)
     assert summary
@@ -112,7 +106,7 @@ def test_a_recognized_shape_reads_as_a_sentence():
 
 
 def test_zero_results_is_not_reported_as_a_failure():
-    """查了但没找到 ≠ 这一步坏了。两句话必须不同，否则运维和用户都会去查一个不存在的故障。"""
+    """查了但没找到不等于这一步失败。两句话必须不同，否则运维和用户都会去查一个不存在的故障。"""
 
     empty = summarize_tool_result(_place_search_result([]))
     assert empty != TOOL_FAILURE_SUMMARY
@@ -149,10 +143,10 @@ def test_a_failed_round_never_formats_the_upstream_exception():
 
 
 def test_the_non_envelope_path_uses_the_same_summarizer():
-    """信封之外的那条路（工具自己的语义摘要器）也不许把载荷印出去。
+    """信封之外的那条路（工具自己的语义摘要器）也不得把载荷印出去。
 
-    这条路上曾经另写着一份通用压缩，`str(result)[:120]`；现在它委派给 governance 那一份，
-    而 `free_web_search` 的逐行预览也要挡一次——它的 content 有时整个就是一行 JSON。
+    它委派给 governance 的摘要器；`free_web_search` 的逐行预览也要挡一次——
+    它的 content 有时整个就是一行 JSON。
     """
 
     payload_line = '{"web": [{"title": "x", "url": "https://example.com"}]}'

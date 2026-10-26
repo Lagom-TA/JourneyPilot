@@ -1,4 +1,4 @@
-"""Planning requirements constraints resolution."""
+"""约束优先级。"""
 
 from __future__ import annotations
 

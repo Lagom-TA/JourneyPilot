@@ -1,5 +1,3 @@
-"""Planning research capability planning."""
-
 from __future__ import annotations
 
 from travel_agent.planning.requirements.intent_contracts import IntentItem

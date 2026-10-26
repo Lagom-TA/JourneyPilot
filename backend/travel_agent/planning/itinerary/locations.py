@@ -28,7 +28,7 @@ from travel_agent.tools.registry import get_tool_registry
 logger = logging.getLogger(__name__)
 
 
-# 单个撰写地点用于定位的时间上限，避免一个查不到的地点拖住其余条目。
+# 单个撰写地点用于定位的时间上限，避免一个查不到的地点占用其余条目的时间。
 _AUTHORED_ENTRY_BUDGET_SECONDS = 20.0
 
 

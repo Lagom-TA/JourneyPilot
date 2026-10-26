@@ -1,4 +1,4 @@
-"""Memory lifecycle deletion orchestration and audit-safe persistence."""
+"""记忆删除流程的编排与审计持久化。"""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def _record_from_row(row: Dict[str, Any]) -> ForgettingAuditRecord:
 
 
 class MemoryLifecycleStore:
-    """PostgreSQL-backed memory lifecycle service."""
+    """PostgreSQL 后端的记忆生命周期服务。"""
 
     def __init__(
         self,
@@ -95,15 +95,15 @@ class MemoryLifecycleStore:
         clear_graph: bool,
         clear_session_anchors: bool,
     ) -> Dict[str, int]:
-        """清掉**系统自己学来的**那几样，用户手填的偏好一律不动。
+        """清除系统自动学习的数据，用户手填的偏好不动。
 
-        「一次删除只能动它宣称的那几样」这条规则**只在这里写一次**，两个删除入口
-        （按类别、全部）共用它。
+        「一次删除只处理它声明的范围」这一规则只在这里实现，按类别与全部两个
+        删除入口共用。
 
-        六组偏好与常用出发地（``default_origin``）长在同一个 ``TravelPreference``
-        上，而那是用户在「我的偏好」屏亲手填的，唯一的写入方是
-        ``api/routes/user.py`` 那两条路由 —— 遗忘流程碰不得。这里只需要决定
-        「要不要清画像」。
+        六组偏好与常用出发地（``default_origin``）存放在同一个
+        ``TravelPreference`` 上，由用户在「我的偏好」界面填写，写入方只有
+        ``api/routes/user.py`` 的两条路由，遗忘流程不修改它们。这里只决定
+        是否清除画像。
         """
         counts = {"entities": 0, "relations": 0, "profiles": 0, "anchors": 0}
         if clear_graph:
@@ -277,7 +277,7 @@ class MemoryLifecycleStore:
 
 
 class InMemoryMemoryLifecycleStore(MemoryLifecycleStore):
-    """In-memory implementation with the same public async contract."""
+    """内存实现，提供相同的公开异步接口。"""
 
     def __init__(
         self,

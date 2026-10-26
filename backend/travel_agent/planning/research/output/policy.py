@@ -1,5 +1,3 @@
-"""Research packet policy responsibilities."""
-
 from __future__ import annotations
 
 from typing import Any, Literal, Sequence
@@ -36,7 +34,7 @@ def packet_candidate_limit(
     required_transport_classes: Sequence[str] | None = None,
     required_route_scopes: Sequence[Any] = (),
 ) -> int:
-    "How many candidates one model-authoring act may return, for this call."
+    """本次调用中一次模型撰写最多返回的候选数。"""
     if worker_kind == "transport_researcher" and required_transport_classes:
         return max(1, len(required_route_scopes))
     return RESEARCH_PACKET_CANDIDATE_LIMITS[worker_kind]
@@ -85,4 +83,4 @@ _PLACE_ENTITY_TYPE = {
 
 
 class ResearchPacketOutputError(ValueError):
-    "The worker did not emit the exact v2 Research Packet contract."
+    """worker 未输出精确的 v2 Research Packet 契约。"""

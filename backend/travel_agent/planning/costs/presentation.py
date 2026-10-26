@@ -1,4 +1,4 @@
-"""Planning costs presentation."""
+"""费用展示。"""
 
 from __future__ import annotations
 
@@ -7,16 +7,16 @@ from typing import Optional
 
 
 def format_cny(value: float) -> str:
-    """Format an amount the one way every delivery surface prints it."""
+    """按各交付界面统一的方式格式化金额。"""
 
     return f"¥{value:,.0f}"
 
 
 def cost_coverage_statement(summary: CostCoverageSummary) -> Optional[str]:
-    """State itemized prices only; a model's unsupported total is not a budget.
+    """只陈述逐项价格；模型给出的无依据总额不算预算。
 
-    Complete coverage refers to the listed components, not every incidental
-    expense of a trip. The report separately names the components missing prices.
+    complete 覆盖度只表示已列组件，不包含行程的全部杂费；缺失价格的组件由报告
+    单独列出。
     """
 
     parts: list[str] = []

@@ -1,4 +1,4 @@
-"""Conversation compaction prompt."""
+"""会话压缩提示词。"""
 
 from __future__ import annotations
 

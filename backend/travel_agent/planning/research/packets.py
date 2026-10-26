@@ -18,7 +18,7 @@ RESEARCH_PACKET_CONTRACT_VERSION = "journeypilot.research_packet.v6"
 
 
 class ResearchPacket(StrictModel):
-    # Revalidate reconstructed checkpoint instances, not just newly parsed dicts.
+    # checkpoint 重建出的实例也要重新校验，而不只校验新解析的 dict。
     model_config = ConfigDict(
         extra="forbid",
         frozen=True,

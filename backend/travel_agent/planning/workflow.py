@@ -1,4 +1,4 @@
-"""Planning workflow."""
+"""规划工作流入口。"""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 class CheckpointContractError(RuntimeError):
-    """A persisted graph state no longer satisfies the current v2 contract."""
+    """持久化的图状态不满足当前 v2 契约。"""
 
 
 def _is_checkpoint_contract_failure(exc: BaseException) -> bool:
@@ -75,12 +75,12 @@ class TravelPlanningWorkflow:
         self._trip_run_store = trip_run_store or get_trip_run_store()
 
     async def has_checkpoint(self, run_id: str) -> bool:
-        """Return whether the compiled graph has persisted state for run_id."""
+        """返回编译后的图是否为 run_id 持久化过状态。"""
         available, _checkpoint_id = await self.probe_checkpoint(run_id)
         return available
 
     async def probe_checkpoint(self, run_id: str) -> tuple[bool, Optional[str]]:
-        """Return resumability plus the id of the checkpoint that carries it."""
+        """返回是否可恢复，以及承载该状态的 checkpoint id。"""
         if self._checkpointer is None:
             return False, None
         try:

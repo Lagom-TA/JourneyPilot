@@ -1,4 +1,4 @@
-"""控制命令的判断规则：摘要口径、搬运与收口、协作边界的消费与去重。
+"""控制命令的判断规则：摘要口径、命令落库与收口、协作边界的消费与去重。
 
 **不需要 PostgreSQL**：这些是规则本身，一个假 store 就够。数据库那半（唯一约束、
 `SKIP LOCKED`、结论不可改写）在 `tests/db/test_run_commands.py`。
@@ -228,8 +228,7 @@ async def test_divert_boundary_defers_every_read_command_without_touching_the_st
     """divert 边界把命令搭进 state 等 router 下轮裁决：本轮既不 applied 也不 rejected，
     三值收口里它们落在 deferred 桶——一行日志把这说出口，库里状态不变。
 
-    空 content 的命令本来更安静（连 fresh_amendments 都不进），现在同样被 deferred
-    点名，不再无痕迹地消失。
+    空 content 的命令同样进入 deferred，并在日志中可见。
     """
 
     handle, store, _runs, coordinator = wired

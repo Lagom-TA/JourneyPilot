@@ -1,7 +1,7 @@
-"""Tool governance helpers for JourneyPilot ToolExecutionEnvelope v1.
+"""JourneyPilot ToolExecutionEnvelope v1 的工具治理辅助函数。
 
-The envelope is the execution-layer contract exposed to agents, trace, source
-normalization, and guardrails. Raw tool arguments and raw tool output stay below this layer.
+envelope 是暴露给 agent、trace、来源归一化与护栏的执行层合同。原始工具参数与原始
+工具输出留在这一层之下。
 """
 
 from __future__ import annotations
@@ -40,17 +40,13 @@ class ToolExecutionStatus(str, Enum):
     REFERENCE_ONLY = "reference_only"
 
 
-# The two statuses the Tool Gateway writes for a deterministic *capability*
-# decision taken before any provider call (``tools/temporal.py``: the requested
-# date is outside the provider's documented window, or the provider exposes no
-# dated query at all).  Such an envelope is a server-authored statement about
-# what the provider can answer — never an execution outcome — so it must not
-# consume a retry, must not trigger a fallback, and must not compile into a
-# rejected ``external_tool`` SourceRecord.  ``status`` is the carrier of that
-# distinction on purpose: it is a closed enum field written only by the
-# Gateway, and it is the only such marker that survives
-# ``tools.content.compact_tool_content_for_model`` (whose ``_METADATA_KEEP_KEYS``
-# drops ``metadata.policy``) into the transcript downstream compilers read.
+# Tool Gateway 在调用 provider 之前写入的两种确定性能力判定状态
+# （``tools/temporal.py``：请求日期超出 provider 文档窗口，或 provider 不提供
+# 按日期查询）。这类 envelope 是服务端对「provider 能回答什么」的声明，不是执行
+# 结果，因此不能消耗重试、不能触发 fallback，也不能编译成被拒绝的 external_tool
+# SourceRecord。状态放在 ``status`` 上：它是只由 Gateway 写入的封闭枚举，也是
+# ``tools.content.compact_tool_content_for_model`` 裁剪 metadata 之后仍会保留到
+# 下游 transcript 的标记。
 CAPABILITY_DECLARATION_STATUSES = frozenset(
     {
         ToolExecutionStatus.NOT_APPLICABLE.value,
@@ -59,29 +55,26 @@ CAPABILITY_DECLARATION_STATUSES = frozenset(
 )
 
 
-# Envelope ``metadata`` key stamped by ``tools.execution.execute_tool`` when a
-# Provider completed a call and reported zero hits.  Such a round is a
-# *successful* Provider answer, so the envelope carries no ``error``, no
-# ``degradation_reason`` and no ``fallback_from`` — which leaves nothing
-# downstream that can tell "the Provider searched and found nothing" apart from
-# "no Provider was ever asked".  This key is that record, and it deliberately
-# does not turn the envelope into a failure, a degradation, or a rejected
-# SourceRecord.
+# ``tools.execution.execute_tool`` 在 Provider 完成调用且结果为空时写入的
+# envelope ``metadata`` 键。这是一次成功的 Provider 回答，因此 envelope 没有
+# ``error``、没有 ``degradation_reason``、也没有 ``fallback_from``；下游无法仅凭
+# 这些字段区分「Provider 查过但没有结果」与「没有调用过 Provider」。这个键记录
+# 该区别，并且不让 envelope 变成失败、降级或被拒绝的 SourceRecord。
 PROVIDER_RESULT_OUTCOME_METADATA_KEY = "provider_result_outcome"
 PROVIDER_RESULT_OUTCOME_EMPTY_SUCCESS = "empty_success"
 
 
 # ---------------------------------------------------------------------------
-# Compiled tool SourceRecord identity
+# 编译后的工具 SourceRecord 身份
 # ---------------------------------------------------------------------------
-# Bind audit and entity identity so one place cannot borrow another place's evidence.
+# 绑定审计 id 与实体身份，避免一个地点借用另一个地点的证据。
 COMPILED_TOOL_SOURCE_ID_PREFIX = "source_tool_success_"
 
 _COMPILED_TOOL_SOURCE_ENTITY_DIGEST_LENGTH = 16
 
 
 def compiled_tool_source_entity_digest(entity_id: str) -> str:
-    """Digest the entity id a compiled tool SourceRecord is about."""
+    """对编译后工具 SourceRecord 所属的实体 id 取摘要。"""
 
     return hashlib.sha256(entity_id.encode("utf-8")).hexdigest()[
         :_COMPILED_TOOL_SOURCE_ENTITY_DIGEST_LENGTH
@@ -89,7 +82,7 @@ def compiled_tool_source_entity_digest(entity_id: str) -> str:
 
 
 def compiled_tool_source_id(audit_id: str, entity_id: str) -> str:
-    """Bind one entity snapshot to one Tool Gateway audit exactly once."""
+    """把一个实体快照与一次 Tool Gateway 审计绑定为唯一 id。"""
 
     return (
         f"{COMPILED_TOOL_SOURCE_ID_PREFIX}{audit_id}"
@@ -98,11 +91,10 @@ def compiled_tool_source_id(audit_id: str, entity_id: str) -> str:
 
 
 def compiled_tool_source_id_is_about(source_record_id: str, entity_id: str) -> bool:
-    """Return whether a compiled tool source id was minted for ``entity_id``.
+    """判断编译后的工具 source id 是否是为 ``entity_id`` 生成的。
 
-    The audit id component varies per call, so the entity component is matched
-    as the id's final segment — which is exactly how
-    :func:`compiled_tool_source_id` lays it out.
+    审计 id 部分每次调用都会变化，因此实体摘要按 id 的最后一段匹配；
+    :func:`compiled_tool_source_id` 正是按这个顺序拼接的。
     """
 
     return source_record_id.startswith(
@@ -152,7 +144,7 @@ def utc_now_iso() -> str:
 
 
 def build_args_digest(arguments: Dict[str, Any]) -> str:
-    """Return a stable digest without exposing raw arguments."""
+    """返回不暴露原始参数的稳定摘要。"""
     payload = json.dumps(arguments or {}, ensure_ascii=False, sort_keys=True, default=str)
     return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
@@ -173,16 +165,16 @@ def summarize_args(arguments: Dict[str, Any], *, limit: int = 160) -> str:
 
 
 def sanitize_tool_result(result: Any) -> Any:
-    """Return a trace-safe copy of a tool result."""
+    """返回工具结果的可安全写入 trace 的副本。"""
     return _sanitize_value("", result, depth=0)
 
 
-# 一轮成功但零结果：和失败分开说。provider 答了，只是没有匹配项，
-# 说成 TOOL_FAILURE_SUMMARY 就是把「这里没有」谎报成「这一步坏了」。
+# 一轮成功但零结果：与失败分开表达。provider 已回答，只是没有匹配项，不能
+# 说成 TOOL_FAILURE_SUMMARY。
 _EMPTY_RESULT_SUMMARY = "没有匹配的结果"
 
-# 认不出形状时的兜底。**这里绝不许 json.dumps 载荷** —— 那一坨
-# `{"success": true, "provider": "nominatim", …}` 会原样落到思维链上。
+# 认不出形状时的摘要。这里不序列化 provider 载荷：`{"success": true, ...}`
+# 会原样进入思维链。
 _OPAQUE_RESULT_SUMMARY = "已取到结果"
 
 # 归一后路线的 `selected_mode` 词表（`services/global_route_search._PROVIDER_MODE`
@@ -246,16 +238,16 @@ def _summarize_route(route: Any) -> Optional[str]:
 
 
 def _summarize_structured_collection(value: Any) -> Optional[str]:
-    """Human-readable summary for the common structured tool payloads (place
-    search / weather / route), so envelope summaries read as "找到 5 个结果：…"
-    instead of dumping raw provider JSON.  Returns None when the shape is not
-    recognized so the caller falls back to the generic compaction.
+    """为常见结构化工具载荷（地点搜索/天气/路线）生成可读摘要。
 
-    **空列表也算认得出的形状。** 只认非空的话，一次「查了但没找到」会掉进通用压缩，
-    而通用压缩过去就是在那里把整个 payload 印上屏幕的。
+    这样 envelope 摘要读作「找到 5 个结果：…」，而不是倾倒 provider JSON。
+    形状无法识别时返回 None，由调用方使用通用压缩。
+
+    **空列表也是可识别的形状。** 只认非空列表时，「查了但没找到」会落入通用
+    压缩，而通用压缩会输出整个载荷。
     """
     data: Any = value
-    # MCP text-content shape: [{"text": "{...json...}"}] — lift and parse.
+    # MCP text-content 形状：[{"text": "{...json...}"}]，取出并解析。
     if isinstance(data, list):
         if data and isinstance(data[0], dict) and isinstance(data[0].get("text"), str):
             data = data[0]["text"]
@@ -336,25 +328,21 @@ def _summarize_structured_collection(value: Any) -> Optional[str]:
             title = str(data.get("title") or data.get("description") or "").strip()
             if title:
                 return title if len(title) <= _MAX_SUMMARY else title[: _MAX_SUMMARY - 1] + "…"
-    except Exception:  # 工具返回结构不可预测，抽取失败即回退通用压缩，绝不影响主流程
+    except Exception:  # 工具返回结构不可预测，抽取失败即回退通用压缩，不影响主流程
         return None
     return None
 
 
-# The one wording for a tool round that came back with nothing, read by every
-# product surface that shows a failed step.
+# 工具轮次没有取到结果时的统一文案，供所有显示失败步骤的产品界面使用。
 #
-# ``result_summary`` is the **human-facing** line of a Tool Envelope; the reason a
-# call failed lives in the envelope's own ``error`` field, which is separately in
-# ``_ENVELOPE_TOP_KEYS`` and therefore reaches the model unchanged.  Do not conflate
-# the two.
+# ``result_summary`` 是 Tool Envelope 面向人的一行；调用失败的原因在 envelope 的
+# ``error`` 字段里，该字段也在 ``_ENVELOPE_TOP_KEYS`` 中，会原样传给模型。两者
+# 不应混用。
 #
-# In particular, **never sanitize by allowlist** — hiding a handful of known MCP
-# protocol shapes (``-32xxx``, "Input validation error") and passing everything else
-# through verbatim walks our own English exception text straight onto the screen
-# （「失败: global route provider found no executable route」 for an empty route query）.
-# An allowlist can only ever cover the messages someone has already seen.  The product
-# face states the outcome and nothing else, the same rule the inspect surface follows.
+# 特别地，不要用白名单方式清洗：只过滤少数已知 MCP 协议形状（``-32xxx``、
+# "Input validation error"）而放行其他内容，会把内部英文异常文本直接显示到界面
+# （例如空路线查询时的「失败: global route provider found no executable route」）。
+# 白名单只能覆盖已经遇到过的消息。产品界面只陈述结果，检查面遵循同一规则。
 TOOL_FAILURE_SUMMARY = "未取到结果"
 
 
@@ -449,8 +437,7 @@ def build_tool_execution_envelope(
         freshness_hint=freshness_hint or _build_freshness_hint(tool_name, result, resolved_retrieved_at),
         args_digest=build_args_digest(arguments),
         sanitized_args_summary=summarize_args(arguments),
-        # A failed round says only that it came back with nothing; the reason is
-        # carried by ``error`` below, for the model and the audit trail.
+        # 失败轮次只说明没有取到结果；原因由下面的 ``error`` 字段带给模型与审计。
         result_summary=(
             summarize_tool_result(result)
             if result is not None
@@ -603,10 +590,11 @@ def _sanitize_value(
 
 
 def _dict_summary(value: Dict[str, Any]) -> str:
-    """认不出形状的 dict 说什么。
+    """认不出形状的 dict 的摘要文案。
 
-    **不许 json.dumps。** `result_summary` 是给旅行者读的那一行，而一坨 provider 载荷
-    既不给人读也不给模型读（模型读的是 `sanitized_result`）；它只会从这条缝漏到屏幕上。
+    **不序列化载荷。** `result_summary` 是给旅行者读的一行，provider 载荷既不
+    适合人读也不适合模型读（模型读的是 `sanitized_result`），只会在界面上显示
+    原始 JSON。
     """
     for key in _VALUE_ONLY_KEYS:
         if value.get(key):

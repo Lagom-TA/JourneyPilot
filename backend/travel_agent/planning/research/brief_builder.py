@@ -1,5 +1,3 @@
-"""Planning research brief builder."""
-
 from __future__ import annotations
 
 from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity

@@ -1,4 +1,4 @@
-"""Planning delivery finalizer."""
+"""交付定稿节点。"""
 
 from __future__ import annotations
 

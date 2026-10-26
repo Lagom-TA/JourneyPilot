@@ -1,5 +1,3 @@
-"""Research packet finalization responsibilities."""
-
 from __future__ import annotations
 
 from typing import Any, Mapping, Sequence
@@ -23,8 +21,7 @@ async def parse_research_packet(
     authoritative_packet_metadata: Mapping[str, Any] | None = None,
     authoritative_source_records: Sequence[SourceRecord] = (),
 ) -> ResearchPacket:
-    """Parse the worker return once; failures surface through the worker failure
-    protocol instead of a model-driven repair loop."""
+    """只解析一次 worker 返回值；失败交由 worker 失败协议处理，不做模型驱动的修复重试。"""
     evidence_messages = authoritative_tool_messages(authoritative_tool_results)
     packet = _parse_packet_lenient_first(
         raw,

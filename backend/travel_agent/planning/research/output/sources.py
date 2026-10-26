@@ -1,27 +1,19 @@
-"""Research packet sources responsibilities."""
-
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Mapping, Sequence
 
 from travel_agent.integrations.provider_environment import snapshot_data_environment
 from travel_agent.knowledge.fragments import is_rag_chunk_source_id
-from travel_agent.planning.references import EntityRef
 from travel_agent.planning.research.evidence import (
-    FactAssertion,
-    FactSourceLink,
-    FieldProvenance,
     ProviderSnapshotProvenance,
     SourceRecord,
 )
 
 from .failures import _failed_tool_sources
 from .identifiers import _canonical_snapshot_hash, _provider_entity_source_id
-from .policy import ResearchPacketOutputError, ResearchWorkerKind
+from .policy import ResearchPacketOutputError
 from .transcript import (
     _normalized_source_url,
     _retrieved_source_snapshots,
@@ -36,7 +28,7 @@ def _bind_source_content_hashes(
     *,
     authoritative_sources: Mapping[str, SourceRecord | Mapping[str, Any]] | None = None,
 ) -> None:
-    "Canonicalize source records without trusting model-authored cache lineage."
+    """规范化来源记录，不信任模型撰写的缓存来源信息。"""
     sources = payload.get("source_records")
     if not isinstance(sources, list):
         return
@@ -77,7 +69,7 @@ def _ground_retrieved_sources_in_the_transcript(
     *,
     expected_worker: str,
 ) -> None:
-    """Keep only witnessed pages and bind their complete transcript snapshots."""
+    """只保留本轮确实检索到的页面，并绑定完整的 transcript 快照。"""
     sources = payload.get("source_records")
     if not isinstance(sources, list) or not sources:
         return
@@ -133,7 +125,7 @@ def _ground_rag_chunk_sources(
     *,
     expected_worker: str,
 ) -> None:
-    "Ground knowledge citations only in authorized tool fragments shown to the model."
+    """知识库引用只能落在已授权并展示给模型的工具片段上。"""
     facts = payload.get("fact_assertions")
     sources = payload.get("source_records")
     if not isinstance(sources, list):
@@ -222,7 +214,7 @@ def _provider_snapshot_source_fields(
     Any,
     Any,
 ]:
-    "Project the actual Provider snapshot, not this Run's Tool Envelope."
+    """投影 Provider 的实际快照，而不是本次运行的工具信封。"""
     result = envelope.get("sanitized_result")
     metadata = envelope.get("metadata")
     cache_metadata = (
@@ -288,7 +280,7 @@ def _provider_place_source_payload(
     *,
     fallback_observed_at: Any,
 ) -> dict[str, Any]:
-    "Build the one source record a successful place envelope authorizes."
+    """为一次成功的 place 信封生成其唯一授权的来源记录。"""
     audit_id = str(envelope.get("audit_id") or "").strip()
     (
         snapshot,
@@ -339,7 +331,7 @@ def _authoritative_tool_source_records(
     authoritative_source_records: Sequence[SourceRecord],
     default_retrieved_at: datetime,
 ) -> dict[str, SourceRecord]:
-    "Compile every tool source the server already holds for this packet."
+    """汇总服务端已持有的全部工具来源，供本 packet 使用。"""
     registry: dict[str, SourceRecord] = {
         source.source_record_id: source for source in authoritative_source_records
     }

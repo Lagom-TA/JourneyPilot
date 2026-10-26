@@ -1,4 +1,4 @@
-"""Stop producers before closing their persistent resources."""
+"""先停止生产者，再关闭其持久化资源。"""
 
 import logging
 
@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 async def shutdown_components() -> None:
-    """Lease release and producer shutdown still need open database pools."""
+    """交还租约与停止生产者都发生在数据库连接池关闭之前。"""
     components = registered_components()
     if components and components.usage_flush_service is not None:
         await components.usage_flush_service.stop()

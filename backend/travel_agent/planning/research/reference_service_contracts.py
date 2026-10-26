@@ -1,5 +1,3 @@
-"""Planning research reference service contracts."""
-
 from __future__ import annotations
 
 from datetime import date
@@ -13,13 +11,11 @@ from typing import Optional
 
 
 class ProviderReferenceService(BaseModel):
-    """One provider service observed off-date, with the claims that stay unconfirmed.
+    """在非请求日期观察到的一条 Provider 班次，以及仍未确认的声明。
 
-    ``unconfirmed_claims`` is copied verbatim from the provider envelope's
-    ``claims_not_confirmed_for_requested_date``.  It is never re-derived here:
-    which claims a supplier declines to carry across dates is the supplier's
-    statement, and a hardcoded list here would keep asserting the old answer
-    after the supplier changed it.
+    ``unconfirmed_claims`` 原样复制自 Provider 信封的
+    ``claims_not_confirmed_for_requested_date``，不在此处重新推导：哪些字段
+    不能跨日期沿用只能由供应商声明，本地硬编码会在供应商变更后继续沿用旧答案。
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)

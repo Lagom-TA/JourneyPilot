@@ -1,12 +1,8 @@
-"""
-统一 Embedding 层。
+"""统一 Embedding 层。
 
-provider 三选一：
-1. "qwen3"  — 本地 Qwen3-Embedding-0.6B ONNX 推理（默认；首次启动从 HF 下载 ~1.2GB）
-2. "openai" — OpenAI 兼容 Embedding API（需 api_key + base_url）
-3. "hash"   — 内置确定性哈希向量（零依赖，仅供 RAG 链路跑通）
-
-只有显式 provider="hash" 才使用 HashEmbedder；真实 provider 初始化失败必须显式报错。
+provider 三选一：qwen3（本地 ONNX 推理，默认）、openai（兼容 API）、
+hash（确定性哈希向量，仅供本地链路验证）。只有显式配置 provider="hash"
+才使用 HashEmbedder；真实 provider 初始化失败会显式报错。
 """
 
 from __future__ import annotations
@@ -25,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 @runtime_checkable
 class BaseEmbedder(Protocol):
-    """本模块使用的 Embedding 协议类型（duck typing）。"""
+    """本模块使用的 Embedding 协议类型（结构类型）。"""
 
     async def embed(self, text: str) -> List[float]: ...
 
@@ -171,7 +167,8 @@ class Qwen3OnnxEmbedder(BaseEmbedder):
 
         session_options = ort.SessionOptions()
         session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        # 关闭内存复用，避免动态 batch_size 切换时复用旧 shape buffer 引发的 RUNTIME_EXCEPTION
+        # 关闭内存复用，避免动态 batch_size 切换时复用旧 shape buffer 导致
+        # RUNTIME_EXCEPTION。
         session_options.enable_mem_pattern = False
         session_options.enable_mem_reuse = False
         self._session = ort.InferenceSession(
@@ -181,14 +178,14 @@ class Qwen3OnnxEmbedder(BaseEmbedder):
         )
         self._tokenizer = Tokenizer.from_file(str(tokenizer_path))
         self._input_names = {inp.name for inp in self._session.get_inputs()}
-        self._dimensions = 1024  # Qwen3-Embedding-0.6B 固定输出维度
+        self._dimensions = 1024  # Qwen3-Embedding-0.6B 固定输出维度。
 
     @staticmethod
     def _find_onnx_model(model_dir: Path) -> Optional[Path]:
         candidates = list(model_dir.rglob("*.onnx"))
         if not candidates:
             return None
-        # ONNX 仓库可能包含多个 .onnx（原图 + 优化图），选最大的主权重
+        # ONNX 仓库可能包含多个 .onnx（原图与优化图），选择体积最大的主权重。
         return max(candidates, key=lambda p: p.stat().st_size)
 
     @property
@@ -199,20 +196,20 @@ class Qwen3OnnxEmbedder(BaseEmbedder):
         vectors = await self.embed_batch([text])
         return vectors[0]
 
-    # 单批 ONNX 推理上限：超过此值拆分调用，避免 Expand / 内存复用引发的 RUNTIME_EXCEPTION
-    # batch=1 因为该 Qwen3 ONNX 图存在 Expand 节点对动态 batch 维敏感
+    # 单批 ONNX 推理上限；超过此值拆分调用，避免 Expand 节点与内存复用导致
+    # RUNTIME_EXCEPTION。batch=1，因为该 ONNX 图的 Expand 节点对动态 batch 维敏感。
     _EMBED_MICRO_BATCH = 1
 
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
-        # ONNX 推理是同步的、吃满一个核，所以它走受限通道而不是裸线程：一次入库能
-        # 排出上千批推理，而这个进程还要给在线请求留核。
+        # ONNX 推理同步执行且占满一个核，因此走受限工作通道而不是裸线程：
+        # 一次入库可能排出上千批推理，同时进程仍需为在线请求保留核心。
         from travel_agent.runtime.blocking_work import run_blocking
 
         if len(texts) <= self._EMBED_MICRO_BATCH:
             return await run_blocking("local_embedding", self._embed_sync, texts)
-        # 大 batch 拆分为 micro-batch 串行调用
+        # 大 batch 拆分为 micro-batch 串行调用。
         results: List[List[float]] = []
         for i in range(0, len(texts), self._EMBED_MICRO_BATCH):
             chunk = texts[i : i + self._EMBED_MICRO_BATCH]
@@ -254,7 +251,7 @@ class Qwen3OnnxEmbedder(BaseEmbedder):
         raw = outputs[0]
 
         if raw.ndim == 3:
-            # (batch, seq, hidden) → mean pooling with attention mask
+            # (batch, seq, hidden) → 按 attention mask 做 mean pooling
             mask_f = attention_mask.astype(np.float32)[..., None]
             pooled = (raw * mask_f).sum(axis=1) / np.clip(mask_f.sum(axis=1), 1e-6, None)
         elif raw.ndim == 2:

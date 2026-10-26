@@ -1,4 +1,4 @@
-"""Planning requirements constraints assembly."""
+"""约束组装。"""
 
 from __future__ import annotations
 

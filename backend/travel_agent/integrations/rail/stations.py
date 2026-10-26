@@ -1,4 +1,4 @@
-"""Integrations rail stations."""
+"""12306 站表快照的解析与查询。"""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ class RailStation:
 
 
 def parse_station_snapshot(raw: str) -> dict[str, RailStation]:
-    """Parse the official ``station_name.js`` body into ``{telecode: station}``."""
+    """把官方 ``station_name.js`` 内容解析成 ``{telecode: station}``。"""
 
     body_match = re.search(r"='(.*)'", raw, re.S)
     if body_match is None:
@@ -66,7 +66,7 @@ def parse_station_snapshot(raw: str) -> dict[str, RailStation]:
 
 @lru_cache(maxsize=1)
 def station_table() -> Mapping[str, RailStation]:
-    """``{telecode: RailStation}`` from the committed offline snapshot."""
+    """从已提交的离线快照返回 ``{telecode: RailStation}``。"""
 
     return parse_station_snapshot(STATION_SNAPSHOT_PATH.read_text("utf-8"))
 
@@ -88,7 +88,7 @@ def _stations_by_city() -> Mapping[str, tuple[RailStation, ...]]:
 
 
 def city_station_telecodes(city: str) -> frozenset[str]:
-    """Every station telecode 12306 files under ``city`` (empty if unknown)."""
+    """12306 归在 ``city`` 下的全部车站电报码（城市未知时为空）。"""
 
     return frozenset(
         station.telecode for station in _stations_by_city().get(city.strip(), ())
@@ -96,14 +96,12 @@ def city_station_telecodes(city: str) -> frozenset[str]:
 
 
 def station_group_telecodes(telecode: str) -> frozenset[str]:
-    """Every telecode 12306 answers with when one station is queried.
+    """查询一个车站时 12306 实际会返回的全部电报码。
 
-    A remaining-ticket query is expanded by 12306 to the whole city station
-    group: asking ``from_station=AOH`` (上海虹桥) also returns rows departing
-    上海南, 上海松江 and 金山北.  The grouping is the provider's own — city is
-    field ``[7]`` of the official station table — so reading it back is fact
-    work, not a repo judgement.  The queried station is always in the group even
-    when the snapshot does not know it.
+    余票查询会被 12306 扩展到整个城市车站组：查询 ``from_station=AOH``（上海虹桥）
+    也会返回从上海南、上海松江与金山北出发的车次。分组由 Provider 自己给出
+    （城市是官方站表的第 ``[7]`` 个字段），这里只是读取该事实。即使快照不认识
+    被查询的车站，它本身也总在返回集合中。
     """
 
     station = station_table().get((telecode or "").strip())
@@ -113,7 +111,7 @@ def station_group_telecodes(telecode: str) -> frozenset[str]:
 
 
 def city_station_code(city: str) -> Optional[str]:
-    """The station representing a city: the one whose name equals the city name."""
+    """代表一个城市的车站：名称与城市名相同的那一个。"""
 
     for station in _stations_by_city().get(city.strip(), ()):
         if station.name == station.city:
@@ -122,7 +120,7 @@ def city_station_code(city: str) -> Optional[str]:
 
 
 def resolve_station_code(value: str) -> Optional[str]:
-    """Accept a telecode or a 中文 station name (with or without a trailing 站)."""
+    """接受电报码或中文站名（可带末尾的「站」）。"""
 
     text = (value or "").strip()
     if not text:

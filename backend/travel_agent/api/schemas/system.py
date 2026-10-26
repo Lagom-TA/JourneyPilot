@@ -13,10 +13,8 @@ class ModelConfigRequest(BaseModel):
     api_key: str
     model_name: str = "deepseek-chat"
     base_url: str = "https://api.deepseek.com/v1"
-    # Read from ``config.MAX_COMPLETION_TOKENS`` rather than restated here: this
-    # default is written straight into settings and persisted, so a POST that
-    # omits the field must not quietly lower a running deployment's ceiling — and
-    # a second copy of the number is exactly how that happens.
+    # 默认值取自 ``config.MAX_COMPLETION_TOKENS``，不在此重复定义：该值会写入
+    # 设置并持久化，省略字段的 POST 不应降低运行中部署的上限。
     max_tokens: int = Field(default=MAX_COMPLETION_TOKENS, ge=1)
     temperature: float = 0.7
     tier: str = "primary"
@@ -28,6 +26,6 @@ class SystemStatus(BaseModel):
     tools_count: int = 0
     db_connected: bool = False
     redis_connected: bool = False
-    # 记忆抽取管线累计计数（CB-05）：attempted/succeeded/failed/facts_written/portraits_written/last_error。
-    # 让 fire-and-forget 抽取链路的健康在演示前可 curl 确认，不必翻日志。
+    # 记忆抽取累计计数：attempted/succeeded/failed/facts_written/
+    # portraits_written/last_error，用于通过 /api/status 检查异步抽取链路状态。
     memory_extraction: Dict[str, Any] = Field(default_factory=dict)

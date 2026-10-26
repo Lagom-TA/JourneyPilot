@@ -1,4 +1,4 @@
-"""Conversation input safety."""
+"""会话输入安全校验。"""
 
 from __future__ import annotations
 
@@ -108,7 +108,7 @@ _BLOCKED_REPLY = (
 
 
 def _detect_high_risk(text: str) -> Tuple[bool, str]:
-    """返回 (is_high_risk, reason)；高风险则 True。"""
+    """返回 (是否高风险, 原因)。"""
     if _ZERO_WIDTH_RE.search(text):
         return True, "检测到零宽字符（可能包含隐藏指令）"
     if len(text) > _MAX_INPUT_LENGTH:
@@ -120,7 +120,7 @@ def _detect_high_risk(text: str) -> Tuple[bool, str]:
 
 
 class InputGuard:
-    """输入安全门卫（纯规则）。"""
+    """基于规则的输入安全检查。"""
 
     async def check(self, user_message: str) -> InputGuardResult:
         """

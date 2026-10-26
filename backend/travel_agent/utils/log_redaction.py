@@ -1,25 +1,18 @@
-"""Keep provider credentials out of the log, when the credential is in the URL.
+"""当凭证出现在 URL 中时，把它从日志里去掉。
 
-Some web APIs take their key as a query parameter and offer no header form —
-amap's Directions endpoints are the case this exists for. ``httpx`` logs one
-INFO line per request containing the full URL, so the moment such a request is
-made the key is in ``backend.log`` in clear text, and the log is grepped,
-tailed and pasted into reports.
+部分 Web API 只接受查询参数中的 key，没有 header 形式，例如 amap 的 Directions
+端点。``httpx`` 每个请求写一行 INFO 日志并带上完整 URL，这类请求一旦发出，key
+就会以明文进入 ``backend.log``，而日志会被检索、tail 和粘贴到报告中。
 
-The redaction is a filter on the ``httpx`` logger rather than a change at each
-call site: there is exactly one place that formats those lines, and a rule
-applied there cannot be forgotten by the next provider that keys by query
-string. Any module that mints a secret-bearing URL should call
-:func:`install_query_secret_redaction` at import so the filter is in place
-before its first request, in every entry point (server, script, test).
+脱敏做成 ``httpx`` logger 上的过滤器，而不是在每个调用点处理：格式化这些日志行
+的位置只有一处，在该处应用规则不会被下一个使用查询参数鉴权的 Provider 遗漏。
+生成带密钥 URL 的模块应在 import 时调用 :func:`install_query_secret_redaction`，
+使过滤器在首次请求之前安装，覆盖服务、脚本与测试等入口。
 
-That import-time call is the load-bearing one and must not be moved into the
-app's logging setup: a script, a unit test or a direct tool invocation that
-imports the provider module without going through an entry point would then log
-the key in clear text.  The logging entry points install it *as well* —
-:func:`install_query_secret_redaction` is idempotent per logger name, so the
-second call is a no-op and the filter never stacks — which covers the reverse
-gap, a future provider that keys by query string and forgets its own call.
+import 时的调用是必要的，不能移到应用的 logging 配置中：脚本、单元测试或直接调用
+工具时不经过入口，若 Provider 模块没有自行安装过滤器，key 会以明文写入日志。
+logging 入口也会安装该过滤器；函数按 logger 名称幂等，第二次调用为空操作，
+过滤器不会重复叠加。
 """
 
 from __future__ import annotations
@@ -27,8 +20,8 @@ from __future__ import annotations
 import logging
 import re
 
-# ``key`` is amap, ``ak`` is baidu, the rest are the common spellings. Anchored on
-# a query boundary so a path segment that merely contains the word is untouched.
+# ``key`` 是 amap，``ak`` 是百度，其余是常见写法。匹配锚定在查询参数边界上，
+# 路径段中恰好包含这些词时不会被替换。
 _QUERY_SECRET = re.compile(
     r"((?:\?|&)(?:key|ak|token|api_?key|access_?token|secret)=)[^&\s\"]+",
     re.IGNORECASE,
@@ -39,17 +32,16 @@ _INSTALLED_LOGGERS: set[str] = set()
 
 
 def redact_query_secrets(text: str) -> str:
-    """Replace the value of every credential-looking query parameter."""
+    """替换所有形似凭证的查询参数值。"""
     return _QUERY_SECRET.sub(_REDACTED, text)
 
 
 class _QuerySecretFilter(logging.Filter):
-    """Rewrite credential query values in a record's message and its args.
+    """重写日志记录 message 与 args 中的凭证查询值。
 
-    ``httpx`` passes the URL as a ``%s`` arg rather than baking it into ``msg``,
-    so both have to be covered. A mapping-style ``args`` is left alone: it is not
-    a shape this logger produces, and rewriting it blindly would risk corrupting
-    a caller's own keys.
+    ``httpx`` 把 URL 作为 ``%s`` 参数传入，而不是拼进 ``msg``，因此两处都要处理。
+    映射形式的 ``args`` 不做修改：该 logger 不产生这种形状，盲目改写可能破坏调用方
+    自己的键。
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -67,7 +59,7 @@ class _QuerySecretFilter(logging.Filter):
 
 
 def install_query_secret_redaction(logger_name: str = "httpx") -> None:
-    """Install the redaction on ``logger_name`` once per process."""
+    """按进程在 ``logger_name`` 上安装一次脱敏过滤器。"""
     if logger_name in _INSTALLED_LOGGERS:
         return
     logging.getLogger(logger_name).addFilter(_QuerySecretFilter())

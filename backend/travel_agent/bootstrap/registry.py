@@ -1,4 +1,4 @@
-"""The single process-local application component registry."""
+"""进程内应用组件注册表。"""
 
 from typing import Optional
 
@@ -8,7 +8,7 @@ _components: Optional[AppComponents] = None
 
 
 def get_components() -> AppComponents:
-    """Require an initialized application registry."""
+    """取得已初始化的组件；未初始化时抛错。"""
     if _components is None:
         raise RuntimeError(
             "AppComponents 尚未初始化，请确保在 FastAPI 启动事件中调用 build_components()"
@@ -17,11 +17,11 @@ def get_components() -> AppComponents:
 
 
 def set_components(components: AppComponents) -> None:
-    """Publish the constructed components to runtime consumers."""
+    """发布构建好的组件供运行时读取。"""
     global _components
     _components = components
 
 
 def registered_components() -> Optional[AppComponents]:
-    """Read the current registry without requiring initialization during shutdown."""
+    """读取当前注册表；关闭阶段允许尚未初始化。"""
     return _components

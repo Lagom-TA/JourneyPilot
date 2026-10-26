@@ -36,10 +36,9 @@ def create_app() -> FastAPI:
     """创建并配置 FastAPI 应用实例"""
     settings = get_settings()
 
-    # 查询串凭据脱敏的第二个挂载点。第一个在 `services/amap_route_search.py` 的
-    # import 时（那个不能挪：绕过入口直接 import 那个模块的脚本/单测/工具直调会裸奔）。
-    # 这里再挂一遍是为了反方向的缺口：下一个按查询串带 key 的 provider 忘了自己那句。
-    # `install_query_secret_redaction` 按 logger 名幂等，重复调用不叠加 filter。
+    # 安装查询串凭据脱敏。`integrations/routes/amap.py` 在 import 时也会安装；
+    # 此处再安装一次，覆盖其他按查询串携带 key 的 provider。
+    # `install_query_secret_redaction` 按 logger 名幂等，重复调用不会叠加 filter。
     install_query_secret_redaction()
 
     app = FastAPI(
@@ -80,7 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(workspace.router)
     app.include_router(control.router)
 
-    # Vite writes its generated frontend beside the backend package.
+    # Vite 将前端构建产物生成到后端包旁的 static 目录。
     static_path = BACKEND_DIR / "static"
     index_html = static_path / "index.html"
     if static_path.is_dir():
@@ -90,8 +89,8 @@ def create_app() -> FastAPI:
         if assets_path.is_dir():
             app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
 
-    # 根路径：**有前端产物就给前端**（Compose 那一路只暴露 API 端口，用户打开的就是
-    # 这里），没有产物才给 API 说明页。开发那一路走 Vite，不经过这个分支。
+    # 根路径：存在前端构建产物时返回 index.html，否则返回 API 说明页。
+    # 开发模式由 Vite 提供前端，不经过此分支。
     @app.get("/")
     async def root():
         from fastapi.responses import FileResponse, HTMLResponse

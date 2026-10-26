@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-// Run against Vite dev: JP_COMPONENT_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8088 npm run test:e2e -- research-progress
-// This fixture exercises real UI components, with synthetic events and no paid API calls.
+// 在 Vite dev 下运行：JP_COMPONENT_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8088 npm run test:e2e -- research-progress
+// 该 fixture 使用真实 UI 组件与合成事件，不调用付费 API。
 test.skip(process.env.JP_COMPONENT_E2E !== '1', 'Requires Vite dev component fixture');
 for (const width of [320, 390, 1440]) {
   test(`研究面板：并行归因、有效详情、停止状态 ${width}px`, async ({ page }) => {

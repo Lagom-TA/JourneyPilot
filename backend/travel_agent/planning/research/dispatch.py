@@ -1,5 +1,3 @@
-"""Planning research dispatch."""
-
 from __future__ import annotations
 
 import logging
@@ -29,7 +27,7 @@ _KNOWN_NEXT_AGENTS: Set[str] = {
 
 
 def _composition_step(plan: Optional[list], from_step: int) -> Optional[int]:
-    """Index of the plan's itinerary composition group at or after ``from_step``."""
+    """返回 ``from_step`` 起（含该步）第一个含行程组合的步骤下标。"""
     if not plan:
         return None
     for index in range(max(0, from_step), len(plan)):
@@ -41,17 +39,17 @@ def _composition_step(plan: Optional[list], from_step: int) -> Optional[int]:
 
 
 def _pending_agents_in_group(state: TravelAgentState, group: list[str]) -> list[str]:
-    """Return plan-group agent keys that are not yet in a terminal worker status."""
+    """返回当前计划组中尚未进入终止状态的 agent key。"""
     return [
         agent for agent in group if state.agent_status.get(agent) not in _DONE_STATUSES
     ]
 
 
 def _catalog_update(state: TravelAgentState) -> Dict[str, Any]:
-    """Build the candidate catalog from the current worker packets.
+    """用当前 worker packet 构建候选目录。
 
-    组合阶段开始前必须先把已有 packet 收敛成候选目录；部分 worker 失败时
-    同样用剩余 packet 构建，行程组合再对空缺域自行失败。
+    进入组合阶段前必须先收敛已有 packet；部分 worker 失败时仍用剩余 packet
+    构建，缺失的领域由行程组合阶段报错。
     """
     catalog, impacts = build_candidate_catalog(state)
     return {

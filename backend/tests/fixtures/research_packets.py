@@ -45,7 +45,7 @@ def make_packet(
     extra_facts=False,
     worker="destination_researcher",
 ):
-    """Validated fixture with identity facts and an optional contradictory source."""
+    """带身份事实与可选矛盾来源的已校验 fixture。"""
     candidates, facts, sources, provenance, discovery = [], [], [], [], []
     for candidate_id, destination in entities:
         identity = {
