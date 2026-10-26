@@ -56,9 +56,3 @@ def invalidation_update(impact: AmendmentImpact) -> Dict[str, Any]:
 
 def generation_packet_key(worker_key: str, generation_id: str) -> str:
     return f"{worker_key}@{generation_id}"
-
-
-def packet_key_generation(key: str) -> str | None:
-    if "@" not in key:
-        return None
-    return key.rsplit("@", 1)[1]

@@ -22,7 +22,6 @@ import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PORTS_FILE = REPO_ROOT / "tmp" / "journeypilot.ports"
@@ -69,7 +68,7 @@ def _journeypilot_api_ok(port: int, timeout: float = 0.6) -> bool:
         return False
 
 
-def _scan_backend(start: int = 8001, end: int = 8020) -> Optional[int]:
+def _scan_backend(start: int = 8001, end: int = 8020) -> int | None:
     for port in range(start, end + 1):
         if _journeypilot_api_ok(port):
             return port
@@ -78,8 +77,8 @@ def _scan_backend(start: int = 8001, end: int = 8020) -> Optional[int]:
 
 def resolve(
     *,
-    prefer_backend: Optional[int] = None,
-    prefer_frontend: Optional[int] = None,
+    prefer_backend: int | None = None,
+    prefer_frontend: int | None = None,
 ) -> LivePorts:
     # 1) 环境变量
     env_api = (os.environ.get("JOURNEYPILOT_API_BASE") or os.environ.get("E2E_API_BASE") or "").strip()
