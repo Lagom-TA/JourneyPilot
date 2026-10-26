@@ -7,7 +7,6 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
 from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
-from travel_agent.planning.requirements.route_legs import build_required_long_distance_legs, explicit_cross_day_return_required
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.llm.router import get_model_router
 from travel_agent.llm.task_routing import TaskKind, llm_for_task
@@ -21,26 +20,22 @@ from travel_agent.planning.itinerary.connectors import (
     unfilled_connector_gaps,
 )
 from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
-from travel_agent.planning.itinerary.requirements import (
-    _draft_user_input_anchors,
-    _required_leg_scope_ids,
-)
+from travel_agent.planning.itinerary.requirements import _draft_user_input_anchors
 from travel_agent.planning.nodes import NODE_ITINERARY
 from travel_agent.planning.workspace import TripWorkspaceV2
 from travel_agent.runtime.deadlines import observe_run_deadline
 from travel_agent.planning.itinerary.day_design import apply_day_design
-from travel_agent.planning.itinerary.day_capacity import default_walking_days, disclose_default_walking
 from travel_agent.planning.itinerary.dispersion import itinerary_dispersion
 
 logger = logging.getLogger(__name__)
 
 
-# 组合失败上下文进入下一轮提示词，超过这个长度的细节被截断。
+# 失败摘要进入一次重试的提示词，超过这个长度的细节被截断。
 _FAILURE_CONTEXT_CHAR_LIMIT = 600
 
 
 def _log_composition_dispersion(workspace: TripWorkspaceV2) -> None:
-    """Print how spread out each Day is: local connector minutes, and stop span."""
+    """记录每天接驳分钟数与停留点跨度，便于排查排程异常。"""
     fact_index = {
         fact.fact_assertion_id: fact
         for packet in workspace.recommendation_catalog.research_packets
@@ -64,7 +59,7 @@ def _log_composition_dispersion(workspace: TripWorkspaceV2) -> None:
 
 
 def _composition_failure_context(stage: str, exc: BaseException) -> str:
-    """One bounded line stating which composition stage failed and why."""
+    """把失败阶段与异常摘要压成一行，供一次重试的提示词使用。"""
     text = f"{stage} 阶段失败 — {type(exc).__name__}: {exc}".strip()
     if len(text) <= _FAILURE_CONTEXT_CHAR_LIMIT:
         return text
@@ -72,12 +67,8 @@ def _composition_failure_context(stage: str, exc: BaseException) -> str:
 
 
 def _composition_phase(state: TravelAgentState) -> str:
-    if (
-        state.placement_skeleton is None
-        or state.trip_workspace_v2 is not None
-        or state.composition_failure_context
-        or state.placement_skeleton_failure_context
-    ):
+    """本次调用生成草稿，还是把已有草稿物化为正式行程。"""
+    if state.placement_skeleton is None or state.trip_workspace_v2 is not None:
         return "placement_skeleton"
     return "materialize_connectors"
 
@@ -90,18 +81,6 @@ async def itinerary_planner_node(
     )
     phase = _composition_phase(state)
     stage = phase
-    unlocatable = set(state.unlocatable_authored_places)
-    required_kinds = {
-        str(kind)
-        for kind in assignment.get("required_candidate_kinds", [])
-        if str(kind) in {"visit", "dining"}
-    }
-    required_legs = build_required_long_distance_legs(
-        state.controlled_trip_identity or {},
-        cross_day_return_required=explicit_cross_day_return_required(
-            state.user_query or ""
-        ),
-    )
     deadline_update = {}
     try:
         if state.run_deadline is not None:
@@ -118,9 +97,6 @@ async def itinerary_planner_node(
                 state,
                 str(assignment["objective"]),
                 llm_for_task(get_model_router(), TaskKind.COMPOSITION),
-                required_kinds,
-                required_legs,
-                unlocatable,
             )
             from travel_agent.planning.invalidation import workspace_acceptance_invalidation
 
@@ -132,9 +108,7 @@ async def itinerary_planner_node(
                 "placement_skeleton": draft,
                 "trip_workspace_v2": None,
                 "local_connector_gaps": [],
-                "unlocatable_authored_places": sorted(unlocatable),
                 "composition_failure_context": None,
-                "placement_skeleton_failure_context": None,
             }
         skeleton = state.placement_skeleton
         requests, required_pairs = connector_mode_requests_from_constraint_pack(
@@ -148,8 +122,6 @@ async def itinerary_planner_node(
             weather_data_revision=state.recommendation_catalog.weather_data_revision,
             flexible_mode_requests=requests,
             required_flexible_mode_pairs=required_pairs,
-            default_walk_day_ids=default_walking_days(state, skeleton),
-            required_candidate_kinds=required_kinds,
         )
         unfilled = unfilled_connector_gaps(state.recommendation_catalog, gaps)
         authored = (
@@ -165,13 +137,6 @@ async def itinerary_planner_node(
             state.recommendation_catalog,
             gaps,
             authored,
-            required_candidate_kinds=required_kinds,
-            required_long_distance_legs=required_legs,
-            required_leg_scope_ids=_required_leg_scope_ids(
-                required_legs,
-                state.run_id,
-                state.constraint_pack_revision,
-            ),
         )
         stage = "materialize_connectors/workspace_materialization"
         workspace = materialize_trip_workspace(
@@ -185,16 +150,8 @@ async def itinerary_planner_node(
             composition_mutations=list(state.composition_mutations),
             user_input_anchors=_draft_user_input_anchors(state),
             reference_services=list(state.provider_reference_services),
-            required_candidate_kinds=required_kinds,
-            required_long_distance_legs=required_legs,
-            required_leg_scope_ids=_required_leg_scope_ids(
-                required_legs,
-                state.run_id,
-                state.constraint_pack_revision,
-            ),
         )
         workspace = apply_day_design(workspace, composition)
-        workspace = disclose_default_walking(workspace, gaps)
         _log_composition_dispersion(workspace)
         return {
             **deadline_update,
@@ -203,9 +160,7 @@ async def itinerary_planner_node(
             "trip_workspace_v2": workspace,
             "recommendation_catalog": workspace.recommendation_catalog,
             "local_connector_gaps": gaps,
-            "unlocatable_authored_places": sorted(unlocatable),
             "composition_failure_context": None,
-            "placement_skeleton_failure_context": None,
         }
     except Exception as exc:
         logger.error("ItineraryPlanner v2 failed: %s", exc, exc_info=True)
@@ -214,11 +169,5 @@ async def itinerary_planner_node(
             "messages": [AIMessage(content="行程组合失败")],
             "last_error": str(exc),
             "agent_status": {output_key: "failed"},
-            "unlocatable_authored_places": sorted(unlocatable),
             "composition_failure_context": _composition_failure_context(stage, exc),
-            **(
-                {"placement_skeleton": exc.composition}
-                if getattr(exc, "composition", None) is not None
-                else {}
-            ),
         }

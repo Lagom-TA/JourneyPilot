@@ -40,6 +40,9 @@ def project_map(
         ],
     ]:
         latitude, longitude = entity_coordinates(entity, fact_index)
+        if latitude is None or longitude is None:
+            # 没有坐标的条目仍留在行程正文里，只是无法放到地图上。
+            continue
         places.append(
             MapPlaceProjection(
                 entity_ref=EntityRef(entity_type=entity_type, entity_id=entity_id),

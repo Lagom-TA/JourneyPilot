@@ -32,7 +32,6 @@ def invalidation_update(impact: AmendmentImpact) -> Dict[str, Any]:
         "composition_mutations": [],
         "trip_workspace_v2": None,
         "composition_failure_context": None,
-        "placement_skeleton_failure_context": None,
         "local_connector_gaps": [],
     }
     if impact is AmendmentImpact.COMPOSITION_AFFECTING:
@@ -52,7 +51,6 @@ def invalidation_update(impact: AmendmentImpact) -> Dict[str, Any]:
         "run_budget": None,
         "provider_evidence_outcomes": {},
         "weather_impacts": {},
-        "unlocatable_authored_places": [],
     }
 
 

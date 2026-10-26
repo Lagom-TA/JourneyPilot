@@ -1,19 +1,14 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import Any, Dict, List, Optional
+from typing import List
 
-from travel_agent.planning.research.provider_scope_ids import provider_evidence_scope_id
 from travel_agent.planning.state import TravelAgentState
-from travel_agent.planning.itinerary.draft import (
-    ItineraryCompositionDraft,
-)
 from travel_agent.planning.requirements.inputs import UserInputAnchor
-from travel_agent.planning.research.domains import ResearchDomain
 
 
 def controlled_day_dates(state: TravelAgentState) -> List[date]:
-    """Exactly which days the composition has to fill, read off the controlled window."""
+    """行程窗口覆盖的每一天：优先取受控行程身份，其次取天气上下文。"""
     identity = state.controlled_trip_identity or {}
     start = end = None
     if isinstance(identity, dict):
@@ -33,55 +28,12 @@ def controlled_day_dates(state: TravelAgentState) -> List[date]:
 
 
 def itinerary_day_count(state: TravelAgentState) -> int:
-    """How many days the composition has to fill, read off the controlled window."""
+    """行程窗口内的天数，用于决定允许撰写的领域。"""
     return len(controlled_day_dates(state))
 
 
-def _verify_day_window(
-    draft: ItineraryCompositionDraft,
-    state: TravelAgentState,
-) -> ItineraryCompositionDraft:
-    """The composition covers the controlled window exactly, or it is not this trip."""
-    expected = controlled_day_dates(state)
-    if not expected:
-        return draft
-    actual = [day.date for day in draft.days]
-    if actual != expected:
-        raise ValueError(
-            "itinerary must cover the controlled window exactly: "
-            f"{len(expected)} 天 {expected[0].isoformat()}..{expected[-1].isoformat()}，"
-            f"当前 {len(actual)} 天 "
-            f"{actual[0].isoformat() if actual else '(空)'}"
-            f"..{actual[-1].isoformat() if actual else '(空)'}"
-        )
-    return draft
-
-
-def _required_leg_scope_ids(
-    required_legs: Optional[List[Any]],
-    run_id: str,
-    constraint_pack_revision: int,
-) -> Dict[str, str]:
-    """Map each required long-distance leg to its authoritative Provider scope id."""
-    if not required_legs:
-        return {}
-    return {
-        f"{leg.leg_role}@{leg.service_date.isoformat()}": provider_evidence_scope_id(
-            run_id=run_id,
-            constraint_pack_revision=constraint_pack_revision,
-            worker_kind="transport_researcher",
-            research_domain=ResearchDomain.LONG_DISTANCE_TRANSPORT,
-            candidate_kind=None,
-            transport_class="long_distance",
-            target_identity=None,
-            route_leg=leg,
-        )
-        for leg in required_legs
-    }
-
-
 def _draft_user_input_anchors(state: TravelAgentState) -> List[UserInputAnchor]:
-    """Carry the Draft's controlled anchors into the composed Workspace."""
+    """把受控输入的锚点带进组合后的 Workspace。"""
     draft = state.minimum_delivery_draft
     if draft is None:
         return []
