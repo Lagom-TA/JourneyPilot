@@ -70,27 +70,11 @@ async def _author_connector_routes(
             else None,
             "leave_after": gap.departure_time.isoformat(),
             "arrive_before": gap.latest_arrival_time.isoformat(),
-            "requested_modes": []
-            if gap.compare_default_walk
-            else gap.requested_flexible_modes,
-            "forbidden_modes": ["walk"] if gap.compare_default_walk else [],
+            "requested_modes": gap.requested_flexible_modes,
         }
         for gap in gaps
     ]
     schema = _authored_connector_schema(gap_ids)
-    # Do not expose a comparison-only walk request as authorization to invent a
-    # walking route. Enforce this per gap even in mixed explicit-mode batches.
-    item_schema = schema["properties"]["connectors"]["items"]
-    variants = []
-    for gap in gaps:
-        variant = json.loads(json.dumps(item_schema))
-        variant["properties"]["gap_id"]["enum"] = [gap.gap_id]
-        if gap.compare_default_walk:
-            variant["properties"]["mode"]["enum"] = [
-                mode for mode in variant["properties"]["mode"]["enum"] if mode != "walk"
-            ]
-        variants.append(variant)
-    schema["properties"]["connectors"]["items"] = {"anyOf": variants}
     response = await llm.ainvoke(
         [
             {
@@ -99,8 +83,7 @@ async def _author_connector_routes(
                     "你是 JourneyPilot 的行程组合器。为下列相邻停留点之间各写一段市内交通："
                     "选一个出行方式，并给出门到门分钟数与一句选择理由。"
                     "根据真实端点名称和位置信息估算合理门到门耗时，不得为了装进时间窗压缩分钟数。"
-                    "若合理耗时超过时间窗，仍返回真实估算，由草稿修订调整安排。"
-                    "必须遵守每段forbidden_modes；步行比较没有实测结果时不能猜测步行。"
+                    "若合理耗时超过时间窗，仍返回真实估算，由行程安排自行调整。"
                     "端点由服务器按前后两个停留点填写，你不要写地点、线路号或票价。"
                 ),
             },

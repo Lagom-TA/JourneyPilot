@@ -285,11 +285,8 @@ class TravelAgentState(BaseModel):
         List[ProviderReferenceService], _merge_reference_services
     ] = Field(default_factory=list)
 
-    unlocatable_authored_places: List[str] = Field(default_factory=list)
-
     composition_failure_context: Optional[str] = None
 
-    placement_skeleton_failure_context: Optional[str] = None
     placement_skeleton: Optional[ItineraryCompositionDraft] = None
     composition_mutations: Annotated[
         List[CompositionMutation], _merge_composition_mutations

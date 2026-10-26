@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import TYPE_CHECKING, Mapping, Optional
+from typing import Mapping, Optional
 
 from travel_agent.planning.itinerary.mutation_contracts import CompositionMutation
 from travel_agent.planning.requirements.place_names import CONTROLLED_DESTINATION_ANCHOR_PREFIX, controlled_public_place_name
@@ -26,13 +26,13 @@ from travel_agent.planning.itinerary.bindings import (
     _lineage,
     _located_authored_place,
 )
-from travel_agent.planning.itinerary.checks import validate_itinerary_transport_topology
 from travel_agent.planning.itinerary.draft import (
     CompositionPlacement,
     DayComposition,
     ItineraryCompositionDraft,
     ItineraryCompositionError,
     _stable_id,
+    authored_place_key,
     is_authored_placement,
     placement_occurrence_key,
 )
@@ -60,9 +60,6 @@ from travel_agent.planning.research.candidates import (
 from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.transport import TransportMode, TransportSegment
 from travel_agent.planning.workspace import TripWorkspaceV2
-
-if TYPE_CHECKING:
-    from travel_agent.planning.research.provider_contracts import ProviderRouteLegScope
 
 
 def _total_budget_cap_cny(anchors: Optional[list[UserInputAnchor]]) -> Optional[float]:
@@ -208,9 +205,6 @@ def materialize_trip_workspace(
     composition_mutations: list[CompositionMutation],
     user_input_anchors: Optional[list[UserInputAnchor]] = None,
     reference_services: Optional[list[ProviderReferenceService]] = None,
-    required_candidate_kinds: Optional[set[str]] = None,
-    required_long_distance_legs: Optional[list["ProviderRouteLegScope"]] = None,
-    required_leg_scope_ids: Optional[dict[str, str]] = None,
 ) -> TripWorkspaceV2:
     candidates = catalog.candidate_index()
     used_ids = {
@@ -224,13 +218,6 @@ def materialize_trip_workspace(
         raise ItineraryCompositionError(
             f"composition references unknown candidates: {sorted(missing)}"
         )
-    validate_itinerary_transport_topology(
-        composition,
-        catalog,
-        required_candidate_kinds=required_candidate_kinds,
-        required_long_distance_legs=required_long_distance_legs,
-        required_leg_scope_ids=required_leg_scope_ids,
-    )
 
     visits: list[VisitStop] = []
     dining: list[DiningStop] = []
@@ -280,7 +267,8 @@ def materialize_trip_workspace(
                         VisitStop(
                             item_id=item_id,
                             day_id=day.day_id,
-                            place_id=authored.resolved_place_id,
+                            place_id=authored.resolved_place_id
+                            or authored_place_key(authored),
                             name=authored.name,
                             address=authored.resolved_address or authored.address,
                             latitude=authored.resolved_latitude,
@@ -310,7 +298,8 @@ def materialize_trip_workspace(
                         DiningStop(
                             item_id=item_id,
                             day_id=day.day_id,
-                            place_id=authored.resolved_place_id,
+                            place_id=authored.resolved_place_id
+                            or authored_place_key(authored),
                             name=authored.name,
                             address=authored.resolved_address or authored.address,
                             latitude=authored.resolved_latitude,

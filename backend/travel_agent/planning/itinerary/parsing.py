@@ -5,12 +5,10 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary.draft import (
     _SERVER_OWNED_PLACE_FIELDS,
     ItineraryCompositionDraft,
 )
-from travel_agent.planning.itinerary.requirements import _verify_day_window
 
 
 def parse_itinerary_composition(raw: str) -> ItineraryCompositionDraft:
@@ -24,11 +22,13 @@ def parse_itinerary_composition(raw: str) -> ItineraryCompositionDraft:
     try:
         return ItineraryCompositionDraft.model_validate(payload)
     except ValidationError as exc:
-        raise ValueError(f"itinerary composition failed schema gate: {exc}") from exc
+        raise ValueError(
+            f"itinerary composition does not match the required structure: {exc}"
+        ) from exc
 
 
 def _normalize_time_structure(payload: dict[str, Any]) -> None:
-    # Time blocks are fixed display scaffolding, not authored placement data.
+    # 时间结构是固定的展示骨架，不属于模型撰写的排位数据。
     days = payload.get("days")
     if not isinstance(days, list):
         return
@@ -37,10 +37,7 @@ def _normalize_time_structure(payload: dict[str, Any]) -> None:
             day["time_structure"] = ["morning", "lunch", "afternoon", "evening"]
 
 
-def _parse_exact_llm_composition(
-    raw: str,
-    state: TravelAgentState,
-) -> ItineraryCompositionDraft:
+def _parse_exact_llm_composition(raw: str) -> ItineraryCompositionDraft:
     payload = json.loads(raw)
     if isinstance(payload, dict):
         for day in payload.get("days", []) or []:
@@ -53,4 +50,4 @@ def _parse_exact_llm_composition(
                 if isinstance(place, dict):
                     for field in _SERVER_OWNED_PLACE_FIELDS:
                         place.pop(field, None)
-    return _verify_day_window(parse_itinerary_composition(json.dumps(payload)), state)
+    return parse_itinerary_composition(json.dumps(payload))

@@ -6,6 +6,7 @@ from travel_agent.planning.itinerary.draft import (
     AuthoredPlaceBase,
     ItineraryCompositionError,
     PhysicalPlacement,
+    authored_place_key,
 )
 from travel_agent.planning.references import EntityLineage
 from travel_agent.planning.research.candidates import (
@@ -54,19 +55,15 @@ def _physical_place_id(candidate: ResearchCandidate) -> str:
 
 
 def _located_authored_place(placement: PhysicalPlacement) -> AuthoredPlaceBase:
-    authored = placement.authored_place
-    if not authored.is_located:
-        raise ItineraryCompositionError(
-            f"authored entry 「{authored.name}」 has no resolved map location"
-        )
-    return authored
+    """撰写条目的内容本身；它可能没有定位到坐标。"""
+    return placement.authored_place
 
 
 def placement_place_id(
     placement: PhysicalPlacement,
     candidates: Mapping[str, ResearchCandidate],
 ) -> str:
-    """Return the map-resolvable place id behind one physical placement."""
+    """一个实体落位对应的地点标识；未定位的撰写条目使用撰写键。"""
     if placement.candidate_id:
         candidate = candidates.get(placement.candidate_id)
         if candidate is None:
@@ -74,17 +71,8 @@ def placement_place_id(
                 f"placement references an unadmitted candidate: {placement.candidate_id}"
             )
         return _physical_place_id(candidate)
-    return _located_authored_place(placement).resolved_place_id
-
-
-def _topology_place_id(
-    placement: PhysicalPlacement,
-    candidates: Mapping[str, ResearchCandidate],
-) -> str:
-    if placement.candidate_id:
-        candidate = candidates.get(placement.candidate_id)
-        return _physical_place_id(candidate) if candidate else ""
-    return _located_authored_place(placement).resolved_place_id
+    authored = _located_authored_place(placement)
+    return authored.resolved_place_id or authored_place_key(authored)
 
 
 def placement_display_name(
