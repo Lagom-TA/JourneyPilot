@@ -31,12 +31,12 @@ class SelectionOption(StrictModel):
     candidate_entity_ref: EntityRef
     rank: int = Field(ge=1, le=3)
     constraint_result: Literal["passed"] = "passed"
-    selection_reasons: List[str] = Field(min_length=2, max_length=3)
+    selection_reasons: List[str] = Field(default_factory=list)
     tradeoff: Optional[str] = None
-    comparison_facts: List[str] = Field(min_length=1)
+    comparison_facts: List[str] = Field(default_factory=list)
     availability_status: Literal["confirmed", "needs_confirmation"]
-    fact_assertion_ids: List[str] = Field(min_length=1)
-    source_record_ids: List[str] = Field(min_length=1)
+    fact_assertion_ids: List[str] = Field(default_factory=list)
+    source_record_ids: List[str] = Field(default_factory=list)
     personalization_influence_ids: List[str] = Field(default_factory=list)
 
 

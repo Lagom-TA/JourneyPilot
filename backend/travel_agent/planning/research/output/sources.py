@@ -13,7 +13,6 @@ from travel_agent.planning.research.evidence import (
 
 from .failures import _failed_tool_sources
 from .identifiers import _canonical_snapshot_hash, _provider_entity_source_id
-from .policy import ResearchPacketOutputError
 from .transcript import (
     _normalized_source_url,
     _retrieved_source_snapshots,
@@ -21,6 +20,76 @@ from .transcript import (
 )
 
 logger = logging.getLogger(__name__)
+
+_SOURCE_CORE_FIELDS = frozenset(
+    {"source_record_id", "title", "provider_name", "public_excerpt", "snapshot"}
+)
+
+
+def _sanitize_model_source_records(payload: dict[str, Any], *, default_retrieved_at) -> None:
+    """规范化模型给出的来源记录：剔除未知字段，丢弃缺核心字段的条目并清理悬空链接。"""
+    sources = payload.get("source_records")
+    if not isinstance(sources, list):
+        return
+    allowed = set(SourceRecord.model_fields)
+    kept: list[dict[str, Any]] = []
+    dropped_ids: set[str] = set()
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        source_id = str(source.get("source_record_id") or source.get("id") or "")
+        cleaned = {key: value for key, value in source.items() if key in allowed}
+        if not _SOURCE_CORE_FIELDS.issubset(cleaned):
+            dropped_ids.add(source_id)
+            continue
+        cleaned.setdefault("retrieved_at", default_retrieved_at)
+        kept.append(cleaned)
+    if dropped_ids:
+        logger.warning("丢弃缺少核心字段的来源记录 %d 条", len(dropped_ids))
+        for fact in payload.get("fact_assertions") or []:
+            if isinstance(fact, dict) and isinstance(fact.get("source_links"), list):
+                fact["source_links"] = [
+                    link
+                    for link in fact["source_links"]
+                    if link.get("source_record_id") not in dropped_ids
+                ]
+        for candidate in payload.get("candidates") or []:
+            if isinstance(candidate, dict) and isinstance(candidate.get("source_record_ids"), list):
+                candidate["source_record_ids"] = [
+                    source_id
+                    for source_id in candidate["source_record_ids"]
+                    if source_id not in dropped_ids
+                ]
+    payload["source_records"] = kept
+
+
+def _drop_dangling_source_links(payload: dict[str, Any]) -> None:
+    """丢弃指向 packet 外来源的链接，不让单个坏引用拖垮整个 packet。"""
+    sources = payload.get("source_records") or []
+    known_ids = {
+        str(source.get("source_record_id"))
+        for source in sources
+        if isinstance(source, dict)
+    }
+    dropped = 0
+    for fact in payload.get("fact_assertions") or []:
+        if not isinstance(fact, dict) or not isinstance(fact.get("source_links"), list):
+            continue
+        before = len(fact["source_links"])
+        fact["source_links"] = [
+            link for link in fact["source_links"] if link.get("source_record_id") in known_ids
+        ]
+        dropped += before - len(fact["source_links"])
+    for candidate in payload.get("candidates") or []:
+        if not isinstance(candidate, dict) or not isinstance(candidate.get("source_record_ids"), list):
+            continue
+        before = len(candidate["source_record_ids"])
+        candidate["source_record_ids"] = [
+            source_id for source_id in candidate["source_record_ids"] if source_id in known_ids
+        ]
+        dropped += before - len(candidate["source_record_ids"])
+    if dropped:
+        logger.warning("清理 packet 外来源的悬空链接 %d 条", dropped)
 
 
 def _bind_source_content_hashes(
@@ -46,10 +115,7 @@ def _bind_source_content_hashes(
                 else dict(authoritative)
             )
             continue
-        if source.get("source_kind") == "external_tool":
-            raise ResearchPacketOutputError(
-                f"external tool source is absent from the authoritative registry: {source_id}"
-            )
+        # 注册表外的工具来源也按模型提供的记录保留，并同样重算内容哈希。
         snapshot = source.get("snapshot")
         if not isinstance(snapshot, dict):
             canonical_sources.append(source)

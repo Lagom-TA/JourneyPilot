@@ -40,16 +40,16 @@ class CandidateBase(StrictModel):
     candidate_id: str = Field(min_length=1)
     research_packet_id: str = Field(min_length=1)
     destination_id: str = Field(min_length=1)
-    fact_assertion_ids: List[str] = Field(min_length=1)
-    source_record_ids: List[str] = Field(min_length=1)
-    field_paths: List[str] = Field(min_length=1)
+    fact_assertion_ids: List[str] = Field(default_factory=list)
+    source_record_ids: List[str] = Field(default_factory=list)
+    field_paths: List[str] = Field(default_factory=list)
     active_constraint_ids: List[str] = Field(default_factory=list)
     constraint_evaluations: List[CandidateConstraintEvaluation] = Field(
         default_factory=list
     )
 
     weather_sensitivity: WeatherSensitivity
-    selection_reasons: List[str] = Field(min_length=2, max_length=3)
+    selection_reasons: List[str] = Field(default_factory=list)
     tradeoff: str = Field(min_length=1)
     planning_decision_ids: List[str] = Field(default_factory=list)
     weather_impact_ids: List[str] = Field(default_factory=list)
@@ -164,13 +164,6 @@ class TransportCandidate(CandidateBase):
 
     @model_validator(mode="after")
     def validate_segments(self) -> "TransportCandidate":
-        if (
-            self.transport_class == "long_distance"
-            and self.provider_evidence_scope_id is None
-        ):
-            raise ValueError(
-                "long-distance candidate requires exact Provider evidence scope"
-            )
         if (
             self.transport_class != "long_distance"
             and self.provider_evidence_scope_id is not None

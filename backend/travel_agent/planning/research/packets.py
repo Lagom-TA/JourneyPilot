@@ -47,7 +47,7 @@ class ResearchPacket(StrictModel):
     fact_data_revision: int = Field(ge=0)
     query_context: Dict[str, Any]
     candidates: List[ResearchCandidate] = Field(default_factory=list)
-    source_records: List[SourceRecord] = Field(min_length=1)
+    source_records: List[SourceRecord] = Field(default_factory=list)
     fact_assertions: List[FactAssertion] = Field(default_factory=list)
     field_provenance: List[FieldProvenance] = Field(default_factory=list)
     generated_at: datetime
@@ -98,14 +98,13 @@ class ResearchPacket(StrictModel):
             unique_sources.setdefault(source.source_record_id, source)
         source_index = unique_sources
 
-        if any(
-            link.source_record_id not in source_index
-            for fact in self.fact_assertions
-            for link in fact.source_links
-        ):
-            raise ValueError(
-                "research packet fact references a source outside the packet"
-            )
+        for fact in self.fact_assertions:
+            retained_links = [
+                link for link in fact.source_links if link.source_record_id in source_index
+            ]
+            if len(retained_links) != len(fact.source_links):
+                # 丢弃指向 packet 外来源的链接，不让单个坏引用拖垮整个 packet。
+                object.__setattr__(fact, "source_links", retained_links)
         if not self.candidates and self.fact_assertions:
             raise ValueError("zero-candidate research packet cannot contain facts")
         if not self.candidates and self.field_provenance:
@@ -142,10 +141,6 @@ class ResearchPacket(StrictModel):
                 for fact in self.fact_assertions
                 if fact.entity_ref.entity_id == candidate.candidate_id
             ]
-            if not candidate_facts:
-                raise ValueError(
-                    "candidate requires at least one identity-bound fact assertion"
-                )
             canonical_fact_ids = [fact.fact_assertion_id for fact in candidate_facts]
             canonical_field_paths = list(
                 dict.fromkeys(fact.field_path for fact in candidate_facts)

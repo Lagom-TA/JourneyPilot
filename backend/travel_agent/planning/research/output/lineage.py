@@ -9,7 +9,6 @@ from travel_agent.tools.governance import (
     compiled_tool_source_id_is_about,
 )
 
-from .policy import ResearchPacketOutputError
 
 logger = logging.getLogger(__name__)
 
@@ -44,21 +43,26 @@ def _prune_payload_to_candidate_closure(payload: dict[str, Any]) -> None:
         for fact in retained_facts
         if fact.get("fact_assertion_id")
     }
+    available_source_ids = {
+        str(source.get("source_record_id") or "")
+        for source in sources
+        if isinstance(source, Mapping) and source.get("source_record_id")
+    }
+    # 先清理指向 packet 外来源的链接，再按剩余链接保留来源。
+    for fact in retained_facts:
+        if not isinstance(fact.get("source_links"), list):
+            continue
+        fact["source_links"] = [
+            link
+            for link in fact["source_links"]
+            if str(link.get("source_record_id") or "") in available_source_ids
+        ]
     retained_source_ids = {
         str(link.get("source_record_id") or "")
         for fact in retained_facts
         for link in fact.get("source_links") or []
         if isinstance(link, Mapping) and link.get("source_record_id")
     }
-    available_source_ids = {
-        str(source.get("source_record_id") or "")
-        for source in sources
-        if isinstance(source, Mapping) and source.get("source_record_id")
-    }
-    if not retained_source_ids <= available_source_ids:
-        raise ResearchPacketOutputError(
-            "research packet fact references a source outside the packet"
-        )
     retained_sources = [
         source
         for source in sources

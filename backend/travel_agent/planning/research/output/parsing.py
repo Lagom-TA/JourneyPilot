@@ -8,7 +8,15 @@ from typing import Any, Mapping, Optional, Sequence
 from pydantic import ValidationError
 
 from travel_agent.knowledge.source_records import rag_chunk_source_records
-from travel_agent.planning.research.evidence import SourceRecord
+from travel_agent.planning.research.candidates import (
+    DiningCandidate,
+    LodgingCandidate,
+    TransportCandidate,
+    VisitCandidate,
+)
+from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryRecord
+from travel_agent.planning.research.evidence import FactAssertion, FieldProvenance, SourceRecord
+from travel_agent.planning.research.packets import RESEARCH_PACKET_CONTRACT_VERSION
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.tools.knowledge_results import knowledge_tool_documents
 
@@ -27,12 +35,56 @@ from .policy import ResearchPacketOutputError, ResearchWorkerKind
 from .sources import (
     _authoritative_tool_source_records,
     _bind_source_content_hashes,
+    _drop_dangling_source_links,
     _ground_rag_chunk_sources,
     _ground_retrieved_sources_in_the_transcript,
+    _sanitize_model_source_records,
 )
 from .transcript import authoritative_tool_messages
 
 logger = logging.getLogger(__name__)
+
+
+def _loads_with_repair(text: str) -> Any:
+    """先按原文解析，失败后去掉模型常见的尾逗号再试一次。"""
+    try:
+        return json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        return json.loads(re.sub(r",\s*([}\]])", r"\1", text))
+
+
+def _filter_model_fields(item: Any, allowed: set[str]) -> Any:
+    if not isinstance(item, dict):
+        return item
+    return {key: value for key, value in item.items() if key in allowed}
+
+
+def _sanitize_packet_nested_models(payload: dict[str, Any]) -> None:
+    """按嵌套模型的字段集过滤模型输出中的多余字段，发现记录缺 candidate_id 的条目丢弃。"""
+    candidate_fields = set().union(
+        *(
+            set(model.model_fields)
+            for model in (VisitCandidate, DiningCandidate, LodgingCandidate, TransportCandidate)
+        )
+    )
+    for key, fields in (
+        ("candidates", candidate_fields),
+        ("fact_assertions", set(FactAssertion.model_fields)),
+        ("field_provenance", set(FieldProvenance.model_fields)),
+    ):
+        items = payload.get(key)
+        if isinstance(items, list):
+            payload[key] = [_filter_model_fields(item, fields) for item in items]
+    discoveries = payload.get("candidate_discovery_records")
+    if isinstance(discoveries, list):
+        allowed = set(CandidateDiscoveryRecord.model_fields)
+        payload["candidate_discovery_records"] = [
+            filtered
+            for item in discoveries
+            if isinstance(item, dict)
+            for filtered in [_filter_model_fields(item, allowed)]
+            if filtered.get("candidate_id")
+        ]
 
 
 def _isolate_json_object(text: str) -> Optional[dict]:
@@ -49,7 +101,7 @@ def _isolate_json_object(text: str) -> Optional[dict]:
             depth -= 1
             if depth == 0:
                 try:
-                    obj = json.loads(text[start : i + 1])
+                    obj = _loads_with_repair(text[start : i + 1])
                     if isinstance(obj, dict):
                         return obj
                 except (TypeError, json.JSONDecodeError):
@@ -88,14 +140,31 @@ def parse_research_packet_output(
 ) -> ResearchPacket:
     """只解析精确 JSON；不抽取 Markdown、不修复、不回退到其他信封。"""
     try:
-        payload = json.loads(raw)
+        payload = _loads_with_repair(raw)
         if not isinstance(payload, dict):
             raise ResearchPacketOutputError("worker output must be one JSON object")
     except (TypeError, json.JSONDecodeError) as exc:
+        preview = (
+            raw[:200].replace("\n", " ") + " … " + raw[-200:].replace("\n", " ")
+            if isinstance(raw, str)
+            else type(raw).__name__
+        )
         raise ResearchPacketOutputError(
-            "worker output is not an exact JSON object"
+            "worker output is not an exact JSON object: "
+            f"len={len(raw) if isinstance(raw, str) else 'n/a'} preview={preview!r}"
         ) from exc
+    # packet 顶层只保留契约字段，模型附带的说明性文字（如 message）直接丢弃。
+    payload = {
+        key: value for key, value in payload.items() if key in ResearchPacket.model_fields
+    }
+    _sanitize_model_source_records(
+        payload, default_retrieved_at=_payload_generated_at(payload)
+    )
+    _sanitize_packet_nested_models(payload)
     _bind_authoritative_packet_metadata(payload, authoritative_packet_metadata)
+    # 契约版本与 worker 域由服务端绑定，不采用模型自报值。
+    payload["contract_version"] = RESEARCH_PACKET_CONTRACT_VERSION
+    payload["worker_kind"] = expected_worker
     _bind_authoritative_candidate_constraints(
         payload,
         expected_active_constraint_ids,
@@ -133,6 +202,7 @@ def parse_research_packet_output(
             for source in compiled_tool_sources.values()
         ]
     _bind_candidate_discovery_lineage(payload)
+    _drop_dangling_source_links(payload)
     try:
         packet = ResearchPacket.model_validate(payload)
     except ValidationError as exc:

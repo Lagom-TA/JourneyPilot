@@ -10,7 +10,7 @@ from langchain_core.runnables import RunnableConfig
 
 from travel_agent.conversation.history import append_recent_history
 from travel_agent.llm.router import get_model_router
-from travel_agent.llm.task_routing import TaskKind, llm_for_task
+from travel_agent.llm.task_routing import TaskKind, llm_for_task, plain_observation_messages
 from travel_agent.memory.research_context import format_worker_research_context
 from travel_agent.planning.assignments import (
     assignment_research_round,
@@ -203,7 +203,7 @@ async def accommodation_researcher_node(
 
     finalize_started_at: Optional[float] = None
     try:
-        deterministic_places_ready = await discover_deterministic_hotels(
+        await discover_deterministic_hotels(
             state=state,
             messages=messages,
             available_tools=available_tools,
@@ -220,22 +220,25 @@ async def accommodation_researcher_node(
             for query in planned_queries
             if query.query_id in set(executed_query_ids)
         ]
-        if deterministic_places_ready:
-            raw_response = ""
-        else:
-            react = await streaming_react_loop(
-                llm=llm,
-                messages=messages,
-                available_tools=available_tools,
-                stream_queue=stream_queue,
-                node_name=_NODE_NAME,
-                max_iterations=_MAX_TOOL_ITERATIONS,
-                can_ask_user=False,
-                tool_cache=tool_cache,
-                tool_context=tool_context,
+        react = await streaming_react_loop(
+            llm=llm,
+            messages=messages,
+            available_tools=available_tools,
+            stream_queue=stream_queue,
+            node_name=_NODE_NAME,
+            max_iterations=_MAX_TOOL_ITERATIONS,
+            can_ask_user=False,
+            tool_cache=tool_cache,
+            tool_context=tool_context,
+        )
+        raw_response = react.content
+        if not raw_response.strip():
+            # 工具循环没有产出正文时，用同一上下文做一次不带工具的直接生成。
+            raw_response = await llm.ainvoke(
+                plain_observation_messages(messages),
+                response_format={"type": "json_object"},
             )
-            raw_response = react.content
-            authoritative_tool_results.extend(react.tool_results)
+        authoritative_tool_results.extend(react.tool_results)
 
         finalize_started_at = time.perf_counter()
         packet = await parse_research_packet(

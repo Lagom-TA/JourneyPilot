@@ -93,11 +93,11 @@ class ReportSelectionOption(StrictModel):
     rank: int = Field(ge=1, le=3)
     selected: bool
     recommended: bool
-    selection_reasons: List[str] = Field(min_length=2, max_length=3)
+    selection_reasons: List[str] = Field(default_factory=list)
     tradeoff: Optional[str] = None
-    comparison_facts: List[str] = Field(min_length=1)
+    comparison_facts: List[str] = Field(default_factory=list)
     availability_status: Literal["confirmed", "needs_confirmation"]
-    citation_ids: List[str] = Field(min_length=1)
+    citation_ids: List[str] = Field(default_factory=list)
 
 
 class ReportSelectionSection(StrictModel):

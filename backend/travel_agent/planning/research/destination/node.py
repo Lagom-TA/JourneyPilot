@@ -13,7 +13,7 @@ from travel_agent.conversation.history import append_recent_history
 from travel_agent.knowledge.collections import grounding_corpus
 from travel_agent.knowledge.source_records import rag_chunk_source_records
 from travel_agent.llm.router import get_model_router
-from travel_agent.llm.task_routing import TaskKind, llm_for_task
+from travel_agent.llm.task_routing import TaskKind, llm_for_task, plain_observation_messages
 from travel_agent.memory.research_context import format_worker_research_context
 from travel_agent.planning.assignments import (
     assignment_research_round,
@@ -296,6 +296,12 @@ async def destination_researcher_node(
         )
         raw_response = react.content
         pending_choice = react.pending_choice
+        if not raw_response.strip() and not pending_choice:
+            # 工具循环没有产出正文时，用同一上下文做一次不带工具的直接生成。
+            raw_response = await llm.ainvoke(
+                plain_observation_messages(messages),
+                response_format={"type": "json_object"},
+            )
         authoritative_tool_results.extend(react.tool_results)
 
         if pending_choice:

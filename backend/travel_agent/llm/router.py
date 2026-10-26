@@ -699,11 +699,24 @@ class OpenAICompatibleLLM(BaseLLM):
     @staticmethod
     def _retryable(error: BaseException) -> bool:
         from openai import APIConnectionError, APIStatusError
+        import httpx
 
-        return isinstance(error, APIConnectionError) or (
-            isinstance(error, APIStatusError) and (
-                error.status_code in {408, 409, 429} or error.status_code >= 500
-            )
+        if isinstance(error, APIConnectionError) or (
+            isinstance(error, APIStatusError)
+            and (error.status_code in {408, 409, 429} or error.status_code >= 500)
+        ):
+            return True
+        # 流式响应中途断连、对端协议错误或读写超时都属于可重试的网络故障。
+        return isinstance(
+            error,
+            (
+                httpx.RemoteProtocolError,
+                httpx.ReadError,
+                httpx.ReadTimeout,
+                httpx.ConnectError,
+                httpx.ConnectTimeout,
+                httpx.PoolTimeout,
+            ),
         )
 
     async def _invoke_message(

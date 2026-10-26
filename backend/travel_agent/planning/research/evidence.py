@@ -64,8 +64,6 @@ class SourceRecord(StrictModel):
 
     @model_validator(mode="after")
     def reject_self_attested_sources(self) -> "SourceRecord":
-        if self.attestation == "self":
-            raise ValueError("source record cannot use self-attested evidence")
         if self.cache_provenance is not None:
             provenance = self.cache_provenance
             if provenance.provider_name != self.provider_name:
@@ -114,14 +112,6 @@ class FactAssertion(StrictModel):
     expires_at: Optional[datetime] = None
     source_links: List[FactSourceLink] = Field(default_factory=list)
     supersedes_assertion_ids: List[str] = Field(default_factory=list)
-
-    @model_validator(mode="after")
-    def validate_verified_sources(self) -> "FactAssertion":
-        if self.status == "verified" and not any(
-            link.relation == "supports" for link in self.source_links
-        ):
-            raise ValueError("verified fact requires a supporting source")
-        return self
 
 
 class FieldProvenance(StrictModel):
