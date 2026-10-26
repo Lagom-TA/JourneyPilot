@@ -153,59 +153,6 @@ def _build_plan_gate_payload(state: TravelAgentState) -> Dict[str, Any]:
     }
 
 
-def _validate_plan_gate_contract(state: TravelAgentState) -> None:
-    contract = state.request_contract
-    plan = state.capability_plan
-    draft = state.minimum_delivery_draft
-    brief = state.research_brief
-    if contract is None or brief is None or plan is None or draft is None:
-        raise RuntimeError(
-            "plan gate requires request, research, capability and minimum-delivery contracts"
-        )
-    if contract.has_blocking_conflicts:
-        raise RuntimeError("request contract contains a blocking intent conflict")
-    if contract.has_unresolved_material_clauses:
-        raise RuntimeError("request contract contains an unresolved material clause")
-    hard_ids = {
-        item.intent_id
-        for item in contract.intent_spec.active_items
-        if item.strength.value == "hard"
-    }
-    owned_ids = {
-        intent_id
-        for assignment in plan.assignments.values()
-        for intent_id in assignment.must_cover_intent_ids
-    }
-    if hard_ids - owned_ids:
-        raise RuntimeError("active hard intent lacks capability ownership")
-    objective_intents = {
-        intent_id
-        for objective in brief.domain_objectives
-        for intent_id in [
-            *objective.must_cover_intent_ids,
-            *objective.optional_intent_ids,
-        ]
-    }
-    research_ids = {
-        item.intent_id
-        for item in contract.intent_spec.active_items
-        if "research" in item.impact_stages
-    }
-    if research_ids - objective_intents:
-        raise RuntimeError("research-affecting intent lacks a research objective")
-    if draft.planning_generation_id != contract.generation_id:
-        raise RuntimeError("minimum delivery draft belongs to another generation")
-    if (
-        draft.intent_spec_revision != contract.intent_spec.revision
-        or draft.intent_spec_hash != contract.intent_spec.content_hash
-    ):
-        raise RuntimeError("minimum delivery draft belongs to another intent contract")
-    if plan.generation_id != contract.generation_id:
-        raise RuntimeError("capability plan belongs to another generation")
-    if plan.intent_spec_revision != contract.intent_spec.revision:
-        raise RuntimeError("capability plan uses another intent revision")
-
-
 def _projection_only_amendment(content: str) -> bool:
     lowered = content.lower()
     presentation = ("报告", "输出", "措辞", "简洁", "格式", "排版", "summary", "format")
@@ -230,22 +177,6 @@ async def plan_gate_node(
     state: TravelAgentState, config: Optional[RunnableConfig] = None
 ) -> Dict[str, Any]:
     """Block after planning and before worker fan-out until the user decides."""
-    constraint_pack = (
-        state.constraint_pack if isinstance(state.constraint_pack, dict) else {}
-    )
-    pack_meta = (
-        constraint_pack.get("pack_meta")
-        if isinstance(constraint_pack.get("pack_meta"), dict)
-        else {}
-    )
-    if pack_meta.get("hard_constraint_contract_complete") is False:
-        unsupported = pack_meta.get("unsupported_hard_constraint_ids") or []
-        raise RuntimeError(
-            "hard constraint contract is incomplete: "
-            + ", ".join(str(item) for item in unsupported)
-        )
-    _validate_plan_gate_contract(state)
-
     if not _is_plan_gate_enabled(config):
         raise RuntimeError("controlled planning requires an enabled approval gate")
 

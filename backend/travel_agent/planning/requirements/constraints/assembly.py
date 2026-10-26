@@ -133,11 +133,6 @@ async def build_constraint_pack(
 
     constraints = _resolve_conflicts(_dedupe_constraints(constraints))
     active = [c for c in constraints if c["status"] == "active"]
-    unsupported_hard = [
-        c["constraint_id"]
-        for c in active
-        if c.get("type") == "hard" and c.get("unsupported_hard_category")
-    ]
     free_text_sources_total = len(
         [it for it in free_items if str(it.get("text") or "").strip()]
     )
@@ -163,8 +158,6 @@ async def build_constraint_pack(
             "missing_source_layers": list(missing_source_layers or []),
             "manual_memory_truncated": bool(manual_memory_truncated),
             "extraction_status": extraction_status,
-            "hard_constraint_contract_complete": not unsupported_hard,
-            "unsupported_hard_constraint_ids": unsupported_hard,
         },
         "constraints": constraints,
         "hard_constraints": [c for c in active if c["type"] == "hard"],
