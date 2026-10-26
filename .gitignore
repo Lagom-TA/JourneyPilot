@@ -418,3 +418,6 @@ backups/
 /harness_review_*.md
 /harness_handoff_*.md
 /e2e_review_*.md
+
+# Redis 本地快照
+dump.rdb
