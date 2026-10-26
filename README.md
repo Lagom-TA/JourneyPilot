@@ -268,7 +268,7 @@ UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/scri
 
 `config.yaml`, `.env*`, and other local credential files are ignored by Git.
 
-The optional local knowledge corpus is intentionally not included in this public repository. If you maintain a local seed, keep it under `data/corpus/seed/`; the `data/` directory is ignored by Git. Without a local seed, provider-backed research still works and the knowledge corpus is reported as a non-blocking degraded component.
+The repository ships a small factory corpus under `backend/data/corpus/factory/`. With the backend running, load it from another terminal with `python backend/scripts/load_factory_corpus.py`. The optional local binary seed is intentionally not included in this public repository; if you maintain one, keep it under `data/corpus/seed/`. The rest of `data/` stays ignored by Git. Without a local seed, provider-backed research still works and the knowledge corpus is reported as a non-blocking degraded component.
 
 ## Database, backups, and upgrades
 

@@ -206,7 +206,10 @@ async def test_search_execution_and_replay_preserve_worker_transcript_and_gatewa
         "tool",
         "assistant",
         "tool",
+        "user",
     ]
+    # 最后一轮在请求前追加提示，要求模型不再调用工具。
+    assert "不要再调用任何工具" in messages[6]["content"]
     assert messages[2]["assistant_replay"] == {"reasoning_content": "search replay"}
     assert messages[4]["assistant_replay"] == {"reasoning_content": "lookup replay"}
     assert json.loads(messages[3]["content"])["activated"] == ["fixture_lookup"]

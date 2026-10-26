@@ -72,6 +72,21 @@ _NO_CACHE_TOOLS: Set[str] = {
 }
 
 
+_FINAL_ROUND_NOTICE = (
+    "工具调用轮数已用完，本轮必须直接输出完整的 Research Packet JSON 正文，"
+    "不要再调用任何工具。"
+)
+
+
+def _ensure_final_round_notice(messages: List[Dict[str, Any]], notice: str) -> None:
+    """最后一轮前要求模型直接给出正文；恢复时已有提示不重复追加。"""
+    if messages:
+        last = messages[-1]
+        if last.get("role") == "user" and last.get("content") == notice:
+            return
+    messages.append({"role": "user", "content": notice})
+
+
 def _cacheable_tool_result(tool_name: str, result: Dict[str, Any]) -> bool:
     if tool_name in _NO_CACHE_TOOLS or not isinstance(result, dict):
         return False
@@ -99,6 +114,7 @@ async def streaming_react_loop(
     can_ask_user: bool = False,
     tool_cache: Optional[Dict[str, Any]] = None,
     tool_context: Optional[Dict[str, Any]] = None,
+    final_round_notice: Optional[str] = _FINAL_ROUND_NOTICE,
 ) -> ReactResult:
     "通用流式 ReAct 循环。"
     if stream_queue is not None:
@@ -229,6 +245,12 @@ async def streaming_react_loop(
         recovered_response = (
             saved.get("response") if iteration == start_iteration else None
         )
+        if (
+            final_round_notice
+            and recovered_response is None
+            and iteration == effective_max_iterations - 1
+        ):
+            _ensure_final_round_notice(messages, final_round_notice)
         if recovered_response:
             content, tool_calls, assistant_replay = recovered_response
         else:

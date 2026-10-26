@@ -143,7 +143,7 @@ class TripReportDocument(StrictModel):
     duration_days: int = Field(ge=1)
     cost_summary: CostCoverageSummary = Field(default_factory=CostCoverageSummary.empty)
 
-    # 显式为 None 表示没有报价金额；渲染方不得编造替代值。
+    # 只描述已知价格或提示尚无报价；缺失金额时渲染方不得编造替代值。
     cost_coverage_statement: Optional[str] = Field(min_length=1)
     days: List[ReportDaySection] = Field(min_length=1)
     selections: List[ReportSelectionSection] = Field(default_factory=list)

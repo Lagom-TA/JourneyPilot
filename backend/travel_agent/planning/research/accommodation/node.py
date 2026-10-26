@@ -23,6 +23,10 @@ from travel_agent.planning.requirements.constraint_applicability import (
 from travel_agent.planning.research.accommodation.discovery import (
     discover_deterministic_hotels,
 )
+from travel_agent.planning.research.accommodation.fallback_assembly import (
+    assemble_lodging_fallback_packet,
+    deterministic_lodging_candidates,
+)
 from travel_agent.planning.research.accommodation.prompts import (
     build_accommodation_task_prompt,
 )
@@ -42,7 +46,10 @@ from travel_agent.planning.research.output.metadata import (
     build_authoritative_research_packet_metadata,
 )
 from travel_agent.planning.research.output.options import provider_evidence_outcomes
-from travel_agent.planning.research.output.policy import packet_candidate_limit
+from travel_agent.planning.research.output.policy import (
+    ResearchPacketOutputError,
+    packet_candidate_limit,
+)
 from travel_agent.planning.research.output.transcript import authoritative_tool_messages
 from travel_agent.planning.research.prompts import build_research_packet_prompt
 from travel_agent.planning.research.provider_assignments import (
@@ -240,15 +247,42 @@ async def accommodation_researcher_node(
             )
         authoritative_tool_results.extend(react.tool_results)
 
-        finalize_started_at = time.perf_counter()
-        packet = await parse_research_packet(
-            raw_response or "",
-            expected_worker=_NODE_NAME,
-            expected_run_id=run_id,
-            authoritative_tool_results=authoritative_tool_results,
-            expected_active_constraint_ids=active_constraint_ids,
-            authoritative_packet_metadata=authoritative_packet_metadata,
+        # 解析前先缓存已注入的真实住宿地点，解析失败或候选为空时用它保底。
+        lodging_fallback_candidates = deterministic_lodging_candidates(
+            state, authoritative_tool_results
         )
+
+        finalize_started_at = time.perf_counter()
+        parse_error: Optional[ResearchPacketOutputError] = None
+        try:
+            packet = await parse_research_packet(
+                raw_response or "",
+                expected_worker=_NODE_NAME,
+                expected_run_id=run_id,
+                authoritative_tool_results=authoritative_tool_results,
+                expected_active_constraint_ids=active_constraint_ids,
+                authoritative_packet_metadata=authoritative_packet_metadata,
+            )
+        except ResearchPacketOutputError as exc:
+            packet = None
+            parse_error = exc
+        if packet is None or not packet.candidates:
+            assembled_packet = assemble_lodging_fallback_packet(
+                base_packet=packet,
+                candidates=lodging_fallback_candidates,
+                authoritative_packet_metadata=authoritative_packet_metadata,
+                authoritative_tool_results=authoritative_tool_results,
+                expected_active_constraint_ids=active_constraint_ids,
+            )
+            if assembled_packet is not None:
+                packet = assembled_packet
+                logger.info(
+                    "AccommodationResearcher 确定性住宿保底组装: key=%s candidates=%d",
+                    output_key,
+                    len(packet.candidates),
+                )
+            elif parse_error is not None:
+                raise parse_error
 
         logger.info(
             "AccommodationResearcher 完成，key=%s candidates=%d facts=%d sources=%d finalize_ms=%.0f",

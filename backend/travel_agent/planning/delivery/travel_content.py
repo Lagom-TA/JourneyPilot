@@ -97,74 +97,35 @@ def selection_reason(entity: object) -> str:
 
 
 def preparation_actions(entity: object) -> list[str]:
-    """准备建议只基于已记录事实，不编造预订规则。"""
+    """补充时间线和实体块没有呈现的行动信息。
+
+    预约与开放时间已作为实体事实行展示，这里不再重复成段提醒。
+    """
     if isinstance(entity, (VisitStop, DiningStop)):
-        when = (
-            f"{entity.planned_start:%m月%d日 %H:%M}"
-            if entity.planned_start
-            else "计划到访时段"
-        )
-        actions = []
-        if entity.reservation_required is True:
-            actions.append(
-                f"提前向官方或商家查找覆盖 {when} 的可约时段，预约成功后按确认时段调整到访安排。"
-            )
-        elif entity.reservation_required is None:
-            actions.append(
-                f"向官方或商家核对 {when} 是否需要预约；当前尚无预约规则依据。"
-            )
-        if not entity.opening_window or any(
-            word in entity.opening_window.casefold()
-            for word in ("待确认", "未知", "unknown")
-        ):
-            actions.append("出发前核对当天营业时间与最晚入场时间，再确认到访安排。")
-        return actions
+        return []
     if isinstance(entity, LodgingStay):
         if entity.availability_status == "unavailable":
-            return ["当前住宿不可用，请先另选住宿，再调整入住与接驳安排。"]
-        if (
-            entity.price_kind == "reference_estimate"
-            or entity.availability_status == "needs_confirmation"
-        ):
-            return [
-                f"预订前向酒店或预订平台核对 {entity.check_in_date:%m月%d日} 至 {entity.check_out_date:%m月%d日} 的房型、余房与含税总价；参考价不代表已锁定房间。"
-            ]
-        return ["预订后核对订单中的入住日期、房型与取消条件，保存确认凭证。"]
+            return ["当前住宿不可用，需另选住宿。"]
+        return []
     if isinstance(entity, TransportLeg):
         preparation = []
-        if (
-            entity.transport_class == "flexible"
-            and entity.lineage.lineage_kind == "authored_entity"
-        ):
-            allowance = (
-                f"预留{entity.duration_minutes}分钟"
-                if entity.duration_minutes is not None
-                else "预留接驳时间"
-            )
-            preparation.append(
-                f"本计划为这段接驳{allowance}，尚未取得地图路线确认；"
-                "出发前请查询实际路线、路况与接车时间，并据此调整出发时间。"
-            )
         service_markers = ("工作日", "双休日", "周末", "节假日")
         if any(
             any(marker in (segment.line_name or "") for marker in service_markers)
             for segment in entity.segments
         ):
-            preparation.append(
-                "这段路线包含限定运营日期的线路，请按运营方当日公告核实；"
-                "节假日与调休安排可能不同，确认运营后再出发。"
-            )
+            preparation.append("该线路只在限定日期运营，需按出行当天确认开行。")
         if entity.transport_class == "long_distance" and entity.departure_at:
             minutes = planned_boarding_buffer_minutes(entity.selected_mode)
             at = entity.departure_at - timedelta(minutes=minutes)
             preparation.append(
-                f"按本计划预留{minutes}分钟出发准备，建议{at:%H:%M}前抵达出发站点；这是规划余量，运营方要求更早时以其规定为准。"
+                f"建议{at:%H:%M}前抵达出发站点，预留{minutes}分钟进站。"
             )
             if entity.arrival_at:
                 arrival_minutes = planned_alighting_buffer_minutes(entity.selected_mode)
                 ready_at = entity.arrival_at + timedelta(minutes=arrival_minutes)
                 preparation.append(
-                    f"抵达后另预留{arrival_minutes}分钟下车及出站，后续市内接驳按{ready_at:%H:%M}之后出发安排；这是规划余量，取行李或现场排队较久时需增加时间。"
+                    f"抵达后预留{arrival_minutes}分钟出站，接驳可安排在{ready_at:%H:%M}之后。"
                 )
             if (
                 entity.arrival_at
@@ -173,23 +134,12 @@ def preparation_actions(entity: object) -> list[str]:
                 and entity.arrival_at.hour >= 12
             ):
                 preparation.append(
-                    "这段长途交通占用午餐时段，请提前安排用餐或自备餐食，并核对车站或车上餐饮供应。"
+                    "这段长途交通占用午餐时段，建议提前安排用餐或自备餐食。"
                 )
         if entity.booking_status in {"required", "recommended"}:
             action = "购票" if entity.booking_status == "required" else "预订"
-            return preparation + [
-                f"提前向运营方核对班次日期、出发站点与余票后{action}，以订单为准。"
-            ]
+            return preparation + [f"提前{action}。"]
         if entity.booking_status == "booked":
-            return preparation + [
-                "核对本人订单与本计划的日期、班次和站点是否一致；本计划不构成订票凭证。"
-            ]
-        if (
-            entity.booking_status == "unknown"
-            and entity.transport_class == "long_distance"
-        ):
-            return preparation + [
-                "先向运营方核对班次、票价与购票要求，再确认这段交通。"
-            ]
+            return preparation + ["按订单上的日期、班次和站点出行。"]
         return preparation
     return []

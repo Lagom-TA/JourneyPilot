@@ -263,7 +263,7 @@ UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/scri
 
 `config.yaml`、`.env*` 和其他本地密钥文件都已加入 Git 忽略列表。
 
-可选的本地知识库没有随这个公开仓库发布。如果你维护本地种子文件，请放在 `data/corpus/seed/` 下；整个 `data/` 目录都已被 Git 忽略。没有本地种子时，基于 Provider 的调研仍可运行，知识库只会在就绪检查中作为非阻塞降级项报告。
+仓库自带一份小规模出厂语料，位于 `backend/data/corpus/factory/`；启动后端后可在另一个终端运行 `python backend/scripts/load_factory_corpus.py` 把它装入知识库。可选的本地二进制种子没有随这个公开仓库发布，如果你维护它，请放在 `data/corpus/seed/` 下；除此之外的 `data/` 内容仍被 Git 忽略。没有本地种子时，基于 Provider 的调研仍可运行，知识库只会在就绪检查中作为非阻塞降级项报告。
 
 ## 数据库、备份与升级
 

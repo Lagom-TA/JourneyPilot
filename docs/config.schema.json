@@ -1059,25 +1059,25 @@
       "description": "一次 Deep Run 的四段时间窗（秒），全仓唯一定义处。\n\n``closeout`` 关研究，``composition`` 关行程编排，``delivery`` 是投影与持久化的外界。\n已经开始的 Run 用它自己封存的快照，改这里不影响在跑的 Run。",
       "properties": {
         "closeout_seconds": {
-          "default": 450,
+          "default": 1200,
           "exclusiveMinimum": 0,
           "title": "Closeout Seconds",
           "type": "integer"
         },
         "composition_seconds": {
-          "default": 570,
+          "default": 1500,
           "exclusiveMinimum": 0,
           "title": "Composition Seconds",
           "type": "integer"
         },
         "delivery_seconds": {
-          "default": 600,
+          "default": 1800,
           "exclusiveMinimum": 0,
           "title": "Delivery Seconds",
           "type": "integer"
         },
         "target_seconds": {
-          "default": 375,
+          "default": 900,
           "exclusiveMinimum": 0,
           "title": "Target Seconds",
           "type": "integer"

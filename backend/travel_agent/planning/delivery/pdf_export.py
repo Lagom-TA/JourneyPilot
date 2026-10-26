@@ -243,6 +243,8 @@ def _source_story(
     styles: dict[str, ParagraphStyle],
 ) -> list[Any]:
 
+    if not citations:
+        return []
     story: list[Any] = [Spacer(1, 4 * mm), Paragraph("来源", styles["h1"])]
     entity_labels = {
         "visit_stop": "景点与体验",

@@ -84,10 +84,10 @@
 | `run_control.lease_heartbeat_failure_threshold` | int | `3` | > 0 | `JOURNEYPILOT_RUN_CONTROL__LEASE_HEARTBEAT_FAILURE_THRESHOLD` |
 | `run_control.recovery_sweep_seconds` | int | `60` | > 0 | `JOURNEYPILOT_RUN_CONTROL__RECOVERY_SWEEP_SECONDS` |
 | `run_control.command_poll_seconds` | float | `2.0` | > 0 | `JOURNEYPILOT_RUN_CONTROL__COMMAND_POLL_SECONDS` |
-| `run_deadline.target_seconds` | int | `375` | > 0 | `JOURNEYPILOT_RUN_DEADLINE__TARGET_SECONDS` |
-| `run_deadline.closeout_seconds` | int | `450` | > 0 | `JOURNEYPILOT_RUN_DEADLINE__CLOSEOUT_SECONDS` |
-| `run_deadline.composition_seconds` | int | `570` | > 0 | `JOURNEYPILOT_RUN_DEADLINE__COMPOSITION_SECONDS` |
-| `run_deadline.delivery_seconds` | int | `600` | > 0 | `JOURNEYPILOT_RUN_DEADLINE__DELIVERY_SECONDS` |
+| `run_deadline.target_seconds` | int | `900` | > 0 | `JOURNEYPILOT_RUN_DEADLINE__TARGET_SECONDS` |
+| `run_deadline.closeout_seconds` | int | `1200` | > 0 | `JOURNEYPILOT_RUN_DEADLINE__CLOSEOUT_SECONDS` |
+| `run_deadline.composition_seconds` | int | `1500` | > 0 | `JOURNEYPILOT_RUN_DEADLINE__COMPOSITION_SECONDS` |
+| `run_deadline.delivery_seconds` | int | `1800` | > 0 | `JOURNEYPILOT_RUN_DEADLINE__DELIVERY_SECONDS` |
 | `run_budget.enforce_limits` | bool | `False` | — | `JOURNEYPILOT_RUN_BUDGET__ENFORCE_LIMITS` |
 | `run_budget.max_llm_calls` | int | null | >= 1 | `JOURNEYPILOT_RUN_BUDGET__MAX_LLM_CALLS` |
 | `run_budget.max_tool_calls` | int | null | >= 1 | `JOURNEYPILOT_RUN_BUDGET__MAX_TOOL_CALLS` |

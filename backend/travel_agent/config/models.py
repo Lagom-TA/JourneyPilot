@@ -261,10 +261,12 @@ class RunDeadlineConfig(StrictConfig):
     已经开始的 Run 用它自己封存的快照，改这里不影响在跑的 Run。
     """
 
-    target_seconds: int = Field(default=375, gt=0)
-    closeout_seconds: int = Field(default=450, gt=0)
-    composition_seconds: int = Field(default=570, gt=0)
-    delivery_seconds: int = Field(default=600, gt=0)
+    # 默认值按真实联调实测标定：调研 worker 单家耗时常见在 4—7 分钟，
+    # 组合与投影在研究收尾后再各留一段，总窗 30 分钟内可完整交付。
+    target_seconds: int = Field(default=900, gt=0)
+    closeout_seconds: int = Field(default=1200, gt=0)
+    composition_seconds: int = Field(default=1500, gt=0)
+    delivery_seconds: int = Field(default=1800, gt=0)
 
     @model_validator(mode="after")
     def _windows_are_ordered(self) -> "RunDeadlineConfig":

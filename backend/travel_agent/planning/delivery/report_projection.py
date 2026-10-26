@@ -146,23 +146,13 @@ def _trip_level_requirements(workspace: TripWorkspaceV2) -> list[str]:
 
 
 _LONG_DISTANCE_GAP_NOTES = {
-    ("outbound", "return"): (
-        "本方案尚未给出前往目的地与返回出发地的长途交通路径；"
-        "出行前请自行确认往返的可用班次与票务。"
-    ),
-    ("outbound",): (
-        "本方案尚未给出前往目的地的长途交通路径；出行前请自行确认去程的可用班次与票务。"
-    ),
-    ("return",): (
-        "本方案尚未给出返回出发地的长途交通路径；出行前请自行确认返程的可用班次与票务。"
-    ),
+    ("outbound", "return"): "本方案不含往返出发地的长途交通。",
+    ("outbound",): "本方案不含前往目的地的长途交通。",
+    ("return",): "本方案不含返回出发地的长途交通。",
 }
 
 
-_UNBOUND_LONG_DISTANCE_NOTE = (
-    "出行日期距今较远，长途交通尚未确定到具体班次；"
-    "方案中的长途路径只作可行性参考，出发前请按实际出行日期重新查询班次、时刻与票价。"
-)
+_UNBOUND_LONG_DISTANCE_NOTE = "长途交通路径未绑定具体班次，仅作可行性参考。"
 
 
 def _controlled_trip_identity(
@@ -441,7 +431,7 @@ def _entity_block(
 
 
 def _preparation_notes(itinerary: StructuredItineraryV2) -> list[str]:
-    """列出尚未完成的准备事项，不暗示行程已预订。"""
+    """补充时间线与实体块没有呈现的行程级信息。"""
     notes: list[str] = []
     for entity in [
         *itinerary.visit_stops,
@@ -479,15 +469,14 @@ def _preparation_notes(itinerary: StructuredItineraryV2) -> list[str]:
     ]
     if missing:
         notes.append(
-            f"费用尚未计入：{'、'.join(dict.fromkeys(missing))}。请取得相应票价、餐费或住宿报价后再核对总预算；未知价格不代表免费。"
+            "以下费用暂未核实或纳入预算，请向相关商家核对确认："
+            f"{'、'.join(dict.fromkeys(missing))}。"
         )
     if any(
         stay.price_kind == "reference_estimate" and stay.total_price_cny is not None
         for stay in itinerary.lodging_stays
     ):
-        notes.append(
-            "费用小计包含住宿参考估价，实际支付金额需按入住日期、人数和房型重新核对。"
-        )
+        notes.append("费用小计中的住宿为参考估价。")
     return notes
 
 
@@ -636,12 +625,7 @@ def project_report(
         title=_public_report_title(
             f"{destination_text} {itinerary.duration_days} 日旅行计划"
         ),
-        overview=f"{date_text}，前往{destination_text}的旅行计划。"
-        + (
-            "出发前请完成下列预约、营业时间及费用核对。"
-            if _preparation_notes(itinerary)
-            else ""
-        ),
+        overview=f"{date_text}，前往{destination_text}的旅行计划。",
         destinations=destinations,
         duration_days=itinerary.duration_days,
         cost_summary=itinerary.cost_summary.model_copy(

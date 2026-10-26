@@ -366,6 +366,13 @@ chromedriver/
 
 # 本地知识库与生成数据（不进入开源仓库）
 data/
+# 内置出厂语料随仓库发布；backend/data 下其余内容仍然忽略。
+!backend/data/
+backend/data/*
+!backend/data/corpus/
+backend/data/corpus/*
+!backend/data/corpus/factory/
+!backend/data/corpus/factory/**
 # 临时测试脚本不入库，正式后端测试包含所有子目录。
 test_*.py
 *_test.py

@@ -195,6 +195,8 @@ async def fast_answer_node(
             node_name=_NODE_NAME,
             max_iterations=3,
             tool_context=build_tool_context_from_state(state),
+            # 回答节点输出自然语言答复，不要求 Research Packet 正文。
+            final_round_notice=None,
         )
         response = react.require_final_answer()
         tool_results = react.tool_results
