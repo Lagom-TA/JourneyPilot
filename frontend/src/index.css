@@ -692,5 +692,4 @@ summary.research-query-summary { cursor: pointer; }
 @media (max-width: 480px) { .research-panel-heading { padding: 14px 12px; gap: 8px; } .research-panel-body { padding: 0 8px 8px; } .research-agent-heading { padding: 12px; gap: 9px; } .research-agent-body { padding: 4px 12px 10px; } .research-elapsed { display: none; } }
 @media (prefers-reduced-motion: reduce) { .research-agent-chevron { transition: none; } }
 
-.research-candidates { margin: 12px 0; padding: 12px; border-left: 2px solid var(--color-stroke); background: var(--color-panel); }
 .research-agent.is-failed .research-agent-state { color: var(--color-warning); }

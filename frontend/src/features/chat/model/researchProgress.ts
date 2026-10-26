@@ -30,10 +30,9 @@ export function researchGroups(steps: ThinkingStep[], live: boolean, interrupted
     for (const step of steps) {
         const { base } = parseAgentRound(step.agentName);
         const stage = getStageIdForAgent(base);
-        const [id, title, description] = WORKERS[base] || (stage === 'verify' || stage === 'review'
-            ? ['verify', '信息核对', '检查来源、可行性与行程完整性']
-            : stage === 'synthesis' ? ['delivery', '整理行程', '汇总调研，形成旅行方案']
-                : ['planning', '需求与调度', '理解偏好，准备调研任务']);
+        const [id, title, description] = WORKERS[base] || (stage === 'synthesis'
+            ? ['delivery', '整理行程', '汇总调研，形成旅行方案']
+            : ['planning', '需求与调度', '理解偏好，准备调研任务']);
         const group = groups.get(id) || { id, title, description, steps: [], status: 'running' as const };
         group.steps.push(step);
         groups.set(id, group);
@@ -42,8 +41,7 @@ export function researchGroups(steps: ThinkingStep[], live: boolean, interrupted
         const last = group.steps[group.steps.length - 1];
         const activeTool = group.steps.some(s => s.isToolCall && s.toolStatus === 'running');
         const lifecycle = [...group.steps].reverse().find(s => s.progressStatus);
-        const passed = group.id === 'planning' && [...groups.keys()].some(id => id !== 'planning')
-            || group.id === 'verify' && groups.has('delivery');
+        const passed = group.id === 'planning' && [...groups.keys()].some(id => id !== 'planning');
         const done = !activeTool && (passed || lifecycle?.progressStatus === 'completed' || (!lifecycle && Boolean(last.endTime)));
         const status = lifecycle?.progressStatus === 'failed' ? 'failed' : interrupted && !done ? 'stopped' : done || !live && !interrupted ? 'completed' : 'running';
         return { ...group, status };

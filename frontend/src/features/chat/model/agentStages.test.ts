@@ -12,21 +12,18 @@ function step(agentName: string): ThinkingStep {
 }
 describe('agent stage projection', () => {
     it.each([
-        ['当前中文节点', '候选校验', 'verify'],
-        ['历史内部节点', 'delivery_finalizer', 'synthesis'],
+        ['中文节点', '目的地调研', 'research'],
+        ['内部节点', 'delivery_finalizer', 'synthesis'],
         ['中文补研节点', '目的地调研（第2轮补充）', 'research'],
         ['内部补研节点', 'destination_researcher_r2', 'research'],
     ] as const)('%s 映射到 %s', (_label, agentName, stage) => {
         expect(getStageIdForAgent(agentName)).toBe(stage);
     });
-    it('把实际节点投影到阶段状态并标记补研轮次', () => {
-        const { stages, hasDeepWorkflow } = deriveStages([step('候选校验'), step('目的地调研（第2轮补充）')], { isStreaming: true, isSynthesizing: false, answerStarted: false });
+    it('把实际节点投影到阶段状态', () => {
+        const { stages, hasDeepWorkflow } = deriveStages([step('planner'), step('目的地调研（第2轮补充）')], { isStreaming: true, isSynthesizing: false, answerStarted: false });
         expect(hasDeepWorkflow).toBe(true);
-        expect(stages.find((stage) => stage.id === 'verify')?.status).toBe('done');
-        expect(stages.find((stage) => stage.id === 'research')).toMatchObject({
-            status: 'active',
-            refinementRound: 2,
-        });
+        expect(stages.find((stage) => stage.id === 'planning')?.status).toBe('done');
+        expect(stages.find((stage) => stage.id === 'research')?.status).toBe('active');
     });
     it('快答节点不进入深度阶段', () => {
         const { stages, hasDeepWorkflow } = deriveStages([step('fast_answer_agent')], { isStreaming: true, isSynthesizing: false, answerStarted: false });

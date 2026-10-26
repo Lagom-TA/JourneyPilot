@@ -30,7 +30,6 @@ class ChatPresentation:
     trace_events: List[Dict[str, Any]] = field(default_factory=list)
     approval_gate: Optional[Dict[str, Any]] = None
     context_report: Optional[Dict[str, Any]] = None
-    final_grounding: Dict[str, Any] = field(default_factory=dict)
     trip_summary_card: Optional[Dict[str, Any]] = None
     delivery_bundle_id: Optional[str] = None
     delivery_manifest: Optional[Dict[str, Any]] = None

@@ -90,26 +90,3 @@ def _normalization_response_format(
             "schema": schema,
         },
     }
-
-
-def _normalization_targeted_retry_prompt(
-    *,
-    clauses: List[SourceClause],
-    controlled_identity: Dict[str, object],
-    error: Exception,
-) -> List[Dict[str, str]]:
-    """Regenerate only clauses that still lack a valid semantic mapping."""
-
-    messages = _normalization_prompt(clauses, controlled_identity)
-    messages.append(
-        {
-            "role": "user",
-            "content": (
-                "上一轮中其余 clause 已分别通过合同校验，本轮只处理当前输入列出的"
-                "未通过 clause；不要重复已通过内容。请重新做语义理解，按输入顺序为"
-                "每个当前 clause 恰好输出一行完整结构，不要解释。"
-                f"校验反馈：{str(error)[:1200]}"
-            ),
-        }
-    )
-    return messages

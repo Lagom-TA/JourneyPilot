@@ -151,10 +151,6 @@ async def _handle_state_update(
         return
     if isinstance(state_update, dict) and state_update.get("run_id"):
         ctx.trace_run_id = str(state_update.get("run_id"))
-    if isinstance(state_update, dict) and isinstance(
-        state_update.get("final_grounding"), dict
-    ):
-        ctx.final_grounding = state_update["final_grounding"]
     delivery = (
         state_update.get("delivery_bundle") if isinstance(state_update, dict) else None
     )

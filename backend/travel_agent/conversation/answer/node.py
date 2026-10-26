@@ -17,7 +17,6 @@ from travel_agent.conversation.answer.tool_context import (
     _NODE_NAME,
     _build_realtime_tool_context,
 )
-from travel_agent.conversation.answer_presentation import OutputGuard
 from travel_agent.conversation.history import session_history_for_context_builder
 from travel_agent.llm.router import get_model_router
 from travel_agent.llm.task_routing import TaskKind, llm_for_task
@@ -32,11 +31,7 @@ from travel_agent.planning.requirements.constraints.presentation import (
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.tool_context import build_tool_context_from_state
 from travel_agent.tools.access import filter_tools_for_agent, get_available_tools
-from travel_agent.tools.governance import tool_envelope_to_evidence_candidate
-from travel_agent.tools.knowledge_results import (
-    knowledge_tool_documents,
-    knowledge_tool_summaries,
-)
+from travel_agent.tools.knowledge_results import knowledge_tool_summaries
 from travel_agent.tools.react import streaming_react_loop
 
 if TYPE_CHECKING:
@@ -203,24 +198,7 @@ async def fast_answer_node(
         )
         response = react.require_final_answer()
         tool_results = react.tool_results
-        docs = knowledge_tool_documents(tool_results)
         logger.info(f"FastAnswer 生成回答，长度: {len(response)}")
-        tool_evidence = []
-        for envelope in tool_results:
-            candidate = tool_envelope_to_evidence_candidate(envelope)
-            if candidate is not None:
-                candidate["source_type"] = envelope.get("source_type") or "tool"
-                tool_evidence.append(candidate)
-        grounding = OutputGuard().check(
-            output_text=response,
-            retrieved_docs=docs,
-            evidence_records=[*realtime_evidence, *tool_evidence],
-        )
-        response = grounding.processed_output
-        if not response.strip():
-            raise RuntimeError(
-                "FastAnswer final answer is empty after output validation"
-            )
         if stream_queue is not None:
             await stream_queue.put(("token", _NODE_NAME, response))
         retrieval_summaries = knowledge_tool_summaries(tool_results)
@@ -246,8 +224,6 @@ async def fast_answer_node(
             "constraint_pack_revision": state.constraint_pack_revision + 1,
             "messages": [AIMessage(content=response)],
             "is_completed": True,
-            "output_confidence": grounding.confidence.value,
-            "final_grounding": grounding.final_grounding,
             "retrieval_summaries": retrieval_summaries,
             "synthesis_mode": "fast",
         }

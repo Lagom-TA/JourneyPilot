@@ -176,115 +176,7 @@ async def test_normalizer_projects_one_schema_by_provider_capability(
 
 
 @pytest.mark.asyncio
-async def test_contract_rejection_gets_one_llm_semantic_repair_before_fallback():
-    clause = _clause(0, "并给出备选方案")
-
-    class _Model:
-        capabilities = SimpleNamespace(supports_json_schema=False)
-
-        def __init__(self):
-            self.calls = []
-
-        async def ainvoke(self, messages, **_kwargs):
-            self.calls.append(messages)
-            strength = "soft" if len(self.calls) == 1 else "hard"
-            target = "itinerary" if len(self.calls) == 1 else "delivery"
-            return json.dumps(
-                {
-                    "clauses": [
-                        {
-                            "clause_id": clause.clause_id,
-                            "disposition": "mapped_to_intent",
-                            "intents": [
-                                {
-                                    "kind": "alternatives",
-                                    "target": target,
-                                    "strength": strength,
-                                    "priority": 90,
-                                    "value": {
-                                        "value_type": "alternative",
-                                        "count": 2,
-                                    },
-                                    "verification_mode": "semantic",
-                                    "impact_stages": ["composition", "projection"],
-                                    "public_summary": "提供备选方案",
-                                }
-                            ],
-                        }
-                    ]
-                }
-            )
-
-    model = _Model()
-    result = await normalize_clauses(
-        clauses=[clause], controlled_identity=_identity(), llm=model
-    )
-
-    assert len(model.calls) == 2
-    assert "校验反馈" in model.calls[1][-1]["content"]
-    [intent] = result.clauses[0].intents
-    assert intent.kind is IntentKind.ALTERNATIVES
-    assert intent.strength is IntentStrength.HARD
-    assert intent.target is IntentTarget.DELIVERY
-
-
-@pytest.mark.asyncio
-async def test_repeated_repair_failure_gets_an_unanchored_semantic_regeneration():
-    clause = _clause(0, "并给出备选方案")
-
-    class _Model:
-        capabilities = SimpleNamespace(supports_json_schema=False)
-
-        def __init__(self):
-            self.calls = []
-
-        async def ainvoke(self, messages, **_kwargs):
-            self.calls.append(messages)
-            valid = len(self.calls) == 3
-            return json.dumps(
-                {
-                    "clauses": [
-                        {
-                            "clause_id": clause.clause_id,
-                            "disposition": "mapped_to_intent",
-                            "intents": [
-                                {
-                                    "kind": "alternatives",
-                                    "target": "delivery" if valid else "itinerary",
-                                    "strength": "hard" if valid else "soft",
-                                    "priority": 90,
-                                    "value": {
-                                        "value_type": "alternative",
-                                        "count": 2,
-                                    },
-                                    "verification_mode": "semantic",
-                                    "impact_stages": ["composition", "projection"],
-                                    "public_summary": "提供备选方案",
-                                }
-                            ],
-                        }
-                    ]
-                }
-            )
-
-    model = _Model()
-    result = await normalize_clauses(
-        clauses=[clause], controlled_identity=_identity(), llm=model
-    )
-
-    assert len(model.calls) == 3
-    assert not any(message["role"] == "assistant" for message in model.calls[1])
-    assert not any(message["role"] == "assistant" for message in model.calls[2])
-    assert "只处理当前输入列出的" in model.calls[1][-1]["content"]
-    assert "只处理当前输入列出的" in model.calls[2][-1]["content"]
-    [intent] = result.clauses[0].intents
-    assert intent.strength is IntentStrength.HARD
-    assert intent.target is IntentTarget.DELIVERY
-
-
-@pytest.mark.asyncio
-async def test_slow_normalization_calls_share_one_operation_budget(monkeypatch):
-
+async def test_slow_normalization_call_is_cancelled_and_falls_back_once(monkeypatch):
 
     clause = _clause(0, "并给出备选方案")
 
@@ -297,17 +189,12 @@ async def test_slow_normalization_calls_share_one_operation_budget(monkeypatch):
         async def ainvoke(self, *_args, **_kwargs):
             self.calls += 1
             await asyncio.sleep(1)
-            raise AssertionError("operation timeout must cancel the slow call")
+            raise AssertionError("call timeout must cancel the slow call")
 
     monkeypatch.setattr(
         _owner_planning_requirements_normalization_model,
         "INTENT_NORMALIZATION_CALL_TIMEOUT_SECONDS",
         0.02,
-    )
-    monkeypatch.setattr(
-        _owner_planning_requirements_normalization_model,
-        "INTENT_NORMALIZATION_OPERATION_TIMEOUT_SECONDS",
-        0.035,
     )
     model = _Model()
 
@@ -317,92 +204,10 @@ async def test_slow_normalization_calls_share_one_operation_budget(monkeypatch):
         llm=model,
     )
 
-    assert model.calls == 2
+    assert model.calls == 1
     [intent] = result.clauses[0].intents
     assert intent.kind is IntentKind.ALTERNATIVES
     assert intent.strength is IntentStrength.HARD
-
-
-@pytest.mark.asyncio
-async def test_semantic_repair_only_regenerates_invalid_clause_rows():
-    clauses = [
-        _clause(0, "偏好建筑与本地文化"),
-        _clause(1, "并给出备选方案"),
-    ]
-
-    class _Model:
-        capabilities = SimpleNamespace(supports_json_schema=False)
-
-        def __init__(self):
-            self.calls = []
-
-        async def ainvoke(self, messages, **_kwargs):
-            self.calls.append(messages)
-            if len(self.calls) == 1:
-                rows = [
-                    {
-                        "clause_id": clauses[0].clause_id,
-                        "disposition": "mapped_to_intent",
-                        "intents": [
-                            {
-                                "kind": "theme",
-                                "target": "trip",
-                                "strength": "soft",
-                                "priority": 70,
-                                "value": {
-                                    "value_type": "category",
-                                    "categories": ["建筑与本地文化"],
-                                },
-                                "verification_mode": "semantic",
-                                "impact_stages": ["research", "composition"],
-                                "public_summary": "偏好建筑与本地文化",
-                            }
-                        ],
-                    },
-                    {
-                        "clause_id": clauses[1].clause_id,
-                        "disposition": "mapped_to_intent",
-                        "intents": [],
-                    },
-                ]
-            else:
-                rows = [
-                    {
-                        "clause_id": clauses[1].clause_id,
-                        "disposition": "mapped_to_intent",
-                        "intents": [
-                            {
-                                "kind": "alternatives",
-                                "target": "delivery",
-                                "strength": "hard",
-                                "priority": 80,
-                                "value": {
-                                    "value_type": "alternative",
-                                    "count": 2,
-                                },
-                                "verification_mode": "semantic",
-                                "impact_stages": ["composition", "projection"],
-                                "public_summary": "提供备选方案",
-                            }
-                        ],
-                    }
-                ]
-            return json.dumps({"clauses": rows})
-
-    model = _Model()
-    result = await normalize_clauses(
-        clauses=clauses,
-        controlled_identity=_identity(),
-        llm=model,
-    )
-
-    assert len(model.calls) == 2
-    retry_payload = json.loads(model.calls[1][1]["content"])
-    assert [row["clause_id"] for row in retry_payload["clauses"]] == [
-        clauses[1].clause_id
-    ]
-    assert result.clauses[0].intents[0].kind is IntentKind.THEME
-    assert result.clauses[1].intents[0].kind is IntentKind.ALTERNATIVES
 
 
 @pytest.mark.asyncio
@@ -739,120 +544,6 @@ def test_plan_gate_separates_hard_preferences_and_attention():
         {"requirement_id": "conflict_test", "summary": "两项要求需要取舍"}
     ]
     assert "must_obey" not in payload
-
-
-@pytest.mark.asyncio
-async def test_material_clause_cannot_be_silently_classified_as_background():
-    clause = _clause(0, "每个景点都要说明选择理由")
-
-    class _Model:
-        async def ainvoke(self, *_args, **_kwargs):
-            return json.dumps(
-                {
-                    "clauses": [
-                        {
-                            "clause_id": clause.clause_id,
-                            "disposition": "background_context",
-                            "reason_code": None,
-                            "intents": [],
-                            "constraints": [],
-                        }
-                    ]
-                }
-            )
-
-    result = await normalize_clauses(
-        clauses=[clause], controlled_identity=_identity(), llm=_Model()
-    )
-    assert result.clauses[0].disposition is ClauseDisposition.MAPPED_TO_INTENT
-    [intent] = result.clauses[0].intents
-    assert intent.kind is IntentKind.OUTPUT_REQUIREMENT
-    assert intent.value.required_field == "每个景点都要说明选择理由"
-
-
-@pytest.mark.asyncio
-async def test_numeric_budget_cap_survives_model_omission():
-    clause = _clause(0, "总预算人民币3000元以内")
-
-    class _Model:
-        async def ainvoke(self, *_args, **_kwargs):
-            return json.dumps(
-                {
-                    "clauses": [
-                        {
-                            "clause_id": clause.clause_id,
-                            "disposition": "background_context",
-                            "reason_code": None,
-                            "intents": [],
-                            "constraints": [],
-                        }
-                    ]
-                }
-            )
-
-    result = await normalize_clauses(
-        clauses=[clause], controlled_identity=_identity(), llm=_Model()
-    )
-
-    budget = result.clauses[0].constraints[0]
-    assert result.clauses[0].disposition is ClauseDisposition.MAPPED_TO_CONSTRAINT
-    assert budget.category == "budget_cap"
-    assert budget.value == "总预算不超过 3000 CNY"
-    assert budget.params.amount == 3000
-    assert budget.params.currency == "CNY"
-    assert budget.params.per == "total"
-
-
-@pytest.mark.asyncio
-async def test_party_size_cannot_override_an_explicit_total_budget():
-    clauses = [
-        _clause(0, "2名成人"),
-        _clause(1, "总预算人民币3000元以内"),
-    ]
-
-    class _Model:
-        async def ainvoke(self, *_args, **_kwargs):
-            return json.dumps(
-                {
-                    "clauses": [
-                        {
-                            "clause_id": clauses[0].clause_id,
-                            "disposition": "controlled_identity",
-                            "reason_code": None,
-                            "intents": [],
-                            "constraints": [
-                                {
-                                    "category": "budget_cap",
-                                    "value": "每晚预算不超过 2 CNY",
-                                    "params": {
-                                        "amount": 2,
-                                        "currency": "CNY",
-                                        "per": "night",
-                                    },
-                                }
-                            ],
-                        },
-                        {
-                            "clause_id": clauses[1].clause_id,
-                            "disposition": "background_context",
-                            "reason_code": None,
-                            "intents": [],
-                            "constraints": [],
-                        },
-                    ]
-                }
-            )
-
-    result = await normalize_clauses(
-        clauses=clauses, controlled_identity=_identity(), llm=_Model()
-    )
-
-    assert result.clauses[0].constraints == []
-    assert result.clauses[1].disposition is ClauseDisposition.MAPPED_TO_CONSTRAINT
-    [budget] = result.clauses[1].constraints
-    assert budget.value == "总预算不超过 3000 CNY"
-    assert budget.params.amount == 3000
-    assert budget.params.per == "total"
 
 
 def test_full_trip_sentence_does_not_treat_party_size_as_nightly_budget():

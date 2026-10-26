@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 from travel_agent.planning.requirements.constraints.extraction import deterministic_budget_constraints
-from travel_agent.planning.requirements.intent_contracts import AlternativeIntentValue
 from travel_agent.planning.requirements.intent_contracts import CategoryIntentValue
 from travel_agent.planning.requirements.intent_contracts import IntentKind
 from travel_agent.planning.requirements.intent_contracts import IntentStrength
-from travel_agent.planning.requirements.intent_contracts import IntentTarget
 from travel_agent.planning.requirements.intent_contracts import VerificationMode
 from travel_agent.planning.requirements.normalization.clauses import _intent
-from travel_agent.planning.requirements.normalization.clauses import is_material_clause
 from travel_agent.planning.requirements.normalization.contracts import IntentDraft
 from travel_agent.planning.requirements.normalization.contracts import (
     NormalizedClauseDraft,
@@ -34,11 +31,9 @@ def _enforce_deterministic_constraints(
     result: RequestContractNormalizationResult,
     clauses: List[SourceClause],
 ) -> RequestContractNormalizationResult:
-    """Restore numeric constraints in the deterministic fallback path.
+    """用确定性的预算抽取补充 fallback 草稿。
 
-    This function is never applied to a valid model result.  It only hardens the
-    fallback drafts built by :func:`_fallback_normalization` after the model call,
-    schema validation, or contract validation has failed.
+    该函数只处理 :func:`_fallback_normalization` 产出的草稿，不作用于模型结果。
     """
 
     normalized: List[NormalizedClauseDraft] = []
@@ -127,11 +122,10 @@ _ALTERNATIVE_REQUEST_CUES = (
 
 
 def _explicit_must_include_terms(text: str) -> list[str]:
-    """Return independently enforceable items from an explicit include clause.
+    """从显式必去条款中拆出可独立执行的条目。
 
-    ``、`` and commas are unambiguous list separators in this contract.  Plain
-    Chinese ``和`` is deliberately not split because it is also part of proper
-    names such as ``颐和园``.
+    ``、`` 与逗号在本合同中是无歧义的列表分隔符；中文 ``和`` 不拆分，因为它
+    也可能是专有名称的一部分（例如「颐和园」）。
     """
 
     match = _EXPLICIT_MUST_INCLUDE.match(text.strip())
@@ -145,67 +139,13 @@ def _explicit_must_include_terms(text: str) -> list[str]:
     return list(dict.fromkeys(terms))
 
 
-def _validate_model_contract(
-    result: RequestContractNormalizationResult,
-    clauses: List[SourceClause],
-) -> None:
-    """Reject a structurally valid model answer that violates source invariants.
-
-    This validator never authors or rewrites an intent.  Semantic normalization
-    belongs to the model; these checks only protect exact numeric constraints and
-    explicit delivery flags whose omission would make later verification
-    impossible.  Named-item parsing is deliberately absent here: syntax rules
-    may assist the final fallback, but they do not overrule a valid LLM mapping.
-    """
-
-    for source, draft in zip(clauses, result.clauses):
-        if is_material_clause(source.source_text) and draft.disposition in {
-            ClauseDisposition.BACKGROUND_CONTEXT,
-            ClauseDisposition.NON_ACTIONABLE,
-        }:
-            raise ValueError("model dropped a material request clause")
-
-        deterministic_budget = deterministic_budget_constraints(source.source_text)
-        if deterministic_budget:
-            expected = deterministic_budget[0]["params"]
-            if not any(
-                constraint.category == "budget_cap"
-                and constraint.params.amount == expected["amount"]
-                and str(constraint.params.currency or "").upper()
-                == str(expected["currency"]).upper()
-                and constraint.params.per == expected["per"]
-                for constraint in draft.constraints
-            ):
-                raise ValueError(
-                    "model changed or omitted an explicit numeric budget cap"
-                )
-
-        source_text = source.source_text.casefold()
-        if not any(cue in source_text for cue in _MONETARY_CUES) and any(
-            constraint.category == "budget_cap" and constraint.params.amount is not None
-            for constraint in draft.constraints
-        ):
-            raise ValueError("model inferred a numeric budget from non-monetary text")
-
-        if any(cue in source_text for cue in _ALTERNATIVE_REQUEST_CUES) and not any(
-            intent.kind is IntentKind.ALTERNATIVES
-            and intent.strength is IntentStrength.HARD
-            and intent.target is IntentTarget.DELIVERY
-            and isinstance(intent.value, AlternativeIntentValue)
-            for intent in draft.intents
-        ):
-            raise ValueError("model omitted an explicit alternative request")
-
-
 def _enforce_deterministic_intents(
     result: RequestContractNormalizationResult,
     clauses: List[SourceClause],
 ) -> RequestContractNormalizationResult:
-    """Split explicit named must-dos in the deterministic fallback path.
+    """在 fallback 路径把显式列出的必去项拆成独立 Intent。
 
-    A valid model result is returned unchanged.  This grammar is used only after
-    model/schema/contract failure so the degraded run still gives each listed
-    item its own stable ID, candidate match, selection role, and fidelity verdict.
+    只处理确定性 fallback 草稿，模型返回的结果不经过这里。
     """
 
     normalized: List[NormalizedClauseDraft] = []

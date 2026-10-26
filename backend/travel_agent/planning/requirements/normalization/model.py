@@ -1,11 +1,9 @@
-"""Planning requirements normalization model."""
+"""请求合同归一化：一次结构化模型调用，未通过校验的行由确定性 fallback 补齐。"""
 
 from __future__ import annotations
 
 from openai import OpenAIError
 from pydantic import ValidationError
-from travel_agent.llm.task_routing import QualityFeedback
-from travel_agent.llm.task_routing import with_quality_feedback
 from travel_agent.planning.requirements.normalization.clauses import logger
 from travel_agent.planning.requirements.normalization.contracts import (
     NormalizedClauseDraft,
@@ -14,9 +12,6 @@ from travel_agent.planning.requirements.normalization.contracts import (
     RequestContractNormalizationResult,
 )
 from travel_agent.planning.requirements.normalization.contracts import SourceClause
-from travel_agent.planning.requirements.normalization.deterministic import (
-    _validate_model_contract,
-)
 from travel_agent.planning.requirements.normalization.fallback import (
     _fallback_normalization,
 )
@@ -25,9 +20,6 @@ from travel_agent.planning.requirements.normalization.prompts import (
 )
 from travel_agent.planning.requirements.normalization.prompts import (
     _normalization_response_format,
-)
-from travel_agent.planning.requirements.normalization.prompts import (
-    _normalization_targeted_retry_prompt,
 )
 from travel_agent.utils.json_helpers import safe_parse_json
 from typing import Dict
@@ -41,127 +33,56 @@ INTENT_NORMALIZATION_PROMPT_VERSION = "request_contract_normalization.v1"
 INTENT_NORMALIZATION_CALL_TIMEOUT_SECONDS = 120.0
 
 
-INTENT_NORMALIZATION_OPERATION_TIMEOUT_SECONDS = 240.0
-
-
 async def normalize_clauses(
     *,
     clauses: List[SourceClause],
     controlled_identity: Dict[str, object],
     llm: object,
 ) -> RequestContractNormalizationResult:
+    """调用一次结构化模型，逐行做 Pydantic 校验；未通过的行走确定性 fallback。"""
     if not clauses:
         raise ValueError("request normalization requires at least one clause")
     capabilities = getattr(llm, "capabilities", None)
     supports_native_schema = bool(getattr(capabilities, "supports_json_schema", False))
+    response_format = _normalization_response_format(
+        clauses,
+        supports_native_schema=supports_native_schema,
+    )
+
     accepted: Dict[str, NormalizedClauseDraft] = {}
-    pending = list(clauses)
-    messages = _normalization_prompt(pending, controlled_identity)
     last_error: Exception | None = None
-    loop = asyncio.get_running_loop()
-    operation_deadline = loop.time() + INTENT_NORMALIZATION_OPERATION_TIMEOUT_SECONDS
-    for attempt in range(3):
-        if attempt:
-            llm = with_quality_feedback(llm, QualityFeedback(schema_failures=attempt))
-            supports_native_schema = bool(
-                getattr(
-                    getattr(llm, "capabilities", None), "supports_json_schema", False
-                )
-            )
-        remaining_seconds = operation_deadline - loop.time()
-        if remaining_seconds <= 0:
-            last_error = TimeoutError(
-                "request contract normalization operation budget exhausted"
-            )
-            break
-        response_format = _normalization_response_format(
-            pending,
-            supports_native_schema=supports_native_schema,
+    try:
+        raw = await asyncio.wait_for(
+            llm.ainvoke(
+                _normalization_prompt(clauses, controlled_identity),
+                response_format=response_format,
+                temperature=0,
+            ),
+            timeout=INTENT_NORMALIZATION_CALL_TIMEOUT_SECONDS,
         )
-        try:
-            raw = await asyncio.wait_for(
-                llm.ainvoke(
-                    messages,
-                    response_format=response_format,
-                    temperature=0,
-                ),
-                timeout=min(
-                    INTENT_NORMALIZATION_CALL_TIMEOUT_SECONDS,
-                    remaining_seconds,
-                ),
-            )
-            parsed = safe_parse_json(raw, strip_think_tags=True)
-            newly_accepted, validation_errors = _validated_model_clause_rows(
-                parsed,
-                pending,
-            )
-            accepted.update(newly_accepted)
-            pending = [clause for clause in pending if clause.clause_id not in accepted]
-            if not pending:
-                result = RequestContractNormalizationResult(
-                    clauses=[accepted[clause.clause_id] for clause in clauses]
-                )
-                _validate_clause_coverage(result, clauses)
-                return result
+        parsed = safe_parse_json(raw, strip_think_tags=True)
+        accepted, validation_errors = _validated_model_clause_rows(parsed, clauses)
+        if validation_errors:
             last_error = ValueError("; ".join(validation_errors)[:2400])
-            if attempt < 2:
-                logger.info(
-                    "request contract model normalization partially rejected; "
-                    "requesting targeted semantic repair | accepted=%d pending=%d "
-                    "error=%s",
-                    len(newly_accepted),
-                    len(pending),
-                    str(last_error)[:800],
-                )
-                messages = _normalization_targeted_retry_prompt(
-                    clauses=pending,
-                    controlled_identity=controlled_identity,
-                    error=last_error,
-                )
-                continue
-        except asyncio.TimeoutError as exc:
-            last_error = exc
-            remaining_seconds = operation_deadline - loop.time()
-            if attempt < 2 and remaining_seconds > 0:
-                logger.info(
-                    "request contract model normalization timed out; requesting "
-                    "fresh semantic regeneration | remaining_seconds=%.1f",
-                    remaining_seconds,
-                )
-                messages = _normalization_targeted_retry_prompt(
-                    clauses=pending,
-                    controlled_identity=controlled_identity,
-                    error=TimeoutError(
-                        "the previous semantic normalization exceeded its call budget"
-                    ),
-                )
-                continue
-            break
-        except (
-            OpenAIError,
-            TypeError,
-            ValueError,
-            RuntimeError,
-        ) as exc:
-            last_error = exc
-            if attempt < 2:
-                logger.info(
-                    "request contract model normalization unavailable; requesting "
-                    "targeted semantic retry | pending=%d error_type=%s error=%s",
-                    len(pending),
-                    type(exc).__name__,
-                    str(exc)[:800],
-                )
-                messages = _normalization_targeted_retry_prompt(
-                    clauses=pending,
-                    controlled_identity=controlled_identity,
-                    error=exc,
-                )
-                continue
+    except (
+        asyncio.TimeoutError,
+        OpenAIError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+    ) as exc:
+        last_error = exc
+
+    pending = [clause for clause in clauses if clause.clause_id not in accepted]
+    if not pending:
+        return RequestContractNormalizationResult(
+            clauses=[accepted[clause.clause_id] for clause in clauses]
+        )
+
     logger.warning(
-        "request contract model normalization failed for %d clause(s) after "
-        "semantic repair; using clause-scoped deterministic fallback | "
-        "error_type=%s error=%s",
+        "request contract model normalization incomplete; using clause-scoped "
+        "deterministic fallback | accepted=%d pending=%d error_type=%s error=%s",
+        len(accepted),
         len(pending),
         type(last_error).__name__ if last_error is not None else "unknown",
         str(last_error)[:800] if last_error is not None else "",
@@ -180,7 +101,7 @@ def _validated_model_clause_rows(
     parsed: object,
     clauses: List[SourceClause],
 ) -> tuple[Dict[str, NormalizedClauseDraft], List[str]]:
-    """Salvage independently valid LLM rows without authoring any semantics."""
+    """逐行做 Pydantic 校验，返回通过的草稿与逐行错误说明。"""
 
     if isinstance(parsed, dict):
         rows = parsed.get("clauses")
@@ -214,9 +135,6 @@ def _validated_model_clause_rows(
             continue
         try:
             draft = NormalizedClauseDraft.model_validate(matches[0])
-            one = RequestContractNormalizationResult(clauses=[draft])
-            _validate_clause_coverage(one, [source])
-            _validate_model_contract(one, [source])
         except (ValidationError, TypeError, ValueError) as exc:
             errors.append(f"{source.clause_id}: {type(exc).__name__}: {str(exc)[:500]}")
             continue
@@ -229,12 +147,3 @@ def _validated_model_clause_rows(
     if unknown_ids:
         errors.append(f"unknown clause ids: {unknown_ids}")
     return accepted, errors
-
-
-def _validate_clause_coverage(
-    result: RequestContractNormalizationResult, clauses: List[SourceClause]
-) -> None:
-    expected = [item.clause_id for item in clauses]
-    actual = [item.clause_id for item in result.clauses]
-    if actual != expected:
-        raise ValueError("normalizer must return every clause once and in source order")

@@ -26,7 +26,6 @@ for (const width of [320, 390, 1440]) {
     await expect(stay).toContainText('能力边界');
     await page.getByRole('button', { name: '住宿直接返回', exact: true }).click();
     await expect(stay).toContainText('已整理 1 个住宿候选');
-    await expect(stay).toContainText('长春市人民大街');
     await expect(stay.getByTestId('research-query')).toHaveCount(0);
     await page.getByRole('button', { name: '目的地完成', exact: true }).click();
     await expect(destination.locator('.research-agent-state')).toHaveText('已结束');

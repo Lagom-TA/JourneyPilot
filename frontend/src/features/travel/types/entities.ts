@@ -1,5 +1,4 @@
 import { type IntentExplanationRecord } from "./itinerary";
-import { type CostCoverageSummary } from "./report";
 export type EntityType = 'visit_stop' | 'dining_stop' | 'lodging_stay' | 'transport_leg' | 'transport_segment' | 'custom_block' | 'weather_day';
 export interface EntityRef {
     entity_type: EntityType;
@@ -15,15 +14,6 @@ export interface EntityLineage {
     planning_decision_ids: string[];
     weather_impact_ids: string[];
     personalization_influence_ids: string[];
-}
-export interface UserInputAnchor {
-    anchor_id: string;
-    field_path: string;
-    value: unknown;
-    input_kind: 'controlled_identity' | 'hard_constraint' | 'intent_requirement' | 'preference' | 'fixed_transport' | 'planning_authorization';
-    constraint_id: string | null;
-    intent_id: string | null;
-    public_summary: string | null;
 }
 export type TransportMode = 'flight' | 'high_speed_rail' | 'train' | 'coach' | 'ferry' | 'metro' | 'bus' | 'tram' | 'taxi' | 'ride_hailing' | 'drive' | 'bike' | 'walk' | 'other';
 export interface TransportEndpoint {
@@ -148,19 +138,4 @@ export interface DayPlanV2 {
         projection_role: 'full' | 'departure' | 'arrival' | 'check_in' | 'check_out';
     }>;
     estimated_cost_cny: number | null;
-}
-export interface StructuredItineraryV2 {
-    itinerary_id: string;
-    title: string;
-    destination_ids: string[];
-    duration_days: number;
-    day_plans: DayPlanV2[];
-    visit_stops: VisitStop[];
-    dining_stops: DiningStop[];
-    lodging_stays: LodgingStay[];
-    transport_legs: TransportLeg[];
-    custom_blocks: CustomBlock[];
-    cost_summary: CostCoverageSummary;
-    highlights: string[];
-    important_notes: string[];
 }

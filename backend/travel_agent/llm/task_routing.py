@@ -1,4 +1,4 @@
-"""Task quality policy, separate from transport and cumulative Run budgets."""
+"""任务到模型档位的静态映射，与传输层和 Run 预算分离。"""
 from dataclasses import dataclass
 from enum import Enum
 import json
@@ -16,12 +16,6 @@ class TaskKind(str, Enum):
 
 
 @dataclass(frozen=True)
-class QualityFeedback:
-    schema_failures: int = 0
-    truncated: bool = False
-
-
-@dataclass(frozen=True)
 class TaskRoute:
     task: TaskKind
     tier: str
@@ -36,17 +30,12 @@ def chat_tool_protocol_supported(name):
     return not canonical_model_name(name).startswith("gpt-6.1-sol")
 
 
-def select_task_route(task, primary, fast, feedback=None, *, has_tools=False,
+def select_task_route(task, primary, fast, *, has_tools=False,
                       primary_effort="medium", fast_effort="low",
                       primary_protocol="chat_completions", fast_protocol="chat_completions"):
     task = TaskKind(task)
-    quality = feedback or QualityFeedback()
     tier = "primary" if task in {TaskKind.COMPOSITION, TaskKind.CONSTRAINT_ARBITRATION} else "fast"
-    reason, action = "task_default", "invoke"
-    if tier == "fast" and task != TaskKind.RESEARCH_TOOLS and (
-        quality.schema_failures or quality.truncated
-    ):
-        tier, reason = "primary", "quality_failure"
+    reason = "task_default"
     if has_tools and tier == "primary" and not chat_tool_protocol_supported(primary):
         tier, reason = "fast", "tool_protocol_requires_fast"
     name = primary if tier == "primary" else fast
@@ -54,11 +43,11 @@ def select_task_route(task, primary, fast, feedback=None, *, has_tools=False,
         raise ValueError(f"{name} tool requests require a Responses adapter")
     effort = model_reasoning_effort(name, primary_effort if tier == "primary" else fast_effort)
     protocol = primary_protocol if tier == "primary" else fast_protocol
-    return TaskRoute(task, tier, name, effort, protocol, reason, action)
+    return TaskRoute(task, tier, name, effort, protocol, reason, "invoke")
 
 
 def plain_observation_messages(messages):
-    """Preserve evidence without replaying foreign reasoning/tool protocols."""
+    """保留证据内容，不复用其它模型的推理与工具协议。"""
     result = []
     for message in messages:
         copy = {key: value for key, value in message.items() if key not in {"assistant_replay", "tool_calls", "tool_call_id"}}
@@ -77,9 +66,6 @@ class TaskLLM:
 
     def __getattr__(self, name):
         return getattr(self.client, name)
-
-    def with_feedback(self, feedback):
-        return self.router.get_for_task(self.route.task, feedback)
 
     def _messages(self, messages):
         if self.route.tier == "primary" and not chat_tool_protocol_supported(self.route.model_name):
@@ -100,9 +86,5 @@ class TaskLLM:
             yield item
 
 
-def llm_for_task(router, task, feedback=None, *, has_tools=False):
-    return router.get_for_task(task, feedback, has_tools=has_tools)
-
-
-def with_quality_feedback(llm, feedback):
-    return llm.with_feedback(feedback) if isinstance(llm, TaskLLM) else llm
+def llm_for_task(router, task, *, has_tools=False):
+    return router.get_for_task(task, has_tools=has_tools)

@@ -68,7 +68,6 @@ def make_memory_extraction_handler(
         return {
             "facts": outcome.facts_written,
             "portraits": outcome.portraits_written,
-            "rejections": outcome.rejections,
             "profile_revision_at_enqueue": payload.get("profile_revision"),
             "profile_revision_now": current_revision,
         }

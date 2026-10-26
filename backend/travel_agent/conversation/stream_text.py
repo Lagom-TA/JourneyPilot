@@ -29,21 +29,6 @@ class StreamingStripper:
         "思考过程",
     )
 
-    _INTERNAL_MARKER_PREFIXES = (
-        "[[fact:",
-        "[[fact：",
-        "[来源:",
-        "[来源：",
-        "[source:",
-        "[source：",
-        "[数据来源:",
-        "[数据来源：",
-        "[ref:",
-        "[ref：",
-        "[引用:",
-        "[引用：",
-    )
-
     _THINKING_END_RE = re.compile(
         r"\n\n(?=[^\x00-\x7F#\-\*]|\s*#{1,3}\s|\s*[-*]\s|[A-Z])",
     )
@@ -52,9 +37,8 @@ class StreamingStripper:
 
     _HOLD = max(
         max(len(tag) for tag in _OPEN_COMMENTS),
-        len("<think>"),
+        len(_OPEN_THINK),
         len("Thinking Process"),
-        max(len(tag) for tag in _INTERNAL_MARKER_PREFIXES),
     )
 
     def __init__(self) -> None:
@@ -65,24 +49,9 @@ class StreamingStripper:
         self._comment_buf = ""
         self._think_buf = ""
         self._text_think_buf = ""
-        self._in_internal_marker = False
-        self._internal_marker_buf = ""
-        self._internal_marker_close = "]"
 
     def feed(self, chunk: str) -> str:
-        """返回可立即显示的文本（两类注释块、think 块、纯文本推理块均被过滤）。"""
-        if self._in_internal_marker:
-            self._internal_marker_buf += chunk
-            close_pos = self._internal_marker_buf.find(self._internal_marker_close)
-            if close_pos != -1:
-                remainder = self._internal_marker_buf[
-                    close_pos + len(self._internal_marker_close) :
-                ]
-                self._internal_marker_buf = ""
-                self._in_internal_marker = False
-                self._buf = ""
-                return self._process(remainder)
-            return ""
+        """返回可立即显示的文本；注释块、think 块与纯文本推理块都被过滤。"""
         if self._in_comment_block:
             self._comment_buf += chunk
             close_pos = self._comment_buf.find(self._CLOSE_COMMENT)
@@ -153,25 +122,12 @@ class StreamingStripper:
                 earliest_tag = tag
         return earliest_pos, earliest_tag
 
-    def _find_internal_marker(self, buf: str):
-        """查找最早的机器引用或 legacy 来源标记，英文前缀忽略大小写。"""
-        lower = buf.lower()
-        earliest_pos = -1
-        earliest_tag = ""
-        for tag in self._INTERNAL_MARKER_PREFIXES:
-            pos = lower.find(tag.lower())
-            if pos != -1 and (earliest_pos == -1 or pos < earliest_pos):
-                earliest_pos = pos
-                earliest_tag = tag
-        return earliest_pos, earliest_tag
-
     def _process(self, text: str) -> str:
         self._buf += text
 
         comment_pos, comment_tag = self._find_comment_open(self._buf)
         think_pos = self._buf.find(self._OPEN_THINK)
         text_think_pos, text_think_marker = self._find_text_thinking_marker(self._buf)
-        marker_pos, marker_tag = self._find_internal_marker(self._buf)
 
         earliest_pos: int = -1
         earliest_type: str = ""
@@ -183,25 +139,6 @@ class StreamingStripper:
             earliest_pos == -1 or text_think_pos < earliest_pos
         ):
             earliest_pos, earliest_type = text_think_pos, "text_think"
-        if marker_pos != -1 and (earliest_pos == -1 or marker_pos < earliest_pos):
-            earliest_pos, earliest_type = marker_pos, "internal_marker"
-
-        if earliest_type == "internal_marker":
-            safe = self._buf[:earliest_pos]
-            marker_start = self._buf[earliest_pos : earliest_pos + len(marker_tag)]
-            self._internal_marker_close = "]]" if marker_start.startswith("[[") else "]"
-            self._in_internal_marker = True
-            self._internal_marker_buf = self._buf[earliest_pos + len(marker_tag) :]
-            self._buf = ""
-            close_pos = self._internal_marker_buf.find(self._internal_marker_close)
-            if close_pos != -1:
-                remainder = self._internal_marker_buf[
-                    close_pos + len(self._internal_marker_close) :
-                ]
-                self._internal_marker_buf = ""
-                self._in_internal_marker = False
-                return safe + self._process(remainder)
-            return safe
 
         if earliest_type == "think":
             safe = self._buf[:earliest_pos]
@@ -247,7 +184,6 @@ class StreamingStripper:
             list(self._OPEN_COMMENTS)
             + [self._OPEN_THINK]
             + list(self._THINKING_MARKERS)
-            + list(self._INTERNAL_MARKER_PREFIXES)
         )
         max_hold = min(self._HOLD, len(self._buf))
         best_hold = 0
@@ -270,7 +206,6 @@ class StreamingStripper:
             self._in_comment_block
             or self._in_think_block
             or self._in_text_think_block
-            or self._in_internal_marker
         ):
             return ""
         result = self._buf
@@ -279,7 +214,7 @@ class StreamingStripper:
 
 
 def strip_non_display_blocks(content: str) -> str:
-    """Apply the streaming visibility contract to persisted/non-stream content."""
+    """对持久化或非流式内容应用同一套可见性过滤。"""
 
     stripper = StreamingStripper()
     return stripper.feed(content) + stripper.flush()
@@ -298,9 +233,10 @@ _LEADING_ENGLISH_THINKING_PATTERN = re.compile(
 
 
 def strip_thinking_text(content: str) -> str:
-    """
-    移除 LLM 输出中的纯文本推理过程（Qwen3 等模型可能输出 "Thinking Process:" 等英文推理块）。
-    作为最终兜底，在内容写入前端和数据库之前调用。
+    """移除模型输出开头的纯文本推理块。
+
+    部分模型不输出 ``think`` 标签，而是直接以 "Thinking Process" 等文字开头；
+    这里在内容写入前端与数据库之前应用同一判断。
     """
     if not content:
         return content

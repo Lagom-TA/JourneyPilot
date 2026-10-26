@@ -963,11 +963,11 @@ class ModelRouter:
     def get_fast(self) -> BaseLLM:
         return self._get_or_create(ModelTier.FAST)
 
-    def get_for_task(self, task, feedback=None, *, has_tools=False):
+    def get_for_task(self, task, *, has_tools=False):
         from .task_routing import TaskLLM, select_task_route
         route = select_task_route(
             task, self._settings.primary_model.model_name, self._settings.fast_model.model_name,
-            feedback, has_tools=has_tools,
+            has_tools=has_tools,
             primary_effort=self._settings.primary_model.reasoning_effort,
             fast_effort=self._settings.fast_model.reasoning_effort,
             primary_protocol="responses" if self._settings.primary_model.use_responses_api else "chat_completions",

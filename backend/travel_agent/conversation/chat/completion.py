@@ -147,8 +147,6 @@ async def complete_chat(
         "run_id": trip_run.run_id,
         "run_status": run_status,
         "final_content": assistant_content,
-        "citations": list(ctx.final_grounding.get("citations") or []),
-        "annotations": list(ctx.final_grounding.get("annotations") or []),
         "run_cost_summary": cost_summary,
         "ts_ms": run_ts_ms(),
     }

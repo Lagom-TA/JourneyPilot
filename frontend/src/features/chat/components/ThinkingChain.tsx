@@ -16,7 +16,7 @@ interface ThinkingChainProps {
     startedAt?: Date | string;
     regionId: string;
 }
-const ICONS = { planning: Compass, destination: MapPin, transport: TrainFront, stay: BedDouble, itinerary: Map, verify: FileCheck2, delivery: FileCheck2 };
+const ICONS = { planning: Compass, destination: MapPin, transport: TrainFront, stay: BedDouble, itinerary: Map, delivery: FileCheck2 };
 function safeUrl(value: string | undefined): string | undefined {
     try {
         const url = new URL(value || '');
@@ -78,9 +78,7 @@ function AgentCard({ group, interrupted }: {
                 : latestResult ? toolResultText(latestResult) : (group.id === 'planning' ? '需求已梳理，调研任务已分派' : publicProgressText(last.content)) || '本轮处理已结束';
     const milestones = [...new Set(group.steps.filter(s => !s.isToolCall).map(s => publicProgressText(s.content)).filter(Boolean))]
         .filter(text => text !== summary && text !== '正在整理需求并查询相关资料' && text !== '本轮资料整理已结束');
-    const published = [...group.steps].reverse().find(s => !s.isToolCall && s.progressStatus);
-    const candidates = (published?.resultPreview || []).map(row => ({ title: publicProgressText(row.title), detail: publicProgressText(row.detail) })).filter(row => row.title);
-    const hasDetails = tools.length > 0 || milestones.length > 0 || candidates.length > 0;
+    const hasDetails = tools.length > 0 || milestones.length > 0;
     const issues = tools.filter(s => s.toolStatus === 'failed' || s.toolStatus === 'capability_declared').length;
     const content = <>
     <span className="research-agent-icon"><Icon size={18} strokeWidth={1.6}/></span>
@@ -100,10 +98,6 @@ function AgentCard({ group, interrupted }: {
             : <div className="research-agent-heading">{content}</div>}
     {open && hasDetails && <div id={region} className="research-agent-body">
       {milestones.map((text, i) => <p key={i} className="research-milestone">{text}</p>)}
-      {candidates.length > 0 && <div className="research-candidates">
-        <p className="research-query-context">调研候选 · 最终选择以行程为准</p>
-        {candidates.map((row, i) => <div key={i} className="research-source"><div className="research-source-title">{row.title}</div>{row.detail && <p>{row.detail}</p>}</div>)}
-      </div>}
       {tools.length > 0 && <ol className="research-queries">{tools.map(step => <ToolActivity key={step.id} step={step} stopped={interrupted || group.status !== 'running'}/>)}</ol>}
     </div>}
   </section>;

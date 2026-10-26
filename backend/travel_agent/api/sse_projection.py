@@ -7,7 +7,7 @@ by default vs behind an info affordance — transport is not dual-audience.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, Mapping, Optional
 
 from travel_agent.conversation.intake_contracts import GuidedIntakeState, RouteDecision
 from travel_agent.runtime.run_contracts import TripRunStatus
@@ -151,53 +151,6 @@ def public_plan_gate_payload(payload: Any) -> Dict[str, Any]:
         },
         "decision_options": payload.get("decision_options"),
     }
-
-
-def _project_answer_citations(value: Any) -> List[Dict[str, Any]]:
-    """Project fast-answer citations to what a reader can actually open.
-
-    ``claim_id`` / ``evidence_ids`` are absent on purpose: ``output_guard``
-    already scrubs those very identifiers out of the prose as internal, so
-    shipping them beside it in the same frame was incoherent.
-    """
-
-    if not isinstance(value, list):
-        return []
-    return [
-        {
-            "citation_id": item.get("citation_id"),
-            "claim_text": item.get("claim_text"),
-            "sources": [
-                {
-                    "title": source.get("title"),
-                    "url": source.get("url"),
-                    "source_name": source.get("source_name"),
-                    "snippet": source.get("snippet"),
-                    "authority_label": source.get("authority_label"),
-                    "retrieved_at": source.get("retrieved_at"),
-                }
-                for source in (item.get("sources") or [])
-                if isinstance(source, Mapping)
-            ],
-        }
-        for item in value
-        if isinstance(item, Mapping)
-    ]
-
-
-def _project_answer_annotations(value: Any) -> List[Dict[str, Any]]:
-    if not isinstance(value, list):
-        return []
-    return [
-        {
-            "annotation_id": item.get("annotation_id"),
-            "kind": item.get("kind"),
-            "label": item.get("label"),
-            "detail": item.get("detail"),
-        }
-        for item in value
-        if isinstance(item, Mapping)
-    ]
 
 
 def project_sse_payload(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -427,8 +380,6 @@ def _project_product_event(event_type: str, payload: Dict[str, Any]) -> Dict[str
             **common,
             "run_status": payload.get("run_status"),
             "final_content": payload.get("final_content", ""),
-            "citations": _project_answer_citations(payload.get("citations")),
-            "annotations": _project_answer_annotations(payload.get("annotations")),
         }
         if payload.get("guard_blocked"):
             out["guard_blocked"] = True
@@ -473,12 +424,7 @@ def _project_product_event(event_type: str, payload: Dict[str, Any]) -> Dict[str
             out["run_cost_summary"] = audit_safe_value(payload["run_cost_summary"])
         return out
     if event_type == "run_cancelled":
-        # ``mode`` / ``run_status`` were constants restating the frame's own name,
-        # and a cancelled run has no final answer to cite — ``citations`` /
-        # ``annotations`` were always empty and never read on this branch.
-        # ``run_cost_summary`` is the opposite case: the producer has always sent
-        # it and the client has always read it, so this projection keeps it.
-        # A run you cancelled still cost what it cost.
+        # 取消的 run 只下发已生成的正文与已结算成本；状态由帧名本身表达。
         out = {
             **common,
             "final_content": payload.get("final_content", ""),

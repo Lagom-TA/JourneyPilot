@@ -1,5 +1,5 @@
 import { type ThinkingStep } from "../types/messages";
-export type StageId = 'planning' | 'research' | 'verify' | 'review' | 'synthesis';
+export type StageId = 'planning' | 'research' | 'synthesis';
 export type StageStatus = 'pending' | 'active' | 'done';
 export interface StageDef {
     id: StageId;
@@ -9,8 +9,6 @@ export interface StageDef {
 export const STAGE_DEFS: StageDef[] = [
     { id: 'planning', label: '规划', responsibility: '理解你的需求，拆解调研计划并分派任务' },
     { id: 'research', label: '调研', responsibility: '并行调研目的地、交通、住宿，编排每日行程' },
-    { id: 'verify', label: '准入', responsibility: '校验候选的约束、来源、天气与现实身份' },
-    { id: 'review', label: '成行', responsibility: '验证相邻交通、行程拓扑与完整交付质量' },
     { id: 'synthesis', label: '交付', responsibility: '生成统一投影并原子保存正式旅行结果' },
 ];
 const NODE_STAGES: ReadonlyArray<readonly [
@@ -34,10 +32,6 @@ const NODE_STAGES: ReadonlyArray<readonly [
     ['transport_researcher', '交通查询', 'research'],
     ['accommodation_researcher', '住宿查询', 'research'],
     ['itinerary_planner', '行程规划', 'research'],
-    ['candidate_gate', '候选校验', 'verify'],
-    ['artifact_gate', '产物校验', 'review'],
-    ['intent_fidelity_gate', '意图校验', 'review'],
-    ['delivery_quality_gate', '交付校验', 'review'],
     ['budget_estimate', '预算估算', 'synthesis'],
     ['delivery_projector', '交付内容', 'synthesis'],
     ['delivery_finalizer', '交付定稿', 'synthesis'],
@@ -53,9 +47,7 @@ export function getStageIdForAgent(agentName: string): StageId | null {
 const STAGE_INDEX: Record<StageId, number> = {
     planning: 0,
     research: 1,
-    verify: 2,
-    review: 3,
-    synthesis: 4,
+    synthesis: 2,
 };
 export function parseAgentRound(agentName: string): {
     base: string;
@@ -75,8 +67,6 @@ export interface StageView extends StageDef {
     endedAt?: Date;
     elapsedMs?: number;
     stalled?: boolean;
-    refinementRound?: number;
-    refinementReason?: string;
 }
 export interface DerivedStages {
     stages: StageView[];
@@ -90,14 +80,12 @@ export interface StageSignals {
 export function deriveStages(steps: ThinkingStep[], signals: StageSignals): DerivedStages {
     const touched = new Set<StageId>();
     let lastStageIndex = -1;
-    let maxRound = 0;
-    const roundByStage: Partial<Record<StageId, number>> = {};
     const timingByStage: Partial<Record<StageId, {
         startedAt: Date;
         endedAt?: Date;
     }>> = {};
     for (const step of steps) {
-        const { base, round } = parseAgentRound(step.agentName || '');
+        const { base } = parseAgentRound(step.agentName || '');
         const stage = AGENT_TO_STAGE[base];
         if (!stage)
             continue;
@@ -111,10 +99,6 @@ export function deriveStages(steps: ThinkingStep[], signals: StageSignals): Deri
         }
         else if (endedAt && (!current.endedAt || endedAt > current.endedAt)) {
             current.endedAt = endedAt;
-        }
-        if (round > 0) {
-            maxRound = Math.max(maxRound, round);
-            roundByStage[stage] = Math.max(roundByStage[stage] ?? 0, round);
         }
     }
     const { isStreaming, isSynthesizing, answerStarted } = signals;
@@ -159,7 +143,7 @@ export function deriveStages(steps: ThinkingStep[], signals: StageSignals): Deri
             ? (timing.endedAt?.getTime() ?? (status === 'active' ? now : timing.startedAt.getTime())) -
                 timing.startedAt.getTime()
             : undefined;
-        const baseView: StageView = {
+        return {
             ...def,
             status,
             startedAt: timing?.startedAt,
@@ -167,22 +151,6 @@ export function deriveStages(steps: ThinkingStep[], signals: StageSignals): Deri
             elapsedMs,
             stalled: status === 'active' && elapsedMs !== undefined && elapsedMs > 60000,
         };
-        const refinementRound = roundByStage[def.id];
-        if (refinementRound) {
-            return {
-                ...baseView,
-                refinementRound,
-                refinementReason: '部分信息时效或证据待补充，已自动追加一轮调研核实',
-            };
-        }
-        return baseView;
     });
-    if (maxRound > 0) {
-        const review = stages[STAGE_INDEX.review];
-        if (!review.refinementRound) {
-            review.refinementRound = maxRound;
-            review.refinementReason = '校验发现需补充的信息，已触发补充调研';
-        }
-    }
     return { stages, hasDeepWorkflow: touched.size >= 2 };
 }

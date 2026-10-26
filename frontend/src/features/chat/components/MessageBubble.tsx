@@ -4,7 +4,7 @@ import { getChatErrorGuidance } from "../model/chatErrorGuidance";
 import { useApp } from "../../../app/state/AppContext";
 import { useIsMobileViewport } from "../../../hooks/useMediaQuery";
 import { type Message } from "../types/messages";
-import { Markdown, prepareCitationCopyText } from "./Markdown";
+import { Markdown } from "./Markdown";
 import { ThinkingChain } from "./ThinkingChain";
 import { Hallmark } from "./hallmark/Hallmark";
 import { InspectHint, InspectSectionTitle } from "../../../components/ui/InspectHint";
@@ -61,7 +61,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerat
     const costLedger = React.useMemo(() => buildCostLedgerView(runSummary, runCostLive), [runSummary, runCostLive]);
     const rawErrorText = (message.content || message.displayContent || '').trim();
     const handleCopy = async () => {
-        await navigator.clipboard.writeText(prepareCitationCopyText(message.content, message.citations, message.annotations));
+        await navigator.clipboard.writeText(message.content);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
@@ -126,7 +126,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerat
                 <Hallmark glyph="context" data={message.contextReport}/>
                 <Hallmark glyph="cost" data={costLedger}/>
               </div>)}
-            <Markdown content={message.displayContent} citations={message.citations} annotations={message.annotations} streaming={streaming}/>
+            <Markdown content={message.displayContent} streaming={streaming}/>
             {isInterrupted && (<div className="mt-2 flex items-center gap-1.5 border-t border-stroke pt-2">
                 <Square size={10} className="text-ink-muted"/>
                 <span className="text-[11px] text-ink-muted">已停止生成</span>

@@ -155,7 +155,6 @@ async def test_checkpoint_replay_keeps_fragments_and_rechecks_authorization(know
 async def test_fast_answer_uses_real_loop_and_passes_tool_evidence(knowledge, monkeypatch):
     import asyncio
 
-    from travel_agent.conversation.answer_presentation import OutputGuard
     from travel_agent.planning.state import TravelAgentState
 
     _, tools = knowledge
@@ -166,8 +165,6 @@ async def test_fast_answer_uses_real_loop_and_passes_tool_evidence(knowledge, mo
     monkeypatch.setattr('travel_agent.conversation.answer.node._build_realtime_tool_context', AsyncMock(return_value={}))
     monkeypatch.setattr('travel_agent.conversation.answer.tool_context._build_realtime_tool_context', AsyncMock(return_value={}))
     monkeypatch.setattr('travel_agent.conversation.answer.node.get_available_tools', AsyncMock(return_value=tools))
-    guard = Mock(wraps=OutputGuard())
-    monkeypatch.setattr('travel_agent.conversation.answer.node.OutputGuard', lambda: guard)
     queue = asyncio.Queue()
     result = await conversation_answer_node.fast_answer_node(
         TravelAgentState(user_query="苏州适合游览几天？"),
@@ -175,9 +172,6 @@ async def test_fast_answer_uses_real_loop_and_passes_tool_evidence(knowledge, mo
     )
     assert result["is_completed"]
     assert "建议分两天" in result["messages"][0].content
-    kwargs = guard.check.call_args.kwargs
-    assert kwargs["retrieved_docs"]
-    assert kwargs["evidence_records"][0]["source_type"] != "official"
     assert len(llm.requests) == 2
     assert "sanitized_result" not in result["messages"][0].content
 

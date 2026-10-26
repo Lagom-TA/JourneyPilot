@@ -306,12 +306,6 @@ class TravelAgentState(BaseModel):
         default_factory=list
     )
 
-    final_grounding: Annotated[Dict[str, Any], _merge_dicts] = Field(
-        default_factory=dict
-    )
-
-    output_confidence: Optional[str] = None
-
     pending_user_choice: Annotated[Optional[Dict[str, Any]], _prefer_pending_choice] = (
         None
     )
