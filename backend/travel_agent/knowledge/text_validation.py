@@ -1,4 +1,4 @@
-"""Eligibility of source text for knowledge indexing."""
+"""知识入库前的正文可用性检查。"""
 
 from travel_agent.knowledge.sources.document_parse import MIN_INDEXABLE_CHARS
 from travel_agent.utils.user_text import content_length

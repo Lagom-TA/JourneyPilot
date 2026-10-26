@@ -1,4 +1,4 @@
-"""Planning delivery source presentation."""
+"""交付内容的来源展示。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ _PAYLOAD_RESULT_KEYS = ("results", "content")
 
 
 def _payload_public_excerpt(payload: object) -> tuple[str | None, str | None]:
-    """Turn a structured search payload into one readable excerpt and URL."""
+    """把结构化搜索载荷转成一段可读摘要与 URL。"""
 
     if not isinstance(payload, dict):
         return None, None
@@ -72,15 +72,11 @@ def _readable_bits(entry: Mapping[str, Any]) -> list[str]:
 
 
 def _rendered_payload_excerpt(payload: object) -> str | None:
-    """把任意结构化载荷渲染成人话——**卡片上永远不许出现原始 JSON**。
+    """把任意结构化载荷渲染为可读文本；卡片上不出现原始 JSON。
 
-    `_payload_public_excerpt` 只认 ``results`` / ``content`` 两个已知键；键名一换，
-    整坨 JSON 就会原样印到读者眼前（实测 32 个 Bundle 里有 83 条这样的摘要）。
-    这里必须兜底：**读者不该为我们的可观测性买单**。
-
-    所以这里做的是**渲染**而不是「换一句套话」：任意形状都尽力读出名字与说明。
-    这跟「静默 fallback」不是一回事——新形状不会被藏起来，它照样以可读文本出现，
-    只是不再以 JSON 的样子出现；两个已知形状仍由各自的钉守着。
+    ``_payload_public_excerpt`` 只识别 ``results`` / ``content`` 两个键，其他
+    形状会直接以 JSON 呈现。这里按记录尽力读取名称与说明字段，未知形状同样以
+    可读文本呈现，而不是退回固定套话。
     """
 
     if isinstance(payload, list):
@@ -115,9 +111,9 @@ _APP_LINK_WEB_FORMS = {
 
 
 def _web_openable_url(url: str | None) -> str | None:
-    """只交出读者点得开的链接：http(s) 原样，已知应用深链转网页，其余不给。
+    """只返回读者可打开的链接：http(s) 原样返回，已知应用深链转网页，其余不返回。
 
-    不给，而不是原样给——一个点不动的链接比没有链接更让人困惑。
+    无法转换的深链直接丢弃，避免给出打不开的链接。
     """
 
     if not url:
@@ -136,7 +132,7 @@ def _web_openable_url(url: str | None) -> str | None:
 
 
 def _public_source_presentation(source: SourceRecord) -> tuple[str, str, str | None]:
-    """Project audit-rich SourceRecord fields into ordinary-user source copy."""
+    """把含审计字段的 SourceRecord 转成面向普通用户的来源文案。"""
 
     title = source.title
     excerpt = source.public_excerpt.strip()

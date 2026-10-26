@@ -1,4 +1,4 @@
-"""Planning delivery requirement contracts."""
+"""交付需求契约。"""
 
 from __future__ import annotations
 

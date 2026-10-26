@@ -1,5 +1,3 @@
-"""Planning itinerary lodging bases."""
-
 from __future__ import annotations
 
 from datetime import timedelta
@@ -15,11 +13,10 @@ if TYPE_CHECKING:
 def day_lodging_bases(
     itinerary: StructuredItineraryV2, day: DayPlanV2
 ) -> tuple[LodgingStay | None, LodgingStay | None]:
-    """Last night's departure base and tonight's arrival base for this Day.
+    """返回当天出发时的住宿与当晚入住的住宿。
 
-    Real stays remain the authority. Long-distance departure/arrival projections
-    exclude a base on a side where the traveler has already left or not arrived.
-    No hotel check-in clock or booking availability is inferred.
+    实际住宿记录优先。长途出发/到达投影会在旅行者已经离开或尚未到达的一侧
+    排除住宿。不推断酒店入住时间，也不推断预订可用性。
     """
 
     def base(night):

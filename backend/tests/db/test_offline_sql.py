@@ -1,11 +1,10 @@
 """离线 SQL 生成（`journeypilot migrate --sql`）。
 
-**这组测试不需要 PostgreSQL** —— 离线模式的全部意义就是不连库。它们因此也是这个
-PR 里唯一在没有数据库的环境下仍然会跑的测试。
+**这组测试不需要 PostgreSQL**——离线模式的意义就是不连库，因此它们在没有数据库的
+环境里也会运行。
 
-离线模式最容易坏的地方是「迁移里偷偷问了数据库一句话」：那一句在联机时正常，
-在离线时抛 `MockConnection has no attribute …`，而没人会注意到 `--sql` 坏了 ——
-直到有人想先看看升级要做什么。
+离线模式最容易坏的地方是「迁移里偷偷查询数据库」：联机时正常，离线时抛
+`MockConnection has no attribute …`，而 `--sql` 的故障往往到有人想先看升级内容时才暴露。
 """
 
 from __future__ import annotations
@@ -55,9 +54,9 @@ def test_offline_sql_states_its_text_search_assumption():
 
 
 def test_revision_names_fit_the_alembic_version_column():
-    """`alembic_version.version_num` 是 VARCHAR(32)。超长的 revision 名会在写版本号时炸。
+    """`alembic_version.version_num` 是 VARCHAR(32)。超长的 revision 名会在写版本号时失败。
 
-    这条约束不在任何文档里，只在 Alembic 建的那张表上，所以在这里钉住它 ——
+    这条约束由 Alembic 建的那张表决定，所以在这里用断言固定它——
     否则下一条名字很长的迁移会在跑完 DDL 之后、写版本号那一刻失败。
     """
 
@@ -78,7 +77,7 @@ def test_readiness_blocks_on_the_schema_contract():
     assert GATES_READINESS is True
     assert ("database_schema" in _NON_BLOCKING_COMPONENTS) is (not GATES_READINESS)
 
-    # 校验没跑成时载荷仍要结构完整，且按不就绪处理 —— 门禁的默认值是关着的。
+    # 校验没跑成时载荷仍要结构完整，且按不就绪处理——该开关的默认值是关闭的。
     class _NoReport:
         schema_report = None
 
@@ -92,8 +91,8 @@ def test_every_revision_declares_its_gates():
     """每条迁移都要声明 `destructive` 与 `reversible`。
 
     缺声明时 `is_destructive()` 按 False 处理 —— 一条会删数据但忘了声明的迁移
-    因此会绕过 `--allow-destructive` 那道闸门。所以「忘了写」必须在这里红，
-    而不是在用户的数据上红。
+    因此会绕过 `--allow-destructive` 这道校验。所以「忘了写」必须在这里失败，
+    而不是在用户的数据上失败。
     """
 
     for revision in migrate.revision_line():

@@ -80,9 +80,9 @@ def test_mcp_servers_merge_rather_than_replace():
 
 
 def test_top_level_mcp_servers_is_refused():
-    """顶层 `mcp_servers` 是替换语义，会把内置的 11 个 server 整体抹掉。
+    """顶层 `mcp_servers` 是替换语义，会把内置的 11 个 server 整体覆盖。
 
-    抹掉之后留下的那个没有 command，MCPManager 标 misconfigured，工具层静默归零 ——
+    覆盖之后留下的那个没有 command，MCPManager 标 misconfigured，工具层静默归零 ——
     所以这条路直接拒绝，并指向 `mcp.servers`。
     """
 
@@ -141,7 +141,7 @@ def test_nested_env_override_applies_and_reports_its_path(monkeypatch):
 
 
 def test_a_misspelled_env_variable_is_an_error_not_a_no_op(monkeypatch):
-    """拼错一个字母之后静默什么都不做，正是这套前缀要修掉的东西。"""
+    """拼错一个字母后静默什么都不做，会让配置改动看起来没有生效；这里要求报错。"""
 
     monkeypatch.setenv("JOURNEYPILOT_DATABSE__PORT", "5432")
     with pytest.raises(EnvOverrideError) as exc:
@@ -166,7 +166,7 @@ def test_mcp_native_keys_do_not_need_the_prefix(monkeypatch):
 
 
 def test_list_and_dict_fields_have_no_env_entry():
-    """一个字符串表达不了一张价格表，硬要表达就是又一门小语言。"""
+    """一个字符串无法表达价格表，因此列表与字典字段不提供环境变量入口。"""
 
     reference = env_variable_reference()
     paths = set(reference.values())
@@ -229,7 +229,7 @@ def test_every_shipped_preset_loads():
 
 
 def test_direct_and_proxied_deepseek_get_different_capabilities():
-    """同一个模型经不同上游的 capability 不同，而原来的判据是猜 base_url。
+    """同一个模型经不同上游的 capability 不同，判据不是 base_url 猜测。
 
     JSON Schema 是模型与具体下游共同决定的能力，不能因为 OpenRouter 网关接受这个
     参数就承诺端到端执行；两边都走 json_object + schema prompt。它们的 reasoning
@@ -245,7 +245,7 @@ def test_direct_and_proxied_deepseek_get_different_capabilities():
 
 
 def test_an_unknown_endpoint_gets_the_conservative_profile():
-    """认不出的上游不假装完全兼容：保守档更啰嗦，但两边都能到。"""
+    """认不出的上游按保守档处理：更啰嗦，但两边都能用。"""
 
     unknown = capabilities_for("https://mystery.example.com/v1")
     assert unknown.supports_json_schema is False
@@ -281,7 +281,7 @@ def test_reasoning_dialects_follow_the_declaration():
     assert direct["reasoning_effort"] == "low"
     assert set(proxied) == {"reasoning", "max_tokens"}
     assert proxied["reasoning"] == {"effort": "low", "enabled": True}
-    # 保守档全都发：认不出的那种会被对方忽略，少发一种的代价是开关静默失效。
+    # 保守档全部发送：无法识别的字段会被上游忽略，少发一种的代价是开关静默失效。
     assert set(conservative) == {"thinking", "reasoning_effort", "reasoning", "max_tokens"}
 
 

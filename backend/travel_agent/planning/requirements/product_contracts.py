@@ -1,4 +1,4 @@
-"""Validated trip planner product contracts."""
+"""旅行产品契约。"""
 
 from __future__ import annotations
 

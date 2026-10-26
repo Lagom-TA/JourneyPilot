@@ -192,7 +192,7 @@ def connector_mode_requests_from_constraint_pack(
     dict[tuple[str, str], list[FlexibleRouteMode]],
     set[tuple[str, str]],
 ]:
-    """Project normalized explicit user intent onto actual skeleton adjacency only."""
+    """只把规范化的显式用户意图投影到实际骨架相邻关系上。"""
     adjacent_resources = {}
     for day in skeleton.days:
         adjacent_resources.update(
@@ -223,7 +223,7 @@ def connector_mode_requests_from_constraint_pack(
         and item.get("status") == "active"
         and item.get("visibility") == "user_visible"
         and item.get("category") == "transport_constraint"
-        # Manual memory is a preference, not authorization to require a route.
+        # 记忆条目只能表达偏好，不能作为要求路线的授权。
         and any(
             isinstance(ref, Mapping)
             and ref.get("source")
@@ -231,7 +231,7 @@ def connector_mode_requests_from_constraint_pack(
             for ref in item.get("source_refs") or []
         )
     ]
-    # Apply higher-priority sources last, consistent with constraint normalization.
+    # 优先级更高的来源最后应用，与约束规范化顺序一致。
     source_priority = {
         "memory_fact": 0,
         "manual_profile": 1,
@@ -264,7 +264,7 @@ def connector_mode_requests_from_constraint_pack(
             str(params.get("from_candidate_id") or ""),
             str(params.get("to_candidate_id") or ""),
         )
-        # A partial endpoint is not a complete adjacency scope.
+        # 端点不完整时不能匹配完整的相邻关系。
         target_pairs = (
             [
                 pair

@@ -1,4 +1,4 @@
-"""Integrations rail client."""
+"""12306 余票与中转查询的 HTTP 客户端。"""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ DEFAULT_TIMEOUT_SECONDS = 20.0
 
 
 def extract_left_ticket_path(html: str) -> str:
-    """Read the live remaining-ticket path 12306 publishes in the init page."""
+    """读取 12306 在 init 页面发布的实时余票查询路径。"""
 
     match = _LEFT_TICKET_PATH_RE.search(html or "")
     if match is None:
@@ -55,7 +55,7 @@ def extract_left_ticket_path(html: str) -> str:
 
 
 def extract_lc_query_path(html: str) -> str:
-    """Read the live interline path 12306 publishes in the lcQuery init page."""
+    """读取 12306 在 lcQuery init 页面发布的实时中转查询路径。"""
 
     match = _LC_SEARCH_PATH_RE.search(html or "")
     if match is None:
@@ -64,7 +64,7 @@ def extract_lc_query_path(html: str) -> str:
 
 
 class Rail12306Client:
-    """One 12306 session per query: init for cookies + the live path, then query."""
+    """每次查询使用一个 12306 会话：先 init 获取 cookie 与实时路径，再查询。"""
 
     def __init__(
         self,
@@ -84,7 +84,7 @@ class Rail12306Client:
         )
 
     async def _open_session(self, client: httpx.AsyncClient) -> str:
-        """GET the init page: it both sets the session cookies and names the path."""
+        """请求 init 页面：它同时设置会话 cookie 并给出查询路径。"""
 
         response = await client.get(LEFT_TICKET_INIT_URL)
         if response.status_code != 200:
@@ -96,7 +96,7 @@ class Rail12306Client:
     async def fetch_left_tickets(
         self, *, date: str, from_code: str, to_code: str
     ) -> tuple[list[str], dict[str, str]]:
-        """Return ``(data.result rows, data.map)`` for one exact station pair."""
+        """返回某一对车站的 ``(data.result 行, data.map)``。"""
 
         params = {
             "leftTicketDTO.train_date": date,
@@ -152,7 +152,7 @@ class Rail12306Client:
         to_code: str,
         middle_code: str = "",
     ) -> list[dict[str, Any]]:
-        """Return every ``middleList`` itinerary 12306 offers for the pair."""
+        """返回 12306 为该车站对提供的全部 ``middleList`` 行程。"""
 
         async with self._new_client(follow_redirects=True) as discovery:
             response = await discovery.get(LCQUERY_INIT_URL)

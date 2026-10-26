@@ -1,4 +1,4 @@
-"""Planning delivery presentation."""
+"""交付条目文案渲染。"""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from typing import Sequence
 
 
 class DeliveryPresentationError(ValueError):
-    """Raised when an entry cannot be rendered into truthful lines."""
+    """条目无法渲染为可信文案时抛出。"""
 
 
 TRANSPORT_MODE_LABELS: dict[TransportMode, str] = {
@@ -59,7 +59,7 @@ WEATHER_HISTORICAL_LABEL = "历史天气数据"
 def weather_freshness_text(
     *, weather_data_state: str, observed_at: Optional[datetime]
 ) -> Optional[str]:
-    """The one line the badge shows, for every surface that shows it."""
+    """各展示面的徽标统一显示的这一行。"""
 
     if weather_data_state == "historical":
         return WEATHER_HISTORICAL_LABEL
@@ -97,13 +97,13 @@ _RESERVATION_LABELS = {True: "需要预约", False: "无需预约"}
 
 
 def _clock(value: Optional[datetime]) -> Optional[str]:
-    """The local wall clock the Bundle stored, never converted to a viewer's."""
+    """返回 Bundle 存储的本地墙钟时间，不转换为查看者时区。"""
 
     return None if value is None else value.strftime("%H:%M")
 
 
 def _clock_text(value: Optional[str]) -> Optional[str]:
-    """A stored ``HH:MM`` check-in/out clock, taken as written."""
+    """按原样返回存储的 ``HH:MM`` 入住/退房时间。"""
 
     if not value:
         return None
@@ -118,7 +118,7 @@ def _time_range(start: Optional[str], end: Optional[str]) -> Optional[str]:
 
 
 def _date_time(value: Optional[datetime]) -> Optional[str]:
-    """A moment that may fall on another Day, so it names the day too."""
+    """可能落在其他 Day 的时刻，因此同时标出日期。"""
 
     return None if value is None else f"{value.month}月{value.day}日 {value:%H:%M}"
 
@@ -137,10 +137,9 @@ def format_duration_minutes(minutes: Optional[int]) -> Optional[str]:
 
 
 def _distance(meters: Optional[int]) -> Optional[str]:
-    """Metres up to a kilometre, kilometres beyond it.
+    """不足一公里用米，其余用公里。
 
-    Metres all the way up prints ``距离：476000 米`` for a Shinkansen leg — a true number
-    in a unit no reader uses at that scale.
+    全程用米会让长途段显示为六位数米数：数值正确，但该量级下读者不使用这个单位。
     """
 
     if meters is None:
@@ -163,21 +162,15 @@ def _rows(*items: Optional[str]) -> list[str]:
 
 
 def _transfer_label(count: int) -> str:
-    """``0`` is 「直达」 on every surface: the report must not describe one leg
-    as something other than what the route card calls it."""
+    """``0`` 在所有展示面都写作「直达」，与路线卡片的说法一致。"""
 
     return f"{count} 次换乘" if count > 0 else "直达"
 
 
 def endpoint_label(endpoint: TransportEndpoint) -> str:
-    """Name an endpoint the one way every surface names it.
+    """用各展示面统一的方式命名端点。
 
-    The station code disambiguates same-named stations and is the only way a
-    reader can match a line against a ticket, so it travels with the name.
-
-    Public because ``entities/trip_highlights.py`` names the same endpoints on
-    the trip's cross-city lines; a second spelling there would be a second
-    authority for one user-visible string.
+    站点代码用于区分同名车站，也是读者核对车票的线索，因此与名称一起显示。
     """
 
     return (
@@ -198,14 +191,11 @@ def _has_service_identity(segment: TransportSegment) -> bool:
 
 
 def _segment_lines(leg: TransportLeg) -> list[str]:
-    """The service identity — train/flight number, operator, station codes.
+    """服务身份信息：车次/航班号、运营方、站点代码。
 
-    A direct single-segment leg carries this too, because the facts rows above
-    only hold times, distance, transfers and booking.  The ``第 N 段`` prefix,
-    the mode and the per-segment duration and cost only inform when the leg
-    genuinely transfers; on a single segment the service number leads instead.
-    A single segment with no service identity at all — a walking or taxi
-    connector — renders nothing rather than reprinting the title's ``A → B``.
+    单段直达也会显示该信息，因为上方事实行只有时刻、距离、换乘与预订。
+    ``第 N 段`` 前缀、交通方式与分段耗时只在真正换乘时出现；没有任何服务身份的
+    单段（步行或出租接驳）不渲染，避免重复标题里的 ``A → B``。
     """
 
     segments: Sequence[TransportSegment] = leg.segments
@@ -397,11 +387,10 @@ def _custom(entity: CustomBlock) -> dict[str, Any]:
 def block_presentation(
     entity: object, *, entry_id: str, projection_role: str
 ) -> dict[str, Any]:
-    """Render every line one timeline entry shows, once.
+    """一次渲染时间线条目的全部文案。
 
-    ``entry_id`` travels with the lines because a Day can hold the same entity
-    twice — the two halves of a cross-night leg, a stay's check-in and check-out
-    — and the rendered rows have to be addressable per position, not per entity.
+    ``entry_id`` 随文案返回：同一天可能包含同一实体的两个位置（跨夜交通的两半、
+    住宿的入住与退房），渲染结果需要按位置而非按实体寻址。
     """
 
     if isinstance(entity, VisitStop):

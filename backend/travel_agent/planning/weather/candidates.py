@@ -1,3 +1,5 @@
+"""天气与候选的关联。"""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -84,7 +86,7 @@ def _transport_applies_to_weather_day(
     candidate: TransportCandidate,
     day: WeatherDayContext,
 ) -> bool:
-    """Bind destination weather to the route's actual local service date."""
+    """把目的地天气绑定到路线实际的本地服务日期。"""
     if candidate.transport_class == "long_distance":
         anchor = candidate.arrival_at or candidate.departure_at
         local_anchor = _local_timestamp(anchor, day)
@@ -103,7 +105,7 @@ def _scheduled_transport_weather_day(
     candidate: TransportCandidate,
     day: WeatherDayContext,
 ) -> WeatherDayContext:
-    """Narrow a forecast day to the hourly window relevant to a route."""
+    """把预报日收窄到与路线相关的时段。"""
     if day.data_kind != "forecast" or not day.hourly_windows:
         return day
 

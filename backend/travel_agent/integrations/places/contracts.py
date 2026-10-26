@@ -1,4 +1,4 @@
-"""Integrations places contracts."""
+"""地点 Provider 的失败码与观测契约。"""
 
 from __future__ import annotations
 
@@ -17,11 +17,11 @@ PlaceProviderFailureCode = Literal[
 
 
 class NominatimPlaceSearchError(RuntimeError):
-    """The global place provider could not return a valid response.
+    """地点 Provider 未能返回有效响应。
 
-    ``code`` 是必填的。三种失败在运维上要区别对待，而路由会把 message 丢掉、换成一句
-    本地化字符串 —— 只靠英文 message 区分，区别就在边界上没了。
-    判据放在异常上，**不靠 message 匹配**：靠 message 认失败类型是另一条隐式合同。
+    ``code`` 是必填项。三种失败在运维上需要区别处理，而路由会丢弃 message、
+    换成一句本地化字符串，只靠英文 message 区分会在边界处丢失信息。判据放在
+    异常上，不通过匹配 message 判断失败类型。
     """
 
     def __init__(self, message: str, *, code: PlaceProviderFailureCode) -> None:
@@ -31,12 +31,11 @@ class NominatimPlaceSearchError(RuntimeError):
 
 @dataclass(frozen=True)
 class NominatimSearchObservation:
-    """One ``/search`` answer plus when the provider actually produced it.
+    """一次 ``/search`` 回答，以及 Provider 实际生成该回答的时间。
 
-    ``observed_at`` is the provider observation instant, not the moment this
-    process read it: on a reuse it is the timestamp of the original live call.
-    Callers that turn this into evidence must publish *this* value, never
-    ``now`` — that difference is the whole reason the raw body is reusable.
+    ``observed_at`` 是 Provider 的观测时刻，不是本进程读取它的时刻：复用缓存时，
+    它是原始实时调用的时间戳。把它转成证据的调用方必须发布这个值，而不是
+    ``now``；这个区别正是原始响应可复用的前提。
     """
 
     items: list[Dict[str, Any]]

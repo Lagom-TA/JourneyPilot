@@ -20,7 +20,7 @@ def build_candidate_catalog(
     *,
     packets: Iterable[ResearchPacket] | None = None,
 ) -> tuple[RecommendationCatalog, list[WeatherImpact]]:
-    """Build a deterministic catalog from the current worker packets."""
+    """把当前 worker packet 汇总为确定性的候选目录，并计算各候选的天气影响。"""
     packets = list(packets) if packets is not None else _catalog_packets(state)
     if state.planning_generation is None:
         raise ValueError(

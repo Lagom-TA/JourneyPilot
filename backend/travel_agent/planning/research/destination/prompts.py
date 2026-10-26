@@ -1,5 +1,3 @@
-"""Planning research destination prompts."""
-
 from __future__ import annotations
 
 TASK_TEMPLATE = """Research the requested destination candidates.

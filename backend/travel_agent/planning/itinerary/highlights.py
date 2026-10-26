@@ -1,5 +1,3 @@
-"""Planning itinerary highlights."""
-
 from __future__ import annotations
 
 from travel_agent.planning.delivery.presentation import TRANSPORT_MODE_LABELS
@@ -41,12 +39,11 @@ _LODGING_LABEL = "住宿"
 
 
 def _unique(names: Sequence[str], *, limit: int) -> list[str]:
-    """The first ``limit`` distinct non-empty names, in the trip's own order.
+    """按行程顺序取前 ``limit`` 个去重后的非空名称。
 
-    Chronological, not ranked: the itinerary's order is a fact about the plan,
-    while "most notable" would be a judgement none of these entities carries.
-    Distinctness matters beyond tidiness — the report renders each line under a
-    React key of its own text, so two identical lines would collide.
+    按时间顺序而非重要性排序：行程顺序是计划事实，这些实体本身不携带
+    「最值得看」的判断。去重除了整洁，也因为前端以每行文本作为 React key，
+    两行相同文本会冲突。
     """
 
     seen: list[str] = []
@@ -60,13 +57,10 @@ def _unique(names: Sequence[str], *, limit: int) -> list[str]:
 
 
 def _long_distance_service(leg: TransportLeg) -> str:
-    """Name one cross-city leg the way a reader can match it against a ticket.
+    """按读者能对照车票的方式命名一段跨城交通。
 
-    The service number leads when the leg has one, because that is what is
-    printed on the ticket; the mode word stands in when it does not.  Endpoints
-    carry their station code for the same reason
-    (``delivery_presentation.endpoint_label``): same-named stations are
-    otherwise indistinguishable.
+    有车次时以车次开头，因为车票上印的是车次；没有时使用交通方式名称。
+    端点带上车站代码，原因相同：同名车站在别处无法区分。
     """
 
     route = f"{endpoint_label(leg.from_endpoint)} → {endpoint_label(leg.to_endpoint)}"
@@ -133,13 +127,11 @@ def derive_trip_highlights(
     lodging: Sequence[LodgingStay],
     transport_legs: Sequence[TransportLeg],
 ) -> list[str]:
-    """Digest one whole itinerary into at most :data:`MAX_TRIP_HIGHLIGHTS` lines.
+    """把整份行程归纳为至多 :data:`MAX_TRIP_HIGHLIGHTS` 行。
 
-    Ordered so the first two lines stand alone: the workspace overview prints
-    only those two, and the cross-city services plus the places the trip is
-    built around are what a traveller reads a trip by.  An itinerary holding
-    none of the four returns no lines, and every consumer already renders
-    nothing for an empty list.
+    排序保证前两行可独立使用：workspace 概览只展示这两行，跨城交通与行程
+    主要围绕的地点正是旅行者了解行程的入口。四类内容都为空时返回空列表，
+    调用方对空列表不渲染内容。
     """
 
     lines = [
@@ -152,14 +144,12 @@ def derive_trip_highlights(
 
 
 def with_derived_highlights(itinerary: StructuredItineraryV2) -> StructuredItineraryV2:
-    """The same itinerary, carrying the highlights its own entities imply.
+    """返回带有实体所隐含亮点的同一份行程。
 
-    ``StructuredItineraryV2`` cannot default this field the way it defaults
-    ``cost_summary`` — the derivation reads transport wording from
-    ``delivery_presentation``, which imports the entity module — so an itinerary
-    built by a constructor call carries whatever ``highlights`` the caller
-    passed, including nothing.  This is the one function that repairs that, and
-    every writer of an existing itinerary goes through it.
+    ``StructuredItineraryV2`` 无法像 ``cost_summary`` 那样为 ``highlights``
+    设置默认值：推导需要读取 ``delivery_presentation`` 中的交通文案，而该模块
+    导入了实体模块。因此通过构造器创建的行程会保留调用方传入的 highlights，
+    包括空值；所有写入已有行程的代码都经过本函数补齐。
     """
 
     return itinerary.model_copy(

@@ -1,7 +1,7 @@
-"""指纹的归一化规则和差异报告。
+"""指纹的归一化规则与差异报告。
 
-指纹是这一整个 PR 的判据来源，所以它自己的行为必须被钉住：**哪些差异算差异**，
-以及**差异报告能不能让人看懂差在哪**（§3.2 要求诊断可执行，不是「摘要不符」）。
+指纹的行为必须固定：哪些差异算差异，以及差异报告能否指出具体差在哪里
+（诊断必须可执行，不能只说「摘要不符」）。
 """
 
 from __future__ import annotations
@@ -42,8 +42,8 @@ def test_vector_dimension_is_normalized_but_recorded(temp_database, settings):
 def test_mismatched_dimension_is_not_normalized_away(temp_database, settings):
     """如果实际列维度与传入的配置维度**不同**，它必须留在摘要里让人看见。
 
-    这条是 P0-D（embedding 合同）的前置：归一化的目的是折叠「合法的环境差异」，
-    不是把「配置说 1536、库里是 1024」这种真问题一起藏掉。
+    归一化的目的是折叠合法的环境差异，而不是把「配置说 1536、库里是 1024」
+    这种真问题一起藏掉。
     """
 
     migrate.upgrade(temp_database)

@@ -1,6 +1,6 @@
-"""
-长期用户画像记忆 (Infrastructure Layer)
-基于 PostgreSQL 持久化存储用户偏好和历史行程。
+"""长期用户画像记忆（Infrastructure Layer）。
+
+基于 PostgreSQL 持久化用户偏好与系统画像。
 """
 
 from __future__ import annotations
@@ -29,10 +29,10 @@ def _bind_ts(value: Optional[str]) -> Optional[datetime]:
 
 
 class UserProfileMemory:
-    """用户画像持久化管理"""
+    """用户画像持久化管理。"""
 
     async def get_user_profile(self, user_id: str) -> Optional[UserProfile]:
-        """从 PostgreSQL 获取用户画像，不存在则返回 None"""
+        """从 PostgreSQL 获取用户画像；不存在时返回 None。"""
         async with get_db_session() as session:
             result = await session.execute(
                 text("SELECT * FROM user_profiles WHERE user_id = :uid"),
@@ -44,7 +44,7 @@ class UserProfileMemory:
             return self._row_to_profile(dict(row))
 
     async def ensure_profile_for_write(self, user_id: str) -> UserProfile:
-        """为真实写入取得画像；只有调用方已经有内容要保存时才允许创建。"""
+        """为真实写入获取画像；仅在调用方已有内容需要保存时创建。"""
         profile = await self.get_user_profile(user_id)
         if profile is None:
             profile = UserProfile(
@@ -56,7 +56,7 @@ class UserProfileMemory:
         return profile
 
     async def get_revision(self, user_id: str) -> int:
-        """画像版本号。延迟执行的后台任务用它固定「入队时看到的是哪一版画像」。"""
+        """返回画像版本号；延迟执行的后台任务用它固定入队时的画像版本。"""
         async with get_db_session() as session:
             result = await session.execute(
                 text("SELECT revision FROM user_profiles WHERE user_id = :uid"),
@@ -97,13 +97,12 @@ class UserProfileMemory:
             )
 
     async def update_preferences(self, user_id: str, updates: Dict[str, Any]) -> None:
-        """更新用户偏好：**带上来的键整组覆盖，没带上来的键原样保留**。
+        """更新用户偏好：带上来的键整组覆盖，未带上来的键保持不变。
 
-        所以这**不是**「以 updates 为完整期望状态」：少带一组不会清空那一组。偏好设置页每次保存都发全套键，那条口径前后端
-        保持一致，不许在另一端写成第二种说法。
+        因此 updates 不是完整期望状态，少带一组不会清空该组。偏好设置页每次保存
+        都发送全套键。
 
-        这个方法的语义就在它身上 —— 没带上来的组逐字不动、带上来的列表组
-        是覆盖而不是追加、两个调用点互不踩踏。
+        未更新的组保持原值；带上的列表组为覆盖而非追加。
         """
         profile = await self.ensure_profile_for_write(user_id)
         current = profile.preferences.model_dump()
@@ -112,16 +111,13 @@ class UserProfileMemory:
         await self.save_user_profile(profile)
 
     async def clear_profile_memory(self, user_id: str) -> int:
-        """清掉画像里**系统自己学来的**那一份，用户手填的偏好一个字都不动。
+        """清除画像中由系统生成的部分，用户手填的偏好保持不变。
 
-        profile 行上住着两样来源完全不同的东西：``preferences``（六组偏好与常用
-        出发地，用户在「我的偏好」屏亲手填的，写入方只有 ``api/routes/user.py``
-        那两条路由）与 ``auto_portrait``（系统从对话里总结出来的）。**只有后者是
-        「记忆」**，也只有后者会被遗忘流程清掉。
+        profile 行包含两类来源不同的数据：``preferences``（六组偏好与常用出发地，
+        仅由 ``api/routes/user.py`` 的两条路由写入）与 ``auto_portrait``（系统从
+        对话总结）。只有 ``auto_portrait`` 属于记忆，会被遗忘流程清除。
 
-        这里没有参数可拨，这是刻意的：不得有开关让一次「删除记忆」把用户手填的
-        偏好（尤其常用出发地）带进同一笔删除。「碰不到手填偏好」不是一个调用约定，
-        而是一件做不到的事 —— 这类开关不许长出来。
+        该方法不提供参数，避免删除记忆时连带清除用户手填偏好。
         """
         if not user_id:
             return 0

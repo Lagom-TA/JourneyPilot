@@ -1,4 +1,4 @@
-"""Planning graph."""
+"""规划工作流图。"""
 
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ from travel_agent.planning.weather.node import (
 logger = logging.getLogger(__name__)
 
 
-# LangGraph still reads this flag when newer LangChain omits it.
+# 较新的 LangChain 不再提供该属性，LangGraph 仍会读取它。
 if not hasattr(langchain, "debug"):
     langchain.debug = False
 
@@ -292,7 +292,7 @@ _compiled_graphs_with_checkpointer: Dict[int, Any] = {}
 
 
 def get_travel_graph(checkpointer: Optional[Any] = None):
-    """获取编译后的深度调研工作流图（单例）"""
+    """获取编译后的深度调研工作流图（单例）。"""
     global _compiled_graph
     if checkpointer is None:
         if _compiled_graph is None:

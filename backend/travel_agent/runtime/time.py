@@ -1,4 +1,4 @@
-"""Runtime time."""
+"""运行时的 UTC 时间格式化。"""
 
 from __future__ import annotations
 

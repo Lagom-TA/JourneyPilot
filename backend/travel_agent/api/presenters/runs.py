@@ -18,7 +18,7 @@ def _run_response(
     *,
     title: Optional[str] = None,
 ) -> TripRunResponse:
-    """Inspect-surface run projection: codes/nodes yes, raw error prose never."""
+    """检视界面的 run 投影：保留原因码与节点，不下发原始错误文本。"""
     return TripRunResponse(
         run_id=run.run_id,
         session_id=run.session_id,
@@ -42,13 +42,11 @@ def _run_response(
 
 
 def _public_pending_user_choice(choice: Any) -> Optional[Dict[str, Any]]:
-    """Project the awaiting-input decision, or ``None`` when nobody can act on it.
+    """投影待输入决策；无法恢复的决策返回 None。
 
-    The durable column is a JSONB blob, but it has one live producer: the plan
-    approval gate.  A shape no client can restore is not republished — a returning
-    browser would only be able to render it as an unactionable waiting state.
-    ``read_only`` / ``terminal_status`` are carried through because they are how a
-    client tells "still waiting on you" from "this decision was cancelled".
+    持久列是 JSONB，当前只有计划审批门一个写入方。客户端无法恢复的决策不再下发，
+    避免恢复会话时只显示无法操作的等待状态。``read_only`` / ``terminal_status``
+    保留，用于区分仍在等待与决策已取消。
     """
 
     if not isinstance(choice, Mapping):
@@ -67,7 +65,7 @@ def _public_pending_user_choice(choice: Any) -> Optional[Dict[str, Any]]:
 
 
 def _state_response(state) -> TripRunStateResponse:
-    """Authorized inspect projection of run state (audit-safe, no dual mode)."""
+    """run 状态的检视投影（经脱敏，无双重模式）。"""
     return TripRunStateResponse(
         run_id=state.run_id,
         status=state.status.value,
@@ -100,10 +98,9 @@ def _execution_response(execution) -> Optional[TripRunExecutionResponse]:
 
 
 def _event_response(event) -> Optional[TripRunEventResponse]:
-    """Project durable events for product lifecycle + audit-safe inspect.
+    """投影持久事件：生命周期事件按产品形态下发，其他事件经脱敏后下发。
 
-    Lifecycle boundaries stay product-shaped; other event types are included
-    only after ``audit_safe_value`` strips raw I/O keys (inspect surface).
+    ``audit_safe_value`` 会剔除其他事件载荷中的原始 I/O 字段。
     """
     if event.event_type in {"delivery.ready", "bundle.current_changed"}:
         payload = {

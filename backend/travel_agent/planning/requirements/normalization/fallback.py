@@ -1,4 +1,4 @@
-"""Planning requirements normalization fallback."""
+"""模型失败时的需求归一化回退。"""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ from travel_agent.planning.requirements.normalization.clauses import _target_for
 def _fallback_normalization(
     clauses: List[SourceClause], controlled_identity: Dict[str, object]
 ) -> RequestContractNormalizationResult:
-    """Build the minimum deterministic contract after model failure only."""
+    """仅在模型失败后构建最小确定性契约。"""
 
     fallback = RequestContractNormalizationResult(
         clauses=[_fallback_clause(item, controlled_identity) for item in clauses]
@@ -249,7 +249,7 @@ def _fallback_clause(
 
 
 def _fallback_explicit_domains(text: str) -> set[IntentTarget]:
-    """Identify only explicit domain nouns for conservative fallback safety."""
+    """只识别明确的领域名词，保证回退路径保守。"""
 
     domains: set[IntentTarget] = set()
     if any(token in text for token in ("咖啡", "餐", "美食", "早餐", "午餐", "晚餐")):

@@ -1,4 +1,4 @@
-"""Planning delivery weather refresh contracts."""
+"""天气 Bundle 刷新契约。"""
 
 from __future__ import annotations
 

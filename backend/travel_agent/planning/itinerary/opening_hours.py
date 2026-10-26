@@ -1,5 +1,3 @@
-"""Planning itinerary opening hours."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -121,7 +119,7 @@ class OpeningRules:
 
 
 def opening_rules(value: str | None, day: date) -> OpeningRules:
-    """Extract rules applicable to this date; unknown text remains unknown."""
+    """提取适用于该日期的规则；无法识别的文本保持未知。"""
     text = value or ""
     intervals: list[tuple[int, int]] = []
     last_entries: list[int] = []
@@ -178,7 +176,7 @@ def opening_window_violation(
     start: datetime | None,
     end: datetime | None,
 ) -> str | None:
-    """A known conflict, or None (which includes missing operating evidence)."""
+    """返回已知的冲突；没有冲突或缺少运营信息时返回 None。"""
     rules = opening_rules(value, day)
     if rules.closed:
         return "published closed day"
@@ -206,7 +204,7 @@ def opening_window_violation(
 def latest_opening_window(
     value: str | None, day: date, latest_end: datetime, duration: timedelta
 ) -> tuple[datetime, datetime] | None:
-    """Latest whole stay satisfying known hours and strict admission cutoff."""
+    """返回满足已知营业时间与最后入场限制的最晚完整停留。"""
     rules = opening_rules(value, day)
     if rules.closed:
         return None

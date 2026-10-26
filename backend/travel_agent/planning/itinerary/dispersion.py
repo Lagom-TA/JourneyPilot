@@ -1,5 +1,3 @@
-"""Planning itinerary dispersion."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,7 +15,7 @@ LOCAL_TRANSPORT_CLASSES = frozenset({"public_transit", "flexible"})
 
 @dataclass(frozen=True)
 class DispersionLeg:
-    """One transport leg of a Day, as the two numbers care about it."""
+    """一天中的一段交通，只保留计算所需的两个字段。"""
 
     transport_class: str
     duration_minutes: Optional[int] = None
@@ -25,13 +23,12 @@ class DispersionLeg:
 
 @dataclass(frozen=True)
 class DayDispersion:
-    """The measurement of one Day.  Counts travel alongside the two numbers.
+    """一天的活动强度测量，除两个数值外同时记录计数。
 
-    ``local_leg_count`` / ``untimed_local_leg_count`` and
-    ``located_point_count`` / ``point_count`` exist so a small number can never
-    be read as a good number: 30 minutes over three legs and 30 minutes over
-    one timed leg out of three are different Days, and a 2 km span over two
-    located stops out of seven is not a compact Day.
+    ``local_leg_count`` / ``untimed_local_leg_count`` 与
+    ``located_point_count`` / ``point_count`` 用于避免把小数值误读为良好：
+    三段共 30 分钟与三段中仅一段计时 30 分钟不同；七个停留点中只有两个有坐标
+    时，2 公里的跨度也不代表行程紧凑。
     """
 
     local_leg_minutes: int
@@ -46,12 +43,10 @@ class DayDispersion:
 def day_dispersion(
     points: Sequence[DispersionPoint], legs: Sequence[DispersionLeg]
 ) -> DayDispersion:
-    """Measure one Day from its stops and its transport legs.
+    """根据停留点与交通段测量一天。
 
-    A leg with no duration is counted, not summed as zero — an unpriced leg and
-    an instant leg are different facts, and only the count keeps them apart.
-    A stop with no coordinates takes no part in the span for the same reason:
-    it is reported as unlocated instead of being dropped from the tally.
+    没有时长的交通段只计数，不按 0 分钟累加：时长未知与瞬时到达是不同事实。
+    没有坐标的停留点同样不参与跨度计算，只计入未定位数量。
     """
 
     local = [leg for leg in legs if leg.transport_class in LOCAL_TRANSPORT_CLASSES]
@@ -86,13 +81,11 @@ def day_dispersion(
 def entity_coordinates(
     entity: object, fact_index: Mapping[str, FactAssertion]
 ) -> tuple[Optional[float], Optional[float]]:
-    """Where a stop is, from the only two layers allowed to say so.
+    """返回停留点坐标，来源只有两层。
 
-    An authored entry carries the coordinates the place provider resolved for it
-    onto the stop itself; a candidate-backed stop leaves them unset and its
-    location lives in the verified coordinate facts its lineage cites.  This is
-    the rule the map projection renders and therefore the rule any other reader
-    of the same location has to use — there is no third source and no guess.
+    撰写条目把地点 Provider 解析出的坐标直接放在停留点上；候选落位不设置
+    坐标，其位置来自来源中已验证的坐标事实。地图投影与其他读取该位置的代码
+    都使用这一规则，没有第三个来源，也不做推断。
     """
 
     latitude = getattr(entity, "latitude", None)
@@ -107,11 +100,9 @@ def entity_coordinates(
 def itinerary_dispersion(
     itinerary: StructuredItineraryV2, fact_index: Mapping[str, FactAssertion]
 ) -> list[tuple[str, DayDispersion]]:
-    """Measure every Day of a materialized itinerary, in Day order.
+    """按天顺序测量已物化行程的每一天。
 
-    The Day's timeline is the authority on what belongs to it: an entity is on
-    the Day it is projected onto, which is also the Day whose connectors were
-    built for it.
+    当天的时间线决定实体归属：实体落在它被投影到的那一天，接驳也按这一天构建。
     """
 
     stops: dict[str, object] = {}
@@ -155,7 +146,7 @@ def itinerary_dispersion(
 
 @dataclass(frozen=True)
 class DispersionPoint:
-    """One stop of a Day, with whatever coordinates were resolvable for it."""
+    """一天中的一个停留点，携带能解析到的坐标。"""
 
     label: str
     latitude: Optional[float] = None
@@ -169,9 +160,9 @@ class DispersionPoint:
 def verified_coordinate_pair(
     assertion_ids: Sequence[str], fact_index: Mapping[str, FactAssertion]
 ) -> tuple[Optional[float], Optional[float]]:
-    """The verified latitude/longitude an entity's lineage supports, or neither.
+    """返回实体来源中已验证的经纬度，缺一时返回 (None, None)。
 
-    Half a pair is not a location, so a lone verified latitude yields nothing.
+    只有单个坐标不构成位置。
     """
 
     values: dict[str, float] = {}

@@ -1,5 +1,3 @@
-"""Planning itinerary day themes."""
-
 from __future__ import annotations
 
 from travel_agent.planning.itinerary.models import DiningStop
@@ -45,7 +43,7 @@ def _lead(
     visits: Sequence[VisitStop],
     dining: Sequence[DiningStop],
 ) -> str:
-    """Name the Day by the places it is actually built around."""
+    """用当天实际围绕的地点给这一天命名。"""
 
     names: list[str] = []
     for stop in visits:
@@ -96,11 +94,10 @@ def derive_day_theme(
     dining: Sequence[DiningStop],
     long_distance_legs: Sequence[TransportLeg],
 ) -> str:
-    """Title one Day from the entities it holds.
+    """根据当天包含的实体生成标题。
 
-    ``destination_name`` is the controlled public name of the Day's destination
-    when the caller has the identity anchors to resolve it; it is only used when
-    the Day names no place of its own, which happens on a pure transfer Day.
+    ``destination_name`` 是当天目的地的受控公开名称，仅在当天没有自己的地点
+    时使用，例如纯转场日。
     """
 
     lead = _lead(destination_name=destination_name, visits=visits, dining=dining)

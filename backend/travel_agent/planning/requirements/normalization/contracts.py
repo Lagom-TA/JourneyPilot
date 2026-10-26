@@ -1,4 +1,4 @@
-"""Planning requirements normalization contracts."""
+"""需求归一化契约。"""
 
 from __future__ import annotations
 

@@ -1,5 +1,3 @@
-"""Planning itinerary mutations contracts."""
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -166,11 +164,10 @@ class ItineraryInversePatch(StrictModel):
 
 
 class WorkspaceSnapshotInversePatch(StrictModel):
-    """Typed semantic inverse used by undo/restore commits.
+    """撤销与恢复提交使用的强类型语义逆操作。
 
-    The snapshot only represents user-owned workspace state.  Fact and weather
-    snapshots remain outside this patch and are always taken from the current
-    Delivery Bundle when the inverse is applied.
+    快照只表示用户拥有的 workspace 状态；事实与天气快照不属于本补丁，应用
+    逆操作时始终取自当前 Delivery Bundle。
     """
 
     type: Literal["workspace_snapshot"] = "workspace_snapshot"

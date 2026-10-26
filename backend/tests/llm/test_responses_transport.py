@@ -1,4 +1,4 @@
-"""Verify the GPT Responses and DeepSeek Chat deployment at the HTTP boundary."""
+"""在 HTTP 边界验证 GPT Responses 与 DeepSeek Chat 部署。"""
 
 from __future__ import annotations
 

@@ -9,7 +9,7 @@ from pydantic import Field
 
 
 class PublicBundleManifestResponse(BaseModel):
-    """Public subset of Delivery Bundle manifest."""
+    """Delivery Bundle manifest 的公开子集。"""
 
     model_config = {"extra": "forbid"}
 
@@ -24,7 +24,7 @@ class PublicBundleManifestResponse(BaseModel):
 
 
 class PublicBundleWorkspaceResponse(BaseModel):
-    """Public workspace projection nested under PublicDeliveryBundleResponse."""
+    """嵌套在 PublicDeliveryBundleResponse 中的公开工作区投影。"""
 
     model_config = {"extra": "forbid"}
 
@@ -39,7 +39,7 @@ class PublicBundleWorkspaceResponse(BaseModel):
 
 
 class PublicProviderEnvironmentResponse(BaseModel):
-    """Whether any evidence in this plan came from a supplier's test environment."""
+    """本方案中是否有证据来自供应商测试环境。"""
 
     model_config = {"extra": "forbid"}
 
@@ -47,11 +47,10 @@ class PublicProviderEnvironmentResponse(BaseModel):
 
 
 class PublicDeliveryBundleResponse(BaseModel):
-    """Consumer-facing projection of the immutable Delivery Bundle.
+    """不可变 Delivery Bundle 的消费端投影。
 
-    Top-level shape is locked. Nested itinerary/report/map bodies remain
-    structured dicts projected by ``public_delivery_bundle``; OpenAPI no longer
-    treats the entire Bundle as an opaque ``Dict[str, Any]``.
+    顶层结构固定；内层的行程、报告、地图仍是由 ``public_delivery_bundle``
+    投影出的结构化 dict，OpenAPI 中不再把整个 Bundle 表示为不透明的 dict。
     """
 
     model_config = {"extra": "forbid"}

@@ -39,19 +39,16 @@ import httpx
 
 
 REQUEST_TIMEOUT = 30.0
-REQUEST_DELAY = 1.0  # 节流，符合 Wikimedia 公允使用（0.3 实测仍会被限速）
-# Wikimedia 的 UA 政策要求客户端自报身份与用途，否则按匿名爬虫处理。原先那句
-# "JourneyPilot/1.0 (research bot)" 正是被处理的形状：实测同一秒内，它拿回的是一个
-# 200 的非 JSON 拦截页（在下面会变成「异常」）或 429，而换成这一句立刻拿到正文。
-# 这不是限速问题——降速与退避都救不了它，只有把身份说清楚才行。
+REQUEST_DELAY = 1.0  # 请求间隔，遵守 Wikimedia 的使用限制
+# Wikimedia 的 UA 政策要求客户端自报身份与用途，否则按匿名客户端限流。这里写明
+# 工具名、用途与所用的 HTTP 客户端。
 USER_AGENT = (
     "JourneyPilot-corpus-dump/1.0 "
     "(JourneyPilot knowledge-base corpus builder; local research use) httpx"
 )
 
-# Wikimedia 对匿名客户端限速，超了就整串 429。原先没有退避：一旦撞上，剩下的标题
-# 会一条不落地全部「失败」，而 manifest 只记 failed，读起来像「这些条目不存在」。
-# 65 条一批实测 9 条之后开始连续 429，55 条全废——所以退避不是锦上添花。
+# Wikimedia 会对匿名客户端限速并返回 429。没有退避时，一批标题会在首次限速后
+# 连续失败，manifest 只能记成 failed。这里按递增间隔重试，并优先采用 Retry-After。
 RETRY_AFTER_DEFAULT_SECONDS = 60.0
 RETRY_BACKOFF_SECONDS = (5.0, 20.0, 60.0, 120.0)
 
@@ -84,9 +81,9 @@ async def fetch_extract(
         "titles": title,
         "redirects": 1,
     }
-    # 中文维基按条目自己的字形出正文，日本相关条目多为繁体。语料库其余部分全是简体，
-    # 混进繁体既让 embedding / BM25 面对两种字形，也让所有按字面比对名字的东西
-    # （提名度量的后缀词表、名字一致性）直接看不见它们——「明治神宮」提不出任何提名。
+    # 中文维基按条目自身字形返回正文，日本相关条目多为繁体。语料库其余部分为简体，
+    # 混入繁体后 embedding / BM25 会面对两种字形，按字面比对名称的提名度量也会
+    # 看不到它们——「明治神宮」提不出任何提名。
     if variant:
         params["variant"] = variant
     data = None
@@ -98,7 +95,7 @@ async def fetch_extract(
             break
         except httpx.HTTPStatusError as e:
             status = e.response.status_code
-            # 只对「稍后再来」这一类重试；404 / 400 重试多少次都是同一个答案。
+            # 只重试可恢复的状态；404 / 400 重试多次结果相同。
             if status not in (429, 500, 502, 503, 504) or backoff is None:
                 print(f"  ✗ HTTP {status}: {title}")
                 return None
@@ -112,7 +109,7 @@ async def fetch_extract(
             print(f"  … HTTP {status}，第 {attempt + 1} 次退避 {delay:.0f}s: {title}")
             await asyncio.sleep(delay)
         except ValueError as e:
-            # 200 但正文不是 JSON —— 上游返回的是拦截页/错误页，和 429 同类，可重试。
+            # 200 但正文不是 JSON：上游返回的是拦截页或错误页，与限流同类，可重试。
             if backoff is None:
                 print(f"  ✗ 非 JSON 响应 [{title}]: {e}")
                 return None
@@ -141,9 +138,9 @@ def clean_extract(text: str) -> str:
     MediaWiki API 的 explaintext=1 已经把内容转为纯文本，但仍可能残留：
     - 多余空行
     - 章节标题前的多余空格
-    - `__NOEDITSECTION__` 等 magic words
+    - `__NOEDITSECTION__` 等 MediaWiki 魔术字
     """
-    # 去掉 magic words
+    # 去掉 MediaWiki 魔术字
     text = re.sub(r"__[A-Z]+__", "", text)
     # 多个连续空行 → 单空行
     text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
@@ -179,8 +176,7 @@ async def dump_titles(
             # 文件名安全：把 / 等替换为 _
             safe_name = re.sub(r"[\\/:*?\"<>|]", "_", doc_source)
             outfile = output_dir / f"{safe_name}.json"
-            # 断点续传：上游限速时一批 65 条要分几次才拉得完，重跑不该把已经拿到的
-            # 正文再要一遍——那既慢又是又一次挨限速的机会。
+            # 断点续传：已拿到正文的条目直接复用，重跑不再请求上游。
             if outfile.exists():
                 cached = json.loads(outfile.read_text(encoding="utf-8"))
                 if cached.get("content"):

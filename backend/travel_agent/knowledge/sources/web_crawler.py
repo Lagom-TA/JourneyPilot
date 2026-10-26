@@ -1,4 +1,4 @@
-"""Fetch web pages as plain text for offline knowledge indexing."""
+"""抓取网页并转换为纯文本，供离线知识入库使用。"""
 
 from __future__ import annotations
 

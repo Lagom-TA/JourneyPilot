@@ -1,4 +1,4 @@
-"""Conversation routing."""
+"""会话意图分流。"""
 
 from __future__ import annotations
 
@@ -64,11 +64,11 @@ _SYSTEM_PROMPT = """你是旅行助手的意图分流器。读用户这一句话
 
 
 class RouteIntentUnavailable(RuntimeError):
-    """意图判不出来。调用方必须诚实报错，不许拿默认路线顶上。"""
+    """意图无法判断。调用方应报错，不能使用默认路线替代。"""
 
 
 def explicit_route_decision(route: RouteName) -> RouteDecision:
-    """界面已经明确点了某条路（确认卡、行程内追加消息）—— 不再判一遍。"""
+    """界面已明确指定路径（确认卡、行程内追加消息）时直接返回决策，不再判断。"""
     return RouteDecision(
         route=route,
         confidence=1.0,
@@ -150,7 +150,7 @@ async def classify_route(
     has_trip_run: bool = False,
     llm: Optional[BaseLLM] = None,
 ) -> RouteDecision:
-    """判断这句话走哪条路。判不出来抛 `RouteIntentUnavailable`。"""
+    """判断输入应走的处理路径；无法判断时抛出 `RouteIntentUnavailable`。"""
     if explicit_route is not None:
         return explicit_route_decision(explicit_route)
 

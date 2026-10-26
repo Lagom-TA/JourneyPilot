@@ -1,7 +1,6 @@
-"""TripRun persistence store.
+"""TripRun 的持久化仓储。
 
-The SQL store is the production path. The in-memory implementation keeps the
-same async contract for unit tests and local API contract checks.
+SQL 实现是生产路径；内存实现提供相同的异步接口，供单元测试与本地 API 合同检查使用。
 """
 
 from __future__ import annotations
@@ -66,7 +65,7 @@ def _validated_delivery_manifest(
     bundle_id: str,
     manifest: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Return one canonical immutable manifest bound to this completion call."""
+    """返回绑定到本次完成调用的规范化不可变 manifest。"""
 
     if not isinstance(bundle_id, str) or not bundle_id.strip():
         raise ValueError("bundle_id is required")
@@ -85,7 +84,7 @@ def _validated_delivery_manifest(
 
 @asynccontextmanager
 async def _session_scope(session: Any | None):
-    """Reuse a caller-owned transaction without committing it prematurely."""
+    """复用调用方已有的事务，不提前提交。"""
 
     if session is not None:
         yield session
@@ -152,7 +151,7 @@ def _event_from_row(row: Dict[str, Any]) -> TripRunEvent:
 
 
 class TripRunStore:
-    """PostgreSQL-backed TripRun repository."""
+    """PostgreSQL 的 TripRun 仓储。"""
 
     def __init__(
         self,
@@ -338,7 +337,7 @@ class TripRunStore:
         run_id: str,
         bundle_id: str,
     ) -> List[TripRunEvent]:
-        """Read the complete formal delivery pair without an event-window limit."""
+        """读取完整的正式交付事件对，不受事件窗口上限限制。"""
         async with get_db_session() as session:
             result = await session.execute(
                 text(
@@ -461,11 +460,10 @@ class TripRunStore:
         status: Optional[str | TripRunStatus] = None,
         mode: Optional[str | TripRunMode] = None,
     ) -> int:
-        """Count every row ``list_runs`` would match, ignoring its LIMIT.
+        """统计 ``list_runs`` 会匹配的全部行，不受其 LIMIT 影响。
 
-        The filter clauses must stay byte-for-byte equivalent to ``list_runs``:
-        a total computed under different filters than the page it accompanies
-        is worse than no total at all.
+        过滤条件必须与 ``list_runs`` 完全一致：总数与分页使用不同过滤条件，
+        比不返回总数更容易误导。
         """
         clauses: List[str] = []
         params: Dict[str, Any] = {}
@@ -496,13 +494,11 @@ class TripRunStore:
             return int(result.mappings().first()["count"])
 
     async def list_run_titles(self, session_ids: List[str], *, max_len: int = 60) -> Dict[str, str]:
-        """Return a {session_id: title} map built from each session's first user message.
+        """返回 ``{session_id: 标题}``，标题取自每个会话的第一条用户消息。
 
-        The title is the raw first user message (truncated), which is the phrase a
-        traveler actually typed. One batched ``DISTINCT ON`` query over
-        chat_session_events keyed by (session_id, event_order) — the same unique
-        index the events table already carries — so listing N runs stays a single
-        round-trip instead of N per-run lookups.
+        标题就是旅行者输入的第一条原始消息（截断后）。用一条按
+        ``(session_id, event_order)`` 的 ``DISTINCT ON`` 查询批量读取
+        chat_session_events，列出 N 个 Run 只需要一次往返。
         """
         unique_ids = [sid for sid in dict.fromkeys(session_ids) if sid]
         if not unique_ids:
@@ -678,7 +674,7 @@ class TripRunStore:
         current_node: str = "delivery_finalizer",
         session: Any | None = None,
     ) -> tuple[TripRun, TripRunEvent, TripRunEvent]:
-        """Atomically expose ready, COMPLETED, and terminal durable truth."""
+        """在同一个事务里暴露 ready、COMPLETED 与终态三个持久化事实。"""
         manifest_payload = _validated_delivery_manifest(
             run_id=run_id,
             bundle_id=bundle_id,
@@ -841,10 +837,10 @@ class TripRunStore:
         current_node: Optional[str] = None,
         payload: Optional[Dict[str, Any]] = None,
     ) -> Optional[TripRun]:
-        """Atomically claim a checkpoint-backed resume attempt.
+        """原子地抢占一次基于 checkpoint 的恢复。
 
-        Returns the updated run when this caller won the compare-and-swap, or
-        None when another caller already moved the run out of a resumable state.
+        调用方赢得 compare-and-swap 时返回更新后的 Run；另一个调用方已把 Run
+        移出可恢复状态时返回 None。
         """
         statuses = [
             coerce_status(status).value
@@ -946,7 +942,7 @@ class TripRunStore:
         failed_interrupted_days: int = 90,
         limit: int = 100,
     ) -> List[TripRun]:
-        """Return terminal/resumable runs whose checkpoint threads may be pruned."""
+        """返回可以清理 checkpoint thread 的终态/可恢复 Run。"""
         async with get_db_session() as session:
             result = await session.execute(
                 text(
@@ -988,7 +984,7 @@ class TripRunStore:
         status: str,
         payload: Optional[Dict[str, Any]] = None,
     ) -> Optional[TripRunEvent]:
-        """Persist one node execution fact and advance current_node on start."""
+        """持久化一条节点执行事实；status 为 started 时同时推进 current_node。"""
         if not node.strip():
             raise ValueError("Node lifecycle requires a node name")
         if status not in {"started", "completed", "retrying", "failed"}:
@@ -1042,21 +1038,19 @@ class TripRunStore:
         node: str,
         trace_event_count: Optional[int] = None,
     ) -> TripRunState:
-        """Note that one graph node finished, and how many traces it has produced.
+        """记录一个图节点已完成，以及它已产生的 trace 数量。
 
-        **It must not touch ``pending_user_choice``.**  Overwriting that column from the
-        graph state on every node event silently nulls a plan gate's durable decision as
-        soon as any other node runs — the column has one writer (the gate, through
-        ``transition_status``) and one reader (the read side, which republishes only the
-        gate shape), and a node update cannot serve either.  What a node update does
-        decide is the one thing it knows: a terminal Run has no decision left to make.
+        **不修改 ``pending_user_choice``。** 每个节点事件都用图状态覆盖该列，会在
+        其他节点一运行时就清掉 plan gate 的持久化决定。该列只有一个写入方
+        （gate，经 ``transition_status``）和一个读取方（只重新发布 gate 形状的
+        读侧），节点更新不承担其中任何一个职责。节点更新只处理它知道的事实：
+        终态 Run 没有待处理决定。
         """
 
         async with get_db_session() as session:
-            # Every transaction that touches both rows must lock the parent Run
-            # before its state row. complete_delivery() uses the same order;
-            # reversing it here can deadlock exactly when the final state event
-            # races the atomic delivery transaction.
+            # 所有同时写这两张表的事务都先锁父 Run，再锁 state 行。
+            # complete_delivery() 使用相同顺序；顺序颠倒时，最终的 state 事件
+            # 与原子交付事务并发会死锁。
             run_result = await session.execute(
                 text("SELECT run_id FROM trip_runs WHERE run_id = :run_id FOR UPDATE"),
                 {"run_id": run_id},
@@ -1124,8 +1118,8 @@ class TripRunStore:
     ) -> TripRunState:
         summary = build_trip_run_state_summary(state_snapshot)
         async with get_db_session() as session:
-            # Keep the parent -> state lock order consistent with
-            # complete_delivery(), transition_status(), and node lifecycle.
+            # 保持父 Run → state 的加锁顺序，与 complete_delivery()、
+            # transition_status() 及节点生命周期一致。
             run_result = await session.execute(
                 text("SELECT run_id FROM trip_runs WHERE run_id = :run_id FOR UPDATE"),
                 {"run_id": run_id},
@@ -1320,7 +1314,7 @@ class TripRunStore:
 
 
 class InMemoryTripRunStore(TripRunStore):
-    """In-memory TripRunStore with the same async contract."""
+    """内存 TripRun 仓储，提供相同的异步接口。"""
 
     def __init__(
         self,
@@ -1335,7 +1329,7 @@ class InMemoryTripRunStore(TripRunStore):
     def snapshot_for_initial_delivery(
         self,
     ) -> tuple[Dict[str, TripRun], Dict[str, TripRunState], Dict[str, List[TripRunEvent]]]:
-        """Capture mutable lifecycle state for a coordinated in-memory transaction."""
+        """捕获可变生命周期状态，供测试事务统一回滚。"""
 
         return (
             deepcopy(self.runs),
@@ -1525,8 +1519,7 @@ class InMemoryTripRunStore(TripRunStore):
         return len(runs)
 
     async def list_run_titles(self, session_ids: List[str], *, max_len: int = 60) -> Dict[str, str]:
-        # The in-memory store has no chat-event backing table; titles come from
-        # the SQL path in production.
+        # 内存实现没有 chat 事件表；生产环境的标题来自 SQL 路径。
         return {}
 
     async def transition_status(

@@ -1,5 +1,3 @@
-"""Planning itinerary selected supply."""
-
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -21,7 +19,7 @@ PROMPT_CANDIDATE_LIMIT_PER_DOMAIN = 8
 def prompt_candidate_ids(
     catalog: RecommendationCatalog, *, skeleton_only: bool = False
 ) -> Dict[str, list[str]]:
-    """Per-domain candidate id lists in prompt display order, capped for capacity."""
+    """返回按提示词展示顺序排列的各领域候选 id，数量受容量上限约束。"""
     candidates = catalog.candidate_index()
     by_kind: Dict[str, list[str]] = {
         kind: [] for kind in ("visit", "dining", "transport", "lodging")
@@ -52,7 +50,7 @@ def prompt_candidate_ids(
 def placement_capabilities(
     catalog: RecommendationCatalog, *, skeleton_only: bool = False
 ) -> list[dict[str, Any]]:
-    """Expose only typed placement facts needed to compose a legal topology."""
+    """只暴露组合合法拓扑所需的强类型落位事实。"""
     candidates = catalog.candidate_index()
     capabilities: list[dict[str, Any]] = []
     for kind, ids in prompt_candidate_ids(

@@ -1,5 +1,3 @@
-"""Planning research transport prompts."""
-
 from __future__ import annotations
 
 from travel_agent.planning.research.provider_contracts import ProviderEvidenceScope

@@ -1,3 +1,5 @@
+"""交付投影的数据契约。"""
+
 from __future__ import annotations
 
 from datetime import date as Date
@@ -74,7 +76,7 @@ class ReportDaySection(StrictModel):
     destination_id: str = Field(min_length=1)
     destination_name: str = Field(min_length=1)
 
-    # Copy the itinerary day theme so workspace and report cannot title it differently.
+    # 复制行程 Day 的主题，避免 workspace 与报告使用不同标题。
     theme: str = Field(min_length=1)
     blocks: List[ReportEntityBlock] = Field(default_factory=list)
 
@@ -141,7 +143,7 @@ class TripReportDocument(StrictModel):
     duration_days: int = Field(ge=1)
     cost_summary: CostCoverageSummary = Field(default_factory=CostCoverageSummary.empty)
 
-    # Explicit None means no quoted amount; renderers must not invent a substitute.
+    # 显式为 None 表示没有报价金额；渲染方不得编造替代值。
     cost_coverage_statement: Optional[str] = Field(min_length=1)
     days: List[ReportDaySection] = Field(min_length=1)
     selections: List[ReportSelectionSection] = Field(default_factory=list)

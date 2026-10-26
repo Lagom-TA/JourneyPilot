@@ -1,8 +1,6 @@
-"""Canonical knowledge collection contracts.
+"""知识集合的逻辑名与物理名约定。
 
-Public callers address logical collection names.  Physical PostgreSQL
-collection names are derived server-side and must never cross the API or
-grounding boundary.
+对外只使用逻辑集合名；物理 PostgreSQL 集合名在服务端派生，不越过 API 与接地边界。
 """
 
 from __future__ import annotations
@@ -24,7 +22,7 @@ FACTORY_KNOWLEDGE_COLLECTIONS = (
 
 
 def canonical_logical_collection(collection: str) -> str:
-    """Return a public logical collection name or reject physical addressing."""
+    """返回公开逻辑集合名；物理名直接拒绝。"""
 
     logical = (collection or "").strip()
     if not logical:
@@ -35,7 +33,7 @@ def canonical_logical_collection(collection: str) -> str:
 
 
 def user_scoped_collection(logical_collection: str) -> str:
-    """Resolve the one internal physical name for a user-owned collection."""
+    """把用户集合的逻辑名解析为唯一的内部物理名。"""
 
     logical = canonical_logical_collection(logical_collection)
     return f"u_{LOCAL_USER_ID}__{logical}"
@@ -45,16 +43,12 @@ def user_scoped_collection(logical_collection: str) -> str:
 class GroundingCorpus:
     """一次接地检索要查哪些集合，以及每个物理名的公开逻辑名。
 
-    这个对象存在的理由是**用户上传的资料库与出厂语料平等竞争**（专题文档 §4.1）：
-    两者在同一次检索里一起被打分、一起融合、一起精排，由排名决定谁进 prompt，
-    不是「出厂语料找不到才兜底查用户的」。所以它交出的是**一张探针清单**，
-    而不是「主集合 + 备用集合」两档。
+    用户上传的资料库与出厂语料在同一次检索里一起打分、融合、精排，由排名决定
+    谁进 prompt，因此这里给出的是一张探针清单，而不是主集合与备用集合两档。
 
-    它同时是「物理名不许越过接地边界」这条规则的唯一执行点：``probe_collections``
-    里的用户集合是物理名（``u_local__travel_knowledge``，检索层需要它），而
-    ``logical_name`` 是任何会被人看见的地方——摘要的 coverage、SourceRecord 的
-    snapshot、日志——必须改用的名字。两者写在同一个对象上，是为了让「查哪张表」
-    和「对外叫什么」不可能各自漂移。
+    ``probe_collections`` 是检索层使用的物理名（``u_local__travel_knowledge``），
+    ``logical_name`` 是任何对外可见位置必须使用的公开名。两者放在同一个对象上，
+    保证「查哪张表」与「对外叫什么」不会各自漂移。
     """
 
     probe_collections: tuple[str, ...]
@@ -79,7 +73,7 @@ class GroundingCorpus:
 
 
 def grounding_corpus() -> GroundingCorpus:
-    """Search every allowed collection, regardless of the optional seed manifest."""
+    """查询所有允许的集合，不依赖可选的种子清单。"""
 
     probes = list(FACTORY_KNOWLEDGE_COLLECTIONS)
     user_probe = user_scoped_collection(USER_KNOWLEDGE_COLLECTION)
@@ -94,17 +88,10 @@ def grounding_corpus() -> GroundingCorpus:
 def relabel_to_logical_collections(
     docs: Iterable[MutableMapping[str, Any]], corpus: GroundingCorpus
 ) -> None:
-    """把检索层写在 doc 上的探针名改成公开逻辑名，就地改。
+    """把检索层写在 doc 上的探针名改成公开逻辑名，就地修改。
 
-    物理名（``u_local__travel_knowledge``）是检索层的地址，不是产品语汇：它会顺着
-    ``doc["collection"]`` 流进 ``build_retrieval_summary`` 的 coverage、流进
-    SourceRecord 的 snapshot，最后出现在用户点开的检查面上——而那一面连原始工具名
-    都不许出现，更不用说一个带 owner id 的表内地址。
-
-    **翻译只在接地边界做这一次。** 这个函数原先是 destination_researcher 的私有
-    helper；当另一个 reader 也开始查同一份探针清单时，两条路径各抄一份就又是
-    同一件事就又有了两套取值 —— 其中一份改了另一份没改，用户看到的是哪一份要看
-    走的是哪条路。所以它作为探针清单定义处的方法，和 ``grounding_corpus`` 放在一起。
+    物理名带 owner id，只能作为检索地址；对外可见的 coverage、SourceRecord
+    snapshot 与日志必须使用逻辑名。翻译只在接地边界做这一次。
     """
 
     for doc in docs:
@@ -126,5 +113,5 @@ def normalize_collection(collection: str) -> str:
 
 
 def scope_collection(collection: str) -> str:
-    """Resolve a validated logical address to the local user's collection."""
+    """把校验过的逻辑名解析为当前用户的集合。"""
     return user_scoped_collection(normalize_collection(collection))

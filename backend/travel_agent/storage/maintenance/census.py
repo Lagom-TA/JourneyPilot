@@ -1,7 +1,6 @@
-"""Database census：在改任何东西之前，先说清这个库现在是什么。
+"""数据库现状普查：在改任何东西之前，先说明这个库当前是什么状态。
 
-census 是启动编排器状态机（dev docs 02 §4.1）的第一步，也是「不许盲 stamp」那条
-禁令的执行者。它只读。
+census 是启动编排器状态机的第一步，用于避免对未知结构执行 stamp。它只读。
 """
 
 from __future__ import annotations
@@ -20,7 +19,7 @@ from .schema_contract import (
 
 @dataclass(frozen=True)
 class DatabaseCensus:
-    """一个数据库的现状。字段全部是**事实**，判断留给 `migrate.plan()`。"""
+    """一个数据库的现状。字段全部是事实，判断留给 `migrate.plan()`。"""
 
     reachable: bool
     postgres_version: str = ""
@@ -40,16 +39,16 @@ class DatabaseCensus:
 
     @property
     def has_core_tables(self) -> bool:
-        """有没有任何一张探针表。有 = 不是空库，绝不能当首次安装跑。"""
+        """有没有任何一张探针表。有 = 不是空库，不能按首次安装处理。"""
         return any(name in self.present_managed_tables for name in PROBE_TABLES)
 
     @property
     def is_empty_database(self) -> bool:
         """空库：一张合同表都没有。
 
-        注意判据是**表**而不是**行数**：有表没行的库仍然可能是「上一次迁移建到一半」，
-        它需要走 upgrade 而不是「首次安装」的快路径 —— 但两者的动作恰好相同
-        （`upgrade head` 幂等），所以这里不再细分。
+        注意判据是表而不是行数：有表没行的库仍可能是「上一次迁移建到一半」，
+        需要走 upgrade 而不是首次安装的快路径；两者的动作恰好相同
+        （`upgrade head` 幂等），因此这里不再细分。
         """
         return not self.present_managed_tables
 

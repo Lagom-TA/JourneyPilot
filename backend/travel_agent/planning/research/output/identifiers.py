@@ -1,5 +1,3 @@
-"""Research packet identifiers responsibilities."""
-
 from __future__ import annotations
 
 import hashlib
@@ -35,10 +33,10 @@ def _provider_candidate_id(candidate_kind: str, place_id: str) -> str:
 
 
 def _provider_entity_source_id(audit_id: str, entity_id: str) -> str:
-    "Bind an entity snapshot to this Run's tool audit exactly once."
+    """把一个实体快照绑定到本次运行的工具审计，且只绑定一次。"""
     return compiled_tool_source_id(audit_id, entity_id)
 
 
 def _provider_route_source_id(audit_id: str, route_id: str) -> str:
-    "Bind a selected route snapshot to this Run's tool audit exactly once."
+    """把一条已选路线的快照绑定到本次运行的工具审计，且只绑定一次。"""
     return compiled_tool_source_id(audit_id, route_id)

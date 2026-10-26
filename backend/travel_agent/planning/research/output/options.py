@@ -1,5 +1,3 @@
-"""Research packet options responsibilities."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -72,24 +70,6 @@ def _eligible_route_selection_options(
     return options
 
 
-def has_provider_route_selection_option(
-    context_messages: Sequence[Mapping[str, Any]],
-    *,
-    required_transport_classes: Sequence[str] | None,
-    excluded_candidate_ids: Sequence[str] | None = None,
-    required_route_scopes: Sequence[ProviderEvidenceScope] = (),
-) -> bool:
-    "Return whether one complete Provider route can close this scoped round."
-    return bool(
-        _eligible_route_selection_options(
-            context_messages,
-            required_transport_classes=required_transport_classes,
-            excluded_candidate_ids=excluded_candidate_ids,
-            required_route_scopes=required_route_scopes,
-        )
-    )
-
-
 def has_required_provider_route_selection_options(
     context_messages: Sequence[Mapping[str, Any]],
     *,
@@ -97,7 +77,7 @@ def has_required_provider_route_selection_options(
     excluded_candidate_ids: Sequence[str] | None = None,
     required_route_scopes: Sequence[ProviderEvidenceScope] = (),
 ) -> bool:
-    "Require one eligible Provider option for every assigned exact route leg."
+    """要求每条已分配的精确路线腿都有可选的 Provider 方案。"""
     options = _eligible_route_selection_options(
         context_messages,
         required_transport_classes=required_transport_classes,
@@ -123,7 +103,7 @@ def _eligible_place_selection_options(
     *,
     excluded_candidate_ids: Sequence[str] | None = None,
 ) -> dict[str, list[dict[str, str]]]:
-    "Compile the bounded Provider result set the Worker may explicitly select."
+    """编译本轮 worker 可显式选择的 Provider 结果集合，并限制其规模。"""
     forbidden = set(excluded_candidate_ids or ())
     allowed_kinds = {
         candidate_kind
@@ -176,15 +156,9 @@ def _eligible_place_selection_options(
     return options
 
 
-def _has_eligible_place_selection(
-    options: Mapping[str, Sequence[Mapping[str, str]]],
-) -> bool:
-    return any(options.values())
-
-
 @dataclass(frozen=True)
 class ObservedPlaceNominations:
-    """Observed provider lookups and selectable identities for one research round."""
+    """本轮观察到的 Provider 查询以及可选择的地点头。"""
 
     lookups: tuple[PlaceLookup, ...]
     selectable_place_ids: tuple[str, ...]
@@ -195,7 +169,7 @@ def observed_place_nominations(
     *,
     expected_worker: ResearchWorkerKind,
 ) -> ObservedPlaceNominations:
-    "What this round asked the place Provider, got back, and may select from."
+    """本轮向地点 Provider 发起的查询、返回结果与可选择的身份。"""
     lookups: list[PlaceLookup] = []
     for message in context_messages:
         envelope = _parse_tool_envelope(message)
@@ -247,7 +221,7 @@ def has_required_provider_place_selection(
     expected_worker: ResearchWorkerKind,
     required_candidate_kinds: Sequence[str],
 ) -> bool:
-    "Return whether every requested place domain already has a Provider option."
+    """判断每个要求的地点领域是否都已有 Provider 选项。"""
     options = _eligible_place_selection_options(context_messages, expected_worker)
     return all(
         options.get(candidate_kind) for candidate_kind in required_candidate_kinds
@@ -261,7 +235,7 @@ def provider_evidence_outcomes(
     packet: ResearchPacket | None,
     assignments: Sequence[ProviderEvidenceAssignment],
 ) -> dict[str, ProviderEvidenceOutcome]:
-    "Project one worker attempt into independently resolvable scope outcomes."
+    """把一次 worker 尝试投影为各独立范围的调研结果。"""
     if any(
         assignment.scope.worker_kind != expected_worker for assignment in assignments
     ):

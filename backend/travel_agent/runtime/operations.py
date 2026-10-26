@@ -13,11 +13,10 @@ from .deadlines import DeadlineObservation, observe_run_deadline
 
 
 class ModelWindowClosed(RuntimeError):
-    """A model/provider/tool call attempted after its own window's cutoff.
+    """模型、provider 或工具调用在自己的时间窗关闭后才发起。
 
-    This is intentionally distinct from :class:`RunCancelled`: the user did
-    not cancel the TripRun, so callers must converge through deterministic
-    closeout rather than emit a cancelled terminal state.
+    与 :class:`RunCancelled` 刻意区分：用户没有取消 TripRun，调用方应走确定性
+    收口，而不是发出取消终态。
     """
 
     def __init__(
@@ -36,7 +35,7 @@ class ModelWindowClosed(RuntimeError):
 
 
 class DeliveryDeadlineExceeded(RuntimeError):
-    """A delivery-only operation crossed the durable eight-minute deadline."""
+    """仅交付阶段的操作越过了快照中的交付截止时间。"""
 
     def __init__(self, operation: str, observation: DeadlineObservation) -> None:
         self.operation = operation
@@ -50,7 +49,7 @@ class DeliveryDeadlineExceeded(RuntimeError):
 def observe_current_run_deadline() -> tuple[
     Optional[Any], Optional[DeadlineObservation]
 ]:
-    """Observe the active durable deadline without resetting its budget."""
+    """读取当前 durable deadline，不重置其预算。"""
 
     deadline = current_run_deadline.get()
     if deadline is None:
@@ -61,21 +60,12 @@ def observe_current_run_deadline() -> tuple[
 
 
 def remaining_model_seconds(operation: str) -> Optional[float]:
-    """Return this context's model budget, or reject a new call.
+    """返回当前上下文可用的模型时间；窗口关闭时拒绝新调用。
 
-    The window comes from :data:`current_model_window`: research calls must
-    finish by its closeout, itinerary composition by its own later one.  Either
-    way the interval past that boundary is excluded — a call may start only
-    while it can still finish inside its window, and what the composition
-    window leaves belongs to deterministic projection, validation and
-    persistence.
-
-    The *seconds* come from the run's own sealed snapshot, never from this
-    process's policy defaults.  The snapshot is the cross-process source of
-    truth, so how much budget a call gets must be decided by the same numbers
-    that decide which phase the run is in: a later ``run_deadline`` change may
-    neither fund an in-flight run past the closeout it was audited against nor
-    cut short one whose snapshot still funds it.
+    窗口来自 :data:`current_model_window`：研究调用须在 closeout 前完成，
+    行程编排使用更晚的窗口。剩余秒数始终来自 Run 自己的已封存快照，而不是本进程
+    的配置默认值。快照是跨进程的最终事实，因此可用预算必须与阶段判定使用同一组
+    数字：之后修改 ``run_deadline`` 不会给在跑的 Run 追加时间，也不会缩短它。
     """
 
     check_cancel_requested(current_node.get())
@@ -96,11 +86,10 @@ def remaining_model_seconds(operation: str) -> Optional[float]:
 
 
 def remaining_delivery_seconds(operation: str) -> Optional[float]:
-    """Return the shared finalization budget, or reject post-deadline work.
+    """返回共用的交付预算；截止后拒绝工作。
 
-    ``observation.remaining_seconds`` already *is* that budget, measured against
-    the delivery deadline embedded in the run's own snapshot — for the same
-    reason as :func:`remaining_model_seconds`.
+    ``observation.remaining_seconds`` 就是该预算，口径是 Run 自己快照里的交付
+    截止时间，原因同 :func:`remaining_model_seconds`。
     """
 
     check_cancel_requested(current_node.get())
@@ -114,14 +103,13 @@ def remaining_delivery_seconds(operation: str) -> Optional[float]:
 
 
 async def await_model_operation(awaitable: Awaitable[Any], *, operation: str) -> Any:
-    """Await one external model/provider operation within its own window."""
+    """在一个模型/provider 操作自己的窗口内等待它完成。"""
 
     try:
         remaining = remaining_model_seconds(operation)
     except BaseException:
-        # Call sites naturally construct the coroutine before passing it here.
-        # Closing an unstarted coroutine avoids an unawaited-coroutine warning
-        # when the deadline rejects the operation synchronously.
+        # 调用点通常会先构造协程再传进来。deadline 同步拒绝该操作时，关闭尚未
+        # 启动的协程以避免 unawaited-coroutine 警告。
         close = getattr(awaitable, "close", None)
         if callable(close):
             close()
@@ -132,7 +120,7 @@ async def await_model_operation(awaitable: Awaitable[Any], *, operation: str) ->
         return await asyncio.wait_for(awaitable, timeout=remaining)
     except asyncio.TimeoutError as exc:
         _deadline, observation = observe_current_run_deadline()
-        if observation is None:  # pragma: no cover - defensive context reset
+        if observation is None:  # pragma: no cover - 上下文被重置的防御分支
             raise
         raise ModelWindowClosed(
             operation, observation, current_model_window.get()
@@ -140,7 +128,7 @@ async def await_model_operation(awaitable: Awaitable[Any], *, operation: str) ->
 
 
 async def await_delivery_operation(awaitable: Awaitable[Any], *, operation: str) -> Any:
-    """Await one finalization operation within the common eight-minute cap."""
+    """在共用的交付截止时间内等待收尾操作完成。"""
 
     try:
         remaining = remaining_delivery_seconds(operation)
@@ -155,6 +143,6 @@ async def await_delivery_operation(awaitable: Awaitable[Any], *, operation: str)
         return await asyncio.wait_for(awaitable, timeout=remaining)
     except asyncio.TimeoutError as exc:
         _deadline, observation = observe_current_run_deadline()
-        if observation is None:  # pragma: no cover - defensive context reset
+        if observation is None:  # pragma: no cover - 上下文被重置的防御分支
             raise
         raise DeliveryDeadlineExceeded(operation, observation) from exc

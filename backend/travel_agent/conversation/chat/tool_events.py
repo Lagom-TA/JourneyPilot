@@ -24,10 +24,10 @@ _FAILED_TOOL_STATUSES = frozenset(
 
 
 def _tool_outcome(tool_status: str) -> str:
-    """把一个 ToolExecutionStatus 映射成面向用户的工具轮次结论。
+    """把 ToolExecutionStatus 映射为面向用户的工具轮次结论。
 
-    ``degraded`` 仍然是「拿到了可用结果」，所以结论是 completed，降级事实由
-    ``risk_flags`` 的 ``tool_degraded`` 与帧上的 ``degraded`` 承载（行为不变）。
+    ``degraded`` 仍表示获得了可用结果，因此结论为 completed；降级信息由
+    ``risk_flags`` 的 ``tool_degraded`` 与帧上的 ``degraded`` 字段承载。
     """
     if tool_status in CAPABILITY_DECLARATION_STATUSES:
         return _TOOL_OUTCOME_CAPABILITY_DECLARED
@@ -39,7 +39,7 @@ def _tool_outcome(tool_status: str) -> str:
 async def _handle_tool_start(
     item: tuple, ctx: ChatPresentation
 ) -> AsyncIterator[Dict[str, Any]]:
-    """'tool_start' kind: Worker Agent 工具调用开始 + 记录 thinking_steps。"""
+    """tool_start 事件：Worker Agent 工具调用开始，并记录 thinking_steps。"""
     _, node_name, tool_info = item
     tool_name = tool_info.get("name", "")
     tool_call_id = tool_info.get("tool_call_id") or str(uuid.uuid4())
@@ -95,7 +95,7 @@ async def _handle_tool_start(
 async def _handle_tool_done(
     item: tuple, ctx: ChatPresentation
 ) -> AsyncIterator[Dict[str, Any]]:
-    """'tool_done' kind: Worker Agent 工具调用完成 + 更新 thinking_steps 状态。"""
+    """tool_done 事件：Worker Agent 工具调用完成，并更新 thinking_steps 状态。"""
     _, node_name, tool_info = item
     tool_name = tool_info.get("name", "")
     tool_call_id = tool_info.get("tool_call_id")

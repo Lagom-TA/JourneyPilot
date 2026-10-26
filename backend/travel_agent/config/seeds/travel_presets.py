@@ -226,7 +226,7 @@ def get_presets() -> List[Dict[str, Any]]:
 def validated_system_preset_seeds(
     raw_presets: Optional[List[Dict[str, Any]]] = None,
 ) -> List[SystemPresetSeed]:
-    """Validate release data before bootstrap or an explicit publication."""
+    """在启动引导或显式发布前校验发布数据。"""
     if raw_presets is None:
         raw_presets = get_presets()
 

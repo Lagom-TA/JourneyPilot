@@ -1,4 +1,4 @@
-"""Planning requirements conflicts."""
+"""需求冲突判定。"""
 
 from __future__ import annotations
 

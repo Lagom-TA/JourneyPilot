@@ -1,4 +1,4 @@
-"""Bind background job types to domain handlers."""
+"""把后台任务类型绑定到领域处理器。"""
 
 from typing import Any, Dict
 

@@ -1,7 +1,6 @@
-"""Named runtime context shared by research workers and composition.
+"""研究 Worker 与合成阶段共享的命名运行时上下文。
 
-Formatters retain ownership of each domain. Assembly alone decides placement;
-it never clips controlled constraints or changes the durable state.
+各领域的格式化由对应模块负责；装配只决定顺序，不裁剪受控约束，也不修改持久状态。
 """
 
 from __future__ import annotations

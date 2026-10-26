@@ -1,1 +1,1 @@
-"""Application construction and lifecycle ownership."""
+"""应用组件的构建与生命周期管理。"""

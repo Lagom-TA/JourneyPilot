@@ -1,4 +1,4 @@
-"""Dependency connectivity and startup schema diagnostics."""
+"""依赖连通性与启动时的 schema 诊断。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from travel_agent.llm.router import get_model_router
 
 
 async def _probe_database() -> Tuple[bool, str]:
-    """Connectivity is independent of the startup schema contract."""
+    """只验证连接可用，与启动时的 schema 合同校验无关。"""
 
     try:
         from travel_agent.storage.database import get_engine
@@ -43,7 +43,7 @@ def _probe_model_config() -> Tuple[bool, str]:
 
 
 def _probe_schema_report(components: Any) -> Dict[str, Any]:
-    """Reuse the startup report; missing evidence blocks readiness."""
+    """复用启动时的校验报告；报告缺失即视为未就绪。"""
 
     from travel_agent.storage.maintenance.report import GATES_READINESS
 

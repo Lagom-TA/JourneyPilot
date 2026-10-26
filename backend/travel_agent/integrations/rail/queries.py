@@ -1,4 +1,4 @@
-"""Integrations rail queries."""
+"""12306 三项查询的载荷组装。"""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ async def get_tickets_payload(
     *,
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> dict[str, Any]:
-    """``get-tickets``: real bookable trains for one station pair, structured."""
+    """``get-tickets``：一对车站的真实可购车次，结构化输出。"""
 
     from_code = _require_station_code(from_station, role="fromStation")
     to_code = _require_station_code(to_station, role="toStation")
@@ -47,7 +47,7 @@ async def get_interline_tickets_text(
     *,
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> str:
-    """``get-interline-tickets``: real one-transfer itineraries for a pair."""
+    """``get-interline-tickets``：一对车站的真实一次换乘行程。"""
 
     from_code = _require_station_code(from_station, role="fromStation")
     to_code = _require_station_code(to_station, role="toStation")
@@ -67,10 +67,10 @@ async def get_interline_tickets_text(
 
 
 def get_station_code_of_citys_text(citys: str) -> str:
-    """``get-station-code-of-citys``: the station representing each 中文 city.
+    """``get-station-code-of-citys``：每个中文城市对应的车站。
 
-    ``citys`` is a single ``|``-separated string (e.g. ``"上海|杭州"``); the
-    arg name and shape are load-bearing for every caller in the repo.
+    ``citys`` 是单个以 ``|`` 分隔的字符串（例如 ``"上海|杭州"``）；参数名与
+    形状是仓库内所有调用方依赖的接口。
     """
 
     result: dict[str, dict[str, str]] = {}

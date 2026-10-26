@@ -60,7 +60,7 @@ class ChatDelivery:
         return ready_event, terminal_event
 
     async def load_durable_completed_delivery(self):
-        """Recover the one immutable delivery after post-commit bookkeeping fails."""
+        """提交后的记账失败时，恢复唯一不变的一次投递。"""
         if not self.use_deep_research:
             return None
         current_run = await self.trip_run_store.get_run(self.run_id)

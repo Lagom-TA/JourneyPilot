@@ -1,4 +1,4 @@
-"""Knowledge grounding, upstream snapshot and export diagnostics."""
+"""知识库接地、上游快照与导出能力的诊断。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from travel_agent.config.loader import get_settings
 
 
 async def _probe_knowledge_corpus() -> Dict[str, Any]:
-    """Report manifest/count disagreement without gating a service that can still answer."""
+    """报告清单与行数是否一致；不一致不阻断仍能应答的服务。"""
 
     if not get_settings().embedding.enabled:
         return {
@@ -63,7 +63,7 @@ async def _probe_knowledge_corpus() -> Dict[str, Any]:
 
 
 def _probe_data_snapshots(settings: Any) -> Dict[str, Any]:
-    """Report the age of every committed upstream snapshot, blocking nothing."""
+    """报告各上游快照的时效；只展示，不阻断任何能力。"""
 
     from travel_agent.integrations.rail.snapshot_diagnostics import (
         station_snapshot_fingerprint_drift,
@@ -80,7 +80,7 @@ def _probe_data_snapshots(settings: Any) -> Dict[str, Any]:
     )
     try:
         drift = station_snapshot_fingerprint_drift()
-    except OSError as exc:  # unreadable snapshot file
+    except OSError as exc:  # 快照文件不可读
         drift = [f"站表快照不可读：{exc}"]
     return {
         "ready": True,
@@ -95,7 +95,7 @@ def _probe_data_snapshots(settings: Any) -> Dict[str, Any]:
 
 
 def _probe_pdf_export() -> Dict[str, Any]:
-    """Missing fonts degrade export, not planning and conversation readiness."""
+    """缺字体只影响导出，不影响规划与问答的就绪判定。"""
 
     from travel_agent.integrations.pdf_readiness import last_pdf_probe
 

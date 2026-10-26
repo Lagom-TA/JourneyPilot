@@ -84,7 +84,7 @@ def _transport_alternatives(
     leg: TransportLeg,
     candidates: Mapping[str, ResearchCandidate],
 ) -> list[TransportCandidate]:
-    # Offer only routes satisfying the mutation's scope, endpoint and mode rules.
+    # 只提供满足本次变更范围、端点与交通方式规则的路线。
     preference = leg.mode_preference
     selected = candidates.get(leg.lineage.candidate_id or "")
     selected_scope_id = (
@@ -128,7 +128,7 @@ def _transport_slots(
     legs: Sequence[TransportLeg],
     candidates: Mapping[str, ResearchCandidate],
 ) -> tuple[list[SelectionSlot], list[TransportLeg]]:
-    # A candidate-backed leg must name the same slot that targets it.
+    # 来自候选的行程段必须指向同一个 selection slot。
     slots: list[SelectionSlot] = []
     stamped: list[TransportLeg] = []
     for leg in legs:

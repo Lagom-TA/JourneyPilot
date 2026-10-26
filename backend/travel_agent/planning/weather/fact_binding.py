@@ -1,4 +1,4 @@
-"""Planning weather fact binding."""
+"""天气事实绑定。"""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import json
 
 
 class WeatherContextBuildError(ValueError):
-    """Raised when provider evidence cannot form a truthful public source."""
+    """provider 证据无法构成可信公开来源时抛出。"""
 
 
 def _canonical_hash(value: object) -> str:

@@ -38,10 +38,9 @@ class MemoryGraph:
         entity_type: str,
         properties: Optional[Dict[str, Any]] = None,
     ) -> int:
-        """
-        创建或更新实体节点。
-        基于 (user_id, name, entity_type) 做唯一约束 upsert。
-        返回 entity_id。
+        """创建或更新实体节点。
+
+        以 (user_id, name, entity_type) 唯一约束执行 upsert，返回 entity_id。
         """
         import json as _json
         props_json = _json.dumps(properties or {}, ensure_ascii=False)
@@ -78,14 +77,14 @@ class MemoryGraph:
         source_properties: Optional[Dict[str, Any]] = None,
         target_properties: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """
-        创建或更新关系边。
-        1. 关系类型必须有产出方，否则当场拒绝（不建实体、不写关系）
-        2. upsert 两端实体
-        3. 插入新关系（若已存在相同 source/target/relation，更新 confidence）
+        """创建或更新关系边。
 
-        写入一条关系**永远不会动到已有的任何一行**：同一个 user 节点下的 trait 天然
-        多值并存。这里既没有 UPDATE 也没有 DELETE，是这条规矩的执行处。
+        1. 关系类型必须有产出方，否则拒绝（不创建实体、不写入关系）。
+        2. upsert 两端实体。
+        3. 插入关系；相同 source/target/relation 已存在时更新 confidence。
+
+        写入关系不会修改已有的其他行：同一用户节点下的 trait 可以多值并存，
+        因此这里没有 UPDATE 或 DELETE。
         """
         if relation not in _PRODUCED_RELATIONS:
             raise ValueError(
@@ -138,10 +137,10 @@ class MemoryGraph:
         portrait_items: List[Dict[str, Any]],
         session_id: str = "",
     ) -> None:
-        """
-        批量处理 portrait[] 提取结果。
-        每个 trait 转为 (用户节点) -[has_trait]-> (trait 实体) 关系。
-        trait 实体的 properties 中存储 dimension，供聚合时分组。
+        """批量处理 portrait[] 提取结果。
+
+        每个 trait 转为（用户节点）-[has_trait]->（trait 实体）关系；
+        trait 实体的 properties 保存 dimension，供聚合时分组。
         """
         for item in portrait_items:
             trait = (item.get("trait") or "").strip()
@@ -198,7 +197,7 @@ class MemoryGraph:
         return [dict(r) for r in rows]
 
     async def delete_user_graph(self, user_id: str) -> Dict[str, int]:
-        """Physically delete this user's graph entities and relations."""
+        """物理删除该用户的图谱实体与关系。"""
         if not user_id:
             return {"entities": 0, "relations": 0}
         async with get_db_session() as session:
@@ -224,7 +223,7 @@ class MemoryGraph:
             }
 
     async def delete_relation(self, user_id: str, relation_id: int | str) -> int:
-        """Physically delete one relation owned by the user."""
+        """物理删除该用户的一条关系。"""
         if not user_id or relation_id is None:
             return 0
         async with get_db_session() as session:
@@ -239,7 +238,7 @@ class MemoryGraph:
             return len(result.fetchall())
 
     async def delete_entity(self, user_id: str, entity_id: int | str) -> Dict[str, int]:
-        """Physically delete one entity and its cascaded relations."""
+        """物理删除一个实体及其关联关系。"""
         if not user_id or entity_id is None:
             return {"entities": 0, "relations": 0}
         async with get_db_session() as session:
@@ -265,16 +264,14 @@ class MemoryGraph:
             }
 
     async def aggregate_portrait(self, user_id: str) -> str:
-        """
-        从图谱聚合用户画像文本。纯模板，无 LLM 调用。
+        """从图谱聚合用户画像文本，使用纯模板，不调用 LLM。
 
-        输出格式示例：
+        输出示例：
             家庭状况：已婚，有伴侣出行需求
             消费水平：中产阶级，追求品质但非奢侈
             特殊限制：对海鲜过敏
 
-        Returns:
-            画像文本，若无数据则返回空字符串
+        无数据时返回空字符串。
         """
         relations = await self.get_relations(user_id)
         if not relations:
@@ -294,8 +291,7 @@ class MemoryGraph:
             dimension = target_props.get("dimension", "lifestyle")
             grouped[dimension].append(r["target_name"])
 
-        # 按 dimension 有序输出：同一份图谱两次读取必须给出同一段文本，
-        # 所以顺序由 _DIMENSION_ORDER 定，不由录入顺序定。
+        # 按 _DIMENSION_ORDER 输出，保证同一份图谱两次读取得到相同文本。
         lines: List[str] = []
         for dim in _DIMENSION_ORDER:
             traits = grouped.get(dim, [])

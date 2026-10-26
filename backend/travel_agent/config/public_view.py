@@ -1,10 +1,10 @@
-"""Non-secret settings projection."""
+"""不含密钥的配置投影。"""
 
 from typing import Any, Dict
 
 
 def public_config_payload(settings: Any) -> Dict[str, Any]:
-    """Non-secret config projection for /api/config (no API keys)."""
+    """供 /api/config 读取的配置投影，不包含 API Key 明文。"""
 
     primary = getattr(settings, "primary_model", None)
     fast = getattr(settings, "fast_model", None)

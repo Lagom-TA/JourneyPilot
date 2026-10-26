@@ -1,5 +1,3 @@
-"""Research packet metadata responsibilities."""
-
 from __future__ import annotations
 
 import hashlib
@@ -23,7 +21,7 @@ def build_authoritative_research_packet_metadata(
     query_context: Mapping[str, Any],
     generated_at: datetime,
 ) -> dict[str, Any]:
-    "Create server-owned Packet lineage; models never author these fields."
+    """生成服务端持有的 Packet 来源信息；这些字段不由模型撰写。"""
     digest = hashlib.sha256(
         f"{run_id}\0{generation_id}\0{task_id}\0{worker_kind}".encode("utf-8")
     ).hexdigest()[:20]
@@ -51,7 +49,7 @@ def build_authoritative_research_packet_metadata(
 
 
 def _payload_generated_at(payload: Mapping[str, Any]) -> datetime:
-    "Read the packet's own timestamp so derived records stay deterministic."
+    """读取 packet 自带的时间戳，保证派生记录可复现。"""
     raw = payload.get("generated_at")
     if isinstance(raw, datetime):
         return raw
@@ -67,7 +65,7 @@ def _bind_authoritative_candidate_constraints(
     payload: dict[str, Any],
     expected_active_constraint_ids: Sequence[str] | None,
 ) -> None:
-    "Discard model-created constraint identity before typed validation."
+    """在类型校验前丢弃模型生成的约束身份。"""
     if expected_active_constraint_ids is None:
         return
     authoritative_ids = list(dict.fromkeys(expected_active_constraint_ids))

@@ -1,7 +1,7 @@
-"""Request-local tool exposure over a policy-filtered catalog.
+"""请求级的工具曝光，作用于已按策略过滤的工具目录。
 
-No execution, Gateway decisions or state persistence live here. Stable initial
-ordering and append-only activation keep earlier definitions unchanged.
+这里不执行工具、不做 Gateway 决策，也不持久化状态。初始顺序稳定，激活只追加，
+已有定义保持不变。
 """
 
 from __future__ import annotations
@@ -91,7 +91,7 @@ def apply_tool_exposure(
 
 
 class ToolExposureSession:
-    """Own the active schemas for exactly one ReAct invocation."""
+    """管理一次 ReAct 调用内的已激活工具 schema。"""
 
     def __init__(
         self, available_tools: list[dict[str, Any]], plan: ToolExposurePlan
@@ -114,7 +114,7 @@ class ToolExposureSession:
                 if schema["function"]["name"] in self._activated]
 
     def restore(self, names: list[str]) -> None:
-        """Replay definition order, still bounded by the current allowlist."""
+        """按原定义顺序恢复，仍受当前允许列表限制。"""
         allowed = {tool_name(item): item for item in self._available}
         for name in names:
             if name not in allowed:
@@ -157,7 +157,7 @@ class ToolExposureSession:
 def attach_tool_catalog(
     messages: list[dict[str, Any]], plan: ToolExposurePlan
 ) -> list[dict[str, Any]]:
-    """Place the static catalog before history/runtime, without changing callers."""
+    """把静态目录放在历史与运行时消息之前，不改变调用方传入的顺序。"""
     assembled = [dict(message) for message in messages]
     if plan.catalog_prompt:
         if assembled and assembled[0].get("role") == "system":

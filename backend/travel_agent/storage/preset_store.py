@@ -192,7 +192,7 @@ class PresetStore:
             )
 
     async def ensure_presets(self) -> None:
-        """Bootstrap missing system presets without changing existing product data."""
+        """只补齐缺失的系统预设，不修改已有产品数据。"""
         presets = validated_system_preset_seeds()
         now = datetime.now(timezone.utc)
         async with get_db_session() as session:
@@ -225,7 +225,7 @@ class PresetStore:
         logger.info(f"内置预设检查完成（{len(presets)} 个）")
 
     async def publish_system_presets(self) -> None:
-        """Explicitly publish reviewed system presets to an existing environment."""
+        """把已校验的系统预设显式发布到现有环境。"""
         presets = validated_system_preset_seeds()
         now = datetime.now(timezone.utc)
         async with get_db_session() as session:

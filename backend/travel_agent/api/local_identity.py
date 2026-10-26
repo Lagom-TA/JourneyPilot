@@ -1,4 +1,4 @@
-"""Api local identity."""
+"""API 层的本地身份读取。"""
 
 from __future__ import annotations
 

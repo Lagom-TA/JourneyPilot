@@ -69,7 +69,7 @@ def _worker_window_closed(
     *,
     model_window: ModelWindow,
 ) -> bool:
-    """Whether ``node_name`` has run out of the window its own calls belong to."""
+    """判断 ``node_name`` 所属的模型调用窗口是否已关闭。"""
 
     if model_window == "composition":
         return observation.composition_closed
@@ -82,12 +82,11 @@ def _blocked_research_worker_update(
     observed_deadline: Any,
     observation: DeadlineObservation,
 ) -> Dict[str, Any]:
-    """Make a missed research/composition boundary converge through graph routes.
+    """生成研究/组合窗口关闭时 Worker 的返回更新。
 
-    The boundary is reported on the worker's own channels only. Routing is the
-    Dispatcher's to write: it reads the terminal ``agent_status`` and the same
-    deadline, and a parallel Send group turns any worker-side ``next_agent``
-    write into two values for one step.
+    边界只在 Worker 自己的通道上报：路由由 Dispatcher 根据终态
+    ``agent_status`` 与同一个 deadline 写入，Worker 侧再写 ``next_agent``
+    会让并行的 Send 组在同一步里产生两个值。
     """
 
     if observation.phase == "expired":
@@ -116,15 +115,14 @@ def _run_control_scope(
         stack.callback(current_node.reset, current_node.set(node_name))
         stack.callback(current_agent.reset, current_agent.set(node_name))
         stack.callback(current_run_deadline.reset, current_run_deadline.set(None))
-        # 预算快照是 Run 的属性、不随节点变化，所以在这里绑一次，节点里调到的每一层
-        # 助手函数都免费继承它。
+        # 预算快照是 Run 的属性而非节点的，因此在此绑定一次，节点内调用的
+        # 助手函数自动继承。
         stack.callback(
             current_run_budget.reset,
             current_run_budget.set(getattr(state, "run_budget", None)),
         )
-        # The window a node's model calls draw on is a property of the node, so
-        # it is bound here with the other run attribution rather than inside each
-        # node body — helper functions the node calls inherit it for free.
+        # 节点模型调用所属的窗口由节点决定，因此与其他 Run 归属信息一起在此
+        # 绑定，而不是写在每个节点体内；节点调用的助手函数自动继承。
         model_window = _model_window_for_node(node_name, state)
         stack.callback(
             current_model_window.reset, current_model_window.set(model_window)
@@ -133,11 +131,9 @@ def _run_control_scope(
 
 
 def _ignored_after_delivery_update(state: Any, node_name: str) -> Dict[str, Any]:
-    """The update that drops a worker's work once delivery owns the checkpoint.
+    """交付接管 checkpoint 后丢弃 Worker 结果的更新。
 
-    Both call sites (entry interception and post-return overwrite) build the
-    same shape; the branches themselves differ in position and follow-up actions
-    and are deliberately not merged.
+    入口拦截与返回后覆盖两个调用点共用该返回值。
     """
 
     return {
@@ -151,11 +147,9 @@ def _claim_fresh_amendments(
     *,
     existing_ids: set[str],
 ) -> List[IntentAmendment]:
-    """Fold this round's claimed commands into amendments worth injecting.
+    """把本轮领取的命令转成待注入的 amendment。
 
-    Commands already carried in state (replayed deliveries) and empty-content
-    entries are skipped: the former are already live, the latter carry nothing
-    a prompt could act on.
+    已在 state 中的命令（重放投递）和内容为空的条目会跳过。
     """
 
     return [
@@ -177,7 +171,7 @@ def _should_divert_to_amendment_router(
     state: Any,
     node_name: str,
 ) -> bool:
-    """Whether a fresh supplement redirects this boundary to the router."""
+    """判断新的补充要求是否应把当前边界转入 amendment 路由。"""
 
     return bool(
         fresh_amendments
@@ -197,7 +191,7 @@ async def _settle_amendments(
     rejected_amendments: List[IntentAmendmentRejection],
     deferred_command_ids: List[str],
 ) -> None:
-    """Persist applied/rejected outcomes; deferred commands remain claimed for retry."""
+    """写入 applied/rejected 结论；deferred 命令保持已领取状态供后续边界重试。"""
 
     if handle is None:
         return
@@ -262,14 +256,10 @@ async def _settle_amendments(
 
 
 def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]]:
-    """Wrap a LangGraph node with cancel checks and run attribution contextvars.
+    """为 LangGraph 节点包装取消检查与 Run 归属 contextvars。
 
-    ``functools.wraps`` keeps the wrapper transparent to LangGraph's signature
-    inspection: ``inspect.signature`` follows ``__wrapped__``, so LangGraph still
-    injects ``config`` (and ``writer``/``store`` when declared) into nodes that
-    ask for them. Without this the wrapper's ``*args, **kwargs`` signature would
-    hide those parameters and config-dependent nodes (workers, synthesizer,
-    dispatcher) would never receive ``config``.
+    ``functools.wraps`` 让 LangGraph 的签名检查能穿透包装层：仍会向声明了
+    ``config``（以及 ``writer``/``store``）的节点注入这些参数。
     """
 
     @functools.wraps(fn)
@@ -295,8 +285,7 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                             model_window=model_window,
                         )
                     ):
-                        # Do not enter a worker once the window its model calls draw
-                        # on is closed — research and composition close separately.
+                        # 窗口关闭后不再进入 Worker；研究窗口与组合窗口分别关闭。
                         return _blocked_research_worker_update(
                             node_name=node_name,
                             observed_deadline=observed_deadline,
@@ -308,7 +297,7 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                     and handle.delivery_ready_event.is_set()
                     and node_name in _DEADLINE_BLOCKED_WORKER_NODES
                 ):
-                    # A detached/late worker must not overwrite a durable Bundle.
+                    # 已脱离或迟到的 Worker 不得覆盖已持久化的 Bundle。
                     return _ignored_after_delivery_update(state, node_name)
                 claimed_supplements = (
                     handle.pending_supplements() if handle is not None else []
@@ -359,9 +348,8 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                     and handle.delivery_ready_event.is_set()
                     and node_name in _DEADLINE_BLOCKED_WORKER_NODES
                 ):
-                    # The finalizer may win while an externally scheduled worker
-                    # is returning. Drop that stale update rather than merging it
-                    # into a checkpoint that already owns a Bundle identity.
+                    # finalizer 可能已在外部调度的 Worker 返回前完成落库；
+                    # 该过期更新直接丢弃，不并入已持有 Bundle 身份的 checkpoint。
                     result = _ignored_after_delivery_update(state, node_name)
                     applied_amendment_ids.clear()
                 elif (
@@ -382,9 +370,8 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                     and result.get("delivery_persisted") is True
                 ):
                     handle.mark_delivery_ready()
-                # Keep a durable, non-decreasing checkpoint observation at every
-                # successful graph boundary.  A node that explicitly replaces or
-                # clears its deadline (approval/edit) owns that state transition.
+                # 每个成功的图边界都保留单调不减的 deadline 观测；显式替换或
+                # 清空 deadline 的节点（审批/编辑）自行负责该状态转换。
                 if (
                     deadline is not None
                     and isinstance(result, dict)

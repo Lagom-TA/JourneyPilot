@@ -1,4 +1,4 @@
-"""Planning delivery fact projection."""
+"""交付事实快照构建。"""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def build_fact_snapshot(
     weather_facts: Sequence[FactAssertion] = (),
     weather_provenance: Sequence = (),
 ) -> FactStoreSnapshot:
-    """Merge packet and weather facts without accepting conflicting identities."""
+    """合并 packet 与天气事实；同一身份出现不同内容时抛出错误。"""
 
     sources: dict[str, SourceRecord] = {}
     facts: dict[str, FactAssertion] = {}

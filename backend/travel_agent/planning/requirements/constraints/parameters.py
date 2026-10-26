@@ -1,4 +1,4 @@
-"""Planning requirements constraints parameters."""
+"""约束参数解析。"""
 
 from __future__ import annotations
 
@@ -211,7 +211,7 @@ def _canonical_mobility_params(
 
 
 def _positive_int_param(value: Any) -> Optional[int]:
-    """Admit a canonical positive integer without coercion or defaults."""
+    """只接受规范的正整数，不做类型转换，也不给默认值。"""
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         return None
     return value
@@ -224,7 +224,7 @@ _BUDGET_AMOUNT_PATTERN = re.compile(
 
 
 def _budget_amount_param(value: Any) -> Optional[float]:
-    """Admit a numeric budget cap; extracted wording is never coerced into one."""
+    """接受数字预算上限；纯文本金额描述不会被强制转成数字。"""
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float)):
@@ -274,7 +274,7 @@ def _contains_mode_alias(text: str, alias: str) -> bool:
 
 
 def _mode_text_intent(value: str, aliases: tuple[str, ...]) -> Optional[str]:
-    """Return the nearest explicit intent governing a mentioned local mode."""
+    """返回管束被提及本地交通方式的最近一处明确意图。"""
     normalized = value.casefold()
     strong_boundary = re.compile(r"[。；;.!?！？\n]")
     intent_groups = (
@@ -307,7 +307,7 @@ def _canonical_transport_mode_params(
     *,
     require_intent_hint: bool = False,
 ) -> Optional[Dict[str, Any]]:
-    """Bind explicit local-mode intent to typed params without inventing a route."""
+    """把明确的本地交通方式意图绑定为类型化参数，不凭空生成路线。"""
     normalized = dict(params or {})
     raw_preferred = normalized.get("preferred_local_modes")
     preferred = list(raw_preferred) if isinstance(raw_preferred, list) else []
@@ -420,7 +420,7 @@ def _canonical_allergy_params(
 
 
 def _allergy_allergen_key(item: Dict[str, Any]) -> frozenset[str]:
-    """Normalize allergen tokens for food_allergy semantic dedupe."""
+    """归一化过敏原标记，用于 food_allergy 语义去重。"""
     if _allergy_declares_unknown_detail(item.get("value"), item.get("params")):
         return frozenset({_UNKNOWN_ALLERGEN_KEY})
     params = item.get("params") if isinstance(item.get("params"), dict) else {}

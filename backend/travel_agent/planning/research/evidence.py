@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import Field, model_validator
@@ -15,7 +14,7 @@ FACT_SNAPSHOT_CONTRACT_VERSION = "journeypilot.fact_store_snapshot.v4"
 class ProviderSnapshotProvenance(StrictModel):
     origin: Literal["live", "provider_snapshot_cache"]
 
-    # Live retrieval does not imply production data; require an explicit environment.
+    # 实时检索不等同于生产数据，环境必须显式声明。
     data_environment: Literal["production", "sandbox"]
     provider_name: str = Field(min_length=1)
     tool_name: str = Field(min_length=1)

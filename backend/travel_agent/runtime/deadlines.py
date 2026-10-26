@@ -10,7 +10,7 @@ from travel_agent.schema import StrictModel
 
 
 class RunDeadlineSnapshot(StrictModel):
-    # Embedded windows keep validation independent of later configuration changes.
+    # 快照内嵌各段秒数，使校验不受之后的配置变更影响。
     draft_id: str = Field(min_length=1)
     policy_version: str = Field(min_length=1)
     planning_authorized_at: datetime
@@ -83,7 +83,7 @@ RUN_DEADLINE_POLICY_VERSION = "run_deadline.v2"
 
 
 def _windows():
-    # Read configuration only when sealing a fresh snapshot.
+    # 只在封存新快照时读取配置。
     from ..config.loader import get_settings
 
     return get_settings().run_deadline
@@ -122,15 +122,13 @@ DeadlinePhase = Literal[
 
 @dataclass(frozen=True)
 class DeadlineObservation:
-    """One reading of the run clock.
+    """Run 时钟的一次读数。
 
-    ``research`` and ``target_missed`` are the windows in which a research call
-    may still start.  ``closeout`` closes research while itinerary composition
-    stays open; ``composition_closed`` closes that too and leaves only
-    projection and persistence; ``expired`` means the delivery budget is gone.
+    ``research`` 与 ``target_missed`` 仍允许发起研究调用；``closeout`` 关闭研究，
+    行程编排仍可继续；``composition_closed`` 关闭编排，只保留投影与持久化；
+    ``expired`` 表示交付预算已用完。
 
-    Read the two predicates rather than comparing phases: they name the question
-    each call site is actually asking.
+    调用方应读取下面两个谓词，而不是自行比较 phase：谓词名称就是调用点要问的问题。
     """
 
     elapsed_seconds: float
@@ -139,12 +137,12 @@ class DeadlineObservation:
 
     @property
     def research_closed(self) -> bool:
-        """No worker, gate repair or provider sweep may open another call."""
+        """worker、修复轮次与 provider 扫描都不能再发起调用。"""
         return self.phase in {"closeout", "composition_closed", "expired"}
 
     @property
     def composition_closed(self) -> bool:
-        """No itinerary composition call may start; only projection remains."""
+        """行程编排不能再发起调用，只剩投影。"""
         return self.phase in {"composition_closed", "expired"}
 
 
@@ -172,10 +170,10 @@ def observe_run_deadline(
     monotonic_now: Optional[float] = None,
     process_elapsed_seconds: Optional[float] = None,
 ) -> Tuple[RunDeadlineSnapshot, DeadlineObservation]:
-    """Advance, but never reset or shorten, a persisted deadline observation.
+    """推进已持久化的 Deadline 读数，但不重置也不缩短它。
 
-    Phase boundaries use the seconds embedded on ``snapshot``, so a later change
-    to the ``run_deadline`` config cannot reclassify an older run.
+    阶段边界使用 ``snapshot`` 内嵌的秒数，因此之后修改 ``run_deadline`` 配置
+    不会改变已有 Run 的阶段判定。
     """
     observed_at = _as_utc(now or utc_now())
     authorization = _as_utc(snapshot.planning_authorized_at)

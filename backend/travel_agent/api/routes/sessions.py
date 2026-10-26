@@ -1,10 +1,10 @@
 """会话相关 API：按 turn 分页回看历史，以及手动整理上下文。
 
-分页按 **turn** 走，不按原始事件：一个 turn 里有用户消息、思考步、上下文报告与助手
-消息，按事件游标切页会把它们切到两页，前端拼不回来。
+分页以 turn 为单位：一个 turn 包含用户消息、思考步、上下文报告与助手消息，
+按事件游标切页会把同一轮拆到两页。
 
-手动整理与自动压缩共用 `CompactionService` —— 摘要、新边界与时间线快照由它在同一个
-事务里写下。
+手动整理与自动压缩共用 `CompactionService`，摘要、新边界与时间线快照由它在
+同一事务中写入。
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ async def list_session_turns(
 async def compact_session(session_id: str):
     """手动整理：把压缩点之后、预算之内的历史折叠进 Anchor Summary。
 
-    返回时间线上那一枚不可变的 `context_compaction` 快照。
+    返回时间线上不可变的 `context_compaction` 快照。
     """
 
     try:

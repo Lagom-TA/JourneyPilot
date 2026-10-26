@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 async def build_components(settings: Optional[Settings] = None) -> AppComponents:
-    """Construct dependencies in the order required by their consumers."""
+    """按使用方的依赖顺序构建全部组件。"""
     settings = settings or get_settings()
     logger.info(f"构建应用组件（环境: {settings.env}）")
 

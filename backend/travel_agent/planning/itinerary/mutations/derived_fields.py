@@ -1,5 +1,3 @@
-"""Planning itinerary mutations derived_fields."""
-
 from __future__ import annotations
 
 from travel_agent.planning.costs.coverage import build_cost_coverage_summary

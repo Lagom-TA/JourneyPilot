@@ -1,4 +1,4 @@
-"""Planning delivery projection node."""
+"""交付投影节点。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from travel_agent.planning.state import TravelAgentState
 
 
 def _workspace_with_dining_reminders(state: TravelAgentState):
-    """Attach soft food-allergy reminders only to dining consumer objects."""
+    """仅向餐饮对象附加软性食物过敏提醒。"""
     workspace = state.trip_workspace_v2
     if workspace is None:
         return None

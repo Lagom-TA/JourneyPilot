@@ -1,4 +1,4 @@
-"""Planning delivery public report."""
+"""公开报告投影。"""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from typing import Dict
 
 
 def _public_citation(citation: PublicCitationProjection) -> Dict[str, Any]:
-    """Project a citation without provider identity or raw RAG/source payloads."""
+    """投影引用，不包含 provider 身份与原始 RAG/来源载荷。"""
 
     return {
         "citation_id": citation.citation_id,
@@ -56,12 +56,11 @@ def _public_citation(citation: PublicCitationProjection) -> Dict[str, Any]:
 def _public_report_block(
     block: ReportEntityBlock, view: EvidenceBasisView
 ) -> Dict[str, Any]:
-    """Project one report block.
+    """投影一个报告条目。
 
-    ``weather_impact_ids`` / ``personalization_influence_ids`` are deliberately
-    absent: they are internal ledger references with no product meaning.  A
-    ``custom`` block states no basis, for the same reason it states none in the
-    workspace.
+    ``weather_impact_ids`` / ``personalization_influence_ids`` 是内部账本引用，
+    没有产品含义，因此不输出；``custom`` 条目不声明证据基础，与 workspace 中
+    的处理一致。
     """
 
     payload: Dict[str, Any] = {
@@ -96,10 +95,10 @@ def _public_report_day(
 
 
 def _public_report_selection(section: ReportSelectionSection) -> Dict[str, Any]:
-    """Project one selection section without the internal candidate identity.
+    """投影一个选择区段，去掉内部候选身份。
 
-    ``candidate_id`` names a row in the recommendation catalog; the option is
-    already identified to a reader by ``option_id`` and ``name``.
+    ``candidate_id`` 指向推荐目录中的一行；对读者而言，选项已由 ``option_id``
+    与名称标识。
     """
 
     return {
@@ -173,10 +172,9 @@ def _public_report_document(
 def _public_report(
     report: TripReportProjection, view: EvidenceBasisView
 ) -> Dict[str, Any]:
-    """Project the formal report.
+    """投影正式报告。
 
-    ``failure_reason`` is absent by construction: a ready report is the formal
-    product artifact and failure strings belong to integrity diagnostics.
+    ``failure_reason`` 不输出：ready 报告是正式产物，失败信息属于完整性诊断。
     """
 
     return {
@@ -195,7 +193,7 @@ def _public_report(
 
 
 def _public_map(projection: MapProjection) -> Dict[str, Any]:
-    """Project the map.  Geometry only — the evidence claim belongs to the cards."""
+    """投影地图，只包含几何信息；证据声明属于卡片。"""
 
     return {
         "source_workspace_revision": projection.source_workspace_revision,

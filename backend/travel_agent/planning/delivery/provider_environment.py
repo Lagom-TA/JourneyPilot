@@ -1,4 +1,4 @@
-"""Planning delivery provider environment."""
+"""交付来源的数据环境视图。"""
 
 from __future__ import annotations
 
@@ -14,34 +14,22 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ProviderEnvironmentView:
-    """One Run's data-environment fact, reduced once and read by every surface.
+    """一次 Run 的数据环境事实，各展示面共用同一结果。
 
-    Run-level rather than per-leg on purpose.  A traveller does not act
-    differently on leg three than on leg one here: the useful statement is "some
-    of the transport evidence in this plan came from a test environment, do not
-    try to book from it", and a per-leg badge would spend the reader's attention
-    on a distinction that changes nothing they do.
+    判定放在 Run 级而非单段交通级：对读者有意义的陈述是「本计划的部分交通证据
+    来自测试环境，不要据此预订」，逐段标记不会改变读者的行动。
     """
 
     has_sandbox_evidence: bool
 
     @classmethod
     def from_bundle(cls, bundle: "DeliveryBundle") -> "ProviderEnvironmentView":
-        """Reduce over every source record that states an environment.
+        """归约所有声明了环境的来源记录。
 
-        Two places can state it and both are read.  ``cache_provenance`` carries
-        it for the tools the provider snapshot cache covers — place identity and
-        route lookups, never a flight search — and the provider's own sanitized
-        payload carries it for everything else.  The two must agree for one
-        response, which is what stops the disclosure depending on whether Redis
-        happened to hold the answer.  Reading only the first is why this
-        disclosure never fired for the case it was built for: a Duffel flight
-        search never goes through that cache, so every leg of a sandbox itinerary
-        reported production by silence, on screen and in the exported PDF.
-
-        Total by construction: a stored Bundle must reduce, never raise.  The
-        obligation to *state* an environment is enforced where the record is
-        written, not where a finished plan is read.
+        ``cache_provenance`` 覆盖 provider 快照缓存命中的工具，provider 自身的
+        sanitized payload 覆盖其余来源；同一次响应中两者必须一致，披露结果才不
+        取决于缓存是否命中。已存储的 Bundle 必须能归约而不抛异常，环境声明义务
+        由写入记录的一侧保证。
         """
 
         return cls(
@@ -53,7 +41,7 @@ class ProviderEnvironmentView:
 
     @property
     def sandbox_note(self) -> Optional[str]:
-        """The sentence to state, or ``None`` when every response was production."""
+        """需要说明的文案；全部响应来自生产环境时返回 ``None``。"""
 
         return SANDBOX_EVIDENCE_NOTE if self.has_sandbox_evidence else None
 

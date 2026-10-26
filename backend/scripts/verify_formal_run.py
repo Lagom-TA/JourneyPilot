@@ -1,8 +1,7 @@
-"""Capture a real API/SSE run; never replace providers, gates, or persistence.
+"""抓取一次真实的 API/SSE 运行，不替换 provider、校验或持久化。
 
-Run inside the project's Docker environment. Paid requests require --live.
-Supply the same JSON request a traveller would send to /api/chat-stream.
-The output contains public SSE data and read-only API snapshots.
+在项目的 Docker 环境中运行；付费请求需要 ``--live``。请求体与旅行者发给
+``/api/chat-stream`` 的 JSON 相同，输出包含公开 SSE 数据与只读 API 快照。
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""HTTP resource behavior using the real app and fake I/O boundaries."""
+"""使用真实应用与假 I/O 边界验证 HTTP 资源行为。"""
 
 import json
 from contextlib import asynccontextmanager

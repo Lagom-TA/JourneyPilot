@@ -1,13 +1,12 @@
 """迁移决策与执行。
 
-**这个模块是「启动应用」和「永久改写用户数据」之间的那道闸门**（dev docs 02 §1）。
-它的核心不是「跑 alembic upgrade」——那一行谁都会写 —— 而是 §4.1 那个状态机里
-**什么时候不许自动跑**：
+这个模块决定「启动应用」与「改写用户数据」之间的边界。核心不是执行
+``alembic upgrade``，而是在哪些状态下不允许自动迁移：
 
-- 来历不明的 schema：拒绝，绝不 `alembic stamp head`（§2.3）；
-- 非空库：先备份且校验通过，才允许自动迁移（§4.3）；
-- 标记为破坏性的迁移：必须显式 `--allow-destructive`；
-- 数据库版本比代码新：拒绝启动，不假装能读。
+- 来历不明的 schema：拒绝，不对未知结构执行 ``alembic stamp head``；
+- 非空库：先备份且校验通过，才允许自动迁移；
+- 标记为破坏性的迁移：必须显式 ``--allow-destructive``；
+- 数据库版本比代码新：拒绝启动，不尝试读取。
 """
 
 from __future__ import annotations
@@ -76,7 +75,7 @@ class MigrationPlan:
     destructive_revisions: tuple[str, ...] = ()
     #: 拒绝或需要人工介入时，说清「差在哪」
     problems: tuple[str, ...] = ()
-    #: 下一条可执行的命令（doctor 合同要求，dev docs 02 §12）
+    #: 下一条可执行的命令（doctor 合同要求）
     next_action: str = ""
     fingerprint_digest: str = ""
     #: 活库的完整指纹。doctor 要用它报告实际向量维度与可选能力，
@@ -258,9 +257,9 @@ def plan(
             )
         pending = line[line.index(current) + 1 :]
         if not pending:
-            # 「最新 → verify」（dev docs 02 §4.1）：版本号说 head 不等于结构真的是 head。
-            # 少了一张表的库如果被判成 UP_TO_DATE，`migrate` 会什么都不做，而
-            # 第一条写那张表的请求 500 —— 这正是版本号存在要消灭的那种沉默。
+            # 版本号到 head 不等于结构真的是 head。少了一张表的库如果被判成
+            # UP_TO_DATE，`migrate` 会什么都不做，而第一条写那张表的请求返回
+            # 500；这正是版本号校验要避免的静默失败。
             expected = expected_fingerprint_for(current, line=line)
             drift = tuple(diff_fingerprints(expected, actual)) if expected else ()
             if drift:
@@ -300,7 +299,7 @@ def plan(
 
     # ---- 没有 alembic_version --------------------------------------------- #
     if census.is_empty_database:
-        # 空库**不受破坏性闸门约束**：那道闸门保护的是已有数据，而这里没有数据可丢。
+        # 空库不受破坏性迁移检查约束：该检查保护的是已有数据，而这里没有数据可丢。
         # 首次安装因此不需要 `--allow-destructive`，即使 head 路径上有破坏性迁移
         # （它们在空库上都是空操作）。
         return build(
@@ -345,9 +344,9 @@ def plan(
             ),
         )
 
-    # 纳管本身（写一行 `alembic_version`）不改变任何数据，所以它**不受破坏性闸门约束**。
-    # 闸门管的是纳管之后的那些待执行迁移 —— `cmd_migrate` 先 stamp、再重新判定，
-    # 于是「已纳管」和「后续迁移需要授权」是两句独立的话，不会因为后者而丢掉前者。
+    # 纳管本身（写一行 `alembic_version`）不改变任何数据，因此不受破坏性迁移检查
+    # 约束。该检查针对纳管之后的待执行迁移：`cmd_migrate` 先 stamp、再重新判定，
+    # 于是「已纳管」与「后续迁移需要授权」互不影响。
     pending = line[line.index(BASELINE_REVISION) + 1 :] if BASELINE_REVISION in line else ()
     destructive = tuple(rev for rev in pending if is_destructive(target, rev))
     notes = [
@@ -377,9 +376,8 @@ def plan(
 def stamp(target: DatabaseTarget, revision: str) -> None:
     """写 alembic_version，不执行任何 DDL。
 
-    **只有 `plan()` 判定 ADOPT_BASELINE 时才允许调用**，而那条路径以指纹逐字相同
-    为前提。任何其他调用点都是 dev docs 02 §2.3 明令禁止的「把未知数据库伪装成
-    最新版本」。
+    只有 `plan()` 判定 ADOPT_BASELINE 时才允许调用，而那条路径以指纹逐字相同为
+    前提。任何其他调用点都会把未知结构的数据库标记成最新版本。
     """
 
     from alembic import command

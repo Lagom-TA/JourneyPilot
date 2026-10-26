@@ -1,4 +1,4 @@
-"""Planning transport semantics."""
+"""规划阶段的交通语义。"""
 
 from __future__ import annotations
 
@@ -26,11 +26,10 @@ _SERVICE_MODES = {
 
 
 def count_service_transfers(segments: Iterable[_ServiceSegment]) -> int:
-    """Count evidenced changes of boarded service, ignoring access/egress legs.
+    """统计已证实的乘坐服务变更次数，忽略进出站段。
 
-    Multiple provider segments can describe the same train or transit line. An
-    unnamed segment of the same mode does not prove a change; retain the last
-    known identity rather than inventing a transfer from that missing detail.
+    同一趟车或同一条线路可能由多个 provider segment 描述；同模式下未命名的
+    segment 不能证明发生换乘，因此沿用上一个已知身份，而不是据此新增换乘。
     """
     previous_mode: str | None = None
     previous_number: str | None = None

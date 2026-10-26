@@ -40,12 +40,9 @@ def default_model_pricing() -> List["ModelPricingItem"]:
         ModelPricingItem(pattern="deepseek-v4-pro", provider="deepseek", input_per_1m=0.435,
                          cached_input_per_1m=0.003625, output_per_1m=0.87,
                          effective_from=day, source_url=ds),
-        # The same two models reached through OpenRouter.  A separate pattern
-        # rather than a looser one: the model id carries the `deepseek/` prefix
-        # there, so prefix matching never reaches the direct entries above, and
-        # the cache-read price genuinely differs (OpenRouter lists 1/5 of the
-        # miss price for flash where DeepSeek direct lists 1/50).  Without these
-        # rows `resolve_price` returns None and every cost read-out is null.
+        # 经 OpenRouter 访问的同两个模型。模型 id 带 `deepseek/` 前缀，因此需要
+        # 单独的前缀项；缓存读价也与直连不同（OpenRouter 为未命中价的 1/5，
+        # 直连为 1/50）。缺少这些行时 resolve_price 返回 None，成本读数全为空。
         ModelPricingItem(pattern="deepseek/deepseek-v4-flash", provider="deepseek",
                          input_per_1m=0.14, cached_input_per_1m=0.028, output_per_1m=0.28,
                          effective_from="2026-07-31", source_url=orouter),

@@ -1,4 +1,4 @@
-"""Conversation messages."""
+"""会话消息转换。"""
 
 from __future__ import annotations
 

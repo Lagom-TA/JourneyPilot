@@ -1,4 +1,4 @@
-"""Integrations routes service_days."""
+"""线路名称中的运行日标记检查。"""
 
 from __future__ import annotations
 
@@ -10,11 +10,10 @@ import re
 def nominal_service_day_conflict(
     line_names: Iterable[str | None], service_date: date
 ) -> bool:
-    """Reject clearly incompatible weekday labels, without asserting a holiday calendar.
+    """拒绝与星期明显不兼容的运行日标签，不据此推断节假日安排。
 
-    A matching weekday is not proof of service: holidays and adjusted workdays
-    still need operator confirmation. A conflicting label is insufficient
-    evidence to select this route when an unrestricted alternative may exist.
+    星期匹配不能证明当天有服务：节假日与调休仍需运营方确认。存在无运行日限制的
+    替代线路时，冲突标签是不足以选择该线路的证据。
     """
     weekend = service_date.weekday() >= 5
     for name in line_names:

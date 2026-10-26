@@ -1,5 +1,3 @@
-"""Research packet lineage responsibilities."""
-
 from __future__ import annotations
 
 import logging
@@ -17,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 def _prune_payload_to_candidate_closure(payload: dict[str, Any]) -> None:
-    "Keep only facts, sources, and provenance reachable from current candidates."
+    """只保留可从当前候选到达的事实、来源与来源标注。"""
     candidates = payload.get("candidates")
     if not isinstance(candidates, list) or not candidates:
         return
@@ -95,7 +93,7 @@ def _prune_payload_to_candidate_closure(payload: dict[str, Any]) -> None:
 
 
 def _candidate_provenance_entity_ids(payload: Mapping[str, Any]) -> dict[str, str]:
-    "Each candidate id mapped to the entity its compiled sources are minted under."
+    """候选 id 到其编译来源所用实体 id 的映射。"""
     entity_ids: dict[str, str] = {}
     for candidate in payload.get("candidates") or []:
         if not isinstance(candidate, Mapping):
@@ -117,7 +115,7 @@ def _drop_borrowed_compiled_source_links(
     *,
     expected_worker: str,
 ) -> None:
-    "Refuse a compiled source that was minted for some *other* entity."
+    """拒绝为其他实体编译的来源链接。"""
     facts = payload.get("fact_assertions")
     if not isinstance(facts, list) or not facts:
         return
@@ -172,7 +170,7 @@ def _drop_borrowed_compiled_source_links(
 
 
 def _normalized_semantic_key(value: Any) -> str:
-    "Normalize an already-structured semantic label for exact fallback joins."
+    """把结构化语义标签规范化为可直接比较的键。"""
     return re.sub(r"[^\w]+", "", str(value or "").casefold(), flags=re.UNICODE)
 
 
@@ -182,7 +180,7 @@ def _query_row_matches_provider_identity(
     provider_query: str,
     candidate_name: str,
 ) -> bool:
-    "Join Provider identity to an LLM-authored query without new NLP rules."
+    """把 Provider 身份与模型撰写的查询关联起来，不新增 NLP 规则。"""
     provider_key = _normalized_semantic_key(provider_query)
     name_key = _normalized_semantic_key(candidate_name)
     query_key = _normalized_semantic_key(row.get("query_text"))
@@ -202,7 +200,7 @@ def _query_row_matches_provider_identity(
 
 
 def _bind_candidate_discovery_lineage(payload: dict[str, Any]) -> None:
-    """Bind every candidate to the executed-query lineage observable server-side."""
+    """为每个候选绑定服务端可观察到的已执行查询来源。"""
     candidates = payload.get("candidates")
     if not isinstance(candidates, list):
         return

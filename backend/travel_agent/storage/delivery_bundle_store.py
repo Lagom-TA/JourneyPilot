@@ -1,4 +1,4 @@
-"""Atomic persistence for immutable JourneyPilot v2 delivery bundles."""
+"""不可变交付 Bundle 的原子持久化。"""
 
 from __future__ import annotations
 
@@ -24,17 +24,15 @@ FailureInjector = Callable[[str], None]
 
 
 class BundleContractSuperseded(RuntimeError):
-    """A stored Bundle was written under a contract that no longer describes it.
+    """已存 Bundle 的合同版本与当前代码不一致。
 
-    The stamp is read from the row's own ``manifest`` JSONB column and compared
-    *before* the payload is parsed.  Parsing first raises a `ValidationError` fourteen
-    fields deep, with no handler anywhere in the app, surfacing as a 500 on an ordinary
-    product read.  The stamp answers the same question in one comparison and can say
-    which contract the row was written under.
+    先从行内的 ``manifest`` JSONB 列读取版本标记并在解析载荷之前比较。直接解析
+    会在深层字段抛 ``ValidationError``，应用内没有处理器，最终变成一次普通产品
+    读取的 500 错误。版本标记只需一次比较就能给出同样的结论，并说明该行写入时
+    使用的合同版本。
 
-    It refuses; it never dispatches.  A branch that reads an old shape "just for this
-    version" is a compatibility layer — the row's disposition is a data decision, made
-    once, not a code path.
+    遇到不匹配时拒绝读取，不做兼容分发：旧结构如何处置是一次性的数据决策，
+    不是常驻代码路径。
     """
 
     def __init__(self, *, run_id: str, stored: Optional[str]) -> None:
@@ -137,7 +135,7 @@ def _json_loads(value: Any) -> Any:
 
 @asynccontextmanager
 async def _session_scope(session: Any | None):
-    """Reuse a caller-owned transaction without committing it prematurely."""
+    """复用调用方已有的事务，不提前提交。"""
 
     if session is not None:
         yield session
@@ -156,9 +154,8 @@ def _request_digest(
     idempotency_request: Optional[Dict[str, Any]] = None,
 ) -> str:
     if idempotency_request is not None:
-        # A logical command may finish as a materialized revision or a
-        # no-op receipt.  Its replay identity is the user command itself, not
-        # which persistence branch happened to observe the result first.
+        # 一条逻辑命令可能落成实体 revision，也可能落成 no-op 回执。它的重放
+        # 身份是用户命令本身，而不是先观察到结果的是哪条持久化分支。
         value = {"idempotency_request": idempotency_request}
         return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
     if bundle is None:
@@ -233,12 +230,11 @@ class DeliveryBundleStore:
         contract_stamp: Optional[str],
         payload: Any,
     ) -> DeliveryBundle:
-        """Compare the stored stamp, then parse — in that order, in one place.
+        """先比较已存版本标记，再解析载荷；所有读取路径都经过这里。
 
-        Every read that returns a stored payload goes through here, so a new
-        consumer cannot forget the comparison.  The stamp travels in the same row
-        as the payload, so this costs no extra round trip and no schema change:
-        ``delivery_bundles_v2.manifest`` has always been its own JSONB column.
+        每次返回已存载荷的读取都走这个入口，新增消费方不会漏掉版本比较。标记与
+        载荷在同一行，因此不增加查询次数，也不需要改 schema：
+        ``delivery_bundles_v2.manifest`` 本身就是独立的 JSONB 列。
         """
 
         if contract_stamp != DELIVERY_BUNDLE_CONTRACT_VERSION:
@@ -277,13 +273,11 @@ class DeliveryBundleStore:
         )
 
     async def get_current_bundle_id(self, run_id: str) -> Optional[str]:
-        """Read the current Bundle identity without loading or validating its payload.
+        """只读取当前 Bundle 身份，不加载也不校验载荷。
 
-        The head row is the pointer of record and its foreign key guarantees the
-        referenced Bundle exists, so callers that only need the identity — event
-        windows, revision-conflict responses — must not pay a payload parse.  A
-        payload written before the current contract must not be able to turn such
-        a read into a failure: identity is still exactly known.
+        head 行是权威指针，其外键保证引用的 Bundle 存在，因此只需要身份调用方
+        （事件窗口、revision 冲突响应）不必解析载荷。写入于旧合同的载荷不应让
+        这类读取失败：身份仍然可以确定。
         """
         async with get_db_session() as session:
             result = await session.execute(
@@ -332,7 +326,7 @@ class DeliveryBundleStore:
             )
 
     async def get_undo_head(self, run_id: str) -> Optional[BundleUndoHead]:
-        """Return the server-owned inverse for the current semantic workspace head."""
+        """返回当前语义 workspace head 的服务端 inverse。"""
         async with get_db_session() as session:
             result = await session.execute(
                 text(
@@ -346,11 +340,10 @@ class DeliveryBundleStore:
                     JOIN delivery_bundles_v2 AS bundle
                       ON bundle.bundle_id = commit.result_bundle_id
                     WHERE head.run_id = :run_id
-                      -- A weather/fact rebind may advance the immutable
-                      -- Workspace revision solely to keep the current
-                      -- Candidate catalog aligned with its refreshed facts.
-                      -- It must not erase the latest user-owned undo head;
-                      -- the service re-applies only rebase-safe inverses.
+                      -- 天气/事实重绑可能仅为了让当前 Candidate 目录与刷新后的
+                      -- 事实对齐而提升不可变 Workspace revision。它不能覆盖最近
+                      -- 一个用户发起的 undo head；服务只重新应用可安全变基的
+                      -- inverse。
                       AND bundle.workspace_revision <= head.workspace_revision
                       AND commit.inverse_patch IS NOT NULL
                       AND commit.commit_kind IN ('workspace_mutation', 'undo')
@@ -391,12 +384,11 @@ class DeliveryBundleStore:
         metadata: Optional[Dict[str, Any]] = None,
         session: Any | None = None,
     ) -> BundleCommitResult:
-        """Persist a no-current-change command response for exact replay.
+        """持久化一个不改变当前状态的命令回执，供精确重放。
 
-        A user command that finds no eligible choices, or finds an already
-        current catalog, still needs a durable idempotency outcome.  This is a
-        ledger receipt only: it references the existing current Bundle and
-        deliberately performs no snapshot, Bundle, head, or undo mutation.
+        用户命令没有可用选项，或发现目录已是最新时，仍然需要一个 durable 的
+        幂等结果。这里只写台账回执：引用现有当前 Bundle，不执行 snapshot、
+        Bundle、head 或 undo 变更。
         """
 
         if not idempotency_key.strip():
@@ -514,9 +506,8 @@ class DeliveryBundleStore:
             idempotency_request=idempotency_request,
         )
         async with _session_scope(session) as session:
-            # A missing head row cannot be protected by SELECT ... FOR UPDATE.
-            # The transaction-scoped advisory lock serializes create and every
-            # later commit for one run without blocking unrelated trips.
+            # 缺少 head 行时无法用 SELECT ... FOR UPDATE 保护。事务级 advisory
+            # lock 将同一个 run 的 create 与后续提交串行化，且不阻塞其他行程。
             await session.execute(
                 text("SELECT pg_advisory_xact_lock(hashtextextended(:run_id, 0))"),
                 {"run_id": run_id},
@@ -688,7 +679,7 @@ class DeliveryBundleStore:
             payload=_json_loads(row["bundle"]),
         )
 
-    # Identifier whitelist — never interpolate user input into SQL identifiers.
+    # 标识符白名单：不把用户输入拼进 SQL 标识符。
     _SNAPSHOT_TABLE_COLUMNS: Dict[str, str] = {
         "trip_workspace_v2_revisions": "workspace_revision",
         "fact_store_v2_revisions": "fact_data_revision",
@@ -755,7 +746,7 @@ class DeliveryBundleStore:
 
 
 class InMemoryDeliveryBundleStore(DeliveryBundleStore):
-    """Transaction-shaped reference implementation used by reducer/store tests."""
+    """事务语义与 SQL 实现一致的内存参考实现，供 reducer/store 测试使用。"""
 
     def __init__(self, *, failure_injector: Optional[FailureInjector] = None) -> None:
         super().__init__(failure_injector=failure_injector)
@@ -778,7 +769,7 @@ class InMemoryDeliveryBundleStore(DeliveryBundleStore):
         Dict[tuple[str, int], str],
         Dict[tuple[str, int], str],
     ]:
-        """Capture only mutable persistence state for a coordinated test transaction."""
+        """只捕获可变持久化状态，供测试事务统一回滚。"""
 
         return (
             deepcopy(self._bundles),

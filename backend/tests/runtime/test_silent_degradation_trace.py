@@ -71,10 +71,9 @@ def test_httpx_logger_carries_the_filter_after_app_logging_setup(
 
 
 def test_provider_module_installs_it_at_import_time(clean_redaction_state) -> None:
-    """主挂点仍在 provider 模块的 import 时，不是被挪去了入口。
+    """主挂点仍在 provider 模块 import 时，而不是只在入口。
 
-    这一条是 B9 那个「加不是挪」的钉子：任何绕过入口直接 import 这个模块的路径
-    （脚本、单测、工具直调）都必须已经装上脱敏。
+    任何绕过入口直接 import 这个模块的路径（脚本、单测、工具直调）都必须已经装上脱敏。
     """
 
     import importlib

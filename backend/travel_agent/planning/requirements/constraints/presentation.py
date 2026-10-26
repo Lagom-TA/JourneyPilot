@@ -1,4 +1,4 @@
-"""Planning requirements constraints presentation."""
+"""约束展示。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from travel_agent.planning.requirements.constraints.parameters import (
 )
 from travel_agent.planning.requirements.constraints.resolution import _item_source
 
-# Independent budgets keep manual preferences from competing with hard constraints.
+# 各区块的行数预算相互独立，手动偏好不会挤占硬约束的展示空间。
 _PROMPT_HARD_LINES = 12
 
 
@@ -21,7 +21,7 @@ _PROMPT_REFERENCE_LINES = 6
 
 
 def referenced_context_sections(pack: Any) -> List[Dict[str, Any]]:
-    """上下文透镜（「本次参考的信息」）要列的条目 —— 逐条等于 prompt 真印出去的那些。"""
+    """上下文透镜（「本次参考的信息」）要列出的条目，与 prompt 实际打印的内容一致。"""
 
     if not isinstance(pack, dict):
         return []
@@ -43,7 +43,7 @@ _UNKNOWN_ALLERGEN_DINING_NOTE = (
 
 
 def dining_allergy_reminders(pack: Any) -> List[str]:
-    """Concise dining-local reminders for soft food allergies."""
+    """面向餐饮场景的简短软性食物过敏提醒。"""
     if not isinstance(pack, dict):
         return []
     allergies: dict[frozenset[str], bool] = {}
@@ -181,7 +181,7 @@ def _constraint_prompt_sections(pack: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def format_constraint_pack_for_prompt(pack: Any) -> str:
-    """Project the shared pack into the Agent instructions that reach the model."""
+    """把共享的 Constraint Pack 投影为发送给模型的 Agent 指令。"""
     if not isinstance(pack, dict):
         return ""
 

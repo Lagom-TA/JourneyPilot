@@ -1,5 +1,3 @@
-"""Planning research transport rail parsing."""
-
 from __future__ import annotations
 
 import re
@@ -19,7 +17,7 @@ _RAIL_RECORD_TEXT_FIELDS = (
 
 
 def _extract_tool_text(envelope: Mapping[str, Any]) -> str:
-    """Collect any text payload from an MCP tool envelope, defensively."""
+    """提取工具信封中的所有 text 内容；没有时回退到 result_summary。"""
     parts: List[str] = []
 
     def walk(node: Any) -> None:
@@ -42,7 +40,7 @@ def _extract_tool_text(envelope: Mapping[str, Any]) -> str:
 
 
 def _normalize_cn_city_for_rail(name: str) -> str:
-    """把带行政级别后缀的中文城市名收敛成 12306 认得的裸城市名。"""
+    """把带行政级别后缀的中文城市名规范化为 12306 可识别的城市名。"""
     text = (name or "").strip()
     for suffix in ("特别行政区", "市", "省", "地区", "盟"):
         if text.endswith(suffix) and len(text) > len(suffix):
@@ -85,7 +83,7 @@ _CN_CITY_STATION_TELECODES: Dict[str, tuple[str, ...]] = {
 
 
 def _builtin_station_telecode(city_name: str) -> Optional[str]:
-    """Return the preferred (first) builtin station telecode for a CN city."""
+    """返回城市首选的（第一个）内置车站电报码。"""
     bare = _normalize_cn_city_for_rail(city_name)
     codes = _CN_CITY_STATION_TELECODES.get(bare) or _CN_CITY_STATION_TELECODES.get(
         city_name.strip()
@@ -94,7 +92,7 @@ def _builtin_station_telecode(city_name: str) -> Optional[str]:
 
 
 def _builtin_station_telecode_candidates(city_name: str) -> List[str]:
-    """Return ordered station telecodes to try for get-tickets (HSR hubs first)."""
+    """返回 get-tickets 依次尝试的车站电报码，高铁枢纽优先。"""
     bare = _normalize_cn_city_for_rail(city_name)
     codes = _CN_CITY_STATION_TELECODES.get(bare) or _CN_CITY_STATION_TELECODES.get(
         city_name.strip()
@@ -103,7 +101,7 @@ def _builtin_station_telecode_candidates(city_name: str) -> List[str]:
 
 
 def _parse_station_codes(text: str) -> Dict[str, str]:
-    """Parse {city_name: station_code} from get-station-code-of-citys output."""
+    """解析 get-station-code-of-citys 输出中的 {城市名: 车站码}。"""
     codes: Dict[str, str] = {}
     for match in re.finditer(
         r'"([^"]+)"\s*:\s*\{[^{}]*?"station_code"\s*:\s*"([A-Za-z0-9]+)"', text
@@ -121,7 +119,7 @@ def _parse_station_codes(text: str) -> Dict[str, str]:
 
 
 def _rail_train_records(envelope: Mapping[str, Any]) -> List[Dict[str, Any]]:
-    """Read the structured ``get-tickets`` rows out of a Tool Gateway envelope."""
+    """从 Tool Gateway 信封中读取结构化的 ``get-tickets`` 班次行。"""
     result = envelope.get("sanitized_result")
     if not isinstance(result, Mapping):
         return []
@@ -151,7 +149,7 @@ def _rail_train_records(envelope: Mapping[str, Any]) -> List[Dict[str, Any]]:
 
 
 def _rail_station_scope(city_name: str, requested_code: str) -> frozenset[str]:
-    """Every station telecode that legitimately represents one trip endpoint."""
+    """返回可代表同一行程端点的全部车站电报码。"""
     return frozenset(
         city_station_telecodes(_normalize_cn_city_for_rail(city_name))
         | {requested_code}
@@ -164,7 +162,7 @@ def _filter_rail_trains_by_station_scope(
     from_scope: frozenset[str],
     to_scope: frozenset[str],
 ) -> List[Dict[str, Any]]:
-    """Drop city-group rows whose endpoints are not the trip's endpoints."""
+    """丢弃端点不属于本次行程的城市级班次行。"""
 
     return [
         train

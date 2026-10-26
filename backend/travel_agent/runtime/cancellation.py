@@ -47,7 +47,7 @@ def stop_verdict(reason: str) -> StopVerdict:
 
 
 class RunCancelled(Exception):
-    """Raised when a cooperative stop signal reaches a boundary."""
+    """协作式停止信号到达节点边界时抛出。"""
 
     def __init__(
         self,
@@ -87,11 +87,10 @@ class RunControlHandle:
         self.cancel_event.set()
 
     def mark_delivery_ready(self) -> None:
-        """Seal this in-process run against late research writes.
+        """阻止本轮后续研究写入在交付物定型之后发布内容。
 
-        Durable Bundle identity remains the source of truth.  This event only
-        prevents a concurrently finishing worker from publishing stale content
-        after the finalizer has durably committed that identity.
+        durable Bundle 的身份仍是最终事实。这个事件只防止同时结束的 worker 在
+        finalizer 已持久化该身份之后发布旧内容。
         """
         self.delivery_ready_event.set()
 
@@ -203,13 +202,11 @@ run_control_registry = RunControlRegistry()
 
 
 def check_cancel_requested(node_name: Optional[str] = None) -> None:
-    """Raise ``RunCancelled`` when the in-process stop flag is set.
+    """进程内停止标记已置位时抛出 ``RunCancelled``。
 
-    Stopping is **cooperative**: checks run at node entry,
-    ReAct iteration boundaries, and after each tool result. An in-flight
-    LLM stream or single tool HTTP call may still finish before the next
-    checkpoint; latency is bounded by that in-flight round, not by a hard
-    process kill.
+    停止是协作式的：检查发生在节点入口、ReAct 迭代边界以及每次工具结果之后。
+    正在进行的 LLM 流或单次工具 HTTP 调用可能仍会完成并到达下一个检查点；
+    延迟上界是这一轮在途调用，而不是强制终止进程。
     """
     run_id = current_run_id.get()
     handle = run_control_registry.get(run_id)

@@ -1,5 +1,3 @@
-"""Planning research capability contracts."""
-
 from __future__ import annotations
 
 from pydantic import Field

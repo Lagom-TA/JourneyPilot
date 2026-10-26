@@ -1,4 +1,4 @@
-"""Validated release seed for trip planning."""
+"""旅行规划配置的发布种子，发布前经过校验。"""
 
 from travel_agent.planning.requirements.product_contracts import (
     PlannerOption,
@@ -53,7 +53,7 @@ TRIP_PLANNER_SEED = TripPlannerConfiguration(
 
 
 def validated_trip_planner_seed() -> TripPlannerConfiguration:
-    """Return the release seed after validating the current product contract."""
+    """按当前产品合同校验并返回发布种子。"""
     return TripPlannerConfiguration.model_validate(
         TRIP_PLANNER_SEED.model_dump(mode="json")
     )

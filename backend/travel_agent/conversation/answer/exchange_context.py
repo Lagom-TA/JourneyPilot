@@ -1,4 +1,4 @@
-"""Conversation answer exchange context."""
+"""会话回答的汇率上下文。"""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ _CN_DATE_RE = re.compile(r"(?<!\d)(\d{4})年(\d{1,2})月(\d{1,2})日")
 
 
 def _detect_currency_pair(query: str) -> Optional[tuple[str, str]]:
-    """Return (base, target) for common exchange-rate wording, or None."""
+    """识别常见汇率表述中的（基准, 目标）货币对；无法识别时返回 None。"""
     if not query or not _EXCHANGE_RATE_QUERY_RE.search(query):
         return None
 
@@ -85,7 +85,7 @@ def _detect_currency_pair(query: str) -> Optional[tuple[str, str]]:
 
 
 def _extract_requested_currency_date(query: str) -> Optional[str]:
-    """Extract an explicit user date so latest FX cannot answer a dated query."""
+    """提取用户指定的日期，避免用最新汇率回答指定日期的查询。"""
 
     match = _ISO_DATE_RE.search(query) or _CN_DATE_RE.search(query)
     if match is None:

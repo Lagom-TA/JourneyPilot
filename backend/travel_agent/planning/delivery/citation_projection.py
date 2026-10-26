@@ -1,4 +1,4 @@
-"""Planning delivery citation projection."""
+"""交付引用投影。"""
 
 from __future__ import annotations
 

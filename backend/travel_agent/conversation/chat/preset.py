@@ -9,12 +9,11 @@ logger = logging.getLogger(__name__)
 async def load_preset_context(
     preset_id: Optional[str], user_id: str
 ) -> tuple[str, Dict[str, str]]:
-    """加载预设，返回 (进 prompt 的那段文本, 交给 Constraint Pack 的那几项)。
+    """加载预设，返回（供 prompt 使用的文本, 供 Constraint Pack 使用的约束项）。
 
-    交两份出去而不是一份，是因为一个 preset 里有两类东西，归两层负责：指令与重点关注
-    是给模型看的散文，节奏与预算档位是可执行约束、要进 pack 参与仲裁（见
-    ``PresetInjector.PRESET_PACK_CONSTRAINT_CATEGORIES``）。在一份字符串里同时表达
-    这两件事，就是那三个「风格」互不相认的起点。
+    一个 preset 包含两类内容，分别由两层负责：指令与重点关注是给模型的文本；
+    节奏与预算档位是可执行约束，进入 pack 参与仲裁（见
+    ``PresetInjector.PRESET_PACK_CONSTRAINT_CATEGORIES``）。
 
     - 未传 preset_id：返回空串与空字典（不注入风格）。
     - 显式 preset 不存在或无权访问：HTTP 404（资源语义，非 500）。

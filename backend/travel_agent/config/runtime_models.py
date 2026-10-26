@@ -1,4 +1,4 @@
-"""Runtime model mutation and persistence without HTTP dependencies."""
+"""运行时模型配置的修改与持久化，不依赖 HTTP 层。"""
 
 import logging
 

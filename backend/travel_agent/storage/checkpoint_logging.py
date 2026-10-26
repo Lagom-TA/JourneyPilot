@@ -1,4 +1,4 @@
-"""Storage checkpoint logging."""
+"""checkpoint 反序列化日志的去重。"""
 
 from __future__ import annotations
 
@@ -15,18 +15,15 @@ _UNREGISTERED_TYPE_MESSAGE_PREFIX = "Deserializing unregistered type"
 
 
 class UnregisteredCheckpointTypeDedup(logging.Filter):
-    """Keep the first "unregistered type" warning per type, drop its repeats.
+    """同一种类型只保留第一条 "unregistered type" 警告。
 
-    One gated deep run replays the same handful of typed entities through the
-    checkpointer thousands of times, so eight distinct types arrive as roughly
-    220 identical WARNING lines that bury the rest of the run's log.
+    一次 Run 会把同一批类型实体反复送进 checkpointer，同一警告可能重复数百次，
+    掩盖该次 Run 的其他日志。
 
-    Only the repeats are dropped, and only for this one message: the first
-    warning per ``(module, name)`` still carries the upstream "this will be
-    blocked in a future version" notice and names exactly which type would need
-    registering. Nothing here silences the logger, raises its level, or touches
-    any other record on it — which matters because the library's *blocked*
-    deserialization warning shares this logger and is not repetitive noise.
+    只丢弃这一条消息的重复项：每个 ``(module, name)`` 的第一条仍会带上游的
+    「未来版本将阻止该类型」提示与具体类型名。这里不关闭 logger、不调整级别，
+    也不影响该 logger 上的其他记录；库的「已阻止反序列化」警告与这一条共用
+    logger，且不是重复噪声。
     """
 
     def __init__(self) -> None:
@@ -50,7 +47,7 @@ class UnregisteredCheckpointTypeDedup(logging.Filter):
 def install_checkpoint_serde_log_dedup(
     logger: Optional[logging.Logger] = None,
 ) -> UnregisteredCheckpointTypeDedup:
-    """Attach the de-duplicating filter to the checkpoint serde logger once."""
+    """把去重过滤器挂到 checkpoint serde logger 上，只挂一次。"""
     target = logger or logging.getLogger(CHECKPOINT_SERDE_LOGGER_NAME)
     for existing in target.filters:
         if isinstance(existing, UnregisteredCheckpointTypeDedup):

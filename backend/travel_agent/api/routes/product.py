@@ -1,4 +1,4 @@
-"""Read-only, database-backed product configuration endpoints."""
+"""只读的产品配置接口，数据来自数据库。"""
 
 from fastapi import APIRouter, HTTPException
 

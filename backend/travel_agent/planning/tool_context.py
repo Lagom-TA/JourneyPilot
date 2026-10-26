@@ -4,7 +4,7 @@ from typing import Any, Dict
 
 
 def build_tool_context_from_state(state: Any) -> Dict[str, Any]:
-    "Build optional ToolGateway context from workflow state and app stores."
+    "从工作流状态与应用 store 构建可选的 ToolGateway 上下文。"
     context: Dict[str, Any] = {
         "run_id": getattr(state, "run_id", None),
     }

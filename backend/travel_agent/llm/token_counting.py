@@ -1,8 +1,7 @@
-"""One offline estimator for context sizing and missing-usage diagnostics.
+"""上下文估算与 usage 缺失诊断共用的离线估算器。
 
-Reported API usage remains the billing authority. A local text tokenizer does
-not account exactly for chat framing, images, or a model's private vocabulary.
-Never download a tokenizer during a request or claim this estimate is usage.
+计费以 API 返回的 usage 为准。本地 tokenizer 无法精确计算聊天框架、图片或模型私有
+词表；请求过程中不下载 tokenizer，估算结果不得当作 usage。
 """
 
 from __future__ import annotations
@@ -16,7 +15,7 @@ from typing import Any
 def estimate_tokens(text: str, model_name: str = "") -> int:
     if not text:
         return 0
-    # Reuse only an already loaded tokenizer. get_encoding() can fetch assets.
+    # 只复用已加载的 tokenizer；get_encoding() 可能在运行时下载资源。
     try:
         import tiktoken
         from tiktoken.registry import ENCODINGS
@@ -27,7 +26,7 @@ def estimate_tokens(text: str, model_name: str = "") -> int:
             return len(encoding.encode(text, disallowed_special=()))
     except (ImportError, KeyError):
         pass
-    # Chinese characters and emoji must not receive the ASCII len/4 discount.
+    # 中文字符与 emoji 不按 ASCII 的 len/4 比例估算。
     ascii_chars = sum(ord(char) < 128 for char in text)
     non_ascii = sum(
         2 if unicodedata.category(char) == "So" else 1
@@ -42,7 +41,7 @@ def estimate_json_tokens(value: Any, model_name: str = "") -> int:
 
 
 def estimate_message_tokens(message: dict[str, Any], model_name: str = "") -> int:
-    """Include tool calls, call ids, replay data, roles and structured content."""
+    """估算消息 token，包含工具调用、调用 id、重放数据、角色与结构化内容。"""
     return estimate_json_tokens(message, model_name)
 
 

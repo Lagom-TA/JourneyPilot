@@ -1,4 +1,4 @@
-"""Integrations places search."""
+"""按别名在受控区域内解析具体地点身份。"""
 
 from __future__ import annotations
 
@@ -27,10 +27,10 @@ async def _resolve_identity_inside_relation(
 ) -> list[Dict[str, Any]]:
     """按别名逐条解析受控 relation 内的具体实体身份，命中即停。
 
-    一条别名一次查询：把整个别名集拼成一条 alternation、再乘上本域的多条 tag
-    predicate，会超出 Overpass 解释器自己的 timeout，回来的是「provider 不可用」而
-    不是「区域内没有」。Provider 连重试都用尽时结束整条 fallback——那是 provider 的
-    判决，不是这条别名的判决，换个别名只会再烧一遍同一个时间片。
+    一条别名一次查询：把整个别名集拼成一条 alternation，再乘上本域的多条 tag
+    predicate，会超出 Overpass 解释器自己的 timeout，返回「provider 不可用」而
+    不是「区域内没有」。Provider 连重试都用尽时结束整条 fallback：那是 provider
+    的判定，不是这条别名的判定，换个别名只会重复消耗同一个时间片。
     """
     for alias in entity_names:
         osm_ids = await search_overpass_place_ids(

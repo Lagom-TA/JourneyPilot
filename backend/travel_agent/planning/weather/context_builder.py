@@ -1,4 +1,4 @@
-"""Planning weather context builder."""
+"""天气上下文构建。"""
 
 from __future__ import annotations
 
@@ -42,10 +42,10 @@ def _dates(start: date, end: date) -> List[date]:
 
 
 class WeatherContextBuilder:
-    """Query ordered providers and materialize forecast/unavailable days.
+    """按顺序查询 provider，并物化预报日与不可用日。
 
-    The builder never invents a seasonal baseline. A baseline must arrive through
-    a separate qualified external provider before it can be represented as facts.
+    构建器不会生成季节基线；基线必须来自另一个有资质的天气 provider，才能表示
+    为事实。
     """
 
     def __init__(

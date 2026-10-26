@@ -1,4 +1,4 @@
-"""Filesystem locations owned by the package, backend, and repository."""
+"""包、后端与仓库的目录位置。"""
 
 from pathlib import Path
 

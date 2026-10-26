@@ -1,4 +1,4 @@
-"""Planning delivery completion."""
+"""交付定稿。"""
 
 from __future__ import annotations
 

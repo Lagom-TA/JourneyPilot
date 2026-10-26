@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Discover live JourneyPilot API / app ports after run.sh fallback.
+"""在 run.sh 回退启动后探测 JourneyPilot 的 API 与前端端口。
 
-Resolution order:
-  1. Env: JOURNEYPILOT_API_BASE / JOURNEYPILOT_APP_URL / BACKEND_PORT / FRONTEND_PORT
-  2. Canonical runtime state: tmp/journeypilot.ports (written by ./run.sh start)
-  3. JourneyPilot API scan: 127.0.0.1:8001–8020
+解析顺序：
+  1. 环境变量：JOURNEYPILOT_API_BASE / JOURNEYPILOT_APP_URL / BACKEND_PORT / FRONTEND_PORT
+  2. 运行时状态文件：tmp/journeypilot.ports（由 ./run.sh start 写入）
+  3. API 扫描：127.0.0.1:8001–8020
 
-Usage:
+用法：
   python frontend/e2e/support/resolve_ports.py
   python frontend/e2e/support/resolve_ports.py --json
-  from frontend.e2e.support.resolve_ports import resolve  # when run as module path on PYTHONPATH
+  from frontend.e2e.support.resolve_ports import resolve  # PYTHONPATH 上以模块路径运行时
 """
 
 from __future__ import annotations
@@ -81,7 +81,7 @@ def resolve(
     prefer_backend: Optional[int] = None,
     prefer_frontend: Optional[int] = None,
 ) -> LivePorts:
-    # 1) env
+    # 1) 环境变量
     env_api = (os.environ.get("JOURNEYPILOT_API_BASE") or os.environ.get("E2E_API_BASE") or "").strip()
     env_app = (os.environ.get("JOURNEYPILOT_APP_URL") or os.environ.get("E2E_APP_URL") or "").strip()
     env_bp = os.environ.get("BACKEND_PORT") or os.environ.get("SERVER_PORT")
@@ -105,7 +105,7 @@ def resolve(
             "env_port",
         )
 
-    # 2) canonical runtime state
+    # 2) 运行时状态文件
     kv = _parse_kv_file(PORTS_FILE)
     if "BACKEND_PORT" in kv:
         bp = int(kv["BACKEND_PORT"])
@@ -115,7 +115,7 @@ def resolve(
         if _journeypilot_api_ok(bp):
             return LivePorts(bp, fp, api.rstrip("/"), app.rstrip("/"), "runtime_state")
 
-    # 3) health + API identity scan
+    # 3) 健康检查与 API 身份扫描
     if prefer_backend and _journeypilot_api_ok(prefer_backend):
         bp = prefer_backend
         source = "prefer"
@@ -130,7 +130,7 @@ def resolve(
         source = "health_scan"
 
     fp = prefer_frontend or int(env_fp or 8080)
-    # soft-detect frontend if ports file missing
+    # 端口文件缺失时探测前端端口
     if not env_fp:
         for candidate in range(8080, 8091):
             try:

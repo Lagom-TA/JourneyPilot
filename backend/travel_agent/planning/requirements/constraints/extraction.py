@@ -1,4 +1,4 @@
-"""Planning requirements constraints extraction."""
+"""约束抽取。"""
 
 from __future__ import annotations
 
@@ -127,7 +127,7 @@ async def _llm_extract(
 
 
 def deterministic_budget_constraints(text: str) -> List[Dict[str, Any]]:
-    """Extract an explicit numeric budget cap without relying on a model."""
+    """不依赖模型，抽取明确的数字预算上限。"""
 
     out: List[Dict[str, Any]] = []
 
@@ -452,7 +452,7 @@ def merge_precomputed_constraint_extraction(
     free_items: List[Dict[str, Any]],
     model_items: Dict[str, List[Dict[str, Any]]],
 ) -> ConstraintExtractionResult:
-    """Merge one shared request-normalization result with deterministic safeguards."""
+    """合并一次共享的请求归一化结果与确定性补充结果。"""
     rule_items = _rule_fallback_extract(free_items).fallback_items
     result = ConstraintExtractionResult(llm_items=model_items)
     for item in free_items:

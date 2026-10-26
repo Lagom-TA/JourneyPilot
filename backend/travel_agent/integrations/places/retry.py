@@ -1,4 +1,4 @@
-"""Integrations places retry."""
+"""地点 Provider 请求的限速与重试。"""
 
 from __future__ import annotations
 
@@ -35,10 +35,9 @@ async def _send_with_retry(
     min_interval_seconds: float,
     unavailable_message: str,
 ) -> httpx.Response:
-    """Run one rate-gated request, retrying only transient provider failures.
+    """执行一次限速请求，只对瞬时 Provider 失败重试。
 
-    The rate gate is the only spacing between attempts; see
-    ``_PROVIDER_MAX_ATTEMPTS`` for why there is no second backoff on top of it.
+    两次尝试之间只由速率限制器控制间隔，见 ``_PROVIDER_MAX_ATTEMPTS``。
     """
     last_exc: Optional[httpx.HTTPError] = None
     for attempt in range(_PROVIDER_MAX_ATTEMPTS):

@@ -3,8 +3,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 
 test.describe.configure({ retries: 0 });
 
-// Explicit opt-in: this exercises real paid models and creates a persisted trip.
-// Never intercept requests or fabricate provider responses in this suite.
+// 需要显式开启：这组用例调用真实付费模型并创建持久化行程。
+// 本套件不得拦截请求或伪造 provider 响应。
 test('真实跨城过夜旅行：表单 → 审批 → 调研 → 行程 → PDF → 刷新恢复', async ({ page, request }, testInfo) => {
   test.skip(process.env.JP_LIVE_E2E !== '1', 'Set JP_LIVE_E2E=1 to call real providers');
   test.setTimeout(900_000);
@@ -17,8 +17,8 @@ test('真实跨城过夜旅行：表单 → 审批 → 调研 → 行程 → PDF
   let runId = '';
   page.on('pageerror', error => errors.push(error.message));
   page.on('response', response => {
-    // Restoring an unapproved trip probes its current bundle; that endpoint's
-    // public contract is 404 until the first delivery. Do not exempt later 404s.
+    // 恢复未审批的行程时会查询当前 bundle；该端点在首次交付前按公开合同返回 404。
+    // 不要放行后续的其他 404。
     const pendingBundle = restoringApproval && response.status() === 404
       && new URL(response.url()).pathname === `/api/trip-runs/${runId}/bundle/current`;
     if (response.url().includes('/api/') && response.status() >= 400 && !pendingBundle) {

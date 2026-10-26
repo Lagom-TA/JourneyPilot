@@ -8,7 +8,7 @@ from ...tools.display import result_preview
 def worker_result(
     node: str, update: dict[str, Any]
 ) -> tuple[str, str, list[dict[str, str]]]:
-    """Project typed worker results, without trusting the worker's message text."""
+    """只依据强类型 worker 结果生成状态，不采用 worker 的消息文本。"""
     statuses = update.get("agent_status", {})
     if isinstance(statuses, dict) and "failed" in statuses.values():
         return "failed", "本轮调研未完成，暂未形成可用结果", []

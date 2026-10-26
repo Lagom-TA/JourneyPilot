@@ -1,4 +1,4 @@
-"""Integrations provider environment."""
+"""Provider 数据环境（生产/沙箱）的识别。"""
 
 from __future__ import annotations
 
@@ -36,18 +36,15 @@ def snapshot_data_environment(
     *,
     provider_name: str,
 ) -> DataEnvironment:
-    """Read the environment out of one provider snapshot.
+    """从一份 Provider 快照中读取数据环境。
 
-    ``snapshot`` is a ``SourceRecord.snapshot``, which has two shapes depending on
-    whether the record came through the snapshot cache: the sanitized provider
-    payload itself, or a Tool Envelope wrapping it under ``sanitized_result``.
-    Both are read here so a cache hit and a live call cannot disagree about the
-    environment of the same response.
+    ``snapshot`` 是 ``SourceRecord.snapshot``，有两种形状：经过快照缓存时是清洗后的
+    Provider 载荷，否则是包在 ``sanitized_result`` 里的 Tool Envelope。这里两种
+    都读取，使缓存命中与实时调用不会对同一响应的环境得出不同结论。
 
-    A provider that declares its environment is believed.  A provider with no test
-    environment is production by identity.  Anything else raises: an unlabelled
-    response from a supplier that *does* have a sandbox is exactly the case this
-    field exists for, and guessing "production" there is the original defect.
+    Provider 声明了环境就采用；没有测试环境的 Provider 按身份视为生产。其他情况
+    抛错：有沙箱的供应商返回未标注环境的响应，正是该字段要处理的情况，猜测为
+    「生产」会掩盖问题。
     """
 
     declared = _declared(snapshot)

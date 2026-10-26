@@ -1,5 +1,3 @@
-"""Research packet parsing responsibilities."""
-
 from __future__ import annotations
 
 import json
@@ -38,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 def _isolate_json_object(text: str) -> Optional[dict]:
-    """Parse the outermost balanced JSON object without inventing content."""
+    """解析最外层的完整 JSON 对象，不补造内容。"""
     start = text.find("{")
     if start == -1:
         return None
@@ -60,7 +58,7 @@ def _isolate_json_object(text: str) -> Optional[dict]:
 
 
 def _coerce_exact_json_object(raw: str) -> Optional[dict]:
-    """Extract the model's JSON object from fences or surrounding prose."""
+    """从代码围栏或前后说明中提取模型的 JSON 对象。"""
     if not isinstance(raw, str) or not raw.strip():
         return None
     obj = None
@@ -88,7 +86,7 @@ def parse_research_packet_output(
     authoritative_packet_metadata: Mapping[str, Any] | None = None,
     authoritative_source_records: Sequence[SourceRecord] = (),
 ) -> ResearchPacket:
-    "Parse exact JSON only; no Markdown extraction, repair, or envelope fallback."
+    """只解析精确 JSON；不抽取 Markdown、不修复、不回退到其他信封。"""
     try:
         payload = json.loads(raw)
         if not isinstance(payload, dict):
@@ -122,7 +120,7 @@ def parse_research_packet_output(
     )
     _ground_rag_chunk_sources(payload, rag_sources, expected_worker=expected_worker)
     authoritative_sources.update(rag_sources)
-    # Bind real identity first so corrected links are not rejected as borrowed.
+    # 先绑定真实身份，避免修正后的来源链接被当作借用来源拒绝。
     _drop_borrowed_compiled_source_links(payload, expected_worker=expected_worker)
     _prune_payload_to_candidate_closure(payload)
     _bind_source_content_hashes(
@@ -153,7 +151,7 @@ def parse_research_packet_output(
 
 
 def _parse_packet_lenient_first(raw: str, **kwargs: Any) -> ResearchPacket:
-    "Initial worker-packet parse: tolerate Markdown fences / surrounding prose."
+    """worker packet 的首次解析：容忍 Markdown 围栏与前后说明。"""
     try:
         return parse_research_packet_output(raw, **kwargs)
     except ResearchPacketOutputError:
@@ -167,7 +165,7 @@ def _parse_packet_lenient_first(raw: str, **kwargs: Any) -> ResearchPacket:
 
 
 def format_research_packet_context(packets: Mapping[str, ResearchPacket]) -> str:
-    "Full diagnostic serialization; workers use memory.research_context views."
+    """完整诊断序列化；worker 使用 memory.research_context 提供的视图。"""
     if not packets:
         return "[]"
     return json.dumps(

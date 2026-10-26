@@ -51,14 +51,8 @@ WITH ts_cfg AS (
         'simple'::regconfig::oid
     )::regconfig AS cfg
 ), ts_query AS (
-    -- 把整句切成词之后用 ``|`` 连起来，也就是**任一词命中**即算候选。
-    --
-    -- 此前这里是 ``plainto_tsquery``，而它把每个词用 ``&`` 连起来 —— 一句
-    -- 「锂电池和三脚架能不能带上高铁」要求同一段正文里同时出现全部六个词，
-    -- 于是这条臂对任何一句真实提问都返回 0 条：日志里每一行都是
-    -- ``向量 N + lexical 0``，「向量 + BM25 + RRF 混合检索」实际只有一条臂在跑，
-    -- 而 RRF 融合一条臂等于原样照抄它的排名。单词实测 27 命中、两个词 0 命中，
-    -- 改成 ``|`` 之后同一句 65 命中。
+    -- 把整句切成词之后用 ``|`` 连起来，任一词命中即算候选。``plainto_tsquery``
+    -- 会用 ``&`` 连接所有词，要求同一段正文同时出现全部词，真实提问往往返回 0 条。
     --
     -- 分词只有库里那份配置做得到（``tsv`` 也是用同一个 config 生成的列），所以
     -- 词是用 ``to_tsvector`` 切出来再拼回 tsquery 的；``quote_literal`` 负责让
@@ -135,7 +129,7 @@ def _row_to_doc(row, *, arm: str, retrieved_at: str) -> dict:
 
 
 def _build_filter_sql(filters: Optional[Dict[str, Any]]) -> tuple[str, Dict[str, Any]]:
-    """Build safe SQL snippets for supported source and metadata exact filters."""
+    """为支持的 source 与 metadata 精确过滤构建 SQL 片段。"""
     if not filters:
         return "", {}
     clauses: List[str] = []
@@ -184,7 +178,7 @@ def _build_filter_sql(filters: Optional[Dict[str, Any]]) -> tuple[str, Dict[str,
 
 
 class RetrievalDocuments(list):
-    """Documents and bounded retrieval-arm failure information, including empty hits."""
+    """检索结果文档，以及各检索臂的失败信息（包括空命中）。"""
 
     def __init__(self, docs=(), *, failures=()):
         super().__init__(docs)
@@ -228,7 +222,7 @@ class HybridRetriever:
         ``vector_score`` / ``lexical_score``（来自哪条臂就有哪个）、融合后多一个
         ``fusion_score``、精排后多一个 ``rerank_score``。没有通用 ``score``。
 
-        Args:
+        参数：
             use_hybrid: True=向量+lexical full-text 融合（默认），False=纯向量
             rerank: True=强制开启精排，False=强制关闭，None=读 config（默认）。
                 多查询/多集合的调用方应当传 False，并把精排交给
@@ -272,9 +266,8 @@ class HybridRetriever:
         """纯向量检索。
 
         ``threshold`` 是**召回下限**，不是相关性判据：它只作用在这一条臂上，且
-        当前 embedder 的噪声地板实测在 0.44–0.54（完全无关的文本也能拿到这个
-        分），所以任何低于噪声地板的取值都咬不住东西。相关性由 reranker 与
-        CRAG 分级器判。
+        当前 embedder 对无关文本也会给出相近的分数，低于其常见分布下限的取值
+        不会过滤掉内容。相关性由 reranker 与 CRAG 分级器判定。
         """
         settings = get_settings()
         k = top_k or settings.rag.top_k
@@ -382,7 +375,7 @@ class HybridRetriever:
         settings = get_settings()
         k = top_k or settings.rag.top_k
 
-        # Keep arm failures distinct from a successful empty search.
+        # 区分检索臂失败与成功的空结果。
         vector_raw, lexical_raw = await asyncio.gather(
             self._vector_retrieve(
                 query, collection, top_k=k * 2, score_threshold=score_threshold, filters=filters
@@ -449,10 +442,8 @@ class HybridRetriever:
     def format_docs_for_prompt(self, docs: List[Dict[str, Any]]) -> str:
         """将检索结果格式化为 Prompt 可用的字符串。
 
-        每条只写它**真有**的那个数，并且写清那个数是什么。旧文案把 RRF 融合分
-        标成「相关度」，而那个数对所有结果几乎逐字相同、只编码排名——模型据此
-        判断可信度就是被误导。融合分不写给模型：名次已经由
-        ``[参考i]`` 的序号表达了。
+        每条只写它实际具有的分数，并写明该分数的含义。RRF 融合分只编码排名，
+        对多数结果几乎相同，不写给模型；名次已经由 ``[参考i]`` 的序号表达。
         """
         if not docs:
             return "暂无相关知识库内容。"

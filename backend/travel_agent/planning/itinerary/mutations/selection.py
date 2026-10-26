@@ -1,5 +1,3 @@
-"""Planning itinerary mutations selection."""
-
 from __future__ import annotations
 
 from datetime import timedelta
@@ -180,12 +178,10 @@ def _replace_visit_stop(
     option: SelectionOption,
     candidate: VisitCandidate,
 ) -> tuple[VisitStop, VisitStop]:
-    """Swap the attraction standing in one plan position.
+    """替换当前计划位置上的景点。
 
-    The stop keeps its window: a visit slot offers a different place for the same
-    hole in the Day, so the schedule the composition solved for stays put and only
-    the duration follows the new candidate — the same division dining and lodging
-    already make.
+    停留点保留原时间窗：景点槽位只是在当天的同一空档中换一个地点，组合阶段
+    求出的排程保持不变，只有时长跟随新候选。餐饮与住宿也采用同样的分工。
     """
 
     current = next(
@@ -231,13 +227,12 @@ def _replace_transport_leg(
     option: SelectionOption,
     candidate: TransportCandidate,
 ) -> tuple[TransportLeg, TransportLeg]:
-    """Bind one journey in the plan to a different admitted route.
+    """把计划中的一段行程绑定到另一条可用路线。
 
-    The eligibility rules live in ``_check_transport_replacement`` rather than
-    inline, so the offering side (``planning.itinerary.selection``) has one named
-    thing to restate.  ``lineage.selection_slot_id`` is carried over from the leg
-    the slot points at, because the workspace contract requires a slot's target
-    to name it.
+    替换规则放在 ``_check_transport_replacement`` 而不是内联，提供选项的
+    ``planning.itinerary.selection`` 可以复用同一套判断。
+    ``lineage.selection_slot_id`` 取自该槽位指向的行程段，因为 workspace 契约
+    要求槽位目标带上它。
     """
 
     current = next(
@@ -264,11 +259,10 @@ def _replace_transport_leg(
 
 
 def _selection_label(entity: SelectableEntity) -> str:
-    """What the traveller sees this selection called in the undo list.
+    """返回撤销列表中这次选择显示给旅行者的名称。
 
-    A leg has no ``name`` of its own — it is a journey between two places — so it
-    is named by the journey rather than crashing on a field only the three place
-    entities carry.
+    行程段没有 ``name`` 字段，它表示两个地点之间的一段行程，因此用起终点命名，
+    而不是读取只有三类地点实体才有的字段。
     """
 
     if isinstance(entity, TransportLeg):
@@ -277,17 +271,14 @@ def _selection_label(entity: SelectableEntity) -> str:
 
 
 def _selection_is_unrealized(workspace: TripWorkspaceV2, slot: SelectionSlot) -> bool:
-    """Whether the itinerary does *not* yet reflect the slot's own selection.
+    """判断行程是否尚未体现该槽位已选的方案。
 
-    Re-picking the option a slot already names is normally nothing to do.  A
-    transport leg is the exception: a leg can be selected and still hold no route
-    — that is exactly the state ``set_transport_mode`` leaves behind, and the
-    state a provider outage leaves behind — and re-picking it there means "bind a
-    real route for this choice".
+    重新选择槽位已经指向的方案通常无需处理。行程段是例外：它可能已被选中但
+    仍没有路线，这正是 ``set_transport_mode`` 与 Provider 故障后留下的状态，
+    此时重选表示「为这个选择绑定真实路线」。
 
-    Answering it this way is what makes rebinding reachable from a client at all,
-    and it is the whole reason no second identifier is needed for it: the slot's
-    ``option_id`` is the only identity this boundary publishes.
+    这样判断后，客户端才能触发重新绑定；也正因如此不需要第二个标识符：槽位的
+    ``option_id`` 是该边界唯一发布的身份。
     """
 
     if slot.slot_type != "transport":

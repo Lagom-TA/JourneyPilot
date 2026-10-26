@@ -40,7 +40,7 @@ class SelectionOption(StrictModel):
     personalization_influence_ids: List[str] = Field(default_factory=list)
 
 
-# Slots and their projections use the same canonical entity type per domain.
+# 选择槽与落位投影按领域使用同一种规范实体类型。
 SELECTION_SLOT_ENTITY_TYPES: dict[str, EntityType] = {
     "lodging": EntityType.LODGING_STAY,
     "dining": EntityType.DINING_STOP,

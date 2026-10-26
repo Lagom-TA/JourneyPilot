@@ -1,4 +1,4 @@
-"""Optional local factory-corpus startup bootstrap."""
+"""可选的本地出厂语料启动引导。"""
 
 import logging
 
@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 async def bootstrap_factory_corpus() -> list[str]:
-    """Fill empty collections without replacing operator data; failures do not gate service."""
+    """只填充空集合，不覆盖已有数据；失败返回问题清单，不阻断服务。"""
 
     if not get_settings().embedding.enabled:
         return []

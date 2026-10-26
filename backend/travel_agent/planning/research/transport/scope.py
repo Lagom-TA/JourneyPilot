@@ -1,5 +1,3 @@
-"""Planning research transport scope."""
-
 from __future__ import annotations
 
 from copy import deepcopy
@@ -19,7 +17,7 @@ def constrain_cross_day_flight_tools(
     *,
     required: bool,
 ) -> List[Dict[str, Any]]:
-    """Make the explicit cross-day requirement unavoidable in tool calls."""
+    """让工具调用必须显式声明跨日要求。"""
 
     if not required:
         return available_tools

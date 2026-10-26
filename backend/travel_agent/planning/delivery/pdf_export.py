@@ -1,4 +1,4 @@
-"""Planning delivery pdf export."""
+"""旅行报告 PDF 导出。"""
 
 from __future__ import annotations
 
@@ -131,15 +131,11 @@ _STATED_BASIS_LABELS = {
 
 
 def _evidence_basis_mark(block: Any, evidence_basis: EvidenceBasisView) -> str:
-    """Name the basis of an entry that has no citation marks to speak for it.
+    """为没有引用编号的条目注明证据基础。
 
-    A ``cited_source`` block already carries its numbered marks, so restating
-    its basis would only add noise.  A ``public_reference`` block has nothing —
-    and an unexplained absence of sources reads as an oversight rather than the
-    stated basis it is.  A ``reference_service`` block is the third: a real
-    service the supplier could not confirm for this date, which on paper is the
-    one that most needs saying.  Kept in the same muted register as the detail
-    lines: a small grey clause, not a warning and not a coloured flag.
+    ``cited_source`` 已带编号标记，无需重复；``public_reference`` 没有来源，
+    不说明会被读成遗漏；``reference_service`` 是供应商未对出行日期确认的真实
+    班次，最需要注明。样式与详情行一致，使用小号灰字。
     """
 
     basis = evidence_basis.stated_basis_for(

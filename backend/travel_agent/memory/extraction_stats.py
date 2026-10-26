@@ -1,15 +1,16 @@
 """记忆抽取计量（进程级累计）。
 
-记忆抽取是 fire-and-forget 的非关键路径：每轮对话结束后异步触发一次 fast-model 抽取，
-把 facts / portrait 写入 memory_facts 与知识图谱。链路断掉时用户只会觉得「它不记得我」，
-运维需要从 ``/api/status`` 与日志里看到抽取的成败。
+记忆抽取在每轮对话结束后异步触发，用 fast 模型把 facts / portrait 写入
+memory_facts 与知识图谱，不属于关键路径。运维通过 ``/api/status`` 与日志确认
+抽取成败。
 
-- **进程内累计**：自进程启动起的累计计数（同 Prometheus counter 语义），``/api/status``
-  读快照即可确认链路健康，不做 per-run 生命周期管理。
-- **线程/协程安全**：并发 run 的 fire-and-forget 抽取可能同时结算，统一一把锁保护。
-- **口径**：``attempted`` 为真正调用过抽取的轮次（已过滤空消息与匿名用户）；
-  ``succeeded`` 为 LLM 返回并处理完成（可能本轮无值可写）；``failed`` 为 LLM/解析/写入
-  任一环节抛错。``facts_written`` / ``portraits_written`` 为实际入库计数。
+- 进程内累计：自进程启动起累计计数（同 Prometheus counter 语义），
+  ``/api/status`` 读取快照，不按 run 管理生命周期。
+- 线程安全：并发的后台抽取可能同时结算，统一由锁保护。
+- 计数口径：``attempted`` 为实际发起抽取的轮次（已过滤空消息与匿名用户）；
+  ``succeeded`` 为模型返回并处理完成（可能本轮无值可写）；``failed`` 为
+  模型调用、解析或写入任一环节抛错；``facts_written`` / ``portraits_written``
+  为实际入库计数。
 """
 
 from __future__ import annotations

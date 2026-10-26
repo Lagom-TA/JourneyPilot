@@ -53,7 +53,7 @@ def test_clarify_only_run_cannot_be_resumed() -> None:
 def test_recovery_verdict_removes_resume(recovery_status: RunRecoveryStatus) -> None:
     """恢复判定说不能续跑时，动作表里就不许留着「继续」。
 
-    留着它等于让一个亮着的按钮点下去拿 409 —— 那正是「服务端说一次」要消灭的东西。
+    保留它等于让一个可点击的按钮在点击后返回 409——服务端状态与可用动作必须一致。
     """
 
     execution = RunExecution(run_id="trip_x", recovery_status=recovery_status)
@@ -151,7 +151,7 @@ def test_the_node_window_table_covers_every_worker_the_graph_fans_out_to():
         "budget_estimate",
     }
 
-    # `mark_delivery_ready` 由这个名字触发；它一改，每一处 delivery_ready 守卫同时失效。
+    # `mark_delivery_ready` 由这个名字触发；它一改，每一处 delivery_ready 判断同时失效。
     assert NODE_DELIVERY_FINALIZER == "delivery_finalizer"
 
 
@@ -165,7 +165,7 @@ async def test_node_scope_shares_budget_attribution_and_lifecycle_with_low_level
     run_id = "run_shared_execution_context"
     snapshot = budget.RunBudgetSnapshot(enforce_limits=True, max_llm_calls=1)
     ledger = budget.ledger_for(run_id, snapshot)
-    ledger.seeded = True  # This test has no durable spend to restore.
+    ledger.seeded = True  # 这条用例没有需要恢复的持久花费。
     facts = []
 
     async def sink(payload):

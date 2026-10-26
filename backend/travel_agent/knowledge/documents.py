@@ -1,4 +1,4 @@
-"""Read original source text without reconstructing it from derived chunks."""
+"""读取原始正文，而不是从派生分块重建。"""
 
 from travel_agent.knowledge.indexer import KnowledgeIndexer
 

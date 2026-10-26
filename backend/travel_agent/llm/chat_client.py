@@ -1,4 +1,4 @@
-"""Chat client retaining reasoning replay state across tool-call rounds."""
+"""保留工具调用轮次间推理重放状态的 Chat 客户端。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ REASONING_REPLAY_FIELDS = ("reasoning_content", "reasoning_details", "reasoning"
 
 
 def reasoning_replay(data: dict[str, Any]) -> dict[str, Any]:
-    """Copy opaque model-returned replay fields without rendering them as text."""
+    """复制模型返回的不透明重放字段，不将其渲染为文本。"""
     return {key: deepcopy(data[key]) for key in REASONING_REPLAY_FIELDS if data.get(key) is not None}
 
 
@@ -19,7 +19,7 @@ except ImportError:
     ReasoningChatOpenAI = None
 else:
     class ReasoningChatOpenAI(_ChatOpenAI):
-        """Retain Chat Completions reasoning fields that ChatOpenAI omits."""
+        """保留 ChatOpenAI 未映射的 Chat Completions 推理字段。"""
 
         use_legacy_max_tokens: bool = False
 
@@ -44,7 +44,7 @@ else:
         def _convert_chunk_to_generation_chunk(self, chunk: Any, *args: Any, **kwargs: Any) -> Any:
             result = super()._convert_chunk_to_generation_chunk(chunk, *args, **kwargs)
             if result is not None and chunk.get("usage"):
-                # Preserve fields the standard LangChain mapping discards,
-                # including DeepSeek cache hits and cache-write counts.
+                # 保留标准 LangChain 映射丢弃的字段，包括 DeepSeek 缓存命中与
+                # 缓存写入计数。
                 result.message.response_metadata["token_usage"] = deepcopy(chunk["usage"])
             return result

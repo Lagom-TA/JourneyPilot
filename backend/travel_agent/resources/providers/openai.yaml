@@ -1,8 +1,7 @@
 # OpenAI 官方 endpoint。
 #
-# 没有 preset 的上游走保守档（`supports_json_schema: false`），而 OpenAI 是
-# Structured Outputs 的参考实现 —— 价格表里已经有 gpt-5.4 三档，却没有一份 preset，
-# 于是它被静默降级成 json_object + prompt 里明写 schema。
+# 这份 preset 声明 Structured Outputs 能力，避免 OpenAI 落入认不出上游时的保守档
+# （json_object + prompt 内写明 schema）。
 id: openai
 label: OpenAI Official
 base_url: https://api.openai.com/v1

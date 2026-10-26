@@ -1,4 +1,4 @@
-"""Utils geography."""
+"""经纬度距离计算。"""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ _EARTH_RADIUS_KM = 6371.0088
 def haversine_km(
     latitude_a: float, longitude_a: float, latitude_b: float, longitude_b: float
 ) -> float:
-    """Great-circle distance between two WGS-84 points, in kilometres."""
+    """两个 WGS-84 点之间的大圆距离，单位公里。"""
 
     phi_a = math.radians(latitude_a)
     phi_b = math.radians(latitude_b)
@@ -38,14 +38,12 @@ def distance_from_destination_km(
     destination_latitude: Any,
     destination_longitude: Any,
 ) -> Optional[float]:
-    """Great-circle km between a place and its destination, or ``None``.
+    """地点与目的地之间的大圆距离（公里），无法计算时返回 ``None``。
 
-    ``None`` means "not answerable", and every caller must treat that as *not a
-    rejection*: half a coordinate pair, a bool posing as a number, or a
-    destination the controlled identity never carried a point for are all cases
-    where this rule has nothing to say.  A missing point must never read as
-    "infinitely far away" — that would delete every candidate for a destination
-    whose geocode is absent, which is a supply outage, not an out-of-scope stop.
+    ``None`` 表示「无法判断」，调用方不能把它当作拒绝：坐标缺一半、布尔值冒充
+    数字、受控身份没有目的地坐标，都属于本规则无法判断的情况。缺少坐标不能读作
+    「无限远」，否则会让所有候选因目的地缺少地理编码而被删除，而那是供应故障，
+    不是超出范围。
     """
     values = []
     for value in (latitude, longitude, destination_latitude, destination_longitude):

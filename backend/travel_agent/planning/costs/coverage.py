@@ -1,3 +1,5 @@
+"""费用覆盖度契约。"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Iterable, List, Literal, Optional
@@ -53,7 +55,7 @@ class CostCoverageSummary(StrictModel):
     budget_cap_cny: Optional[float] = Field(default=None, ge=0)
     budget_status: Literal["unknown", "within_cap", "over_cap"]
 
-    # An inferred trip estimate never changes supplier totals or price coverage.
+    # 模型推断的行程估算不改变供应商总价，也不改变价格覆盖度。
     llm_estimated_total_cny: Optional[float] = Field(default=None, ge=0)
 
     @model_validator(mode="after")
@@ -110,7 +112,7 @@ def build_cost_coverage_summary(
     budget_cap_cny: Optional[float] = None,
     llm_estimated_total_cny: Optional[float] = None,
 ) -> CostCoverageSummary:
-    # Preserve the caller's cap and inferred estimate when rebuilding priced totals.
+    # 重建已定价合计时保留调用方传入的预算上限与推断估算。
     components = list(costs)
     known = [float(cost) for cost in components if cost is not None]
     coverage = coverage_from_component_counts(

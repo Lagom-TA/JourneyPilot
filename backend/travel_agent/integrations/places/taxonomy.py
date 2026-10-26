@@ -1,4 +1,4 @@
-"""Integrations places taxonomy."""
+"""Provider 地点类型与候选类别的对应关系。"""
 
 from __future__ import annotations
 
@@ -134,7 +134,7 @@ def provider_place_type_matches_candidate_kind(
     value: str,
     candidate_kind: str,
 ) -> bool:
-    """Apply the same provider-domain boundary before and during admission."""
+    """在候选类型判定与使用过程中应用相同的 provider 域边界。"""
     if candidate_kind == "dining":
         return _is_dining_provider_type(value)
     if candidate_kind == "lodging":

@@ -78,11 +78,10 @@ def run_attribution(
     agent: Optional[str] = "workflow",
     lifecycle_sink: Optional[NodeLifecycleSink] = None,
 ):
-    """Set coarse run attribution around graph execution.
+    """在图执行外层设置粗粒度的 Run 归属。
 
-    Concrete node wrappers still override ``current_node`` and ``current_agent``.
-    This outer guard covers graph/fast-path boundaries that would otherwise have
-    no ``current_run_id`` and be silently skipped by the usage recorder.
+    具体节点包装会覆盖 ``current_node`` 与 ``current_agent``；这一层覆盖没有
+    ``current_run_id`` 的图入口与快速路径边界，避免用量记录静默跳过它们。
     """
     token_run = current_run_id.set(str(run_id) if run_id else None)
     token_node = current_node.set(node)
@@ -91,7 +90,7 @@ def run_attribution(
     try:
         yield
     finally:
-        # Resume reconstructs the local anchor from the durable elapsed lower bound.
+        # 恢复时按持久化的已耗时下限重建本进程锚点。
         clear_process_deadline_anchor()
         node_lifecycle_sink.reset(token_lifecycle_sink)
         current_agent.reset(token_agent)

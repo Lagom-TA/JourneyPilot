@@ -1,13 +1,8 @@
-"""
-上下文压缩器 (Application Layer)
+"""上下文压缩器（Application Layer）。
 
-将对话历史压缩为结构化 Anchor Summary，供 ContextBuilder v3 注入。
-
-设计原则：
-- 只压缩 user + assistant 消息对，不压缩 system prompt / 画像 / memory_facts
-- 工具调用原始结果不保留（结论已体现在 assistant 输出中）
-- 使用 Fast 模型执行压缩，降低延迟和成本
-- 混合 Anchor 结构：结构化字段保留关键约束，自然语言摘要覆盖其余内容
+将对话历史压缩为结构化 Anchor Summary，供 ContextBuilder 注入。只压缩 user 与
+assistant 消息，不压缩 system prompt、画像或 memory_facts；工具原始结果不保留，
+使用 fast 模型执行压缩。
 """
 
 from __future__ import annotations
@@ -24,7 +19,7 @@ from ..utils.json_helpers import safe_parse_json
 
 logger = logging.getLogger(__name__)
 
-# 压缩提示词（核心）
+# 压缩提示词
 _COMPRESS_SYSTEM_PROMPT = """\
 你是一个对话摘要专家，专门为旅行规划助手场景压缩对话历史。
 
@@ -160,11 +155,9 @@ def _format_messages_for_compression(
 
 
 class ContextCompressor:
-    """
-    上下文压缩器。
+    """使用 Fast LLM 将对话历史压缩为 AnchorSummary。
 
-    使用 Fast LLM 将对话历史压缩为 AnchorSummary，
-    压缩后的 Anchor 由 ContextBuilder v3 注入 system prompt。
+    压缩后的 Anchor 由 ContextBuilder 注入 system prompt。
     """
 
     async def compress(
@@ -173,16 +166,11 @@ class ContextCompressor:
         existing_anchor: Optional[AnchorSummary] = None,
         model: str = "gpt-4o",
     ) -> AnchorSummary:
-        """
-        调用 Fast LLM 将消息列表压缩为 AnchorSummary。
+        """调用 Fast LLM 将消息列表压缩为 AnchorSummary。
 
-        Args:
-            messages: user + assistant 消息列表（不含工具结果）
-            existing_anchor: 如果会话已有之前的压缩摘要，传入以便合并
-            model: 用于 token 计数的模型名称
-
-        Returns:
-            AnchorSummary 压缩摘要
+        messages: user 与 assistant 消息列表（不含工具结果）。
+        existing_anchor: 已有摘要，传入后与新内容合并。
+        model: 用于 token 计数的模型名。
         """
         from ..llm.router import get_model_router
 
@@ -196,11 +184,9 @@ class ContextCompressor:
                 tokens_after=0,
             )
 
-        # 计算压缩前 token 数
         conversation_text = _format_messages_for_compression(messages)
         tokens_before = _count_tokens(conversation_text, model)
 
-        # 构建压缩提示词
         existing_anchor_section = ""
         if existing_anchor:
             existing_anchor_section = (
@@ -219,7 +205,6 @@ class ContextCompressor:
             {"role": "user", "content": user_content},
         ]
 
-        # 调用 Fast LLM
         router = get_model_router()
         llm = llm_for_task(router, TaskKind.SUMMARY)
 

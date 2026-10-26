@@ -1,4 +1,4 @@
-"""Planning requirements preset contracts."""
+"""系统预设契约。"""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ class TravelPreset(BaseModel):
 
 
 class SystemPresetSeed(BaseModel):
-    """Validated, release-managed shape for a system travel preset."""
+    """系统旅行预设的受校验、随发布管理的数据形状。"""
 
     model_config = ConfigDict(extra="forbid")
 

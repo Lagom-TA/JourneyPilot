@@ -1,14 +1,14 @@
-"""备份：产出一个**可验证**的目录，而不是一个 dump 文件。
+"""备份：产出一个可验证的目录，而不是一个 dump 文件。
 
-dev docs 02 §5 的核心一句话：「只看到 `pg_dump` exit code 0 还不够」。一个截断的
-dump 文件同样以 0 退出，而它会在真正需要恢复的那一天才暴露。所以每次备份都做三件
-校验：文件非空、`pg_restore --list` 能解析、SHA-256 写进 manifest。
+`pg_dump` 返回 0 不足以说明备份可用：截断的 dump 文件同样以 0 退出，问题会在真正
+需要恢复时才暴露。因此每次备份都做三项校验：文件非空、`pg_restore --list` 能解析、
+SHA-256 写入 manifest。
 
-目录长这样（§5.1）：
+目录结构：
 
 ```
 backups/backup-20260817T101530Z-preupgrade/
-  manifest.json            ← 唯一的元数据真相
+  manifest.json            ← 唯一的元数据来源
   database.dump            ← pg_dump --format=custom
   schema_fingerprint.json  ← 恢复后可比对结构
   config.redacted.yaml     ← 结构保留，Secret 只记 <set> / <unset>
@@ -16,7 +16,7 @@ backups/backup-20260817T101530Z-preupgrade/
 ```
 
 **不进备份**：API key 明文、HuggingFace 模型缓存、npm/uv 缓存、可重新下载的静态依赖、
-临时日志。它们体积大、可重建，而第一项还会把 Secret 复制到一个用户随手拷来拷去的目录里。
+临时日志。它们体积大、可重建，而第一项还会把 Secret 复制到用户可能拷贝的目录里。
 """
 
 from __future__ import annotations
@@ -46,13 +46,13 @@ FINGERPRINT_FILENAME = "schema_fingerprint.json"
 REDACTED_CONFIG_FILENAME = "config.redacted.yaml"
 CHECKSUMS_FILENAME = "checksums.sha256"
 
-#: 自动备份保留份数（§5.4）。手工备份永不自动删除。
+#: 自动备份保留份数。手工备份不参与自动删除。
 DEFAULT_KEEP_AUTOMATIC = 5
 
 
 
 class BackupError(RuntimeError):
-    """备份没有成功产出一份可验证的快照。**调用方绝不能继续迁移。**"""
+    """备份没有成功产出一份可验证的快照。调用方不应继续迁移。"""
 
 
 class BackupVerificationError(BackupError):
@@ -131,10 +131,10 @@ def _database_size_bytes(conn: Any, database: str) -> int:
 
 
 def _check_disk_space(directory: Path, needed_bytes: int) -> None:
-    """空间不够就**拒绝**，而不是让 dump 写到一半再失败（§13.1）。
+    """空间不够时拒绝，而不是让 dump 写到一半再失败。
 
-    阈值取「未压缩库大小 + 20% 余量」。custom format 是压缩的，所以这是保守估计 ——
-    宁可多要一点空间，也不要在升级前那一刻才发现盘满了。
+    阈值取「未压缩库大小 + 20% 余量」。custom format 是压缩的，因此这是保守估计：
+    在升级前就确认空间充足。
     """
 
     directory.mkdir(parents=True, exist_ok=True)
@@ -181,7 +181,7 @@ def create_backup(
     label: str = "",
     preferred_container: str = "",
 ) -> BackupResult:
-    """产出一份经过校验的备份。任何一步失败都抛异常，绝不留下「看起来成功」的目录。
+    """产出一份经过校验的备份。任何一步失败都抛异常，不留下看似成功的目录。
 
     `conn` 是一个已连到 `target` 的 psycopg3 连接，只用来读 census / 指纹 / 库大小；
     实际导出走 `pg_dump`。
@@ -371,11 +371,11 @@ def list_backups(output_root: Path) -> list[dict[str, Any]]:
 def prune_automatic_backups(
     output_root: Path, *, keep: int = DEFAULT_KEEP_AUTOMATIC, dry_run: bool = False
 ) -> list[str]:
-    """只删自动备份，只删超出保留份数的那些。返回被删（或将被删）的目录。
+    """只删自动备份，并且只删超出保留份数的那些。返回被删（或将被删）的目录。
 
-    **手工备份永不自动删除**（§5.4）：用户敲过 `journeypilot backup` 就意味着
-    「这一份我要留着」，保留策略无权推翻它。读不懂 manifest 的目录同样不删 ——
-    分不清它是什么的时候，删除是最坏的选择。
+    手工备份不参与自动删除：用户执行 `journeypilot backup` 表示要保留这一份，
+    保留策略不能推翻该决定。读不懂 manifest 的目录同样不删；无法判断内容时，
+    删除是最坏的选择。
     """
 
     automatic = [

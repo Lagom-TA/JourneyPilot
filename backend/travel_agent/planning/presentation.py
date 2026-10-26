@@ -1,4 +1,4 @@
-"""Planning presentation."""
+"""规划阶段的展示名映射。"""
 
 from __future__ import annotations
 

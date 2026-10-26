@@ -1,5 +1,3 @@
-"""Research packet transcript responsibilities."""
-
 from __future__ import annotations
 
 import json
@@ -23,7 +21,7 @@ def _retrieved_source_snapshots(
     *,
     page_specific: bool = False,
 ) -> dict[str, dict[str, Any]]:
-    "Each page a retrieval returned this round, mapped to what it returned."
+    """本轮检索返回的每个页面，以及该页面对应的返回内容。"""
     countable = {
         ToolExecutionStatus.SUCCESS.value,
         ToolExecutionStatus.DEGRADED.value,
@@ -78,7 +76,7 @@ def _retrieved_source_snapshots(
 
 
 def _normalized_source_url(value: Any) -> Optional[str]:
-    "Compare URLs by scheme+host+path: the parts that name a page."
+    """按 scheme、host 与 path 比较 URL，这三部分用于定位页面。"""
     text = str(value or "").strip()
     if not text:
         return None
@@ -103,7 +101,7 @@ def _parse_tool_envelope(message: Mapping[str, Any]) -> dict[str, Any] | None:
 def authoritative_tool_messages(
     tool_results: Sequence[Mapping[str, Any]],
 ) -> list[dict[str, Any]]:
-    "Wrap full Gateway results for deterministic evidence compilation."
+    """包装完整的 Gateway 结果，供确定性证据编译使用。"""
     return [
         {"role": "tool", "content": dict(result)}
         for result in tool_results
@@ -114,7 +112,7 @@ def authoritative_tool_messages(
 def _successful_place_records(
     context_messages: Sequence[Mapping[str, Any]],
 ) -> dict[str, tuple[dict[str, Any], dict[str, Any], int]]:
-    "Index the latest admissible complete Provider envelope by stable place id."
+    """按稳定 place id 索引最近一次可用且完整的 Provider 信封。"""
     records: dict[str, tuple[dict[str, Any], dict[str, Any], int]] = {}
     for message in context_messages:
         envelope = _parse_tool_envelope(message)
@@ -156,7 +154,7 @@ def _successful_place_records(
 def _successful_route_records(
     context_messages: Sequence[Mapping[str, Any]],
 ) -> dict[str, tuple[dict[str, Any], dict[str, Any], int]]:
-    "Index complete admissible Provider routes by stable route id."
+    """按稳定 route id 索引完整可用的 Provider 路线。"""
     records: dict[str, tuple[dict[str, Any], dict[str, Any], int]] = {}
     for message in context_messages:
         envelope = _parse_tool_envelope(message)

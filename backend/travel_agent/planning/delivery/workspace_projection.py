@@ -1,4 +1,4 @@
-"""Planning delivery workspace projection."""
+"""Workspace 变更后的交付 Bundle 构建。"""
 
 from __future__ import annotations
 

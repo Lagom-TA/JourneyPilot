@@ -1,4 +1,4 @@
-"""Public research activity must never expose a worker's structured packet."""
+"""公开的调研活动不得暴露 worker 的结构化数据包。"""
 import json
 
 import pytest
@@ -90,7 +90,7 @@ async def test_lifecycle_starts_specialists_before_their_first_model_or_tool_cal
     assert event[0]['agent_name'] == '行程规划'
     assert event[0]['progress_status'] == 'running'
     assert 'error_type' not in event[0]
-    # The ReAct fallback must not create a duplicate card or start milestone.
+    # ReAct 回退路径不得重复创建卡片或启动里程碑。
     assert [e async for e in _handle_agent_activity(('agent_activity', 'itinerary_planner', None), ctx)] == []
 
 

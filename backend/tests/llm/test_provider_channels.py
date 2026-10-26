@@ -60,7 +60,7 @@ async def test_ingest_and_online_calls_do_not_share_a_quota():
 
     这一条断言的是**通道身份**：入库的调用记在 ingest_contextual_llm 上，同时在线
     请求仍然记在 online_fast_llm 上。共用一个配额时，一次上传排出的上千条调用会让
-    在线请求全部排在它们后面（实测服务不可达 7 分半）。
+    在线请求全部排在它们后面，导致在线服务长时间不可达。
     """
 
     channels = get_settings().provider_channels

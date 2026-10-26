@@ -1,12 +1,12 @@
-"""Harness fixture matrix, paid protocol calibration, and JSONL aggregation.
+"""Harness 实验入口：离线 fixture 矩阵、付费协议校准与 JSONL 汇总。
 
-PYTHONPATH=backend <venv>/bin/python backend/scripts/harness_experiments.py matrix --output ...
-PYTHONPATH=backend <venv>/bin/python backend/scripts/harness_experiments.py live --output ...
-PYTHONPATH=backend <venv>/bin/python backend/scripts/harness_experiments.py analyze --input ...
+用法：
+    PYTHONPATH=backend <venv>/bin/python backend/scripts/harness_experiments.py matrix --output ...
+    PYTHONPATH=backend <venv>/bin/python backend/scripts/harness_experiments.py live --output ...
+    PYTHONPATH=backend <venv>/bin/python backend/scripts/harness_experiments.py analyze --input ...
 
-Live is explicit and billed. It uses configured exact primary/fast models and
-prices, never writes business DB, and stores no credentials. Protocol probes
-are not end-to-end delivery or production cache/cost benchmarks.
+``live`` 会产生真实费用，使用配置中的 primary/fast 模型与价格；不写业务数据库，
+不保存凭证。协议探测不代表端到端交付，也不代表生产缓存或成本基准。
 """
 import argparse
 import asyncio
@@ -92,7 +92,7 @@ async def live(output):
                 response = await client.ainvoke(messages, response_format={"type": "json_schema", "json_schema": {"name": "travel_constraints", "strict": True, "schema": PROBE_SCHEMA}})
                 passed = json.loads(response) == {"budget_cny": 3000, "days": 2, "no_stairs": True}
             except Exception as exc:
-                error_type = type(exc).__name__  # no credentials or provider error body
+                error_type = type(exc).__name__  # 只记异常类型，不保存凭证或 provider 错误正文
             finally:
                 current_run_id.reset(run_token)
                 current_node.reset(node_token)
@@ -117,7 +117,7 @@ async def live(output):
 
 
 async def live_tools(output):
-    """Two paid fast requests, with a synthetic observation between them."""
+    """两次付费 fast 请求，中间插入一条合成的工具观察结果。"""
     settings = get_settings()
     cfg = settings.fast_model
     recorder = UsageRecorder(spool_path=output.with_suffix(".usage.sqlite3"))

@@ -1,35 +1,9 @@
-"""The strict structured-output subset: one judge, one rewriter.
+"""严格结构化输出子集的判定与改写。
 
-A provider that enforces this subset rejects a schema outright — it does not
-degrade it the way a lenient provider does.  So a schema that is only legal on
-lenient providers is a schema this application cannot ship: the first call to a
-strict provider fails, every time, with nothing delivered.
-
-This module states the subset once.  :func:`strict_schema_violations` is the
-only judge of legality, and :func:`as_strict_schema` rewrites the two things
-Pydantic emits that the subset forbids while carrying no meaning the subset
-cannot express:
-
-``oneOf`` → ``anyOf``
-    A discriminated union's branches each pin their discriminator to a distinct
-    ``const``, so at most one branch can ever match and the two keywords select
-    the same thing.  The ``discriminator`` annotation itself is a JSON-Schema
-    extension the subset has no slot for; it is a hint for the *generating*
-    model, and the authoritative check is the Pydantic union on the way back in,
-    which is untouched.
-
-completing ``required``
-    The subset has no notion of an optional property: a property is either
-    required or absent from the schema.  A Pydantic field with a default lands
-    in ``properties`` but not ``required``, which the subset reads as malformed.
-    Completing ``required`` asks the generating model to emit the key it would
-    otherwise have omitted.
-
-What this module deliberately does *not* do is invent an encoding for a
-free-form mapping (``additionalProperties`` anything other than ``False``).  The
-subset has no way to say "arbitrary keys", so such a schema cannot be legalized
-here — it has to change shape where the model declares it.  :func:`as_strict_schema`
-raises rather than hand the transport something the provider will reject.
+合法性只由 :func:`strict_schema_violations` 判定；:func:`as_strict_schema`
+把 ``oneOf`` 改为 ``anyOf``、移除 ``discriminator`` 并补全 ``required``。
+``additionalProperties`` 非 ``False`` 的自由映射等无法在此改写，会抛出
+:class:`StrictSchemaError`。
 """
 
 from __future__ import annotations
@@ -38,8 +12,7 @@ import copy
 from dataclasses import dataclass
 from typing import Any, Dict, List, Tuple
 
-# The subset's string formats.  A format outside this set is rejected rather
-# than ignored, so it counts as a violation.
+# 子集允许的字符串 format；其他 format 会被拒绝而不是忽略，因此计为违规。
 PERMITTED_STRING_FORMATS = frozenset(
     {
         "date-time",
@@ -54,19 +27,18 @@ PERMITTED_STRING_FORMATS = frozenset(
     }
 )
 
-# Keywords the subset has no slot for.  ``allOf`` is included because the subset
-# offers no composition keyword at all; a schema that needs it has to be flattened
-# where it is declared.
+# 子集不支持的关键字。子集没有组合关键字，需要 ``allOf`` 的 schema
+# 必须在声明处展开。
 _FORBIDDEN_KEYWORDS = ("oneOf", "allOf", "discriminator")
 
 
 class StrictSchemaError(ValueError):
-    """A schema cannot be expressed in the strict structured-output subset."""
+    """schema 无法用严格结构化输出子集表达。"""
 
 
 @dataclass(frozen=True)
 class StrictSchemaViolation:
-    """One reason a schema is not legal in the subset."""
+    """schema 不符合子集的一条原因。"""
 
     path: str
     rule: str
@@ -81,10 +53,9 @@ def _is_object_node(node: Dict[str, Any]) -> bool:
 
 
 def strict_schema_violations(schema: Any) -> Tuple[StrictSchemaViolation, ...]:
-    """Return every reason ``schema`` would be rejected by a strict provider.
+    """返回 ``schema`` 会被严格供应商拒绝的全部原因。
 
-    An empty tuple is the only statement that a schema is shippable; callers
-    must not read "no exception raised" as legality.
+    只有返回空元组才表示 schema 可用；调用方不能把未抛异常当作合法。
     """
 
     violations: List[StrictSchemaViolation] = []
@@ -134,12 +105,10 @@ def _describe(value: Any) -> str:
 
 
 def as_strict_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
-    """Return ``schema`` rewritten into the strict subset.
+    """把 ``schema`` 改写为严格子集。
 
-    Raises :class:`StrictSchemaError` when a violation survives the rewrite —
-    a free-form mapping, an unsupported ``format``, an ``allOf``.  Those cannot
-    be repaired without changing the declaring model, and emitting them anyway
-    only moves the failure to the provider.
+    改写后仍有违规（自由映射、不支持的 ``format``、``allOf`` 等）时抛出
+    :class:`StrictSchemaError`；这些问题需要在声明模型处修复。
     """
 
     rewritten = copy.deepcopy(schema)

@@ -1,8 +1,7 @@
 """取消与追加要求的 API 合同：接受与否只看 durable 事实。
 
-这一批的核心是**「registry 里有没有 handle」不再参与判断**。之前它决定一切：追加要求会被
-409 拒绝，取消会被就地判成「没人在跑」——而它只说明不是这个进程在跑。所以这些用例都在
-一个**没有任何进程内 handle** 的环境里跑，行为必须仍然正确。
+「registry 里有没有 handle」不参与判断，它只说明这个进程有没有在跑该 Run。
+这些用例都在没有任何进程内 handle 的环境里运行，行为必须仍然正确。
 """
 
 from __future__ import annotations
@@ -83,7 +82,7 @@ async def test_cancel_is_accepted_with_a_live_executor_elsewhere(
 async def test_cancel_without_a_live_lease_converges_immediately(
     migrated_async_database, components
 ):
-    """没有活着的执行器：就地收敛，不让用户等下一轮恢复扫描。"""
+    """没有正在运行的执行器：就地收敛，不让用户等下一轮恢复扫描。"""
 
     run_id = await _running_run(components, with_lease=False)
 
@@ -134,7 +133,7 @@ async def test_cancelling_a_finished_run_is_refused_and_leaves_nothing_pending(
 async def test_supplement_is_accepted_without_any_in_process_handle(
     migrated_async_database, components
 ):
-    """这条以前会被 409 拒绝。要求先落库，执行器下一次轮询就看得见。"""
+    """没有进程内 handle 时也接受要求：先落库，执行器下一次轮询就能看到。"""
 
     run_id = await _running_run(components, with_lease=True)
 

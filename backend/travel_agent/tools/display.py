@@ -234,7 +234,7 @@ def _summarize_tool_result(tool_name: str, result: Dict[str, Any]) -> str:
 
 
 def public_text(value: Any, limit: int = 300) -> str:
-    """Fail closed for structured/partial payloads, including prose-prefixed JSON."""
+    """结构化或不完整载荷返回空串；带正文前缀的 JSON 也算载荷。"""
     if not isinstance(value, str):
         return ""
     text = value.strip()
@@ -249,7 +249,7 @@ def public_text(value: Any, limit: int = 300) -> str:
 
 
 def result_preview(value: Any, depth: int = 0) -> list[dict[str, str]]:
-    """Bounded allowlist of place/page/route facts; never serialize arbitrary data."""
+    """按白名单提取地点/网页/路线的有限字段，不序列化任意数据。"""
     if depth > 10:
         return []
     if isinstance(value, str):

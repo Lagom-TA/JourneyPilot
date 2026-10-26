@@ -91,7 +91,7 @@ export async function fetchJson<T>(
       message = formatApiErrorDetail(record?.detail)
         || (typeof record?.message === 'string' ? record.message : message);
     } catch {
-      // 无法解析响应体时保留 HTTP 状态兜底。
+      // 无法解析响应体时使用 HTTP 状态文本作为错误消息。
     }
     throw new ApiError(message, response.status, body);
   }
@@ -125,7 +125,7 @@ export async function fetchBlob(path: string, init: RequestInit, timeoutMs: numb
       message = formatApiErrorDetail(record?.detail)
         || (typeof record?.message === 'string' ? record.message : message);
     } catch {
-      // 无法解析响应体时保留 HTTP 状态兜底。
+      // 无法解析响应体时使用 HTTP 状态文本作为错误消息。
     }
     throw new ApiError(message, response.status, body);
   }

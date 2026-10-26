@@ -74,7 +74,7 @@ async def emit_node_lifecycle(
     duration_ms: Optional[float] = None,
     error_type: Optional[str] = None,
 ) -> None:
-    """Emit an audit-safe node execution fact to the active workflow sink."""
+    """向当前 workflow sink 发送一条可安全审计的节点执行事实。"""
     sink = node_lifecycle_sink.get()
     node_name = node or current_node.get()
     if sink is None or not node_name:

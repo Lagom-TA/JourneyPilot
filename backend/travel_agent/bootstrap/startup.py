@@ -1,4 +1,4 @@
-"""Framework-independent application lifespan."""
+"""与 Web 框架无关的应用生命周期。"""
 
 import logging
 from contextlib import asynccontextmanager

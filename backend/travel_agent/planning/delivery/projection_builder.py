@@ -1,4 +1,4 @@
-"""Planning delivery projection builder."""
+"""交付投影构建。"""
 
 from __future__ import annotations
 

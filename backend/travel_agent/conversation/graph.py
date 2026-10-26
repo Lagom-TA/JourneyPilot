@@ -1,4 +1,4 @@
-"""Conversation graph."""
+"""快速回答工作流图。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Planning invalidation."""
+"""规划阶段的失效更新。"""
 
 from __future__ import annotations
 

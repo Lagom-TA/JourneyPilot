@@ -1,5 +1,3 @@
-"""Planning itinerary mutations apply."""
-
 from __future__ import annotations
 
 from travel_agent.planning.itinerary.mutations.contracts import (

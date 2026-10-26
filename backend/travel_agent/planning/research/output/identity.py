@@ -1,8 +1,5 @@
-"""Research packet identity responsibilities."""
-
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Mapping, Sequence
 
@@ -13,10 +10,8 @@ from travel_agent.planning.research.evidence import (
     FieldProvenance,
 )
 from travel_agent.integrations.places.taxonomy import provider_place_type_matches_candidate_kind
-from travel_agent.tools.governance import compiled_tool_source_id_is_about
 
 from .identifiers import (
-    _canonical_snapshot_hash,
     _provider_entity_source_id,
     _provider_fact_id,
 )
@@ -24,7 +19,6 @@ from .policy import _PLACE_ENTITY_TYPE, _PLACE_IDENTITY_FIELDS, _PLACE_NAME_FIEL
 from .sources import (
     _provider_place_source_payload,
     _provider_snapshot_source_fields,
-    _source_retrieved_at,
 )
 from .transcript import _successful_place_records
 
@@ -34,7 +28,7 @@ logger = logging.getLogger(__name__)
 def _provider_coordinate_pair(
     provider_place: Mapping[str, Any],
 ) -> tuple[float, float] | None:
-    "Extract a valid (latitude, longitude) pair from a provider place record."
+    """从 Provider 地点记录中提取有效的 (纬度, 经度)，无效时返回 None。"""
     latitude = provider_place.get("latitude")
     longitude = provider_place.get("longitude")
     if (
@@ -55,7 +49,7 @@ def _bind_successful_place_identity(
     payload: dict[str, Any],
     context_messages: Sequence[Mapping[str, Any]],
 ) -> dict[str, dict[str, Any]]:
-    "Bind Provider identity to a Worker-selected place without selecting it."
+    """把 Provider 身份绑定到 worker 选中的地点，但不代替 worker 做选择。"""
     candidates = payload.get("candidates")
     if not isinstance(candidates, list) or not candidates:
         return {}
@@ -310,7 +304,7 @@ def _bind_successful_place_identity(
         )
     ]
     if contradicted_places:
-        # Provider 类型与候选种类不一致时仅记录；不再改写事实数据。
+        # Provider 类型与候选种类不一致时只记录告警，不改写事实数据。
         logger.warning(
             "Research Packet provider record contradicts candidate kind | "
             "contradicted=%s",

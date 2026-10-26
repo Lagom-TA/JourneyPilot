@@ -1,4 +1,4 @@
-"""Planning requirements normalization prompts."""
+"""需求归一化提示词。"""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ def _normalization_response_format(
     *,
     supports_native_schema: bool,
 ) -> Dict[str, object]:
-    """Bind the generic contract schema to this call's exact clause ledger."""
+    """把通用契约 schema 绑定到本次调用的分句清单。"""
 
     model_schema = RequestContractNormalizationResult.model_json_schema()
     clause_array = model_schema["properties"]["clauses"]

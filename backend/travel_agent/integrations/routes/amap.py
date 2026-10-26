@@ -1,4 +1,4 @@
-"""Integrations routes amap."""
+"""高德路线规划的请求与归一化。"""
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ _UNBOUNDED_KEYS = frozenset({"polyline", "steps", "via_stops", "tmcs"})
 
 
 def _bounded(value: Any) -> Any:
-    """Drop geometry and per-step narration at every depth."""
+    """递归移除几何数据与逐段文字说明。"""
     if isinstance(value, dict):
         return {
             key: _bounded(item)
@@ -69,11 +69,10 @@ def _bounded(value: Any) -> Any:
 
 
 def _bounded_payload(payload: Dict[str, Any], *, mode: AmapRouteMode) -> Dict[str, Any]:
-    """One plan, no geometry — the exact answer this tool promises to return.
+    """只保留一个方案，不含几何数据。
 
-    amap offers five transit plans and the normalizer takes the first; the other
-    four are competing options nothing reads. Keeping them would put four unread
-    itineraries into the evidence snapshot and the model's context.
+    amap 会返回五个公交方案，归一化只使用第一个；其余四个是无人读取的竞争选项，
+    保留它们会把四段未读行程放进证据快照与模型上下文。
     """
     bounded = _bounded(payload)
     envelope = bounded.get("data") if mode == "bike" else bounded.get("route")
@@ -87,16 +86,15 @@ def _bounded_payload(payload: Dict[str, Any], *, mode: AmapRouteMode) -> Dict[st
 
 
 class AmapRouteSearchError(RuntimeError):
-    """amap could not return an executable route for this query."""
+    """amap 未能为这次查询返回可执行路线。"""
 
 
 def _api_key() -> str:
-    """The amap web-service key, read from the one place it is configured.
+    """从唯一配置位置读取 amap web-service key。
 
-    It lives on the ``amap-maps`` MCP server entry because that is where it was
-    first needed; this reader does not add a second config field for the same
-    secret. ``_env_mapping`` already lets the process environment win there, so
-    a deployment that sets ``AMAP_MAPS_API_KEY`` needs no file change.
+    key 保存在 ``amap-maps`` MCP server 条目上；这里不新增第二个配置字段来保存
+    同一个密钥。``_env_mapping`` 已允许进程环境覆盖该值，因此设置
+    ``AMAP_MAPS_API_KEY`` 的部署无需修改文件。
     """
     server = get_settings().mcp_servers.get("amap-maps")
     key = (
@@ -122,7 +120,7 @@ def _endpoint(
 
 
 def _stop_endpoint(raw: Any, *, fallback: Dict[str, Any]) -> Dict[str, Any]:
-    """One amap transit stop as an endpoint, with its GCJ-02 point converted."""
+    """把一个 amap 公交站点转成端点，并转换其 GCJ-02 坐标。"""
     if not isinstance(raw, dict):
         return dict(fallback)
     name = str(raw.get("name") or "").strip()
@@ -212,12 +210,11 @@ def _transit_segments(
     origin: Dict[str, Any],
     destination: Dict[str, Any],
 ) -> List[Dict[str, Any]]:
-    """Flatten one amap transit plan into ordered walk and line segments.
+    """把一个 amap 公交方案展平成有序的步行与线路段。
 
-    amap nests a walk and a ridden line inside a single ``segments`` entry, so
-    one entry can become two of ours. Zero-distance walks are dropped: amap emits
-    them between a station exit and the next entrance, and a 0 m leg is not a
-    journey anybody takes.
+    amap 把步行与乘车线路嵌在同一个 ``segments`` 条目里，因此一个条目可能拆成
+    两个段。零距离步行会被丢弃：amap 会在出站口与下一个入口之间生成这种段，
+    0 米的段不是实际行程。
     """
     segments: List[Dict[str, Any]] = []
     cursor = dict(origin)
@@ -355,7 +352,7 @@ async def search_amap_route_raw(
     departure_time: Optional[str] = None,
     client: Optional[httpx.AsyncClient] = None,
 ) -> Dict[str, Any]:
-    """Return the complete response for one bounded amap Directions query."""
+    """返回一次有界 amap Directions 查询的完整响应。"""
     settings = get_settings().routing
     server = get_settings().mcp_servers.get("amap-maps")
     min_interval = float(server.min_interval_seconds) if server is not None else 0.0
@@ -436,7 +433,7 @@ async def amap_route_search(
     departure_time: str,
     mode: AmapRouteMode,
 ) -> Dict[str, Any]:
-    """One exact normalized amap route plus its full provider snapshot."""
+    """一条归一化的精确 amap 路线及其完整 Provider 快照。"""
     raw = await search_amap_route_raw(
         from_latitude=from_latitude,
         from_longitude=from_longitude,

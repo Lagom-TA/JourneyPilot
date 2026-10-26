@@ -1,6 +1,6 @@
 """
-Preset 注入器 (Domain Layer)
-将旅行风格预设的指令和约束转换为可注入到 Agent prompt 的上下文文本。
+Preset 注入器（Domain Layer）。
+将旅行风格预设的指令和约束转换为可注入 Agent prompt 的上下文文本。
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ class PresetInjector:
 
     @staticmethod
     def build_context(preset: TravelPreset) -> str:
-        """Pace and budget belong only to Constraint Pack arbitration, not free text."""
+        """节奏与预算只交给 Constraint Pack 仲裁，不写入自由文本。"""
         parts = [f"[当前启用预设: {preset.name}]"]
         parts.append(f"预设描述: {preset.description}")
         parts.append(f"\n{preset.instructions}")
@@ -54,7 +54,7 @@ class PresetInjector:
 
     @staticmethod
     def _wrap_active_preset(prompt: str, preset_context: str) -> str:
-        """Keep the closing XML tag intact; field contracts already bound the content."""
+        """保持闭合 XML 标签完整；字段契约已约束内容。"""
         if not preset_context:
             return ""
         return f"\n<active_preset>\n{prompt}\n{preset_context}\n</active_preset>"

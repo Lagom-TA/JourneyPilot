@@ -1,10 +1,7 @@
 """恢复：先恢复到一个新库，验证通过再切换。
 
-dev docs 02 §6 那句禁令是这个模块存在的全部理由：**「不要直接覆盖当前 volume 后
-祈祷成功。」** 直接 `pg_restore` 进当前库有两个不可接受的后果 —— 恢复中途失败时
-当前库已经被改坏了，而且没有任何东西可以回退。
-
-所以流程是（§6）：
+直接 `pg_restore` 进当前库有两个问题：恢复中途失败时当前库已被改坏，而且没有可
+回退的对象。因此流程是：
 
 ```
 校验 manifest / checksum
@@ -18,7 +15,7 @@ dev docs 02 §6 那句禁令是这个模块存在的全部理由：**「不要�
 ```
 
 切换是重命名而不是删除：`<db>_prerestore_<时间戳>` 一直留在服务器上，直到用户
-显式敲 `journeypilot restore --drop-retained <名字>`。
+显式执行 `journeypilot restore --drop-retained <名字>`。
 """
 
 from __future__ import annotations
@@ -39,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 class RestoreError(RuntimeError):
-    """恢复失败。**当前数据库未被修改**（切换是最后一步，且是重命名）。"""
+    """恢复失败。当前数据库未被修改（切换是最后一步，且为重命名）。"""
 
 
 @dataclass
@@ -227,7 +224,7 @@ def _verify_restored(
     *,
     embedding_dimensions: int,
 ) -> dict[str, Any]:
-    """恢复到 staging 之后的只读校验（§6.1）。任何一项不过就不切换。"""
+    """恢复到 staging 之后的只读校验。任何一项不通过就不切换。"""
 
     import json
 
@@ -274,10 +271,10 @@ def _verify_restored(
 
 
 def drop_retained(target: DatabaseTarget, name: str) -> None:
-    """删掉恢复时留档的旧库。**只允许删 `_prerestore_` 后缀的那些。**
+    """删掉恢复时留档的旧库。只允许删除 `_prerestore_` 后缀的库。
 
-    这条限制不是洁癖：这个函数拿到的是一个从命令行来的库名，而它执行的是
-    `DROP DATABASE`。限制在我们自己造的名字上，意味着敲错一个字母删不掉真实的库。
+    函数拿到的是命令行传入的库名，并执行 `DROP DATABASE`；把范围限制在我们自己
+    生成的名称上，可以避免误删其他数据库。
     """
 
     if f"{target.database}_prerestore_" not in name:

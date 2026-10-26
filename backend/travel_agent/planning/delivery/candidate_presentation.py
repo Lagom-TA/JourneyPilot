@@ -1,4 +1,4 @@
-"""Planning delivery candidate presentation."""
+"""候选展示名与场所身份。"""
 
 from __future__ import annotations
 
@@ -10,12 +10,7 @@ from travel_agent.planning.research.candidates import VisitCandidate
 
 
 def candidate_display_name(candidate: object) -> str:
-    """The one name a Candidate is called by, whatever its domain calls the field.
-
-    Public alongside :func:`candidate_place_id`: three domains spell this field three
-    ways, so a copy of the mapping anywhere else is a derived quantity that goes stale
-    the moment a fourth domain lands.
-    """
+    """返回候选对外的唯一名称，屏蔽各领域字段名差异。"""
     if isinstance(candidate, VisitCandidate):
         return candidate.name
     if isinstance(candidate, DiningCandidate):
@@ -30,13 +25,10 @@ def candidate_display_name(candidate: object) -> str:
 
 
 def candidate_place_id(candidate: object) -> str:
-    """The Provider identity a Candidate is pinned to, or "" where there is none.
+    """返回候选绑定的 provider 场所身份，没有时返回空串。
 
-    Three of the four domains are a place and carry ``place_id`` under that exact
-    name; transport is a route between two endpoints and has no single place, so
-    it answers "" rather than being coerced into one. Callers keyed on identity
-    (the knowledge-base nomination funnel) drop the empty answer, which is the
-    right outcome: a route was never a place a chunk could have nominated.
+    交通候选表示两端点之间的路线而非单一场所，因此返回 ``""``；按身份取值的
+    调用方会丢弃空结果。
     """
     if isinstance(candidate, (VisitCandidate, DiningCandidate, LodgingCandidate)):
         return candidate.place_id

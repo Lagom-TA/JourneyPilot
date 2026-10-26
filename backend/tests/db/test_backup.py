@@ -1,7 +1,7 @@
 """备份的三条校验，以及「校验必须能抓到坏备份」。
 
-dev docs 02 §5.2：「只看到 `pg_dump` exit code 0 还不够。」所以这里不只测「备份成功」，
-更要测**篡改后的备份被识别为坏的** —— 一个抓不到损坏的校验器等于没有校验器。
+`pg_dump` 返回 0 不代表备份可用，所以这里不只测备份成功，更要测篡改后的备份会被
+识别为坏。一个抓不到损坏的校验器等于没有校验器。
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ pytestmark = pytest.mark.postgres
 
 
 def _seed(target) -> None:
-    """放一点带中文、JSONB 和向量的数据 —— §14.2 要求备份覆盖这些类型。"""
+    """放一点带中文、JSONB 和向量的数据——备份必须覆盖这些类型。"""
 
     with connect(target) as conn:
         with conn.cursor() as cur:
@@ -184,8 +184,8 @@ def test_manifest_records_the_pg_client_strategy(temp_database, settings, scratc
 def test_redaction_keeps_structure_and_drops_secrets():
     """脱敏保留结构，Secret 只留 <set> / <unset> 这一个比特。
 
-    备份目录里那份 config.redacted.yaml 与 `journeypilot config show` 用**同一份**
-    规则（`config/redaction.py`），所以这一条同时钉住了两处。
+    备份目录里的 config.redacted.yaml 与 `journeypilot config show` 使用同一份
+    规则（`config/redaction.py`），所以这一条同时覆盖两处。
     """
 
     from travel_agent.config.redaction import redact

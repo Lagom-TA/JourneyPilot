@@ -1,4 +1,4 @@
-"""Integrations pdf readiness."""
+"""PDF 导出的字体与渲染预检。"""
 
 from __future__ import annotations
 
@@ -63,11 +63,10 @@ def _register_pdf_font() -> str:
 
 
 def probe_pdf_renderer() -> str:
-    """Verify the server can render CJK PDF text without creating an artifact.
+    """确认服务端能渲染中文 PDF 文本，不生成任何产物。
 
-    The probe renders one tiny in-memory page rather than exporting a report:
-    a formal report needs a Delivery Bundle, while this check must never create
-    or read a product artifact.
+    预检只在内存中渲染一页，不导出报告：正式报告需要 Delivery Bundle，而这项
+    检查不应创建或读取产品产物。
     """
 
     font = _register_pdf_font()

@@ -1,1 +1,1 @@
-"""Release-managed product seeds."""
+"""由发布流程管理的产品种子数据。"""

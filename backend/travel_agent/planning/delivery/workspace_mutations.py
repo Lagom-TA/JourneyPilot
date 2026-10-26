@@ -1,4 +1,4 @@
-"""Planning delivery workspace mutations."""
+"""交付 Workspace 的变更与撤销。"""
 
 from __future__ import annotations
 
@@ -90,7 +90,7 @@ class WorkspaceV2Service:
         expected: BundleRevisionVector,
         mutation: WorkspaceV2Mutation,
     ) -> WorkspaceMutationPreview:
-        """Apply the reducer without persisting or moving the current Bundle pointer."""
+        """应用 reducer，但不持久化，也不移动当前 Bundle 指针。"""
 
         current = await self._current(run_id, expected)
         application = apply_workspace_v2_mutation(
@@ -123,12 +123,11 @@ class WorkspaceV2Service:
         mutation: WorkspaceV2Mutation,
         idempotency_key: str,
     ) -> WorkspaceBundleMutationResult:
-        """Apply a workspace mutation with optimistic CAS on commit.
+        """在提交时以乐观 CAS 应用 Workspace 变更。
 
-        Read → pure compute → commit are **not** one DB lock.  Concurrent
-        applies with the same ``expected`` vector: one commit wins; the other raises
-        ``BundleRevisionConflict``.  Clients must re-read current + retry.  Correct
-        fail-closed behavior, not silent last-write-wins.
+        读取与纯计算不在同一个数据库锁内；使用相同 ``expected`` 向量的并发提交
+        只有一个成功，另一个抛出 ``BundleRevisionConflict``，调用方需重新读取后
+        重试。
         """
         mutation_payload = mutation.model_dump(mode="json")
         mutation_request = {

@@ -1,4 +1,4 @@
-"""Integrations rail tickets."""
+"""12306 余票行的解析、票价解码与输出组装。"""
 
 from __future__ import annotations
 
@@ -126,7 +126,7 @@ def _safe_int(value: str) -> int:
 def decode_seat_prices(
     yp_info: str, seat_inventory: Mapping[str, str]
 ) -> list[SeatPrice]:
-    """Decode ``yp_info_new`` into per-class fare + inventory, upstream order."""
+    """把 ``yp_info_new`` 解码为每类座位的票价与余票，保持上游顺序。"""
 
     prices: list[SeatPrice] = []
     blob = yp_info or ""
@@ -153,7 +153,7 @@ def decode_seat_prices(
 def parse_left_ticket_rows(
     rows: Sequence[str], station_names: Mapping[str, str]
 ) -> list[RailTicket]:
-    """Turn ``data.result`` rows into tickets, naming stations from ``data.map``."""
+    """把 ``data.result`` 行转成车票，站名取自 ``data.map``。"""
 
     tickets: list[RailTicket] = []
     for row in rows:
@@ -183,7 +183,7 @@ def parse_left_ticket_rows(
 
 
 def format_ticket_status(inventory: str) -> str:
-    """Render one 12306 inventory field as the availability phrase."""
+    """把 12306 的一个余票字段渲染为可读的余票说明。"""
 
     value = (inventory or "").strip()
     if _DIGITS_RE.match(value):
@@ -218,11 +218,10 @@ def _format_ticket_block(ticket: RailTicket) -> str:
 
 
 def format_tickets_text(tickets: Sequence[RailTicket]) -> str:
-    """Render legs as text for ``get-interline-tickets`` nesting only.
+    """把各段渲染为文本，仅用于 ``get-interline-tickets`` 的嵌套输出。
 
-    ``get-tickets`` returns :func:`build_left_ticket_payload` instead: text is
-    unusable for a code consumer under the governance sanitizer.  Interline text
-    is read by the model alone, so it stays prose.
+    ``get-tickets`` 使用 :func:`build_left_ticket_payload`：经过治理清洗后，文本
+    对代码消费方不可用。中转文本只由模型阅读，因此保持文本形式。
     """
 
     if not tickets:
@@ -247,10 +246,10 @@ _LISHI_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
 
 
 def seat_is_bookable(inventory: str) -> bool:
-    """Whether one 12306 inventory field means this class can be bought now.
+    """一个 12306 余票字段是否表示该座席当前可购买。
 
-    ``候补`` (waitlist) is not bookable: the traveller cannot hold that seat, and
-    binding a leg on it would assert an itinerary nobody can buy.
+    ``候补``（waitlist）不可购买：旅行者无法持有该座位，用它绑定车段会声明一个
+    实际买不到的行程。
     """
 
     value = (inventory or "").strip()
@@ -260,7 +259,7 @@ def seat_is_bookable(inventory: str) -> bool:
 
 
 def lishi_to_minutes(lishi: str) -> Optional[int]:
-    """``00:45`` → ``45``.  ``None`` when 12306 sent an unreadable 历时."""
+    """``00:45`` → ``45``；12306 返回无法解析的历时则返回 ``None``。"""
 
     match = _LISHI_RE.match((lishi or "").strip())
     if match is None:
@@ -269,7 +268,7 @@ def lishi_to_minutes(lishi: str) -> Optional[int]:
 
 
 def _fare_summary(ticket: RailTicket) -> str:
-    """One short scalar line covering every class, for the report surface."""
+    """覆盖全部座席的一行简短标量文本，用于报告界面。"""
 
     text = " / ".join(
         f"{seat.seat_name} {format_ticket_status(seat.inventory)} "
@@ -282,11 +281,10 @@ def _fare_summary(ticket: RailTicket) -> str:
 
 
 def build_ticket_record(ticket: RailTicket) -> Optional[dict[str, Any]]:
-    """One bookable train as a flat 11-key record of scalars.
+    """把一趟可购车次压成 11 个标量键的扁平记录。
 
-    ``None`` when the train carries no bookable class, or when 12306 sent a
-    timetable this repo cannot turn into a leg (unreadable clock or 历时).  A row
-    we cannot place on a timeline is not evidence of a route.
+    没有可购座席，或 12306 返回的时间表无法转成车段（时刻或历时不可解析）时返回
+    ``None``：无法放到时间轴上的行不能作为路线证据。
     """
 
     bookable = [
@@ -331,24 +329,20 @@ def build_left_ticket_payload(
     from_code: str,
     to_code: str,
 ) -> dict[str, Any]:
-    """The ``get-tickets`` payload: strategy-free facts about bookable trains.
+    """``get-tickets`` 的载荷：关于可购车次的事实，不包含选择策略。
 
-    Three provider-fact reductions happen here and nothing else:
+    这里只做三项 Provider 事实缩减：
 
-    1. rows outside the queried stations' own city groups are dropped — 12306
-       expanded the query to the group (see :func:`station_group_telecodes`), and
-       a 上海南 → 杭州南 row answers a different trip than the one asked for;
-    2. rows with no bookable class are dropped (:func:`seat_is_bookable`);
-    3. the fare table is reduced to flat scalars (:func:`build_ticket_record`).
+    1. 丢弃不属于查询车站城市组的行：12306 把查询扩展到整个城市组（见
+       :func:`station_group_telecodes`），上海南 → 杭州南 的行回答的是另一段行程；
+    2. 丢弃没有可购座席的行（:func:`seat_is_bookable`）；
+    3. 把票价表压成扁平标量（:func:`build_ticket_record`）。
 
-    Only ``MAX_TICKET_RECORDS`` rows can survive the sanitizer, and one real
-    query returns up to ~390 rows, so the truncation order is load-bearing: rows
-    on the *exact* queried station pair go first, then the city-group siblings,
-    each keeping 12306's own row order.  That is the one ordering that cannot
-    change the answer of the agent-layer policy — it never drops an exact-pair
-    row in favour of a sibling, and it still carries siblings when the exact pair
-    runs nothing (上海 → 兰州 arrives 兰州西, and a real leg beats no leg).
-    Which of the surviving trains to bind stays entirely in the agent layer.
+    清洗器最多保留 ``MAX_TICKET_RECORDS`` 行，而一次真实查询可能返回数百行，
+    因此截断顺序很重要：先保留查询车站对完全匹配的行，再保留城市组内的其他车站，
+    各组内部保持 12306 的行顺序。这个顺序不会为了城市组行丢弃完全匹配行，也不会
+    在完全匹配没有车次时丢掉城市组内的真实车段（例如上海 → 兰州实际到达兰州西）。
+    保留哪些车次由 agent 层决定。
     """
 
     from_scope = station_group_telecodes(from_code)

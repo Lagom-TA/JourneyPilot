@@ -46,7 +46,7 @@ test('真实资料库：上传、读取、修改、刷新、删除自己的测�
     await expect(row).toHaveCount(0);
     expect((await request.get(sourceURL)).status()).toBe(404);
   } finally {
-    // Only this uniquely named test document; never clear the user's collection.
+    // 只删除本次唯一命名的测试文档，不清空用户的资料库。
     const response = await request.delete(sourceURL);
     expect([200, 404]).toContain(response.status());
   }

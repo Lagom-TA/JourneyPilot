@@ -1,5 +1,3 @@
-"""Planning research fallback policy."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -50,7 +48,7 @@ class FallbackQueryPolicy:
         research_window_open: bool,
         run_budget_available: bool,
     ) -> bool:
-        """A generic fallback query runs once its prerequisites ran, within budget."""
+        """通用回退查询在前置查询执行完、且时间窗口与运行预算都允许时运行。"""
         if query.query_kind.value != "generic_fallback":
             return False
         return (

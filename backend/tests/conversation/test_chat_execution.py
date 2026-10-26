@@ -1,4 +1,4 @@
-"""Exercise the real extracted executor and transport with bounded fake workflows."""
+"""用有界的假工作流验证真实的执行器与传输层。"""
 
 from __future__ import annotations
 

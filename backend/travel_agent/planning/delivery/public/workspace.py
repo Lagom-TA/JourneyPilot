@@ -1,4 +1,4 @@
-"""Planning delivery public workspace."""
+"""公开 Workspace 投影。"""
 
 from __future__ import annotations
 
@@ -49,12 +49,10 @@ def _public_weather_proposal_decision(
 
 
 def _public_weather_adjustments(bundle: DeliveryBundle) -> List[Dict[str, Any]]:
-    """Expose pending weather choices without exposing the raw weather ledger.
+    """暴露待定的天气选择，但不暴露原始天气账本。
 
-    A weather refresh is a user-initiated product action.  The client needs a
-    stable proposal id and a concise, actionable summary in order to confirm or
-    dismiss it, but it must not receive provider observations, raw operations,
-    or fact identifiers from the immutable weather snapshot.
+    天气刷新是用户主动发起的操作：客户端需要稳定的 proposal id 与可操作摘要来
+    确认或忽略，但不应收到 provider 观测、原始操作或事实标识。
     """
 
     decisions = {
@@ -78,12 +76,11 @@ def _public_weather_adjustments(bundle: DeliveryBundle) -> List[Dict[str, Any]]:
 def _public_workspace(
     workspace: TripWorkspaceV2, bundle: DeliveryBundle, view: EvidenceBasisView
 ) -> Dict[str, Any]:
-    """Project the workspace.
+    """投影 Workspace。
 
-    ``recommendation_catalog``, ``user_input_anchors`` and
-    ``personalization_influences`` are absent by construction: the catalog is the
-    research ledger, the anchors are already restated as report notes, and the
-    influences are internal personalization bookkeeping.
+    ``recommendation_catalog``、``user_input_anchors`` 与
+    ``personalization_influences`` 不输出：catalog 是研究账本，anchor 已在报告
+    备注中重述，influence 属于内部个性化记录。
     """
 
     return {

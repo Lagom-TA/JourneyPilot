@@ -1,4 +1,4 @@
-"""Planning weather presentation."""
+"""天气上下文展示。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from travel_agent.planning.state import TravelAgentState
 
 
 def format_weather_context_for_planning(state: TravelAgentState) -> str:
-    """Keep hourly detail for deterministic checks rather than duplicating it in prompts."""
+    """保留逐小时细节供确定性检查使用，不在 prompt 中重复。"""
 
     context = state.weather_context
     if context is None:

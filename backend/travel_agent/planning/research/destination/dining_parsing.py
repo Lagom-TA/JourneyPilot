@@ -1,5 +1,3 @@
-"""Planning research destination dining parsing."""
-
 from __future__ import annotations
 
 import re

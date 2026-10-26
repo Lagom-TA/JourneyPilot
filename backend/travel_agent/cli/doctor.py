@@ -112,7 +112,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         },
         "columns": migration_plan.fingerprint.get("embedding_columns", {}),
         "stored": None,
-        "note": "provider/model 尚未持久化，维度一致不等于向量空间兼容（P0-D 补齐）",
+        "note": "provider/model 尚未持久化，维度一致不等于向量空间兼容",
     }
 
     if not args.json:

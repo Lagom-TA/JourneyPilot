@@ -1,22 +1,19 @@
-"""Planning itinerary time buffers."""
-
 from __future__ import annotations
 
 
 def planned_boarding_buffer_minutes(mode: object) -> int:
-    """Allow 90 minutes before flights and 30 before other long-distance legs.
+    """航班起飞前预留 90 分钟，其他长途交通预留 30 分钟。
 
-    This conservative default must be disclosed as a planning assumption. A
-    published operator deadline or a user's larger allowance still takes priority.
-    The provider's actual departure timestamp is never changed.
+    该默认值需要作为规划假设披露。运营方公布的截止时间或用户给出的更大
+    余量优先；Provider 的实际出发时间不会被修改。
     """
     return 90 if str(getattr(mode, "value", mode)) == "flight" else 30
 
 
 def planned_alighting_buffer_minutes(mode: object) -> int:
-    """Reserve 45 minutes after flights, 15 after other long-distance arrivals.
+    """航班到达后预留 45 分钟，其他长途到达后预留 15 分钟。
 
-    This planning allowance covers getting off and leaving the terminal before
-    the separately measured local route starts; it is not a provider guarantee.
+    这段时间用于下机并离开场站，之后才计算单独的市内路线；它不是 Provider
+    的保证。
     """
     return 45 if str(getattr(mode, "value", mode)) == "flight" else 15

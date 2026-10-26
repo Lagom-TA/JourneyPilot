@@ -1,7 +1,7 @@
-"""Planning delivery projection errors."""
+"""交付投影错误。"""
 
 from __future__ import annotations
 
 
 class DeliveryProjectionError(ValueError):
-    """Raised when immutable v2 facts cannot produce a truthful projection."""
+    """不可变的 v2 事实无法生成可信投影时抛出。"""

@@ -1,4 +1,4 @@
-"""Planning requirements entity binding."""
+"""需求实体绑定。"""
 
 from __future__ import annotations
 

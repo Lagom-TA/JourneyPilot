@@ -1,4 +1,4 @@
-"""Storage place search cache."""
+"""Nominatim /search 原始响应的 Redis 缓存。"""
 
 from __future__ import annotations
 
@@ -21,11 +21,10 @@ _SEARCH_CACHE_SCHEMA_VERSION = "nominatim.search.raw.v1"
 
 
 def _search_cache_digest(base_url: str, params: Dict[str, Any]) -> str:
-    """The full identity of one provider request: endpoint plus every parameter.
+    """一次 provider 请求的完整身份：endpoint 加全部参数。
 
-    ``params`` already carries the normalized query, the country filter, the
-    limit and the accept-language, so hashing it whole means a cache entry can
-    only ever serve a byte-identical request.
+    ``params`` 已包含归一化查询、国家过滤、数量与 accept-language，整体哈希后
+    一个缓存项只服务参数完全相同的请求。
     """
     payload = json.dumps(
         {
@@ -42,14 +41,11 @@ def _search_cache_digest(base_url: str, params: Dict[str, Any]) -> str:
 
 
 class NominatimSearchCache:
-    """Redis reuse of raw ``/search`` bodies. Redis loss is a miss, never a fault.
+    """原始 ``/search`` 响应的 Redis 复用。Redis 不可用只算未命中，不是故障。
 
-    Only non-empty successful answers are stored. An empty answer is a statement
-    about one query phrasing at one instant — the authored-place ladder walks
-    seven phrasings and intake sees a half-typed word — and pinning "no such
-    place" for a week would mask every newly indexed OSM object. A provider
-    failure is not stored for the same reason, and more bluntly: a brownout must
-    not become the answer.
+    只保存非空的成功响应。空结果只描述某一时刻的某一种查询措辞（authored-place
+    查询序列会尝试多种写法，intake 也可能收到半截输入），把「没有此地」缓存一周会
+    掩盖新索引的 OSM 对象。provider 失败同样不保存：一次上游性能下降不能变成答案。
     """
 
     def __init__(self, *, redis: Any = None) -> None:

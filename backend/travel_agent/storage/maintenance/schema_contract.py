@@ -1,15 +1,14 @@
 """JourneyPilot 数据库合同的**唯一定义处**。
 
-这里只声明「哪些东西属于合同」，不声明它们长什么样 —— 形状的定义处是
-`migrations/versions/`，实际形状由 `fingerprint.py` 从活库读出来。三方各有一份
-「表长什么样」的描述会立刻变成这个仓吃过亏的「一个角色两套值」，所以这份文件里
-**没有一列一列的期望值**。
+这里只声明哪些对象属于合同，不声明它们的形状：形状由 `migrations/versions/`
+定义，实际结构由 `fingerprint.py` 从活库读取。多处各自维护「表长什么样」会产生
+互相不一致的定义，因此本文件不保存逐列的期望值。
 
 合同的三个消费者：
 
 - `census.py`：这是不是一个 JourneyPilot 库（`PROBE_TABLES`）；
 - `fingerprint.py`：指纹要扫哪些表（`MANAGED_TABLES`）；
-- `report.py`：API 启动时只读校验要求哪些东西在（`MANAGED_TABLES` + `REQUIRED_EXTENSIONS`）。
+- `report.py`：API 启动时只读校验要求哪些对象存在（`MANAGED_TABLES` + `REQUIRED_EXTENSIONS`）。
 """
 
 from __future__ import annotations
@@ -88,8 +87,7 @@ EXTERNALLY_OWNED_TABLES: dict[str, str] = {
 # 核心扩展：缺一个就没有能跑的产品（向量检索、UUID 生成）。
 REQUIRED_EXTENSIONS: tuple[str, ...] = ("vector", "pgcrypto")
 
-# 可选能力：缺了要**显式降级并且说出来**，不能一边 fallback 一边宣称完整
-# （dev docs 02 §10.1）。
+# 可选能力：缺失时必须显式降级并在报告中说明，不能既回退又宣称完整。
 OPTIONAL_EXTENSIONS: tuple[str, ...] = ("zhparser",)
 
 # 中文词法检索用的 text search configuration 名。zhparser 不可用时退到 'simple'。
@@ -109,10 +107,10 @@ _IDENTIFIER = re.compile(r"^[a-z_][a-z0-9_]*$")
 def sql_table_name_list(tables: tuple[str, ...] = MANAGED_TABLES) -> str:
     """把表名拼成 SQL 里的 `('a', 'b')` 字面量。
 
-    **为什么不用绑定参数**：同一段 introspection SQL 要同时喂给 psycopg（`%(x)s`）和
-    SQLAlchemy `text()`（`:x`），两种占位符语法不兼容 —— 参数化就意味着两份 SQL，
-    而两份 SQL 就是两个「指纹到底扫了什么」的答案。表名全部是代码常量，这里再断言一次
-    标识符形状，注入面为零。
+    **为什么不用绑定参数**：同一段 introspection SQL 要同时交给 psycopg（`%(x)s`）
+    和 SQLAlchemy `text()`（`:x`），两种占位符语法不兼容。参数化意味着维护两份
+    SQL，也就有两个「指纹扫了什么」的答案。表名全部是代码常量，这里再断言一次
+    标识符形状。
     """
 
     for name in tables:

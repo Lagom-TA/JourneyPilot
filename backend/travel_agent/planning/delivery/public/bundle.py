@@ -1,4 +1,4 @@
-"""Planning delivery public bundle."""
+"""公开交付 Bundle 投影。"""
 
 from __future__ import annotations
 
@@ -42,10 +42,9 @@ def public_manifest(bundle: DeliveryBundle) -> Dict[str, Any]:
 
 
 def public_event_manifest(manifest: Any) -> Dict[str, Any]:
-    """Coerce a persisted manifest payload to the public manifest subset.
+    """把持久化事件里的 manifest 载荷收敛为公开子集。
 
-    The input is a durable event payload rather than a typed model, so the
-    projection reads the named keys it knows and ignores everything else.
+    输入是持久化事件载荷而非类型化模型，因此只读取已知字段，忽略其余内容。
     """
 
     if not isinstance(manifest, Mapping):
@@ -54,15 +53,11 @@ def public_event_manifest(manifest: Any) -> Dict[str, Any]:
 
 
 def public_delivery_bundle(bundle: DeliveryBundle) -> Dict[str, Any]:
-    """Return the only DeliveryBundle shape valid on normal product surfaces.
+    """返回产品界面唯一允许的 DeliveryBundle 形状。
 
-    The persisted ``EntityLineage`` never crosses this boundary, so without a
-    derived field a traveller cannot tell an entry backed by an admitted research
-    candidate from one the Itinerary Planner authored against public knowledge —
-    the two render identically while only one can expand its sources.
-    ``evidence_basis`` states that difference in product language and is derived
-    once here, so the workspace card and the formal report can never disagree
-    about the same entity.
+    持久化的 ``EntityLineage`` 不跨越该边界；``evidence_basis`` 用产品语言说明
+    条目由研究候选支撑还是由规划器依据公开资料写入，并在此统一派生，避免
+    workspace 卡片与正式报告对同一实体给出不同说法。
     """
 
     view = EvidenceBasisView.from_itinerary(bundle.workspace.itinerary)

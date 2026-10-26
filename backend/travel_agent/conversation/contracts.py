@@ -1,4 +1,4 @@
-"""Conversation contracts."""
+"""会话消息契约。"""
 
 from __future__ import annotations
 

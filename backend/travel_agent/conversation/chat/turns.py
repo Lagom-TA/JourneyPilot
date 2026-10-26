@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class ChatTurns:
-    """Persist a turn before scheduling extraction, with one saved flag."""
+    """先持久化本轮对话，再调度记忆抽取；以 saved 标记避免重复保存。"""
 
     def __init__(
         self,

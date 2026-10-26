@@ -32,7 +32,7 @@ def _latest_packets(
 
 
 def _catalog_packets(state: TravelAgentState) -> list[ResearchPacket]:
-    """Carry forward still-current candidates across scoped research rounds."""
+    """汇总跨轮次仍然有效的候选：每个 worker 取最新 packet，并保留上一版目录中本轮未再出现的候选。"""
     if state.planning_generation is None:
         raise ValueError(
             "missing_planning_generation: candidate catalog requires a planning generation"
@@ -83,7 +83,7 @@ def _packet_candidate_closure(
     packet: ResearchPacket,
     candidates: Sequence[ResearchCandidate],
 ) -> ResearchPacket:
-    """Revalidate the exact evidence closure reachable from selected candidates."""
+    """按候选重建 packet 的证据闭包，只保留可从候选到达的事实、来源与来源标注。"""
     if not candidates:
         return packet
     candidate_ids = {candidate.candidate_id for candidate in candidates}

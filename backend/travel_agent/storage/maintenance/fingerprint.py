@@ -1,8 +1,8 @@
 """Schema 指纹：从活库读出结构，归一化，算 canonical JSON + SHA-256。
 
 指纹回答一个问题：**这个数据库的结构是不是某个已知 revision 的结构。**
-它存在的理由是 dev docs 02 §2.3 那条禁令 —— 不许对来历不明的库执行
-`alembic stamp head`，因为那会把未知结构伪装成最新版本。
+它用于拒绝对来历不明的库执行 `alembic stamp head`，因为那会把未知结构当成
+最新版本。
 
 ## 归一化：哪些差异不算差异
 
@@ -22,10 +22,10 @@
   说同一件事，且是版本相关的，留着会让同一份结构在 PG16/PG18 上摘要不同。
 - **索引名反过来必须进摘要**：它们在 DDL 里被显式命名，而代码里有
   `CREATE INDEX IF NOT EXISTS <name>` 按名判断存在性 —— 名字是合同的一部分。
-- **列的物理顺序**：全仓 37 处 `SELECT *` 都经 `.mappings()` 按名取值，没有一处按位置
-  取列，所以 attnum 顺序不是任何读者依赖的东西。指纹按列名排序 —— 否则「同一张表
+- **列的物理顺序**：所有 `SELECT *` 查询都经 `.mappings()` 按名取值，没有一处按位置
+  取列，因此 attnum 顺序不被任何读取方依赖。指纹按列名排序 —— 否则「同一张表
   用 CREATE TABLE 一次建好」和「先建表再 ALTER ADD COLUMN」会算出两个摘要，
-  而那个差异对代码不可见。
+  而该差异对代码不可见。
 """
 
 from __future__ import annotations
@@ -137,9 +137,9 @@ def build_fingerprint(
     extensions = {row["name"] for row in rows["extensions"]}
     ts_configs = {row["name"] for row in rows["text_search_configs"]}
 
-    # 归一化 tsvector 表达式要知道**实际生效的那个 config 名**。
-    # 直接从列表达式里读，而不是从「zhparser 装没装」推断：生成列一旦建好，
-    # 表达式就固定了，后来卸掉扩展也不会改写它 —— 推断会说谎，读取不会。
+    # 归一化 tsvector 表达式需要知道实际生效的 config 名。
+    # 直接从列表达式里读取，而不是根据「是否安装 zhparser」推断：生成列一旦建好，
+    # 表达式就固定了，之后卸载扩展也不会改写它。
     text_search_config: str | None = None
     for row in rows["columns"]:
         if row["table_name"] == "knowledge_chunks" and row["column_name"] == "tsv":
@@ -214,11 +214,10 @@ _DIGEST_KEYS = ("schema_contract_version", "tables", "missing_tables", "extensio
 
 
 def normative_only(fingerprint: Mapping[str, Any]) -> dict[str, Any]:
-    """只留进摘要的那几项 —— 存档用这个形状。
+    """只保留进入摘要的项 —— 存档使用这个形状。
 
-    环境事实（装没装 zhparser、实际向量维度）留在存档里会制造**假的 git 差异**：
-    在一台没有 zhparser 的机器上重新生成，文件会变，但结构一个字节都没变。
-    那种差异会训练人忽略这份文件的变化，而它恰恰是不该被忽略的那一份。
+    环境事实（是否安装 zhparser、实际向量维度）若留在存档里，会在不同机器上
+    产生内容相同但文件不同的差异。
     """
 
     return {key: fingerprint[key] for key in _DIGEST_KEYS}
@@ -267,8 +266,8 @@ def diff_fingerprints(
 ) -> list[str]:
     """人能读的结构差异清单。空列表 = 摘要一致。
 
-    存在的理由：`report.py` 和 CLI 都要在拒绝启动时说清「差在哪、下一步跑什么」，
-    而「摘要 abc123 != def456」不是可执行的诊断（dev docs 02 §3.2）。
+    `report.py` 和 CLI 在拒绝启动时需要给出「差在哪、下一步跑什么」，
+    仅返回摘要不一致无法定位问题。
     """
 
     problems: list[str] = []

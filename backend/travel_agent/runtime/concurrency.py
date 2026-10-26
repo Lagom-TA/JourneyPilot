@@ -1,4 +1,4 @@
-"""Runtime concurrency."""
+"""运行时并发控制：通道信号量、周期任务与轮询循环。"""
 
 from __future__ import annotations
 
@@ -139,9 +139,8 @@ def reset_channels() -> None:
 class PeriodicTask:
     """一个后台轮询协程的启停。
 
-    这套 start / cancel-and-await-CancelledError 的样板原本在四个类里各写一份，其中
-    一份的清理顺序还与另外三份不同 —— 读了三个就以为懂了第四个。加固关闭行为（比如给
-    join 加超时，免得一个卡住的轮询挡住 lifespan 收尾）现在只改这一处。
+    统一管理启动与取消等待流程；关闭行为的调整（例如给 join 加超时，避免卡住的
+    轮询阻塞 lifespan 收尾）只需改这一处。
     """
 
     def __init__(

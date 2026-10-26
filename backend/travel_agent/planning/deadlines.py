@@ -20,7 +20,7 @@ def build_run_deadline_snapshot(
     authorized_at: Optional[datetime] = None,
     policy_version: str = RUN_DEADLINE_POLICY_VERSION,
 ) -> RunDeadlineSnapshot:
-    """Bind one sealed Draft to immutable deadline audit points."""
+    """把已封存的 Draft 绑定到不可变的 deadline 时间点。"""
     if not draft.planning_authorized or draft.planning_authorized_at is None:
         raise ValueError("run deadline requires a sealed minimum delivery draft")
     authorization = _as_utc(authorized_at or draft.planning_authorized_at)

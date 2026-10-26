@@ -64,9 +64,9 @@ def require_supported_suffix(suffix: str) -> str:
 def _check_zip_bomb(raw: bytes, config: IngestConfig) -> None:
     """按条目数、解压总量和压缩比判一份 ZIP，不解压任何一个条目。
 
-    判据取自 ZIP 中央目录里的 ``file_size``/``compress_size``。它可以被伪造，但
-    伪造成「小」的那一份在解析阶段会被子进程的 RLIMIT 拦住 —— 这一道要挡的是
-    诚实声明自己有几个 GB 的那一类，那一类不该被读进内存。
+    判据取自 ZIP 中央目录里的 ``file_size``/``compress_size``。这些值可以被伪造，
+    但伪造成较小值的文件会在解析阶段被子进程的 RLIMIT 限制住；这一道检查拦截的
+    是声明自己解压后有几个 GB 的文件，这类文件不应被读进内存。
     """
 
     try:
@@ -153,11 +153,11 @@ class _ParserOutputTooLarge(Exception):
 
 
 async def _kill_process_group(process: asyncio.subprocess.Process) -> None:
-    """杀掉整个进程组：解析器可能已经 fork 出别的东西。
+    """杀掉整个进程组：解析器可能已经 fork 出其他进程。
 
-    ``start_new_session=True`` 保证子进程就是会话首领，于是 pgid == pid。**不查
-    ``getpgid``**：子进程如果还没成为首领，那个调用返回的是 API 进程自己的进程组，
-    这一枪就打在 uvicorn 身上。
+    ``start_new_session=True`` 保证子进程就是会话首领，因此 pgid == pid。不要
+    调用 ``getpgid``：子进程尚未成为首领时，该调用返回的是 API 进程自己的进程组，
+    会误杀 API 进程。
     """
 
     if process.returncode is not None:
@@ -176,7 +176,7 @@ async def _read_capped(stream: Optional[asyncio.StreamReader], cap: int) -> byte
     """按块读到 EOF，超过 ``cap`` 就抛。
 
     ``communicate()`` 用的是 ``read(-1)``，它把整条流拼起来，``limit=`` 对它无效
-    （``LimitOverrunError`` 只从 readline/readuntil 抛）—— 也就是说那个上界根本不存在。
+    （``LimitOverrunError`` 只从 readline/readuntil 抛），因此那个上界不会生效。
     """
 
     if stream is None:
@@ -214,8 +214,8 @@ async def _run_parser_subprocess(
         limits,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        # setsid 走这个参数而不是 preexec_fn：后者在多线程进程里 fork 之后跑，
-        # CPython 明说不安全，而这个进程有 anyio 工作线程。RLIMIT 由 worker 自己装。
+        # setsid 走这个参数而不是 preexec_fn：后者在多线程进程里 fork 之后运行，
+        # CPython 明确说明不安全，而这个进程有 anyio 工作线程。RLIMIT 由 worker 自己设置。
         start_new_session=True,
         # 解析器不需要网络也不需要仓库环境，但它需要 site-packages，所以继承
         # 当前解释器的环境而不是清空它。
@@ -292,7 +292,7 @@ async def parse_file(path: Path) -> ParsedDocument:
     """解析本地磁盘上的一份文档（批量导入那一路），走同一组界。
 
     大小在**读进内存之前**判：一个 8 GB 文件先读完再判 file_too_large，判到的时候
-    进程已经死了。给「本地目录」留这条旁路等于让它成为绕过全部边界的入口。
+    进程已经因内存耗尽退出。批量导入必须与上传走同一组限制。
     """
 
     config = get_settings().ingest

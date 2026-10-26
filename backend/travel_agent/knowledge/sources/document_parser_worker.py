@@ -1,15 +1,15 @@
 """上传文档的解析子进程。
 
-**这个文件只许 import 标准库和解析器本身。** 它被 `document_parse.py` 以
+**这个文件只应 import 标准库和解析器本身。** 它被 `document_parse.py` 以
 ``sys.executable <this file> <limits-json>`` 启动，不经过 `travel_agent` 包，所以
-不会在每次解析时加载配置、建连接池或触发任何一次网络调用。上限由调用方以 JSON
-传进来，因为一个只读参数比一个被 import 的全局配置更容易在崩溃后复现。
+不会在每次解析时加载配置、建连接池或触发网络调用。上限由调用方以 JSON
+传进来，以便在崩溃后按同一组参数复现。
 
-为什么是子进程而不是线程：解析的是不可信文件，线程既杀不掉也限不住内存。
-RLIMIT 由它自己装（见 `_apply_rlimits`），不走调用方的 preexec_fn。
+使用子进程而不是线程：解析的是不可信文件，线程既无法终止也无法限制内存。
+RLIMIT 由子进程自己设置（见 `_apply_rlimits`），不使用调用方的 preexec_fn。
 
-约定：正常退出码 0，stdout 一行 JSON。失败也是退出码 0 + 一行 JSON（带 ``code``），
-被解析器自己搞死（OOM / CPU 上限 / segfault）才是非零退出码。
+约定：正常退出码 0，stdout 一行 JSON。失败也是退出码 0 + 一行 JSON（带 ``code``）；
+被解析器自身错误终止（OOM / CPU 上限 / segfault）才是非零退出码。
 """
 
 from __future__ import annotations
@@ -84,11 +84,11 @@ def _parse_docx(path: str, limits: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _apply_rlimits(limits: Dict[str, Any]) -> None:
-    """给自己装上 CPU 时间与地址空间上限。
+    """给当前子进程设置 CPU 时间与地址空间上限。
 
-    在子进程里自己装，不用调用方的 ``preexec_fn``：那个钩子在多线程进程里 fork
-    之后、exec 之前跑，CPython 明说它不安全（可能死锁）。而 API 进程有 anyio 工作
-    线程和 Starlette 的线程池。
+    在子进程内设置，不使用调用方的 ``preexec_fn``：那个钩子在多线程进程里 fork
+    之后、exec 之前运行，CPython 明确说明它不安全（可能死锁）。API 进程有 anyio
+    工作线程和 Starlette 的线程池。
     """
 
     try:
@@ -128,8 +128,8 @@ def main(argv: list[str]) -> int:
     except zipfile.BadZipFile as exc:
         result = _fail("document_unreadable", f"not a zip container: {exc}")
     except MemoryError:
-        # RLIMIT_AS 命中时 Python 多半还能走到这里；走不到就是非零退出码，
-        # 调用方按 document_unreadable 收口。
+        # RLIMIT_AS 命中时 Python 通常仍能走到这里；走不到则是非零退出码，
+        # 调用方按 document_unreadable 处理。
         result = _fail("document_too_complex", "parser exceeded its memory limit")
     except Exception as exc:  # 解析器的任何内部错误都是「这份文件打不开」
         result = _fail("document_unreadable", f"{type(exc).__name__}: {exc}")

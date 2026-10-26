@@ -1,4 +1,4 @@
-"""Integrations places overpass."""
+"""通过 Overpass 在受控 OSM relation 内解析地点 id。"""
 
 from __future__ import annotations
 
@@ -51,11 +51,10 @@ async def search_overpass_place_ids(
     limit: int,
     client: Optional[httpx.AsyncClient] = None,
 ) -> list[str]:
-    """Resolve named POIs of one kind inside one controlled OSM relation.
+    """解析一个受控 OSM relation 内指定类别的具名 POI。
 
-    Nominatim's text index matches a place's primary name; Overpass matches the
-    localized and alternate name tags too, which is what a place written in
-    another script than its OSM name needs.
+    Nominatim 的文本索引匹配地点主名称；Overpass 还会匹配本地化与别名标签，
+    因此可以处理与 OSM 主名称文字不同的地点名称。
     """
     tag_filter = _OVERPASS_TAG_FILTERS.get(kind)
     if tag_filter is None:

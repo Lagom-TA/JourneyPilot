@@ -167,7 +167,7 @@ async def test_extracted_text_is_truncated_at_the_char_cap(ingest):
 
 
 async def test_a_corrupt_pdf_body_is_unreadable_not_a_crash():
-    """前面有 %PDF- 头、后面是垃圾：magic bytes 过了，解析器必须给出判决。"""
+    """前面有 %PDF- 头、后面是无法解析的内容：magic bytes 过了，解析器必须给出判决。"""
 
     with pytest.raises(DocumentRejected) as exc:
         await parse_upload(b"%PDF-1.7\n" + b"\xff" * 4096, ".pdf")
@@ -175,7 +175,7 @@ async def test_a_corrupt_pdf_body_is_unreadable_not_a_crash():
 
 
 async def test_parser_timeout_kills_the_subprocess(ingest):
-    """超时的含义是「杀掉那个进程」，不是「不再等它」。
+    """超时的含义是「终止那个进程」，不是「不再等它」。
 
     0 秒超时让 wait_for 立刻放弃，随后走的是 `_kill_process_group`。这一条断言的是
     调用方拿到了 document_parse_timeout 而不是挂住 —— 一份 hang 住的解析器不能把

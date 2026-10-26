@@ -1,4 +1,4 @@
-"""Conversation workflow."""
+"""快速模式工作流封装。"""
 
 from __future__ import annotations
 

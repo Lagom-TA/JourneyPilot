@@ -13,7 +13,6 @@ from travel_agent.planning.requirements.conflicts import detect_intent_conflicts
 from travel_agent.planning.requirements.constraints.extraction import (
     deterministic_budget_constraints,
 )
-from travel_agent.planning.requirements.generation_contracts import PlanningGeneration
 from travel_agent.planning.requirements.intent_contracts import (
     AlternativeIntentValue,
     CategoryIntentValue,

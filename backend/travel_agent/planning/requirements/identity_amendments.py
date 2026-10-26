@@ -1,4 +1,4 @@
-"""Planning requirements identity amendments."""
+"""行程身份修订。"""
 
 from __future__ import annotations
 
@@ -115,10 +115,10 @@ def _preservation_spans(text: str) -> list[re.Match[str]]:
 
 
 def classify_locked_identity_intent(text: str) -> LockedIdentityIntent:
-    """Classify locked identity edits without treating preservation as mutation.
+    """对锁定身份的修改请求分类，同时不把「保持不变」当作修改。
 
-    This deterministic guard never derives or mutates ``ControlledTripIdentity``;
-    the persisted TripRun field remains the sole source of identity truth.
+    该确定性检查不派生也不修改 ``ControlledTripIdentity``；持久化的 TripRun
+    字段仍是身份的唯一来源。
     """
 
     normalized = " ".join(text.strip().split())

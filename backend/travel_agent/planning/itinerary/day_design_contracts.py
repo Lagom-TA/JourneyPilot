@@ -1,5 +1,3 @@
-"""Planning itinerary day design contracts."""
-
 from __future__ import annotations
 
 from datetime import datetime

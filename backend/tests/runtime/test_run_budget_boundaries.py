@@ -39,8 +39,8 @@ def _snapshot(**overrides) -> RunBudgetSnapshot:
 async def test_tool_call_over_budget_returns_a_failed_envelope_not_an_exception():
     """把「配额用完了」抛成异常会变成一次 Run 失败。
 
-    它其实是一次可解释的降级：Worker 拿到一个普通的 failed envelope，把这条内容缺口
-    交给 Candidate Gate，交付照常收口 —— 与研究窗口关闭那一条走同一条路。
+    它实际是一次可解释的降级：Worker 拿到普通的 failed envelope，把内容缺口交给后续
+    交付流程，与研究窗口关闭时使用同一处理路径。
     """
 
     snapshot = _snapshot(max_tool_calls=1)
@@ -179,10 +179,10 @@ def test_clearing_a_draft_generation_clears_the_budget_too():
 
 
 async def test_the_retry_loop_cannot_outspend_the_tool_call_budget():
-    """入口判一次「还剩一次调用」，循环里却能记满 max_retries + 1 次加一次降级。
+    """入口只判一次「还剩一次调用」时，循环里仍可能记满 max_retries + 1 次再加一次降级。
 
-    判和记是两个可以分别调用的函数时，漏掉判的那一半不会报错 —— 只是让 max_tool_calls
-    只精确到 4 倍。这一条钉住「每次尝试都判一次」。
+    判与记是两个可以分别调用的函数，漏掉判的那一半不会报错，只会让 max_tool_calls
+    的约束被放大数倍。这一条要求每次尝试都先判一次。
     """
 
     snapshot = _snapshot(max_tool_calls=2, max_tool_retries_per_target=5)

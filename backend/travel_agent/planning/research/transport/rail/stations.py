@@ -1,5 +1,3 @@
-"""Planning research transport rail stations."""
-
 from __future__ import annotations
 
 import logging
@@ -21,7 +19,7 @@ _STATION_POINT_TOOL_NAMES = frozenset({"maps_text_search", "maps_search_detail"}
 
 
 def _rail_station_tool_access(tool_context: Dict[str, Any]) -> AuthoredPlaceToolAccess:
-    """Bind the station-locating ladder to this run's audited tool gateway."""
+    """把车站定位能力绑定到本次运行受审计的工具入口。"""
 
     async def execute(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         return await execute_tool(
@@ -49,7 +47,7 @@ async def _locate_rail_station(
     tool_context: Dict[str, Any],
     point_cache: Dict[str, Optional[tuple[float, float]]],
 ) -> Optional[tuple[float, float]]:
-    """Where one 12306 station is, so the hop to the first stop can be routed."""
+    """返回 12306 车站的坐标，用于计算到首个停留点的接驳路线。"""
     code = str(telecode or "").strip().upper()
     if not code or not str(station_name or "").strip():
         return None

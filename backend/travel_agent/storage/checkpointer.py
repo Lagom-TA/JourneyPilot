@@ -1,16 +1,13 @@
-"""LangGraph Postgres checkpointer bootstrap.
+"""LangGraph Postgres checkpointer 的构建。
 
-The application keeps its existing SQLAlchemy/asyncpg pool for business data.
-LangGraph's AsyncPostgresSaver requires psycopg3, so checkpointing owns a
-small separate pool against the same Postgres database.
+业务数据使用 SQLAlchemy/asyncpg 连接池。LangGraph 的 AsyncPostgresSaver 需要
+psycopg3，因此 checkpoint 使用同一数据库上的独立小连接池。
 
-**Truth source:** User-visible trip truth is ``TripRun`` + Delivery
-Bundle store (SQLAlchemy).  Checkpoint rows are execution-recovery aids only.
-There is **no shared transaction** with Bundle/TripRun commits (separate pool,
-``autocommit=True``).  After a crash, resume and finalizer must treat store
-state as authoritative; ``run_id:delivery:create`` idempotency absorbs double
-finalizer attempts.  Do not assume checkpoint "past finalizer" means Bundle
-was committed (or vice versa).
+**最终事实：** 用户可见的行程事实由 ``TripRun`` 与 Delivery Bundle store
+（SQLAlchemy）保存；checkpoint 行只用于执行恢复。它与 Bundle/TripRun 的提交
+不在同一事务中（独立连接池，``autocommit=True``）。崩溃后恢复与 finalizer
+必须以 store 状态为准；``run_id:delivery:create`` 的幂等性吸收重复的 finalizer
+尝试。不能假设 checkpoint 已越过 finalizer 就等于 Bundle 已提交，反之亦然。
 """
 
 from __future__ import annotations
@@ -32,20 +29,16 @@ logger = logging.getLogger(__name__)
 async def build_checkpointer(
     settings: Settings,
 ) -> Tuple[AsyncPostgresSaver, AsyncConnectionPool]:
-    """Bind the LangGraph Postgres checkpointer to an already-migrated database.
+    """把 LangGraph Postgres checkpointer 绑定到已迁移的数据库。
 
-    Deliberately does not call ``setup()`` — creating those tables is DDL, which
-    ``journeypilot migrate`` owns. Missing tables raise here so an unmigrated
-    database surfaces at startup rather than on the first interrupt.
+    刻意不调用 ``setup()``：建表属于 DDL，由 ``journeypilot migrate`` 负责。
+    缺表时在这里抛错，使未迁移的数据库在启动时暴露，而不是第一次 interrupt 时。
 
-    Constructing the saver is also where its serializer's log noise starts, so
-    the one de-duplicating filter is installed here: this is the single place any
-    entrypoint — the served app via ``AppBuilder.build()``, a walkthrough harness,
-    a seeding script — builds a checkpointer, so none of them has to remember to
-    do it. The install is idempotent and touches logging only; the serializer
-    itself is deliberately left alone (an ``allowed_msgpack_modules`` allowlist
-    would switch it to strict mode, where an unlisted type is silently downgraded
-    to a raw dict on resume instead of raising).
+    构建 saver 也是其序列化器日志噪声的起点，因此在这里安装去重过滤器：无论
+    服务应用、演练脚本还是种子脚本，构建 checkpointer 都经过这一处。安装是
+    幂等的，只改 logging；序列化器本身不改动（配置
+    ``allowed_msgpack_modules`` 白名单会切换到严格模式，未列出的类型在恢复时
+    会被静默降级为普通 dict，而不是抛错）。
     """
     install_checkpoint_serde_log_dedup()
 

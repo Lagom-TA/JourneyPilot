@@ -80,7 +80,7 @@ async def test_second_executor_cannot_claim_a_live_lease(migrated_async_database
     assert await store.claim(run_id, lease_seconds=45) is not None
     await _steal_lease(run_id)
 
-    # 别人的租约还活着 → 抢不到。用户误开两个终端时，这一条是唯一的拦阻。
+    # 别人的租约仍有效 → 无法获取。用户误开两个终端时，这一条是唯一的拦阻。
     assert await store.claim(run_id, lease_seconds=45) is None
 
 
@@ -218,7 +218,7 @@ async def test_safe_checkpoint_is_recorded_under_the_current_lease(
 async def test_claim_preserves_a_previously_recorded_safe_checkpoint(
     migrated_async_database,
 ):
-    """重新 claim 不该把上一段执行留下的安全边界抹掉 —— 恢复要读它。"""
+    """重新 claim 不该清除上一段执行留下的安全边界——恢复要读它。"""
 
     store = RunExecutionStore()
     run_id = await _create_run()
@@ -251,7 +251,7 @@ async def test_live_lease_is_answered_by_the_database_clock(migrated_async_datab
 
 
 async def test_execution_row_disappears_with_its_run(migrated_async_database):
-    """外键级联：run 被删掉时执行行不该留成孤儿。"""
+    """外键级联：run 被删除时执行行不应留下失去父行的记录。"""
 
     store = RunExecutionStore()
     run_id = await _create_run()

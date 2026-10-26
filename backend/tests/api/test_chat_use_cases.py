@@ -1,4 +1,4 @@
-"""HTTP and use-case behavior with no startup, sockets, models or database."""
+"""HTTP 与用例层行为，不启动应用、不打开套接字，也不调用模型或数据库。"""
 
 from __future__ import annotations
 
@@ -1049,7 +1049,7 @@ async def test_conflicting_capture_is_quarantined_without_blocking_healthy_run(
     assert recorder.drain() == []
     assert recorder._volatile[volatile.id] == ("complete", volatile)
 
-    # Even a stale acknowledgement cannot discard either quarantined payload.
+    # 过期的确认也不能丢弃任何一份被隔离的载荷。
     await asyncio.to_thread(recorder.ack, [volatile, durable])
     assert recorder._volatile[volatile.id] == ("complete", volatile)
     assert other.drain() == [durable]
@@ -1116,7 +1116,7 @@ async def test_async_usage_consumers_leave_event_loop_free_during_spool_io(
     task = asyncio.create_task(consume)
     try:
         assert await asyncio.wait_for(asyncio.to_thread(entered.wait, 1), 1.5)
-        # This coroutine must run before the blocking I/O has been released.
+        # 这个协程必须在阻塞 I/O 被释放之前运行。
         await asyncio.sleep(0)
         assert not expired and not exited.is_set()
         assert not task.done()

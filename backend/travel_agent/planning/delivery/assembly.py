@@ -1,4 +1,4 @@
-"""Planning delivery assembly."""
+"""交付 Bundle 组装。"""
 
 from __future__ import annotations
 

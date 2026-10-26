@@ -1,5 +1,3 @@
-"""Planning research destination dining binding."""
-
 from __future__ import annotations
 
 import datetime
@@ -125,7 +123,7 @@ async def discover_amap_dining(
     authoritative_tool_results: List[Dict[str, Any]],
     query_text: str,
 ) -> bool:
-    """Deterministically ground CN dining from real amap POI data."""
+    """用真实 amap POI 数据为国内餐饮确定地点身份。"""
     if not _cn_only_destination_boundaries(destination_boundaries):
         return False
     available_names = {

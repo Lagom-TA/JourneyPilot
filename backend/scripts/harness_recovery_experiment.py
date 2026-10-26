@@ -1,8 +1,8 @@
-"""Execute full/deferred ReAct recovery against real Gateway and memory stores.
+"""用真实的 Gateway 与内存存储执行 full/deferred ReAct 恢复实验。
 
-The model and provider fixtures are deterministic, with no paid calls or
-business database access. Cold/warm here means invocation-local fixture reads;
-it never asserts a provider API prefix cache hit or successful trip delivery.
+模型与 provider 均为确定性 fixture，不产生付费调用，也不访问业务数据库。
+这里的 cold/warm 只表示调用内的 fixture 读取，不断言 provider 的 API 前缀缓存命中，
+也不代表行程交付成功。
 """
 import asyncio
 from copy import deepcopy
@@ -77,7 +77,7 @@ async def scenario(cache, mode, complexity, tool_mode):
                     with patch.object(react, "check_cancel_requested", lambda *a: None):
                         result = await react.streaming_react_loop(llm, messages, tools, None, worker, tool_context=context)
             if cache == "warm":
-                # Replay final round with a reopened invocation journal.
+                # 用重新打开的调用日志重放最后一轮。
                 version, payload = await store.load(run_id, "scope")
                 current_worker_journal.set(WorkerJournal(store, run_id, "scope", version, payload, None))
                 replay = await react.streaming_react_loop(llm, messages, tools, None, worker, tool_context=context)

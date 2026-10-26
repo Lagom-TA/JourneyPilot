@@ -1,4 +1,4 @@
-"""Runtime run lifecycle."""
+"""TripRun 状态迁移规则与可用动作。"""
 
 from __future__ import annotations
 
@@ -89,8 +89,8 @@ _RESUMABLE_STATUSES = {
 
 
 def is_cancellable(status: TripRunStatus | str) -> bool:
-    """这个状态还能不能被取消。**表只有一张**：路由的前置判断与
-    `available_run_actions` 通报的动作必须读同一份，否则界面亮着的按钮点下去拿 409。
+    """这个状态还能不能被取消。路由的前置判断与 `available_run_actions`
+    读取同一张表，避免界面显示的动作与实际允许的动作不一致。
     """
 
     return coerce_status(status) in _CANCELLABLE_STATUSES
@@ -102,8 +102,7 @@ def available_run_actions(
 ) -> List[str]:
     """这个 Run 现在真正能做的动作。
 
-    服务端说一次，客户端不从十几个字段自己推 —— 两处推导必然分叉，而分叉的表现是
-    一个亮着的「继续」按钮点下去拿 409。
+    服务端统一给出，客户端不依据多个字段自行推导，避免界面动作与实际状态分叉。
     """
 
     actions: List[str] = []

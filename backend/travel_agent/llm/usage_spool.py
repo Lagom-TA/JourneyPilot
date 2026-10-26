@@ -1,8 +1,7 @@
-"""Local write-ahead outbox for telemetry, without prompts or credentials.
+"""本地遥测预写 outbox，不保存 prompt 与凭据。
 
-One SQLite file per persistent application volume. Multiple API workers may
-share it; concurrent drains may duplicate a batch, so PostgreSQL call_id
-idempotency is mandatory. Only confirmed commits are acknowledged.
+每个持久化应用卷一个 SQLite 文件，多个 API worker 可共享。并发排空可能重复处理
+同一批次，因此 PostgreSQL 侧必须按 call_id 幂等；只有确认提交后才 ack。
 """
 import json
 import os
@@ -14,7 +13,7 @@ import time
 
 def process_identity(pid):
     try:
-        # PID reuse must not keep an abandoned request alive indefinitely.
+        # PID 复用不应让已放弃的请求长期保持活动状态。
         fields = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
         return f"{socket.gethostname()}:{fields[19]}"
     except (OSError, IndexError):
@@ -49,7 +48,7 @@ class UsageSpool:
                 self.db.execute("PRAGMA journal_mode=WAL")
                 break
             except sqlite3.OperationalError as exc:
-                # Concurrent WAL initialization can bypass SQLite's busy timeout.
+                # 并发初始化 WAL 时可能绕过 SQLite 的 busy timeout。
                 if exc.sqlite_errorcode != sqlite3.SQLITE_BUSY or time.monotonic() >= deadline:
                     self.db.close()
                     raise

@@ -1,6 +1,6 @@
-"""上下文压缩的唯一入口。手动整理与自动压缩走同一条路。
+"""上下文压缩的唯一入口，手动整理与自动压缩共用。
 
-增量：只读压缩点之后、预算之内的消息，边界只推到**真正进了摘要**的那一条。
+增量压缩：只读取压缩点之后、预算之内的消息，边界只推进到实际进入摘要的那一条。
 """
 
 from __future__ import annotations
@@ -17,8 +17,8 @@ from .context_builder import ContextBudget
 
 logger = logging.getLogger(__name__)
 
-#: 每个会话一把锁。产品是单进程的（不支持多 API worker），所以「同一会话一次只能有一次
-#: 压缩」在这里成立；跨进程那一半由提交时的边界 CAS 兜住。
+#: 每个会话一个锁。产品为单进程部署（不支持多 API worker），同一会话同时只允许
+#: 一次压缩；跨进程并发由提交时的边界 CAS 处理。
 _session_locks: "WeakValueDictionary[str, asyncio.Lock]" = WeakValueDictionary()
 
 
@@ -39,15 +39,14 @@ class CompactionResult:
 
 
 class CompactionBusy(Exception):
-    """同一会话已经有一次压缩在跑，或提交时边界已被别人推走。
+    """同一会话已有压缩在进行，或提交时边界已被其他压缩推进。
 
-    与「没有可整理的消息」不是一回事：调用方照着后者的措辞回话，用户看到的是
-    「会话中无可整理的消息」—— 而那个会话有几千条没压缩的消息。
+    与「没有可整理的消息」不同：调用方应分别提示稍后重试与无可整理内容。
     """
 
 
 class CompactionService:
-    """读预算内的历史 → 生成增量摘要 → 与新边界、时间线快照同事务落库。"""
+    """读取预算内的历史，生成增量摘要，并与新边界、时间线快照在同一事务中落库。"""
 
     def __init__(
         self,
@@ -67,14 +66,13 @@ class CompactionService:
         session_id: str,
         source: str,
     ) -> Optional[CompactionResult]:
-        """压缩一次。没有可压缩的消息返回 None；已有一次在跑或提交时被抢先抛
-        :class:`CompactionBusy`。
+        """执行一次压缩。
 
-        两者分开，因为调用方要说的话不一样：一个是「没什么可整理的」，另一个是
-        「正在整理，等一下」。
+        没有可压缩的消息返回 None；已有压缩在进行或提交时边界被推进则抛出
+        :class:`CompactionBusy`。两种情况需要不同的提示文案。
 
-        失败一律抛出：**不推进边界、不覆盖旧摘要**。压缩失败只是本轮少一份摘要，
-        不该变成整个 Run 失败。
+        失败时抛出异常，不推进边界、不覆盖旧摘要；压缩失败只影响本轮摘要，
+        不应导致整个 Run 失败。
         """
 
         lock = _lock_for(session_id)

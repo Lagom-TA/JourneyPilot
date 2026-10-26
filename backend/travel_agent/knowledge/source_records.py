@@ -1,4 +1,4 @@
-"""Server-owned citations for the exact knowledge fragments shown by tool calls."""
+"""为工具调用展示的知识片段生成由服务端持有的引用。"""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ def rag_chunk_source_records(
     *,
     default_retrieved_at: Optional[datetime] = None,
 ) -> Dict[str, Dict[str, Any]]:
-    """Build citations from the exact fragments retained in model-facing tool receipts."""
+    """从模型可见工具回执中保留的原始片段构建引用。"""
 
     records: Dict[str, Dict[str, Any]] = {}
     for doc in docs:

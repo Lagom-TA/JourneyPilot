@@ -13,7 +13,7 @@ def exclude_tools(
     available: List[Dict[str, Any]],
     excluded: List[str],
 ) -> List[Dict[str, Any]]:
-    """Remove tools that produced a durable failure in an earlier gap attempt."""
+    """移除在之前的修复轮次中持久失败的工具。"""
     if not excluded:
         return available
     excluded_set = set(excluded)

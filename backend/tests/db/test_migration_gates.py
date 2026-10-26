@@ -1,7 +1,7 @@
-"""三道闸门：迁移锁、破坏性授权、版本比代码新。
+"""迁移的三条约束：迁移锁、破坏性授权、版本比代码新。
 
-对应 dev docs 02 §14.1 测试矩阵里的「两个 migrator 竞争锁」「destructive migration
-未授权时拒绝」，以及 §13.3 的「代码回滚但 Schema 已升级」。
+两个 migrator 不能同时持有迁移锁；destructive migration 未授权时拒绝；
+代码不认识的 schema 版本拒绝启动。
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ def test_destructive_migration_is_refused_without_consent(temp_database, setting
     """非空库上的破坏性迁移必须被拒绝，直到显式授权。"""
 
     migrate.upgrade(temp_database, "0001_baseline")
-    # 造一行数据，让它成为「非空库」——闸门保护的正是这一行。
+    # 造一行数据，让它成为「非空库」——这条约束保护的正是这一行。
     with connect(temp_database) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -82,10 +82,10 @@ def test_destructive_migration_is_refused_without_consent(temp_database, setting
 
 
 def test_empty_database_skips_the_destructive_gate(temp_database, settings):
-    """空库不受破坏性闸门约束 —— 那里没有数据可丢。
+    """空库不受破坏性校验约束——那里没有数据可丢。
 
     否则每一次**首次安装**都要用户敲 `--allow-destructive`，
-    而那会把一个真正重要的确认动作训练成肌肉记忆。
+    而那会把一个真正重要的确认动作变成例行操作。
     """
 
     with connect(temp_database) as conn:
@@ -99,12 +99,12 @@ def test_empty_database_skips_the_destructive_gate(temp_database, settings):
     # head 路径上确实有破坏性迁移，这条测试才有意义。
     line = migrate.revision_line()
     assert any(migrate.is_destructive(None, rev) for rev in line), (
-        "迁移历史里没有破坏性迁移，这条测试无法证明闸门被跳过"
+        "迁移历史里没有破坏性迁移，这条测试无法证明迁移锁检查被跳过"
     )
 
 
 def test_unknown_revision_is_refused(temp_database, settings):
-    """数据库记着一个这份代码不认识的 revision → 拒绝启动，不假装能读。"""
+    """数据库记着一个这份代码不认识的 revision → 拒绝启动，不按可读处理。"""
 
     migrate.upgrade(temp_database)
     with connect(temp_database) as conn:
@@ -135,8 +135,8 @@ def test_up_to_date_database_needs_nothing(temp_database, settings):
 def test_head_revision_with_drifted_schema_is_not_up_to_date(temp_database, settings):
     """版本号说 head，结构却少一张表 → 拒绝，不许判成「已是最新」。
 
-    这是 §4.1 里「最新 → verify」那一步。判成 UP_TO_DATE 的后果是 `migrate`
-    什么都不做，而第一条写那张表的请求 500 —— 版本号存在就是为了消灭这种沉默。
+    这是「最新 → verify」那一步。判成 UP_TO_DATE 的后果是 `migrate` 什么都不做，
+    而第一条写那张表的请求会 500 —— 版本号存在就是为了让这种不一致显式失败。
     """
 
     migrate.upgrade(temp_database)

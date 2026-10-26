@@ -1,4 +1,4 @@
-"""Planning delivery travel content."""
+"""交付内容中的选点理由与准备事项。"""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ _INTERNAL_REASON_MARKERS = (
 def public_selection_text(
     value: str, *, fallback: str = "请结合当天安排选择，并在预订前核对日期与费用。"
 ) -> str:
-    """Preserve useful authored clauses; replace internal-only prose honestly."""
+    """保留可读的作者理由；含内部术语的句子替换为通用说明。"""
     if not any(marker in value.casefold() for marker in _INTERNAL_REASON_MARKERS):
         return value.strip() or fallback
     clauses = re.split(r"[。；;\n]+", value.strip())
@@ -58,7 +58,7 @@ def public_selection_text(
 
 
 def candidate_reason_fallback(candidate: object, index: int) -> str:
-    """Use existing location/schedule facts when a legacy reason is internal prose."""
+    """理由不可读时，用候选自带的地址与时间信息生成说明。"""
     name = (
         getattr(candidate, "property_name", None)
         or getattr(candidate, "branch_name", None)
@@ -82,7 +82,7 @@ def candidate_reason_fallback(candidate: object, index: int) -> str:
 
 
 def selection_reason(entity: object) -> str:
-    """When no usable rationale exists, state the plan instead of inventing benefits."""
+    """没有可用理由时陈述计划本身，不编造优点。"""
     if isinstance(entity, LodgingStay):
         fallback = (
             f"计划在 {entity.name} 连住 {entity.nights} 晚；地址：{entity.address}。"
@@ -97,7 +97,7 @@ def selection_reason(entity: object) -> str:
 
 
 def preparation_actions(entity: object) -> list[str]:
-    """Actions are advice conditional on recorded facts, never invented booking rules."""
+    """准备建议只基于已记录事实，不编造预订规则。"""
     if isinstance(entity, (VisitStop, DiningStop)):
         when = (
             f"{entity.planned_start:%m月%d日 %H:%M}"

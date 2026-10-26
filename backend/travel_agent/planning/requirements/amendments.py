@@ -1,4 +1,4 @@
-"""Planning requirements amendments."""
+"""需求修订处理。"""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from travel_agent.runtime.deadlines import observe_run_deadline
 
 
 async def intent_amendment_router_node(state: TravelAgentState) -> Dict[str, Any]:
-    # Run control schedules async nodes differently; keep the policy itself synchronous.
+    # Run control 对异步节点的调度方式不同；判断逻辑本身保持同步。
     return apply_runtime_amendments(state)
 
 

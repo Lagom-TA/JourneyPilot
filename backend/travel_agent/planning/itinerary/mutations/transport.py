@@ -1,5 +1,3 @@
-"""Planning itinerary mutations transport."""
-
 from __future__ import annotations
 
 from travel_agent.planning.itinerary.models import TransportLeg
@@ -60,13 +58,12 @@ def _check_transport_replacement(
     current: TransportLeg,
     candidate: TransportCandidate,
 ) -> None:
-    """Refuse a transport candidate that cannot lawfully stand in for this leg.
+    """拒绝不能合法替代当前行程段的交通候选。
 
-    The composition asks the same questions when it decides which candidates to
-    *offer* (``planning.itinerary.selection._transport_alternatives``), so a slot
-    normally never presents an option this function would then reject.  The check
-    still has to run at apply time: a slot is built once, and a mode preference
-    set afterwards can make an already-offered option unusable.
+    组合阶段在决定提供哪些候选时
+    （``planning.itinerary.selection._transport_alternatives``）会做同样的判断，
+    因此槽位通常不会给出会被本函数拒绝的选项。应用时仍须校验：槽位只构建一次，
+    之后设置的交通方式偏好可能让已提供的选项不可用。
     """
 
     preference = current.mode_preference
@@ -110,14 +107,14 @@ def _check_preference_leaves_a_way_back(
     current: TransportLeg,
     preference: TransportModePreference,
 ) -> None:
-    """拒绝会让该行程段无路可走（不含已选方案）的交通偏好。
+    """拒绝会让该行程段没有可用替代方案的交通偏好。
 
-    防守的不变量：偏好变更被接受后，该行程段在它的 selection slot 里必须
-    仍有至少一个候选能通过 ``_check_transport_replacement`` 的替换校验，
-    否则 ``select_option`` 无路可回，行程段的 ``route_status`` 永远停在
-    ``pending``。检查放在这里而不是两个调用点，是因为两者写同一个字段。
+    约束：偏好变更被接受后，该行程段的 selection slot 中必须仍至少有一个候选
+    能通过 ``_check_transport_replacement`` 的替换校验；否则 ``select_option``
+    无法重新选择，行程段的 ``route_status`` 会一直停在 ``pending``。校验放在
+    这里而不是两个调用点，因为两者写同一个字段。
 
-    没有 slot 的行程段不受影响：它没有可拒绝的选项，偏好不可能卡住它。
+    没有 slot 的行程段不受影响：它没有可拒绝的选项，偏好不会使其无法选择。
     """
     slot = next(
         (

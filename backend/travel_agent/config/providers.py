@@ -2,15 +2,13 @@
 
 两件事，分开：
 
-- **preset** 是「帮用户快速填好模型段」的连接模板（`backend/travel_agent/resources/providers/*.yaml`）。
-  它不是默认值 —— 把 DeepSeek 的 base_url 写成 `models.py` 的默认，等于让一次私人
-  部署成为所有人的默认，而那个人换了 provider 之后没有一处会跟着改。
-- **capability** 是「这个上游到底支持什么」。原来它散在 router 里，靠
-  ``"api.deepseek.com" == hostname`` 猜；同一个模型搬到代理后面那天判据就不成立，
-  而失效是静默的。现在它是 preset 上的一份声明 + 一次按 base_url 的解析，
-  认不出的上游走**保守档**，不假装完全兼容。
+- **preset** 是帮用户填好模型段的连接模板（`backend/travel_agent/resources/providers/*.yaml`）。
+  它不是默认值：把某家 provider 的 base_url 写成 `models.py` 的默认，会让一次
+  私人部署成为所有人的默认，而且用户更换 provider 后没有任何一处会跟着改。
+- **capability** 声明这个上游支持什么。preset 上声明，按 base_url 解析；
+  认不出的上游使用保守档，不假设未经验证的能力。
 
-preset 不是事实保证：每份都带 ``last_verified_at``，过期与否由读的人判断。
+preset 会过期，每份都带 ``last_verified_at``，由读的人判断时效。
 """
 
 from __future__ import annotations
@@ -138,18 +136,17 @@ CONSERVATIVE_CAPABILITIES = ProviderCapabilities()
 
 
 def capabilities_for(base_url: str) -> ProviderCapabilities:
-    """按 base_url 的 hostname 解析 capability，认不出走保守档。
+    """按 base_url 的 hostname 解析 capability，认不出时使用保守档。
 
-    保守不是「功能更少」而是「不撒谎」：一个没被验证过支持 json_schema 的上游，
-    按 json_object + prompt 里明写 schema 那条路走仍然能拿到正确结果，而反过来
-    （假设它支持）拿到的是一次 400。
+    保守档的含义是不假设未经验证的能力：按 json_object + prompt 内写明 schema
+    仍可得到正确结果，而假设支持 json_schema 会得到一次 400。
     """
 
     index = _index().by_hostname
     parsed_authority = _authority(base_url)
     preset = index.get(parsed_authority)
     if preset is None and ":" in parsed_authority:
-        # 带端口没命中就回落到 host：托管上游的 base_url 可能显式写了 :443。
+        # 带端口没命中时回落到 host：托管上游的 base_url 可能显式写了 :443。
         preset = index.get(parsed_authority.split(":", 1)[0])
     if preset is None:
         return CONSERVATIVE_CAPABILITIES

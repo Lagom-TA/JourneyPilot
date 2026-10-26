@@ -1,4 +1,4 @@
-"""Compose current application status without an API schema dependency."""
+"""组合当前应用状态，不依赖 API schema。"""
 
 from travel_agent.bootstrap.diagnostics.dependencies import (
     _probe_database,

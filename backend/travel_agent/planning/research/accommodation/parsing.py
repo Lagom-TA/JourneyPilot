@@ -1,5 +1,3 @@
-"""Planning research accommodation parsing."""
-
 from __future__ import annotations
 
 import re
@@ -22,7 +20,7 @@ _AMAP_HOTELS_PER_CITY = 5
 
 
 def _extract_tool_text(envelope: Mapping[str, Any]) -> str:
-    """Collect any text payload from an MCP tool envelope, defensively."""
+    """提取工具信封中的所有 text 内容；没有时回退到 result_summary。"""
     parts: List[str] = []
 
     def walk(node: Any) -> None:
@@ -93,7 +91,7 @@ def _lodging_place_record(
     latitude: Optional[float] = None,
     longitude: Optional[float] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Project one amap POI into a global_place_search-shaped lodging record."""
+    """把一条 amap POI 投影为 global_place_search 形状的住宿记录。"""
     poi_id, name, address, typecode = (
         poi_id.strip(),
         name.strip(),
@@ -123,7 +121,7 @@ def _lodging_place_record(
 
 
 def _hotels_from_pois(pois: Any) -> List[Dict[str, Any]]:
-    """Project the mcp_manager-normalized amap ``pois`` list into place records."""
+    """把 mcp_manager 规范化后的 amap ``pois`` 列表投影为地点记录。"""
     hotels: List[Dict[str, Any]] = []
     for poi in pois or []:
         if not isinstance(poi, dict):
@@ -148,7 +146,7 @@ def _hotels_from_pois(pois: Any) -> List[Dict[str, Any]]:
 
 
 def _parse_amap_hotels(text: str) -> List[Dict[str, Any]]:
-    """Regex fallback: recover lodging POIs from raw amap text (truncation-safe)."""
+    """正则回退：从 amap 原始文本中恢复住宿 POI，可处理截断文本。"""
     hotels: List[Dict[str, Any]] = []
     source = text or ""
     for match in _AMAP_POI_RE.finditer(source):
@@ -190,7 +188,7 @@ def _build_place_search_envelope(
     audit_id: str,
     retrieved_at: str,
 ) -> Dict[str, Any]:
-    """Wrap deterministically bound lodging places as a Provider place envelope."""
+    """把确定性绑定的住宿地点包装成 Provider 地点信封。"""
     return {
         "tool_name": "global_place_search",
         "server_name": server_name,
@@ -210,7 +208,7 @@ _NOMINATIM_HOTELS_PER_CITY = 5
 
 
 def _nominatim_hotels_from_results(results: List[Any]) -> List[Dict[str, Any]]:
-    """Keep the concrete lodging-typed Provider records, in Provider order."""
+    """按 Provider 顺序保留具体住宿类型的 Provider 记录。"""
     hotels: List[Dict[str, Any]] = []
     bound_place_ids: List[str] = []
     for item in results:

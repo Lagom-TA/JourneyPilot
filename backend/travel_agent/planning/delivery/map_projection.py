@@ -1,4 +1,4 @@
-"""Planning delivery map projection."""
+"""交付地图投影。"""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Runtime rate gate."""
+"""按上游限制请求间隔的速率控制。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import time
 
 
 class RateGate:
-    """Delay until ``min_interval_seconds`` has passed since the last request."""
+    """等到距上一次请求满 ``min_interval_seconds`` 再放行。"""
 
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
@@ -26,11 +26,10 @@ _GATES: Dict[str, RateGate] = {}
 
 
 def rate_gate_for(key: str) -> RateGate:
-    """The process-wide gate for one upstream, created on first use.
+    """某个上游的进程级限速器，首次使用时创建。
 
-    Keyed rather than per-caller: two call sites that talk to the same upstream
-    have to share the spacing, or each one honours an interval the upstream never
-    agreed to.
+    按上游而不是按调用方索引：访问同一上游的多个调用点必须共用间隔，否则各自
+    执行的间隔之和会超过上游允许的频率。
     """
 
     gate = _GATES.get(key)

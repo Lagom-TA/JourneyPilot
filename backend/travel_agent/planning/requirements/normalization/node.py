@@ -1,4 +1,4 @@
-"""Planning requirements normalization node."""
+"""需求归一化节点。"""
 
 from __future__ import annotations
 

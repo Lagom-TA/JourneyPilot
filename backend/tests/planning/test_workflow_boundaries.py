@@ -1,4 +1,4 @@
-"""Behavior at boundaries separated by workflow ownership extraction."""
+"""图缓存、命令包装、入口检查与交付持久化在各工作流边界上的行为。"""
 
 import asyncio
 import inspect

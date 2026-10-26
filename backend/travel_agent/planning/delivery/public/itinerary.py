@@ -1,4 +1,4 @@
-"""Planning delivery public itinerary."""
+"""公开行程投影。"""
 
 from __future__ import annotations
 
@@ -23,11 +23,10 @@ from typing import Sequence
 
 
 def _timestamp(value: Optional[datetime]) -> Optional[str]:
-    """Encode an instant exactly as the rest of the Bundle's JSON does.
+    """按 Bundle JSON 其余部分一致的方式编码时间点。
 
-    Pydantic's JSON mode emits RFC 3339 with a ``Z`` for UTC where
-    ``datetime.isoformat()`` emits ``+00:00``.  The two are equivalent instants
-    but not equal strings, and clients diff these payloads.
+    Pydantic 的 JSON 模式对 UTC 输出 ``Z``，而 ``datetime.isoformat()`` 输出
+    ``+00:00``；两者是同一时刻但字符串不同，而客户端会比较这些载荷。
     """
 
     if value is None:
@@ -147,14 +146,11 @@ def _public_lodging_stay(stay: LodgingStay, evidence_basis: str) -> Dict[str, An
 def _public_transport_leg(
     leg: TransportLeg, evidence_basis: str, *, is_micro_transport: bool
 ) -> Dict[str, Any]:
-    """Project one leg, including the connector verdict.
+    """投影一段交通，并带上接驳判定。
 
-    *Which* legs are connectors is domain judgement over Bundle fields, not a
-    threshold a reader should re-apply, so the projection ships the verdict as
-    ``is_micro_transport``: the server-rendered PDF reads
-    :meth:`EvidenceBasisView.stated_basis_for` while the browser reads this
-    field, and the two must not be able to reach different conclusions about the
-    same leg.
+    哪些交通段算接驳是对 Bundle 字段的领域判断，而不是读者应重新套用的阈值，
+    因此投影直接给出 ``is_micro_transport``；服务端 PDF 读取
+    ``stated_basis_for``，浏览器读取该字段，两者对同一段交通的结论保持一致。
     """
 
     return {
@@ -181,7 +177,7 @@ def _public_transport_leg(
 
 
 def _public_custom_block(block: CustomBlock) -> Dict[str, Any]:
-    """A traveller's own arrangement: no lineage, and so no evidence basis."""
+    """旅行者自己的安排：没有血统，也没有证据基础。"""
 
     return {
         "type": block.type,
@@ -219,12 +215,10 @@ def _public_day_plan(day: DayPlanV2) -> Dict[str, Any]:
 def _public_itinerary(
     itinerary: StructuredItineraryV2, view: EvidenceBasisView
 ) -> Dict[str, Any]:
-    """Project the canonical itinerary and state each entry's evidence basis.
+    """投影 canonical 行程，并标明每个条目的证据基础。
 
-    Every lineage-bearing entry carries ``evidence_basis``, including micro
-    connectors: suppressing the *statement* on a connector is a rendering rule
-    each artifact applies through :meth:`EvidenceBasisView.stated_basis_for`, not
-    a hole in the transport contract.
+    所有带血统的条目都携带 ``evidence_basis``，微型接驳也不例外；是否在展示时
+    省略由各产物通过 ``stated_basis_for`` 决定，不在交通契约里留空洞。
     """
 
     return {

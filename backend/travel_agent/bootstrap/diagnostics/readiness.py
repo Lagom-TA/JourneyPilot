@@ -1,4 +1,4 @@
-"""Compose readiness from blocking dependencies and nonblocking diagnostics."""
+"""由阻塞性依赖与非阻塞诊断组合出就绪状态。"""
 
 from __future__ import annotations
 

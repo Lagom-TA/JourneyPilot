@@ -1,5 +1,3 @@
-"""Planning research provider outcomes."""
-
 from __future__ import annotations
 
 from travel_agent.planning.research.provider_contracts import ProviderEvidenceOutcome
@@ -12,7 +10,7 @@ def merge_provider_evidence_outcomes(
     a: Dict[str, ProviderEvidenceOutcome],
     b: Dict[str, ProviderEvidenceOutcome],
 ) -> Dict[str, ProviderEvidenceOutcome]:
-    """Merge current outcomes by explicit attempt, independent of fan-in order."""
+    """按显式尝试序号合并当前结果，合并结果与到达顺序无关。"""
 
     merged = dict(a or {})
     for scope_id, incoming in (b or {}).items():

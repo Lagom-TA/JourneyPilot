@@ -1,4 +1,4 @@
-"""Integrations routes global search."""
+"""全球路线查询：中国境内走 amap，其余走 Transitous。"""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ _PROVIDER_MODE = {
 
 
 class GlobalRouteSearchError(RuntimeError):
-    """The global routing provider could not return an executable route."""
+    """全球路线 Provider 未能返回可执行路线。"""
 
 
 _RATE_GATE = rate_gate_for("transitous")
@@ -92,7 +92,7 @@ def _minutes(seconds: Any) -> int:
 
 
 def _in_request_timezone(value: Any, request_departure_time: str) -> Any:
-    """Represent a Provider instant in the destination offset used by the gap."""
+    """把 Provider 的时刻表示成请求目的地时区中的偏移。"""
     if not isinstance(value, str):
         return value
     try:
@@ -244,7 +244,7 @@ async def search_global_route_raw(
     mode: RouteMode,
     client: Optional[httpx.AsyncClient] = None,
 ) -> Dict[str, Any]:
-    """Return the complete response for one deliberately bounded MOTIS query."""
+    """返回一次有界 MOTIS 查询的完整响应。"""
     settings = get_settings().routing
     params: Dict[str, Any] = {
         "fromPlace": f"{from_latitude},{from_longitude}",
@@ -308,7 +308,7 @@ async def global_route_search(
     departure_time: str,
     mode: RouteMode,
 ) -> Dict[str, Any]:
-    """Tool executor returning one exact normalized route plus its full provider snapshot."""
+    """工具执行入口：返回一条归一化的精确路线及其完整 Provider 快照。"""
     if (
         not from_name.strip()
         or not from_place_id.strip()
