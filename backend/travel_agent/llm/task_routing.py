@@ -8,9 +8,7 @@ from .request_policy import canonical_model_name, model_reasoning_effort
 
 class TaskKind(str, Enum):
     RESEARCH_TOOLS = "research_tools"
-    SCHEMA_REPAIR = "schema_repair"
     INTENT_NORMALIZE = "intent_normalize"
-    CANDIDATE_EVALUATION = "candidate_evaluation"
     SUMMARY = "summary"
     QUICK_ANSWER = "quick_answer"
     COMPOSITION = "composition"

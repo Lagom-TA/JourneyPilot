@@ -12,26 +12,6 @@ from travel_agent.utils.log_redaction import (
     install_query_secret_redaction,
 )
 
-_EVAL_LOGGER = "travel_agent.planning.requirements.candidate_evaluation"
-_GATE_LOGGER = "travel_agent.planning.research.node"
-
-
-def test_missing_deadline_preserves_route_without_logging(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-
-    from travel_agent.planning.research.node import route_after_candidate_gate
-    from travel_agent.planning.state import TravelAgentState
-
-    state = TravelAgentState(candidate_gate_route="transport_researcher")
-    assert state.run_deadline is None
-
-    with caplog.at_level(logging.DEBUG, logger=_GATE_LOGGER):
-        assert route_after_candidate_gate(state) == "transport_researcher"
-
-    assert [r for r in caplog.records if r.name == _GATE_LOGGER] == []
-
-
 @pytest.fixture
 def clean_redaction_state():
     """把安装记录与 httpx logger 的 filter 恢复原状，别把状态漏给别的测试。"""

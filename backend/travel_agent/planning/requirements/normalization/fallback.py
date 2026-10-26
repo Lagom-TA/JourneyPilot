@@ -133,7 +133,7 @@ def _fallback_clause(
                 IntentStrength.HARD,
                 CategoryIntentValue(categories=[text]),
                 text,
-                ["research", "admission", "composition"],
+                ["research", "composition"],
                 VerificationMode.MIXED,
             )
         )
@@ -145,7 +145,7 @@ def _fallback_clause(
                 IntentStrength.SOFT,
                 CategoryIntentValue(categories=[text]),
                 text,
-                ["research", "ranking", "composition"],
+                ["research", "composition"],
                 VerificationMode.SEMANTIC,
             )
         )
@@ -182,7 +182,7 @@ def _fallback_clause(
                 IntentStrength.SOFT,
                 ScalarIntentValue(value=text),
                 "探索另一组同等合规的候选",
-                ["research", "ranking", "composition"],
+                ["research", "composition"],
                 VerificationMode.DETERMINISTIC,
             )
         )

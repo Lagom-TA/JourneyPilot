@@ -11,7 +11,6 @@ from typing import Any, Mapping, Sequence
 from travel_agent.integrations.provider_environment import snapshot_data_environment
 from travel_agent.knowledge.fragments import is_rag_chunk_source_id
 from travel_agent.planning.references import EntityRef
-from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.research.evidence import (
     FactAssertion,
     FactSourceLink,
@@ -22,10 +21,9 @@ from travel_agent.planning.research.evidence import (
 
 from .failures import _failed_tool_sources
 from .identifiers import _canonical_snapshot_hash, _provider_entity_source_id
-from .policy import _PLACE_ENTITY_TYPE, ResearchPacketOutputError, ResearchWorkerKind
+from .policy import ResearchPacketOutputError, ResearchWorkerKind
 from .transcript import (
     _normalized_source_url,
-    _quality_verified_place_sources,
     _retrieved_source_snapshots,
     _successful_place_records,
 )
@@ -68,53 +66,6 @@ def _bind_source_content_hashes(
         source["content_hash"] = _canonical_snapshot_hash(snapshot)
         canonical_sources.append(source)
     payload["source_records"] = canonical_sources
-
-
-def authoritative_retry_source_records(
-    catalog: RecommendationCatalog | None,
-    *,
-    expected_worker: ResearchWorkerKind,
-    constraint_pack_revision: int,
-    fact_data_revision: int,
-) -> tuple[SourceRecord, ...]:
-    "Return the admitted prior source closure for one scoped worker retry."
-    if catalog is None or catalog.fact_data_revision != fact_data_revision:
-        return ()
-    passed_ids = {
-        admission.candidate_id
-        for admission in catalog.admission_results
-        if admission.status == "passed"
-    }
-    source_index: dict[str, SourceRecord] = {}
-    for packet in catalog.research_packets:
-        if (
-            packet.worker_kind != expected_worker
-            or packet.constraint_pack_revision != constraint_pack_revision
-            or packet.fact_data_revision != fact_data_revision
-        ):
-            continue
-        retained_candidate_ids = {
-            candidate.candidate_id
-            for candidate in packet.candidates
-            if candidate.candidate_id in passed_ids
-        }
-        retained_source_ids = {
-            link.source_record_id
-            for fact in packet.fact_assertions
-            if fact.entity_ref.entity_id in retained_candidate_ids
-            for link in fact.source_links
-        }
-        for source in packet.source_records:
-            if source.source_record_id not in retained_source_ids:
-                continue
-            existing = source_index.get(source.source_record_id)
-            if existing is not None and existing != source:
-                raise ResearchPacketOutputError(
-                    "admitted prior catalog has conflicting source identity: "
-                    f"{source.source_record_id}"
-                )
-            source_index[source.source_record_id] = source
-    return tuple(source_index.values())
 
 
 _RETRIEVED_SOURCE_KINDS = frozenset({"external_web"})
@@ -237,48 +188,6 @@ def _ground_rag_chunk_sources(
                 )
             )
         ]
-
-
-def _authoritative_external_tool_sources(
-    evidence_messages: Sequence[Mapping[str, Any]],
-    *,
-    eligible_place_options: Mapping[str, Sequence[Mapping[str, str]]],
-    authoritative_source_records: Sequence[SourceRecord] = (),
-) -> list[dict[str, str]]:
-    "List every ``external_tool`` source id a model may bind evidence to."
-    listed: dict[str, str] = {}
-    for source in authoritative_source_records:
-        if source.source_kind == "external_tool":
-            listed.setdefault(source.source_record_id, source.provider_name)
-    quality_sources = _quality_verified_place_sources(evidence_messages)
-    for candidate_kind, options in eligible_place_options.items():
-        for option in options:
-            audit_id = str(option.get("audit_id") or "").strip()
-            place_id = str(option.get("place_id") or "").strip()
-            if not audit_id or not place_id:
-                continue
-            listed.setdefault(
-                _provider_entity_source_id(audit_id, place_id),
-                "global_place_search",
-            )
-            if candidate_kind != "dining":
-                continue
-            for envelope in quality_sources.get(place_id, ()):
-                quality_audit_id = str(envelope.get("audit_id") or "").strip()
-                if not quality_audit_id:
-                    continue
-                listed.setdefault(
-                    _provider_entity_source_id(quality_audit_id, place_id),
-                    str(
-                        envelope.get("tool_name")
-                        or envelope.get("server_name")
-                        or "external_review_search"
-                    ),
-                )
-    return [
-        {"source_record_id": source_record_id, "tool_name": tool_name}
-        for source_record_id, tool_name in listed.items()
-    ]
 
 
 def _source_retrieved_at(envelope: Mapping[str, Any], fallback: Any) -> Any:
@@ -455,118 +364,3 @@ def _authoritative_tool_source_records(
     ):
         registry.setdefault(source.source_record_id, source)
     return registry
-
-
-def _compile_selected_operational_evidence(
-    payload: dict[str, Any],
-    evidence: Sequence[Mapping[str, Any]],
-    evidence_messages: Sequence[Mapping[str, Any]],
-    eligible_place_options: Mapping[str, Sequence[Mapping[str, str]]],
-) -> None:
-    "Compile quoted page values; identity transcripts never prove hours."
-    snapshots = _retrieved_source_snapshots(evidence_messages, page_specific=True)
-    sources = payload.setdefault("source_records", [])
-    facts = payload.setdefault("fact_assertions", [])
-    provenance = payload.setdefault("field_provenance", [])
-    for candidate in payload.get("candidates", []):
-        if candidate.get("candidate_kind") not in {"visit", "dining"}:
-            continue
-        seen = set()
-        source_url = None
-        for item in evidence:
-            field = item.get("field_path")
-            value = item.get("value")
-            url = _normalized_source_url(item.get("canonical_url"))
-            if (
-                item.get("place_id") != candidate.get("place_id")
-                or field not in {"opening_window", "reservation_required"}
-                or field in seen
-                or url not in snapshots
-                or (source_url is not None and url != source_url)
-                or (
-                    field == "opening_window"
-                    and (not isinstance(value, str) or not value.strip())
-                )
-                or (field == "reservation_required" and not isinstance(value, bool))
-            ):
-                continue
-            snapshot = snapshots[url]
-            text = json.dumps(snapshot, ensure_ascii=False)
-            names = [
-                str(option.get("name") or "")
-                for options in eligible_place_options.values()
-                for option in options
-                if option.get("place_id") == candidate.get("place_id")
-            ]
-            if not any(name and name in text for name in names):
-                continue
-
-            def supports(node: Any) -> bool:
-                if isinstance(node, Mapping):
-                    if (
-                        field in node
-                        and type(node[field]) is type(value)
-                        and node[field] == value
-                    ):
-                        return True
-                    return any(supports(child) for child in node.values())
-                if isinstance(node, list):
-                    return any(supports(child) for child in node)
-                return (
-                    isinstance(value, str) and isinstance(node, str) and value in node
-                )
-
-            if not supports(snapshot):
-                continue
-            source_id = (
-                "web_operational_" + hashlib.sha256(url.encode()).hexdigest()[:20]
-            )
-            if not any(
-                source.get("source_record_id") == source_id for source in sources
-            ):
-                sources.append(
-                    SourceRecord(
-                        source_record_id=source_id,
-                        source_kind="external_web",
-                        title=f"{names[0]} visitor information",
-                        provider_name="web_retrieval",
-                        canonical_url=url,
-                        public_excerpt=str(value),
-                        retrieved_at=datetime.now(timezone.utc),
-                        content_hash=_canonical_snapshot_hash(snapshot),
-                        snapshot=snapshot,
-                    ).model_dump(mode="python")
-                )
-            entity = EntityRef(
-                entity_type=_PLACE_ENTITY_TYPE[candidate["candidate_kind"]],
-                entity_id=candidate["candidate_id"],
-            )
-            fact_id = f"{source_id}_{candidate['candidate_id']}_{field}"
-            facts.append(
-                FactAssertion(
-                    fact_assertion_id=fact_id,
-                    entity_ref=entity,
-                    field_path=field,
-                    asserted_value=value,
-                    criticality="execution_critical",
-                    status="verified",
-                    source_links=[
-                        FactSourceLink(
-                            source_record_id=source_id,
-                            relation="supports",
-                            source_locator="retrieved page quoted value",
-                        )
-                    ],
-                ).model_dump(mode="python")
-            )
-            provenance.append(
-                FieldProvenance(
-                    origin="external_fact",
-                    entity_ref=entity,
-                    field_path=field,
-                    reference_ids=[fact_id],
-                ).model_dump(mode="python")
-            )
-            candidate[field] = value
-            seen.add(field)
-            source_url = url

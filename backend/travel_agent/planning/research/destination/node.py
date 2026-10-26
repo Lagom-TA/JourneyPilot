@@ -20,12 +20,10 @@ from travel_agent.memory.research_context import format_worker_research_context
 from travel_agent.planning.assignments import (
     assignment_research_round,
     resolve_agent_assignment,
-    resolve_scoped_research_output_key,
 )
 from travel_agent.planning.invalidation import generation_packet_key
 from travel_agent.planning.requirements.constraint_applicability import (
     active_hard_constraint_ids,
-    active_hard_constraints,
 )
 from travel_agent.planning.research.assignment_context import build_assignment_context
 from travel_agent.planning.research.destination.diagnostics import _log_rag_place_funnel
@@ -42,8 +40,6 @@ from travel_agent.planning.research.destination.scope import (
     build_destination_task_prompt,
     collect_offered_dining_place_ids,
     resolve_discovery_candidate_kinds,
-    resolve_required_candidate_kinds,
-    scope_destination_gap_tools,
 )
 from travel_agent.planning.research.domains import ResearchDomain
 from travel_agent.planning.research.errors import format_worker_last_error
@@ -53,19 +49,15 @@ from travel_agent.planning.research.output.failures import (
     provider_round_capability_declared,
 )
 from travel_agent.planning.research.output.finalization import (
-    parse_or_repair_research_packet_output,
+    parse_research_packet,
 )
 from travel_agent.planning.research.output.metadata import (
     build_authoritative_research_packet_metadata,
 )
 from travel_agent.planning.research.output.options import (
-    has_required_provider_place_selection,
     provider_evidence_outcomes,
 )
 from travel_agent.planning.research.output.policy import packet_candidate_limit
-from travel_agent.planning.research.output.sources import (
-    authoritative_retry_source_records,
-)
 from travel_agent.planning.research.output.transcript import authoritative_tool_messages
 from travel_agent.planning.research.prompts import build_research_packet_prompt
 from travel_agent.planning.research.provider_assignments import (
@@ -140,20 +132,12 @@ async def destination_researcher_node(
     ]
     recommended_tools = assignment.get("recommended_tools", [])
     excluded_tools = assignment.get("excluded_tools", [])
-    excluded_candidate_ids = assignment.get("excluded_candidate_ids")
-    require_current_candidate = bool(assignment.get("require_current_candidate"))
     required_candidate_kinds = assignment.get("required_candidate_kinds")
     provider_assignments = parse_provider_evidence_assignments(
         assignment,
         expected_worker=_NODE_NAME,
         expected_run_id=run_id,
         expected_constraint_pack_revision=state.constraint_pack_revision,
-    )
-    output_key = resolve_scoped_research_output_key(
-        state.research_packets,
-        _NODE_NAME,
-        output_key,
-        scoped_retry=require_current_candidate,
     )
 
     if state.planning_generation is None:
@@ -166,14 +150,9 @@ async def destination_researcher_node(
         generation_id=generation_id,
         planned_queries=planned_queries,
         assignment=assignment,
-        gaps=state.candidate_research_gaps,
     )
 
     active_constraint_ids = active_hard_constraint_ids(
-        state.constraint_pack,
-        worker_kind=_NODE_NAME,
-    )
-    active_constraints = active_hard_constraints(
         state.constraint_pack,
         worker_kind=_NODE_NAME,
     )
@@ -207,19 +186,9 @@ async def destination_researcher_node(
         state.controlled_trip_identity
     )
 
-    selected_servers = (
-        []
-        if require_current_candidate and recommended_tools
-        else state.selected_mcp_servers or []
-    )
-    available_tools = await get_available_tools(selected_servers)
+    available_tools = await get_available_tools(state.selected_mcp_servers or [])
     available_tools = filter_tools_for_agent(available_tools, _NODE_NAME)
     available_tools = exclude_tools(available_tools, excluded_tools)
-    available_tools = scope_destination_gap_tools(
-        available_tools,
-        recommended_tools,
-        scoped_retry=require_current_candidate,
-    )
 
     tool_cache = dict(state.tool_cache) if state.tool_cache else {}
     tool_context = build_tool_context_from_state(state)
@@ -248,12 +217,6 @@ async def destination_researcher_node(
         generated_at=datetime.datetime.now(datetime.timezone.utc),
     )
 
-    effective_required_candidate_kinds = resolve_required_candidate_kinds(
-        required_candidate_kinds,
-        task_desc=str(task_desc or ""),
-        user_query=user_query,
-        controlled_trip_identity=state.controlled_trip_identity or {},
-    )
     discovery_candidate_kinds = resolve_discovery_candidate_kinds(
         required_candidate_kinds,
         task_desc=str(task_desc or ""),
@@ -292,7 +255,6 @@ async def destination_researcher_node(
                     task_desc=task_desc,
                     user_query=user_query,
                     rag_context_section="",
-                    require_current_candidate=require_current_candidate,
                     offered_dining_place_ids=collect_offered_dining_place_ids(
                         authoritative_tool_results
                     ),
@@ -323,31 +285,20 @@ async def destination_researcher_node(
             }
         )
 
-        provider_identity_ready = bool(discovery_candidate_kinds) and (
-            has_required_provider_place_selection(
-                authoritative_tool_messages(authoritative_tool_results),
-                expected_worker=_NODE_NAME,
-                required_candidate_kinds=discovery_candidate_kinds,
-            )
+        react = await streaming_react_loop(
+            llm=llm,
+            messages=messages,
+            available_tools=available_tools,
+            stream_queue=stream_queue,
+            node_name=_NODE_NAME,
+            max_iterations=_MAX_TOOL_ITERATIONS,
+            can_ask_user=True,
+            tool_cache=tool_cache,
+            tool_context=tool_context,
         )
-        if require_current_candidate and provider_identity_ready:
-            raw_response = ""
-            pending_choice = None
-        else:
-            react = await streaming_react_loop(
-                llm=llm,
-                messages=messages,
-                available_tools=available_tools,
-                stream_queue=stream_queue,
-                node_name=_NODE_NAME,
-                max_iterations=_MAX_TOOL_ITERATIONS,
-                can_ask_user=True,
-                tool_cache=tool_cache,
-                tool_context=tool_context,
-            )
-            raw_response = react.content
-            pending_choice = react.pending_choice
-            authoritative_tool_results.extend(react.tool_results)
+        raw_response = react.content
+        pending_choice = react.pending_choice
+        authoritative_tool_results.extend(react.tool_results)
 
         if pending_choice:
             logger.info(
@@ -385,27 +336,13 @@ async def destination_researcher_node(
             authoritative_tool_results=authoritative_tool_results,
             messages=messages,
         )
-        packet = await parse_or_repair_research_packet_output(
+        packet = await parse_research_packet(
             raw_response or "",
             expected_worker=_NODE_NAME,
             expected_run_id=run_id,
-            llm=llm,
-            context_messages=messages,
             authoritative_tool_results=authoritative_tool_results,
-            excluded_candidate_ids=excluded_candidate_ids,
-            require_current_candidate=require_current_candidate,
             expected_active_constraint_ids=active_constraint_ids,
-            expected_active_constraints=active_constraints,
-            required_candidate_kinds=effective_required_candidate_kinds,
             authoritative_packet_metadata=authoritative_packet_metadata,
-            authoritative_source_records=authoritative_retry_source_records(
-                state.recommendation_catalog,
-                expected_worker=_NODE_NAME,
-                constraint_pack_revision=state.constraint_pack_revision,
-                fact_data_revision=state.fact_data_revision,
-            )
-            if require_current_candidate
-            else (),
         )
 
         logger.info(
@@ -430,7 +367,7 @@ async def destination_researcher_node(
 
         result: Dict[str, Any] = {
             "messages": [
-                AIMessage(content=f"已核验 {len(packet.candidates)} 个目的地候选")
+                AIMessage(content=f"已整理 {len(packet.candidates)} 个目的地候选")
             ],
             "research_packets": {packet_state_key: packet},
             "agent_status": {output_key: "completed"},

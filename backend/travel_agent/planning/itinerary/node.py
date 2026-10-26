@@ -5,12 +5,10 @@ from typing import Any, Dict
 
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
-from pydantic import ValidationError
 
 from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
 from travel_agent.planning.requirements.route_legs import build_required_long_distance_legs, explicit_cross_day_return_required
 from travel_agent.planning.state import TravelAgentState
-from travel_agent.planning.itinerary.revision import bounded_repair_context
 from travel_agent.llm.router import get_model_router
 from travel_agent.llm.task_routing import TaskKind, llm_for_task
 from travel_agent.planning.assignments import resolve_agent_assignment
@@ -22,10 +20,7 @@ from travel_agent.planning.itinerary.connectors import (
     materialize_skeleton_connectors,
     unfilled_connector_gaps,
 )
-from travel_agent.planning.itinerary.materialize import (
-    _restore_full_catalog,
-    materialize_trip_workspace,
-)
+from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
 from travel_agent.planning.itinerary.requirements import (
     _draft_user_input_anchors,
     _required_leg_scope_ids,
@@ -33,7 +28,6 @@ from travel_agent.planning.itinerary.requirements import (
 from travel_agent.planning.nodes import NODE_ITINERARY
 from travel_agent.planning.workspace import TripWorkspaceV2
 from travel_agent.runtime.deadlines import observe_run_deadline
-from travel_agent.planning.itinerary.selected_supply import catalog_for_candidate_selection, catalog_for_workspace_materialization
 from travel_agent.planning.itinerary.day_design import apply_day_design
 from travel_agent.planning.itinerary.day_capacity import default_walking_days, disclose_default_walking
 from travel_agent.planning.itinerary.dispersion import itinerary_dispersion
@@ -41,39 +35,8 @@ from travel_agent.planning.itinerary.dispersion import itinerary_dispersion
 logger = logging.getLogger(__name__)
 
 
-_COMPOSITION_FAILURE_VALIDATION_ERRORS = 3
-
-
-_OUTPUT_TRUNCATION_MARKERS = ("length limit was reached", "finish_reason=length")
-
-
-def _is_output_truncation(exc: BaseException) -> bool:
-    """Whether this composition failed because the completion hit its ceiling."""
-    text = str(exc)
-    return any(marker in text for marker in _OUTPUT_TRUNCATION_MARKERS)
-
-
-def _composition_failure_detail(exc: BaseException) -> str:
-    """The part of a composition failure worth replaying to the model."""
-    if _is_output_truncation(exc):
-        return (
-            "OutputTruncated: 上一轮 composition 输出超出单次补全长度上限被截断，"
-            "因此不是一份完整 JSON。请输出更紧凑的同一份行程：压缩 theme、"
-            "selection_reason 等自由文本字段的长度，不要重复叙述。"
-            "**天数、每天的必需落位与所有 candidate_id 一个都不许减** —— "
-            "为了变短而删掉行程内容会产出一份错的行程。"
-        )
-    if isinstance(exc, ValidationError):
-        detail = "；".join(
-            "{path}: {message}".format(
-                path=".".join(str(part) for part in error.get("loc", ())) or "(root)",
-                message=str(error.get("msg", "")),
-            )
-            for error in exc.errors()[:_COMPOSITION_FAILURE_VALIDATION_ERRORS]
-        )
-    else:
-        detail = str(exc)
-    return f"{type(exc).__name__}: {detail}"
+# 组合失败上下文进入下一轮提示词，超过这个长度的细节被截断。
+_FAILURE_CONTEXT_CHAR_LIMIT = 600
 
 
 def _log_composition_dispersion(workspace: TripWorkspaceV2) -> None:
@@ -100,6 +63,14 @@ def _log_composition_dispersion(workspace: TripWorkspaceV2) -> None:
     logger.info("Composition dispersion: %s", " | ".join(measured))
 
 
+def _composition_failure_context(stage: str, exc: BaseException) -> str:
+    """One bounded line stating which composition stage failed and why."""
+    text = f"{stage} 阶段失败 — {type(exc).__name__}: {exc}".strip()
+    if len(text) <= _FAILURE_CONTEXT_CHAR_LIMIT:
+        return text
+    return text[: _FAILURE_CONTEXT_CHAR_LIMIT - 1] + "…"
+
+
 def _composition_phase(state: TravelAgentState) -> str:
     if (
         state.placement_skeleton is None
@@ -114,20 +85,6 @@ def _composition_phase(state: TravelAgentState) -> str:
 async def itinerary_planner_node(
     state: TravelAgentState, config: RunnableConfig
 ) -> Dict[str, Any]:
-    full_catalog = state.recommendation_catalog
-    if full_catalog is not None:
-        if state.candidate_selection_plan is None:
-            raise ValueError(
-                "itinerary composition requires a Candidate Selection Plan"
-            )
-        state = state.model_copy(
-            update={
-                "recommendation_catalog": catalog_for_candidate_selection(
-                    full_catalog,
-                    state.candidate_selection_plan,
-                ),
-            }
-        )
     output_key, assignment = resolve_agent_assignment(
         state.agent_assignments or {}, NODE_ITINERARY
     )
@@ -155,7 +112,7 @@ async def itinerary_planner_node(
                     "delivery deadline elapsed before itinerary composition"
                 )
         if state.recommendation_catalog is None:
-            raise ValueError("composition requires an admitted Recommendation Catalog")
+            raise ValueError("composition requires the candidate catalog")
         if phase == "placement_skeleton":
             draft = await _compose_draft(
                 state,
@@ -175,14 +132,10 @@ async def itinerary_planner_node(
                 "placement_skeleton": draft,
                 "trip_workspace_v2": None,
                 "local_connector_gaps": [],
-                "candidate_gate_status": "needs_research",
-                "candidate_gate_route": "candidate_gate",
                 "unlocatable_authored_places": sorted(unlocatable),
                 "composition_failure_context": None,
                 "placement_skeleton_failure_context": None,
             }
-        if state.candidate_gate_status != "passed":
-            raise ValueError("connector materialization requires a passed Gate")
         skeleton = state.placement_skeleton
         requests, required_pairs = connector_mode_requests_from_constraint_pack(
             skeleton,
@@ -225,13 +178,10 @@ async def itinerary_planner_node(
             run_id=state.run_id,
             workspace_revision=0,
             composition=composition,
-            catalog=catalog_for_workspace_materialization(
-                full_catalog, state.candidate_selection_plan
-            ),
+            catalog=state.recommendation_catalog,
             intent_contract_snapshot=IntentContractSnapshot.from_intent_spec(
                 state.intent_spec
             ),
-            candidate_selection_plan=state.candidate_selection_plan,
             composition_mutations=list(state.composition_mutations),
             user_input_anchors=_draft_user_input_anchors(state),
             reference_services=list(state.provider_reference_services),
@@ -243,7 +193,6 @@ async def itinerary_planner_node(
                 state.constraint_pack_revision,
             ),
         )
-        workspace = _restore_full_catalog(workspace, full_catalog)
         workspace = apply_day_design(workspace, composition)
         workspace = disclose_default_walking(workspace, gaps)
         _log_composition_dispersion(workspace)
@@ -262,13 +211,11 @@ async def itinerary_planner_node(
         logger.error("ItineraryPlanner v2 failed: %s", exc, exc_info=True)
         return {
             **deadline_update,
-            "messages": [AIMessage(content="行程草稿需要修订")],
+            "messages": [AIMessage(content="行程组合失败")],
             "last_error": str(exc),
             "agent_status": {output_key: "failed"},
             "unlocatable_authored_places": sorted(unlocatable),
-            "composition_failure_context": bounded_repair_context(
-                stage, _composition_failure_detail(exc)
-            ),
+            "composition_failure_context": _composition_failure_context(stage, exc),
             **(
                 {"placement_skeleton": exc.composition}
                 if getattr(exc, "composition", None) is not None

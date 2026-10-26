@@ -1,4 +1,4 @@
-"""Worker snapshots are recovery aids; gates and delivery stores own admission.
+"""Worker snapshots are recovery aids for the planning graph.
 
 Use the same typed serializer as LangGraph. Writes are version-CAS and fenced
 by the live execution lease, in one business database transaction. A graph

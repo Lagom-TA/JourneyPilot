@@ -32,16 +32,6 @@ def _routable_connector_endpoints(
     catalog = state.recommendation_catalog
     if catalog is None:
         return []
-    passed_ids = {
-        admission.candidate_id
-        for admission in catalog.admission_results
-        if admission.status == "passed" and admission.selection_slot_id is None
-    }
-    passed_route_ids = {
-        admission.candidate_id
-        for admission in catalog.admission_results
-        if admission.status == "passed"
-    }
     sources = {
         source.source_record_id: source
         for packet in catalog.research_packets
@@ -82,8 +72,7 @@ def _routable_connector_endpoints(
     endpoints: List[Dict[str, Any]] = []
     for candidate in catalog.candidate_index().values():
         if (
-            candidate.candidate_id in passed_route_ids
-            and candidate.candidate_kind == "transport"
+            candidate.candidate_kind == "transport"
             and getattr(candidate, "transport_class", "") == "long_distance"
         ):
             for endpoint in (candidate.from_endpoint, candidate.to_endpoint):
@@ -112,7 +101,7 @@ def _routable_connector_endpoints(
                     }
                 )
             continue
-        if candidate.candidate_id not in passed_ids or candidate.candidate_kind not in {
+        if candidate.candidate_kind not in {
             "visit",
             "dining",
             "lodging",

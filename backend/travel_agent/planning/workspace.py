@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Literal, Union
 
 from pydantic import Field, model_validator
 
-from travel_agent.planning.research.selection_contracts import CandidateSelectionPlan
 from travel_agent.planning.itinerary.mutation_contracts import CompositionMutation
 from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
 from travel_agent.planning.itinerary.models import (
@@ -30,7 +29,7 @@ from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.weather.models import WeatherProposalDecision
 from travel_agent.schema import StrictModel
 
-TRIP_WORKSPACE_CONTRACT_VERSION = "journeypilot.trip_workspace.v10"
+TRIP_WORKSPACE_CONTRACT_VERSION = "journeypilot.trip_workspace.v11"
 
 
 class TripWorkspaceV2(StrictModel):
@@ -44,7 +43,6 @@ class TripWorkspaceV2(StrictModel):
     recommendation_catalog: RecommendationCatalog
     intent_contract_snapshot: IntentContractSnapshot
     composition_mutations: List[CompositionMutation] = Field(default_factory=list)
-    candidate_selection_plan: CandidateSelectionPlan
     user_input_anchors: List[UserInputAnchor] = Field(default_factory=list)
     selection_slots: List[SelectionSlot] = Field(default_factory=list)
     personalization_influences: List[PersonalizationInfluence] = Field(
@@ -61,27 +59,6 @@ class TripWorkspaceV2(StrictModel):
             raise ValueError("workspace and recommendation catalog generations differ")
         if self.intent_contract_snapshot.generation_id != self.generation_id:
             raise ValueError("workspace and intent contract generations differ")
-        if self.candidate_selection_plan.generation_id != self.generation_id:
-            raise ValueError("workspace and candidate selection generations differ")
-        if (
-            self.candidate_selection_plan.intent_spec_revision
-            != self.intent_contract_snapshot.intent_spec_revision
-        ):
-            raise ValueError(
-                "workspace intent and candidate selection revisions differ"
-            )
-        if self.candidate_selection_plan.catalog_revision != catalog.fact_data_revision:
-            raise ValueError(
-                "workspace candidate selection uses another catalog revision"
-            )
-        catalog_candidate_ids = set(catalog.candidate_index())
-        if (
-            not {entry.candidate_id for entry in self.candidate_selection_plan.entries}
-            <= catalog_candidate_ids
-        ):
-            raise ValueError(
-                "workspace candidate selection references a missing candidate"
-            )
         mutation_ids = [item.mutation_id for item in self.composition_mutations]
         if len(mutation_ids) != len(set(mutation_ids)):
             raise ValueError("workspace composition mutations must be unique")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Optional
 
 from travel_agent.planning.requirements.composition_contracts import COMPOSITION_PROMPT_VERSION, CompositionRule
 from travel_agent.planning.state import TravelAgentState
@@ -11,34 +11,27 @@ from travel_agent.planning.assignments import resolve_agent_assignment
 from travel_agent.planning.itinerary.model_schema import _composition_response_schema
 from travel_agent.planning.itinerary.requirements import itinerary_day_count
 from travel_agent.planning.itinerary.supply import (
-    _placement_capabilities,
     authoring_domains,
 )
 from travel_agent.planning.nodes import NODE_ITINERARY
-from travel_agent.planning.itinerary.selected_supply import selected_candidate_capabilities
+from travel_agent.planning.itinerary.selected_supply import (
+    placement_capabilities,
+    prompt_candidate_ids,
+)
 from travel_agent.planning.requirements.composition_compiler import compile_composition_rules
 from travel_agent.planning.itinerary.day_capacity import daily_planning_windows
 from travel_agent.planning.research.assignment_context import build_assignment_context
 
 
-def _composition_repair_section(state: TravelAgentState) -> str:
-    """The repair round's only new input: why the previous attempt failed."""
-    lines: List[str] = []
-    if state.composition_failure_context:
-        lines.append(f"- 组合失败原因：{state.composition_failure_context}")
-    if state.placement_skeleton_failure_context:
-        lines.append(
-            "- 候选门对上一轮 skeleton 的裁定："
-            f"{state.placement_skeleton_failure_context}"
-        )
-    if not lines:
+def _previous_attempt_failure_section(state: TravelAgentState) -> str:
+    """上一轮失败原因注入：这是修复轮唯一的新增输入。"""
+    if not state.composition_failure_context:
         return ""
-    body = "\n".join(lines)
     return f"""
 
 <previous_attempt_failure>
 上一轮组合失败的确切原因如下，这一轮必须修正它：
-{body}
+- {state.composition_failure_context}
 只针对上面点出的问题做最小改动：其余已经合法的候选选择、日期、顺序与当地时间保持原样，不要连带改写。
 </previous_attempt_failure>"""
 
@@ -58,19 +51,23 @@ def _composition_schema_json(
     )
 
 
-def _composition_catalog_json(state: TravelAgentState) -> str:
-    """Selected candidate facts exactly as the prompt carries them."""
-    if state.candidate_selection_plan is None:
-        raise ValueError("itinerary composition requires a Candidate Selection Plan")
+def _composition_catalog_json(state: TravelAgentState, *, skeleton_only: bool) -> str:
+    """候选事实，与提示词携带内容逐字一致（按每域容量上限截取）。"""
+    if state.recommendation_catalog is None:
+        raise ValueError("itinerary composition requires the candidate catalog")
     candidate_index = state.recommendation_catalog.candidate_index()
-    candidate_ids = state.candidate_selection_plan.composition_candidate_ids()
+    ids_by_kind = prompt_candidate_ids(
+        state.recommendation_catalog,
+        skeleton_only=skeleton_only,
+    )
     return json.dumps(
         {
             "generation_id": state.recommendation_catalog.generation_id,
             "intent_spec_revision": state.recommendation_catalog.intent_spec_revision,
             "candidates": [
                 candidate_index[candidate_id].model_dump(mode="json", exclude_none=True)
-                for candidate_id in sorted(candidate_ids)
+                for ids in ids_by_kind.values()
+                for candidate_id in ids
             ],
         },
         ensure_ascii=False,
@@ -83,25 +80,10 @@ def _composition_capabilities_json(
 ) -> str:
     """Placement Capabilities exactly as the prompt carries them."""
     return json.dumps(
-        _placement_capabilities(
+        placement_capabilities(
             state.recommendation_catalog,
             skeleton_only=skeleton_only,
-            selection_plan=state.candidate_selection_plan,
         ),
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
-
-
-def _alternative_capabilities_json(state: TravelAgentState) -> str:
-    if state.candidate_selection_plan is None:
-        raise ValueError("itinerary composition requires a Candidate Selection Plan")
-    _selected, alternatives = selected_candidate_capabilities(
-        catalog=state.recommendation_catalog,
-        selection_plan=state.candidate_selection_plan,
-    )
-    return json.dumps(
-        [item.model_dump(mode="json", exclude_none=True) for item in alternatives],
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -274,9 +256,8 @@ def _build_composition_prompt(
         skeleton_only=skeleton_only,
         strict_wire=strict_wire_schema,
     )
-    catalog = _composition_catalog_json(state)
+    catalog = _composition_catalog_json(state, skeleton_only=skeleton_only)
     capabilities = _composition_capabilities_json(state, skeleton_only=skeleton_only)
-    alternatives = _alternative_capabilities_json(state)
     rules = _composition_rules_json(state)
     intent_contract = _intent_contract_json(state)
     minimum_delivery = _minimum_delivery_json(state)
@@ -296,7 +277,7 @@ def _build_composition_prompt(
         "相邻实体之间暂时不插入路线，后续只从这个顺序确定性提取 connector gaps。"
         if skeleton_only
         else "- 同一 Day 内相邻两个 Visit/Dining placement 之间必须插入一个 Transport placement："
-        "这一对端点上只要有已准入的 public_transit / flexible 候选，就**必须**引用那个候选——"
+        "这一对端点上只要候选目录里有 public_transit / flexible 候选，就**必须**引用那个候选——"
         "它是 Provider 实测的线路、时长与票价，你写的是估计值，估计值不得顶替实测值。"
         "只有这一对端点上没有任何已选主方案时，才用 authored_route 写出出行方式与门到门分钟数"
         "（端点由服务器按前后两个停留点自动填写）。候选只给时长不给时刻表是正常的——"
@@ -306,7 +287,7 @@ def _build_composition_prompt(
         "authored_route 放在 Day 开头、Day 结尾或 long_distance 旁边这类没有前后两个停留点的位置。"
         "long_distance 只能作为远距离锚点，不能冒充市内连接，也不得输出没有连接段的路线。"
     )
-    repair_section = _composition_repair_section(state)
+    repair_section = _previous_attempt_failure_section(state)
     authoring_kinds = authoring_domains(
         state.recommendation_catalog,
         day_count=itinerary_day_count(state),
@@ -360,20 +341,20 @@ def _build_composition_prompt(
 
 <hard_contract>
 - 只输出一个可直接 json.loads 的 ItineraryCompositionDraft JSON 对象；禁止 Markdown、解释、旧通用信封或 activities[]。
-- 引用候选时只能引用 CandidateSelectionPlan 选入主方案、且由 JSON Schema 对当前 placement_kind 开放的 candidate_id：visit 只能选 VisitCandidate，dining 只能选 DiningCandidate，transport 只能选 TransportCandidate，lodging_candidate_ids 只能选 LodgingCandidate；禁止跨类型引用，也禁止复制或改写 candidate 的名称、价格、来源、交通 segments、营业事实或天气事实。
-- Composition Rules 是本轮可执行意图合同。never_violate 规则不得违反；repair_then_deviate 规则无法落实时留给 Fidelity Gate 形成明确偏差；nonblocking_preference 只参与选择和排程，不得伪装成硬事实。
-- Placement Capabilities 给出每个候选的 budget_fit / weather_fit / constraint_fit（0–1）。同一领域内优先选择分值高的候选；weather_fit 低的户外项排到天气更好的一天，budget_fit 低的项让位给分值更高的同类。
+- 引用候选时只能引用候选目录中、且由 JSON Schema 对当前 placement_kind 开放的 candidate_id：visit 只能选 VisitCandidate，dining 只能选 DiningCandidate，transport 只能选 TransportCandidate，lodging_candidate_ids 只能选 LodgingCandidate；禁止跨类型引用，也禁止复制或改写 candidate 的名称、价格、来源、交通 segments、营业事实或天气事实。
+- Composition Rules 是本轮可执行意图合同。never_violate 规则不得违反；repair_then_deviate 规则无法落实时按原意给出最接近的可行安排；nonblocking_preference 只参与选择和排程，不得伪装成硬事实。
+- Placement Capabilities 给出每个候选的调度事实（时长、营业窗口、交通端点与日期）。按当天区域、节奏与天气安排候选：户外项排到天气更好的一天，与预算档位不符的项让位给更合适的同类。
 - 主方案直接适应【规划前天气事实】里的逐日 data_kind、降水概率与风力：forecast 日的恶劣条件必须反映在排序、时间或交通选择上。
 - 本轮必须覆盖的领域、允许撰写的不足领域与精确 candidate_id 合同见最新 composition_runtime；禁止扩大授权领域。
 - 每个 Dining placement 必须选择具体门店并填写餐次；每个需要住宿的入住区间必须在 lodging_candidate_ids 选择具体 property。
 - 每次游览或用餐是独立安排，不等于地点本身；不得重复同一次安排，已排期活动也不得时间重叠。同一地点可用于不同餐次或互不重叠的游览，包括跨日复用，前提是符合用户偏好、位置或体验价值；同一个入住区间在 lodging_candidate_ids 只选一家 property。
-- 每个 Day 的 placements 必须非空。除已准入 long_distance 构成的真实 travel-only day 外，每个 Day 必须包含有实际体验意义的 Visit/Dining，不得重复凑数；不要求全程地点唯一，也不得仅因前一天用过就编造新地点。
+- 每个 Day 的 placements 必须非空。除长途锚点构成的真实 travel-only day 外，每个 Day 必须包含有实际体验意义的 Visit/Dining，不得重复凑数；不要求全程地点唯一，也不得仅因前一天用过就编造新地点。
 - **带长途锚点的 Day 允许同时安排 Visit/Dining**，条件是这些停留点必须给出 planned_start 与 planned_end，并且**全部落在锚点的同一侧**。长途锚点不是一段「忙碌时间」，它把旅行者从一座城市搬到另一座：出发前他在出发城市，抵达后他才在这个 Day 的目的地。所以只有一侧可能安排本地停留，另一侧他根本不在这座城市——
   - **抵达日**（锚点把旅行者送到这个 Day 的目的地，含跨夜锚点落在其 arrival 日期的那一天）：锚点必须写成这个 Day 的**第一个** placement，所有停留点排在它后面，且每个 planned_start 都不早于锚点的 arrival_at。
   - **离开日**（锚点把旅行者带离这个 Day 的目的地，含跨夜锚点落在其 departure 日期的那一天）：锚点必须写成这个 Day 的**最后一个** placement，所有停留点排在它前面，且每个 planned_end 都不晚于锚点的 departure_at。
   - placements 的书写顺序就是服务器读取锚点方向的依据，写反了会被当成反方向的锚点，并据此向反方向的端点索取一段市内接驳（例如把抵达高铁写在停留点之后，服务器就会去要一段「深圳的餐厅 → 上海虹桥」的市内路线）。顺序与方向必须一致。
   **锚点与停留点之间要留出符合路线时长的通行窗口及上下车缓冲**——从站台到景点、从餐厅回车站都是真实路程，需要这段时间才能排出接驳。当整份行程的每一天都被长途锚点占据（最典型的是两天往返）时，**必须**用这个办法把 required kinds 安排进去——此时不存在没有锚点的空闲 Day，把所有天都做成 travel-only 会导致 required kinds 无处安放、整份组合被拒。
-- Catalog 中存在已准入 long_distance 时，每一段**必需移动**（出发、逐对 inter_destination、返程）各选择一个主方案即可；"每个 service window 只选一个主方案" 指的是**同一段必需移动的同方向备选互斥**，不禁止同一天既到达又离开（例如 1 天同日往返，或末日既要交接又要返程）。若是后者那种同一天同时欠「到达腿」与「离开腿」的日子：**必须把到达腿放这一天第一个 placement、离开腿放这一天最后一个 placement**，所有 Visit/Dining 停留在两腿**之间**（planned_start 不早于到达腿 arrival_at、planned_end 不晚于离开腿 departure_at，且留足符合路线时长的通行窗口及上下车缓冲），不得只放一段而漏另一段。长途锚点只能放在 Placement Capabilities 给出的 departure_date 或 arrival_date 对应 Day；行程还有不带锚点的 Day 时它可以单独构成 travel-only Day。禁止把同日备选航班分配到其它日期凑行程，也禁止为了同日追加停留点而把端点不一致的市内路线硬接到长距离锚点。
+- Catalog 中存在 long_distance 候选时，每一段**必需移动**（出发、逐对 inter_destination、返程）各选择一个主方案即可；"每个 service window 只选一个主方案" 指的是**同一段必需移动的同方向备选互斥**，不禁止同一天既到达又离开（例如 1 天同日往返，或末日既要交接又要返程）。若是后者那种同一天同时欠「到达腿」与「离开腿」的日子：**必须把到达腿放这一天第一个 placement、离开腿放这一天最后一个 placement**，所有 Visit/Dining 停留在两腿**之间**（planned_start 不早于到达腿 arrival_at、planned_end 不晚于离开腿 departure_at，且留足符合路线时长的通行窗口及上下车缓冲），不得只放一段而漏另一段。长途锚点只能放在 Placement Capabilities 给出的 departure_date 或 arrival_date 对应 Day；行程还有不带锚点的 Day 时它可以单独构成 travel-only Day。禁止把同日备选航班分配到其它日期凑行程，也禁止为了同日追加停留点而把端点不一致的市内路线硬接到长距离锚点。
 {transport_contract}
 - 不生成第二份晴雨行程；局部 Plan B 由后续 typed contingency 合同处理。
 - Visit/Dining 必须同时输出 planned_start 与 planned_end 两个键：有排期时两者都是带 IANA 对应 UTC offset、且落在 DayComposition.date 当地日期内的 ISO-8601 datetime；不排具体时间时两者都为 null，禁止只输出一端。
@@ -387,14 +368,13 @@ def _build_composition_prompt(
 Intent Contract Snapshot：{intent_contract}
 Composition Rules：{rules}
 Minimum Delivery Day Shell：{minimum_delivery}
-Daily Planning Windows（默认假设，非实测交通）：{json.dumps(daily_planning_windows(state, state.recommendation_catalog, state.candidate_selection_plan), ensure_ascii=False)}
+Daily Planning Windows（默认假设，非实测交通）：{json.dumps(daily_planning_windows(state, state.recommendation_catalog), ensure_ascii=False)}
 Previous Composition Mutations：{previous_mutations}
 Current Daily Draft：{_current_draft_context(state)}
 Required Long-distance Legs：{json.dumps([leg.model_dump(mode="json") for leg in required_long_distance_legs or []], ensure_ascii=False)}
 {brief}
 Selected Candidate Facts：{catalog}
 Selected Candidate Capabilities：{capabilities}
-Alternative Candidate Capabilities（只供修复路由判断，不得直接放入本轮行程）：{alternatives}
 </context>{repair_section}
 
 <json_schema>{schema}</json_schema>

@@ -57,35 +57,8 @@ _DEADLINE_BLOCKED_WORKER_NODES = _RESEARCH_WORKER_NODES | _COMPOSITION_WORKER_NO
 _COMPOSITION_MODEL_WINDOW_NODES = _COMPOSITION_WORKER_NODES | {"budget_estimate"}
 
 
-def is_structural_connector_round(state: Any, node_name: str) -> bool:
-    """Whether this worker invocation only resolves a composed adjacency chain.
-
-    Exact local connectors cannot be known before the itinerary skeleton exists.
-    They are deterministic Provider lookups over already-selected endpoints, not a
-    new candidate-discovery round, so they belong to the composition window even
-    though the reusable implementation lives in ``transport_researcher``.
-    """
-
-    if node_name != "transport_researcher":
-        return False
-    assignments = getattr(state, "agent_assignments", None) or {}
-    assignment = assignments.get(node_name) or {}
-    connector_gaps = assignment.get("connector_gaps") or []
-    required_classes = set(assignment.get("required_transport_classes") or [])
-    return bool(
-        getattr(state, "placement_skeleton", None) is not None
-        and getattr(state, "trip_workspace_v2", None) is None
-        and assignment.get("require_current_candidate") is True
-        and connector_gaps
-        and required_classes
-        and required_classes <= {"public_transit", "flexible"}
-    )
-
-
 def _model_window_for_node(node_name: str, state: Any) -> ModelWindow:
-    if node_name in _COMPOSITION_MODEL_WINDOW_NODES or is_structural_connector_round(
-        state, node_name
-    ):
+    if node_name in _COMPOSITION_MODEL_WINDOW_NODES:
         return "composition"
     return "research"
 

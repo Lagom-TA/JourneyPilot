@@ -96,7 +96,6 @@ _PUBLIC_COMPARISON_LABELS = {
     "provider_place_type": "实体类型已核验",
     "provider_country_code": "所在国家或地区已核验",
     "address": "地址",
-    "external_quality_match": "外部评价已核验",
     "average_spend_cny": "人均消费",
     "nightly_price_cny": "每晚价格",
     "total_price_cny": "总价",

@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import re
-from collections import defaultdict
-from typing import Dict, Mapping, Sequence
+from typing import Dict, Sequence
 
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.assignments import strip_round_suffix
 from travel_agent.planning.nodes import RESEARCH_WORKER_NODES
 from travel_agent.planning.research.candidates import ResearchCandidate
-from travel_agent.planning.research.catalog import CandidateGateIntegrityError
-from travel_agent.planning.research.domains import ResearchDomain
 from travel_agent.planning.research.packets import ResearchPacket
 
 _ROUND_SUFFIX = re.compile(r"_r(\d+)$")
@@ -37,9 +34,8 @@ def _latest_packets(
 def _catalog_packets(state: TravelAgentState) -> list[ResearchPacket]:
     """Carry forward still-current candidates across scoped research rounds."""
     if state.planning_generation is None:
-        raise CandidateGateIntegrityError(
-            "missing_planning_generation",
-            "candidate gate requires a planning generation",
+        raise ValueError(
+            "missing_planning_generation: candidate catalog requires a planning generation"
         )
     generation_id = state.planning_generation.generation_id
     current = _latest_packets(
@@ -138,59 +134,3 @@ def _packet_candidate_closure(
         }
     )
 
-
-def _candidate_domain(candidate: ResearchCandidate) -> ResearchDomain:
-    if candidate.candidate_kind == "visit":
-        return ResearchDomain.VISIT
-    if candidate.candidate_kind == "dining":
-        return ResearchDomain.DINING
-    if candidate.candidate_kind == "lodging":
-        return ResearchDomain.LODGING
-    return (
-        ResearchDomain.LONG_DISTANCE_TRANSPORT
-        if candidate.transport_class == "long_distance"
-        else ResearchDomain.LOCAL_TRANSPORT
-    )
-
-
-def _apply_candidate_caps(
-    packets: Sequence[ResearchPacket],
-    per_domain_caps: Mapping[str, int],
-) -> list[ResearchPacket]:
-    origin_priority = {
-        "targeted_repair": 0,
-        "intent_query": 1,
-        "structural_query": 2,
-        "generic_fallback": 3,
-        "composer_authored_fallback": 4,
-    }
-    rows: list[tuple[int, str, ResearchDomain]] = []
-    for packet in packets:
-        discovery = {
-            record.candidate_id: record for record in packet.candidate_discovery_records
-        }
-        for candidate in packet.candidates:
-            record = discovery[candidate.candidate_id]
-            priority = min(origin_priority[origin.value] for origin in record.origins)
-            rows.append(
-                (priority, candidate.candidate_id, _candidate_domain(candidate))
-            )
-    rows.sort()
-    kept: set[str] = set()
-    counts: dict[ResearchDomain, int] = defaultdict(int)
-    for _priority, candidate_id, domain in rows:
-        cap = max(int(per_domain_caps.get(domain.value, 0)), 0)
-        if counts[domain] >= cap:
-            continue
-        kept.add(candidate_id)
-        counts[domain] += 1
-    capped: list[ResearchPacket] = []
-    for packet in packets:
-        candidates = [
-            candidate
-            for candidate in packet.candidates
-            if candidate.candidate_id in kept
-        ]
-        if candidates:
-            capped.append(_packet_candidate_closure(packet, candidates))
-    return capped

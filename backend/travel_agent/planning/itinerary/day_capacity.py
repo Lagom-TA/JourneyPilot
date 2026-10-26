@@ -126,7 +126,7 @@ def disclose_default_walking(workspace, gaps):
     return workspace.model_copy(update={"itinerary": itinerary})
 
 
-def daily_planning_windows(state, catalog, selection_plan):
+def daily_planning_windows(state, catalog):
     draft = state.minimum_delivery_draft
     if draft is None:
         return []
@@ -171,20 +171,10 @@ def daily_planning_windows(state, catalog, selection_plan):
         ): leg
         for leg in legs
     }
-    selected_ids = (
-        {
-            entry.candidate_id
-            for entry in selection_plan.entries
-            if entry.eligible_for_composition
-        }
-        if selection_plan
-        else set()
-    )
     anchors = [
         candidate
         for candidate in catalog.candidate_index().values()
-        if candidate.candidate_id in selected_ids
-        and isinstance(candidate, TransportCandidate)
+        if isinstance(candidate, TransportCandidate)
         and candidate.transport_class == "long_distance"
         and candidate.departure_at is not None
         and candidate.arrival_at is not None

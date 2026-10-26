@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from travel_agent.planning.delivery.requirement_contracts import EntityIntentExplanation
 from travel_agent.planning.itinerary.models import DiningStop
 from travel_agent.planning.itinerary.models import LodgingStay
@@ -11,9 +10,6 @@ from travel_agent.planning.itinerary.models import VisitStop
 from travel_agent.planning.itinerary.options import PersonalizationInfluence
 from travel_agent.planning.references import EntityRef
 from travel_agent.planning.references import EntityType
-from travel_agent.planning.requirements.candidate_match_contracts import (
-    IntentMatchStatus,
-)
 from travel_agent.planning.requirements.intent_contracts import IntentItem
 from travel_agent.planning.requirements.intent_contracts import IntentKind
 from travel_agent.planning.requirements.intent_contracts import IntentSpec
@@ -57,33 +53,6 @@ def _target_matches(intent: IntentItem | IntentContractRequirement, entity) -> b
     return intent.target in {target, IntentTarget.TRIP, IntentTarget.ITINERARY}
 
 
-def _effect(intent: IntentItem | IntentContractRequirement) -> str:
-    if intent.kind is IntentKind.OUTPUT_REQUIREMENT:
-        return "output_requirement"
-    if intent.kind in {
-        IntentKind.QUANTITY,
-        IntentKind.CADENCE,
-        IntentKind.TIME_WINDOW,
-        IntentKind.SEQUENCING,
-        IntentKind.PACE,
-    }:
-        return "schedule_rule"
-    if intent.kind is IntentKind.MUST_EXCLUDE:
-        return "candidate_filter"
-    if intent.kind in {IntentKind.THEME, IntentKind.ATTRIBUTE_PREFERENCE}:
-        return "option_ranking"
-    return "selection_reason"
-
-
-def _source_kind(intent: IntentItem | IntentContractRequirement) -> str:
-    source_kind = getattr(intent, "source_kind", "current_request")
-    if source_kind == "saved_preference":
-        return "saved_preference"
-    if source_kind == "trip_context":
-        return "trip_context"
-    return "current_request"
-
-
 def _default_explanation(entity, intent: IntentItem | IntentContractRequirement) -> str:
     selection_reason = getattr(entity, "selection_reason", None)
     if selection_reason:
@@ -97,49 +66,13 @@ def bind_intent_context(
     workspace: TripWorkspaceV2,
     intent_spec: IntentSpec | IntentContractSnapshot,
 ) -> TripWorkspaceV2:
-    intent_by_id = {intent.intent_id: intent for intent in intent_spec.active_items}
-    matches_by_candidate: dict[str, list] = defaultdict(list)
-    for match in workspace.recommendation_catalog.candidate_intent_matches:
-        if (
-            match.status is IntentMatchStatus.MATCHED
-            and match.intent_id in intent_by_id
-        ):
-            matches_by_candidate[match.candidate_id].append(match)
-
+    """把输出要求类的 intent 绑定到每个行程实体，形成个性化影响记录。"""
     influences: dict[str, PersonalizationInfluence] = {}
 
     def bind_entity(entity):
         entity_ref = _entity_ref(entity)
         explanations: dict[str, EntityIntentExplanation] = {}
         lineage_ids: set[str] = set()
-        candidate_id = entity.lineage.candidate_id
-        for match in matches_by_candidate.get(candidate_id, []):
-            intent = intent_by_id[match.intent_id]
-            if not _target_matches(intent, entity):
-                continue
-            explanation = match.public_reason or _default_explanation(entity, intent)
-            explanations[intent.intent_id] = EntityIntentExplanation(
-                intent_id=intent.intent_id,
-                label=intent.public_summary[:160],
-                explanation=explanation,
-                evidence_basis=(
-                    "planning_judgment"
-                    if match.reason_code == "candidate_category_classification"
-                    else "verified_fact"
-                    if match.supporting_fact_assertion_ids
-                    else "supported_description"
-                ),
-            )
-            influence_id = f"influence_{canonical_json_hash({'generation_id': workspace.generation_id, 'entity_id': entity_ref.entity_id, 'intent_id': intent.intent_id})[:24]}"
-            influences[influence_id] = PersonalizationInfluence(
-                influence_id=influence_id,
-                target_ref=entity_ref,
-                intent_id=intent.intent_id,
-                effect=_effect(intent),
-                source_kind=_source_kind(intent),
-                display_text=intent.public_summary,
-            )
-            lineage_ids.add(influence_id)
 
         for intent in intent_spec.active_items:
             if (
@@ -203,3 +136,12 @@ def bind_intent_context(
             ),
         }
     )
+
+
+def _source_kind(intent: IntentItem | IntentContractRequirement) -> str:
+    source_kind = getattr(intent, "source_kind", "current_request")
+    if source_kind == "saved_preference":
+        return "saved_preference"
+    if source_kind == "trip_context":
+        return "trip_context"
+    return "current_request"

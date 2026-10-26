@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from travel_agent.planning.research.failure_protocol import PREFIX_PROVIDER_CAPABILITY, PREFIX_PROVIDER_DETERMINISTIC, PREFIX_PROVIDER_EMPTY, PREFIX_PROVIDER_TRANSIENT, PREFIX_SCHEMA_GATE
+from travel_agent.planning.research.failure_protocol import PREFIX_PROVIDER_CAPABILITY, PREFIX_PROVIDER_DETERMINISTIC, PREFIX_PROVIDER_EMPTY, PREFIX_PROVIDER_TRANSIENT
 
 ProviderFailureCategory = Literal["deterministic", "transient", "incomplete"]
 
@@ -53,7 +53,6 @@ _DETERMINISTIC_MARKERS = (
     "provider contract",
 )
 _EXPLICIT_EXTERNAL_FAILURE_MARKERS = (
-    PREFIX_SCHEMA_GATE,
     PREFIX_PROVIDER_EMPTY,
     PREFIX_PROVIDER_CAPABILITY,
     PREFIX_PROVIDER_TRANSIENT,
@@ -75,16 +74,6 @@ def classify_provider_failure(value: object) -> ProviderFailureClassification:
     "Classify an external/provider failure without treating it as evidence."
     raw = str(value or "")
     text = raw.casefold()
-    if text.startswith(PREFIX_SCHEMA_GATE):
-        if any(marker in text for marker in _TRANSIENT_MARKERS):
-            return ProviderFailureClassification(
-                category="transient",
-                reason_code="provider_transient_failure",
-            )
-        return ProviderFailureClassification(
-            category="deterministic",
-            reason_code="provider_deterministic_failure",
-        )
     if text.startswith(PREFIX_PROVIDER_DETERMINISTIC):
         return ProviderFailureClassification(
             category="deterministic",

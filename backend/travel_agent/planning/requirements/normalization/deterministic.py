@@ -226,7 +226,7 @@ def _enforce_deterministic_intents(
                 IntentStrength.HARD,
                 CategoryIntentValue(categories=[term]),
                 f"必须安排{term}",
-                ["research", "admission", "ranking", "composition"],
+                ["research", "composition"],
                 VerificationMode.MIXED,
             )
             for term in terms

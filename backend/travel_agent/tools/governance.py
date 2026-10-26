@@ -110,19 +110,6 @@ def compiled_tool_source_id_is_about(source_record_id: str, entity_id: str) -> b
     ) and source_record_id.endswith(f"_{compiled_tool_source_entity_digest(entity_id)}")
 
 
-# Envelope ``metadata`` key the dining quality preflight stamps onto the one
-# envelope that proves a branch-level review/quality check really resolved to a
-# specific place (``agents.destination_researcher.node``: the amap POI
-# substitute for a CN review page, and the generic non-CN review search whose
-# result matched the branch's locality tokens).  It is the *only* discriminator
-# that separates "a review of this exact branch was retrieved" from "this place
-# was looked up on a map", because both compile into an ``external_tool``
-# SourceRecord about the same ``place_id``.  The research transcript reader uses it
-# to decide which envelopes become quality sources, and that is its only reader:
-# a restaurant does not owe a review to be admitted, so whether this key is present
-# decides only whether the report *marks* the option 外部评价已核验 — never whether
-# the restaurant is delivered at all.
-QUALITY_VERIFIED_PLACE_IDS_METADATA_KEY = "quality_verified_place_ids"
 
 
 class ToolTrustLevel(str, Enum):

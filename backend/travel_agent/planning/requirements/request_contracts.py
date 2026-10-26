@@ -30,8 +30,6 @@ class ClauseDisposition(str, Enum):
 class AmendmentImpact(str, Enum):
     IDENTITY_CHANGE = "identity_change"
     RESEARCH_AFFECTING = "research_affecting"
-    ADMISSION_AFFECTING = "admission_affecting"
-    RANKING_AFFECTING = "ranking_affecting"
     COMPOSITION_AFFECTING = "composition_affecting"
     PROJECTION_ONLY = "projection_only"
     UNSUPPORTED = "unsupported"

@@ -65,9 +65,7 @@ _UNSUPPORTED_CUES = (
 _IMPACT_PRECEDENCE = {
     AmendmentImpact.PROJECTION_ONLY: 0,
     AmendmentImpact.COMPOSITION_AFFECTING: 1,
-    AmendmentImpact.RANKING_AFFECTING: 2,
-    AmendmentImpact.ADMISSION_AFFECTING: 3,
-    AmendmentImpact.RESEARCH_AFFECTING: 4,
+    AmendmentImpact.RESEARCH_AFFECTING: 2,
 }
 
 
@@ -142,15 +140,32 @@ def apply_runtime_amendments(state: TravelAgentState) -> Dict[str, Any]:
                 "action": "runtime_amendment",
                 "revision": state.plan_gate_revision_count + 1,
             },
-            "previous_selected_candidate_ids": sorted(
-                state.candidate_selection_plan.composition_candidate_ids()
-            )
-            if state.candidate_selection_plan is not None
-            else state.previous_selected_candidate_ids,
+            "previous_selected_candidate_ids": _lineage_candidate_ids(state)
+            or state.previous_selected_candidate_ids,
             **invalidation_update(impact),
         }
     )
     return update
+
+
+def _lineage_candidate_ids(state: TravelAgentState) -> list[str]:
+    """当前工作区行程实体引用过的候选 id，供下一轮调研去重。"""
+    workspace = state.trip_workspace_v2
+    if workspace is None:
+        return []
+    itinerary = workspace.itinerary
+    return sorted(
+        {
+            entity.lineage.candidate_id
+            for entity in (
+                *itinerary.visit_stops,
+                *itinerary.dining_stops,
+                *itinerary.lodging_stays,
+                *itinerary.transport_legs,
+            )
+            if entity.lineage.candidate_id
+        }
+    )
 
 
 def _strongest_impact(impacts: Iterable[AmendmentImpact]) -> AmendmentImpact:
@@ -185,11 +200,7 @@ def _rejection_for_stage(
             reason_code="delivery_already_committed",
         )
     if (
-        impact
-        in {
-            AmendmentImpact.RESEARCH_AFFECTING,
-            AmendmentImpact.ADMISSION_AFFECTING,
-        }
+        impact is AmendmentImpact.RESEARCH_AFFECTING
         and research_closed
     ):
         return IntentAmendmentRejection(
@@ -199,11 +210,7 @@ def _rejection_for_stage(
             requires_new_run=True,
         )
     if (
-        impact
-        in {
-            AmendmentImpact.COMPOSITION_AFFECTING,
-            AmendmentImpact.RANKING_AFFECTING,
-        }
+        impact is AmendmentImpact.COMPOSITION_AFFECTING
         and composition_closed
     ):
         return IntentAmendmentRejection(

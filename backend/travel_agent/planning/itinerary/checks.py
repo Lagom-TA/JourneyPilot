@@ -11,7 +11,6 @@ from travel_agent.planning.itinerary.adjacency import (
     long_distance_anchor_day_role,
 )
 from travel_agent.planning.itinerary.bindings import (
-    _passed_candidates,
     _topology_place_id,
 )
 from travel_agent.planning.itinerary.draft import (
@@ -181,7 +180,7 @@ def _validate_placement_content(
     required_long_distance_legs: Optional[list["ProviderRouteLegScope"]] = None,
     required_leg_scope_ids: Optional[dict[str, str]] = None,
 ) -> None:
-    candidates = _passed_candidates(catalog)
+    candidates = catalog.candidate_index()
     expected_dates = [
         skeleton.days[0].date + timedelta(days=index)
         for index in range(len(skeleton.days))
@@ -428,7 +427,7 @@ def validate_itinerary_transport_topology(
         required_long_distance_legs=required_long_distance_legs,
         required_leg_scope_ids=required_leg_scope_ids,
     )
-    candidates = _passed_candidates(catalog)
+    candidates = catalog.candidate_index()
 
     long_distance_service_groups: dict[
         tuple[str, Optional[date], Optional[date]], set[str]

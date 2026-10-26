@@ -155,53 +155,6 @@ def test_the_node_window_table_covers_every_worker_the_graph_fans_out_to():
     assert NODE_DELIVERY_FINALIZER == "delivery_finalizer"
 
 
-def test_exact_connector_lookup_uses_the_composition_window():
-    """A skeleton-derived route lookup is composition, not late discovery."""
-
-    from travel_agent.planning import execution
-    from travel_agent.planning.state import TravelAgentState
-
-    state = TravelAgentState.model_construct(
-        placement_skeleton=object(),
-        trip_workspace_v2=None,
-        agent_assignments={
-            "transport_researcher": {
-                "require_current_candidate": True,
-                "required_transport_classes": ["public_transit", "flexible"],
-                "connector_gaps": [{"gap_id": "connector_gap_1"}],
-            }
-        },
-    )
-
-    assert execution.is_structural_connector_round(state, "transport_researcher")
-    assert (
-        execution._model_window_for_node("transport_researcher", state)
-        == "composition"
-    )
-
-
-def test_ordinary_transport_research_stays_in_the_research_window():
-    from travel_agent.planning import execution
-    from travel_agent.planning.state import TravelAgentState
-
-    state = TravelAgentState.model_construct(
-        placement_skeleton=object(),
-        trip_workspace_v2=None,
-        agent_assignments={
-            "transport_researcher": {
-                "require_current_candidate": True,
-                "required_transport_classes": ["long_distance"],
-                "connector_gaps": [],
-            }
-        },
-    )
-
-    assert not execution.is_structural_connector_round(
-        state, "transport_researcher"
-    )
-    assert execution._model_window_for_node("transport_researcher", state) == "research"
-
-
 async def test_node_scope_shares_budget_attribution_and_lifecycle_with_low_level_calls():
     from types import SimpleNamespace
 

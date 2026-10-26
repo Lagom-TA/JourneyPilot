@@ -15,10 +15,7 @@ from travel_agent.planning.transport import (
     TransportMode,
     TransportSegment,
 )
-from travel_agent.tools.governance import (
-    QUALITY_VERIFIED_PLACE_IDS_METADATA_KEY,
-    ToolExecutionStatus,
-)
+from travel_agent.tools.governance import ToolExecutionStatus
 
 
 def _retrieved_source_snapshots(
@@ -153,35 +150,6 @@ def _successful_place_records(
             if not all(isinstance(value, str) and value.strip() for value in values):
                 continue
             records[str(item["place_id"])] = (envelope, item, index)
-    return records
-
-
-def _quality_verified_place_sources(
-    context_messages: Sequence[Mapping[str, Any]],
-) -> dict[str, list[dict[str, Any]]]:
-    "Index evidence-eligible branch-level dining quality checks by place id."
-    records: dict[str, list[dict[str, Any]]] = {}
-    for message in context_messages:
-        envelope = _parse_tool_envelope(message)
-        if envelope is None or envelope.get("status") != "success":
-            continue
-        metadata = envelope.get("metadata")
-        if (
-            not isinstance(metadata, dict)
-            or metadata.get("evidence_allowed") is not True
-            or metadata.get("quarantine_result") is True
-        ):
-            continue
-        place_ids = metadata.get(QUALITY_VERIFIED_PLACE_IDS_METADATA_KEY)
-        if not isinstance(place_ids, list):
-            continue
-        audit_id = str(envelope.get("audit_id") or "").strip()
-        if not audit_id:
-            continue
-        for place_id in place_ids:
-            normalized = str(place_id or "").strip()
-            if normalized:
-                records.setdefault(normalized, []).append(envelope)
     return records
 
 

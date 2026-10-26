@@ -36,7 +36,7 @@ def gateway_settings(monkeypatch):
 
 
 @pytest.mark.parametrize("stream", [False, True])
-async def test_deadline_rejection_before_provider_admission_has_no_usage_attempt(
+async def test_deadline_rejection_before_first_provider_call_has_no_usage_attempt(
     gateway_settings, monkeypatch, tmp_path, stream,
 ):
     import travel_agent.llm.router as router_module

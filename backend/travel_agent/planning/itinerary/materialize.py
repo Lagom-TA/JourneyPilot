@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING, Mapping, Optional
 
-from travel_agent.planning.research.selection_contracts import CandidateSelectionPlan
 from travel_agent.planning.itinerary.mutation_contracts import CompositionMutation
 from travel_agent.planning.requirements.place_names import CONTROLLED_DESTINATION_ANCHOR_PREFIX, controlled_public_place_name
 from travel_agent.planning.itinerary.day_themes import derive_day_theme
@@ -26,7 +25,6 @@ from travel_agent.planning.itinerary.bindings import (
     _authored_lineage,
     _lineage,
     _located_authored_place,
-    _passed_candidates,
 )
 from travel_agent.planning.itinerary.checks import validate_itinerary_transport_topology
 from travel_agent.planning.itinerary.draft import (
@@ -207,7 +205,6 @@ def materialize_trip_workspace(
     composition: ItineraryCompositionDraft,
     catalog: RecommendationCatalog,
     intent_contract_snapshot: IntentContractSnapshot,
-    candidate_selection_plan: CandidateSelectionPlan,
     composition_mutations: list[CompositionMutation],
     user_input_anchors: Optional[list[UserInputAnchor]] = None,
     reference_services: Optional[list[ProviderReferenceService]] = None,
@@ -215,7 +212,7 @@ def materialize_trip_workspace(
     required_long_distance_legs: Optional[list["ProviderRouteLegScope"]] = None,
     required_leg_scope_ids: Optional[dict[str, str]] = None,
 ) -> TripWorkspaceV2:
-    candidates = _passed_candidates(catalog)
+    candidates = catalog.candidate_index()
     used_ids = {
         placement.candidate_id
         for day in composition.days
@@ -225,7 +222,7 @@ def materialize_trip_workspace(
     missing = used_ids - set(candidates)
     if missing:
         raise ItineraryCompositionError(
-            f"composition references candidates that did not pass admission: {sorted(missing)}"
+            f"composition references unknown candidates: {sorted(missing)}"
         )
     validate_itinerary_transport_topology(
         composition,
@@ -742,32 +739,6 @@ def materialize_trip_workspace(
             reference_services or [], transport_legs=transport, day_plans=day_plans
         ),
     )
-    admissions = list(catalog.admission_results)
-    admission_index = catalog.admission_index()
-    for slot in slots:
-        for option in slot.options:
-            key = (option.candidate_id, slot.selection_slot_id)
-            if key in admission_index:
-                continue
-            base = admission_index.get((option.candidate_id, None)) or next(
-                (
-                    item
-                    for item in catalog.admission_results
-                    if item.candidate_id == option.candidate_id
-                    and item.status == "passed"
-                ),
-                None,
-            )
-            if base is None or base.status != "passed":
-                raise ItineraryCompositionError(
-                    "selection slot option lacks a passed candidate admission"
-                )
-            scoped = base.model_copy(
-                update={"selection_slot_id": slot.selection_slot_id}
-            )
-            admissions.append(scoped)
-            admission_index[key] = scoped
-    catalog = catalog.model_copy(update={"admission_results": admissions})
     return TripWorkspaceV2(
         run_id=run_id,
         generation_id=catalog.generation_id,
@@ -776,30 +747,6 @@ def materialize_trip_workspace(
         recommendation_catalog=catalog,
         intent_contract_snapshot=intent_contract_snapshot,
         composition_mutations=composition_mutations,
-        candidate_selection_plan=candidate_selection_plan,
         user_input_anchors=user_input_anchors or [],
         selection_slots=slots,
     )
-
-
-def _restore_full_catalog(
-    workspace: TripWorkspaceV2,
-    full_catalog: RecommendationCatalog | None,
-) -> TripWorkspaceV2:
-    if full_catalog is None:
-        return workspace
-    admissions = {
-        (result.candidate_id, result.selection_slot_id): result
-        for result in full_catalog.admission_results
-    }
-    admissions.update(
-        {
-            (result.candidate_id, result.selection_slot_id): result
-            for result in workspace.recommendation_catalog.admission_results
-            if result.selection_slot_id is not None
-        }
-    )
-    restored_catalog = full_catalog.model_copy(
-        update={"admission_results": list(admissions.values())}
-    )
-    return workspace.model_copy(update={"recommendation_catalog": restored_catalog})

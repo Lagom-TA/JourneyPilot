@@ -145,7 +145,6 @@ def _replacement_operation(
 ) -> Optional[WeatherAdjustmentOperation]:
     workspace = bundle.workspace
     candidates = workspace.recommendation_catalog.candidate_index()
-    admissions = workspace.recommendation_catalog.admission_index()
     day = next((item for item in weather.days if item.date == impact.date), None)
     if day is None:
         return None
@@ -167,12 +166,7 @@ def _replacement_operation(
             if option.option_id == slot.selected_option_id:
                 continue
             candidate = candidates.get(option.candidate_id)
-            admission = admissions.get((option.candidate_id, slot.selection_slot_id))
-            if (
-                not isinstance(candidate, (DiningCandidate, LodgingCandidate))
-                or admission is None
-                or admission.status != "passed"
-            ):
+            if not isinstance(candidate, (DiningCandidate, LodgingCandidate)):
                 continue
             fit = _candidate_day_fit(candidate, day, expected_type, target_id)
             if fit > current_fit:
@@ -199,8 +193,6 @@ def _replacement_operation(
             for item in candidates.values()
             if isinstance(item, VisitCandidate)
             and item.candidate_id != visit.lineage.candidate_id
-            and admissions.get((item.candidate_id, None)) is not None
-            and admissions[(item.candidate_id, None)].status == "passed"
         )
     )
     if not alternatives or -alternatives[0][0] <= current_fit:

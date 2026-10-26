@@ -26,7 +26,6 @@ NODE_PHASES: Dict[str, str] = {
     "transport_researcher": "research",
     "accommodation_researcher": "research",
     "itinerary_planner": "research",
-    "candidate_gate": "verification",
     "budget_estimate": "delivery",
     "delivery_projector": "delivery",
     "delivery_finalizer": "delivery",

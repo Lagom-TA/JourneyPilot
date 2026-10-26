@@ -223,7 +223,7 @@ async def test_langgraph_fan_in_resume_preserves_typed_worker_updates(crash_boun
     async def gate(state: TravelAgentState):
         if crash[0] and crash_boundary == "after_pending_write":
             crash[0] = False
-            raise RuntimeError("crash before gate admission")
+            raise RuntimeError("crash before delivery finalization")
         gate_calls.append(state)
         assert set(state.research_packets) == {"visit", "lodging"}
         assert all(packet.source_records for packet in state.research_packets.values())

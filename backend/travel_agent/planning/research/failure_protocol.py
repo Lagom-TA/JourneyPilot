@@ -5,9 +5,6 @@ from __future__ import annotations
 from typing import Final
 
 
-PREFIX_SCHEMA_GATE: Final = "schema_gate:"
-
-
 PREFIX_PROVIDER_EMPTY: Final = "provider_empty:"
 
 
@@ -24,7 +21,6 @@ PREFIX_WORKER_FAILED: Final = "worker_failed:"
 
 
 KNOWN_PREFIXES: Final = (
-    PREFIX_SCHEMA_GATE,
     PREFIX_PROVIDER_EMPTY,
     PREFIX_PROVIDER_CAPABILITY,
     PREFIX_PROVIDER_TRANSIENT,

@@ -34,9 +34,6 @@ NODE_PLAN_GATE = "plan_gate"
 NODE_DISPATCHER = "dispatcher"
 
 
-NODE_CANDIDATE_GATE = "candidate_gate"
-
-
 NODE_DESTINATION = "destination_researcher"
 
 

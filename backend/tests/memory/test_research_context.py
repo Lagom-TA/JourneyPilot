@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from tests.fixtures.research_packets import (
     make_packet,
     make_research_query,
@@ -14,7 +12,6 @@ from travel_agent.memory.research_context import (
     format_worker_research_context,
     project_research_context,
 )
-from travel_agent.planning.outcomes import CandidateResearchGap
 
 
 def _scope(**overrides):
@@ -52,7 +49,6 @@ def test_view_filters_runs_generations_destinations_and_keeps_latest_candidate()
     assert view["destination_ids"] == ["tokyo"]
     assert [item["research_packet_id"] for item in view["coordination"]] == ["new"]
     assert view["coordination"][0]["candidates"][0]["candidate_id"] == "visit_a"
-    assert view["repair_packets"] == []
     assert (
         project_research_context(
             packets, **_scope(worker_kind="destination_researcher")
@@ -103,139 +99,6 @@ def test_coordination_preserves_values_units_validity_and_source_links_without_s
     facts["estimated_cost_cny"]["asserted_value"] = 0
     facts["accessibility_metadata"]["asserted_value"]["routes"].append("changed")
     assert packet.model_dump(mode="json") == before
-
-
-@pytest.mark.parametrize("via_gap", [False, True])
-def test_targeted_repair_keeps_selected_entity_complete_evidence_closure(via_gap):
-    packet = make_packet(
-        entities=(("visit_a", "tokyo"), ("visit_b", "tokyo")), extra_facts=True
-    )
-    before = packet.model_dump(mode="json")
-    gap = CandidateResearchGap(
-        gap_id="gap_a",
-        worker_kind="destination_researcher",
-        reason="missing_comparison_fact",
-        candidate_id="visit_a",
-        generation_id="generation_test",
-        field_path="wheelchair_access",
-        destination_id="tokyo",
-        query_id="query_test",
-    )
-    view = project_research_context(
-        {"packet": packet},
-        **_scope(
-            worker_kind="destination_researcher",
-            gaps=[gap] if via_gap else [],
-            assignment={} if via_gap else {"excluded_candidate_ids": ["visit_a"]},
-        ),
-    )
-    assert not view.coordination
-    closure = view.repair_packets[0]
-    assert [candidate["candidate_id"] for candidate in closure["candidates"]] == [
-        "visit_a"
-    ]
-    assert {fact["entity_ref"]["entity_id"] for fact in closure["fact_assertions"]} == {
-        "visit_a"
-    }
-    assert {fact["status"] for fact in closure["fact_assertions"]} >= {
-        "verified",
-        "conflict",
-        "missing",
-    }
-    assert {source["source_record_id"] for source in closure["source_records"]} == {
-        "source_visit_a",
-        "contradictory_visit_a",
-    }
-    for source in closure["source_records"]:
-        original = next(
-            s
-            for s in before["source_records"]
-            if s["source_record_id"] == source["source_record_id"]
-        )
-        assert source["snapshot"] == original["snapshot"]
-        assert source["content_hash"] == original["content_hash"]
-    assert {
-        item["candidate_id"] for item in closure["candidate_discovery_records"]
-    } == {"visit_a"}
-    assert all(
-        item["entity_ref"]["entity_id"] == "visit_a"
-        for item in closure["field_provenance"]
-    )
-    assert "query_context" not in closure
-    closure["source_records"][0]["snapshot"]["name"] = "changed"
-    assert packet.model_dump(mode="json") == before
-
-
-def test_unassigned_open_gaps_do_not_broaden_scope_but_explicit_target_can():
-    packet = make_packet(entities=(("visit_other", "osaka"),))
-    gap = CandidateResearchGap(
-        gap_id="gap_other",
-        worker_kind="destination_researcher",
-        reason="missing_comparison_fact",
-        candidate_id="visit_other",
-        generation_id="generation_test",
-        destination_id="osaka",
-        query_id="query_other",
-        field_path="wheelchair_access",
-    )
-    packets = {"packet": packet}
-    view = project_research_context(
-        packets, **_scope(worker_kind="destination_researcher", gaps=[gap])
-    )
-    assert not view.repair_packets
-    explicit = project_research_context(
-        packets,
-        **_scope(
-            worker_kind="destination_researcher",
-            assignment={"excluded_candidate_ids": ["visit_other"]},
-        ),
-    )
-    assert explicit.repair_packets[0]["candidates"][0]["destination_id"] == "osaka"
-
-
-@pytest.mark.parametrize(
-    "status,generation,worker",
-    [
-        ("resolved", "generation_test", "destination_researcher"),
-        ("exhausted", "generation_test", "destination_researcher"),
-        ("open", "generation_old", "destination_researcher"),
-        ("open", "generation_test", "transport_researcher"),
-    ],
-)
-def test_closed_old_or_other_worker_gaps_do_not_trigger_repair(
-    status, generation, worker
-):
-    packet = make_packet()
-    gap = CandidateResearchGap(
-        gap_id="gap",
-        worker_kind=worker,
-        reason="missing_comparison_fact",
-        candidate_id="visit_a",
-        generation_id=generation,
-        status=status,
-        field_path="wheelchair_access",
-    )
-    view = project_research_context(
-        {"packet": packet}, **_scope(worker_kind="destination_researcher", gaps=[gap])
-    )
-    assert not view.repair_packets and not view.coordination
-
-
-@pytest.mark.parametrize("worker", ["accommodation_researcher", "transport_researcher"])
-def test_each_worker_receives_own_repair_closure(worker):
-    packet = make_packet(worker=worker, extra_facts=True)
-    view = project_research_context(
-        {"packet": packet},
-        **_scope(
-            worker_kind=worker,
-            assignment={"excluded_candidate_ids": ["visit_a"]},
-        ),
-    )
-    assert not view.coordination
-    assert view.repair_packets[0]["candidates"] == [
-        packet.candidates[0].model_dump(mode="json", exclude_none=True)
-    ]
-    assert len(view.repair_packets[0]["source_records"]) == 2
 
 
 def test_transport_coordination_preserves_endpoints_segments_and_timing():

@@ -6,7 +6,7 @@ import json
 import logging
 from typing import Any, Mapping, Sequence
 
-from travel_agent.planning.references import EntityRef, EntityType
+from travel_agent.planning.references import EntityRef
 from travel_agent.planning.research.evidence import (
     FactAssertion,
     FactSourceLink,
@@ -26,7 +26,7 @@ from .sources import (
     _provider_snapshot_source_fields,
     _source_retrieved_at,
 )
-from .transcript import _quality_verified_place_sources, _successful_place_records
+from .transcript import _successful_place_records
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,6 @@ def _bind_successful_place_identity(
     if not isinstance(candidates, list) or not candidates:
         return {}
     records = _successful_place_records(context_messages)
-    quality_sources = _quality_verified_place_sources(context_messages)
     if not records:
         return {}
     generated_at = payload.get("generated_at")
@@ -123,8 +122,6 @@ def _bind_successful_place_identity(
         candidate["observed_at"] = observed_at
         coordinate_pair = _provider_coordinate_pair(provider_place)
         replaced_field_paths = set(identity_fields)
-        if candidate_kind == "dining":
-            replaced_field_paths.add("external_quality_match")
         if coordinate_pair is not None:
             replaced_field_paths.update(("latitude", "longitude"))
         replaced_fact_ids = {
@@ -244,89 +241,6 @@ def _bind_successful_place_identity(
                         reference_ids=[coordinate_fact_id],
                     ).model_dump(mode="python")
                 )
-        if candidate_kind == "dining":
-            quality_envelopes = quality_sources.get(place_id, [])
-            quality_source_links: list[FactSourceLink] = []
-            quality_audit_ids: list[str] = []
-            for quality_envelope in quality_envelopes:
-                quality_audit_id = str(quality_envelope.get("audit_id") or "").strip()
-                if not quality_audit_id:
-                    continue
-                quality_audit_ids.append(quality_audit_id)
-                quality_source_id = _provider_entity_source_id(
-                    quality_audit_id,
-                    place_id,
-                )
-                quality_observed_at = _source_retrieved_at(
-                    quality_envelope,
-                    generated_at,
-                )
-                quality_snapshot = dict(quality_envelope)
-                quality_provider_name = str(
-                    quality_envelope.get("server_name")
-                    or quality_envelope.get("tool_name")
-                    or "external_review_search"
-                )
-                quality_result = quality_envelope.get("sanitized_result") or {}
-                bound_sources[quality_source_id] = {
-                    "source_record_id": quality_source_id,
-                    "source_kind": "external_tool",
-                    "title": (
-                        f"{quality_provider_name} branch review match: "
-                        f"{provider_place['name']}"
-                    ),
-                    "provider_name": quality_provider_name,
-                    "public_excerpt": json.dumps(
-                        quality_result,
-                        ensure_ascii=False,
-                        default=str,
-                    )[:900],
-                    "retrieved_at": quality_observed_at,
-                    "observed_at": quality_observed_at,
-                    "content_hash": _canonical_snapshot_hash(quality_snapshot),
-                    "snapshot": quality_snapshot,
-                    "lifecycle_status": "active",
-                }
-                quality_source_links.append(
-                    FactSourceLink(
-                        source_record_id=quality_source_id,
-                        relation="supports",
-                        source_locator="sanitized_result",
-                    )
-                )
-            if quality_source_links:
-                quality_fact_id = _provider_fact_id(
-                    "+".join(quality_audit_ids),
-                    candidate_id,
-                    "external_quality_match",
-                )
-                facts.append(
-                    FactAssertion(
-                        fact_assertion_id=quality_fact_id,
-                        entity_ref=EntityRef(
-                            entity_type=EntityType.DINING_STOP,
-                            entity_id=candidate_id,
-                        ),
-                        field_path="external_quality_match",
-                        asserted_value=True,
-                        criticality="decision_critical",
-                        status="verified",
-                        observed_at=observed_at,
-                        source_links=quality_source_links,
-                    ).model_dump(mode="python")
-                )
-                provenance.append(
-                    FieldProvenance(
-                        origin="external_fact",
-                        entity_ref=EntityRef(
-                            entity_type=EntityType.DINING_STOP,
-                            entity_id=candidate_id,
-                        ),
-                        field_path="external_quality_match",
-                        reference_ids=[quality_fact_id],
-                    ).model_dump(mode="python")
-                )
-                new_fact_ids.append(quality_fact_id)
         replacement_id = new_fact_ids[0]
         evaluations = candidate.get("constraint_evaluations")
         if isinstance(evaluations, list):
@@ -396,51 +310,13 @@ def _bind_successful_place_identity(
         )
     ]
     if contradicted_places:
-        facts = _without_contradicted_place_support(facts, contradicted_places)
+        # Provider 类型与候选种类不一致时仅记录；不再改写事实数据。
+        logger.warning(
+            "Research Packet provider record contradicts candidate kind | "
+            "contradicted=%s",
+            dict(contradicted_places),
+        )
     payload["source_records"] = [*sources, *bound_sources.values()]
     payload["fact_assertions"] = facts
     payload["field_provenance"] = provenance
     return bound_sources
-
-
-def _without_contradicted_place_support(
-    facts: list[Any],
-    contradicted_places: Mapping[str, str],
-) -> list[Any]:
-    "Strip compiled support the Provider's own record argues against."
-    kept: list[Any] = []
-    dropped: dict[str, str] = {}
-    for fact in facts:
-        if not isinstance(fact, dict):
-            kept.append(fact)
-            continue
-        entity_id = str((fact.get("entity_ref") or {}).get("entity_id") or "")
-        place_id = contradicted_places.get(entity_id)
-        links = fact.get("source_links")
-        if place_id is None or not isinstance(links, list):
-            kept.append(fact)
-            continue
-        kept_links = [
-            link
-            for link in links
-            if not (
-                isinstance(link, Mapping)
-                and compiled_tool_source_id_is_about(
-                    str(link.get("source_record_id") or ""), place_id
-                )
-            )
-        ]
-        if len(kept_links) == len(links):
-            kept.append(fact)
-            continue
-        dropped[str(fact.get("fact_assertion_id") or "")] = place_id
-        if kept_links:
-            kept.append({**fact, "source_links": kept_links})
-    if dropped:
-        logger.warning(
-            "Research Packet compiled place support dropped (provider contradicts "
-            "candidate kind) | contradicted=%s facts=%s",
-            dict(contradicted_places),
-            dropped,
-        )
-    return kept

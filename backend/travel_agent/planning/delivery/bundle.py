@@ -174,11 +174,6 @@ class DeliveryBundle(StrictModel):
         for candidate in catalog.candidate_index().values():
             if not set(candidate.weather_impact_ids) <= weather_impact_ids:
                 raise ValueError("candidate references a missing weather impact")
-        for admission in catalog.admission_results:
-            if not set(admission.weather_impact_ids) <= weather_impact_ids:
-                raise ValueError(
-                    "candidate admission references a missing weather impact"
-                )
         for entity in [
             *self.workspace.itinerary.visit_stops,
             *self.workspace.itinerary.dining_stops,

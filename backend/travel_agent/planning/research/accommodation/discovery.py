@@ -97,8 +97,6 @@ async def discover_deterministic_hotels(
                 if not fallback_policy.is_allowed(
                     query,
                     executed_query_ids=set(executed_query_ids),
-                    admitted_candidate_count=0,
-                    required_candidate_count=1,
                     research_window_open=research_window_open,
                     run_budget_available=run_budget_available,
                 ):

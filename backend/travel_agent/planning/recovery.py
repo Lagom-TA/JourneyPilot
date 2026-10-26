@@ -34,7 +34,6 @@ def invocation_scope(state, node, config=None):
         "session_anchor",
         "preset_context",
         "weather_context",
-        "candidate_research_gaps",
         "recommendation_catalog",
         "research_packets",
         "messages",

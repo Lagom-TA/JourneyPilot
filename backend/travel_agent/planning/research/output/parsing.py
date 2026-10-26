@@ -9,13 +9,9 @@ from typing import Any, Mapping, Optional, Sequence
 
 from pydantic import ValidationError
 
-from travel_agent.planning.research.provider_contracts import ProviderEvidenceScope
 from travel_agent.knowledge.source_records import rag_chunk_source_records
 from travel_agent.planning.research.evidence import SourceRecord
-from travel_agent.planning.research.packets import (
-    RESEARCH_PACKET_IDENTITY_FACTS_MISSING,
-    ResearchPacket,
-)
+from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.tools.knowledge_results import knowledge_tool_documents
 
 from .identity import _bind_successful_place_identity
@@ -29,13 +25,7 @@ from .metadata import (
     _bind_authoritative_packet_metadata,
     _payload_generated_at,
 )
-from .options import _eligible_place_selection_options, _has_eligible_place_selection
-from .policy import (
-    _WORKER_CANDIDATE_MODELS,
-    ResearchPacketOutputError,
-    ResearchWorkerKind,
-    packet_candidate_limit,
-)
+from .policy import ResearchPacketOutputError, ResearchWorkerKind
 from .sources import (
     _authoritative_tool_source_records,
     _bind_source_content_hashes,
@@ -93,17 +83,10 @@ def parse_research_packet_output(
     *,
     expected_worker: ResearchWorkerKind,
     expected_run_id: str,
-    required_transport_classes: Sequence[str] | None = None,
-    excluded_candidate_ids: Sequence[str] | None = None,
-    require_current_candidate: bool = False,
     expected_active_constraint_ids: Sequence[str] | None = None,
-    context_messages: Sequence[Mapping[str, Any]] = (),
     authoritative_tool_results: Sequence[Mapping[str, Any]] = (),
     authoritative_packet_metadata: Mapping[str, Any] | None = None,
-    required_candidate_kinds: Sequence[str] | None = None,
     authoritative_source_records: Sequence[SourceRecord] = (),
-    required_route_scopes: Sequence[ProviderEvidenceScope] = (),
-    server_composed_candidate_limit: int | None = None,
 ) -> ResearchPacket:
     "Parse exact JSON only; no Markdown extraction, repair, or envelope fallback."
     try:
@@ -114,23 +97,7 @@ def parse_research_packet_output(
         raise ResearchPacketOutputError(
             "worker output is not an exact JSON object"
         ) from exc
-    if not isinstance(payload, dict):
-        raise ResearchPacketOutputError("worker output must be one JSON object")
     _bind_authoritative_packet_metadata(payload, authoritative_packet_metadata)
-    candidates = payload.get("candidates")
-    candidate_limit = (
-        server_composed_candidate_limit
-        if server_composed_candidate_limit is not None
-        else packet_candidate_limit(
-            expected_worker,
-            required_transport_classes=required_transport_classes,
-            required_route_scopes=required_route_scopes,
-        )
-    )
-    if isinstance(candidates, list) and len(candidates) > candidate_limit:
-        raise ResearchPacketOutputError(
-            f"worker Research Packet exceeds candidate limit {candidate_limit}"
-        )
     _bind_authoritative_candidate_constraints(
         payload,
         expected_active_constraint_ids,
@@ -171,49 +138,9 @@ def parse_research_packet_output(
     try:
         packet = ResearchPacket.model_validate(payload)
     except ValidationError as exc:
-        compiled_failure_source_ids = [
-            source_id
-            for source_id, source in compiled_tool_sources.items()
-            if source.lifecycle_status == "rejected"
-        ]
-        # Rendered validation text contains untrusted model data, not failure authority.
-        _identity_facts_missing = any(
-            err.get("type") == RESEARCH_PACKET_IDENTITY_FACTS_MISSING
-            for err in exc.errors()
-        )
-        if not _identity_facts_missing or not compiled_failure_source_ids:
-            raise ResearchPacketOutputError(
-                f"worker Research Packet failed schema gate: {exc}"
-            ) from exc
-        logger.warning(
-            "Research Packet candidate closure dropped (failed/degraded sources only) | "
-            "worker=%s dropped_candidates=%d dropped_facts=%d dropped_provenance=%d "
-            "candidate_ids=%s failed_source_ids=%s validation_error=%s",
-            expected_worker,
-            len(payload.get("candidates") or []),
-            len(payload.get("fact_assertions") or []),
-            len(payload.get("field_provenance") or []),
-            ",".join(
-                str(candidate.get("candidate_id") or "<unnamed>")
-                for candidate in (payload.get("candidates") or [])
-                if isinstance(candidate, Mapping)
-            )
-            or "-",
-            ",".join(compiled_failure_source_ids) or "-",
-            str(exc)[:400],
-        )
-        failed_payload = {
-            **payload,
-            "candidates": [],
-            "fact_assertions": [],
-            "field_provenance": [],
-        }
-        try:
-            packet = ResearchPacket.model_validate(failed_payload)
-        except ValidationError:
-            raise ResearchPacketOutputError(
-                f"worker Research Packet failed schema gate: {exc}"
-            ) from exc
+        raise ResearchPacketOutputError(
+            f"worker Research Packet failed structural validation: {exc}"
+        ) from exc
     if packet.worker_kind != expected_worker:
         raise ResearchPacketOutputError(
             "worker Research Packet domain does not match the node"
@@ -221,79 +148,6 @@ def parse_research_packet_output(
     if packet.run_id != expected_run_id:
         raise ResearchPacketOutputError(
             "worker Research Packet run id does not match active run"
-        )
-    if required_candidate_kinds:
-        allowed_kinds = {
-            candidate_kind
-            for candidate_kind, _ in _WORKER_CANDIDATE_MODELS[expected_worker]
-        }
-        required_kinds = set(required_candidate_kinds)
-        if not required_kinds <= allowed_kinds:
-            raise ResearchPacketOutputError(
-                "required candidate kinds do not belong to the active worker"
-            )
-        missing_kinds = required_kinds - {
-            candidate.candidate_kind for candidate in packet.candidates
-        }
-        if missing_kinds:
-            raise ResearchPacketOutputError(
-                "worker Research Packet is missing required candidate kinds: "
-                f"{','.join(sorted(missing_kinds))}"
-            )
-    eligible_place_options = _eligible_place_selection_options(
-        evidence_messages,
-        expected_worker,
-        excluded_candidate_ids=excluded_candidate_ids,
-    )
-    if not packet.candidates and _has_eligible_place_selection(eligible_place_options):
-        raise ResearchPacketOutputError(
-            "worker returned zero candidates despite eligible Provider place records"
-        )
-    if expected_active_constraint_ids is not None:
-        expected_constraints = set(expected_active_constraint_ids)
-        for candidate in packet.candidates:
-            if set(candidate.active_constraint_ids) != expected_constraints:
-                raise ResearchPacketOutputError(
-                    "candidate active constraints do not match the authoritative constraint pack"
-                )
-            if {
-                evaluation.constraint_id
-                for evaluation in candidate.constraint_evaluations
-            } != expected_constraints:
-                raise ResearchPacketOutputError(
-                    "candidate constraint evaluations do not cover the authoritative active constraints"
-                )
-    forbidden = set(excluded_candidate_ids or [])
-    if forbidden & {candidate.candidate_id for candidate in packet.candidates}:
-        raise ResearchPacketOutputError(
-            "worker Research Packet repeated a candidate excluded by the active gap"
-        )
-    if required_transport_classes and any(
-        getattr(candidate, "transport_class", None) not in required_transport_classes
-        for candidate in packet.candidates
-    ):
-        raise ResearchPacketOutputError(
-            "transport Research Packet does not match the scoped transport classes"
-        )
-    allowed_route_scope_ids = {scope.scope_id for scope in required_route_scopes}
-    if required_route_scopes and any(
-        candidate.candidate_kind == "transport"
-        and candidate.transport_class == "long_distance"
-        and candidate.provider_evidence_scope_id not in allowed_route_scope_ids
-        for candidate in packet.candidates
-    ):
-        raise ResearchPacketOutputError(
-            "long-distance candidate does not match an assigned exact route leg"
-        )
-    if (
-        require_current_candidate
-        and packet.candidates
-        and not any(
-            candidate.freshness_status == "current" for candidate in packet.candidates
-        )
-    ):
-        raise ResearchPacketOutputError(
-            "scoped Research Packet did not produce a current candidate"
         )
     return packet
 

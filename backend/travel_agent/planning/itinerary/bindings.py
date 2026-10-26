@@ -13,7 +13,6 @@ from travel_agent.planning.research.candidates import (
     ResearchCandidate,
     VisitCandidate,
 )
-from travel_agent.planning.research.catalog import RecommendationCatalog
 
 
 def _lineage(
@@ -39,21 +38,6 @@ def _lineage(
         weather_impact_ids=candidate.weather_impact_ids,
         personalization_influence_ids=candidate.personalization_influence_ids,
     )
-
-
-def _passed_candidates(catalog: RecommendationCatalog) -> dict[str, ResearchCandidate]:
-    candidates = catalog.candidate_index()
-    passed = {
-        admission.candidate_id
-        for admission in catalog.admission_results
-        if admission.status == "passed"
-    }
-    # Catalog order keeps option ranks stable across randomized hash seeds.
-    return {
-        candidate_id: candidate
-        for candidate_id, candidate in candidates.items()
-        if candidate_id in passed
-    }
 
 
 def _authored_lineage() -> EntityLineage:

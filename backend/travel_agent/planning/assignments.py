@@ -1,20 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Tuple
-
-
-def make_round_name(base_name: str, round_num: int) -> str:
-    """生成带轮次后缀的 Agent 名称。
-
-    命名约定：``{base_name}_r{round_num}``。
-    round_num 从 2 开始（首轮无后缀，第一次补充为 _r2）。
-
-    示例：
-        >>> make_round_name("destination_researcher", 2)
-        'destination_researcher_r2'
-    """
-    return f"{base_name}_r{round_num}"
+from typing import Any, Dict, Tuple
 
 
 def resolve_agent_assignment(
@@ -59,31 +46,6 @@ def resolve_agent_assignment(
 def assignment_research_round(assignment_key: str) -> int:
     match = re.fullmatch(r".+_r(\d+)", assignment_key)
     return max(int(match.group(1)) - 1, 0) if match else 0
-
-
-def resolve_scoped_research_output_key(
-    research_packets: Dict[str, Any],
-    base_name: str,
-    resolved_key: str,
-    *,
-    scoped_retry: bool,
-) -> str:
-    """Give every Candidate Gate retry an immutable worker-round key."""
-    if not scoped_retry:
-        return resolved_key
-    resolved_match = re.fullmatch(rf"{re.escape(base_name)}_r(\d+)", resolved_key)
-    if resolved_match and resolved_key not in research_packets:
-        return resolved_key
-    rounds: List[int] = []
-    for key in research_packets:
-        task_key = key.split("@", 1)[0]
-        if task_key == base_name:
-            rounds.append(1)
-            continue
-        match = re.fullmatch(rf"{re.escape(base_name)}_r(\d+)", task_key)
-        if match:
-            rounds.append(int(match.group(1)))
-    return make_round_name(base_name, max(rounds, default=1) + 1)
 
 
 def strip_round_suffix(agent_name: str) -> str:

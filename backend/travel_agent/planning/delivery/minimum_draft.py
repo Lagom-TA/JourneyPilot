@@ -282,9 +282,6 @@ def _clear_completion_generation() -> Dict[str, Any]:
     return {
         "run_deadline": None,
         "run_budget": None,
-        "candidate_research_gaps": [],
-        "candidate_gate_attempts": {},
-        "candidate_gate_failure_signatures": {},
     }
 
 

@@ -15,11 +15,7 @@ from travel_agent.planning.delivery.projections import TripReportProjection
 from travel_agent.planning.itinerary.connectors import LocalConnectorGap
 from travel_agent.planning.itinerary.draft import ItineraryCompositionDraft
 from travel_agent.planning.itinerary.mutation_contracts import CompositionMutation
-from travel_agent.planning.outcomes import CandidateResearchGap
 from travel_agent.planning.outcomes import DeliveryFailureRecord
-from travel_agent.planning.requirements.candidate_match_contracts import (
-    CandidateIntentMatch,
-)
 from travel_agent.planning.requirements.generation_contracts import PlanningGeneration
 from travel_agent.planning.requirements.inputs import MinimumDeliveryDraft
 from travel_agent.planning.requirements.intent_contracts import IntentSpec
@@ -44,7 +40,6 @@ from travel_agent.planning.research.query_contracts import ResearchQueryPlan
 from travel_agent.planning.research.reference_service_contracts import (
     ProviderReferenceService,
 )
-from travel_agent.planning.research.selection_contracts import CandidateSelectionPlan
 from travel_agent.planning.weather.geography_contracts import DestinationGeoPoint
 from travel_agent.planning.weather.models import WeatherContextSnapshot
 from travel_agent.planning.weather.models import WeatherImpact
@@ -56,7 +51,6 @@ from typing import Annotated
 from typing import Any
 from typing import Dict
 from typing import List
-from typing import Literal
 from typing import Optional
 
 
@@ -239,11 +233,7 @@ class TravelAgentState(BaseModel):
     research_brief: Optional[ResearchBriefV2] = None
     capability_plan: Optional[CapabilityPlan] = None
     research_query_plan: Optional[ResearchQueryPlan] = None
-    candidate_selection_plan: Optional[CandidateSelectionPlan] = None
     previous_selected_candidate_ids: List[str] = Field(default_factory=list)
-    candidate_intent_evaluation_cache: Dict[str, CandidateIntentMatch] = Field(
-        default_factory=dict
-    )
 
     trip_summary_card: Dict[str, Any] = Field(default_factory=dict)
 
@@ -290,26 +280,10 @@ class TravelAgentState(BaseModel):
     weather_impacts: Annotated[Dict[str, WeatherImpact], _merge_dicts] = Field(
         default_factory=dict
     )
-    candidate_research_gaps: List[CandidateResearchGap] = Field(default_factory=list)
 
     provider_reference_services: Annotated[
         List[ProviderReferenceService], _merge_reference_services
     ] = Field(default_factory=list)
-    candidate_gate_status: Optional[
-        Literal[
-            "passed",
-            "needs_research",
-            "composition_repair",
-        ]
-    ] = None
-    candidate_gate_route: Optional[str] = None
-
-    candidate_gate_attempts: Dict[str, int] = Field(default_factory=dict)
-    candidate_gate_failure_signatures: Dict[str, List[str]] = Field(
-        default_factory=dict
-    )
-
-    composition_repair_attempts: int = 0
 
     unlocatable_authored_places: List[str] = Field(default_factory=list)
 
@@ -445,22 +419,6 @@ class TravelAgentState(BaseModel):
             ):
                 raise ValueError(
                     "capability assignment references an unknown research query"
-                )
-        if self.candidate_selection_plan is not None:
-            if self.recommendation_catalog is None:
-                raise ValueError(
-                    "candidate selection plan requires a recommendation catalog"
-                )
-            if (
-                self.candidate_selection_plan.generation_id
-                != self.recommendation_catalog.generation_id
-                or self.candidate_selection_plan.intent_spec_revision
-                != self.recommendation_catalog.intent_spec_revision
-                or self.candidate_selection_plan.catalog_revision
-                != self.recommendation_catalog.fact_data_revision
-            ):
-                raise ValueError(
-                    "candidate selection plan belongs to another catalog generation"
                 )
         draft = self.minimum_delivery_draft
         dependent_values = (

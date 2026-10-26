@@ -71,7 +71,7 @@ async def test_partial_commit_then_conflict_does_not_block_other_runs():
     assert recorder.integrity("other")["capture_complete"] is True
 
 
-def test_admission_survives_process_death_with_unknown_usage(tmp_path):
+def test_usage_spool_survives_process_death_with_unknown_usage(tmp_path):
     path = tmp_path / "spool.sqlite3"
     script = """
 import os,sys
