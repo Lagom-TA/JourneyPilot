@@ -16,11 +16,14 @@ export const AppProvider: React.FC<{
     React.useEffect(() => {
         currentStateRef.current = state;
     }, [state]);
+    const mobileViewportRef = React.useRef<boolean | null>(null);
     React.useEffect(() => {
         const handleResize = () => {
-            if (window.innerWidth < 1024) {
+            const isMobile = window.innerWidth < 1024;
+            if (isMobile && mobileViewportRef.current === false) {
                 dispatch({ type: 'SET_SIDEBAR_COLLAPSED', payload: true });
             }
+            mobileViewportRef.current = isMobile;
         };
         handleResize();
         window.addEventListener('resize', handleResize);

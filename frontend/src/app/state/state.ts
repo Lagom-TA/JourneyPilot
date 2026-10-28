@@ -1,12 +1,12 @@
-import { type Message } from "../../features/chat/types/messages";
 import { type TripRunStatus } from "../../features/travel/types/runs";
 import { type PublicDeliveryBundle } from "../../features/travel/types/delivery";
 import { type SessionRuntimeSnapshot } from "../session/runtimeSnapshot";
 import { type ChatState, type ChatAction } from "../../features/chat/model/state";
 import { type TravelState, type TravelAction } from "../../features/travel/model/state";
-export type ActiveView = 'chat' | 'knowledge-base' | 'presets' | 'user-preferences';
+export type ActiveView = 'chat' | 'trips' | 'knowledge-base' | 'presets' | 'user-preferences';
 const VALID_ACTIVE_VIEWS: ActiveView[] = [
     'chat',
+    'trips',
     'knowledge-base',
     'presets',
     'user-preferences',
@@ -19,20 +19,13 @@ export interface AppState extends ChatState, TravelState {
     sidebarCollapsed: boolean;
     currentSessionId: string | null;
     canvasOpen: boolean;
-    canvasFullscreen: boolean;
     mobileCanvasOpen: boolean;
     activePresetId: string | null;
     activePresetName: string | null;
-    boardingPassFlash: number;
 }
 export type AppAction = ChatAction | TravelAction | {
-    type: 'SET_MESSAGES';
-    payload: Message[];
-} | {
     type: 'SET_ACTIVE_VIEW';
     payload: ActiveView;
-} | {
-    type: 'TOGGLE_SIDEBAR';
 } | {
     type: 'SET_SIDEBAR_COLLAPSED';
     payload: boolean;
@@ -45,6 +38,7 @@ export type AppAction = ChatAction | TravelAction | {
         runId: string | null;
         source?: AppState['tripRunSource'];
         status?: TripRunStatus | null;
+        readOnly?: boolean;
     };
 } | {
     type: 'SET_TRIP_RUN_STATUS';
@@ -58,12 +52,6 @@ export type AppAction = ChatAction | TravelAction | {
 } | {
     type: 'CLEAR_TRACE';
 } | {
-    type: 'SET_CANVAS_OPEN';
-    payload: boolean;
-} | {
-    type: 'SET_CANVAS_FULLSCREEN';
-    payload: boolean;
-} | {
     type: 'SET_MOBILE_CANVAS_OPEN';
     payload: boolean;
 } | {
@@ -74,8 +62,6 @@ export type AppAction = ChatAction | TravelAction | {
         id: string;
         name: string;
     } | null;
-} | {
-    type: 'FLASH_BOARDING_PASS';
 } | {
     type: 'CLEAR_CHAT';
 };

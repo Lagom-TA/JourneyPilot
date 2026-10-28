@@ -15,6 +15,7 @@ export const initialState: AppState = {
     currentTripRunId: null,
     currentTripRunStatus: null,
     currentTripRunRecovery: null,
+    currentTripRunReadOnly: false,
     tripRunSource: 'none',
     tripRunRefreshKey: 0,
     sessions: [],
@@ -34,7 +35,6 @@ export const initialState: AppState = {
     isStreaming: false,
     isSynthesizing: false,
     canvasOpen: false,
-    canvasFullscreen: false,
     mobileCanvasOpen: false,
     inputMode: 'normal',
     ...(() => {
@@ -44,5 +44,4 @@ export const initialState: AppState = {
             activePresetName: stored?.name ?? null,
         };
     })(),
-    boardingPassFlash: 0,
 };

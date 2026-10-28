@@ -6,6 +6,7 @@ export interface TravelState {
     currentTripRunId: string | null;
     currentTripRunStatus: TripRunStatus | null;
     currentTripRunRecovery: TripRunRecovery | null;
+    currentTripRunReadOnly: boolean;
     tripRunSource: 'none' | 'live';
     tripRunRefreshKey: number;
     deliveryBundle: PublicDeliveryBundle | null;
@@ -13,7 +14,7 @@ export interface TravelState {
         status: 'idle' | 'loading' | 'ready' | 'error';
         message: string | null;
     };
-    deliverableView: 'interactive_itinerary' | 'full_report';
+    deliverableView: 'interactive_itinerary' | 'full_report' | 'today';
     tripSummaryCard: TripSummaryCard | null;
     planApprovalGate: PlanApprovalGate | null;
     pendingGuidedIntake: GuidedIntakeState | null;

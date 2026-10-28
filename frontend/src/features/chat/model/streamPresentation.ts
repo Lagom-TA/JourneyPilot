@@ -100,10 +100,6 @@ export function createStreamPresentation(scopedDispatch: (action: ChatAction) =>
                     });
                     break;
                 }
-                case 'synthesis_start': {
-                    scopedDispatch({ type: 'SET_SYNTHESIZING', payload: true });
-                    break;
-                }
                 case 'context_report': {
                     const report = normalizeContextReport(event);
                     if (report) {

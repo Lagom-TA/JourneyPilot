@@ -1,7 +1,10 @@
 import { ArrowUpRight, CalendarRange, Droplets } from "lucide-react";
+import { m } from "motion/react";
 import { WEATHER_HISTORICAL_LABEL } from "../../model/deliveryLabels";
 import { type DaySummaryVM } from "../../model/itineraryPresentation";
 import { isRainy } from "../../model/weatherViewModel";
+import { duration, easing } from "../../../../lib/motion";
+import { cn } from "../../../../lib/utils";
 import { DayOrdinalChip } from "./DayOrdinalChip";
 import { TimelineNodeMark } from "./TimelineNodeMark";
 import { WeatherIcon } from "./WeatherStrip";
@@ -10,6 +13,8 @@ interface DaySummaryCardProps {
     day: DaySummaryVM;
     onOpen: () => void;
     cardRef?: React.Ref<HTMLButtonElement>;
+    compact?: boolean;
+    active?: boolean;
 }
 function DayWeather({ weather }: {
     weather: NonNullable<DaySummaryVM['weather']>;
@@ -31,14 +36,31 @@ function DayWeather({ weather }: {
       {weather.dataState === 'historical' && (<span data-testid="day-weather-historical" className="shrink-0 text-ink-muted">{WEATHER_HISTORICAL_LABEL}</span>)}
     </span>);
 }
-export const DaySummaryCard: React.FC<DaySummaryCardProps> = ({ day, onOpen, cardRef }) => {
+export const DaySummaryCard: React.FC<DaySummaryCardProps> = ({ day, onOpen, cardRef, compact = false, active = false }) => {
     const metadata = [day.dateLabel, day.weekdayLabel, day.destinationLabel].filter((value): value is string => Boolean(value));
+    const compactMetadata = [day.dateLabel, day.destinationLabel].filter((value): value is string => Boolean(value));
     const accessibleLabel = [`查看第 ${day.day} 天`, ...metadata, day.theme].filter(Boolean).join('：');
-    return (<button ref={cardRef} type="button" data-testid={`day-summary-card-${day.dayId}`} aria-label={accessibleLabel} onClick={onOpen} className="day-summary-card group w-full rounded-card border border-stroke bg-panel px-4 py-4 text-left transition-colors duration-fast ease-standard hover:border-accent/40 hover:bg-accent/[0.02] sm:px-5 sm:py-5">
+    if (compact) {
+        return (<button ref={cardRef} type="button" data-testid={`day-summary-card-${day.dayId}`} aria-label={accessibleLabel} aria-pressed={active} onClick={onOpen} className={cn('day-summary-card is-compact group', active && 'is-active')}>
+            <span className="flex min-w-0 items-start gap-3">
+                <span className="inline-flex shrink-0 items-center">
+                    <DayOrdinalChip day={day.day}/>
+                </span>
+                <span className="min-w-0">
+                    <span className="journey-day-nav-meta block text-[11px] text-ink-secondary">{compactMetadata.join(' · ')}</span>
+                    <span className="journey-day-nav-theme mt-1 block text-sm font-semibold leading-5 text-ink">{day.theme}</span>
+                </span>
+            </span>
+            <ArrowUpRight size={14} aria-hidden className="mt-1 shrink-0 text-ink-muted transition-colors group-hover:text-accent"/>
+        </button>);
+    }
+    return (<button ref={cardRef} type="button" data-testid={`day-summary-card-${day.dayId}`} aria-label={accessibleLabel} aria-pressed={active} onClick={onOpen} className={cn('day-summary-card group w-full rounded-card border border-stroke bg-panel px-4 py-4 text-left transition-colors duration-fast ease-standard hover:border-accent/40 hover:bg-accent/[0.02] sm:px-5 sm:py-5', active && 'is-active')}>
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-x-5 gap-y-2">
         <div className="min-w-0">
 
-          <DayOrdinalChip day={day.day}/>
+          <m.div layoutId={`day-ordinal-${day.dayId}`} transition={{ duration: duration.page, ease: easing.decelerate }} className="inline-flex shrink-0 items-center">
+            <DayOrdinalChip day={day.day}/>
+          </m.div>
           {metadata.length > 0 && <p className="mt-1.5 break-words text-sm text-ink-secondary">{metadata.join(' · ')}</p>}
         </div>
         {day.weather && <DayWeather weather={day.weather}/>}
@@ -73,7 +95,6 @@ export const DaySummaryCard: React.FC<DaySummaryCardProps> = ({ day, onOpen, car
         </ol>)}
 
       {day.hiddenNodeCount > 0 && <p className="mt-1 text-xs text-ink-muted">另有 {day.hiddenNodeCount} 项安排</p>}
-      {day.notice && <p data-testid={`day-summary-notice-${day.dayId}`} className="mt-3 break-words border-t border-stroke pt-3 text-xs font-medium leading-5 text-warning">{day.notice.title}</p>}
 
       <span className="mt-4 flex items-center justify-between gap-1 border-t border-stroke/60 pt-3 text-xs font-semibold text-accent group-hover:text-[var(--color-accent-hover)]">
         查看详情

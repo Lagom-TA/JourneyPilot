@@ -1,15 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { type ThinkingStep } from "../types/messages";
-import { deriveOrbState, orbStateForAgent } from "./orbState";
-const step = (agentName: string): ThinkingStep => ({
-    id: agentName,
-    agentName,
-    content: '',
-    stepName: agentName,
-    timestamp: new Date('2026-01-01T00:00:00Z'),
-});
-const idle = { isStreaming: false, isSynthesizing: false, answerStarted: false };
-const live = { isStreaming: true, isSynthesizing: false, answerStarted: false };
+import { orbStateForAgent } from "./orbState";
+
 describe('orbStateForAgent', () => {
     it('内部名与显示名落在同一个球上', () => {
         expect(orbStateForAgent('transport_researcher')).toBe('connecting');
@@ -23,22 +14,5 @@ describe('orbStateForAgent', () => {
     });
     it('未登记但有阶段的节点退回阶段默认；完全未知退回 working', () => {
         expect(orbStateForAgent('completely_unknown_node')).toBe('working');
-    });
-});
-describe('deriveOrbState', () => {
-    it('等待用户时呼吸，优先于任何步', () => {
-        expect(deriveOrbState([step('destination_researcher')], { ...live, awaitingInput: true })).toBe('breathing');
-    });
-    it('最终回答开始后是 composing', () => {
-        expect(deriveOrbState([step('destination_researcher')], { ...live, answerStarted: true })).toBe('composing');
-        expect(deriveOrbState([step('destination_researcher')], { ...live, isSynthesizing: true })).toBe('composing');
-    });
-    it('取最近一个有名字的步', () => {
-        const steps = [step('planner'), step('destination_researcher'), step('transport_researcher')];
-        expect(deriveOrbState(steps, live)).toBe('connecting');
-    });
-    it('刚开始没有步时是 listening，静止时是 breathing', () => {
-        expect(deriveOrbState([], live)).toBe('listening');
-        expect(deriveOrbState([], idle)).toBe('breathing');
     });
 });

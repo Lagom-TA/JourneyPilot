@@ -8,6 +8,7 @@ export default {
       none: '0',
       label: 'var(--radius-label)',
       card: 'var(--radius-card)',
+      panel: 'var(--radius-panel)',
       full: 'var(--radius-full)',
     },
 

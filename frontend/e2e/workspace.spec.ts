@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
 
-test('侧栏导航、浏览器后退与刷新恢复', async ({ page }) => {
+test('顶部导航、浏览器后退与刷新恢复', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
+  await page.getByRole('link', { name: '偏好与资料', exact: true }).click();
   for (const name of ['资料来源', '旅行风格', '我的偏好']) {
     await page.getByRole('link', { name, exact: true }).click();
     await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();

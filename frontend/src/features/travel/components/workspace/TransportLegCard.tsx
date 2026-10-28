@@ -4,9 +4,9 @@ import { READOUT_LABEL } from "../../../../lib/typography";
 import { TransportProviderNote } from "./TransportProviderNote";
 import { IntentExplanationList } from "./IntentExplanationList";
 import { type PublicTransportLeg } from "../../types/itinerary";
-import { type TransportEndpoint, type TransportSegment } from "../../types/entities";
+import { type TransportEndpoint, type TransportMode, type TransportSegment } from "../../types/entities";
 import { BOOKING_LABELS, TRANSPORT_MODE_LABELS } from "../../model/deliveryLabels";
-import { TRANSPORT_FAMILY_NOUNS, TRANSPORT_MODE_ICONS, clockLabel, distanceLabel, durationLabel, legLineChain, legReadouts, legService, transportFamily, type Readout, type TransportFamily } from "../../model/transportPresentation";
+import { TRANSPORT_FAMILY_NOUNS, TRANSPORT_MODE_ICONS, clockLabel, distanceLabel, durationLabel, legLineChain, legReadouts, legService, transportFamily, transportModeStyle, transportSegmentDisplayMode, type Readout, type TransportFamily } from "../../model/transportPresentation";
 import React from 'react';
 function MetaLine({ values }: {
     values: Array<string | null>;
@@ -23,13 +23,15 @@ function routeStateText(leg: PublicTransportLeg): string | null {
         return '路线暂时不可用。';
     return null;
 }
-function SegmentRow({ segment, index }: {
+function SegmentRow({ segment, index, selectedMode }: {
     segment: TransportSegment;
     index: number;
+    selectedMode: TransportMode;
 }) {
-    const Icon = TRANSPORT_MODE_ICONS[segment.mode];
+    const mode = transportSegmentDisplayMode(selectedMode, segment.mode);
+    const Icon = TRANSPORT_MODE_ICONS[mode];
     return (<li className="flex min-w-0 gap-2.5 py-2 first:pt-1 last:pb-1">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-card bg-surface text-ink-secondary" aria-hidden>
+      <span style={transportModeStyle(mode)} className="transport-mode-icon flex h-6 w-6 shrink-0 items-center justify-center rounded-card" aria-hidden>
         <Icon size={12}/>
       </span>
       <div className="min-w-0 flex-1">
@@ -40,7 +42,7 @@ function SegmentRow({ segment, index }: {
           <TimeWindow departure={segment.departure_at} arrival={segment.arrival_at} className="shrink-0 text-[11px]"/>
         </div>
         <MetaLine values={[
-            TRANSPORT_MODE_LABELS[segment.mode],
+            TRANSPORT_MODE_LABELS[mode],
             segment.line_name,
             segment.service_number,
             segment.operator_name,
@@ -63,7 +65,7 @@ function SegmentDisclosure({ leg }: {
         <ChevronDown size={13} aria-hidden className={cn('transition-transform', open && 'rotate-180')}/>
       </button>
       {open && (<ol id={disclosureId} className="divide-y divide-stroke/60" data-testid="transport-segments">
-          {leg.segments.map((segment, index) => <SegmentRow key={segment.segment_id} segment={segment} index={index}/>)}
+          {leg.segments.map((segment, index) => <SegmentRow key={segment.segment_id} segment={segment} index={index} selectedMode={leg.selected_mode}/>)}
         </ol>)}
     </>);
 }
@@ -96,7 +98,7 @@ function RouteLine({ leg, className }: {
 }) {
     return (<p className={cn('min-w-0 break-words text-[13px] font-semibold text-ink', className)}>
       {leg.from_endpoint.name}
-      <span className="mx-1.5 font-normal text-chart" aria-hidden>→</span>
+      <span className="transport-mode-text mx-1.5 font-normal" aria-hidden>→</span>
       {leg.to_endpoint.name}
     </p>);
 }
@@ -148,10 +150,10 @@ function TicketEndpoint({ endpoint, clock, align, }: {
 function TransitSpan({ Icon }: {
     Icon: LucideIcon;
 }) {
-    return (<span className="flex shrink-0 items-center gap-1 self-start pt-1.5 text-chart" aria-hidden>
-      <span className="h-px w-3 border-t border-dashed border-chart/50 sm:w-5"/>
+    return (<span className="transport-mode-text flex shrink-0 items-center gap-1 self-start pt-1.5" aria-hidden>
+      <span className="transport-mode-dash h-px w-3 border-t border-dashed sm:w-5"/>
       <Icon size={13}/>
-      <span className="h-px w-3 border-t border-dashed border-chart/50 sm:w-5"/>
+      <span className="transport-mode-dash h-px w-3 border-t border-dashed sm:w-5"/>
     </span>);
 }
 function LineChain({ leg }: {
@@ -161,12 +163,17 @@ function LineChain({ leg }: {
     if (chain.length <= 1)
         return null;
     return (<ol data-testid="transport-line-chain" className="mt-2 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
-      {chain.map((name, index) => (<li key={`${name}-${index}`} className="flex min-w-0 items-center gap-1.5">
+      {chain.map((name, index) => {
+        const mode = leg.segments[index]
+          ? transportSegmentDisplayMode(leg.selected_mode, leg.segments[index].mode)
+          : leg.selected_mode;
+        return (<li key={`${name}-${index}`} className="flex min-w-0 items-center gap-1.5">
           {index > 0 && <span className="shrink-0 text-ink-muted" aria-hidden>›</span>}
-          <span className="min-w-0 break-words rounded-label border border-chart/25 bg-chart/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-chart">
+          <span style={transportModeStyle(mode)} className="transport-mode-chip min-w-0 break-words rounded-label border px-1.5 py-0.5 text-[11px] font-medium">
             {name}
           </span>
-        </li>))}
+        </li>);
+      })}
     </ol>);
 }
 function CardShell({ leg, family, badge, aside = null, sandboxNote = null, compact = false, children, }: {
@@ -183,10 +190,10 @@ function CardShell({ leg, family, badge, aside = null, sandboxNote = null, compa
         ? 'long-distance'
         : leg.transport_class === 'public_transit' ? 'public-transit' : 'flexible';
     const providerNote = leg.transport_class === 'long_distance' && Boolean(sandboxNote);
-    return (<article data-testid={`transport-card-${leg.transport_leg_id}`} data-transport-variant={variant} data-transport-family={family} className={cn('my-2 min-w-0 overflow-hidden rounded-card border border-stroke bg-panel', compact ? 'p-2' : 'p-2.5')}>
+    return (<article data-testid={`transport-card-${leg.transport_leg_id}`} data-transport-variant={variant} data-transport-family={family} data-transport-mode={leg.selected_mode} style={transportModeStyle(leg.selected_mode)} className={cn('my-2 min-w-0 overflow-hidden rounded-card border border-stroke bg-panel', compact ? 'p-2' : 'p-2.5')}>
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
         <p className="inline-flex min-w-0 items-center gap-2">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-card bg-chart/10 text-chart">
+          <span className="transport-mode-icon flex h-6 w-6 shrink-0 items-center justify-center rounded-card">
             <Icon size={13} aria-hidden/>
           </span>
           <span className="min-w-0 break-words text-[13px] font-semibold text-ink">
@@ -226,18 +233,16 @@ function LegBadge({ leg }: {
 }
 interface TransportLegCardProps {
     leg: PublicTransportLeg;
-    sourceMarkers?: React.ReactNode;
     sandboxNote?: string | null;
 }
-function SupportingContent({ leg, sourceMarkers }: TransportLegCardProps) {
+function SupportingContent({ leg }: TransportLegCardProps) {
     return (<>
       <RouteState leg={leg}/>
       <SegmentDisclosure leg={leg}/>
       <IntentExplanationList items={leg.intent_explanations}/>
-      {sourceMarkers}
-    </>);
+         </>);
 }
-function ScheduledTicket({ leg, sourceMarkers, sandboxNote = null }: TransportLegCardProps) {
+function ScheduledTicket({ leg, sandboxNote = null }: TransportLegCardProps) {
     const Icon = TRANSPORT_MODE_ICONS[leg.selected_mode];
     const ready = leg.route_status === 'ready';
     return (<CardShell leg={leg} family="scheduled" badge={<LegBadge leg={leg}/>} aside={ready ? <ServiceStub leg={leg}/> : null} sandboxNote={sandboxNote}>
@@ -249,10 +254,10 @@ function ScheduledTicket({ leg, sourceMarkers, sandboxNote = null }: TransportLe
           </div>
           <ReadoutRow readouts={legReadouts(leg)} layout="inline"/>
         </>)}
-      <SupportingContent leg={leg} sourceMarkers={sourceMarkers}/>
+      <SupportingContent leg={leg}/>
     </CardShell>);
 }
-function TransitCard({ leg, sourceMarkers }: TransportLegCardProps) {
+function TransitCard({ leg }: TransportLegCardProps) {
     const ready = leg.route_status === 'ready';
     return (<CardShell leg={leg} family="transit" badge={<LegBadge leg={leg}/>} aside={ready ? <TimeWindow departure={leg.departure_at} arrival={leg.arrival_at} className="text-[11px]"/> : null}>
       {ready && (<>
@@ -260,51 +265,50 @@ function TransitCard({ leg, sourceMarkers }: TransportLegCardProps) {
           <LineChain leg={leg}/>
           <ReadoutRow readouts={legReadouts(leg)} layout="inline"/>
         </>)}
-      <SupportingContent leg={leg} sourceMarkers={sourceMarkers}/>
+      <SupportingContent leg={leg}/>
     </CardShell>);
 }
-function RoadCard({ leg, sourceMarkers }: TransportLegCardProps) {
+function RoadCard({ leg }: TransportLegCardProps) {
     const ready = leg.route_status === 'ready';
     return (<CardShell leg={leg} family="road" badge={<LegBadge leg={leg}/>} aside={ready ? <TimeWindow departure={leg.departure_at} arrival={leg.arrival_at} className="text-[11px]"/> : null}>
       {ready && (<>
           <RouteLine leg={leg} className="mt-2"/>
           <ReadoutRow readouts={legReadouts(leg)} layout="stacked"/>
         </>)}
-      <SupportingContent leg={leg} sourceMarkers={sourceMarkers}/>
+      <SupportingContent leg={leg}/>
     </CardShell>);
 }
-function SelfCard({ leg, sourceMarkers }: TransportLegCardProps) {
+function SelfCard({ leg }: TransportLegCardProps) {
     const ready = leg.route_status === 'ready';
     return (<CardShell leg={leg} family="self" compact badge={<LegBadge leg={leg}/>}>
       {ready && (<>
           <RouteLine leg={leg} className="mt-2"/>
           <ReadoutRow readouts={legReadouts(leg)} layout="inline"/>
         </>)}
-      <SupportingContent leg={leg} sourceMarkers={sourceMarkers}/>
+      <SupportingContent leg={leg}/>
     </CardShell>);
 }
-function OtherCard({ leg, sourceMarkers }: TransportLegCardProps) {
+function OtherCard({ leg }: TransportLegCardProps) {
     const ready = leg.route_status === 'ready';
     return (<CardShell leg={leg} family="other" badge={<LegBadge leg={leg}/>}>
       {ready && (<>
           <RouteLine leg={leg} className="mt-2"/>
           <ReadoutRow readouts={legReadouts(leg)} layout="inline"/>
         </>)}
-      <SupportingContent leg={leg} sourceMarkers={sourceMarkers}/>
+      <SupportingContent leg={leg}/>
     </CardShell>);
 }
-function MicroConnector({ leg, sourceMarkers }: TransportLegCardProps) {
+function MicroConnector({ leg }: TransportLegCardProps) {
     const Icon = TRANSPORT_MODE_ICONS[leg.selected_mode];
     const facts = [durationLabel(leg.duration_minutes), distanceLabel(leg.distance_meters)]
         .filter((value): value is string => Boolean(value))
         .join(' · ');
-    return (<article data-testid={`transport-card-${leg.transport_leg_id}`} data-transport-variant="micro" data-transport-family="self" className="min-w-0 py-1.5">
-      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-card border border-dashed border-chart/40 bg-panel px-2.5 py-1.5 text-xs text-ink-secondary">
-        <Icon size={13} className="shrink-0 text-chart" aria-hidden/>
+    return (<article data-testid={`transport-card-${leg.transport_leg_id}`} data-transport-variant="micro" data-transport-family="self" data-transport-mode={leg.selected_mode} style={transportModeStyle(leg.selected_mode)} className="min-w-0 py-1.5">
+      <div className="transport-mode-outline flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-card border border-dashed bg-panel px-2.5 py-1.5 text-xs text-ink-secondary">
+        <Icon size={13} className="transport-mode-text shrink-0" aria-hidden/>
         <strong className="min-w-0 break-words font-semibold text-ink">{leg.from_endpoint.name} → {leg.to_endpoint.name}</strong>
         {facts && <span className="text-ink-muted">{facts}</span>}
-        {sourceMarkers}
-      </div>
+             </div>
     </article>);
 }
 export const TransportLegCard: React.FC<TransportLegCardProps> = (props) => {

@@ -1,27 +1,18 @@
-import { type MapProjection } from "../types/report";
 import { type PublicStructuredItineraryV2 } from "../types/itinerary";
 export interface WaypointPlacement {
     sequence: number;
     days: number[];
 }
-const PHYSICAL_ENTITY_TYPES = ['visit_stop', 'dining_stop', 'lodging_stay'] as const;
-export function isPhysicalPlaceEntityType(entityType: string): boolean {
-    return (PHYSICAL_ENTITY_TYPES as readonly string[]).includes(entityType);
-}
-export function pinnedMapPlaceIds(places: readonly MapProjection['content']['places'][number][]): string[] {
-    return places
-        .filter((place) => (isPhysicalPlaceEntityType(place.entity_ref.entity_type)
-        && place.latitude != null
-        && place.longitude != null))
-        .map((place) => place.entity_ref.entity_id);
-}
 export function buildWaypointOrder(itinerary: PublicStructuredItineraryV2, mapPlaceIds: readonly string[] = []): Map<string, WaypointPlacement> {
     const pinned = new Set(mapPlaceIds);
+    const PHYSICAL_ENTITY_TYPES = ['visit_stop', 'dining_stop', 'lodging_stay'] as const;
+    const isPhysical = (entityType: string): boolean =>
+        (PHYSICAL_ENTITY_TYPES as readonly string[]).includes(entityType);
     const order = new Map<string, WaypointPlacement>();
     let sequence = 1;
     for (const day of itinerary.day_plans) {
         for (const entry of day.timeline) {
-            if (!isPhysicalPlaceEntityType(entry.entity_type))
+            if (!isPhysical(entry.entity_type))
                 continue;
             if (!pinned.has(entry.entity_id))
                 continue;

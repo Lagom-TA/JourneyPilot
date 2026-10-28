@@ -42,10 +42,14 @@ test('真实跨城过夜旅行：表单 → 审批 → 调研 → 行程 → PDF
 
   try {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: /选择你的常用出发地|规划一趟确定的旅行/ })).toBeVisible();
-    if (await page.getByRole('button', { name: '跳过', exact: true }).isVisible()) {
-      await page.getByRole('button', { name: '跳过', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '想去哪里，告诉我。' })).toBeVisible();
+    await page.getByRole('tab', { name: '按条件规划' }).click();
+    const skipOrigin = page.getByRole('button', { name: '暂时不用默认值', exact: true });
+    await expect(skipOrigin.or(page.getByRole('textbox', { name: '从哪里出发' }))).toBeVisible();
+    if (await skipOrigin.count()) {
+      await skipOrigin.click();
     }
+    await expect(page.getByRole('textbox', { name: '从哪里出发' })).toBeVisible();
     const destination = process.env.JP_LIVE_DESTINATION || '苏州';
     for (const [label, query] of [['从哪里出发', '上海'], ['去哪里', destination]]) {
       const input = page.getByRole('textbox', { name: label, exact: true });
@@ -65,7 +69,7 @@ test('真实跨城过夜旅行：表单 → 审批 → 调研 → 行程 → PDF
     await page.getByRole('button', { name: '轻松慢游', exact: true }).click();
     await page.getByRole('button', { name: '开始规划', exact: true }).click();
 
-    const approve = page.getByRole('button', { name: '确认调研计划并继续', exact: true });
+    const approve = page.getByRole('button', { name: '确认并开始生成', exact: true });
     await expect(approve).toBeVisible({ timeout: 150_000 });
     await Promise.all(captures);
     expect(runId, '审批阶段必须已持久化真实 Run').not.toBe('');
@@ -100,10 +104,11 @@ test('真实跨城过夜旅行：表单 → 审批 → 调研 → 行程 → PDF
     expect(bundle.workspace.itinerary.lodging_stays.length, '跨夜行程必须交付住宿').toBeGreaterThan(0);
     expect(bundle.workspace.itinerary.transport_legs.length, '跨城行程必须交付交通').toBeGreaterThan(0);
     await page.screenshot({ path: testInfo.outputPath('itinerary.png'), fullPage: true });
-    await page.getByRole('tab', { name: '完整报告' }).click();
+    await page.getByRole('button', { name: '阅读版', exact: true }).click();
     await expect(page.getByTestId('report-cover')).toBeVisible();
     const downloadPromise = page.waitForEvent('download');
-    await page.getByRole('button', { name: '导出当前 PDF' }).click();
+    // 阅读版面板内唯一一个导出按钮；不做全局 testid 查询，避免命中导航栏的入口。
+    await page.getByRole('region', { name: '旅行阅读版' }).getByTestId('download-current-pdf').click();
     const download = await downloadPromise;
     const pdfPath = testInfo.outputPath('trip.pdf');
     await download.saveAs(pdfPath);
@@ -117,7 +122,7 @@ test('真实跨城过夜旅行：表单 → 审批 → 调研 → 行程 → PDF
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByTestId('canvas-pill').click();
     await expect(page.getByTestId('canvas-sheet').getByTestId('interactive-itinerary')).toBeVisible();
-    await page.getByRole('tab', { name: '完整报告' }).click();
+    await page.getByRole('button', { name: '阅读版', exact: true }).click();
     await expect(page.getByTestId('report-cover')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('mobile-report.png'), fullPage: true });
     await Promise.all(captures);

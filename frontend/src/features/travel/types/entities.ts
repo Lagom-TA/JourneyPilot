@@ -28,6 +28,7 @@ export interface TransportSegment {
     mode: TransportMode;
     from_endpoint: TransportEndpoint;
     to_endpoint: TransportEndpoint;
+    path?: Array<{ latitude: number; longitude: number }>;
     departure_at: string | null;
     arrival_at: string | null;
     duration_minutes: number | null;

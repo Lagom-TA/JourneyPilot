@@ -8,49 +8,38 @@ import { projectVisibleMessages } from "../model/conversationFlow";
 import { InputArea } from "./InputArea";
 import { MessageBubble } from "./MessageBubble";
 import { ContextCompactionNotice } from "./ContextCompactionNotice";
-import { ResearchBoardingPass } from "../../travel/components/workspace/ResearchBoardingPass";
-import { TripPlanner } from "../../travel/components/planning/TripPlanner";
+import { TripPlanner, type PlannerInspiration } from "../../travel/components/planning/TripPlanner";
 import { TripBriefPlanGate } from "../../travel/components/planning/TripBriefPlanGate";
 import { DiscoveryToIntake } from "../../travel/components/planning/DiscoveryToIntake";
-import { Neatline } from "../../../components/ui/Neatline";
+import { TravelAtlas } from "../../travel/components/planning/TravelAtlas";
+import type { AtlasScene } from "../../travel/components/planning/TravelAtlasScenes";
 import React from 'react';
 export const HeroEmptyState: React.FC = () => {
-    return (<div className="hero-sheet relative flex min-h-0 flex-1 flex-col overflow-clip">
-
-      <svg aria-hidden="true" className="hero-contours hidden sm:block" width="320" height="320" viewBox="0 0 320 320" fill="none">
-        <circle className="hero-contour" cx="320" cy="0" r="90"/>
-        <circle className="hero-contour" cx="320" cy="0" r="140"/>
-        <circle className="hero-contour" cx="320" cy="0" r="190"/>
-        <circle className="hero-contour" cx="320" cy="0" r="240"/>
-      </svg>
-      <Neatline inset="20px" enter className="hidden sm:block"/>
-
-
-      <div className="hero-scroll relative z-10 flex min-h-0 flex-1 flex-col items-center overflow-y-auto px-4 pb-8 pt-6 sm:px-10 sm:pb-12 lg:pt-12">
-        <div className="hero-column w-full max-w-[1040px]">
-
-          <header className="hero-heading">
-            <div>
-              <p className="hero-eyebrow"><span aria-hidden="true"/>旅行，从这里开始</p>
-              <h1 className="hero-h1 font-display font-semibold text-ink">把一句想法，<br />变成可执行的<span className="text-chart">旅程</span></h1>
-            </div>
-            <p className="hero-intro">把时间留给期待。<br />路线、住宿与每一天的安排，<br className="hidden sm:block"/>在这里慢慢成形。</p>
+    const [inspiration, setInspiration] = React.useState<PlannerInspiration | null>(null);
+    const useInspiration = (scene: AtlasScene) => {
+        setInspiration((previous) => ({ id: (previous?.id ?? 0) + 1, text: scene.prompt, scene }));
+    };
+    return (<div className="new-trip-hero">
+      <div className="new-trip-main hero-scroll">
+        <div className="new-trip-content">
+          <header className="new-trip-copy">
+            <h1>想去哪里，告诉我<span>。</span></h1>
           </header>
-          <div className="mt-7 sm:mt-9">
-            <TripPlanner />
-          </div>
+          <TripPlanner inspiration={inspiration} />
         </div>
       </div>
+      <TravelAtlas onUseExample={useInspiration} />
     </div>);
 };
-export const ConversationThread: React.FC = () => {
+export const ConversationThread: React.FC<{
+    embedded?: boolean;
+}> = ({ embedded = false }) => {
     const { state, dispatch } = useApp();
     const { sendMessage } = useSendMessage();
     const { loadEarlierHistory } = useSessionManager();
     const messages = state.currentMessages;
     const planGatePending = Boolean(state.planApprovalGate && state.planApprovalGate.status !== 'cancelled');
     const visibleMessages = React.useMemo(() => projectVisibleMessages(messages, { planGatePending }), [messages, planGatePending]);
-    const showResearchBoard = Boolean(state.currentTripRunId && (state.controlledTripIdentity || state.tripSummaryCard));
     const isEmpty = messages.length === 0;
     const showCanvas = state.canvasOpen && state.deliveryBundle !== null;
     const lastUserText = React.useMemo(() => {
@@ -107,15 +96,12 @@ export const ConversationThread: React.FC = () => {
             return;
         el.scrollTop = el.scrollHeight;
     }, [visibleMessages.length, lastLen, lastSteps, state.isStreaming, state.planApprovalGate]);
-    const body = isEmpty ? (<div className="flex h-full flex-col">
+    const body = isEmpty && !embedded ? (<div className="flex h-full flex-col">
       <HeroEmptyState />
     </div>) : (<div className="flex h-full min-h-0 flex-col">
-      {showResearchBoard && (<div className="flex-none px-4 pt-4 sm:px-6">
-          <ResearchBoardingPass />
-        </div>)}
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
 
-        <div className={cn('mx-auto flex flex-col gap-6', showResearchBoard ? 'max-w-5xl' : 'max-w-3xl')}>
+        <div className={cn('mx-auto flex flex-col gap-6', embedded ? 'max-w-none' : 'max-w-3xl')}>
           {hasEarlierHistory && (<div className="flex justify-center">
               <button type="button" onClick={requestEarlierHistory} disabled={loadingEarlierHistory} className="min-h-9 rounded-card border border-stroke px-3 text-xs text-ink-secondary hover:border-accent hover:text-accent disabled:opacity-60">
                 {loadingEarlierHistory ? '正在载入更早的对话…' : '载入更早的对话'}
@@ -170,9 +156,9 @@ export const ConversationThread: React.FC = () => {
         </div>
       </div>
 
-      {!state.isStreaming && !planGatePending && (<div className={cn('px-4 py-3 sm:px-6', showCanvas && 'border-t border-stroke bg-surface/50')}>
+      {!planGatePending && (<div className={cn('px-4 py-3 sm:px-6', showCanvas && 'border-t border-stroke bg-surface/50')}>
           <div className="mx-auto max-w-3xl">
-            {!state.pendingGuidedIntake && !state.pendingRouteConfirmation && <InputArea />}
+            {!state.pendingGuidedIntake && !state.pendingRouteConfirmation && <InputArea minimal={embedded} showCompaction={!embedded}/>}
           </div>
         </div>)}
     </div>);

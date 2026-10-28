@@ -14,7 +14,8 @@ import { normalizeContextCompactionEvent } from "../model/contextCompaction";
 import React, { useState, useRef, useCallback } from 'react';
 export const InputArea: React.FC<{
     showCompaction?: boolean;
-}> = ({ showCompaction = true }) => {
+    minimal?: boolean;
+}> = ({ showCompaction = true, minimal = false }) => {
     const { state, dispatch, activeStreamAbortRef } = useApp();
     const { sendMessage } = useSendMessage();
     const { setLastSession } = useSessionManager();
@@ -166,19 +167,19 @@ export const InputArea: React.FC<{
           <div className="input-normal-row">
             <div className="input-normal-inner flex items-center gap-2 px-4 py-3">
               {mode === 'stopped' ? (<>
-                  <textarea value={stoppedInput} onChange={(e) => setStoppedInput(e.target.value)} onKeyDown={handleStoppedKeyDown} placeholder="告诉 JourneyPilot 这趟行程想怎么调整…" rows={1} autoFocus className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[120px] leading-relaxed')}/>
+                  <textarea value={stoppedInput} onChange={(e) => setStoppedInput(e.target.value)} onKeyDown={handleStoppedKeyDown} placeholder={minimal ? '告诉我想怎么改……' : '告诉 JourneyPilot 这趟行程想怎么调整…'} rows={1} autoFocus className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[120px] leading-relaxed')}/>
                   <Button variant="primary" size="sm" onClick={handleStoppedSend} disabled={!stoppedInput.trim()} className="flex-shrink-0 !rounded-card !h-8 !w-8 !p-0">
                     <Send size={14}/>
                   </Button>
-                  <button onClick={handleNewChat} className={cn('flex-shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-card', 'text-xs font-medium text-ink-secondary', 'border border-stroke/60 bg-transparent', 'hover:bg-ink/5 hover:text-ink hover:border-stroke/60', 'transition-[color,background-color,opacity] duration-base ease-standard')}>
+                  {!minimal && <button onClick={handleNewChat} className={cn('flex-shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-card', 'text-xs font-medium text-ink-secondary', 'border border-stroke/60 bg-transparent', 'hover:bg-ink/5 hover:text-ink hover:border-stroke/60', 'transition-[color,background-color,opacity] duration-base ease-standard')}>
                     <Plus size={13}/>
                     新建行程
-                  </button>
+                  </button>}
                 </>) : (<>
                   <textarea ref={textareaRef} data-testid="brief-input" value={input} onChange={(e) => {
                 setInput(e.target.value);
                 adjustHeight();
-            }} onKeyDown={handleKeyDown} placeholder="描述这趟旅行：目的地、日期、同行人、预算、硬约束…" rows={1} name="chat-message" autoComplete="off" className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[200px] leading-relaxed')}/>
+            }} onKeyDown={handleKeyDown} placeholder={minimal ? '告诉我想怎么改……' : '描述这趟旅行：目的地、日期、同行人、预算、偏好…'} rows={1} name="chat-message" autoComplete="off" autoFocus={minimal} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[200px] leading-relaxed')}/>
                   <Button variant="primary" size="sm" data-testid="send-button" aria-label={showStop ? '停止本次运行' : '发送'} data-streaming={showStop ? 'true' : 'false'} onClick={showStop ? handleStop : handleSend} disabled={!showStop && !input.trim()} className={cn('flex-shrink-0 !rounded-card !h-8 !w-8 !p-0', showStop &&
                 '!bg-ink/75 hover:!bg-ink !shadow-none')}>
                     {showStop ? <Square size={13}/> : <Send size={14}/>}
@@ -190,7 +191,7 @@ export const InputArea: React.FC<{
       </div>
 
 
-      <div className={cn('flex flex-wrap items-center gap-2 mt-2 px-1 [&>*]:shrink-0', 'transition-[color,background-color,opacity] duration-base ease-standard', mode !== 'normal'
+      {!minimal && (<div className={cn('flex flex-wrap items-center gap-2 mt-2 px-1 [&>*]:shrink-0', 'transition-[color,background-color,opacity] duration-base ease-standard', mode !== 'normal'
             ? 'opacity-0 pointer-events-none h-0 mt-0 overflow-hidden'
             : 'opacity-100 h-auto')}>
 
@@ -219,7 +220,7 @@ export const InputArea: React.FC<{
               {isCompacting ? '整理中…' : '整理较早对话'}
             </button>
           </Tooltip>)}
-      </div>
+      </div>)}
 
 
       <div className={cn('input-expand', (optimizedPrompt !== null || optimizeError !== null) && 'expanded')}>

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { PanInfo } from 'motion/react';
-import { AnimatePresence, animate, m, useDragControls, useMotionValue } from 'motion/react';
+import { AnimatePresence, animate, m, useDragControls, useMotionValue, useReducedMotion } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { duration, easing, spring } from '../../lib/motion';
 import { CanvasMotion } from './CanvasMotion';
@@ -50,6 +50,7 @@ export const Sheet: React.FC<SheetProps> = ({
   const [detent, setDetent] = useState<SheetDetent>(initialDetent);
   const [entered, setEntered] = useState(false);
   const y = useMotionValue(closedY);
+  const reducedMotion = useReducedMotion();
   const dragControls = useDragControls();
   // 拖拽结束后的 click 不能再次切换停靠位置。
   const draggedRef = useRef(false);
@@ -68,12 +69,13 @@ export const Sheet: React.FC<SheetProps> = ({
     (target: SheetDetent) => {
       if (target === detent) {
         // 目标停靠位未变时声明式动画不会重跑，需命令式吸附。
-        animate(y, yFor(target), spring);
+        if (reducedMotion) y.set(yFor(target));
+        else animate(y, yFor(target), spring);
       } else {
         setDetent(target);
       }
     },
-    [detent, y, yFor]
+    [detent, reducedMotion, y, yFor]
   );
 
   const handleDragEnd = useCallback(
@@ -110,7 +112,7 @@ export const Sheet: React.FC<SheetProps> = ({
   return (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-50">
+        <div className="fixed inset-0" style={{ zIndex: 1100 }}>
           <CanvasMotion>
             <m.div
               data-testid="sheet-scrim"
@@ -146,7 +148,7 @@ export const Sheet: React.FC<SheetProps> = ({
                 draggedRef.current = true;
               }}
               onDragEnd={handleDragEnd}
-              style={{ y, height: panelHeight }}
+              style={{ y, height: panelHeight, zIndex: 10 }}
               className={cn(
                 'absolute inset-x-0 bottom-0 flex flex-col overflow-hidden border-t border-stroke bg-panel shadow-lg',
                 'rounded-t-card pb-[env(safe-area-inset-bottom)]'

@@ -1,5 +1,4 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { Liquid } from 'liquid-gooey';
 import { useReducedMotion } from 'motion/react';
 import { cn } from '../../lib/utils';
 
@@ -40,16 +39,15 @@ export function SegmentedTabs<T extends string>({
   const measure = useCallback(() => {
     const button = buttonRefs.current.get(value);
     if (!button) return;
-    setRect((previous) => {
-      const next = { x: button.offsetLeft, width: button.offsetWidth, height: button.offsetHeight };
-      if (previous && previous.x === next.x && previous.width === next.width && previous.height === next.height) {
-        return previous;
-      }
-      return next;
-    });
+    const next = { x: button.offsetLeft, width: button.offsetWidth, height: button.offsetHeight };
+    setRect((previous) => (
+      previous && previous.x === next.x && previous.width === next.width && previous.height === next.height
+        ? previous
+        : next
+    ));
   }, [value]);
 
-  // 字体加载可改变按钮宽度而不改变轨道宽度，因此同时观察按钮。
+  // 字体加载可改变按钮宽度，因此轨道和按钮都需要参与尺寸观察。
   useLayoutEffect(() => {
     measure();
     const group = groupRef.current;
@@ -58,11 +56,10 @@ export function SegmentedTabs<T extends string>({
     observer.observe(group);
     buttonRefs.current.forEach((button) => observer.observe(button));
     return () => observer.disconnect();
-  }, [measure, tabs.length, reducedMotion]);
+  }, [measure, tabs.length]);
 
   const focusAndSelect = (index: number) => {
-    const wrapped = (index + tabs.length) % tabs.length;
-    const tab = tabs[wrapped];
+    const tab = tabs[(index + tabs.length) % tabs.length];
     if (!tab) return;
     onChange(tab.id);
     buttonRefs.current.get(tab.id)?.focus();
@@ -92,9 +89,6 @@ export function SegmentedTabs<T extends string>({
     }
   };
 
-  const trackClass = cn('relative isolate flex min-w-0 items-center rounded-card bg-surface/65 p-1', className);
-
-  /* 宽度直接落位，只过渡 transform，避免布局动画。 */
   const indicatorStyle: React.CSSProperties = {
     position: 'absolute',
     top: 4,
@@ -103,63 +97,40 @@ export function SegmentedTabs<T extends string>({
     width: rect?.width ?? 0,
     transform: `translateX(${rect?.x ?? 0}px)`,
     visibility: rect ? 'visible' : 'hidden',
-    transition: 'transform var(--dur-base) var(--ease-standard)',
+    transition: reducedMotion ? 'none' : 'transform var(--dur-base) var(--ease-decelerate)',
     pointerEvents: 'none',
   };
 
-  const buttons = tabs.map((tab, index) => {
-    const selected = tab.id === value;
-    return (
-      <button
-        key={tab.id}
-        ref={(node) => {
-          if (node) buttonRefs.current.set(tab.id, node);
-          else buttonRefs.current.delete(tab.id);
-        }}
-        type="button"
-        role="tab"
-        id={tab.domId}
-        aria-controls={tab.panelId}
-        aria-selected={selected}
-        tabIndex={selected ? 0 : -1}
-        data-testid={tab.testId}
-        onClick={() => onChange(tab.id)}
-        onKeyDown={(event) => onKeyDown(event, index)}
-        className={cn(
-          'relative z-[1] min-h-10 whitespace-nowrap rounded-label px-3 py-2 text-xs font-semibold transition-colors',
-          selected ? 'text-accent' : 'text-ink-secondary hover:text-ink'
-        )}
-      >
-        {tab.label}
-      </button>
-    );
-  });
-
-  if (reducedMotion) {
-    return (
-      <div ref={groupRef} role="tablist" aria-label={ariaLabel} className={trackClass}>
-        <div aria-hidden className="rounded-label bg-panel shadow-sm" style={indicatorStyle} />
-        {buttons}
-      </div>
-    );
-  }
-
   return (
-    <Liquid
-      ref={groupRef}
-      role="tablist"
-      aria-label={ariaLabel}
-      className={trackClass}
-      fill="var(--color-panel)"
-      shadow="var(--shadow-sm)"
-      blur={3}
-      contrast={18}
-      filterPadding={8}
-    >
-      <Liquid.Item effect="move" move={{ springiness: 0.8, wobble: 0.15, stretch: 0.3, trail: 0.35 }}>
-        <div aria-hidden className="rounded-label" style={indicatorStyle} />
-      </Liquid.Item>
-      {buttons}
-    </Liquid>
+    <div ref={groupRef} role="tablist" aria-label={ariaLabel} className={cn('segmented-tabs', className)}>
+      <div aria-hidden className="rounded-label border border-stroke/70 bg-panel shadow-sm" style={indicatorStyle} />
+      {tabs.map((tab, index) => {
+        const selected = tab.id === value;
+        return (
+          <button
+            key={tab.id}
+            ref={(node) => {
+              if (node) buttonRefs.current.set(tab.id, node);
+              else buttonRefs.current.delete(tab.id);
+            }}
+            type="button"
+            role="tab"
+            id={tab.domId}
+            aria-controls={tab.panelId}
+            aria-selected={selected}
+            tabIndex={selected ? 0 : -1}
+            data-testid={tab.testId}
+            onClick={() => onChange(tab.id)}
+            onKeyDown={(event) => onKeyDown(event, index)}
+            className={cn(
+              'relative z-[1] min-h-10 flex-1 whitespace-nowrap rounded-label px-3 py-2 text-[13px] font-medium transition-colors',
+              selected ? 'text-accent' : 'text-ink-secondary hover:text-ink',
+            )}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }

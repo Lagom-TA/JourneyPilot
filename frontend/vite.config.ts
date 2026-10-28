@@ -28,12 +28,12 @@ export default defineConfig({
           // 但它是一整棵稳定的第三方依赖树，从 app 入口 chunk 拆出到独立 vendor
           // chunk：① 与入口并行下载，首屏不增延迟；② 第三方代码变动频率低，独立
           // 长缓存命中率高；③ 把 app 入口的 minified raw 体积降到 500kb 阈值下，
-          // 消除 chunk 体积警告（IX-R3 / DESIGN-INTERACTION §11-R3）。
+          // 消除 chunk 体积警告。
           // 注意：motion 的 domMax 拆分由 LazyMotion + CanvasMotion 动态 import
           // 自动完成（motion-features chunk），此处不触碰，避免把 domMax 拉回主包。
           if (id.includes('node_modules')) {
             // Keep the interaction libraries independently cacheable after UI changes.
-            if (/[/\\]node_modules[/\\](thinking-orbs|liquid-gooey)[/\\]/.test(id)) {
+            if (/[/\\]node_modules[/\\](thinking-orbs)[/\\]/.test(id)) {
               return 'interaction-vendor';
             }
             // react / react-dom / scheduler：全站最稳定的框架内核，独立成

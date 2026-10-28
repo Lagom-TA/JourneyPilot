@@ -1,5 +1,5 @@
 import { type AppState } from "../state/state";
-export type SessionRuntimeSnapshot = Pick<AppState, 'conversationEpoch' | 'currentSessionId' | 'currentTripRunId' | 'currentTripRunStatus' | 'currentTripRunRecovery' | 'tripRunSource' | 'tripRunRefreshKey' | 'currentMessages' | 'historyPaging' | 'thinkingSteps' | 'deliveryBundle' | 'deliveryBundleLoadState' | 'tripSummaryCard' | 'planApprovalGate' | 'pendingGuidedIntake' | 'pendingRouteConfirmation' | 'lastRouteDecision' | 'controlledTripIdentity' | 'runCostLive' | 'runCostSummary' | 'isStreaming' | 'isSynthesizing' | 'canvasOpen' | 'canvasFullscreen' | 'mobileCanvasOpen' | 'inputMode'>;
+export type SessionRuntimeSnapshot = Pick<AppState, 'conversationEpoch' | 'currentSessionId' | 'currentTripRunId' | 'currentTripRunStatus' | 'currentTripRunRecovery' | 'currentTripRunReadOnly' | 'tripRunSource' | 'tripRunRefreshKey' | 'currentMessages' | 'historyPaging' | 'thinkingSteps' | 'deliveryBundle' | 'deliveryBundleLoadState' | 'tripSummaryCard' | 'planApprovalGate' | 'pendingGuidedIntake' | 'pendingRouteConfirmation' | 'lastRouteDecision' | 'controlledTripIdentity' | 'runCostLive' | 'runCostSummary' | 'isStreaming' | 'isSynthesizing' | 'canvasOpen' | 'mobileCanvasOpen' | 'inputMode'>;
 export interface ActiveStreamHandle {
     token: string;
     sessionId: string | null;
@@ -13,6 +13,7 @@ export function createSessionRuntimeSnapshot(state: AppState): SessionRuntimeSna
         currentTripRunId: state.currentTripRunId,
         currentTripRunStatus: state.currentTripRunStatus,
         currentTripRunRecovery: state.currentTripRunRecovery,
+        currentTripRunReadOnly: state.currentTripRunReadOnly,
         tripRunSource: state.tripRunSource,
         tripRunRefreshKey: state.tripRunRefreshKey,
         currentMessages: state.currentMessages,
@@ -31,7 +32,6 @@ export function createSessionRuntimeSnapshot(state: AppState): SessionRuntimeSna
         isStreaming: state.isStreaming,
         isSynthesizing: state.isSynthesizing,
         canvasOpen: state.canvasOpen,
-        canvasFullscreen: state.canvasFullscreen,
         mobileCanvasOpen: state.mobileCanvasOpen,
         inputMode: state.inputMode,
     };

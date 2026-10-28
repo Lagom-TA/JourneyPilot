@@ -1,8 +1,7 @@
-import { CircleAlert, Check, Copy, PanelRightOpen, RefreshCw, ShieldBan, ShieldQuestion, Square } from "lucide-react";
+import { CircleAlert, Check, Copy, RefreshCw, ShieldBan, ShieldQuestion, Square } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { getChatErrorGuidance } from "../model/chatErrorGuidance";
 import { useApp } from "../../../app/state/AppContext";
-import { useIsMobileViewport } from "../../../hooks/useMediaQuery";
 import { type Message } from "../types/messages";
 import { Markdown } from "./Markdown";
 import { ThinkingChain } from "./ThinkingChain";
@@ -19,8 +18,7 @@ interface MessageBubbleProps {
     retryDisabled?: boolean;
 }
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerating, isLast, onRetry, retryDisabled }) => {
-    const { state, dispatch } = useApp();
-    const isMobile = useIsMobileViewport();
+    const { state } = useApp();
     const [copied, setCopied] = React.useState(false);
     const isUser = message.role === 'user';
     const isError = message.type === 'error';
@@ -34,7 +32,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerat
     const hasThinking = steps.length > 0 || (!!isGenerating && !hasDisplay);
     const streaming = !!isGenerating && !message.streamCompleted && message.type !== 'interrupted';
     const regionId = `thinking-${message.id}`;
-    const hasPlanCanvas = state.deliveryBundle !== null;
     const errorGuidance = React.useMemo(() => getChatErrorGuidance(message.displayContent || message.content || '', isGuardBlocked ? 'guard_blocked' : 'fault'), [message.content, message.displayContent, isGuardBlocked]);
     const handleErrorAction = () => {
         switch (errorGuidance.action) {
@@ -138,17 +135,6 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerat
               {copied ? <Check size={12} className="text-success"/> : <Copy size={12}/>}
               <span>{copied ? '已复制' : '复制'}</span>
             </button>
-            {isLast && hasPlanCanvas && (<button type="button" data-testid="open-canvas" onClick={() => {
-                    if (isMobile) {
-                        dispatch({ type: 'SET_MOBILE_CANVAS_OPEN', payload: true });
-                    }
-                    else {
-                        dispatch({ type: 'SET_CANVAS_OPEN', payload: true });
-                    }
-                }} className="ml-auto flex items-center gap-1 rounded-card bg-[var(--color-accent-soft)] px-2.5 py-1 text-[11px] font-medium text-accent transition-colors hover:bg-accent/10">
-                <PanelRightOpen size={12}/>
-                <span>在画布查看行程</span>
-              </button>)}
           </div>)}
       </div>
     </div>);

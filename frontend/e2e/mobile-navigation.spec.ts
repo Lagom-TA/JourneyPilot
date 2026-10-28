@@ -5,11 +5,15 @@ for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 844 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: /选择你的常用出发地|规划一趟确定的旅行/ })).toBeVisible();
-    const skip = page.getByRole('button', { name: '跳过', exact: true });
-    if (await skip.isVisible()) await skip.click();
-    await expect(page.getByRole('heading', { name: '规划一趟确定的旅行', exact: true })).toBeVisible();
-    const scroll = page.locator('.hero-scroll');
+    await expect(page.getByRole('heading', { name: '想去哪里，告诉我。' })).toBeVisible();
+    await page.getByRole('tab', { name: '按条件规划' }).click();
+    const skip = page.getByRole('button', { name: '暂时不用默认值', exact: true });
+    const originInput = page.getByRole('textbox', { name: '从哪里出发' });
+    await expect(skip.or(originInput)).toBeVisible();
+    if (await skip.count()) await skip.click();
+    await expect(page.getByRole('textbox', { name: '从哪里出发' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: '去哪里', exact: true })).toBeVisible();
+    const scroll = page.locator('.new-trip-hero');
     expect(await scroll.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
 
     const opener = page.getByRole('button', { name: '打开导航', exact: true });

@@ -1,6 +1,6 @@
 # 真实端到端测试
 
-先启动一套配置完成的 JourneyPilot。所有用例连接真实服务，不拦截 API、不替换模型、工具或数据库。Compose 的网页入口通常是 `http://127.0.0.1:8001`；`run.sh` 的前端通常是 `http://127.0.0.1:8080`。
+先启动一套配置完成的 JourneyPilot。默认套件（冒烟、移动导航、home-inspiration）连接页面与 `/api/`；带 `JP_*` 开关的用例按各自说明运行。Compose 的网页入口通常是 `http://127.0.0.1:8001`；`run.sh` 的前端通常是 `http://127.0.0.1:8080`。
 
 在 `frontend/` 下执行：
 
@@ -17,10 +17,9 @@ JP_WRITE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
 JP_LIVE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
   npx playwright test e2e/live-planning.spec.ts --workers=1
 
-# 只传入上一条命令新建的可修改测试旅行，不要传入用户日常旅行。
-# 添加临时安排，核对报告同步与持久化，再撤销并核对完整行程还原。
-JP_EDIT_RUN_ID=trip_替换为测试运行ID JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
-  npx playwright test e2e/delivery-edit.spec.ts --workers=1
+# 只传入已完成的测试旅行；全程只读，不创建或撤销直接编辑。
+JP_READ_RUN_ID=trip_替换为测试运行ID JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
+  npx playwright test e2e/delivery-readonly.spec.ts --workers=1
 ```
 
 未显式开启的写入、付费和交付修改用例会显示 **skipped**，不代表已经验证。冒烟测试允许 readiness 返回 503，以检查降级状态的响应合同；判断部署可用仍须确认 `/api/health/ready` 为 200、`status=ready`。
@@ -36,4 +35,18 @@ JP_EDIT_RUN_ID=trip_替换为测试运行ID JOURNEYPILOT_APP_URL=http://127.0.0.
 ```bash
 JP_COMPONENT_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8088 \
   npx playwright test e2e/research-progress.spec.ts
+```
+
+home 首页灵感轮播回归在浏览器内拦截 `/api/` 返回本地夹具数据，覆盖默认风格卡片与条件表单；同样只需要 Vite 开发服务器：
+
+```bash
+JOURNEYPILOT_APP_URL=http://127.0.0.1:8088 \
+  npx playwright test e2e/home-inspiration.spec.ts
+```
+
+离线会话与地图工作区回归使用本地两日西安夹具，覆盖连续地点卡、三类地点 Marker、真实路径与端点示意、悬浮定位、详情焦点、日期与图层、阅读版地图实例以及移动 Sheet。API 与地图瓦片都在浏览器内拦截，不访问外部服务，也不修改会话。先启动 Vite 开发服务器，再运行：
+
+```bash
+JP_SESSION_STATE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:5173 \
+  npx playwright test e2e/session-state.spec.ts
 ```

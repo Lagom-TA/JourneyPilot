@@ -2,7 +2,6 @@ import { BedDouble, Clock3, MapPin, Sparkles, Utensils } from "lucide-react";
 import { type CustomBlock } from "../../types/entities";
 import { type PublicDiningStop, type PublicLodgingStay, type PublicVisitStop } from "../../types/itinerary";
 import { IntentExplanationList } from "./IntentExplanationList";
-import React from 'react';
 const money = new Intl.NumberFormat('zh-CN', {
     style: 'currency',
     currency: 'CNY',
@@ -59,10 +58,7 @@ function MetaLine({ values }: {
         return null;
     return <p className="break-words text-[11px] leading-5 text-ink-muted">{visible.join(' · ')}</p>;
 }
-interface EntityCardSupport {
-    sourceMarkers?: React.ReactNode;
-}
-export function VisitStopCard({ stop, sourceMarkers, }: EntityCardSupport & {
+export function VisitStopCard({ stop }: {
     stop: PublicVisitStop;
 }) {
     const start = timeLabel(stop.planned_start);
@@ -88,13 +84,12 @@ export function VisitStopCard({ stop, sourceMarkers, }: EntityCardSupport & {
             {stop.visit_highlights.length > 0 && <p className="mt-1 break-words text-xs leading-5 text-ink-secondary"><strong className="font-semibold text-ink">重点体验：</strong>{stop.visit_highlights.join('、')}</p>}
             <p className="mt-1 break-words text-xs leading-5 text-ink-secondary"><strong className="font-semibold text-ink">安排理由：</strong>{stop.selection_reason}</p>
             <IntentExplanationList items={stop.intent_explanations}/>
-            {sourceMarkers}
-          </div>
+                     </div>
         </div>
       </div>
     </article>);
 }
-export function DiningStopCard({ stop, sourceMarkers, }: EntityCardSupport & {
+export function DiningStopCard({ stop }: {
     stop: PublicDiningStop;
 }) {
     const start = timeLabel(stop.planned_start);
@@ -123,22 +118,18 @@ export function DiningStopCard({ stop, sourceMarkers, }: EntityCardSupport & {
             {stop.dining_reminders.map((reminder) => (<p key={reminder} className="mt-1.5 max-w-[70ch] break-words text-xs leading-5 text-ink-secondary">
                 <strong className="font-semibold text-ink">用餐提醒：</strong>{reminder}
               </p>))}
-            {sourceMarkers}
-          </div>
+                     </div>
         </div>
       </div>
     </article>);
 }
-export function LodgingStayCard({ stay, sourceMarkers, }: EntityCardSupport & {
+export function LodgingStayCard({ stay }: {
     stay: PublicLodgingStay;
 }) {
     return (<article id={`lodging-stay-${stay.stay_id}`} data-testid={`lodging-stay-card-${stay.stay_id}`} data-entity-variant="lodging" className="my-3 min-w-0 rounded-card border border-stroke bg-panel p-4 shadow-sm">
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
         <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent"><BedDouble size={15} aria-hidden/> 跨夜住宿</p>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {stay.availability_status === 'needs_confirmation' && <span className="rounded-label border border-stroke px-2 py-0.5 text-[11px] font-semibold text-ink-secondary">需要确认</span>}
-          <span className="rounded-label bg-surface px-2 py-1 text-[11px] font-medium text-ink-secondary">{stay.nights} 晚</span>
-        </div>
+        <span className="shrink-0 rounded-label bg-surface px-2 py-1 text-[11px] font-medium text-ink-secondary">{stay.nights} 晚</span>
       </div>
       <div className="mt-3 min-w-0">
         <h4 className="break-words text-base font-semibold text-ink">{stay.name}</h4>
@@ -162,8 +153,7 @@ export function LodgingStayCard({ stay, sourceMarkers, }: EntityCardSupport & {
         ]}/>
         <p className="mt-1 break-words text-xs leading-5 text-ink-secondary"><strong className="font-semibold text-ink">选择理由：</strong>{stay.selection_reason}</p>
         <IntentExplanationList items={stay.intent_explanations}/>
-        {sourceMarkers}
-      </div>
+             </div>
     </article>);
 }
 export function CustomBlockRow({ block }: {

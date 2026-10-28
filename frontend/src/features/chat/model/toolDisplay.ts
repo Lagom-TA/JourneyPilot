@@ -297,28 +297,3 @@ export function toolSourceLabel(toolName: string | undefined): string {
         return KIND_LABELS.other;
     return KIND_LABELS[classifyTool(name, undefined)];
 }
-export function countToolSources(steps: ThinkingStep[]): number {
-    const kinds = new Set<DisplayKind>();
-    for (const step of steps) {
-        if (!step.toolName)
-            continue;
-        kinds.add(classifyTool(step.toolName, step.toolCategory));
-    }
-    return kinds.size;
-}
-export function describeToolGroup(steps: ThinkingStep[]): ToolDisplay {
-    const last = steps[steps.length - 1];
-    const base = describeToolStep(last);
-    const completed = steps.filter((step) => step.toolStatus !== 'running').length;
-    const failed = last.toolStatus === 'failed';
-    const running = last.toolStatus === 'running';
-    const capability = last.toolStatus === 'capability_declared';
-    const actionText = running
-        ? base.actionText
-        : failed
-            ? `有 ${steps.length} 次调用未完全完成`
-            : capability
-                ? '未覆盖该日期，仅取到参考资料'
-                : `已完成 ${completed || steps.length} 次查询`;
-    return { ...base, actionText, status: failed ? 'failed' : base.status };
-}

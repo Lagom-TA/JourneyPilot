@@ -17,10 +17,14 @@ describe('public research activity', () => {
         expect(researchGroups(steps, false, true)[1].status).toBe('stopped');
         expect(researchGroups([...steps, step('交通查询', { progressStatus: 'failed' })], true, false)[1].status).toBe('failed');
     });
-    it('ignores raw deltas and finishes only same-agent non-tool steps', () => {
+    it('ignores raw deltas, finishes same-agent non-tool steps, and skips unknown tool ids', () => {
         const steps = [step('任务分发'), step('交通查询', { isToolCall: true, toolStatus: 'running' })];
         const state = { thinkingSteps: steps, currentMessages: [] } as unknown as AppState;
-        expect(appReducer(state, { type: 'FINISH_LAST_THINKING_STEP', payload: { agentName: '目的地调研', endTime: new Date() } })).toBe(state);
+        // 同 agent 的非工具步骤被结束：任务分发的这一步带上结束时间。
+        const finished = appReducer(state, { type: 'FINISH_LAST_THINKING_STEP', payload: { agentName: '任务分发', endTime: new Date() } });
+        expect(finished.thinkingSteps[0].endTime).toBeTruthy();
+        expect(finished.thinkingSteps[1].endTime).toBeUndefined();
+        // 未知 toolCallId 是幂等 no-op：状态原样返回。
         expect(appReducer(state, { type: 'UPDATE_LAST_TOOL_STEP', payload: { toolCallId: 'unknown', agentName: '目的地调研', toolStatus: 'completed' } })).toBe(state);
     });
     it('labels real place/route tools and respects explicit terminal status', () => {

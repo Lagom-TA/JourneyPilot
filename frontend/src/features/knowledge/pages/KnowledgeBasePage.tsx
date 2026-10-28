@@ -33,7 +33,7 @@ export const KnowledgeBasePage: React.FC = () => {
                     kind: 'empty',
                     mark: 'empty-sleeve',
                     line: '还没有资料',
-                    hint: '上传攻略、签证清单或酒店备选，规划时会参考它们。',
+                    hint: '上传攻略、酒店备选或交通笔记，规划时会参考它们。',
                 }
                 : { kind: 'ready' };
     return (<>
@@ -69,7 +69,7 @@ export const KnowledgeBasePage: React.FC = () => {
         </StatusLine>)}
 
       <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="添加旅行资料" maxWidth="max-w-2xl">
-        <TextArea placeholder="粘贴你的攻略、签证材料清单、酒店备选或交通说明..." value={manualContent} onChange={(e) => setManualContent(e.target.value)} rows={8} className="mb-4"/>
+        <TextArea placeholder="粘贴你的攻略、酒店备选、目的地笔记或交通说明..." value={manualContent} onChange={(e) => setManualContent(e.target.value)} rows={8} className="mb-4"/>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" size="sm" onClick={() => setShowAddModal(false)}>
             取消

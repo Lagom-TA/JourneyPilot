@@ -24,7 +24,7 @@ export function readPreferenceSelections(groups: PreferenceOptionGroup[], profil
     return selections;
 }
 export function preferenceChipGroups(groups: PreferenceOptionGroup[], selections: PreferenceSelections): PreferenceChipGroup[] {
-    return groups.map((group) => {
+    return groups.filter((group) => !group.key.toLowerCase().includes('budget') && !group.label.includes('预算')).map((group) => {
         const chosen = selections[group.key] ?? [];
         return {
             key: group.key,

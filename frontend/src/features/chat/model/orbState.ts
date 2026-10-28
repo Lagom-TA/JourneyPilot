@@ -1,5 +1,4 @@
 import { type OrbState } from "thinking-orbs";
-import { type ThinkingStep } from "../types/messages";
 import { getStageIdForAgent, parseAgentRound, type StageId } from "./agentStages";
 const NODE_ORBS: ReadonlyArray<readonly [
     node: string,
@@ -43,24 +42,6 @@ export function orbStateForAgent(agentName: string): OrbState {
         return direct;
     const stage = getStageIdForAgent(base);
     return stage ? STAGE_FALLBACK_ORB[stage] : 'working';
-}
-export interface OrbSignals {
-    isStreaming: boolean;
-    isSynthesizing: boolean;
-    answerStarted: boolean;
-    awaitingInput?: boolean;
-}
-export function deriveOrbState(steps: ThinkingStep[], signals: OrbSignals): OrbState {
-    if (signals.awaitingInput)
-        return 'breathing';
-    if (signals.isSynthesizing || (signals.isStreaming && signals.answerStarted))
-        return 'composing';
-    for (let index = steps.length - 1; index >= 0; index -= 1) {
-        const name = steps[index]?.agentName;
-        if (name)
-            return orbStateForAgent(name);
-    }
-    return signals.isStreaming ? 'listening' : 'breathing';
 }
 export const ORB_LABELS: Record<OrbState, string> = {
     working: '正在处理',

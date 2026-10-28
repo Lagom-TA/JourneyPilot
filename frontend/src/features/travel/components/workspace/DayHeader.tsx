@@ -17,7 +17,9 @@ export function DayHeader({ dayId, day, dateLabel, weekdayLabel, destinationLabe
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
 
-            <DayOrdinalChip day={day}/>
+            <div className="inline-flex shrink-0 items-center">
+              <DayOrdinalChip day={day}/>
+            </div>
             {tripMeta.length > 0 && (<p className="min-w-0 break-words text-xs text-ink-secondary">{tripMeta.join(' · ')}</p>)}
           </div>
           <h2 id={`delivery-day-${dayId}`} className="mt-1.5 break-words text-xl font-semibold tracking-[-0.015em] text-ink">

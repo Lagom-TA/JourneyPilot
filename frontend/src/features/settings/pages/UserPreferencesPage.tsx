@@ -193,14 +193,14 @@ export const UserPreferencesPage: React.FC = () => {
 
 
           <div className="mt-6 flex flex-col gap-7">
-            {preferenceChipGroups(groups, selections).map((group, index) => (<div key={group.key} data-testid={`preference-group-${group.key}`}>
+            {preferenceChipGroups(groups, selections).map((group) => (<div key={group.key} data-testid={`preference-group-${group.key}`}>
                 <div className="flex items-baseline gap-2">
                   <h3 className={GROUP_LABEL}>{group.label}</h3>
 
                   {!group.multi && <span className="text-[11px] text-ink-muted">单选</span>}
                 </div>
                 <div className="mt-2.5 flex flex-wrap gap-2">
-                  {group.chips.map(({ option, selected }) => (<Chip key={option} selected={selected} onClick={() => toggleOption(groups[index], option)}>
+                  {group.chips.map(({ option, selected }) => (<Chip key={option} selected={selected} onClick={() => toggleOption(groups.find((item) => item.key === group.key)!, option)}>
                       {option}
                     </Chip>))}
                 </div>

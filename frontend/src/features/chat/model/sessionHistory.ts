@@ -4,7 +4,6 @@ import { normalizeContextCompactionEvent } from "./contextCompaction";
 import { type ChatSession, type Message, type ThinkingStep } from "../types/messages";
 import { type SessionDetail, type SessionSummary } from "../types/sessions";
 import { type TripRunStatus } from "../../travel/types/runs";
-import { stripAssistantControlBlocks } from "./visibleContent";
 export function mapSummary(raw: SessionSummary): ChatSession {
     return {
         id: raw.session_id,
@@ -39,14 +38,8 @@ export function mapThinkingSteps(rawSteps: SessionDetail['messages'][number]['th
     }));
 }
 export function mapMessage(raw: SessionDetail['messages'][number]): Message {
-    const persistedContent = raw.content || '';
-    const persistedDisplayContent = raw.display_content || persistedContent;
-    const content = raw.role === 'assistant'
-        ? stripAssistantControlBlocks(persistedContent)
-        : persistedContent;
-    const displayContent = raw.role === 'assistant'
-        ? stripAssistantControlBlocks(persistedDisplayContent)
-        : persistedDisplayContent;
+    const content = raw.content || '';
+    const displayContent = raw.display_content || content;
     return {
         id: raw.id || generateId(),
         role: raw.role,

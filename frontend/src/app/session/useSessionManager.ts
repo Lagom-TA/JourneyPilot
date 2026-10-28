@@ -33,18 +33,18 @@ export function useSessionManager() {
         dispatch({ type: 'SET_SESSIONS', payload: sessions });
         return sessions;
     }, [dispatch]);
-    const openSession = useCallback(async (sessionId: string) => {
+    const openSession = useCallback(async (sessionId: string, requestedRunId?: string) => {
         const seq = openSessionSeqRef.current + 1;
         openSessionSeqRef.current = seq;
         const currentBeforeOpen = currentStateRef.current;
-        if (currentBeforeOpen.currentSessionId === sessionId && activeStreamRef.current?.sessionId === sessionId) {
+        if (!requestedRunId && currentBeforeOpen.currentSessionId === sessionId && activeStreamRef.current?.sessionId === sessionId) {
             setLastSession(sessionId);
             return;
         }
         cacheCurrentRuntimeIfStreaming(sessionId);
         const cachedRuntime = sessionRuntimeCacheRef.current.get(sessionId);
         const activeStream = activeStreamRef.current;
-        if (cachedRuntime && activeStream?.sessionId === sessionId) {
+        if (!requestedRunId && cachedRuntime && activeStream?.sessionId === sessionId) {
             currentStateRef.current = {
                 ...currentStateRef.current,
                 ...cachedRuntime,
@@ -56,17 +56,27 @@ export function useSessionManager() {
         }
         const [detail, runListResult] = await Promise.all([
             getSessionDetail(sessionId),
-            listTripRuns({ sessionId, mode: 'deep', limit: 1 }).catch(() => null),
+            listTripRuns({ sessionId, mode: 'deep', limit: 80 }).catch(() => null),
         ]);
         if (seq !== openSessionSeqRef.current)
             return;
         cacheCurrentRuntimeIfStreaming(sessionId);
         const latestRun = runListResult?.runs[0] || null;
-        const [latestRunDetail, currentBundleResult] = latestRun
+        const requestedRunIsLatest = Boolean(requestedRunId && latestRun?.run_id === requestedRunId);
+        const requestedRunDetail = requestedRunId && !requestedRunIsLatest
+            ? await getTripRunDetail(requestedRunId).catch(() => null)
+            : null;
+        if (requestedRunDetail && requestedRunDetail.run.session_id !== sessionId)
+            throw new Error('trip run does not belong to this session');
+        const selectedRun = requestedRunId
+            ? (requestedRunIsLatest ? latestRun : requestedRunDetail?.run ?? null)
+            : latestRun;
+        const currentTripRunReadOnly = Boolean(requestedRunId && selectedRun && latestRun && selectedRun.run_id !== latestRun.run_id);
+        const [selectedRunDetail, currentBundleResult] = selectedRun
             ? await Promise.all([
-                getTripRunDetail(latestRun.run_id).catch(() => null),
-                getCurrentDeliveryBundle(latestRun.run_id, sessionId)
-                    .then((bundle) => (isPublicDeliveryBundle(bundle) && bundle.manifest.run_id === latestRun.run_id
+                requestedRunDetail ?? getTripRunDetail(selectedRun.run_id).catch(() => null),
+                getCurrentDeliveryBundle(selectedRun.run_id, sessionId)
+                    .then((bundle) => (isPublicDeliveryBundle(bundle) && bundle.manifest.run_id === selectedRun.run_id
                     ? { bundle, failed: false }
                     : { bundle: null, failed: true }))
                     .catch(() => ({ bundle: null, failed: true })),
@@ -74,20 +84,20 @@ export function useSessionManager() {
             : [null, { bundle: null, failed: false }];
         if (seq !== openSessionSeqRef.current)
             return;
-        const pendingRunChoice = latestRunDetail?.state.pending_user_choice;
-        const currentTripRunStatus = latestRunDetail?.run.status ?? null;
+        const pendingRunChoice = selectedRunDetail?.state.pending_user_choice;
+        const currentTripRunStatus = selectedRunDetail?.run.status ?? null;
         const hasCancelledChoice = pendingRunChoice?.read_only === true
             && pendingRunChoice?.terminal_status === 'cancelled';
         let messages = detail.messages.map(mapMessage);
         let restoredPlanGate = null;
-        if (pendingRunChoice && latestRun && currentTripRunStatus === 'awaiting_input') {
+        if (pendingRunChoice && selectedRun && currentTripRunStatus === 'awaiting_input') {
             const choiceType = String(pendingRunChoice?.type || '');
             if (choiceType === 'approval_gate' && pendingRunChoice?.gate === 'plan') {
                 const payload = pendingRunChoice.payload && typeof pendingRunChoice.payload === 'object'
                     ? pendingRunChoice.payload as Record<string, unknown>
                     : {};
                 restoredPlanGate = normalizePlanApprovalGate({
-                    run_id: latestRun.run_id,
+                    run_id: selectedRun.run_id,
                     gate: 'plan',
                     payload,
                 }, hasCancelledChoice ? 'cancelled' : 'pending');
@@ -99,7 +109,7 @@ export function useSessionManager() {
             .find((card) => card !== null) || null;
         const researchStarted = hasResearchStarted(messages);
         const restoredStepMessages = researchStarted ? projectVisibleMessages(messages) : messages;
-        const restoredIdentity = latestRunDetail?.controlled_trip_identity ?? null;
+        const restoredIdentity = selectedRunDetail?.controlled_trip_identity ?? null;
         const deliveryBundle = currentBundleResult.bundle;
         const deliveryBundleLoadState: SessionRuntimeSnapshot['deliveryBundleLoadState'] = deliveryBundle
             ? { status: 'ready', message: null }
@@ -109,10 +119,11 @@ export function useSessionManager() {
         const restoredRuntime: SessionRuntimeSnapshot = {
             conversationEpoch: currentStateRef.current.conversationEpoch,
             currentSessionId: sessionId,
-            currentTripRunId: latestRun?.run_id ?? null,
+            currentTripRunId: selectedRun?.run_id ?? null,
             currentTripRunStatus,
-            currentTripRunRecovery: tripRunRecoveryFromDetail(latestRunDetail),
-            tripRunSource: latestRun ? 'live' : 'none',
+            currentTripRunRecovery: tripRunRecoveryFromDetail(selectedRunDetail),
+            currentTripRunReadOnly,
+            tripRunSource: selectedRun ? 'live' : 'none',
             tripRunRefreshKey: currentStateRef.current.tripRunRefreshKey,
             currentMessages: projectMessagesForRunLifecycle(messages, currentTripRunStatus),
             historyPaging: {
@@ -134,7 +145,6 @@ export function useSessionManager() {
             isStreaming: false,
             isSynthesizing: false,
             canvasOpen: deliveryBundle !== null,
-            canvasFullscreen: false,
             mobileCanvasOpen: false,
             inputMode: 'normal',
         };
@@ -147,7 +157,13 @@ export function useSessionManager() {
             if (sessions.length === 0) {
                 return;
             }
-            if (state.activeView !== 'chat') {
+            if (currentStateRef.current.activeView !== 'chat') {
+                return;
+            }
+            const params = new URLSearchParams(window.location.search);
+            const deepLinkedSession = params.get('session_id');
+            if (deepLinkedSession && sessions.some((session) => session.id === deepLinkedSession)) {
+                await openSession(deepLinkedSession, params.get('run_id') ?? undefined);
                 return;
             }
             let targetId: string | null = null;
@@ -166,7 +182,7 @@ export function useSessionManager() {
         }
         catch {
         }
-    }, [openSession, refreshSessions, state.activeView]);
+    }, [currentStateRef, openSession, refreshSessions]);
     const deleteSession = useCallback(async (sessionId: string) => {
         await deleteSessionRequest(sessionId);
         dispatch({ type: 'REMOVE_SESSION', payload: sessionId });

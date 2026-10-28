@@ -1,8 +1,39 @@
 import { Bike, BusFront, CarFront, Footprints, Plane, Ship, TrainFront, TramFront, type LucideIcon } from "lucide-react";
+import { type CSSProperties } from "react";
 import { type PublicTransportLeg } from "../types/itinerary";
 import { type TransportMode, type TransportSegment } from "../types/entities";
 import { TRANSPORT_MODE_LABELS } from "./deliveryLabels";
 export type TransportFamily = 'scheduled' | 'transit' | 'road' | 'self' | 'other';
+export const TRANSPORT_MODE_COLORS: Record<TransportMode, string> = {
+    flight: '#6C63CE',
+    high_speed_rail: '#C64B45',
+    train: '#8B5E3C',
+    coach: '#A76E12',
+    ferry: '#168C96',
+    metro: '#2166C1',
+    bus: '#2F7D5A',
+    tram: '#9C4FA3',
+    taxi: '#A77B00',
+    ride_hailing: '#C26A1B',
+    drive: '#D6513C',
+    bike: '#608B2F',
+    walk: '#5F746E',
+    other: '#64748B',
+};
+export function transportModeColor(mode: TransportMode): string {
+    return TRANSPORT_MODE_COLORS[mode];
+}
+export function transportModeStyle(mode: TransportMode): CSSProperties {
+    return { '--transport-mode-color': transportModeColor(mode) } as CSSProperties;
+}
+export function transportSegmentDisplayMode(
+    selectedMode: TransportMode,
+    segmentMode: TransportMode,
+): TransportMode {
+    return segmentMode === 'drive' && (selectedMode === 'taxi' || selectedMode === 'ride_hailing')
+        ? selectedMode
+        : segmentMode;
+}
 export const TRANSPORT_FAMILY_BY_MODE: Record<TransportMode, TransportFamily> = {
     flight: 'scheduled',
     high_speed_rail: 'scheduled',
@@ -127,5 +158,9 @@ export function legService(leg: PublicTransportLeg): LegService | null {
 export function legLineChain(leg: PublicTransportLeg): string[] {
     if (leg.route_status !== 'ready')
         return [];
-    return leg.segments.map((segment: TransportSegment) => (segment.line_name || segment.service_number || TRANSPORT_MODE_LABELS[segment.mode]));
+    return leg.segments.map((segment: TransportSegment) => (
+        segment.line_name
+        || segment.service_number
+        || TRANSPORT_MODE_LABELS[transportSegmentDisplayMode(leg.selected_mode, segment.mode)]
+    ));
 }

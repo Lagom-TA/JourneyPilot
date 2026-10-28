@@ -1,6 +1,5 @@
-import { type ConsumerNotice } from "./consumerNotices";
 import { weatherIconForLabel, type WeatherIconKind } from "./weatherViewModel";
-import { type EvidenceBasis, type PublicCustomBlock, type PublicDiningStop, type PublicLodgingStay, type PublicStructuredItineraryV2, type PublicTransportLeg, type PublicVisitStop } from "../types/itinerary";
+import { type PublicCustomBlock, type PublicDiningStop, type PublicLodgingStay, type PublicTransportLeg, type PublicVisitStop } from "../types/itinerary";
 import { type PublicDeliveryBundle } from "../types/delivery";
 import { type PublicReportBlock, type TripReportProjection } from "../types/report";
 import { type TransportMode } from "../types/entities";
@@ -39,7 +38,6 @@ export interface DaySummaryVM {
     weather: DayWeatherVM | null;
     nodes: DaySummaryNodeVM[];
     hiddenNodeCount: number;
-    notice: ConsumerNotice | null;
 }
 export type TimelineEntity = PublicVisitStop | PublicDiningStop | PublicLodgingStay | PublicTransportLeg | PublicCustomBlock;
 type CurrentReportDocument = NonNullable<TripReportProjection['document']>;
@@ -100,41 +98,6 @@ export function formatTemperatureRange(highC: number | null, lowC: number | null
         return `${high} / ${low}`;
     return high ?? low;
 }
-export function evidenceBasisForEntity(entity: TimelineEntity): EvidenceBasis | null {
-    if (entity.type === 'custom_block')
-        return null;
-    if (entity.type === 'transport_leg' && entity.is_micro_transport)
-        return null;
-    return entity.evidence_basis;
-}
-export function evidenceBasisForReportBlock(block: PublicReportBlock, itinerary: PublicStructuredItineraryV2): EvidenceBasis | null {
-    if (block.entity_kind === 'custom')
-        return null;
-    if (block.entity_kind === 'transport') {
-        const leg = itinerary.transport_legs.find((candidate) => (candidate.transport_leg_id === block.entity_ref.entity_id));
-        if (leg?.is_micro_transport)
-            return null;
-    }
-    return block.evidence_basis;
-}
-export function selectPrimaryLongDistanceMode(itinerary: PublicStructuredItineraryV2): PublicTransportLeg['selected_mode'] | null {
-    const tally = new Map<PublicTransportLeg['selected_mode'], {
-        legs: number;
-        minutes: number;
-        order: number;
-    }>();
-    for (const leg of itinerary.transport_legs) {
-        if (leg.transport_class !== 'long_distance')
-            continue;
-        const current = tally.get(leg.selected_mode) ?? { legs: 0, minutes: 0, order: tally.size };
-        tally.set(leg.selected_mode, {
-            legs: current.legs + 1,
-            minutes: current.minutes + (leg.duration_minutes ?? 0),
-            order: current.order,
-        });
-    }
-    return [...tally.entries()].sort(([, left], [, right]) => (right.legs - left.legs || right.minutes - left.minutes || left.order - right.order))[0]?.[0] ?? null;
-}
 function nodeFromBlock(block: PublicReportBlock): DayTimelineNodeVM {
     const details = block.details;
     return {
@@ -179,15 +142,6 @@ function weatherForDay(day: ReportDay, document: CurrentReportDocument): DayWeat
         windSpeedKph: weather.wind_speed_kph,
     };
 }
-function noticeForDay(dayId: string, notices: readonly ConsumerNotice[]): ConsumerNotice | null {
-    const dayNotices = [...new Map(notices
-            .filter((notice) => notice.scope === 'day' && notice.dayId === dayId)
-            .map((notice) => [notice.key, notice])).values()];
-    return dayNotices.sort((left, right) => {
-        const severity = (notice: ConsumerNotice) => notice.severity === 'blocking' ? 0 : 1;
-        return severity(left) - severity(right);
-    })[0] ?? null;
-}
 function summaryPriority(node: DayTimelineNodeVM): number {
     if (node.role === 'arrival' || node.role === 'departure')
         return 0;
@@ -212,7 +166,7 @@ export function selectDayTimeline(bundle: ItineraryPresentationBundle, dayId: st
     const day = document?.days.find((candidate) => candidate.day_id === dayId);
     return day ? day.blocks.map(nodeFromBlock) : [];
 }
-export function selectDaySummaries(bundle: ItineraryPresentationBundle, notices: readonly ConsumerNotice[] = []): DaySummaryVM[] {
+export function selectDaySummaries(bundle: ItineraryPresentationBundle): DaySummaryVM[] {
     const document = selectCurrentReportDocument(bundle);
     if (!document)
         return [];
@@ -229,7 +183,6 @@ export function selectDaySummaries(bundle: ItineraryPresentationBundle, notices:
             weather: weatherForDay(day, document),
             nodes,
             hiddenNodeCount: timeline.length - nodes.length,
-            notice: noticeForDay(day.day_id, notices),
         };
     });
 }

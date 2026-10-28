@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, m } from 'motion/react';
 import type { Variants } from 'motion/react';
 import { cn } from '../../lib/utils';
-import { duration, easing, transitions } from '../../lib/motion';
+import { duration, transitions } from '../../lib/motion';
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss';
 
 
@@ -155,23 +155,20 @@ export const Popover: React.FC<PopoverProps> = ({
 
   const resolvedPlacement = position?.placement ?? placement;
 
+  const closedOffset = resolvedPlacement.startsWith('bottom') ? -4 : 4;
   const panelVariants: Variants = {
-    hidden: { opacity: 0, scale: 0.96 },
+    hidden: { opacity: 0, scale: 0.97, y: closedOffset },
     visible: {
       opacity: 1,
       scale: 1,
-      transition: {
-        opacity: { duration: duration.slow, ease: easing.decelerate },
-        scale: { duration: duration.slow, ease: easing.decelerate },
-      },
+      y: 0,
+      transition: transitions.enter(duration.base),
     },
     exit: {
       opacity: 0,
-      scale: 0.96,
-      transition: {
-        opacity: transitions.exit(duration.base),
-        scale: { duration: duration.base, ease: easing.accelerate },
-      },
+      scale: 0.98,
+      y: closedOffset,
+      transition: transitions.exit(duration.fast),
     },
   };
 
@@ -182,8 +179,9 @@ export const Popover: React.FC<PopoverProps> = ({
           key="popover-panel"
           ref={panelRef}
           data-testid={testId}
-          className={cn('fixed z-50 rounded-card border border-stroke bg-panel', className)}
+          className={cn('fixed rounded-card border border-stroke bg-panel', className)}
           style={{
+            zIndex: 1200,
             top: position?.top ?? 0,
             left: position?.left ?? 0,
             width: position?.width ?? MIN_WIDTH,

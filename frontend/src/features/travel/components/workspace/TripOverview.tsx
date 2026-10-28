@@ -2,6 +2,7 @@ import { type DaySummaryVM } from "../../model/itineraryPresentation";
 import { type PublicStructuredItineraryV2 } from "../../types/itinerary";
 import { DaySummaryCard } from "./DaySummaryCard";
 import { LabelledFactList, TripFactReadout } from "./TripFactReadout";
+import { cn } from "../../../../lib/utils";
 import React from 'react';
 interface TripOverviewProps {
     itinerary: PublicStructuredItineraryV2;
@@ -10,6 +11,9 @@ interface TripOverviewProps {
     importantNotes: readonly string[];
     onOpenDay: (day: DaySummaryVM) => void;
     registerDayCard: (dayId: string, node: HTMLButtonElement | null) => void;
+    showHeader?: boolean;
+    compact?: boolean;
+    activeDay?: number | null;
 }
 function dateRangeLabel(summaries: readonly DaySummaryVM[]): string | null {
     const dates = summaries.map((summary) => summary.dateLabel).filter((value): value is string => Boolean(value));
@@ -17,7 +21,7 @@ function dateRangeLabel(summaries: readonly DaySummaryVM[]): string | null {
         return null;
     return dates.length === 1 ? dates[0] : `${dates[0]} – ${dates[dates.length - 1]}`;
 }
-export const TripOverview: React.FC<TripOverviewProps> = ({ itinerary, summaries, costCoverageStatement, importantNotes, onOpenDay, registerDayCard, }) => {
+export const TripOverview: React.FC<TripOverviewProps> = ({ itinerary, summaries, costCoverageStatement, importantNotes, onOpenDay, registerDayCard, showHeader = true, compact = false, activeDay = null, }) => {
     const destinations = [...new Set(summaries.map((summary) => summary.destinationLabel).filter((value): value is string => Boolean(value)))];
     const readouts: Array<{
         label: string;
@@ -29,8 +33,8 @@ export const TripOverview: React.FC<TripOverviewProps> = ({ itinerary, summaries
         ...(costCoverageStatement ? [{ label: '费用', value: costCoverageStatement }] : []),
     ];
     const highlights = itinerary.highlights.filter((highlight) => Boolean(highlight.trim()));
-    return (<section data-testid="trip-overview" aria-labelledby="trip-overview-title" className="mx-auto w-full max-w-3xl py-1 sm:py-2">
-      <header className="trip-overview-heading border-b border-stroke pb-5 sm:pb-6">
+    return (<section data-testid="trip-overview" aria-labelledby={showHeader ? 'trip-overview-title' : undefined} aria-label={!showHeader ? '每日行程导航' : undefined} className={cn('mx-auto w-full max-w-3xl py-1 sm:py-2', compact && 'trip-overview-compact')}>
+      {showHeader && (<header className="trip-overview-heading border-b border-stroke pb-5 sm:pb-6">
         <p className="mb-3 text-[11px] font-medium tracking-[0.12em] text-chart">你的旅行手册</p>
         <h2 id="trip-overview-title" className="break-words font-display text-[28px] font-semibold leading-snug tracking-tight text-ink">{itinerary.title}</h2>
         <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4">
@@ -39,11 +43,11 @@ export const TripOverview: React.FC<TripOverviewProps> = ({ itinerary, summaries
         {highlights.length > 0 && (<div className="mt-5 border-t border-stroke/60 pt-4">
             <LabelledFactList facts={highlights} testId="overview-highlights"/>
           </div>)}
-      </header>
+      </header>)}
 
       <ol className="mt-5 space-y-3 sm:mt-6 sm:space-y-4" aria-label="每日行程摘要">
         {summaries.map((day) => (<li key={day.dayId}>
-            <DaySummaryCard day={day} onOpen={() => onOpenDay(day)} cardRef={(node) => registerDayCard(day.dayId, node)}/>
+            <DaySummaryCard day={day} onOpen={() => onOpenDay(day)} cardRef={(node) => registerDayCard(day.dayId, node)} compact={compact} active={activeDay === day.day}/>
           </li>))}
       </ol>
 

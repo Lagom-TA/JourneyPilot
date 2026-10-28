@@ -2,23 +2,6 @@ import { type RunCostLive, type CostGroupBreakdown, type RunCostSummary, type To
 import { formatCost, formatCount, formatDuration, formatPercent, formatTokens, formatTokensCompact, READOUT_PLACEHOLDER } from "../../../lib/format";
 import { formatAgentLabel } from "../../travel/model/travelProgress";
 export type LedgerField = keyof RunCostSummary;
-export const ON_SCREEN_LEDGER_FIELDS = [
-    'call_count',
-    'total_tokens',
-    'total_input_tokens',
-    'total_output_tokens',
-    'total_cached_input_tokens',
-    'total_cache_write_input_tokens',
-    'total_reasoning_output_tokens',
-    'total_cost_usd',
-    'estimated_ratio',
-    'estimated_call_count',
-    'cost_coverage_ratio',
-    'error_call_count',
-    'record_failed',
-    'by_node',
-    'tool_context_saving',
-] as const satisfies readonly LedgerField[];
 export type CostLedgerSource = 'settled' | 'live';
 export interface CostLedgerTile {
     field: LedgerField;

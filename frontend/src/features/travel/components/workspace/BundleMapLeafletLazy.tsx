@@ -1,6 +1,6 @@
 import { LazyViewBoundary } from "../../../../components/ui/LazyViewBoundary";
 import { type MapProjection } from "../../types/report";
-import { type BundleMapPlace } from "./BundleMapLeaflet";
+import { type BundleMapPlace } from "../../model/mapPlaces";
 import React, { lazy, Suspense } from 'react';
 interface BundleMapLeafletLazyProps {
     places: BundleMapPlace[];

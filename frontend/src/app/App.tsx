@@ -1,4 +1,4 @@
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence } from "motion/react";
 import { AppProvider } from "./state/AppProvider";
 import { useApp } from "./state/AppContext";
 import { MotionProviders } from "./motion/MotionProviders";
@@ -6,12 +6,14 @@ import { MainLayout } from "./layout/MainLayout";
 import { TripWorkspaceShell } from "./layout/TripWorkspaceShell";
 import { PageSkeleton } from "./components/PageSkeleton";
 import { LazyViewBoundary } from "../components/ui/LazyViewBoundary";
+import { PresenceFrame } from "../components/ui/PresenceSurface";
 import { useSessionManager } from "./session/useSessionManager";
 import { ViewUrlSync } from "./navigation/ViewUrlSync";
 import { DeliveryEventRecovery } from "./session/useDeliveryEventRecovery";
-import { duration, easing } from "../lib/motion";
+import { resolveViewTransition, viewTransitionVariants } from "./navigation/viewTransition";
 import React, { Suspense, lazy } from 'react';
 const KnowledgeBasePage = lazy(() => import('../features/knowledge/pages/KnowledgeBasePage').then((m) => ({ default: m.KnowledgeBasePage })));
+const MyTripsPage = lazy(() => import('../features/travel/pages/MyTripsPage').then((m) => ({ default: m.MyTripsPage })));
 const PresetLibraryPage = lazy(() => import('../features/presets/pages/PresetLibraryPage').then((m) => ({ default: m.PresetLibraryPage })));
 const UserPreferencesPage = lazy(() => import('../features/settings/pages/UserPreferencesPage').then((m) => ({ default: m.UserPreferencesPage })));
 const ViewContent: React.FC<{
@@ -20,6 +22,8 @@ const ViewContent: React.FC<{
     switch (view) {
         case 'chat':
             return <TripWorkspaceShell />;
+        case 'trips':
+            return <MyTripsPage />;
         case 'knowledge-base':
             return <KnowledgeBasePage />;
         case 'presets':
@@ -34,14 +38,24 @@ const ViewRouter: React.FC = () => {
     const { state } = useApp();
     const view = state.activeView;
     const boundaryResetKey = view === 'chat' ? `${view}:${state.conversationEpoch}` : view;
-    return (<AnimatePresence mode="wait" initial={false}>
-      <m.div key={view} className="h-full min-h-0" initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: duration.base, ease: easing.decelerate } }} exit={{ opacity: 0, transition: { duration: duration.fast, ease: easing.accelerate } }}>
+    const previousRef = React.useRef({ view, conversationEpoch: state.conversationEpoch });
+    const previous = previousRef.current;
+    const transition = resolveViewTransition(
+        previous.view,
+        view,
+        previous.conversationEpoch !== state.conversationEpoch && view === 'chat',
+    );
+    React.useLayoutEffect(() => {
+        previousRef.current = { view, conversationEpoch: state.conversationEpoch };
+    }, [state.conversationEpoch, view]);
+    return (<AnimatePresence mode="popLayout" initial={false} custom={transition}>
+      <PresenceFrame key={view} className="h-full min-h-0 w-full bg-bg" custom={transition} variants={viewTransitionVariants} initial="enter" animate="center" exit="exit">
         <LazyViewBoundary resetKey={boundaryResetKey}>
           <Suspense fallback={<PageSkeleton />}>
             <ViewContent view={view}/>
           </Suspense>
         </LazyViewBoundary>
-      </m.div>
+      </PresenceFrame>
     </AnimatePresence>);
 };
 const App: React.FC = () => {

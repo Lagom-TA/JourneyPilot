@@ -5,17 +5,11 @@ import { chatReducer } from "../../features/chat/model/reducer";
 import { travelReducer } from "../../features/travel/model/reducer";
 export function appReducer(state: AppState, action: AppAction): AppState {
     switch (action.type) {
-        case 'SET_MESSAGES':
-            if (state.currentMessages.length === 0 && action.payload.length === 0)
-                return state;
-            return { ...state, currentMessages: action.payload, tripSummaryCard: null, conversationEpoch: state.conversationEpoch + 1 };
         case 'SET_ACTIVE_VIEW':
             return {
                 ...state,
                 activeView: action.payload,
             };
-        case 'TOGGLE_SIDEBAR':
-            return { ...state, sidebarCollapsed: !state.sidebarCollapsed };
         case 'SET_SIDEBAR_COLLAPSED':
             return { ...state, sidebarCollapsed: action.payload };
         case 'SET_SESSION_ID':
@@ -29,6 +23,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                     ? action.payload.status
                     : (isDifferentRun ? null : state.currentTripRunStatus),
                 currentTripRunRecovery: isDifferentRun ? null : state.currentTripRunRecovery,
+                currentTripRunReadOnly: action.payload.readOnly ?? (isDifferentRun ? false : state.currentTripRunReadOnly),
                 tripRunSource: action.payload.source ?? (action.payload.runId ? state.tripRunSource : 'none'),
                 tripSummaryCard: isDifferentRun ? null : state.tripSummaryCard,
                 deliveryBundle: isDifferentRun ? null : state.deliveryBundle,
@@ -61,13 +56,13 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             return {
                 ...state,
                 currentTripRunId: action.payload.manifest.run_id,
+                currentTripRunReadOnly: action.payload.manifest.run_id === state.currentTripRunId ? state.currentTripRunReadOnly : false,
                 tripRunSource: 'live',
                 deliveryBundle: action.payload,
                 deliveryBundleLoadState: { status: 'ready', message: null },
                 deliverableView: 'interactive_itinerary',
                 sidebarCollapsed: true,
                 canvasOpen: true,
-                canvasFullscreen: false,
                 mobileCanvasOpen: false,
             };
         case 'RESTORE_SESSION_RUNTIME':
@@ -92,10 +87,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         }
         case 'CLEAR_TRACE':
             return { ...state, tripSummaryCard: null, planApprovalGate: null, runCostLive: null, runCostSummary: null };
-        case 'SET_CANVAS_OPEN':
-            return { ...state, canvasOpen: action.payload, canvasFullscreen: action.payload ? state.canvasFullscreen : false };
-        case 'SET_CANVAS_FULLSCREEN':
-            return { ...state, canvasFullscreen: action.payload, canvasOpen: action.payload ? true : state.canvasOpen };
         case 'SET_MOBILE_CANVAS_OPEN':
             return { ...state, mobileCanvasOpen: action.payload };
         case 'SET_ACTIVE_PRESET':
@@ -104,8 +95,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                 return { ...state, activePresetId: action.payload.id, activePresetName: action.payload.name };
             }
             return { ...state, activePresetId: null, activePresetName: null };
-        case 'FLASH_BOARDING_PASS':
-            return { ...state, boardingPassFlash: state.boardingPassFlash + 1 };
         case 'CLEAR_CHAT':
             return {
                 ...state,
@@ -128,10 +117,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                 currentTripRunId: null,
                 currentTripRunStatus: null,
                 currentTripRunRecovery: null,
+                currentTripRunReadOnly: false,
                 tripRunSource: 'none',
                 tripRunRefreshKey: state.tripRunRefreshKey + 1,
                 canvasOpen: false,
-                canvasFullscreen: false,
                 mobileCanvasOpen: false,
                 inputMode: 'normal',
                 isStreaming: false,

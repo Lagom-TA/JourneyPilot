@@ -3,7 +3,6 @@ import { Search } from 'lucide-react';
 import { m } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { ChartMark, type ChartMarkName } from './ChartMark';
-import { Neatline } from './Neatline';
 import { Input } from './Input';
 import { RequestFailureNotice } from './RequestFailureNotice';
 import { Skeleton } from './Skeleton';
@@ -63,7 +62,7 @@ export const PageShell: React.FC<PageShellProps> = ({
             className="flex min-w-0 flex-wrap items-start justify-between gap-3"
           >
             <div className="min-w-0">
-              <h1 className="font-display text-[28px] font-semibold leading-tight text-ink">{title}</h1>
+              <h1 className="font-display text-[32px] font-semibold leading-tight tracking-[-0.025em] text-ink">{title}</h1>
               {purpose && <p className="mt-1.5 text-[13px] text-ink-secondary">{purpose}</p>}
             </div>
             <div className="flex flex-shrink-0 items-center gap-3">
@@ -94,9 +93,7 @@ export const PageShell: React.FC<PageShellProps> = ({
 
       <div className={cn('flex flex-1 flex-col overflow-y-auto pb-6', PAGE_GUTTER)}>
         <m.div variants={staggerItem} className={cn('flex flex-1 flex-col', PAGE_COLUMN)}>
-          {/* 负外边距抵消内容内边距，使正文与标题左缘对齐。 */}
-          <div className="relative -mx-6 flex flex-1 flex-col border border-stroke bg-panel px-6 py-7">
-            <Neatline />
+          <div className="relative flex flex-1 flex-col rounded-panel border border-stroke bg-panel px-5 py-6 sm:px-7 sm:py-7">
             <div className="relative z-[1] flex flex-1 flex-col">
               <SurfaceBody state={state}>{children}</SurfaceBody>
             </div>
