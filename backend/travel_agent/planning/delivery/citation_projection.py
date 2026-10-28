@@ -24,24 +24,12 @@ import hashlib
 
 def _public_source(source: SourceRecord) -> PublicSourceSummary:
     chunk_content = None
-    chunk_locator = None
     if source.source_kind == "rag_chunk":
-        chunk_content = source.snapshot.get("chunk_content") or source.snapshot.get(
-            "content"
-        )
+        chunk_content = source.snapshot.get("content")
         if not isinstance(chunk_content, str) or not chunk_content.strip():
             raise DeliveryProjectionError(
                 f"RAG source {source.source_record_id} is missing the complete chunk"
             )
-        locator_parts = [
-            source.snapshot.get("document_id"),
-            source.snapshot.get("document_revision"),
-            source.snapshot.get("chunk_id"),
-            source.snapshot.get("section") or source.snapshot.get("page"),
-        ]
-        chunk_locator = " / ".join(
-            str(part) for part in locator_parts if part is not None
-        )
     title, public_excerpt, canonical_url = _public_source_presentation(source)
     return PublicSourceSummary(
         source_record_id=source.source_record_id,
@@ -54,7 +42,6 @@ def _public_source(source: SourceRecord) -> PublicSourceSummary:
         observed_at=source.observed_at,
         content_hash=source.content_hash,
         rag_chunk_content=chunk_content,
-        rag_document_locator=chunk_locator or None,
     )
 
 

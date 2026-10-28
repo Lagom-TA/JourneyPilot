@@ -1,5 +1,5 @@
 """
-流式 token 过滤器：实时剔除 HTML 注释数据块、思考块和纯文本推理块。
+流式 token 过滤器：实时剔除思考块和纯文本推理块。
 从 LLM 输出中过滤掉不应出现在用户可见正文中的内容。
 """
 
@@ -10,14 +10,11 @@ import re
 
 class StreamingStripper:
     """
-    流式 token 过滤器：实时剔除以下三类块，防止其出现在用户可见的正文中：
-    - <!-- DESTINATION_JSON ... -->   快速模式目的地 JSON
+    流式 token 过滤器：实时剔除以下两类块，防止其出现在用户可见的正文中：
     - <think>...</think>              模型推理/思考内容（Qwen3、QwQ 等模型会输出）
     - "Thinking Process" 等开头的纯文本推理块（部分 Qwen3 API 不输出 <think> 标签）
     """
 
-    _OPEN_COMMENTS = ("<!-- DESTINATION_JSON",)
-    _CLOSE_COMMENT = "-->"
     _OPEN_THINK = "<think>"
     _CLOSE_THINK = "</think>"
 
@@ -35,33 +32,17 @@ class StreamingStripper:
 
     _TEXT_THINK_MAX_CHARS = 4000
 
-    _HOLD = max(
-        max(len(tag) for tag in _OPEN_COMMENTS),
-        len(_OPEN_THINK),
-        len("Thinking Process"),
-    )
+    _HOLD = max(len(_OPEN_THINK), len("Thinking Process"))
 
     def __init__(self) -> None:
         self._buf = ""
-        self._in_comment_block = False
         self._in_think_block = False
         self._in_text_think_block = False
-        self._comment_buf = ""
         self._think_buf = ""
         self._text_think_buf = ""
 
     def feed(self, chunk: str) -> str:
-        """返回可立即显示的文本；注释块、think 块与纯文本推理块都被过滤。"""
-        if self._in_comment_block:
-            self._comment_buf += chunk
-            close_pos = self._comment_buf.find(self._CLOSE_COMMENT)
-            if close_pos != -1:
-                remainder = self._comment_buf[close_pos + len(self._CLOSE_COMMENT) :]
-                self._comment_buf = ""
-                self._in_comment_block = False
-                self._buf = ""
-                return self._process(remainder)
-            return ""
+        """返回可立即显示的文本；think 块与纯文本推理块都被过滤。"""
         if self._in_think_block:
             self._think_buf += chunk
             close_pos = self._think_buf.find(self._CLOSE_THINK)
@@ -111,29 +92,15 @@ class StreamingStripper:
                     earliest_marker = marker
         return earliest_pos, earliest_marker
 
-    def _find_comment_open(self, buf: str):
-        """在 buf 中查找最早出现的注释块 open 标签，返回 (pos, tag) 或 (-1, '')。"""
-        earliest_pos = -1
-        earliest_tag = ""
-        for tag in self._OPEN_COMMENTS:
-            pos = buf.find(tag)
-            if pos != -1 and (earliest_pos == -1 or pos < earliest_pos):
-                earliest_pos = pos
-                earliest_tag = tag
-        return earliest_pos, earliest_tag
-
     def _process(self, text: str) -> str:
         self._buf += text
 
-        comment_pos, comment_tag = self._find_comment_open(self._buf)
         think_pos = self._buf.find(self._OPEN_THINK)
         text_think_pos, text_think_marker = self._find_text_thinking_marker(self._buf)
 
         earliest_pos: int = -1
         earliest_type: str = ""
-        if comment_pos != -1:
-            earliest_pos, earliest_type = comment_pos, "comment"
-        if think_pos != -1 and (earliest_pos == -1 or think_pos < earliest_pos):
+        if think_pos != -1:
             earliest_pos, earliest_type = think_pos, "think"
         if text_think_pos != -1 and (
             earliest_pos == -1 or text_think_pos < earliest_pos
@@ -153,19 +120,6 @@ class StreamingStripper:
                 return safe + self._process(remainder)
             return safe
 
-        if earliest_type == "comment":
-            safe = self._buf[:earliest_pos]
-            self._in_comment_block = True
-            self._comment_buf = self._buf[earliest_pos + len(comment_tag) :]
-            self._buf = ""
-            close_pos = self._comment_buf.find(self._CLOSE_COMMENT)
-            if close_pos != -1:
-                remainder = self._comment_buf[close_pos + len(self._CLOSE_COMMENT) :]
-                self._comment_buf = ""
-                self._in_comment_block = False
-                return safe + self._process(remainder)
-            return safe
-
         if earliest_type == "text_think":
             safe = self._buf[:earliest_pos]
             self._in_text_think_block = True
@@ -180,11 +134,7 @@ class StreamingStripper:
                 return safe + self._process(remainder)
             return safe
 
-        all_patterns = (
-            list(self._OPEN_COMMENTS)
-            + [self._OPEN_THINK]
-            + list(self._THINKING_MARKERS)
-        )
+        all_patterns = [self._OPEN_THINK] + list(self._THINKING_MARKERS)
         max_hold = min(self._HOLD, len(self._buf))
         best_hold = 0
         for pattern in all_patterns:
@@ -202,11 +152,7 @@ class StreamingStripper:
 
     def flush(self) -> str:
         """流结束时调用，返回剩余可显示文本。"""
-        if (
-            self._in_comment_block
-            or self._in_think_block
-            or self._in_text_think_block
-        ):
+        if self._in_think_block or self._in_text_think_block:
             return ""
         result = self._buf
         self._buf = ""
@@ -224,11 +170,6 @@ _THINKING_TEXT_PATTERN = re.compile(
     r"^(?:Thinking Process|thinking process|Let me analyze|Let me think|思考过程)"
     r"[\s\S]*?(?=\n\n(?=[^\x00-\x7F#\-\*]|\s*#{1,3}\s|\s*[-*]\s))",
     re.MULTILINE,
-)
-
-
-_LEADING_ENGLISH_THINKING_PATTERN = re.compile(
-    r"^(?:Thinking Process|thinking process|Let me analyze|Let me think)[\s\S]+",
 )
 
 

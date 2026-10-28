@@ -470,7 +470,6 @@ async def streaming_react_loop(
                     if exposure.was_activated(tc_name)
                     else "preloaded",
                     provider_snapshot_cache=tool_context.get("provider_snapshot_cache"),
-                    trip_run_store=tool_context.get("trip_run_store"),
                 )
                 if _cacheable_tool_result(tc_name, tool_result):
                     invocation_cache[cache_key] = tool_result

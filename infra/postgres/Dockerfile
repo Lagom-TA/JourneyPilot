@@ -3,11 +3,9 @@
 # 默认档用官方 pgvector 镜像，不编译任何东西。这一份只在用户显式选择中文分词增强时
 # 构建：`docker compose --profile zhparser up -d --build postgres-zhparser redis api`。
 #
-# 供应链要求（dev_docs 03 §5.4）：
+# 供应链要求：
 #   - 基础镜像固定 digest（多架构 index，含 amd64 与 arm64）；
-#   - **HTTPS + 正常签名校验**，不用 `[trusted=yes]` 关掉验签。原来这里为了绕开
-#     一次网络问题换了 HTTP 镜像源并加了 trusted=yes —— 那等于让任何能改写这条
-#     链路的人往数据库镜像里塞东西，而它换来的只是几分钟的构建时间；
+#   - **HTTPS + 正常签名校验**，不用 `[trusted=yes]` 关掉验签；
 #   - 源码 tarball 固定 URL + SHA-256。
 #
 # 网络不通时**让它失败**：一个装不上 zhparser 的环境应当拿到一条构建错误，而不是

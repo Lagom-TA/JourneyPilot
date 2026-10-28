@@ -112,6 +112,62 @@ def _in_request_timezone(value: Any, request_departure_time: str) -> Any:
     return timestamp.astimezone(requested.tzinfo).isoformat()
 
 
+def _decode_leg_geometry(raw: Any) -> list[Dict[str, float]]:
+    """按 MOTIS 声明的精度解码 Google polyline。"""
+    if not isinstance(raw, dict):
+        return []
+    encoded = raw.get("points")
+    precision = raw.get("precision")
+    length = raw.get("length")
+    if (
+        not isinstance(encoded, str)
+        or not encoded
+        or isinstance(precision, bool)
+        or not isinstance(precision, int)
+        or precision < 0
+        or isinstance(length, bool)
+        or not isinstance(length, int)
+        or length < 1
+    ):
+        return []
+    try:
+        factor = float(10**precision)
+    except OverflowError:
+        return []
+
+    path: list[Dict[str, float]] = []
+    latitude_value = 0
+    longitude_value = 0
+    index = 0
+    while index < len(encoded):
+        deltas = []
+        for _ in range(2):
+            result = 0
+            shift = 0
+            while True:
+                if index >= len(encoded):
+                    return []
+                byte = ord(encoded[index]) - 63
+                index += 1
+                if not 0 <= byte <= 63:
+                    return []
+                result |= (byte & 0x1F) << shift
+                shift += 5
+                if byte < 0x20:
+                    break
+                if shift > 35:
+                    return []
+            deltas.append(~(result >> 1) if result & 1 else result >> 1)
+        latitude_value += deltas[0]
+        longitude_value += deltas[1]
+        latitude = latitude_value / factor
+        longitude = longitude_value / factor
+        if not (-90.0 <= latitude <= 90.0 and -180.0 <= longitude <= 180.0):
+            return []
+        path.append({"latitude": latitude, "longitude": longitude})
+    return path if len(path) == length else []
+
+
 def _normalize_route(
     itinerary: Dict[str, Any],
     *,
@@ -189,6 +245,7 @@ def _normalize_route(
                 or raw_leg.get("routeShortName"),
                 "line_name": raw_leg.get("routeLongName") or raw_leg.get("displayName"),
                 "cost_cny": None,
+                "path": _decode_leg_geometry(raw_leg.get("legGeometry")),
             }
         )
     non_walk_modes = [
@@ -252,7 +309,7 @@ async def search_global_route_raw(
         "time": departure_time,
         "numItineraries": 1,
         "maxItineraries": 1,
-        "detailedLegs": "false",
+        "detailedLegs": "true",
         "language": "ja,en,zh",
         "timeout": max(1, min(int(settings.timeout_seconds), 20)),
     }

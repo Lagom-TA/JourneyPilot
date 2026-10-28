@@ -461,12 +461,6 @@ def _call_from_row(row: Dict[str, Any]) -> LLMCostCall:
     )
 
 
-def _norm_cost(value: Any) -> Optional[float]:
-    if value is None:
-        return None
-    return float(value)
-
-
 def _ledger_identity(call: LLMCostCall) -> Tuple[Any, ...]:
     """同 id 幂等重放时必须一致的字段。"""
     return (
@@ -635,14 +629,6 @@ class CostLedgerStore:
         from ..llm.usage import get_usage_recorder
         return await asyncio.to_thread(get_usage_recorder().apply_integrity, summary)
 
-    async def count_calls(self, run_id: str) -> int:
-        async with get_db_session() as session:
-            result = await session.execute(
-                text("SELECT COUNT(*) AS count FROM run_llm_calls WHERE run_id = :run_id"),
-                {"run_id": run_id},
-            )
-            return int(result.mappings().first()["count"])
-
 
 class InMemoryCostLedgerStore(CostLedgerStore):
     """内存成本台账，提供相同的异步接口。"""
@@ -687,9 +673,6 @@ class InMemoryCostLedgerStore(CostLedgerStore):
 
     async def run_summary(self, run_id: str) -> Dict[str, Any]:
         return summarize_calls(run_id, self._run_calls(run_id))
-
-    async def count_calls(self, run_id: str) -> int:
-        return len(self._run_calls(run_id))
 
 
 _cost_ledger_store_singleton: Optional[CostLedgerStore] = None

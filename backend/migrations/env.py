@@ -3,12 +3,12 @@
 两处刻意的选择：
 
 - **URL 只有一个来源**：`travel_agent.config.loader.get_settings().database`。测试和
-  `journeypilot restore` 需要迁另一个库时，通过 `config.attributes["db_url"]`
+  显式迁移目标需要迁另一个库时，通过 `config.attributes["db_url"]`
   显式传入，而不是让 `alembic.ini` 里躺着第二份地址。
 - **不用 autogenerate，也没有 target_metadata**：这个仓的 Schema 是手写 SQL、
-  pgvector、zhparser 生成列和部分索引，没有 SQLAlchemy 模型作为真相
-  （dev docs 02 §2.2）。给一个空的 metadata 会让 `--autogenerate` 生成
-  「删掉所有表」这种迁移，比不支持它危险得多。
+  pgvector、zhparser 生成列和部分索引，没有 SQLAlchemy 模型作为真相。
+  给一个空的 metadata 会让 `--autogenerate` 生成「删掉所有表」这种迁移，
+  比不支持它危险得多。
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ if str(_BACKEND_DIR) not in sys.path:
 
 config = context.config
 
-if config.config_file_name is not None and not config.attributes.get("skip_logging_config"):
+if config.config_file_name is not None:
     fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = None
@@ -65,7 +65,7 @@ def run_migrations_online() -> None:
         _run(connectable)
         return
 
-    engine = create_engine(_database_url(), poolclass=None, future=True)
+    engine = create_engine(_database_url(), poolclass=None)
     try:
         with engine.connect() as connection:
             _run(connection)

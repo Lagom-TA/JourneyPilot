@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 
 from travel_agent.planning.references import EntityRef, EntityType
-from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
 from travel_agent.planning.requirements.intent_contracts import (
     CategoryIntentValue,
     IntentItem,
@@ -12,10 +11,6 @@ from travel_agent.planning.requirements.intent_contracts import (
     VerificationMode,
     canonical_json_hash,
 )
-from travel_agent.planning.research.brief_contracts import (
-    DomainResearchObjective,
-    ResearchBriefV2,
-)
 from travel_agent.planning.research.candidates import (
     TransportCandidate,
     VisitCandidate,
@@ -25,7 +20,6 @@ from travel_agent.planning.research.discovery_contracts import (
     CandidateDiscoveryOrigin,
     CandidateDiscoveryRecord,
 )
-from travel_agent.planning.research.domains import ResearchDomain
 from travel_agent.planning.research.evidence import (
     FactAssertion,
     FactSourceLink,
@@ -40,49 +34,6 @@ from travel_agent.planning.transport import (
 )
 from travel_agent.planning.weather.models import WeatherSensitivity
 
-
-def make_identity() -> ControlledTripIdentity:
-    return ControlledTripIdentity.model_validate(
-        {
-            "origin": {
-                "place_id": "origin_shanghai",
-                "provider": "manual_verified",
-                "kind": "city",
-                "name": "上海",
-                "display_name": "上海",
-                "country_code": "CN",
-                "latitude": 31.23,
-                "longitude": 121.47,
-                "admin_path": ["上海"],
-            },
-            "destinations": [
-                {
-                    "place_id": "destination_tokyo",
-                    "provider": "manual_verified",
-                    "kind": "city",
-                    "name": "Tokyo",
-                    "display_name": "Tokyo, Japan",
-                    "country_code": "JP",
-                    "latitude": 35.68,
-                    "longitude": 139.76,
-                    "admin_path": ["Tokyo"],
-                }
-            ],
-            "start_date": "2026-10-01",
-            "end_date": "2026-10-04",
-            "party": {
-                "adults": 2,
-                "children": 0,
-                "elderly_companions": False,
-                "accessibility_required": False,
-            },
-            "style": {
-                "primary": "architecture",
-                "secondary_interests": ["photography"],
-                "source": "current",
-            },
-        }
-    )
 
 def make_research_intent(
     intent_id: str,
@@ -118,52 +69,6 @@ def make_intent_spec(*intents: IntentItem) -> IntentSpec:
         content_hash=canonical_json_hash(material),
         active_items=list(intents),
         objective_summary="Tokyo intent test",
-    )
-
-def make_research_brief(spec: IntentSpec) -> ResearchBriefV2:
-    objective = DomainResearchObjective(
-        objective_id="objective_visit",
-        domain=ResearchDomain.VISIT,
-        summary="research visit candidates",
-        must_cover_intent_ids=[
-            intent.intent_id
-            for intent in spec.active_items
-            if intent.strength is IntentStrength.HARD
-        ],
-        optional_intent_ids=[
-            intent.intent_id
-            for intent in spec.active_items
-            if intent.strength is not IntentStrength.HARD
-        ],
-        excluded_categories=[
-            category
-            for intent in spec.active_items
-            if intent.kind is IntentKind.MUST_EXCLUDE
-            and isinstance(intent.value, CategoryIntentValue)
-            for category in intent.value.categories
-        ],
-    )
-    material = objective.model_dump(mode="json")
-    return ResearchBriefV2(
-        brief_id="brief_test",
-        generation_id=spec.generation_id,
-        controlled_trip_identity_revision=1,
-        intent_spec_revision=spec.revision,
-        constraint_pack_revision=1,
-        objective_summary=spec.objective_summary,
-        controlled_trip_identity=make_identity(),
-        domain_objectives=[objective],
-        hard_intent_ids=[
-            intent.intent_id
-            for intent in spec.active_items
-            if intent.strength is IntentStrength.HARD
-        ],
-        soft_intent_ids=[
-            intent.intent_id
-            for intent in spec.active_items
-            if intent.strength is IntentStrength.SOFT
-        ],
-        content_hash=canonical_json_hash(material),
     )
 
 def make_visit_packet(

@@ -26,14 +26,6 @@ WIKI_API = {
     "en": "https://en.wikipedia.org/api/rest_v1",
 }
 
-# 内容集合映射：文章类型 → 知识库集合
-COLLECTION_MAP = {
-    "destination": "destinations",      # 目的地基础信息
-    "visa": "visa_policies",            # 签证政策
-    "culture": "local_culture",         # 文化习俗
-    "tips": "travel_tips",             # 旅行攻略
-}
-
 # 请求配置
 REQUEST_TIMEOUT = 30.0
 REQUEST_DELAY = 0.5  # 每次请求间隔，防止过于频繁
@@ -163,7 +155,7 @@ class WikipediaFetcher:
         docs = []
         summary = await self.fetch_summary(title)
         if summary:
-            content = self._format_summary(title, summary, content_type)
+            content = self._format_summary(title, summary)
             docs.append({
                 "content": content,
                 "source": summary.get("url") or f"wikipedia/{self.lang}/{title}",
@@ -177,7 +169,7 @@ class WikipediaFetcher:
         return docs
 
     def _format_summary(
-        self, title: str, summary: Dict[str, Any], content_type: str
+        self, title: str, summary: Dict[str, Any]
     ) -> str:
         """将摘要格式化为便于 RAG 检索的文本"""
         lines = [f"目的地：{title}"]

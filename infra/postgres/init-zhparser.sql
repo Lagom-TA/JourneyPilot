@@ -1,5 +1,5 @@
 -- 中文全文检索（zhparser + SCWS）初始化
--- 首次创建数据卷时执行；应用 init_db 也会在 schema 重建后恢复同一合同。
+-- 首次创建数据卷时执行；版本化迁移会在 schema 重建后恢复同一合同。
 
 CREATE EXTENSION IF NOT EXISTS zhparser;
 

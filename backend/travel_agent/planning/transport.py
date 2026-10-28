@@ -34,6 +34,11 @@ class TransportMode(str, Enum):
     OTHER = "other"
 
 
+class RoutePathPoint(StrictModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+
+
 class TransportSegment(StrictModel):
     segment_id: str = Field(min_length=1)
     mode: TransportMode
@@ -47,6 +52,7 @@ class TransportSegment(StrictModel):
     service_number: Optional[str] = None
     line_name: Optional[str] = None
     cost_cny: Optional[float] = Field(default=None, ge=0)
+    path: List[RoutePathPoint] = Field(default_factory=list)
 
 
 class TransportModePreference(StrictModel):

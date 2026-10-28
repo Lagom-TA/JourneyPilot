@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-import langchain
 from langgraph.graph import END, START, StateGraph
 
 from travel_agent.planning.costs.estimate import budget_estimate_node
@@ -66,11 +65,6 @@ from travel_agent.planning.weather.node import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-# 较新的 LangChain 不再提供该属性，LangGraph 仍会读取它。
-if not hasattr(langchain, "debug"):
-    langchain.debug = False
 
 
 def route_after_destination(state: TravelAgentState) -> str:

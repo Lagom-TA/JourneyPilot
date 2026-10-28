@@ -88,24 +88,6 @@ async def _handle_node_activity(
             yield event
 
 
-async def _handle_synthesis_start(
-    item: tuple, ctx: ChatPresentation
-) -> AsyncIterator[Dict[str, Any]]:
-    """synthesis_start 事件：Synthesizer 开始 LLM 调用前的过渡信号。"""
-    _, node_name, _ = item
-
-    yield {
-        "type": "synthesis_start",
-        "message_id": ctx.message_id,
-    }
-    yield ctx.next_trace(
-        node=node_name,
-        phase="synthesis",
-        status="started",
-        output_summary="synthesis started",
-    )
-
-
 async def _handle_context_report(
     item: tuple, ctx: ChatPresentation
 ) -> AsyncIterator[Dict[str, Any]]:

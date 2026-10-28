@@ -612,10 +612,12 @@ async def test_valid_model_semantics_are_not_overruled_by_fallback_grammar(
     )
 
     [intent] = result.clauses[0].intents
-    assert expected_terms
+    # 模型给出的语义原样生效：目标值就是原文，没有被兜底语法切词改写。
     assert intent.kind is IntentKind.OBJECTIVE
     assert intent.target is IntentTarget.TRIP
     assert intent.value.value == source_text
+    assert all(term in intent.value.value for term in expected_terms)
+    assert intent.public_summary == source_text
 
 
 @pytest.mark.asyncio

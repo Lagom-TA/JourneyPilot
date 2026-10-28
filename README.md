@@ -121,7 +121,7 @@ The full report follows the same itinerary shown in the workspace and can be exp
 - [uv](https://docs.astral.sh/uv/)
 - Docker Desktop or Docker Engine with Compose
 - Python 3.11
-- Node.js 18+ and npm
+- Node.js 20.19+ and npm
 
 ### Run JourneyPilot
 

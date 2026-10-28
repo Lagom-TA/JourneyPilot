@@ -18,7 +18,6 @@ from typing import Any
 from typing import Dict
 from typing import Optional
 import httpx
-import re
 
 
 async def search_nominatim_raw(
@@ -163,65 +162,3 @@ async def lookup_nominatim_osm_ids(
             code="provider_invalid_payload",
         )
     return [dict(item) for item in payload]
-
-
-_OSM_PLACE_ID = re.compile(
-    r"^osm:(?P<osm_type>node|way|relation):(?P<osm_id>[1-9]\d*)$"
-)
-
-
-_OSM_LOOKUP_PREFIXES = {"node": "N", "way": "W", "relation": "R"}
-
-
-def osm_lookup_id(place_id: str) -> Optional[str]:
-    """把 ``osm:{type}:{id}`` 形式的 place_id 转成 ``/lookup`` token。
-
-    与 ``stable_place_id_osm`` 互逆；非 OSM 命名空间（12306、amap POI）没有
-    对应 OSM 对象，返回 None。
-    """
-    match = _OSM_PLACE_ID.fullmatch(str(place_id or "").strip())
-    if match is None:
-        return None
-    return f"{_OSM_LOOKUP_PREFIXES[match.group('osm_type')]}{match.group('osm_id')}"
-
-
-async def lookup_typed_addresses_bilingual(
-    place_ids: list[str],
-) -> Dict[str, list[Dict[str, Any]]]:
-    """返回每个地点的结构化 ``address``，分别使用本地文字与英文。
-
-    无论地点数量多少，总共两次批量 Provider 调用：一次不带
-    ``accept-language``（各地按本地文字回答），一次固定为英文。调用方需要两份，
-    因为只有当地名的拼写与外部网页一致时，它才能用于交叉核对；例如巴黎的评论页
-    写 "Rue Saint-Dominique"，不会写存储身份里的中文译名。
-
-    Provider 失败以 ``NominatimPlaceSearchError`` 传播：空结果与 Provider 不可用
-    是不同事实，由调用方决定如何处理。
-    """
-    lookup_ids: Dict[str, str] = {}
-    for place_id in place_ids:
-        token = osm_lookup_id(place_id)
-        if token is not None and token not in lookup_ids:
-            lookup_ids[token] = str(place_id)
-    if not lookup_ids:
-        return {}
-    typed: Dict[str, list[Dict[str, Any]]] = {
-        place_id: [] for place_id in lookup_ids.values()
-    }
-    tokens = list(lookup_ids)
-    for accept_language in (None, "en"):
-        for item in await lookup_nominatim_osm_ids(
-            tokens,
-            accept_language=accept_language,
-        ):
-            prefix = _OSM_LOOKUP_PREFIXES.get(
-                str(item.get("osm_type") or "").strip().casefold()
-            )
-            address = item.get("address")
-            if prefix is None or not isinstance(address, dict):
-                continue
-            place_id = lookup_ids.get(f"{prefix}{item.get('osm_id')}")
-            if place_id is None:
-                continue
-            typed[place_id].append(dict(address))
-    return typed

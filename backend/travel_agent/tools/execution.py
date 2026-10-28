@@ -95,7 +95,6 @@ async def _execute_tool_once(
     tool_gateway: Any = None,
     activation_source: Optional[str] = None,
     provider_snapshot_cache: Any = None,
-    trip_run_store: Any = None,
     allow_fallback: bool = True,
 ) -> Dict[str, Any]:
     "执行工具调用，通过 ToolRegistry 路由到本地工具或 MCP 工具。"

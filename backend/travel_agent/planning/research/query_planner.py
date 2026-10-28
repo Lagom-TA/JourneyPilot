@@ -14,7 +14,6 @@ from travel_agent.planning.research.fallback_policy import fallback_template
 from travel_agent.planning.research.query_contracts import ResearchQuery
 from travel_agent.planning.research.query_contracts import ResearchQueryKind
 from travel_agent.planning.research.query_contracts import ResearchQueryPlan
-from typing import Iterable
 from typing import Mapping
 from typing import Sequence
 
@@ -270,71 +269,4 @@ def queries_by_ids(
 ) -> list[ResearchQuery]:
     index = plan.query_index()
     return [index[query_id] for query_id in query_ids if query_id in index]
-
-
-def query_ids_for_domains(
-    plan: ResearchQueryPlan,
-    domains: Iterable[ResearchDomain],
-) -> list[str]:
-    allowed = set(domains)
-    return [query.query_id for query in plan.queries if query.domain in allowed]
-
-
-def append_targeted_repair_query(
-    plan: ResearchQueryPlan,
-    *,
-    intent: IntentItem,
-    destination_id: str,
-    destination_name: str,
-    domain: ResearchDomain,
-    desired_candidate_count: int,
-) -> tuple[ResearchQueryPlan, ResearchQuery]:
-    related = [
-        query
-        for query in plan.queries
-        if query.destination_id == destination_id and query.domain is domain
-    ]
-    material = {
-        "generation_id": plan.generation_id,
-        "destination_id": destination_id,
-        "domain": domain.value,
-        "kind": ResearchQueryKind.TARGETED_REPAIR.value,
-        "intent_ids": [intent.intent_id],
-        "desired_candidate_count": desired_candidate_count,
-        "query_text": _query_text(destination_name, domain, intent),
-    }
-    query = ResearchQuery(
-        query_id=_query_id(material),
-        generation_id=plan.generation_id,
-        domain=domain,
-        destination_id=destination_id,
-        query_kind=ResearchQueryKind.TARGETED_REPAIR,
-        query_text=str(material["query_text"]),
-        aliases=_aliases(intent),
-        intent_ids=[intent.intent_id],
-        desired_candidate_count=desired_candidate_count,
-        provider_route=_provider_route(domain),
-        priority=max(intent.priority, 80),
-        fallback_after_query_ids=[item.query_id for item in related],
-    )
-    existing = plan.query_index().get(query.query_id)
-    if existing is not None:
-        return plan, existing
-    queries = [*plan.queries, query]
-    material = {
-        "generation_id": plan.generation_id,
-        "intent_spec_revision": plan.intent_spec_revision,
-        "queries": [item.model_dump(mode="json") for item in queries],
-        "per_domain_candidate_caps": plan.per_domain_candidate_caps,
-        "policy_version": plan.policy_version,
-    }
-    return (
-        plan.model_copy(
-            update={
-                "queries": queries,
-                "content_hash": canonical_json_hash(material),
-            }
-        ),
-        query,
-    )
 

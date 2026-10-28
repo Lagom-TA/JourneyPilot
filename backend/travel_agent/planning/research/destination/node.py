@@ -73,7 +73,6 @@ from travel_agent.tools.access import (
 )
 from travel_agent.tools.knowledge_results import (
     knowledge_tool_documents,
-    knowledge_tool_summaries,
 )
 from travel_agent.tools.react import streaming_react_loop
 
@@ -375,8 +374,6 @@ async def destination_researcher_node(
             ],
             "research_packets": {packet_state_key: packet},
             "agent_status": {output_key: "completed"},
-            "retrieved_docs": rag_docs,
-            "retrieval_summaries": knowledge_tool_summaries(authoritative_tool_results),
             "tool_cache": tool_cache,
             "provider_evidence_outcomes": provider_evidence_outcomes(
                 authoritative_tool_messages(authoritative_tool_results),

@@ -10,7 +10,7 @@
 
 ### INV-ID-001：身份是常量，客户端不声明所有者
 约定：所有用户数据归固定本地身份 `local`；接口从服务端上下文解析归属，不读请求体里的 user。
-Owner: `backend/travel_agent/runtime/local_identity.py`（`LOCAL_USER_ID`）、`backend/travel_agent/api/local_identity.py`、迁移 `backend/migrations/versions/0003_local_identity.py`
+Owner: `backend/travel_agent/runtime/local_identity.py`（`LOCAL_USER_ID`）、迁移 `backend/migrations/versions/0003_local_identity.py`
 Storage: 所有带 `user_id` 的表。
 Enforced by: 迁移把历史行归一到 `local`；API 从服务端解析归属。
 ADR: [ADR-0001](adr/ADR-0001-local-single-profile.md)

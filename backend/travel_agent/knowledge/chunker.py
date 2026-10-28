@@ -45,8 +45,7 @@ def _exceeded_model_chunking_budget(text: str) -> Optional[int]:
     调用方自己再读一次配置来印，那一行随时可以和实际生效的数漂开。
 
     超界不是失败，是**降档**：按固定窗口分块入库，一次模型都不调。段会差一点，
-    而替代方案是一个用户的一次上传把全站的模型调用排到队尾，曾让服务不可达
-    7 分半并需重启。
+    而替代方案是一个用户的一次上传把全站的模型调用排到队尾。
     """
 
     limit = int(get_settings().rag.model_chunking_max_chars)

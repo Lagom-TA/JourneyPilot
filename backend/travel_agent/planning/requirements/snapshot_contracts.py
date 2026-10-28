@@ -82,11 +82,3 @@ class IntentContractSnapshot(StrictModel):
             conflicted_intent_ids=material["conflicted_intent_ids"],
             content_hash=canonical_json_hash(material),
         )
-
-    @property
-    def active_items(self) -> List[IntentContractRequirement]:
-        return self.requirements
-
-    @property
-    def revision(self) -> int:
-        return self.intent_spec_revision

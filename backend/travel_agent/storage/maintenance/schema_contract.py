@@ -90,10 +90,6 @@ REQUIRED_EXTENSIONS: tuple[str, ...] = ("vector", "pgcrypto")
 # 可选能力：缺失时必须显式降级并在报告中说明，不能既回退又宣称完整。
 OPTIONAL_EXTENSIONS: tuple[str, ...] = ("zhparser",)
 
-# 中文词法检索用的 text search configuration 名。zhparser 不可用时退到 'simple'。
-CHINESE_TEXT_SEARCH_CONFIG = "chinese"
-FALLBACK_TEXT_SEARCH_CONFIG = "simple"
-
 # 向量维度由配置决定，指纹使用占位符，实际维度另行校验。
 EMBEDDING_VECTOR_COLUMNS: tuple[tuple[str, str], ...] = (
     ("knowledge_chunks", "embedding"),

@@ -196,15 +196,12 @@ def _extract_station_summary(result: Dict[str, Any]) -> str:
 _TOOL_SEMANTIC_SUMMARIZERS: Dict[str, Any] = {
     "global_place_search": _extract_search_summary,
     "maps_geo": _extract_geocode_summary,
-    "maps_geocode": _extract_geocode_summary,
     "maps_weather": _extract_weather_summary,
     "maps_text_search": _extract_search_summary,
     "maps_around_search": _extract_search_summary,
-    "maps_search_places": _extract_search_summary,
     "maps_direction_driving": _extract_direction_summary,
     "maps_direction_walking": _extract_direction_summary,
     "maps_direction_transit_integrated": _extract_direction_summary,
-    "maps_directions": _extract_direction_summary,
     "free_web_search": _extract_web_search_summary,
     "get-station-code-of-citys": _extract_station_summary,
 }

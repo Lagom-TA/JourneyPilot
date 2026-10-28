@@ -201,23 +201,27 @@ async def test_open_counts_are_reported_per_type(migrated_async_database):
 async def test_cancel_requested_blocks_a_later_completion(migrated_async_database):
     """cancel/complete race 的权威规则：`cancel_requested` 锁定 Run 之后，交付边界不许提交。
 
-    判据在状态机与 `FOR UPDATE`，不在内存 Event 的先后 —— 后者只能说明这个进程先看到了谁。
+    用 fast 档的 Run 验证：fast 的完成守卫不会先于取消锁触发，因此 ValueError 必然
+    来自 cancel_requested -> completed 这条非法迁移本身，而不是 deep 完成守卫。
     """
 
     store = TripRunStore()
-    run_id = await _create_run()
-    await store.transition_status(run_id, TripRunStatus.RUNNING)
+    run = await store.create_run(
+        session_id="s-commands", user_id="local", mode="fast", resume_policy="clarify_only"
+    )
+    await store.transition_status(run.run_id, TripRunStatus.RUNNING)
     await store.request_cancel(
-        run_id,
+        run.run_id,
         event_type="run.control_requested",
         payload={"action": "cancel", "source": "control_api"},
     )
 
-    with pytest.raises(ValueError):
-        await store.transition_status(run_id, TripRunStatus.COMPLETED)
+    with pytest.raises(ValueError) as exc:
+        await store.transition_status(run.run_id, TripRunStatus.COMPLETED)
+    assert "CANCEL_REQUESTED -> TripRunStatus.COMPLETED" in str(exc.value)
 
-    run = await store.get_run(run_id)
-    assert run is not None and run.status is TripRunStatus.CANCEL_REQUESTED
+    current = await store.get_run(run.run_id)
+    assert current is not None and current.status is TripRunStatus.CANCEL_REQUESTED
 
 
 async def test_a_finished_run_is_not_cancelled_after_the_fact(migrated_async_database):

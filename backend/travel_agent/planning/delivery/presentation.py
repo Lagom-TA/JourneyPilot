@@ -87,12 +87,6 @@ _MEAL_TYPE_LABELS = {
 }
 
 
-_AVAILABILITY_LABELS = {
-    "needs_confirmation": "需要确认",
-    "unavailable": "不可用",
-}
-
-
 _RESERVATION_LABELS = {True: "需要预约", False: "无需预约"}
 
 
@@ -321,7 +315,6 @@ def _lodging(entity: LodgingStay, projection_role: str) -> dict[str, Any]:
             None
             if total is None
             else f"{'参考整段约' if reference else '整段'}：{total}",
-            _row("状态", _AVAILABILITY_LABELS.get(entity.availability_status)),
             _row("地址", entity.address),
         ),
         "notes": preparation_actions(entity),

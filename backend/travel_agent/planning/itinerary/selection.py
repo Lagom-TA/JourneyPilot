@@ -19,6 +19,10 @@ from travel_agent.planning.research.candidates import (
     TransportCandidate,
     VisitCandidate,
 )
+from travel_agent.planning.transport_semantics import (
+    replacement_display_mode,
+    transport_mode_satisfies,
+)
 
 
 def _option(
@@ -97,12 +101,17 @@ def _transport_alternatives(
     for candidate in candidates.values():
         if not isinstance(candidate, TransportCandidate):
             continue
+        display_mode = replacement_display_mode(
+            preference.locked_mode or leg.selected_mode, candidate.selected_mode
+        )
         if (
             preference.locked_mode is not None
-            and candidate.selected_mode != preference.locked_mode
+            and not transport_mode_satisfies(
+                candidate.selected_mode, preference.locked_mode
+            )
         ):
             continue
-        if candidate.selected_mode in preference.excluded_modes:
+        if display_mode in preference.excluded_modes:
             continue
         if leg.transport_class == "long_distance":
             if (

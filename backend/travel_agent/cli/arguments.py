@@ -114,16 +114,6 @@ def build_parser() -> argparse.ArgumentParser:
         "show", help="当前生效的配置与每个值的来源（密钥脱敏）"
     )
     config_show.add_argument("--json", action="store_true", help="输出机器可读 JSON")
-    config_show.add_argument(
-        "--effective",
-        action="store_true",
-        help="保留给可读性：这条命令本来就只报生效值（默认值也在里面，来源写着 config default）",
-    )
-    config_show.add_argument(
-        "--redacted",
-        action="store_true",
-        help="保留给可读性：密钥一律脱敏，没有不脱敏的模式",
-    )
     config_show.set_defaults(func=cmd_config_show)
 
     config_validate = config_subparsers.add_parser(

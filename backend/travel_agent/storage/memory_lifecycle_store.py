@@ -276,37 +276,6 @@ class MemoryLifecycleStore:
             return [_record_from_row(dict(row)) for row in result.mappings().all()]
 
 
-class InMemoryMemoryLifecycleStore(MemoryLifecycleStore):
-    """内存实现，提供相同的公开异步接口。"""
-
-    def __init__(
-        self,
-        *,
-        memory_store: Optional[MemoryStore] = None,
-        memory_graph: Optional[Any] = None,
-        user_profile_memory: Optional[Any] = None,
-        chat_session_memory: Optional[Any] = None,
-    ) -> None:
-        super().__init__(
-            memory_store=memory_store,
-            memory_graph=memory_graph,
-            user_profile_memory=user_profile_memory,
-            chat_session_memory=chat_session_memory,
-        )
-        self.records: Dict[str, ForgettingAuditRecord] = {}
-
-    async def record_audit(self, summary: MemoryDeletionSummary) -> ForgettingAuditRecord:
-        record = ForgettingAuditRecord(**summary.model_dump())
-        record.metadata = sanitize_forgetting_metadata(record.metadata)
-        self.records.setdefault(record.request_id, record)
-        return self.records[record.request_id]
-
-    async def list_audits(self, user_id: str, *, limit: int = 50) -> List[ForgettingAuditRecord]:
-        records = [record for record in self.records.values() if record.user_id == user_id]
-        records.sort(key=lambda record: record.created_at, reverse=True)
-        return records[: max(1, min(limit, 200))]
-
-
 _memory_lifecycle_store_singleton: Optional[MemoryLifecycleStore] = None
 
 

@@ -45,13 +45,6 @@ SYSTEM_PROMPT = """<role>
 <output_format>
 使用 Markdown 格式，段落短小、善用列表，让用户快速扫读。
 语言风格：友好、直接、实用。
-
-若回答涉及特定目的地，在末尾**追加 HTML 注释块**（该注释块不会显示给用户，仅用于前端渲染地图/目的地面板）：
-<!-- DESTINATION_JSON {{"name": "目的地名称", "description": "一句话描述", "latitude": 纬度数字, "longitude": 经度数字, "bestSeason": "最佳季节", "highlights": ["亮点1", "亮点2"]}} -->
-
-严格要求：
-- 使用 `<!-- DESTINATION_JSON ... -->` 包裹，不要用 ```json 代码块（会泄露到用户正文）
-- JSON 内容写在单行，避免换行破坏注释块边界
 </output_format>
 
 <context>

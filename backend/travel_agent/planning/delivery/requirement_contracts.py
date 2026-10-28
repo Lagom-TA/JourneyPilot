@@ -16,15 +16,3 @@ class EntityIntentExplanation(StrictModel):
         "supported_description",
         "planning_judgment",
     ]
-
-
-class PublicRequirementFulfillment(StrictModel):
-    requirement_id: str = Field(min_length=1)
-    summary: str = Field(min_length=1, max_length=300)
-    status: Literal[
-        "satisfied",
-        "partially_satisfied",
-        "unsatisfied",
-        "unverifiable",
-    ]
-    explanation: str = Field(min_length=1, max_length=500)

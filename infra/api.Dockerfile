@@ -57,7 +57,7 @@ FROM python:3.11-slim AS runtime
 # 字体：**fonts-wqy-microhei，不是 fonts-noto-cjk**。Debian 的 Noto CJK 打的是 CFF
 # （PostScript）轮廓，reportlab 的 TTFont 解析器嵌不进去（实测
 # `postscript outlines are not supported`），于是启动预检会判 PDF 导出不可用。
-# WenQuanYi 是 TrueType 轮廓，是 `services/pdf_export.py` 候选表里的首选项。
+# WenQuanYi 是 TrueType 轮廓，是字体候选表（integrations/pdf_readiness.py）里的首选项。
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         libpq5 \

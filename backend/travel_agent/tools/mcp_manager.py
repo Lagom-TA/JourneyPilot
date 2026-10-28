@@ -88,7 +88,6 @@ class _ServerSessionLease:
     session: Any
     stack: AsyncExitStack
     last_used_monotonic: float
-    create_count: int = 1
 
 
 def _normalized_duffel_result(server_name: str, tool_name: str, payload: Any) -> Any:
@@ -171,10 +170,10 @@ def _normalized_rail_result(server_name: str, tool_name: str, payload: Any) -> A
     """把本仓 12306 server 的 JSON TextContent 解包成车票载荷。
 
     不解包时，载荷是嵌套在 content[0].text 里的 JSON 字符串，
-    ``tools/governance.py::_sanitize_value`` 会把它压成一行 900 字符的文本，
-    几百趟车次的回答到达确定性铁路绑定时只剩一趟。在这里解包可以让每条扁平记录
+    ``tools/governance.py::_sanitize_value`` 会把它压成一行 900 字符的文本。
+    在这里解包可以让每条扁平记录
     （``results`` 键使用 20 条上限而不是 5 条）完整传给
-    ``agents/transport_researcher/node.py::_rail_train_records``。
+    ``planning/research/transport/rail/binding.py`` 的车次记录解析。
 
     只有 ``get-tickets`` 是结构化输出：``get-interline-tickets`` 是面向模型的
     文本，``get-station-code-of-citys`` 是短 JSON 字符串且由自己的解析器读取，
@@ -363,7 +362,7 @@ def _mcp_result_error(payload: Any) -> Optional[str]:
     """返回 MCP CallToolResult 报告的协议级错误。"""
     if not isinstance(payload, dict):
         return None
-    if not (payload.get("isError") is True or payload.get("is_error") is True):
+    if payload.get("isError") is not True:
         return None
 
     messages: List[str] = []
@@ -421,8 +420,6 @@ class MCPManager:
         self._session_leases: Dict[str, _ServerSessionLease] = {}
         self._server_call_locks: Dict[str, asyncio.Lock] = {}
         self._lease_meta_lock = asyncio.Lock()
-        # 租约关闭后仍保留，使 create_count 在 server 进程生命周期内单调递增。
-        self._session_lease_create_totals: Dict[str, int] = {}
 
     async def initialize(self, mcp_servers: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         """
@@ -621,10 +618,6 @@ class MCPManager:
         for name in names:
             await self._close_session_lease(name)
 
-    def session_lease_create_count(self, server_name: str) -> int:
-        """测试/观测辅助：这个 server 创建过多少次租约。"""
-        return int(self._session_lease_create_totals.get(server_name, 0))
-
     async def _acquire_session_lease(
         self,
         server_name: str,
@@ -653,21 +646,14 @@ class MCPManager:
                 pass
             raise
 
-        create_count = self._session_lease_create_totals.get(server_name, 0) + 1
-        self._session_lease_create_totals[server_name] = create_count
         lease = _ServerSessionLease(
             server_name=server_name,
             session=session,
             stack=stack,
             last_used_monotonic=time.monotonic(),
-            create_count=create_count,
         )
         self._session_leases[server_name] = lease
-        logger.debug(
-            "MCP session lease opened | server=%s create_count=%s",
-            server_name,
-            lease.create_count,
-        )
+        logger.debug("MCP session lease opened | server=%s", server_name)
         return lease
 
     async def _list_server_tools(self, server_name: str, server_config: Any) -> List[Any]:
@@ -717,32 +703,11 @@ class MCPManager:
 
         return executor
 
-    async def probe_tool(
-        self,
-        server_name: str,
-        tool_name: str,
-        arguments: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """执行一次实时诊断调用，不改变 MCP 健康状态。
-
-        生产工具执行会刷新管理器的健康遥测；运维预检需要同样的实时协议检查，
-        但不应因为观察而改写进程内状态。
-        """
-
-        return await self._execute_tool(
-            server_name,
-            tool_name,
-            arguments,
-            update_server_state=False,
-        )
-
     async def _execute_tool(
         self,
         server_name: str,
         tool_name: str,
         arguments: Dict[str, Any],
-        *,
-        update_server_state: bool = True,
     ) -> Dict[str, Any]:
         server_config = self._server_configs.get(server_name)
         if server_config is None:
@@ -789,7 +754,7 @@ class MCPManager:
                     }
 
                 state = self._server_states.get(server_name)
-                if state and update_server_state:
+                if state:
                     state.healthy = True
                     state.status = "healthy"
                     state.last_error = None
@@ -827,7 +792,7 @@ class MCPManager:
                 await self._close_session_lease(server_name)
                 error = _mcp_error_message(exc)
                 state = self._server_states.get(server_name)
-                if state and update_server_state:
+                if state:
                     state.healthy = False
                     state.status = "error"
                     state.last_error = error

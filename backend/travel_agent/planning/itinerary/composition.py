@@ -9,6 +9,7 @@ from travel_agent.planning.itinerary.draft import ItineraryCompositionDraft
 from travel_agent.planning.itinerary.locations import (
     _reuse_located_places,
     locate_authored_composition,
+    replace_unlocated_authored_places,
 )
 from travel_agent.planning.itinerary.model_schema import _composition_response_schema
 from travel_agent.planning.itinerary.parsing import _parse_exact_llm_composition
@@ -76,5 +77,8 @@ async def _compose_draft(
                 ]
             )
             continue
-        return await locate_authored_composition(draft, state)
+        located = await locate_authored_composition(draft, state)
+        return replace_unlocated_authored_places(
+            located, state.recommendation_catalog
+        )
     raise AssertionError("composition attempt budget exhausted")

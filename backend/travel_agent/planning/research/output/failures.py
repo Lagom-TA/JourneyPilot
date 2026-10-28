@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime
 from typing import Any, Mapping, Sequence
@@ -110,79 +109,10 @@ def _merge_failed_tool_sources(
     )
 
 
-def _controlled_worker_return_failure_source(
-    *,
-    authoritative_packet_metadata: Mapping[str, Any],
-    controlled_worker_return_failure: Mapping[str, Any],
-    default_retrieved_at: datetime,
-) -> SourceRecord | None:
-    """为固定的 eval worker 返回边界失败生成一条 rejected 来源记录。"""
-    target = controlled_worker_return_failure.get("eval_target")
-    expected_worker = authoritative_packet_metadata.get("worker_kind")
-    node_name = controlled_worker_return_failure.get("eval_worker_return_node")
-    if not isinstance(target, Mapping) or not isinstance(expected_worker, str):
-        return None
-    raw_node_names = target.get("node_names")
-    scope = target.get("scope")
-    expected_targets = {
-        "all_content": (
-            "destination_researcher",
-            "transport_researcher",
-            "accommodation_researcher",
-        ),
-    }
-    if (
-        controlled_worker_return_failure.get("controlled_eval") is not True
-        or controlled_worker_return_failure.get("natural_provider_failure") is not False
-        or controlled_worker_return_failure.get("eval_boundary") != "worker_return"
-        or not isinstance(raw_node_names, list)
-        or not isinstance(scope, str)
-        or tuple(raw_node_names) != expected_targets.get(scope)
-        or node_name != expected_worker
-        or expected_worker not in raw_node_names
-    ):
-        return None
-    plan_hash = str(
-        controlled_worker_return_failure.get("eval_plan_hash") or ""
-    ).strip()
-    plan_id = str(controlled_worker_return_failure.get("eval_plan_id") or "").strip()
-    fault_kind = str(
-        controlled_worker_return_failure.get("eval_fault_kind") or ""
-    ).strip()
-    error = str(controlled_worker_return_failure.get("error") or "").strip()
-    if not plan_hash or not plan_id or not fault_kind or not error:
-        return None
-    snapshot = {
-        **dict(controlled_worker_return_failure),
-        "status": "failed",
-        "evidence_allowed": False,
-        "worker_kind": expected_worker,
-        "source_contract": "controlled_eval_worker_return_failure.v1",
-    }
-    source_digest = hashlib.sha256(
-        (
-            f"{authoritative_packet_metadata.get('research_packet_id', '')}\0"
-            f"{plan_hash}\0{expected_worker}\0{scope}"
-        ).encode("utf-8")
-    ).hexdigest()[:24]
-    return SourceRecord(
-        source_record_id=f"source_worker_return_failure_{source_digest}",
-        source_kind="external_tool",
-        title=f"{scope} worker boundary failure",
-        provider_name="controlled_eval_boundary",
-        public_excerpt=error[:900],
-        retrieved_at=default_retrieved_at,
-        content_hash=_canonical_snapshot_hash(snapshot),
-        snapshot=snapshot,
-        lifecycle_status="rejected",
-    )
-
-
 def build_failure_only_research_packet(
     *,
     authoritative_packet_metadata: Mapping[str, Any],
     context_messages: Sequence[Mapping[str, Any]],
-    controlled_worker_return_failure: Mapping[str, Any] | None = None,
 ) -> ResearchPacket | None:
     """packet 序列化失败时，单独持久化被拒绝的执行失败记录。"""
     generated_at_value = authoritative_packet_metadata.get("generated_at")
@@ -202,14 +132,6 @@ def build_failure_only_research_packet(
         context_messages=context_messages,
         default_retrieved_at=generated_at,
     )
-    if controlled_worker_return_failure is not None:
-        controlled_source = _controlled_worker_return_failure_source(
-            authoritative_packet_metadata=authoritative_packet_metadata,
-            controlled_worker_return_failure=controlled_worker_return_failure,
-            default_retrieved_at=generated_at,
-        )
-        if controlled_source is not None:
-            sources.append(controlled_source)
     if not sources:
         return None
     return ResearchPacket.model_validate(

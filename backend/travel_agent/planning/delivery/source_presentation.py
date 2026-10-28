@@ -105,15 +105,10 @@ def _rendered_payload_excerpt(payload: object) -> str | None:
     return f"已核对 {len(entries)} 条外部结果。" if entries else None
 
 
-_APP_LINK_WEB_FORMS = {
-    "amap": "https://ditu.amap.com/detail/{ident}",
-}
-
-
 def _web_openable_url(url: str | None) -> str | None:
-    """只返回读者可打开的链接：http(s) 原样返回，已知应用深链转网页，其余不返回。
+    """只返回读者可打开的链接：http(s) 原样返回，其余不返回。
 
-    无法转换的深链直接丢弃，避免给出打不开的链接。
+    无法打开的深链直接丢弃，避免给出读者用不了的链接。
     """
 
     if not url:
@@ -123,12 +118,7 @@ def _web_openable_url(url: str | None) -> str | None:
         return None
     if text.startswith(("http://", "https://")):
         return text
-    scheme, _, rest = text.partition("://")
-    template = _APP_LINK_WEB_FORMS.get(scheme.lower())
-    if not template:
-        return None
-    ident = rest.rsplit("/", 1)[-1].strip()
-    return template.format(ident=ident) if ident else None
+    return None
 
 
 def _public_source_presentation(source: SourceRecord) -> tuple[str, str, str | None]:
@@ -139,10 +129,7 @@ def _public_source_presentation(source: SourceRecord) -> tuple[str, str, str | N
     canonical_url = source.canonical_url
     lowered = title.lower()
 
-    if " branch review match: " in lowered:
-        entity_name = title.split(":", 1)[-1].strip()
-        title = f"餐饮评价核验：{entity_name}"
-    elif " place record: " in lowered:
+    if " place record: " in lowered:
         entity_name = title.split(":", 1)[-1].strip()
         title = f"地点资料：{entity_name}"
     elif " route: " in lowered:

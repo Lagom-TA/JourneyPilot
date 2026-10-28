@@ -250,8 +250,11 @@ async def test_the_same_fact_from_the_same_turn_lands_once(migrated_async_databa
     assert total.scalar() == 1
 
 
-async def test_worker_runs_retries_and_gives_up(migrated_async_database):
-    """worker 的完整生命周期：失败重试、重试用尽进死信、成功写下结论。"""
+async def test_worker_recovers_a_transient_failure_and_completes(migrated_async_database):
+    """worker 的瞬时失败路径：第一次尝试失败进退避，重领后成功写下结论。
+
+    死信路径（重试用尽）由 `test_attempts_run_out_into_dead` 单独覆盖。
+    """
 
     from travel_agent.runtime.background_jobs import BackgroundJobWorker
 

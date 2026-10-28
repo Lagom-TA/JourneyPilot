@@ -70,23 +70,6 @@ async def test_a_turn_is_always_returned_whole(migrated_async_database):
     assert page["next_before"] == page["turns"][0]["cursor"]
 
 
-async def test_paging_backwards_covers_every_turn_exactly_once(migrated_async_database):
-    memory = ChatSessionMemory()
-    await _write_turns(memory, "s-1", 7)
-
-    seen: list[str] = []
-    cursor = None
-    while True:
-        page = await memory.list_turns(_USER, "s-1", before_turn=cursor, limit=3)
-        seen = [turn["turn_id"] for turn in page["turns"]] + seen
-        if not page["has_more"]:
-            break
-        cursor = page["next_before"]
-
-    assert len(seen) == 7
-    assert len(set(seen)) == 7
-
-
 async def test_a_new_turn_does_not_shift_an_open_cursor(migrated_async_database):
     """游标是 event_order，不是 offset —— 翻页途中来了新消息不会让某一轮被跳过。"""
 

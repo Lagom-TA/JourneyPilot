@@ -18,7 +18,6 @@ def build_tool_context_from_state(state: Any) -> Dict[str, Any]:
             "provider_snapshot_cache",
             None,
         )
-        context["trip_run_store"] = getattr(components, "trip_run_store", None)
     except Exception:
         pass
     return context

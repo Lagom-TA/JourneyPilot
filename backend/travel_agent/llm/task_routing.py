@@ -12,7 +12,6 @@ class TaskKind(str, Enum):
     SUMMARY = "summary"
     QUICK_ANSWER = "quick_answer"
     COMPOSITION = "composition"
-    CONSTRAINT_ARBITRATION = "constraint_arbitration"
 
 
 @dataclass(frozen=True)
@@ -34,7 +33,7 @@ def select_task_route(task, primary, fast, *, has_tools=False,
                       primary_effort="medium", fast_effort="low",
                       primary_protocol="chat_completions", fast_protocol="chat_completions"):
     task = TaskKind(task)
-    tier = "primary" if task in {TaskKind.COMPOSITION, TaskKind.CONSTRAINT_ARBITRATION} else "fast"
+    tier = "primary" if task in {TaskKind.COMPOSITION} else "fast"
     reason = "task_default"
     if has_tools and tier == "primary" and not chat_tool_protocol_supported(primary):
         tier, reason = "fast", "tool_protocol_requires_fast"

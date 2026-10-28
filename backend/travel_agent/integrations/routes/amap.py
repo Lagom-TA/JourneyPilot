@@ -7,6 +7,7 @@ from datetime import timezone
 from travel_agent.config.loader import get_settings
 from travel_agent.integrations.routes.service_days import nominal_service_day_conflict
 from travel_agent.runtime.rate_gate import rate_gate_for
+from travel_agent.utils.coordinates import amap_location_to_wgs84
 from travel_agent.utils.coordinates import gcj02_to_wgs84
 from travel_agent.utils.coordinates import wgs84_to_gcj02
 from travel_agent.utils.log_redaction import install_query_secret_redaction
@@ -178,6 +179,41 @@ def _line_mode(line_kind: str) -> str:
     return "bus"
 
 
+def _polyline_path(value: Any) -> List[Dict[str, float]]:
+    """把高德折线转换为 WGS-84 路径点。"""
+    if not isinstance(value, str) or not value:
+        return []
+    points: List[Dict[str, float]] = []
+    for location in value.split(";"):
+        latitude, longitude = amap_location_to_wgs84(location)
+        if latitude is None or longitude is None:
+            return []
+        point = {"latitude": latitude, "longitude": longitude}
+        if not points or points[-1] != point:
+            points.append(point)
+    return points
+
+
+def _route_path(raw: Any) -> List[Dict[str, float]]:
+    """读取单条折线，或按顺序拼接各步骤折线。"""
+    if not isinstance(raw, dict):
+        return []
+    direct_path = _polyline_path(raw.get("polyline"))
+    if direct_path:
+        return direct_path
+    steps = raw.get("steps")
+    if not isinstance(steps, list):
+        return []
+    points: List[Dict[str, float]] = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        for point in _polyline_path(step.get("polyline")):
+            if not points or points[-1] != point:
+                points.append(point)
+    return points
+
+
 def _segment(
     index: int,
     *,
@@ -187,6 +223,7 @@ def _segment(
     duration_minutes: Optional[int],
     distance_meters: Optional[int],
     line_name: Optional[str] = None,
+    path: Optional[List[Dict[str, float]]] = None,
 ) -> Dict[str, Any]:
     return {
         "segment_id": f"segment_{index}",
@@ -201,6 +238,7 @@ def _segment(
         "service_number": None,
         "line_name": line_name,
         "cost_cny": None,
+        "path": path or [],
     }
 
 
@@ -244,6 +282,7 @@ def _transit_segments(
                         to_endpoint=target,
                         duration_minutes=_seconds_to_minutes(walking.get("duration")),
                         distance_meters=distance,
+                        path=_route_path(walking),
                     )
                 )
                 cursor = target
@@ -261,6 +300,7 @@ def _transit_segments(
                 duration_minutes=_seconds_to_minutes(ridden.get("duration")),
                 distance_meters=_meters(ridden.get("distance")),
                 line_name=line_name,
+                path=_route_path(ridden),
             )
         )
         cursor = alighting
@@ -324,6 +364,7 @@ def _normalize_route(
         to_endpoint=dict(destination),
         duration_minutes=duration_minutes,
         distance_meters=_meters(path.get("distance")),
+        path=_route_path(path),
     )
     return {
         "route_id": _route_id(segment),
@@ -342,7 +383,7 @@ def _normalize_route(
     }
 
 
-async def search_amap_route_raw(
+async def _fetch_amap_route_payload(
     *,
     from_latitude: float,
     from_longitude: float,
@@ -352,7 +393,7 @@ async def search_amap_route_raw(
     departure_time: Optional[str] = None,
     client: Optional[httpx.AsyncClient] = None,
 ) -> Dict[str, Any]:
-    """返回一次有界 amap Directions 查询的完整响应。"""
+    """请求一次高德路线并返回完整响应。"""
     settings = get_settings().routing
     server = get_settings().mcp_servers.get("amap-maps")
     min_interval = float(server.min_interval_seconds) if server is not None else 0.0
@@ -417,6 +458,29 @@ async def search_amap_route_raw(
                 )
             ]
 
+    return payload
+
+
+async def search_amap_route_raw(
+    *,
+    from_latitude: float,
+    from_longitude: float,
+    to_latitude: float,
+    to_longitude: float,
+    mode: AmapRouteMode,
+    departure_time: Optional[str] = None,
+    client: Optional[httpx.AsyncClient] = None,
+) -> Dict[str, Any]:
+    """返回一次有界高德路线查询响应。"""
+    payload = await _fetch_amap_route_payload(
+        from_latitude=from_latitude,
+        from_longitude=from_longitude,
+        to_latitude=to_latitude,
+        to_longitude=to_longitude,
+        mode=mode,
+        departure_time=departure_time,
+        client=client,
+    )
     return _bounded_payload(payload, mode=mode)
 
 
@@ -433,8 +497,8 @@ async def amap_route_search(
     departure_time: str,
     mode: AmapRouteMode,
 ) -> Dict[str, Any]:
-    """一条归一化的精确 amap 路线及其完整 Provider 快照。"""
-    raw = await search_amap_route_raw(
+    """一条归一化的精确 amap 路线及其有界 Provider 快照。"""
+    payload = await _fetch_amap_route_payload(
         from_latitude=from_latitude,
         from_longitude=from_longitude,
         to_latitude=to_latitude,
@@ -443,13 +507,14 @@ async def amap_route_search(
         departure_time=departure_time,
     )
     route = _normalize_route(
-        raw,
+        payload,
         mode=mode,
         origin=_endpoint(from_name, from_place_id, from_latitude, from_longitude),
         destination=_endpoint(to_name, to_place_id, to_latitude, to_longitude),
     )
     if route is None:
         raise AmapRouteSearchError("amap route provider found no executable route")
+    raw = _bounded_payload(payload, mode=mode)
     observed_at = datetime.now(timezone.utc).isoformat()
     return {
         "success": True,

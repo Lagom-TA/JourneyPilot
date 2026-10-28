@@ -1,7 +1,6 @@
 from __future__ import annotations
 from typing import Any, Dict, Mapping, Optional
 from travel_agent.runtime.run_contracts import TripRunStatus
-from travel_agent.api.schemas.tools import ToolAuditRecordResponse
 from travel_agent.api.schemas.runs import (
     TripRunEventResponse,
     TripRunExecutionResponse,
@@ -148,29 +147,3 @@ def _event_responses(events) -> list[TripRunEventResponse]:
     return [
         response for event in events if (response := _event_response(event)) is not None
     ]
-
-
-def _tool_audit_response(record) -> ToolAuditRecordResponse:
-    return ToolAuditRecordResponse(
-        audit_id=record.audit_id,
-        run_id=record.run_id,
-        tool_name=record.tool_name,
-        server_name=record.server_name,
-        source_type=record.source_type,
-        category=record.category,
-        permission_class=record.permission_class,
-        operation_sensitivity=record.operation_sensitivity,
-        status=record.status,
-        gateway_decision=record.gateway_decision,
-        args_digest=record.args_digest,
-        result_digest=record.result_digest,
-        untrusted_content=record.untrusted_content,
-        quarantined=record.quarantined,
-        fallback_from=record.fallback_from,
-        fallback_to=record.fallback_to,
-        degradation_reason=None,
-        error=None,
-        evidence_allowed=record.evidence_allowed,
-        metadata=audit_safe_value(record.metadata),
-        created_at=record.created_at,
-    )

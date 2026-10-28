@@ -17,7 +17,7 @@
   # 从单个本地文件索引
   python backend/scripts/index_knowledge.py --file ./data/japan_guide.md --collection destinations
 
-  # 从 dump_wikimedia.py 输出目录批量索引（推荐：三档对照实验入库主路径）
+  # 从 dump_wikimedia.py 输出目录批量索引（chunker 与 collection 由参数指定）
   python backend/scripts/index_knowledge.py --from-jsondir data/raw_wikipedia data/raw_wikivoyage \\
       --collection knowledge_contextual --chunker-type contextual
 
@@ -149,8 +149,7 @@ async def index_from_jsondirs(
     每条 JSON 必含 `doc_source` / `content` / `title` 字段；可选 `project` / `lang` 等。
 
     入库时 source 字段 = doc_source；metadata 携带 doc_source/title/project/lang，
-    chunker 由 --chunker-type 指定（text/semantic/contextual），
-    collection 由 --collection 指定（建议 knowledge_text/semantic/contextual）。
+    chunker 与 collection 分别由 --chunker-type / --collection 指定。
     """
     from travel_agent.storage.maintenance.report import require_database_contract
     from travel_agent.knowledge.indexer import KnowledgeIndexer

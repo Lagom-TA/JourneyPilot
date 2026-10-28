@@ -5,7 +5,6 @@ import pytest
 
 from travel_agent.conversation.chat.presentation import ChatPresentation
 from travel_agent.conversation.chat.progress_events import _handle_agent_activity, _handle_state_update
-from travel_agent.conversation.chat.text_events import _handle_react_thinking
 from travel_agent.conversation.chat.tool_events import _handle_tool_done, _handle_tool_start
 from travel_agent.api.sse_projection import project_sse_payload
 from travel_agent.tools.display import public_text, result_preview
@@ -27,7 +26,6 @@ def test_packets_are_never_public_text(text):
 async def test_raw_stream_dropped_even_at_single_character_boundaries():
     ctx = context()
     for chunk in PACKET:
-        assert [e async for e in _handle_react_thinking(('react_thinking', 'destination_researcher', chunk), ctx)] == []
         assert project_sse_payload({'type': 'agent_thinking', 'content': chunk}) is None
     assert ctx.thinking_steps == []
 

@@ -4,12 +4,9 @@ from __future__ import annotations
 
 from travel_agent.integrations.rail.stations import STATION_SNAPSHOT_META_PATH
 from travel_agent.integrations.rail.stations import STATION_SNAPSHOT_PATH
-from travel_agent.integrations.rail.stations import city_station_telecodes
 from travel_agent.integrations.rail.stations import station_table
 from typing import Any
-from typing import Mapping
 from typing import Optional
-from typing import Sequence
 import json
 
 
@@ -52,32 +49,4 @@ def station_snapshot_fingerprint_drift() -> list[str]:
             problems.append(
                 f"记录数不符：实际 {actual_records}，meta 声明 {declared_records}"
             )
-    return problems
-
-
-def city_station_membership_drift(
-    table: Mapping[str, Sequence[str]],
-) -> list[str]:
-    """列出手工维护的电报码中与官方快照不一致的项。
-
-    成员关系（电报码是否存在、12306 是否把它归在该城市）可以直接从已提交快照
-    离线判断，因此手工枢纽表在这点上不需要被信任；上游未发布排序，因此排序仍由
-    手工表决定。
-
-    返回差异而不是抛异常，且没有「遇到差异就跳过」的分支：调用方要么报告差异，
-    要么失败，修复方式是改正手工表。
-    """
-
-    stations = station_table()
-    problems: list[str] = []
-    for city, telecodes in table.items():
-        members = city_station_telecodes(city)
-        for telecode in telecodes:
-            station = stations.get(telecode)
-            if station is None:
-                problems.append(f"{city}/{telecode}：官方快照里没有这个电报码")
-            elif telecode not in members:
-                problems.append(
-                    f"{city}/{telecode}：官方快照把它归在 {station.city}（{station.name}）"
-                )
     return problems

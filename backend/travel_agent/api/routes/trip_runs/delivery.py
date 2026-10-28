@@ -21,6 +21,7 @@ from travel_agent.api.schemas.weather import (
     WeatherBundleRefreshResponse,
 )
 from travel_agent.planning.delivery.public.bundle import public_delivery_bundle
+from travel_agent.planning.delivery.map_projection import project_stored_bundle_map
 
 from travel_agent.api.run_authorization import _get_authorized_run
 from travel_agent.api.run_errors import (
@@ -64,7 +65,10 @@ async def read_current_delivery_bundle(
         raise AssertionError("unreachable")
     if bundle is None:
         raise HTTPException(status_code=404, detail="当前 Delivery Bundle 不存在")
-    return PublicDeliveryBundleResponse.model_validate(public_delivery_bundle(bundle))
+    response_bundle = bundle.model_copy(
+        update={"map_projection": project_stored_bundle_map(bundle)}
+    )
+    return PublicDeliveryBundleResponse.model_validate(public_delivery_bundle(response_bundle))
 
 
 @router.post(
@@ -84,7 +88,7 @@ async def refresh_current_bundle_weather(
             refresh_id=request.refresh_id,
             bundle_store=components.delivery_bundle_store,
             trip_run_store=components.trip_run_store,
-            clock=getattr(components, "weather_refresh_clock", None),
+            clock=None,
             weather_context_builder=getattr(
                 components, "weather_context_builder", None
             ),
@@ -107,9 +111,6 @@ async def refresh_current_bundle_weather(
                 "message": "这次天气刷新的标识已用于另一项操作。",
             },
         ) from exc
-    except BundleContractSuperseded as exc:
-        raise_bundle_contract_superseded(exc)
-        raise AssertionError("unreachable")
     return WeatherBundleRefreshResponse(
         refresh_id=request.refresh_id,
         attempted=result.attempted,

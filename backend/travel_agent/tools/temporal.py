@@ -17,7 +17,6 @@ from pydantic import BaseModel, ConfigDict
 EXACT_WEATHER_FORECAST_DAYS = 16
 RAIL_LIVE_INVENTORY_DAYS = 15
 AMAP_WEATHER_FORECAST_DAYS = 4
-BAIDU_WEATHER_FORECAST_DAYS = 7
 
 
 class TemporalQuerySemantics(str, Enum):
@@ -277,11 +276,7 @@ def evaluate_temporal_request(
     if supported_start is not None and requested < supported_start:
         return TemporalPreflightDecision(
             status=TemporalPreflightStatus.NOT_APPLICABLE,
-            reason_code=(
-                TemporalReasonCode.HISTORICAL_DATE_NOT_SUPPORTED
-                if capability.query_semantics == TemporalQuerySemantics.LATEST_ONLY
-                else TemporalReasonCode.DATE_IN_PAST
-            ),
+            reason_code=TemporalReasonCode.DATE_IN_PAST,
             requested_start=requested,
             requested_end=requested,
             supported_start=supported_start,

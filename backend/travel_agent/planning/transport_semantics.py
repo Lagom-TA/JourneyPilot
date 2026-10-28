@@ -24,6 +24,36 @@ _SERVICE_MODES = {
     "tram",
 }
 
+_ROAD_DISPLAY_MODES = frozenset({"taxi", "ride_hailing"})
+
+
+def _mode_value(mode: object) -> str:
+    return str(getattr(mode, "value", mode))
+
+
+def provider_route_mode(requested_mode: object) -> str:
+    """把展示方式映射为路线 Provider 支持的道路查询方式。"""
+    requested = _mode_value(requested_mode)
+    return "drive" if requested in _ROAD_DISPLAY_MODES else requested
+
+
+def transport_mode_satisfies(provider_mode: object, requested_mode: object) -> bool:
+    """判断 Provider 方式能否承载指定展示方式，出租车与网约车共用道路几何。"""
+    provider = _mode_value(provider_mode)
+    requested = _mode_value(requested_mode)
+    return provider == requested or (
+        provider == "drive" and requested in _ROAD_DISPLAY_MODES
+    )
+
+
+def replacement_display_mode(current_mode: object, candidate_mode: object) -> object:
+    """替换道路候选时保留当前出租车或网约车展示方式，其余候选保持原方式。"""
+    if _mode_value(current_mode) in _ROAD_DISPLAY_MODES and transport_mode_satisfies(
+        candidate_mode, current_mode
+    ):
+        return current_mode
+    return candidate_mode
+
 
 def count_service_transfers(segments: Iterable[_ServiceSegment]) -> int:
     """统计已证实的乘坐服务变更次数，忽略进出站段。

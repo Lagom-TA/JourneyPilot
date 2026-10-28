@@ -60,14 +60,6 @@ class PresetInjector:
         return f"\n<active_preset>\n{prompt}\n{preset_context}\n</active_preset>"
 
     @staticmethod
-    def format_for_planner(preset_context: str) -> str:
-        """为 Planner 格式化 Preset 上下文"""
-        return PresetInjector._wrap_active_preset(
-            "用户启用了风格预设，请据此调整任务分配的侧重点：",
-            preset_context,
-        )
-
-    @staticmethod
     def format_for_agent(preset_context: str) -> str:
         """为最终输出 Agent（FastAnswer / Synthesizer）格式化"""
         return PresetInjector._wrap_active_preset(

@@ -8,8 +8,8 @@ description = "旅游规划智能体后端"
 readme = "../README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
-    # Pin floors for HTTP/upload/MCP security surface; avoid
-    # blind major bumps of langchain/langgraph/torch stacks in this pass.
+    # Pin floors for HTTP/upload/MCP security surface; avoid blind major
+    # bumps of the langchain/langgraph/torch stacks.
     "fastapi>=0.115.12",
     "uvicorn[standard]>=0.34.3",
     "python-multipart>=0.0.31",
@@ -31,16 +31,11 @@ dependencies = [
     "pydantic>=2.11.5",
     "pydantic-settings>=2.14.2",
     "pydantic-core>=2.33.2",
-    # cryptography removed: only used by deleted formal/controlled-eval signing.
     "mcp>=1.9.4",
     "mcp-server-fetch",
     "PyYAML>=6.0.2",
     "python-dotenv>=1.1.0",
-    "aiofiles>=24.1.0",
-    "rich>=14.0.0",
-    "loguru>=0.7.0",
     "beautifulsoup4>=4.12.0",
-    "duckduckgo-search>=4.0.0",
     "requests>=2.33.0",
     # PDF 导出与文档导入都是核心承诺（导出报告、上传资料是产品的两个按钮），
     # 所以它们留在 core。本地 embedding 与 cross encoder 不是，见 dependency-groups。
@@ -50,14 +45,14 @@ dependencies = [
     "ddgs>=9.14.3",
     # Versioned schema migrations. The API process only *reads* schema state;
     # every DDL change lives in migrations/versions/ and runs through the
-    # journeypilot CLI before the API starts (see dev docs P0-A / ADR-P0-03).
+    # journeypilot CLI before the API starts.
     "alembic>=1.14",
 ]
 
 [tool.uv]
 package = false
 
-# 增强能力显式安装，核心能力默认可用（ADR-P1-05）。
+# 增强能力显式安装，核心能力默认可用。
 #
 # 上面的 `dependencies` 是 **core**：聊天、规划、PostgreSQL/pgvector、Redis、
 # MCP、PDF 导出、基础文档导入。下面每一组都是「用户选了才需要」的东西，未安装时

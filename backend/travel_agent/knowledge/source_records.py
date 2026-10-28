@@ -69,8 +69,8 @@ def _snapshot(doc: Mapping[str, Any], content: str) -> Dict[str, Any]:
     """完整的 chunk，不是摘要。
 
     合同原话是「完整工具返回或完整 RAG chunk，禁止裁剪成模型摘要」，而下游
-    `services/delivery_projection.py::_public_source` 的 `rag_chunk` 分支在 chunk
-    内容缺失时会抛错——它等的就是这里的 ``content``。
+    `travel_agent/planning/delivery/citation_projection.py::_public_source` 的 `rag_chunk`
+    分支在 chunk 内容缺失时会抛错——它等的就是这里的 ``content``。
     """
 
     snapshot: Dict[str, Any] = {

@@ -41,28 +41,43 @@ async def test_unknown_channel_is_rejected_rather_than_run_unbounded():
 
 
 async def test_channel_limit_caps_concurrent_thread_work(limits):
+    import threading
+
     limits.document_parse = 2
     peak = 0
-    active = 0
-    lock = asyncio.Lock()
+    in_flight = 0
+    guard = threading.Lock()
 
     def _work() -> None:
+        # 在线程体内记录真实并发峰值，这才会被通道上限挡住。
+        nonlocal in_flight
+        with guard:
+            in_flight += 1
         time.sleep(0.05)
+        with guard:
+            in_flight -= 1
+
+    def _snapshot_peak() -> None:
+        nonlocal peak
+        for _ in range(80):
+            with guard:
+                peak = max(peak, in_flight)
+            time.sleep(0.005)
 
     async def _one() -> None:
-        nonlocal peak, active
-        async with lock:
-            active += 1
-            peak = max(peak, active)
         await run_blocking("document_parse", _work)
-        async with lock:
-            active -= 1
 
-    # 六个请求、上限两个：通道让它们排队，而不是一起挤进线程池。
-    await asyncio.gather(*[_one() for _ in range(6)])
+    # 六个请求、上限两个：通道把线程内并发压到 2，而不是 6 个一起进线程池。
+    # watcher 每 5ms 采样一次 in_flight，持续 0.4s，覆盖全部六次调度的窗口。
+    watcher = asyncio.get_running_loop().run_in_executor(None, _snapshot_peak)
+    done, _ = await asyncio.wait(
+        [asyncio.gather(*[_one() for _ in range(6)])], timeout=0.5,
+    )
+    assert done
+    await watcher
     assert blocking_work_metrics()["document_parse"]["admitted"] == 6
     assert blocking_work_metrics()["document_parse"]["limit"] == 2
-    assert peak == 6  # 六个协程都在等，说明排队发生在通道上
+    assert 0 < peak <= 2
 
 
 async def test_queue_wait_has_an_upper_bound(limits):

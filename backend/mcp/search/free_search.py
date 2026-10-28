@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-免费搜索 MCP 服务器 - 使用 duckduckgo-search 库（无需 API Key）
+免费搜索 MCP 服务器 - 使用 ddgs 库（无需 API Key）
 """
 
 import asyncio
@@ -40,11 +40,7 @@ async def list_tools() -> list[Tool]:
 
 def _do_search(query: str, max_results: int = 5) -> str:
     """同步执行搜索（在线程池中运行，避免阻塞）"""
-    try:
-        # duckduckgo_search 已更名为 ddgs，旧包后端失效（返回 0 条结果）
-        from ddgs import DDGS
-    except ImportError:
-        from duckduckgo_search import DDGS
+    from ddgs import DDGS
 
     results = []
     try:

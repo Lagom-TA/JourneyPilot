@@ -21,12 +21,11 @@ from .delivery import ChatDelivery
 from .lifecycle import ChatLifecycle
 from .completion import complete_chat
 from .failures import cancel_chat, fail_chat
-from .text_events import _handle_token, _handle_react_thinking
+from .text_events import _handle_token
 from .tool_events import _handle_tool_start, _handle_tool_done
 from .progress_events import (
     _handle_agent_activity,
     _handle_node_activity,
-    _handle_synthesis_start,
     _handle_context_compaction,
     _handle_context_report,
     _handle_state_update,
@@ -36,11 +35,9 @@ logger = logging.getLogger(__name__)
 
 _SSE_HANDLERS = {
     "token": _handle_token,
-    "react_thinking": _handle_react_thinking,
     "agent_activity": _handle_agent_activity,
     "tool_start": _handle_tool_start,
     "tool_done": _handle_tool_done,
-    "synthesis_start": _handle_synthesis_start,
     "context_compaction": _handle_context_compaction,
     "context_report": _handle_context_report,
     "state": _handle_state_update,

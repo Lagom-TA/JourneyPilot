@@ -181,23 +181,40 @@ def test_manifest_records_the_pg_client_strategy(temp_database, settings, scratc
     )
 
 
-def test_redaction_keeps_structure_and_drops_secrets():
-    """脱敏保留结构，Secret 只留 <set> / <unset> 这一个比特。
+def test_redaction_keeps_structure_and_drops_secrets(monkeypatch, tmp_path):
+    """备份目录里的 config.redacted.yaml 脱敏保留结构，Secret 只留 <set> / <unset>。
 
-    备份目录里的 config.redacted.yaml 与 `journeypilot config show` 使用同一份
-    规则（`config/redaction.py`），所以这一条同时覆盖两处。
+    直接驱动 `_write_redacted_config`：写一份带嵌套 MCP token 的临时 config.yaml，
+    `find_config_yaml` 指向它，再断言备份目录里的产物结构完整、token 全部脱敏。
+    规则与 `journeypilot config show` 同源（`config/redaction.py`）。
     """
 
-    from travel_agent.config.redaction import redact
+    import yaml
 
-    payload = {
-        "primary_model": {"model_name": "gpt-x", "api_key": "sk-real-secret"},
-        "database": {"host": "localhost", "password": ""},
-        "mcp": {"servers": {"amap": {"env": {"AMAP_TOKEN": "abc"}}}},
-        "rag": {"top_k": 5},
-    }
-    redacted = redact(payload)
+    from travel_agent.storage.maintenance.backup import _write_redacted_config
 
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "primary_model": {"model_name": "gpt-x", "api_key": "sk-real-secret"},
+                "database": {"host": "localhost", "password": ""},
+                "mcp": {"servers": {"amap": {"env": {"AMAP_TOKEN": "abc"}}}},
+                "rag": {"top_k": 5},
+            },
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "travel_agent.config.loader.find_config_yaml", lambda: config_path
+    )
+
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    assert _write_redacted_config(backup_dir) == str(config_path)
+
+    redacted = yaml.safe_load((backup_dir / "config.redacted.yaml").read_text(encoding="utf-8"))
     assert redacted["primary_model"]["model_name"] == "gpt-x"
     assert redacted["primary_model"]["api_key"] == "<set>"
     assert redacted["database"]["host"] == "localhost"
@@ -205,3 +222,4 @@ def test_redaction_keeps_structure_and_drops_secrets():
     assert redacted["mcp"]["servers"]["amap"]["env"]["AMAP_TOKEN"] == "<set>"
     assert redacted["rag"]["top_k"] == 5
     assert "sk-real-secret" not in json.dumps(redacted)
+    assert "abc" not in json.dumps(redacted)

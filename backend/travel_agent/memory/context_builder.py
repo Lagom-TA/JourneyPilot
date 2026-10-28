@@ -30,17 +30,6 @@ class ContextBudget:
     # 压缩只推进到实际进入摘要的消息，输入上限与触发阈值分开。
     compaction_input_tokens: int = 50_000
     max_messages_per_compaction: int = 500
-    max_compaction_rounds_per_request: int = 1
-
-    @property
-    def messages_budget(self) -> int:
-        # 偏好与记忆已计入各节点的约束提示，不重复扣减会话消息预算。
-        return (
-            self.total_context_limit
-            - self.response_reserve
-            - self.system_prompt_budget
-            - self.anchor_summary_budget
-        )
 
     @property
     def compaction_trigger_tokens(self) -> int:
@@ -180,16 +169,6 @@ class ContextBuilder:
             token_usage=token_usage,
             needs_compaction=needs_compaction,
         )
-
-    def _trim_text(self, text: str, max_tokens: int, model: str) -> str:
-        if not text:
-            return ""
-        tokens = count_tokens(text, model)
-        if tokens <= max_tokens:
-            return text
-        ratio = max_tokens / tokens
-        char_limit = int(len(text) * ratio * _TRIM_SAFETY_RATIO)
-        return text[:char_limit] + "..."
 
     def _trim_messages(
         self,

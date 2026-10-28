@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
@@ -31,7 +31,6 @@ from travel_agent.planning.requirements.constraints.presentation import (
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.tool_context import build_tool_context_from_state
 from travel_agent.tools.access import filter_tools_for_agent, get_available_tools
-from travel_agent.tools.knowledge_results import knowledge_tool_summaries
 from travel_agent.tools.react import streaming_react_loop
 
 if TYPE_CHECKING:
@@ -145,22 +144,10 @@ async def fast_answer_node(
         if report is not None:
             await stream_queue.put(("context_report", _NODE_NAME, report))
 
-    messages: List[Dict[str, Any]] = [
-        {"role": "system", "content": built_ctx.system_prompt}
-    ]
-    messages.extend(built_ctx.messages)
-    if str((state.route_decision or {}).get("route") or "") == "destination_discovery":
-        messages.append({"role": "system", "content": DISCOVERY_OBJECTIVE_INSTRUCTION})
-
     realtime_context = await _build_realtime_tool_context(
         state=state, stream_queue=stream_queue
     )
     realtime_prompt = str(realtime_context.get("prompt") or "")
-    realtime_evidence = [
-        item
-        for item in (realtime_context.get("evidence_records") or [])
-        if isinstance(item, dict)
-    ]
     wire_tail = []
     if str((state.route_decision or {}).get("route") or "") == "destination_discovery":
         wire_tail.append({"role": "system", "content": DISCOVERY_OBJECTIVE_INSTRUCTION})
@@ -199,34 +186,14 @@ async def fast_answer_node(
             final_round_notice=None,
         )
         response = react.require_final_answer()
-        tool_results = react.tool_results
         logger.info(f"FastAnswer 生成回答，长度: {len(response)}")
         if stream_queue is not None:
             await stream_queue.put(("token", _NODE_NAME, response))
-        retrieval_summaries = knowledge_tool_summaries(tool_results)
-        if realtime_evidence:
-            retrieval_summaries.append(
-                {
-                    "query": user_query,
-                    "mode": "fast_realtime_tool",
-                    "selected_count": len(realtime_evidence),
-                    "sources": [
-                        {
-                            "source_name": ev.get("source_name"),
-                            "tool_name": ev.get("tool_name"),
-                            "title": ev.get("title"),
-                            "retrieved_at": ev.get("retrieved_at"),
-                        }
-                        for ev in realtime_evidence
-                    ],
-                }
-            )
         return {
             "constraint_pack": constraint_pack,
             "constraint_pack_revision": state.constraint_pack_revision + 1,
             "messages": [AIMessage(content=response)],
             "is_completed": True,
-            "retrieval_summaries": retrieval_summaries,
             "synthesis_mode": "fast",
         }
 

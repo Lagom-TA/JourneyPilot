@@ -179,11 +179,3 @@ class ProviderEvidenceOutcome(_StrictFrozenModel):
                     "unresolved Provider outcome requires only a positive loss"
                 )
         return self
-
-
-class ProviderEvidenceSummary(_StrictFrozenModel):
-    current_scope_count: int = Field(ge=0)
-    unresolved_scope_count: int = Field(ge=0)
-    provider_option_count: int = Field(ge=0)
-    provider_option_materialized_count: int = Field(ge=0)
-    provider_salvage_loss_count: int = Field(ge=0)

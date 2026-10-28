@@ -29,8 +29,7 @@ _PREVIEW_MAX_LEN = 120   # 会话预览截断长度
 # 思考步，只限制 turn 数不足以控制响应体大小。
 TURN_PAGE_LIMIT = 30
 TURN_PAGE_MAX_EVENTS = 1500
-# 标题上限只有一个，判据与派生都在 `entities/session_title.py`；
-# 前端重命名输入框的 maxLength 与它对齐（`ConversationList`）。
+# 标题上限只有一个，判据与派生都在 `conversation/titles.py`。
 _TITLE_MAX_LEN = TITLE_MAX_LEN
 
 
@@ -287,7 +286,7 @@ class ChatSessionMemory:
         `controlled_trip_identity` 是**本次请求携带的**旅行身份，只在创建那一次被读到
         （标题此后只由重命名改写）。第一次请求必然没有 `run_id`，所以那一刻请求身份
         与运行身份逐字相同——传谁都一样，因此这里只认一个来源。判据在
-        `entities/session_title.derive_session_title`：有目的地就按路线 + 日期命名，
+        `conversation/titles.derive_session_title`：有目的地就按路线 + 日期命名，
         没有就按问题本身命名。**必传**，没有旅行身份就显式传 None。
         """
         title = derive_session_title(

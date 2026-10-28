@@ -89,14 +89,6 @@ class MigrationPlan:
     def refused(self) -> bool:
         return self.decision in _REFUSALS
 
-    @property
-    def requires_migration(self) -> bool:
-        return self.decision in {
-            Decision.MIGRATE_EMPTY,
-            Decision.ADOPT_BASELINE,
-            Decision.UPGRADE,
-        }
-
     def to_dict(self) -> dict[str, Any]:
         return {
             "decision": self.decision.value,

@@ -8,8 +8,6 @@ from travel_agent.runtime.events import run_ts_ms
 
 from .presentation import ChatPresentation
 
-_FINAL_OUTPUT_NODES = {"fast_answer_agent"}
-
 
 async def _handle_token(
     item: tuple, ctx: ChatPresentation
@@ -31,11 +29,3 @@ async def _handle_token(
             "show_content": display,
             "ts_ms": run_ts_ms(),
         }
-
-
-async def _handle_react_thinking(
-    item: tuple, ctx: ChatPresentation
-) -> AsyncIterator[Dict[str, Any]]:
-    """丢弃模型原始增量，包括被任意分块切开的 JSON。"""
-    return
-    yield

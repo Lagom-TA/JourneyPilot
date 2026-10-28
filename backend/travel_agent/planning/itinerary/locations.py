@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+import math
+from typing import Any, Dict, Mapping, Optional
 
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary.draft import (
@@ -22,6 +23,9 @@ from travel_agent.planning.itinerary.place_resolution import (
     authored_place_scopes,
     resolve_authored_place,
 )
+from travel_agent.planning.research.candidates import DiningCandidate, VisitCandidate
+from travel_agent.planning.research.catalog import RecommendationCatalog
+from travel_agent.planning.research.evidence import SourceRecord
 from travel_agent.tools.execution import execute_tool
 from travel_agent.tools.registry import get_tool_registry
 
@@ -154,6 +158,122 @@ def _reuse_place_location(place, located):
     return place.model_copy(
         update={field: getattr(located, field) for field in _SERVER_OWNED_PLACE_FIELDS}
     )
+
+
+def _candidate_provider_coordinates(
+    candidate: VisitCandidate | DiningCandidate,
+    sources: Mapping[str, SourceRecord],
+) -> Optional[tuple[float, float]]:
+    """返回候选来源中与地点身份匹配的 Provider 坐标。"""
+
+    def find(value: Any) -> Optional[tuple[float, float]]:
+        if isinstance(value, dict):
+            if str(value.get("place_id") or "") == candidate.place_id:
+                latitude = value.get("latitude")
+                longitude = value.get("longitude")
+                if (
+                    not isinstance(latitude, bool)
+                    and not isinstance(longitude, bool)
+                    and isinstance(latitude, (int, float))
+                    and isinstance(longitude, (int, float))
+                ):
+                    point = float(latitude), float(longitude)
+                    if (
+                        math.isfinite(point[0])
+                        and math.isfinite(point[1])
+                        and -90 <= point[0] <= 90
+                        and -180 <= point[1] <= 180
+                    ):
+                        return point
+            for nested in value.values():
+                matched = find(nested)
+                if matched is not None:
+                    return matched
+        elif isinstance(value, list):
+            for nested in value:
+                matched = find(nested)
+                if matched is not None:
+                    return matched
+        return None
+
+    for source_id in candidate.source_record_ids:
+        source = sources.get(source_id)
+        if source is None:
+            continue
+        matched = find(source.snapshot)
+        if matched is not None:
+            return matched
+    return None
+
+
+def replace_unlocated_authored_places(
+    composition: ItineraryCompositionDraft,
+    catalog: Optional[RecommendationCatalog],
+) -> ItineraryCompositionDraft:
+    """把未定位的撰写落位换成同目的地、同类别且未使用的已定位候选。"""
+    if catalog is None:
+        return composition
+    sources = {
+        source.source_record_id: source
+        for packet in catalog.research_packets
+        for source in packet.source_records
+    }
+    candidates = sorted(
+        (
+            candidate
+            for candidate in catalog.candidate_index().values()
+            if isinstance(candidate, (VisitCandidate, DiningCandidate))
+            and _candidate_provider_coordinates(candidate, sources) is not None
+        ),
+        key=lambda candidate: candidate.candidate_id,
+    )
+    used_candidate_ids = {
+        placement.candidate_id
+        for day in composition.days
+        for placement in day.placements
+        if placement.candidate_id
+    } | set(composition.lodging_candidate_ids)
+    changed = False
+    days = []
+    for day in composition.days:
+        placements = []
+        for placement in day.placements:
+            authored = getattr(placement, "authored_place", None)
+            if authored is None or authored.is_located:
+                placements.append(placement)
+                continue
+            replacement = next(
+                (
+                    candidate
+                    for candidate in candidates
+                    if candidate.candidate_id not in used_candidate_ids
+                    and candidate.destination_id == day.destination_id
+                    and candidate.candidate_kind == placement.placement_kind
+                    and (
+                        placement.placement_kind != "dining"
+                        or placement.meal_type in candidate.meal_types
+                    )
+                ),
+                None,
+            )
+            if replacement is None:
+                placements.append(placement)
+                continue
+            # 展示理由由候选提供；原撰写条目的名称与理由不转移到新地点。
+            placement = placement.model_copy(
+                update={
+                    "candidate_id": replacement.candidate_id,
+                    "authored_place": None,
+                    "selection_reason": None,
+                }
+            )
+            used_candidate_ids.add(replacement.candidate_id)
+            changed = True
+            placements.append(placement)
+        days.append(day.model_copy(update={"placements": placements}))
+    if not changed:
+        return composition
+    return composition.model_copy(update={"days": days})
 
 
 async def locate_authored_composition(

@@ -21,8 +21,8 @@ rank 派生分：相似度会在融合那一步丢掉，下游既无法再施加
 
 Step 4：Reranking 二阶段精排
   初检：Hybrid Search 扩大候选集；精排：CrossEncoderReranker / LLMReranker
-  精排**不在这一层做**——它属于 ``rag.retrieval_pipeline``，那里一次查询只精排
-  一次、在融合后的完整候选池上排，排完的顺序就是最终顺序。本层的
+  精排**不在这一层做**——它属于 ``travel_agent.knowledge.retrieval_pipeline``，那里一次
+  查询只精排一次、在融合后的完整候选池上排，排完的顺序就是最终顺序。本层的
   ``retrieve(rerank=True)`` 只服务"单查询单集合"这种直接调用。
 """
 
@@ -80,13 +80,9 @@ def _pick_published_at(meta: Dict[str, Any]) -> str:
         return ""
     for key in (
         "published_at",
-        "publishedAt",
         "updated_at",
-        "updatedAt",
         "last_updated",
-        "lastUpdated",
         "update_time",
-        "timestamp",
     ):
         value = meta.get(key)
         if value is None:
@@ -226,8 +222,8 @@ class HybridRetriever:
             use_hybrid: True=向量+lexical full-text 融合（默认），False=纯向量
             rerank: True=强制开启精排，False=强制关闭，None=读 config（默认）。
                 多查询/多集合的调用方应当传 False，并把精排交给
-                ``rag.retrieval_pipeline``——那里一次查询只排一次，且排完的顺序
-                就是最终顺序。
+                ``travel_agent.knowledge.retrieval_pipeline``——那里一次查询只排一次，
+                且排完的顺序就是最终顺序。
         """
         settings = get_settings()
         if not settings.embedding.enabled:
@@ -438,50 +434,6 @@ class HybridRetriever:
             f"向量 {len(vector_results)} + lexical {len(lexical_results)} → 融合 {len(fused)} 个, best_rrf={best_score:.4f}"
         )
         return RetrievalDocuments(fused, failures=failures)
-
-    def format_docs_for_prompt(self, docs: List[Dict[str, Any]]) -> str:
-        """将检索结果格式化为 Prompt 可用的字符串。
-
-        每条只写它实际具有的分数，并写明该分数的含义。RRF 融合分只编码排名，
-        对多数结果几乎相同，不写给模型；名次已经由 ``[参考i]`` 的序号表达。
-        """
-        if not docs:
-            return "暂无相关知识库内容。"
-        parts = []
-        for i, doc in enumerate(docs, 1):
-            method = doc.get("retrieval_method", "vector")
-            method_tag = "语义" if method == "vector" else "关键词" if method == "lexical" else "融合"
-
-            # 优先展示 original_content（不含 LLM 生成的上下文前缀）
-            display_content = doc.get("original_content") or doc["content"]
-
-            if doc.get("rerank_score") is not None:
-                score_info = f"相关性评分：{doc['rerank_score']:.1f}（精排判定）"
-            elif doc.get("vector_score") is not None:
-                score_info = f"向量相似度：{doc['vector_score']:.3f}"
-            else:
-                score_info = "关键词命中"
-
-            freshness_bits = []
-            if doc.get("published_at"):
-                freshness_bits.append(f"发布时间：{doc['published_at']}")
-            if doc.get("retrieved_at"):
-                freshness_bits.append(f"检索时间：{doc['retrieved_at']}")
-            freshness_info = "，".join(freshness_bits)
-            if freshness_info:
-                freshness_info = f", {freshness_info}"
-
-            # 引用标识由服务端铸造（``rag.source_records``）：模型引用它，服务端
-            # 据此接地并自己写这条 SourceRecord。没有标识就说明这段内容不是可
-            # 引用证据（例如快速路径的答案上下文），此时不打印，免得邀请模型
-            # 去引用一个落不了地的东西。
-            citation = doc.get("source_record_id")
-            citation_info = f"引用标识：{citation}, " if citation else ""
-            parts.append(
-                f"[参考{i}] {citation_info}来源：{doc['source']} "
-                f"({score_info}, {method_tag}检索{freshness_info})\n{display_content}"
-            )
-        return "\n\n---\n\n".join(parts)
 
 
 _ARM_SCORE_KEYS = ("vector_score", "lexical_score", "rerank_score")

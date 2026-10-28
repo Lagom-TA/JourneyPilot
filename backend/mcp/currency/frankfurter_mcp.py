@@ -20,7 +20,7 @@ from mcp.types import TextContent, Tool
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 # The rate publisher has one address in this repo.  The deterministic converter
-# (``services/currency_conversion.py``, which turns a Duffel fare quoted in the
+# (``travel_agent/integrations/currency.py``, which turns a Duffel fare quoted in the
 # account's currency into the ``*_cny`` the delivery contract requires) reads the
 # same publisher, and two spellings of one URL is how a repo ends up asking two
 # different services the same question.

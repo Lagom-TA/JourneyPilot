@@ -36,7 +36,6 @@ _NORMAL_SSE_EVENT_TYPES = frozenset(
 _RESEARCH_TRACE_EVENT_TYPES = frozenset(
     {
         "thinking",
-        "agent_thinking",
         "agent_progress",
         "tool_start",
         "tool_result",
@@ -53,7 +52,6 @@ _INSPECT_SSE_EVENT_TYPES = frozenset(
         "context_report",
         "context_compaction",
         "usage_update",
-        "synthesis_start",
         "trip_summary_card",
     }
 )
@@ -166,7 +164,7 @@ def _project_research_trace(event_type: str, payload: Dict[str, Any]) -> Dict[st
         if key in payload:
             projected[key] = payload[key]
 
-    if event_type in {"thinking", "agent_thinking", "agent_progress"}:
+    if event_type in {"thinking", "agent_progress"}:
         projected["content"] = public_text(payload.get("content", ""))
         if payload.get("progress_status") in {"running", "completed", "failed"}:
             projected["progress_status"] = payload["progress_status"]

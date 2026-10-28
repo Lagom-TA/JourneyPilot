@@ -1,6 +1,6 @@
 # 项目名钉死，不跟目录名走：container_name 是固定值，而 compose 默认拿目录名
-# 当项目名 —— 仓库换个目录名（OpenJourneyPilot vs journeypilot）就会撞名启动
-# 失败，并把既有数据留在旧项目的卷里。理由同文末卷名不改。
+# 当项目名 —— 仓库换个目录名就会撞名启动失败，并把既有数据留在旧项目的卷里。
+# 理由同文末卷名不改。
 name: journeypilot
 
 services:
@@ -124,7 +124,7 @@ services:
     restart: on-failure:3
 
 # 卷名保持原值（不加 journeypilot- 前缀）：重命名会让 Docker 新建空卷、
-# 丢失本地既有数据。容器/镜像名已改为品牌名，卷名不动 = 零迁移成本。
+# 丢失本地既有数据。容器/镜像名是品牌名，卷名不动 = 零迁移成本。
 volumes:
   postgres_data:
   redis_data:

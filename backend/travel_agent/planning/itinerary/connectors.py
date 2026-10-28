@@ -28,7 +28,12 @@ from travel_agent.planning.research.candidates import (
     TransportCandidate,
 )
 from travel_agent.planning.research.catalog import RecommendationCatalog
-from travel_agent.planning.transport import TransportEndpoint
+from travel_agent.planning.transport import (
+    TransportEndpoint,
+    TransportMode,
+    TransportModePreference,
+)
+from travel_agent.planning.transport_semantics import transport_mode_satisfies
 from travel_agent.schema import StrictModel
 
 
@@ -325,6 +330,32 @@ def connector_mode_requests_from_constraint_pack(
     )
 
 
+def connector_display_mode(
+    candidate: TransportCandidate,
+    gap: LocalConnectorGap,
+) -> TransportMode:
+    """按用户请求顺序选择展示方式，不改变 Provider 候选及其道路分段。"""
+    if candidate.transport_class == "flexible":
+        for requested in gap.requested_flexible_modes:
+            if transport_mode_satisfies(candidate.selected_mode, requested):
+                return TransportMode(requested)
+    return candidate.selected_mode
+
+
+def connector_mode_preference(
+    gap: LocalConnectorGap,
+    selected_mode: TransportMode,
+) -> TransportModePreference:
+    """把出租车或网约车的显式锁定请求写到最终行程段。"""
+    if (
+        gap.allowed_transport_classes == ["flexible"]
+        and selected_mode in {TransportMode.TAXI, TransportMode.RIDE_HAILING}
+        and selected_mode.value in gap.requested_flexible_modes
+    ):
+        return TransportModePreference(locked_mode=selected_mode)
+    return TransportModePreference()
+
+
 def _connector_options(
     candidates: Mapping[str, ResearchCandidate],
     gap: LocalConnectorGap,
@@ -345,9 +376,9 @@ def _connector_options(
             or candidate.to_endpoint.place_id != gap.to_place_id
         ):
             continue
-        if (
-            candidate.transport_class == "flexible"
-            and candidate.selected_mode.value not in set(gap.requested_flexible_modes)
+        if candidate.transport_class == "flexible" and not any(
+            transport_mode_satisfies(candidate.selected_mode, requested)
+            for requested in gap.requested_flexible_modes
         ):
             continue
         options.append(candidate)

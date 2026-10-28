@@ -8,6 +8,7 @@ from langchain_core.runnables import RunnableConfig
 
 from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
 from travel_agent.planning.state import TravelAgentState
+from travel_agent.planning.tool_context import build_tool_context_from_state
 from travel_agent.llm.router import get_model_router
 from travel_agent.llm.task_routing import TaskKind, llm_for_task
 from travel_agent.planning.assignments import resolve_agent_assignment
@@ -20,12 +21,16 @@ from travel_agent.planning.itinerary.connectors import (
     unfilled_connector_gaps,
 )
 from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
+from travel_agent.planning.itinerary.rail_paths import complete_rail_route_paths
 from travel_agent.planning.itinerary.requirements import _draft_user_input_anchors
 from travel_agent.planning.nodes import NODE_ITINERARY
 from travel_agent.planning.workspace import TripWorkspaceV2
 from travel_agent.runtime.deadlines import observe_run_deadline
 from travel_agent.planning.itinerary.day_design import apply_day_design
 from travel_agent.planning.itinerary.dispersion import itinerary_dispersion
+from travel_agent.planning.research.transport.local_routes import (
+    complete_local_connector_routes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -123,7 +128,11 @@ async def itinerary_planner_node(
             flexible_mode_requests=requests,
             required_flexible_mode_pairs=required_pairs,
         )
-        unfilled = unfilled_connector_gaps(state.recommendation_catalog, gaps)
+        catalog = state.recommendation_catalog
+        unfilled = unfilled_connector_gaps(catalog, gaps)
+        if unfilled:
+            catalog = await complete_local_connector_routes(state, unfilled)
+            unfilled = unfilled_connector_gaps(catalog, gaps)
         authored = (
             await _author_connector_routes(
                 llm_for_task(get_model_router(), TaskKind.COMPOSITION),
@@ -134,7 +143,7 @@ async def itinerary_planner_node(
         )
         composition = materialize_skeleton_connectors(
             skeleton,
-            state.recommendation_catalog,
+            catalog,
             gaps,
             authored,
         )
@@ -143,13 +152,18 @@ async def itinerary_planner_node(
             run_id=state.run_id,
             workspace_revision=0,
             composition=composition,
-            catalog=state.recommendation_catalog,
+            catalog=catalog,
             intent_contract_snapshot=IntentContractSnapshot.from_intent_spec(
                 state.intent_spec
             ),
             composition_mutations=list(state.composition_mutations),
             user_input_anchors=_draft_user_input_anchors(state),
             reference_services=list(state.provider_reference_services),
+            connector_gaps=gaps,
+        )
+        workspace = await complete_rail_route_paths(
+            workspace,
+            tool_context=build_tool_context_from_state(state),
         )
         workspace = apply_day_design(workspace, composition)
         _log_composition_dispersion(workspace)

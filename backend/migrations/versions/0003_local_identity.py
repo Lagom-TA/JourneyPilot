@@ -6,7 +6,7 @@ Create Date: 2026-08-17
 
 ## 这条迁移做什么
 
-运行时身份收敛为固定的 `local`（`travel_agent/local_profile.py`）。`user_id` 列保留
+运行时身份收敛为固定的 `local`（`travel_agent/runtime/local_identity.py`）。`user_id` 列保留
 为数据分区键，但取值只能是 `local`，默认值随之改写。
 
 产品还没有用户，所以旧身份下的数据**直接删掉**，不做 census、选择合并与冲突规则：

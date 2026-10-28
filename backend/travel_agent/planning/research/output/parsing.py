@@ -232,17 +232,3 @@ def _parse_packet_lenient_first(raw: str, **kwargs: Any) -> ResearchPacket:
             json.dumps(coerced, ensure_ascii=False),
             **kwargs,
         )
-
-
-def format_research_packet_context(packets: Mapping[str, ResearchPacket]) -> str:
-    """完整诊断序列化；worker 使用 memory.research_context 提供的视图。"""
-    if not packets:
-        return "[]"
-    return json.dumps(
-        [
-            packet.model_dump(mode="json", exclude_none=True)
-            for packet in packets.values()
-        ],
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )

@@ -163,13 +163,6 @@ async def test_deep_asgi_body_is_backed_by_persisted_bundle_and_ordered_terminal
             await queue.put(
                 ("token", "itinerary_planner", "provisional deep text must not publish")
             )
-            await queue.put(
-                (
-                    "react_thinking",
-                    "itinerary_planner",
-                    "raw reasoning must not publish",
-                )
-            )
             await queue.put(("state_snapshot", {"run_id": run.run_id}))
             await runs.complete_delivery(
                 run.run_id,

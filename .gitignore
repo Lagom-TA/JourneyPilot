@@ -394,7 +394,6 @@ backend/tests/**/.DS_Store
 
 # Claude Code worktree 工作目录（运行时生成，不入库）
 .claude/worktrees/
-frontend/.env-exemple
 
 # =============================================================================
 # 内部模块（本地保留 / 不开源）
@@ -402,8 +401,6 @@ frontend/.env-exemple
 # 可观测性
 otel-collector-config.yaml
 
-/static/*
-!/static/.gitkeep
 /backend/static/
 
 # IDE / 开发过程目录

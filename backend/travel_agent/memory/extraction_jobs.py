@@ -79,9 +79,9 @@ async def load_user_profile(user_profile_memory, user_id: str):
     """加载用户画像对象；取不到时返回 None。
 
     画像抵达模型的唯一通道是 Constraint Pack 的统一装配入口
-    （``panels/constraint.py`` 中 ``_map_manual_profile`` 映射六组偏好、
-    ``_auto_portrait_block`` 映射系统画像）。本函数只返回画像对象，
-    供记忆抽取作为 ``auto_portrait`` 增量基线。
+    （``travel_agent/planning/requirements/constraints/sources.py`` 中
+    ``_map_manual_profile`` 映射六组偏好、``_auto_portrait_block`` 映射系统画像）。
+    本函数只返回画像对象，供记忆抽取作为 ``auto_portrait`` 增量基线。
     """
     try:
         return await user_profile_memory.get_user_profile(user_id)

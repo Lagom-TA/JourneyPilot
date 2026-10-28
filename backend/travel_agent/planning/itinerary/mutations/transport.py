@@ -19,6 +19,8 @@ from travel_agent.planning.references import EntityType
 from travel_agent.planning.research.candidates import TransportCandidate
 from travel_agent.planning.transport import TransportModePreference
 from travel_agent.planning.transport_semantics import count_service_transfers
+from travel_agent.planning.transport_semantics import replacement_display_mode
+from travel_agent.planning.transport_semantics import transport_mode_satisfies
 from travel_agent.planning.workspace import TripWorkspaceV2
 
 
@@ -29,7 +31,10 @@ def _transport_from_candidate(
     return TransportLeg(
         transport_leg_id=current.transport_leg_id,
         transport_class=candidate.transport_class,
-        selected_mode=candidate.selected_mode,
+        selected_mode=replacement_display_mode(
+            current.mode_preference.locked_mode or current.selected_mode,
+            candidate.selected_mode,
+        ),
         from_endpoint=candidate.from_endpoint,
         to_endpoint=candidate.to_endpoint,
         departure_at=candidate.departure_at,
@@ -67,15 +72,20 @@ def _check_transport_replacement(
     """
 
     preference = current.mode_preference
+    display_mode = replacement_display_mode(
+        preference.locked_mode or current.selected_mode, candidate.selected_mode
+    )
     if (
         preference.locked_mode is not None
-        and candidate.selected_mode != preference.locked_mode
+        and not transport_mode_satisfies(
+            candidate.selected_mode, preference.locked_mode
+        )
     ):
         raise WorkspaceV2MutationError(
             "transport_mode_locked",
             "Replacement candidate conflicts with the locked transport mode",
         )
-    if candidate.selected_mode in preference.excluded_modes:
+    if display_mode in preference.excluded_modes:
         raise WorkspaceV2MutationError(
             "transport_mode_excluded",
             "Replacement candidate uses an excluded transport mode",

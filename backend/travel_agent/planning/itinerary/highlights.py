@@ -147,8 +147,8 @@ def with_derived_highlights(itinerary: StructuredItineraryV2) -> StructuredItine
     """返回带有实体所隐含亮点的同一份行程。
 
     ``StructuredItineraryV2`` 无法像 ``cost_summary`` 那样为 ``highlights``
-    设置默认值：推导需要读取 ``delivery_presentation`` 中的交通文案，而该模块
-    导入了实体模块。因此通过构造器创建的行程会保留调用方传入的 highlights，
+    设置默认值：推导需要读取交付呈现里的交通文案，而该模块导入了实体模块。
+    因此通过构造器创建的行程会保留调用方传入的 highlights，
     包括空值；所有写入已有行程的代码都经过本函数补齐。
     """
 

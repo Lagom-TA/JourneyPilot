@@ -50,6 +50,12 @@ def test_a_validation_error_never_prints_an_api_key():
     with pytest.raises(ConfigError) as exc:
         build_settings({"primary_model": {"api_key": "sk-real-secret", "timeout": "nope"}})
     assert "sk-real-secret" not in str(exc.value)
+    # 非字符串的 api_key（dict/int 等）走 <redacted> 分支，同样不回显原值。
+    with pytest.raises(ConfigError) as exc:
+        build_settings({"primary_model": {"api_key": {"not": "a string"}, "timeout": "nope"}})
+    message = str(exc.value)
+    assert "<redacted>" in message
+    assert "a string" not in message
 
 
 def test_deadline_windows_must_increase():

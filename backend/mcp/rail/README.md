@@ -11,16 +11,15 @@ Record format: `@`-separated records, `|`-delimited fields —
 `[4]` short abbreviation, `[5]` index, `[6]` city code, `[7]` 城市名.
 
 It is committed so station resolution is deterministic and offline: it is loaded
-on first use by `backend/travel_agent/services/rail_12306.py` and is **never** fetched
+on first use by `backend/travel_agent/integrations/rail/stations.py` and is **never** fetched
 at runtime.
 
 `station_name.meta.json` beside it carries the same facts in machine-readable form
 (`source_url` / `fetched_at` / `byte_size` / `record_count`).  It is what
-`station_snapshot_freshness()` judges the snapshot's age from, what
-`/api/health/ready`'s `data_snapshots` component reports, and what preflight item 4
-checks the file against.  12306 publishes no version token, so those two numbers
-are the only fingerprint available — and the only thing that catches a refresh
-that downloaded half the file.
+`station_snapshot_freshness()` judges the snapshot's age from and what
+`/api/health/ready`'s `data_snapshots` component reports.  12306 publishes no version
+token, so those two numbers are the only fingerprint available — and the only thing
+that catches a refresh that downloaded half the file.
 
 ## Refreshing
 
@@ -30,8 +29,7 @@ that downloaded half the file.
    `lru_cache(maxsize=1)`, so the parse lives as long as the process: a refreshed
    file on disk changes nothing in a running server, and the old table keeps
    answering with no sign that a newer one exists.
-4. Verify the fingerprint, the hand-maintained hub table's city membership, and
-   the age threshold stay consistent.
+4. Verify the fingerprint and the age threshold stay consistent.
 
 Age threshold: `Settings.data_snapshots.station_max_age_days` (default 90).
-A stale snapshot is **reported, never blocking** — see D19-6.
+A stale snapshot is **reported, never blocking**.

@@ -11,7 +11,7 @@ export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$ROOT_DIR/.venv}"
 FRONTEND_PORT="${FRONTEND_PORT:-8080}"
 BACKEND_PORT=""
 
-# Canonical runtime state for run.sh and E2E discovery (DEF-008). Exactly one
+# Canonical runtime state for run.sh and E2E discovery. Exactly one
 # instance may be recorded here at a time; start refuses rather than overwrite it.
 PORTS_FILE="$ROOT_DIR/tmp/journeypilot.ports"
 LOG_DIR="/tmp/journeypilot_logs"
@@ -221,9 +221,8 @@ _pid_is_same_process() {
 # 级联终止整棵进程树: 每一轮重新采样后代并求并集, 逐个 TERM (每个 PID 只发一次),
 # 宽限至多 1.5s, 再对存活者补 KILL。返回 1 表示 root 本就不在运行。
 #
-# 为什么必须重新采样: 原实现在发 TERM 之前拍一次后代快照, 之后的存活复检与补 KILL
-# 都迭代这份冻结列表。收到 TERM 之后才 fork 出来的后代不在任何快照里, 于是活下来、
-# 继续持有监听 socket 的 fd —— 端口 fail-fast 之后, 下一次 start 直接拒绝启动。
+# 为什么必须重新采样: 收到 TERM 之前 fork 出来的后代可能不在任何一次快照里,
+# 存活复检与补 KILL 必须每一轮重新看一遍当前的后代集合。
 #
 # 为什么求并集而不是每轮重新取: 父进程一退出, 它的子进程立刻被 reparent 到 init,
 # 从 root 再也走不到。并集是唯一能同时覆盖「新出现的」与「已脱链的」两种后代的读法。
@@ -232,7 +231,7 @@ _pid_is_same_process() {
 #
 # 为什么记启动时刻: 并集里会留下已经不是后代的 PID, 这是唯一可能误杀的通道 ——
 # PID 被回收给别的进程之后再收到我们的信号。发信号前比一次启动时刻, 就把这个风险
-# 从「不可见」变成「判得出来」。这条正是当初搁置这个修复的理由。
+# 从「不可见」变成「判得出来」。
 stop_tree() {
   local root="$1"
   if ! kill -0 "$root" 2>/dev/null; then
@@ -787,7 +786,7 @@ step_start_frontend() {
   # 必须等 vite 真的在监听再往下走。否则 write_runtime_state 会把一个进程树尚未成形
   # 的 PID 写进 runtime state, 紧随其后的 stop 只 TERM 到当时可见的那几个进程, 稍后
   # 才 fork 出来的 vite 就变成 run.sh 再也管不到的孤儿 —— 而它才是真正占着端口的那
-  # 个, 端口于此被永久占死。backend 一直守着这个纪律, frontend 之前漏了。
+  # 个, 端口于此被永久占死。
   local waited=0 max_wait=60
   start_spinner "starting frontend..."
   while (( waited < max_wait )); do

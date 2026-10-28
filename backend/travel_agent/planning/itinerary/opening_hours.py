@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from datetime import datetime
-from datetime import timedelta
 import re
 
 
@@ -198,26 +197,4 @@ def opening_window_violation(
         for opens, closes in rules.intervals
     ):
         return "outside the published opening window"
-    return None
-
-
-def latest_opening_window(
-    value: str | None, day: date, latest_end: datetime, duration: timedelta
-) -> tuple[datetime, datetime] | None:
-    """返回满足已知营业时间与最后入场限制的最晚完整停留。"""
-    rules = opening_rules(value, day)
-    if rules.closed:
-        return None
-    midnight = latest_end.replace(hour=0, minute=0, second=0, microsecond=0)
-    intervals = rules.intervals or ((0, 1440),)
-    for opens, closes in reversed(intervals):
-        end = min(latest_end, midnight + timedelta(minutes=closes))
-        start = end - duration
-        if rules.last_entry_minutes is not None:
-            latest_entry = midnight + timedelta(minutes=rules.last_entry_minutes - 1)
-            if start > latest_entry:
-                start = latest_entry
-                end = start + duration
-        if start >= midnight + timedelta(minutes=opens) and start.date() == day:
-            return start, end
     return None

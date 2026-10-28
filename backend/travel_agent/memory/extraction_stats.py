@@ -64,11 +64,6 @@ class MemoryExtractionStats:
                 "last_error": s.last_error,
             }
 
-    def reset(self) -> None:
-        """测试隔离：清空累计计数。"""
-        with self._lock:
-            self._stats = _ExtractionStats()
-
 
 _stats_singleton: Optional[MemoryExtractionStats] = None
 

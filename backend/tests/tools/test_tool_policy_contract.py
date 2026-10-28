@@ -31,7 +31,6 @@ _FAKE_TOOLS: List[Dict[str, Any]] = [
     _mcp("train_ticket_search", "12306-train"),
     _mcp("duffel_search_flights", "duffel-flights"),
     _mcp("maps_geo", "amap-maps"),
-    _mcp("maps_geocode", "amap-maps"),
     _mcp("maps_weather", "amap-maps"),
     _mcp("maps_text_search", "amap-maps"),
     _mcp("maps_around_search", "amap-maps"),

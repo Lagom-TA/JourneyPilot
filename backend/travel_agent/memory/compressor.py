@@ -93,12 +93,6 @@ class AnchorSummary:
             parts.append(f"用户明确约束（必须严格遵守）：\n{constraints_text}")
         return "\n\n".join(parts)
 
-    def estimate_tokens(self) -> int:
-        """粗估 Anchor 的 token 数量（用于预算计算）。"""
-        text = self.format_for_prompt()
-        return _count_tokens(text)
-
-
 def build_context_compaction_event(
     anchor: AnchorSummary,
     *,

@@ -285,15 +285,6 @@ class ToolAuditStore:
             )
         return record
 
-    async def get_record(self, audit_id: str) -> Optional[ToolAuditRecord]:
-        async with get_db_session() as session:
-            result = await session.execute(
-                text("SELECT * FROM tool_execution_audits WHERE audit_id = :audit_id"),
-                {"audit_id": audit_id},
-            )
-            row = result.mappings().first()
-            return _record_from_row(dict(row)) if row else None
-
     async def list_by_run(self, run_id: str, *, limit: int = 100) -> List[ToolAuditRecord]:
         async with get_db_session() as session:
             result = await session.execute(
@@ -329,9 +320,6 @@ class InMemoryToolAuditStore(ToolAuditStore):
         record.metadata = sanitize_audit_metadata(record.metadata)
         self.records[record.audit_id] = record
         return record
-
-    async def get_record(self, audit_id: str) -> Optional[ToolAuditRecord]:
-        return self.records.get(audit_id)
 
     async def list_by_run(self, run_id: str, *, limit: int = 100) -> List[ToolAuditRecord]:
         records = [record for record in self.records.values() if record.run_id == run_id]

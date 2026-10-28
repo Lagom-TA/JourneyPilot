@@ -1,7 +1,7 @@
 # ADR-0001：固定单一本地身份，不建账户系统
 
 状态：已采纳
-影响：`local_profile.py`、迁移 `0003_local_identity`、所有带 `user_id` 的表
+影响：`runtime/local_identity.py`、迁移 `0003_local_identity`、所有带 `user_id` 的表
 
 ## 决定
 

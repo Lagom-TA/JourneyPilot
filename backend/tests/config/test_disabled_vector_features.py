@@ -149,7 +149,6 @@ async def test_fast_answer_continues_without_retrieval(disabled_vectors, monkeyp
 
     assert result["is_completed"] is True
     assert "建议用两天" in result["messages"][0].content
-    assert result["retrieval_summaries"] == []
     assert llm.calls == 1
     retrieve.assert_not_called()
 

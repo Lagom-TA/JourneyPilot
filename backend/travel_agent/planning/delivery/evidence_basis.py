@@ -24,13 +24,7 @@ REFERENCE_SERVICE = "reference_service"
 PUBLIC_REFERENCE_LABEL = "公开资料整理"
 
 
-PUBLIC_REFERENCE_HINT = "由规划模型依据公开资料写入，未附来源链接"
-
-
 REFERENCE_SERVICE_LABEL = "参考班次"
-
-
-REFERENCE_SERVICE_HINT = "来自供应商的真实班次，但未对你的出行日期确认"
 
 
 _BASIS_BY_LINEAGE_KIND = {

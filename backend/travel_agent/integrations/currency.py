@@ -58,12 +58,6 @@ def _default_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(timeout=httpx.Timeout(15.0))
 
 
-def reset_rate_cache() -> None:
-    """清空全部汇率缓存（测试或需要重新抓取的进程）。"""
-
-    _rate_cache.clear()
-
-
 def _currency_code(value: object) -> str:
     code = str(value or "").strip().upper()
     if not _CURRENCY_CODE.fullmatch(code):

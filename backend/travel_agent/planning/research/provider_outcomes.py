@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from travel_agent.planning.research.provider_contracts import ProviderEvidenceOutcome
-from travel_agent.planning.research.provider_contracts import ProviderEvidenceSummary
 from typing import Dict
-from typing import Mapping
 
 
 def merge_provider_evidence_outcomes(
@@ -42,27 +40,3 @@ def merge_provider_evidence_outcomes(
             )
         merged[scope_id] = newer
     return merged
-
-
-def current_provider_evidence_summary(
-    outcomes: Mapping[str, ProviderEvidenceOutcome],
-    *,
-    constraint_pack_revision: int,
-) -> ProviderEvidenceSummary:
-    current = [
-        outcome
-        for outcome in outcomes.values()
-        if outcome.scope.constraint_pack_revision == constraint_pack_revision
-    ]
-    unresolved = [outcome for outcome in current if outcome.status == "unresolved_loss"]
-    return ProviderEvidenceSummary(
-        current_scope_count=len(current),
-        unresolved_scope_count=len(unresolved),
-        provider_option_count=sum(outcome.provider_option_count for outcome in current),
-        provider_option_materialized_count=sum(
-            outcome.provider_option_materialized_count for outcome in current
-        ),
-        provider_salvage_loss_count=sum(
-            outcome.unresolved_loss_count for outcome in unresolved
-        ),
-    )

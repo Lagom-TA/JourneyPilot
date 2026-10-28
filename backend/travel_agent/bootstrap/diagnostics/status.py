@@ -11,7 +11,7 @@ async def collect_status():
     """获取系统状态"""
     components = get_components()
 
-    # 检查数据库连接及业务 schema 可用性
+    # 检查数据库连接
     db_ok, _ = await _probe_database()
 
     # 检查 Redis 连接

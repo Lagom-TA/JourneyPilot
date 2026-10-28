@@ -291,11 +291,6 @@ class TravelAgentState(BaseModel):
     delivery_failure: Optional[DeliveryFailureRecord] = None
     delivery_persisted: bool = False
 
-    retrieved_docs: List[Dict[str, Any]] = Field(default_factory=list)
-    retrieval_summaries: Annotated[List[Dict[str, Any]], _merge_lists] = Field(
-        default_factory=list
-    )
-
     pending_user_choice: Annotated[Optional[Dict[str, Any]], _prefer_pending_choice] = (
         None
     )

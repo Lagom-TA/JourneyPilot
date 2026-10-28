@@ -58,33 +58,40 @@ async def test_waiting_past_the_bound_is_a_busy_signal_not_a_hang():
 async def test_ingest_and_online_calls_do_not_share_a_quota():
     """两条路走同一个 fast 上游，但配额必须分开。
 
-    这一条断言的是**通道身份**：入库的调用记在 ingest_contextual_llm 上，同时在线
-    请求仍然记在 online_fast_llm 上。共用一个配额时，一次上传排出的上千条调用会让
-    在线请求全部排在它们后面，导致在线服务长时间不可达。
+    这一条断言的是 `_channel()` 的映射本身：默认（无 contextvar）落在线档
+    online_fast_llm，`llm_channel("ingest_contextual_llm")` 作用域内落入库档；
+    配额都从 provider_channels 配置读取。共用一个配额时，一次上传排出的上千条
+    调用会让在线请求全部排在它们后面，导致在线服务长时间不可达。
     """
 
+    from travel_agent.llm.router import ModelTier, OpenAICompatibleLLM
+
+    fast_llm = OpenAICompatibleLLM(
+        api_key="test-key",
+        model_name="test-model",
+        base_url="https://openrouter.ai/api/v1",
+        temperature=0,
+        max_tokens=64,
+        tier=ModelTier.FAST,
+    )
     channels = get_settings().provider_channels
-    online = channel_gate("llm.online_fast_llm", channels.online_fast_llm)
-    ingest = channel_gate("llm.ingest_contextual_llm", channels.ingest_contextual_llm)
 
-    async def _ingest_burst() -> None:
-        with llm_channel("ingest_contextual_llm"):
-            assert current_llm_channel.get() == "ingest_contextual_llm"
-            async with ingest.hold(wait_seconds=1.0):
-                await asyncio.sleep(0.05)
+    # 默认通道按档位映射到在线档，上限读配置。
+    online_gate = fast_llm._channel()
+    assert online_gate.name == "llm.online_fast_llm"
+    assert online_gate.limit == channels.online_fast_llm
 
-    async def _online_call() -> None:
-        assert current_llm_channel.get() is None  # 默认按档位，不是入库那一档
-        async with online.hold(wait_seconds=0.1):
-            await asyncio.sleep(0.01)
-
-    # 入库把自己那一档占满，在线请求照样进得去。
-    burst = [asyncio.create_task(_ingest_burst()) for _ in range(20)]
-    await asyncio.sleep(0.01)
-    await _online_call()
-    await asyncio.gather(*burst)
-    assert ingest.busy_rejections == 0
-    assert online.busy_rejections == 0
+    # 入库作用域内换到独立配额；两把 gate 身份不同、互不占用。
+    with llm_channel("ingest_contextual_llm"):
+        ingest_gate = fast_llm._channel()
+        assert ingest_gate.name == "llm.ingest_contextual_llm"
+        assert ingest_gate.limit == channels.ingest_contextual_llm
+        assert ingest_gate is not online_gate
+        async with ingest_gate.hold(wait_seconds=1.0):
+            async with online_gate.hold(wait_seconds=0.1):
+                assert ingest_gate.active == 1
+                assert online_gate.active == 1
+    assert ingest_gate.active == 0 and online_gate.active == 0
 
 
 async def test_the_channel_override_is_scoped_to_its_block():

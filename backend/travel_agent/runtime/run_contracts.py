@@ -36,7 +36,6 @@ class TripRunMode(str, Enum):
 
 class TripRunResumePolicy(str, Enum):
     CLARIFY_ONLY = "clarify_only"
-    RESTART_FROM_LATEST_INPUT = "restart_from_latest_input"
     CHECKPOINT = "checkpoint"
 
 

@@ -121,7 +121,7 @@ JourneyPilot 是一个开源的 AI 旅行规划工作台。告诉它出行日期
 - [uv](https://docs.astral.sh/uv/)
 - Docker Desktop，或支持 Compose 的 Docker Engine
 - Python 3.11
-- Node.js 18+ 和 npm
+- Node.js 20.19+ 和 npm
 
 ### 启动 JourneyPilot
 

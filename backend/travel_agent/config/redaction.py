@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 #: 判据是**字段名**，不是值：一个看起来像普通字符串的 api_key 仍然是密钥，而按值猜
 #: 会漏。宁可多脱敏一个无害字段，也不要把一个 Key 写进用户会随手分享的东西里 ——
@@ -35,7 +35,3 @@ def redact(payload: Any, *, key: str = "") -> Any:
     if isinstance(payload, list):
         return [redact(item, key=key) for item in payload]
     return redact_value(key, payload)
-
-
-def redacted_settings(settings: Any) -> Dict[str, Any]:
-    return redact(settings.model_dump(mode="json"))

@@ -159,20 +159,3 @@ def summarize_state_update(node: str, state_update: Dict[str, Any]) -> Dict[str,
         "route_decision": route_decision,
         "risk_flags": risk_flags,
     }
-
-
-def trace_summary(events: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """生成适合聊天完成事件与开发诊断的精简汇总。"""
-    phase_counts: Dict[str, int] = {}
-    statuses: Dict[str, int] = {}
-    for event in events:
-        phase = str(event.get("phase") or "unknown")
-        status = str(event.get("status") or "unknown")
-        phase_counts[phase] = phase_counts.get(phase, 0) + 1
-        statuses[status] = statuses.get(status, 0) + 1
-    return {
-        "schema_version": "workflow_trace_summary.v1",
-        "event_count": len(events),
-        "phase_counts": phase_counts,
-        "statuses": statuses,
-    }

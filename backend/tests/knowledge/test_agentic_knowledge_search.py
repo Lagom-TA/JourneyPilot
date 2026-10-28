@@ -99,7 +99,14 @@ async def test_empty_or_failed_search_does_not_end_agent_loop(knowledge, failure
     assert result.content == "仍可给一般建议"
     assert len(llm.requests) == 2
     assert "private database detail" not in str(llm.requests[-1])
-    assert "不得详细回答" not in str(llm.requests[-1])
+    # 空结果与检索失败都以结果信封 + 断路提示到达模型，而非中断或清空上下文；
+    # 信封里的失败原因已脱敏，只说明断路，不带 provider 私密细节。
+    final_request = str(llm.requests[-1])
+    if failure:
+        assert "知识查询所有集合均检索失败" in final_request
+        assert "private database detail" not in final_request
+    else:
+        assert '"documents"' in final_request
 
 
 async def test_extra_identity_and_physical_collection_rejected(knowledge):
@@ -173,6 +180,7 @@ async def test_fast_answer_uses_real_loop_and_passes_tool_evidence(knowledge, mo
     assert result["is_completed"]
     assert "建议分两天" in result["messages"][0].content
     assert len(llm.requests) == 2
+    # RAG 命中以结果信封随消息进上下文，最终正文不再内联工具原始载荷。
     assert "sanitized_result" not in result["messages"][0].content
 
 

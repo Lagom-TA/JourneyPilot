@@ -176,10 +176,6 @@ def mention_matches_name(mention: str, name: str) -> bool:
     return min(len(left), len(right)) * 2 >= max(len(left), len(right))
 
 
-def mention_matches_any(mention: str, names: Iterable[object]) -> bool:
-    return any(mention_matches_name(mention, str(name)) for name in names)
-
-
 def query_carries_mention(query: str, mention: str) -> bool:
     """worker 是否把这个提名写进了 Provider 查询。
 
@@ -367,7 +363,6 @@ __all__ = [
     "ProviderIdentity",
     "chunk_texts_by_collection",
     "measure_place_funnel",
-    "mention_matches_any",
     "mention_matches_name",
     "propose_place_mentions",
     "query_carries_mention",

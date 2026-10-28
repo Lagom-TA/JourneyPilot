@@ -49,9 +49,12 @@ async def test_amendment_adapter_preserves_async_run_control_and_sync_policy(
         observed.append((state, asyncio.get_running_loop()))
         return expected
 
+    original = amendments.apply_runtime_amendments
     monkeypatch.setattr(amendments, "apply_runtime_amendments", policy)
+
     state = TravelAgentState()
-    assert not inspect.iscoroutinefunction(amendments.apply_runtime_amendments)
+    # 先验原函数：adapter 包装的是模块里真实的同步实现，而不是本测试的桩。
+    assert not inspect.iscoroutinefunction(original)
     assert inspect.iscoroutinefunction(amendments.intent_amendment_router_node)
     wrapped = with_run_control(
         "intent_amendment_router", amendments.intent_amendment_router_node

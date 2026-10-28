@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Sequence
 
 from travel_agent.planning.itinerary.mutation_contracts import CompositionMutation
 from travel_agent.planning.requirements.place_names import CONTROLLED_DESTINATION_ANCHOR_PREFIX, controlled_public_place_name
@@ -25,6 +25,11 @@ from travel_agent.planning.itinerary.bindings import (
     _authored_lineage,
     _lineage,
     _located_authored_place,
+)
+from travel_agent.planning.itinerary.connectors import (
+    LocalConnectorGap,
+    connector_display_mode,
+    connector_mode_preference,
 )
 from travel_agent.planning.itinerary.draft import (
     CompositionPlacement,
@@ -58,7 +63,11 @@ from travel_agent.planning.research.candidates import (
     VisitCandidate,
 )
 from travel_agent.planning.research.catalog import RecommendationCatalog
-from travel_agent.planning.transport import TransportMode, TransportSegment
+from travel_agent.planning.transport import (
+    TransportMode,
+    TransportModePreference,
+    TransportSegment,
+)
 from travel_agent.planning.workspace import TripWorkspaceV2
 
 
@@ -205,8 +214,10 @@ def materialize_trip_workspace(
     composition_mutations: list[CompositionMutation],
     user_input_anchors: Optional[list[UserInputAnchor]] = None,
     reference_services: Optional[list[ProviderReferenceService]] = None,
+    connector_gaps: Optional[Sequence[LocalConnectorGap]] = None,
 ) -> TripWorkspaceV2:
     candidates = catalog.candidate_index()
+    connector_gaps_by_id = {gap.gap_id: gap for gap in connector_gaps or ()}
     used_ids = {
         placement.candidate_id
         for day in composition.days
@@ -249,6 +260,15 @@ def materialize_trip_workspace(
                         candidates=candidates,
                         composition=composition,
                     )
+                    gap = connector_gaps_by_id.get(placement.connector_gap_id or "")
+                    if gap is not None:
+                        leg = leg.model_copy(
+                            update={
+                                "mode_preference": connector_mode_preference(
+                                    gap, leg.selected_mode
+                                )
+                            }
+                        )
                     transport.append(leg)
                     timeline.append(
                         TimelineEntryRef(
@@ -464,11 +484,17 @@ def materialize_trip_workspace(
                         "transport", placement_occurrence_key(day.day_id, placement)
                     )
                 )
+                gap = connector_gaps_by_id.get(placement.connector_gap_id or "")
+                selected_mode = (
+                    connector_display_mode(candidate, gap)
+                    if gap is not None
+                    else candidate.selected_mode
+                )
                 transport.append(
                     TransportLeg(
                         transport_leg_id=leg_id,
                         transport_class=candidate.transport_class,
-                        selected_mode=candidate.selected_mode,
+                        selected_mode=selected_mode,
                         from_endpoint=candidate.from_endpoint,
                         to_endpoint=candidate.to_endpoint,
                         departure_at=candidate.departure_at,
@@ -480,6 +506,11 @@ def materialize_trip_workspace(
                         segments=candidate.segments,
                         booking_status=candidate.booking_status,
                         route_status="ready",
+                        mode_preference=(
+                            connector_mode_preference(gap, selected_mode)
+                            if gap is not None
+                            else TransportModePreference()
+                        ),
                         lineage=_lineage(candidate),
                     )
                 )

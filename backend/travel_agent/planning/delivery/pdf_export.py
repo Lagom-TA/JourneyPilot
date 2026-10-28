@@ -29,7 +29,6 @@ from travel_agent.planning.delivery.evidence_basis import REFERENCE_SERVICE
 from travel_agent.planning.delivery.evidence_basis import REFERENCE_SERVICE_LABEL
 from travel_agent.planning.delivery.presentation import weather_freshness_text
 from travel_agent.planning.delivery.projections import PublicCitationProjection
-from travel_agent.planning.delivery.provider_environment import ProviderEnvironmentView
 from travel_agent.planning.references import EntityType
 from travel_agent.schema import StrictModel
 from typing import Any
@@ -468,64 +467,6 @@ def render_trip_report_pdf(
                     Spacer(1, 2 * mm),
                 ]
             )
-
-    alternative_selections = [
-        (selection, [option for option in selection.options if not option.selected])
-        for selection in document.selections
-    ]
-    alternative_selections = [
-        (selection, options) for selection, options in alternative_selections if options
-    ]
-    if alternative_selections:
-        story.append(Paragraph("其它合格选择", styles["h1"]))
-        story.append(
-            Paragraph(
-                "主行程只使用当前选择；以下选项来自同一次比较结果。", styles["small"]
-            )
-        )
-        for selection, options in alternative_selections:
-            rows = []
-            for option in options:
-                marks = _citation_marks(option.citation_ids, citation_numbers)
-                details = "；".join([*option.selection_reasons, option.tradeoff or ""])
-                rows.append(
-                    [
-                        Paragraph(
-                            f"<b>{escape(option.name)}</b> · 可选{marks}",
-                            styles["body"],
-                        ),
-                        Paragraph(escape(details), styles["small"]),
-                    ]
-                )
-            table = Table(rows, colWidths=[58 * mm, 108 * mm], repeatRows=0)
-            table.setStyle(
-                TableStyle(
-                    [
-                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                        (
-                            "LINEBELOW",
-                            (0, 0),
-                            (-1, -1),
-                            0.35,
-                            colors.HexColor("#E2E7EC"),
-                        ),
-                        ("TOPPADDING", (0, 0), (-1, -1), 5),
-                        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-                    ]
-                )
-            )
-            story.extend([table, Spacer(1, 3 * mm)])
-
-    if document.important_notes:
-        story.append(Paragraph("出发前事项", styles["h1"]))
-        for note in document.important_notes:
-            story.append(Paragraph(f"• {escape(note)}", styles["body"]))
-
-    # 沙箱环境声明独立成节：它披露数据来源环境，与方案内容的覆盖程度无关。
-    sandbox_note = ProviderEnvironmentView.from_bundle(bundle).sandbox_note
-    if sandbox_note is not None:
-        story.append(Paragraph("数据说明", styles["h2"]))
-        story.append(Paragraph(f"• {escape(sandbox_note)}", styles["small"]))
 
     story.extend(_source_story(citations, citation_numbers, styles))
     pdf.build(story, onFirstPage=footer, onLaterPages=footer)

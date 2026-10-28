@@ -128,7 +128,6 @@ class FastWorkflow:
     ):
         assert current_execution_lease.get() == "request-lease"
         self.calls.append(user_message)
-        await stream_queue.put(("react_thinking", "fast_answer_agent", "never display"))
         await stream_queue.put(("token", "fast_answer_agent", "hello"))
         yield {"fast_answer_agent": {"messages": [SimpleNamespace(content="hello")]}}
 

@@ -177,8 +177,8 @@ _EMPTY_RESULT_SUMMARY = "没有匹配的结果"
 # 会原样进入思维链。
 _OPAQUE_RESULT_SUMMARY = "已取到结果"
 
-# 归一后路线的 `selected_mode` 词表（`services/global_route_search._PROVIDER_MODE`
-# 与 `services/amap_route_search._LINE_KIND_MODES` 是它的两个上游）。
+# 归一后路线的 `selected_mode` 词表（`integrations/routes/global_search._PROVIDER_MODE`
+# 与 `integrations/routes/amap._LINE_KIND_MODES` 是它的两个上游）。
 _ROUTE_MODE_LABELS: Dict[str, str] = {
     "walk": "步行",
     "bike": "骑行",
@@ -498,39 +498,6 @@ def tool_envelope_to_evidence_candidate(envelope: ToolExecutionEnvelope | Dict[s
     }
 
 
-def tool_envelope_to_risk_signal(envelope: ToolExecutionEnvelope | Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    data = envelope.to_dict() if isinstance(envelope, ToolExecutionEnvelope) else envelope
-    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
-    if metadata.get("quarantine_result"):
-        return {
-            "risk_type": "tool",
-            "source_signal": "tool_poisoning_quarantined",
-            "severity": "medium",
-            "audit_id": data.get("audit_id"),
-            "tool_name": data.get("tool_name"),
-            "fallback_from": data.get("fallback_from"),
-            "fallback_to": data.get("fallback_to"),
-            "impact": "工具返回包含潜在提示注入或污染内容，已隔离为低信任摘要",
-        }
-    status = data.get("status")
-    if status not in {
-        ToolExecutionStatus.DEGRADED.value,
-        ToolExecutionStatus.FAILED.value,
-        ToolExecutionStatus.BLOCKED.value,
-    }:
-        return None
-    return {
-        "risk_type": "tool",
-        "source_signal": "tool_fallback" if status == ToolExecutionStatus.DEGRADED.value else f"tool_{status}",
-        "severity": "medium" if status == ToolExecutionStatus.DEGRADED.value else "low",
-        "audit_id": data.get("audit_id"),
-        "tool_name": data.get("tool_name"),
-        "fallback_from": data.get("fallback_from"),
-        "fallback_to": data.get("fallback_to"),
-        "impact": data.get("degradation_reason") or data.get("error") or "工具调用未得到可信结果",
-    }
-
-
 def is_tool_execution_envelope(value: Any) -> bool:
     return isinstance(value, dict) and value.get("schema_version") == TOOL_ENVELOPE_SCHEMA_VERSION
 
@@ -551,11 +518,15 @@ def _sanitize_value(
     if isinstance(value, dict):
         out: Dict[str, Any] = {}
         for idx, (k, v) in enumerate(value.items()):
-            if idx >= _MAX_DICT_ITEMS:
+            # 路径位于可选展示字段之后，只对该字段保留完整结构。
+            if idx >= _MAX_DICT_ITEMS and not (key == "segments" and k == "path"):
                 out["truncated"] = True
                 break
+            nested_key = (
+                "route_segment_path" if key == "segments" and k == "path" else str(k)
+            )
             out[str(k)] = _sanitize_value(
-                str(k),
+                nested_key,
                 v,
                 depth=depth + 1,
                 max_depth=max_depth,
@@ -564,6 +535,9 @@ def _sanitize_value(
     if isinstance(value, list):
         if key == "segments":
             limit = _MAX_ROUTE_SEGMENTS
+        elif key == "route_segment_path":
+            # 路径是有类型的几何证据，不能按普通展示列表截断。
+            limit = len(value)
         elif key == "results":
             limit = _MAX_SEARCH_RESULTS
         else:

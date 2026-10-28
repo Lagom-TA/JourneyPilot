@@ -2,15 +2,12 @@
 内置工具（精简版）
 
 保留受控本地边界工具：
-  - Scope 阶段 clarifier_node：对整体请求的初判澄清
-  - destination_researcher：遇到目的地重大歧义时主动澄清（通过 ReAct 工具调用触发）
+  - clarifier_node：对整体请求的初判澄清
+  - ask_user：destination_researcher 遇到目的地重大歧义时主动澄清（通过 ReAct 工具调用触发）
   - destination_researcher：通过 Nominatim 查询全球稳定地点身份与国家边界
 其它 Worker（transport/accommodation/itinerary）保持禁用 ask_user。
 
-其他内置工具（预算计算、汇率查询、旅行须知）已移除：
-  - 汇率查询：通过 MCP 搜索工具覆盖
-  - 旅行须知：通过 RAG 知识库覆盖
-  - 预算计算：通过 LLM 内置知识覆盖
+预算计算由 LLM 内置知识覆盖，汇率查询与旅行须知分别由 MCP 搜索与 RAG 知识库承担。
 """
 
 from __future__ import annotations

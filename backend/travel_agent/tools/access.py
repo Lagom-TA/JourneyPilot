@@ -152,7 +152,7 @@ _AGENT_TOOL_POLICY: Dict[str, AgentToolPolicy] = {
     ),
     "transport_researcher": AgentToolPolicy(
         servers={"12306-train", "duffel-flights", "amap-maps"},
-        deny_tools={"maps_geo", "maps_geocode", "maps_weather", "ask_user"},
+        deny_tools={"maps_geo", "maps_weather", "ask_user"},
         extra_tools={"free_web_search", "global_route_search", "knowledge_search"},
     ),
     "accommodation_researcher": AgentToolPolicy(

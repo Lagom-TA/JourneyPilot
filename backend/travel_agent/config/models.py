@@ -14,7 +14,7 @@ from typing import Dict, List, Literal, Optional, Set
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-#: config.yaml 的结构版本。加载器按它迁移旧结构（`loader.migrate_config_data`）。
+#: config.yaml 的结构版本。不认识的版本一律拒绝并说明要改什么。
 CONFIG_VERSION = 2
 
 
@@ -302,7 +302,7 @@ class StreamingConfig(StrictConfig):
 class BlockingWorkConfig(StrictConfig):
     """同步工作被赶出 Event Loop 之后的并发与排队上界。**全仓唯一定义处**。
 
-    线程池不是无限资源：`services/blocking_work.py` 按通道分配，一个通道排满时
+    线程池不是无限资源：`travel_agent/runtime/blocking_work.py` 按通道分配，一个通道排满时
     调用方等 ``queue_wait_seconds``，不是无限排队。
     """
 
@@ -364,7 +364,7 @@ class ProviderChannelConfig(StrictConfig):
     """按上游通道分配的同时在飞条数。**连接池容量不是产品预算。**
 
     底层 httpx 连接池上限 1000 不代表允许一次入库发 1000 条模型调用。限速器
-    （`utils/rate_gate.py`）管两次请求之间的间隔，这里管同时在飞的条数，两件事。
+    （`travel_agent/runtime/rate_gate.py`）管两次请求之间的间隔，这里管同时在飞的条数，两件事。
     """
 
     #: primary 档（调研与编排）。

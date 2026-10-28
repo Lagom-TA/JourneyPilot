@@ -11,9 +11,6 @@ from pydantic import Field
 
 class SessionStatus(str, Enum):
     ACTIVE = "active"
-    # 只读值：仅用于读取历史行，当前没有代码写入该状态。保留枚举成员是因为
-    # chat_sessions 表中存在该值，删除成员会导致这些会话读取时校验失败。
-    AWAITING_CLARIFY = "awaiting_clarify"
     INTERRUPTED = "interrupted"
 
 

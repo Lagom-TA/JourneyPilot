@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 #
-# Verification harness for run.sh::stop_tree (defect 25).
+# Verification harness for run.sh::stop_tree.
 #
 # stop_tree holds every kill this repo issues, across four call sites, two of
-# them in recovery. There was no test of it, which is the whole reason the fix
-# was deferred once: a change there is unverifiable by inspection and a mis-kill
-# is not undoable. This harness is that missing verification.
+# them in recovery. This harness is that verification.
 #
 # It sources run.sh (which returns early when sourced) and drives the real
 # function, never a copy — a copy would drift and verify the wrong code.

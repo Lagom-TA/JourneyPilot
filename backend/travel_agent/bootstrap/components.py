@@ -112,7 +112,6 @@ class AppComponents:
     weather_context_builder: WeatherContextBuilder = field(
         default_factory=lambda: WeatherContextBuilder(default_weather_providers())
     )
-    weather_refresh_clock: Optional[Any] = None
 
     tool_audit_store: ToolAuditStore = field(default_factory=get_tool_audit_store)
     worker_journal_store: WorkerJournalStore = field(default_factory=WorkerJournalStore)

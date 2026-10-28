@@ -32,8 +32,7 @@ class DocumentLoader:
     ) -> Dict[str, int]:
         """
         扫描目录中的文档并批量索引。
-        支持的格式：.txt / .md / .json
-        返回：{"indexed": N, "failed": M, "files": K}
+        支持的格式见默认扩展名；返回：{"indexed": N, "failed": M, "files": K}
         """
         from ..indexer import KnowledgeIndexer
         indexer = KnowledgeIndexer()
@@ -73,41 +72,6 @@ class DocumentLoader:
         path = Path(file_path)
         docs = await self._load_file(path)
         return await indexer.index_documents(docs, collection=collection)
-
-    async def load_structured_destinations(
-        self,
-        data: List[Dict[str, Any]],
-        collection: str = "destinations",
-    ) -> int:
-        """
-        加载结构化目的地数据（JSON 格式）。
-        每个条目会被转换为自然语言文本再索引。
-        格式示例：
-        {
-            "name": "日本·京都",
-            "highlights": ["金阁寺", "岚山竹林"],
-            "best_season": "3月（樱花）/ 11月（红叶）",
-            "budget_per_day": "500-800元",
-            "tips": "JR Pass 最划算..."
-        }
-        """
-        from ..indexer import KnowledgeIndexer
-        indexer = KnowledgeIndexer()
-
-        documents = []
-        for item in data:
-            text = self._destination_to_text(item)
-            documents.append({
-                "content": text,
-                "source": f"destinations/{item.get('name', 'unknown')}",
-                "metadata": {
-                    "type": "destination",
-                    "name": item.get("name", ""),
-                    "country": item.get("country", ""),
-                },
-            })
-
-        return await indexer.index_documents(documents, collection=collection)
 
     # -----------------------------------------------------------------------
     # 内部辅助
@@ -159,32 +123,4 @@ class DocumentLoader:
             if isinstance(v, list):
                 v = "、".join(str(x) for x in v)
             parts.append(f"{k}：{v}")
-        return "\n".join(parts)
-
-    def _destination_to_text(self, item: Dict[str, Any]) -> str:
-        """将目的地数据格式化为便于检索的文本"""
-        parts = []
-        name = item.get("name", "")
-        if name:
-            parts.append(f"目的地：{name}")
-
-        for key, label in [
-            ("country", "国家"),
-            ("region", "地区"),
-            ("description", "简介"),
-            ("highlights", "必游景点"),
-            ("best_season", "最佳旅行时间"),
-            ("budget_per_day", "人均日预算"),
-            ("transportation", "交通"),
-            ("accommodation", "住宿"),
-            ("food", "美食推荐"),
-            ("tips", "旅行小贴士"),
-            ("visa", "签证信息"),
-        ]:
-            val = item.get(key)
-            if val:
-                if isinstance(val, list):
-                    val = "、".join(str(x) for x in val)
-                parts.append(f"{label}：{val}")
-
         return "\n".join(parts)

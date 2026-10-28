@@ -95,7 +95,7 @@ async def emit_node_lifecycle(
     await sink(payload)
 
 
-COALESCIBLE_KINDS = frozenset({"token", "react_thinking"})
+COALESCIBLE_KINDS = frozenset({"token"})
 
 
 TERMINAL_KINDS = frozenset({"done", "error"})

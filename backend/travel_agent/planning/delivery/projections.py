@@ -30,7 +30,6 @@ class PublicSourceSummary(StrictModel):
     observed_at: Optional[datetime] = None
     content_hash: str = Field(min_length=1)
     rag_chunk_content: Optional[str] = None
-    rag_document_locator: Optional[str] = None
 
 
 class PublicSupportedValue(StrictModel):

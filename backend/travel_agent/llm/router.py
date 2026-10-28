@@ -164,15 +164,6 @@ def _coerce_text(content: Any) -> str:
     return str(content or "")
 
 
-def _messages_text(messages: List[Dict[str, Any]]) -> str:
-    """拼接入参消息文本，供 usage 缺失时的字符数粗估（仅估算用途）。"""
-    parts: List[str] = []
-    for msg in messages or []:
-        if isinstance(msg, dict):
-            parts.append(_coerce_text(msg.get("content", "")))
-    return "".join(parts)
-
-
 def _chunk_text(text: str, chunk_size: int = 48) -> Iterable[str]:
     normalized = text or ""
     if not normalized:
@@ -901,7 +892,6 @@ class ModelRouter:
     def __init__(self) -> None:
         self._settings = get_settings()
         self._clients: Dict[ModelTier, BaseLLM] = {}
-        self._scope_client: Optional[BaseLLM] = None
 
     def _effective_fast_config(self) -> FastModelConfig:
         fast = self._settings.fast_model.model_copy(deep=True)
@@ -979,12 +969,6 @@ class ModelRouter:
                     route.protocol, route.reason, route.action)
         return TaskLLM(self, route, self._get_or_create(ModelTier(route.tier)))
 
-    def get_scope(self) -> BaseLLM:
-        """Scope 自己负责一次可见重试，因此其传输层每次尝试只发起一次请求。"""
-        if self._scope_client is None:
-            self._scope_client = self._build_client(ModelTier.FAST, max_retries=0)
-        return self._scope_client
-
     def update_model(
         self,
         *,
@@ -1008,8 +992,6 @@ class ModelRouter:
         target.temperature = temperature
 
         self._clients.pop(tier, None)
-        if tier == ModelTier.FAST:
-            self._scope_client = None
 
 
 _router: Optional[ModelRouter] = None
