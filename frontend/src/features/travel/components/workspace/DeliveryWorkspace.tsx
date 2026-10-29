@@ -369,12 +369,19 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   const identityTitle = identity
     ? `${identity.destinations.map((place) => place.name).join('＋')} ${tripDays(identity) || bundle?.workspace.itinerary.duration_days || ''} 日`
     : null;
-  const title = identityTitle ?? bundle?.workspace.itinerary.title ?? '我的旅行';
+  const title = bundle?.workspace.itinerary.title ?? identityTitle ?? '我的旅行';
   const dateLabel = bundle
     ? daySummaries.length > 0
       ? [daySummaries[0].dateLabel, daySummaries[daySummaries.length - 1].dateLabel].filter(Boolean).join(' — ')
       : null
     : identity ? `${identity.start_date} — ${identity.end_date}` : null;
+  const metaLabel = bundle
+    ? [
+      identity?.destinations.map((place) => place.name).join('＋'),
+      `${bundle.workspace.itinerary.duration_days} 天`,
+      dateLabel,
+    ].filter(Boolean).join(' · ')
+    : dateLabel;
 
   const handleCardSelect = React.useCallback((selection: CardMapSelection) => {
     if (selection.entityType === 'transport_leg') setShowRoutes(true);
@@ -417,7 +424,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
           <h1>{title}</h1>
           {state.currentTripRunReadOnly && <span>历史结果 · 只读</span>}
         </div>
-        {dateLabel && <p>{dateLabel}</p>}
+        {metaLabel && <p>{metaLabel}</p>}
         <div className="journey-view-actions">
           <button type="button" className="journey-view-action" onClick={openReading}><BookOpen size={14} />阅读版</button>
           <PdfDownloadButton bundle={bundle} compact />

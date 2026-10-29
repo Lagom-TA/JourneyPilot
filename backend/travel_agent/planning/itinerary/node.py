@@ -23,9 +23,11 @@ from travel_agent.planning.itinerary.connectors import (
 from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
 from travel_agent.planning.itinerary.rail_paths import complete_rail_route_paths
 from travel_agent.planning.itinerary.requirements import _draft_user_input_anchors
+from travel_agent.planning.itinerary.title_writing import write_itinerary_copy
 from travel_agent.planning.nodes import NODE_ITINERARY
 from travel_agent.planning.workspace import TripWorkspaceV2
 from travel_agent.runtime.deadlines import observe_run_deadline
+from travel_agent.runtime.cancellation import RunCancelled
 from travel_agent.planning.itinerary.day_design import apply_day_design
 from travel_agent.planning.itinerary.dispersion import itinerary_dispersion
 from travel_agent.planning.research.transport.local_routes import (
@@ -166,6 +168,15 @@ async def itinerary_planner_node(
             tool_context=build_tool_context_from_state(state),
         )
         workspace = apply_day_design(workspace, composition)
+        try:
+            workspace = await write_itinerary_copy(
+                workspace,
+                llm_for_task(get_model_router(), TaskKind.SUMMARY),
+            )
+        except RunCancelled:
+            raise
+        except Exception as exc:
+            logger.warning("itinerary title writing unavailable: %s", exc)
         _log_composition_dispersion(workspace)
         return {
             **deadline_update,
@@ -176,6 +187,8 @@ async def itinerary_planner_node(
             "local_connector_gaps": gaps,
             "composition_failure_context": None,
         }
+    except RunCancelled:
+        raise
     except Exception as exc:
         logger.error("ItineraryPlanner v2 failed: %s", exc, exc_info=True)
         return {

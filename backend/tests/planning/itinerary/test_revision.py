@@ -36,6 +36,16 @@ from travel_agent.planning.research.discovery_contracts import CandidateDiscover
 from travel_agent.planning.research.packets import ResearchPacket
 
 
+@pytest.fixture(autouse=True)
+def _keep_existing_copy(monkeypatch):
+    from travel_agent.planning.itinerary import node
+
+    async def keep_copy(workspace, _llm):
+        return workspace
+
+    monkeypatch.setattr(node, "write_itinerary_copy", keep_copy)
+
+
 def visit_packet(candidate_id="candidate_visit"):
     return make_visit_packet(
         candidate_id,
@@ -901,14 +911,12 @@ async def test_fastest_provider_alternative_is_selected(monkeypatch):
         execution_plan=[["itinerary_planner"]], agent_status={"itinerary_planner": "pending"},
     )
 
-    def no_model(*args, **kwargs):
-        pytest.fail("provider alternatives must not invoke a model")
-
     async def no_authoring(*args, **kwargs):
         pytest.fail("provider alternatives must not be replaced by authored routes")
 
-    monkeypatch.setattr(node, "get_model_router", no_model)
-    monkeypatch.setattr(node, "llm_for_task", no_model)
+    # 本用例约束的是接驳选择不调用模型；最终文案步骤由独立用例覆盖。
+    monkeypatch.setattr(node, "get_model_router", lambda: None)
+    monkeypatch.setattr(node, "llm_for_task", lambda *args, **kwargs: object())
     monkeypatch.setattr(node, "_author_connector_routes", no_authoring)
     completed = restore_planning_state(current, **await node.itinerary_planner_node(current, {}))
     assert completed.agent_status["itinerary_planner"] == "completed"

@@ -622,9 +622,7 @@ def project_report(
     )
     destination_text = "、".join(item.display_name for item in destinations)
     document = TripReportDocument(
-        title=_public_report_title(
-            f"{destination_text} {itinerary.duration_days} 日旅行计划"
-        ),
+        title=_public_report_title(itinerary.title),
         overview=f"{date_text}，前往{destination_text}的旅行计划。",
         destinations=destinations,
         duration_days=itinerary.duration_days,

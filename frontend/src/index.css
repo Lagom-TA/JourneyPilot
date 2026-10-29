@@ -4040,7 +4040,7 @@ summary.research-query-summary { cursor: pointer; }
 .reading-toolbar > div { justify-self: end; }
 .reading-scroll { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; }
 .reading-scroll > article { margin: 26px auto 40px; overflow: hidden; border: 1px solid var(--color-stroke); border-radius: var(--radius-panel); background: var(--color-panel); }
-.report-cover h1 { font-family: theme('fontFamily.display'); }
+.report-cover h1 { font-family: theme('fontFamily.display'); text-wrap: balance; }
 .reading-pending { display: flex; min-height: 60vh; flex-direction: column; align-items: center; justify-content: center; color: var(--color-ink-muted); }
 .reading-pending h1 { margin-top: 12px; color: var(--color-ink); font-family: theme('fontFamily.display'); font-size: 26px; }
 .reading-pending p { margin-top: 8px; font-size: 12px; }

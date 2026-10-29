@@ -9,6 +9,12 @@ from travel_agent.planning.itinerary.models import StructuredItineraryV2
 def _recompute_derived_itinerary_fields(
     itinerary: StructuredItineraryV2,
 ) -> StructuredItineraryV2:
+    """重算可确定性派生的字段。
+
+    ``title`` 与 ``theme`` 是正式文案快照，只由完整组合后的文案步骤生成。
+    局部 mutation 在数据库事务里运行，不能在事务中调用模型，也不伪装成已刷新：
+    这里保留原文案，下一次重新组合会基于新内容重新生成。
+    """
 
     return with_derived_highlights(itinerary).model_copy(
         update={
