@@ -176,34 +176,31 @@ describe('map route geometry', () => {
 });
 
 describe('map viewport focus', () => {
-  it('prioritizes the selected entity over the linked entity', () => {
-    expect(resolveMapFocusEntityId('selected-place', 'linked-place')).toBe('selected-place');
+  it('takes the camera target from an explicit selection', () => {
+    expect(resolveMapFocusEntityId('selected-place')).toBe('selected-place');
   });
 
-  it('uses the linked entity when there is no selection', () => {
-    expect(resolveMapFocusEntityId(null, 'linked-place')).toBe('linked-place');
+  it('has no camera target without a selection, so hover cannot move the map', () => {
+    expect(resolveMapFocusEntityId(null)).toBeNull();
+    expect(resolveMapFocusEntityId(undefined)).toBeNull();
   });
 
-  it('clears the focus when selection and hover are both cleared', () => {
-    expect(resolveMapFocusEntityId(null, null)).toBeNull();
-  });
-
-  it('does not fit the whole map when hover clears without a data change', () => {
+  it('keeps the current view when nothing is selected and the geometry is unchanged', () => {
     const dataKey = mapViewportDataKey([[31.2304, 121.4737]]);
 
     expect(shouldAutoFitMap({
       dataKey,
       previousDataKey: dataKey,
-      hasFocusTarget: false,
+      hasSelection: false,
     })).toBe(false);
   });
 
-  it('fits initially or after real geometry changes only when nothing is focused', () => {
+  it('fits initially or after real geometry changes only when nothing is selected', () => {
     const dataKey = mapViewportDataKey([[31.2304, 121.4737]]);
 
-    expect(shouldAutoFitMap({ dataKey, previousDataKey: null, hasFocusTarget: false })).toBe(true);
-    expect(shouldAutoFitMap({ dataKey, previousDataKey: 'older-data', hasFocusTarget: false })).toBe(true);
-    expect(shouldAutoFitMap({ dataKey, previousDataKey: 'older-data', hasFocusTarget: true })).toBe(false);
+    expect(shouldAutoFitMap({ dataKey, previousDataKey: null, hasSelection: false })).toBe(true);
+    expect(shouldAutoFitMap({ dataKey, previousDataKey: 'older-data', hasSelection: false })).toBe(true);
+    expect(shouldAutoFitMap({ dataKey, previousDataKey: 'older-data', hasSelection: true })).toBe(false);
   });
 
   it('keys viewport data by geometry rather than array identity', () => {

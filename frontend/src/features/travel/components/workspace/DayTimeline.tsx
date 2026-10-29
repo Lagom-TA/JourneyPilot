@@ -80,18 +80,18 @@ export function DayTimeline({ nodes, renderDetails, renderSupplement, waypointOr
                         onLinkEntity!(null);
                 } : undefined}>
             <div className="pt-0.5 text-right">
-              {node.timeLabel && <time className="block break-words text-xs font-semibold tabular-nums text-ink-secondary">{node.timeLabel}</time>}
+              {!inlineCard && node.timeLabel && <time className="block break-words text-xs font-semibold tabular-nums text-ink-secondary">{node.timeLabel}</time>}
             </div>
 
             <div className={cn('relative min-w-0', hasContinuation && 'pb-6')}>
               {hasContinuation && <span className="absolute -left-[1.3125rem] top-5 bottom-0 w-px bg-stroke" aria-hidden/>}
-              <TimelineNodeMark node={node} className="absolute -left-[1.75rem] top-0.5"/>
+              {!inlineCard && <TimelineNodeMark node={node} className="absolute -left-[1.75rem] top-0.5"/>}
 
               <div className={cn('relative min-w-0', node.role === 'movement' && !inlineCard ? 'pt-0.5' : '')}>
 
                 <div aria-hidden data-testid={`day-timeline-linked-ground-${node.key}`} className={cn('pointer-events-none absolute -inset-x-2 -inset-y-1 rounded-card bg-highlight', 'transition-opacity duration-fast ease-standard', linked ? 'opacity-100' : 'opacity-0')}/>
                 <div className="relative min-w-0">
-                  {inlineCard ? (nodeEdgeLabel(node) && (<p className={cn(READOUT_LABEL, 'text-ink-muted')}>{nodeTypeLabel(node)}</p>)) : (<>
+                  {inlineCard ? null : (<>
                       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
 
                         {waypoint !== null && <WaypointMark sequence={waypoint}/>}

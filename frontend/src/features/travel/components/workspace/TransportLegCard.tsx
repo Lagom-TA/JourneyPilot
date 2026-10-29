@@ -1,4 +1,4 @@
-import { ChevronDown, type LucideIcon } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "../../../../lib/utils";
 import { READOUT_LABEL } from "../../../../lib/typography";
 import { TransportProviderNote } from "./TransportProviderNote";
@@ -6,7 +6,7 @@ import { IntentExplanationList } from "./IntentExplanationList";
 import { type PublicTransportLeg } from "../../types/itinerary";
 import { type TransportEndpoint, type TransportMode, type TransportSegment } from "../../types/entities";
 import { BOOKING_LABELS, TRANSPORT_MODE_LABELS } from "../../model/deliveryLabels";
-import { TRANSPORT_FAMILY_NOUNS, TRANSPORT_MODE_ICONS, clockLabel, distanceLabel, durationLabel, legLineChain, legReadouts, legService, transportFamily, transportModeStyle, transportSegmentDisplayMode, type Readout, type TransportFamily } from "../../model/transportPresentation";
+import { TRANSPORT_FAMILY_NOUNS, TRANSPORT_MODE_ICONS, clockLabel, distanceLabel, durationLabel, legReadouts, legService, legSummary, showsEndpointCode, transitDisplayMode, transitModeLabel, transitRideModes, transitStationModes, transitStations, transportFamily, transportModeStyle, transportSegmentDisplayMode, type Readout, type TransportFamily } from "../../model/transportPresentation";
 import React from 'react';
 function MetaLine({ values }: {
     values: Array<string | null>;
@@ -61,7 +61,7 @@ function SegmentDisclosure({ leg }: {
     const disclosureId = `transport-segments-${leg.transport_leg_id}`;
     return (<>
       <button type="button" data-testid="transport-segments-toggle" aria-expanded={open} aria-controls={disclosureId} onClick={() => setOpen((current) => !current)} className="-ml-2 mt-1 inline-flex min-h-9 items-center gap-1 rounded-card px-2 text-[11px] font-semibold text-ink-secondary transition-colors hover:bg-highlight hover:text-ink">
-        {open ? '收起换乘步骤' : `展开 ${leg.segments.length} 段换乘`}
+        {open ? '收起路线步骤' : `展开 ${leg.segments.length} 个路线步骤`}
         <ChevronDown size={13} aria-hidden className={cn('transition-transform', open && 'rotate-180')}/>
       </button>
       {open && (<ol id={disclosureId} className="divide-y divide-stroke/60" data-testid="transport-segments">
@@ -120,61 +120,59 @@ function ReadoutRow({ readouts, layout }: {
         </div>))}
     </dl>);
 }
-function ServiceStub({ leg }: {
+function LegSummaryRow({ leg }: {
     leg: PublicTransportLeg;
 }) {
-    const service = legService(leg);
-    if (!service)
+    const summary = legSummary(leg);
+    if (!summary.duration && !summary.transfer && !summary.cost)
         return null;
-    return (<p data-testid="transport-service" className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 font-mono text-[11px] text-ink-secondary">
-      {service.serviceNumber && (<span data-service="number" className="font-semibold tracking-[0.06em] text-ink">{service.serviceNumber}</span>)}
-      {service.lineName && <span data-service="line">{service.lineName}</span>}
-      {service.operator && <span data-service="operator">{service.operator}</span>}
-    </p>);
+    return (<dl data-testid="transport-summary" className="mt-2 flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-stroke/60 pt-2">
+      <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+        {summary.duration && (<div data-summary="duration">
+            <dt className="sr-only">时长</dt>
+            <dd className="font-mono text-sm font-semibold tabular-nums text-ink">{summary.duration}</dd>
+          </div>)}
+        {summary.transfer && (<div data-summary="transfer" className="min-w-0 text-[11px] font-medium text-ink-secondary">
+            {summary.transfer}
+          </div>)}
+      </div>
+      {summary.cost && (<div data-summary="cost" className="ml-auto">
+          <dt className="sr-only">费用</dt>
+          <dd className="font-mono text-sm font-semibold tabular-nums text-ink">{summary.cost}</dd>
+        </div>)}
+    </dl>);
 }
-function TicketEndpoint({ endpoint, clock, align, }: {
+function TicketEndpoint({ endpoint, mode, align, }: {
     endpoint: TransportEndpoint;
-    clock: string | null;
+    mode: TransportMode;
     align: 'left' | 'right';
 }) {
-    const code = endpoint.station_code;
+    const code = showsEndpointCode(mode) ? endpoint.station_code : null;
     return (<div className={cn('min-w-0 flex-1', align === 'right' && 'text-right')}>
       <p className="break-words text-base font-semibold leading-tight text-ink">{endpoint.name}</p>
-      {clock && (<p className="mt-1 font-mono text-sm tabular-nums text-ink-secondary">{clock}</p>)}
-
-      {code && (<p className="mt-0.5 font-mono text-[11px] font-medium leading-4 tracking-[0.06em] text-ink-secondary">
+      {code && (<p className="mt-1 font-mono text-[11px] font-medium leading-4 tracking-[0.06em] text-ink-secondary">
           {code}
         </p>)}
     </div>);
 }
-function TransitSpan({ Icon }: {
-    Icon: LucideIcon;
-}) {
-    return (<span className="transport-mode-text flex shrink-0 items-center gap-1 self-start pt-1.5" aria-hidden>
-      <span className="transport-mode-dash h-px w-3 border-t border-dashed sm:w-5"/>
-      <Icon size={13}/>
-      <span className="transport-mode-dash h-px w-3 border-t border-dashed sm:w-5"/>
-    </span>);
+function ConnectorLine() {
+    return <span className="transport-mode-dash mt-2.5 h-px w-6 shrink-0 border-t border-dashed sm:w-10" aria-hidden/>;
 }
-function LineChain({ leg }: {
+function TransitStationLine({ leg }: {
     leg: PublicTransportLeg;
 }) {
-    const chain = legLineChain(leg);
-    if (chain.length <= 1)
+    const stations = transitStations(leg);
+    if (!stations.from && !stations.to)
         return null;
-    return (<ol data-testid="transport-line-chain" className="mt-2 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
-      {chain.map((name, index) => {
-        const mode = leg.segments[index]
-          ? transportSegmentDisplayMode(leg.selected_mode, leg.segments[index].mode)
-          : leg.selected_mode;
-        return (<li key={`${name}-${index}`} className="flex min-w-0 items-center gap-1.5">
-          {index > 0 && <span className="shrink-0 text-ink-muted" aria-hidden>›</span>}
-          <span style={transportModeStyle(mode)} className="transport-mode-chip min-w-0 break-words rounded-label border px-1.5 py-0.5 text-[11px] font-medium">
-            {name}
-          </span>
-        </li>);
-      })}
-    </ol>);
+    const modes = transitStationModes(leg);
+    const mixed = new Set(transitRideModes(leg)).size > 1;
+    const fromPrefix = mixed && modes.from ? `${TRANSPORT_MODE_LABELS[modes.from]} ` : '';
+    const toPrefix = mixed && modes.to ? `${TRANSPORT_MODE_LABELS[modes.to]} ` : '';
+    return (<p data-testid="transport-stations" className="mt-2 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-[13px] font-semibold text-ink">
+      {stations.from && <span className="min-w-0 break-words">{fromPrefix}{stations.from}</span>}
+      {stations.from && stations.to && <span className="transport-mode-text shrink-0 font-normal" aria-hidden>→</span>}
+      {stations.to && <span className="min-w-0 break-words">{toPrefix}{stations.to}</span>}
+    </p>);
 }
 function CardShell({ leg, family, badge, aside = null, sandboxNote = null, compact = false, children, }: {
     leg: PublicTransportLeg;
@@ -185,23 +183,36 @@ function CardShell({ leg, family, badge, aside = null, sandboxNote = null, compa
     compact?: boolean;
     children: React.ReactNode;
 }) {
-    const Icon = TRANSPORT_MODE_ICONS[leg.selected_mode];
+    const displayMode = family === 'transit' ? transitDisplayMode(leg) : leg.selected_mode;
+    const modeLabel = family === 'transit'
+        ? transitModeLabel(leg) ?? TRANSPORT_MODE_LABELS[leg.selected_mode]
+        : TRANSPORT_MODE_LABELS[leg.selected_mode];
+    const Icon = TRANSPORT_MODE_ICONS[displayMode];
     const variant = leg.transport_class === 'long_distance'
         ? 'long-distance'
         : leg.transport_class === 'public_transit' ? 'public-transit' : 'flexible';
     const providerNote = leg.transport_class === 'long_distance' && Boolean(sandboxNote);
-    return (<article data-testid={`transport-card-${leg.transport_leg_id}`} data-transport-variant={variant} data-transport-family={family} data-transport-mode={leg.selected_mode} style={transportModeStyle(leg.selected_mode)} className={cn('my-2 min-w-0 overflow-hidden rounded-card border border-stroke bg-panel', compact ? 'p-2' : 'p-2.5')}>
+    const service = family === 'scheduled' ? legService(leg) : null;
+    const serviceLabel = service?.serviceNumber ?? service?.lineName ?? null;
+    const showNoun = family !== 'scheduled' && family !== 'transit';
+    return (<article data-testid={`transport-card-${leg.transport_leg_id}`} data-transport-variant={variant} data-transport-family={family} data-transport-mode={displayMode} style={transportModeStyle(displayMode)} className={cn('my-2 min-w-0 overflow-hidden rounded-card border border-stroke bg-panel', compact ? 'p-2' : 'p-2.5')}>
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <p className="inline-flex min-w-0 items-center gap-2">
+        <p className="inline-flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="transport-mode-icon flex h-6 w-6 shrink-0 items-center justify-center rounded-card">
             <Icon size={13} aria-hidden/>
           </span>
           <span className="min-w-0 break-words text-[13px] font-semibold text-ink">
-            {TRANSPORT_MODE_LABELS[leg.selected_mode]}
+            {modeLabel}
           </span>
-          <span className={cn(READOUT_LABEL, 'shrink-0 text-ink-muted')}>
-            {TRANSPORT_FAMILY_NOUNS[family]}
-          </span>
+          {serviceLabel && (<span data-service={service?.serviceNumber ? 'number' : 'line'} className="min-w-0 break-words font-mono text-[13px] font-semibold tracking-[0.04em] text-ink">
+              {serviceLabel}
+            </span>)}
+          {service?.operator && (<span data-service="operator" className="min-w-0 break-words text-[11px] font-medium text-ink-muted">
+              {service.operator}
+            </span>)}
+          {showNoun && (<span className={cn(READOUT_LABEL, 'shrink-0 text-ink-muted')}>
+              {TRANSPORT_FAMILY_NOUNS[family]}
+            </span>)}
         </p>
         <span className="flex min-w-0 shrink-0 items-center gap-2">
           {aside}
@@ -243,16 +254,15 @@ function SupportingContent({ leg }: TransportLegCardProps) {
          </>);
 }
 function ScheduledTicket({ leg, sandboxNote = null }: TransportLegCardProps) {
-    const Icon = TRANSPORT_MODE_ICONS[leg.selected_mode];
     const ready = leg.route_status === 'ready';
-    return (<CardShell leg={leg} family="scheduled" badge={<LegBadge leg={leg}/>} aside={ready ? <ServiceStub leg={leg}/> : null} sandboxNote={sandboxNote}>
+    return (<CardShell leg={leg} family="scheduled" badge={<LegBadge leg={leg}/>} aside={ready ? <TimeWindow departure={leg.departure_at} arrival={leg.arrival_at} className="text-[11px]"/> : null} sandboxNote={sandboxNote}>
       {ready && (<>
           <div className="mt-2 flex min-w-0 items-start gap-2">
-            <TicketEndpoint endpoint={leg.from_endpoint} clock={clockLabel(leg.departure_at)} align="left"/>
-            <TransitSpan Icon={Icon}/>
-            <TicketEndpoint endpoint={leg.to_endpoint} clock={clockLabel(leg.arrival_at)} align="right"/>
+            <TicketEndpoint endpoint={leg.from_endpoint} mode={leg.selected_mode} align="left"/>
+            <ConnectorLine/>
+            <TicketEndpoint endpoint={leg.to_endpoint} mode={leg.selected_mode} align="right"/>
           </div>
-          <ReadoutRow readouts={legReadouts(leg)} layout="inline"/>
+          <LegSummaryRow leg={leg}/>
         </>)}
       <SupportingContent leg={leg}/>
     </CardShell>);
@@ -261,9 +271,8 @@ function TransitCard({ leg }: TransportLegCardProps) {
     const ready = leg.route_status === 'ready';
     return (<CardShell leg={leg} family="transit" badge={<LegBadge leg={leg}/>} aside={ready ? <TimeWindow departure={leg.departure_at} arrival={leg.arrival_at} className="text-[11px]"/> : null}>
       {ready && (<>
-          <RouteLine leg={leg} className="mt-2"/>
-          <LineChain leg={leg}/>
-          <ReadoutRow readouts={legReadouts(leg)} layout="inline"/>
+          <TransitStationLine leg={leg}/>
+          <LegSummaryRow leg={leg}/>
         </>)}
       <SupportingContent leg={leg}/>
     </CardShell>);

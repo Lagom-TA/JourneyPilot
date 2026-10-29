@@ -12,8 +12,8 @@ function ref(entityType: EntityType, entityId: string) {
   return { entity_type: entityType, entity_id: entityId };
 }
 
-function endpoint(name: string, placeId: string, latitude: number, longitude: number) {
-  return { name, place_id: placeId, station_code: null, latitude, longitude };
+function endpoint(name: string, placeId: string, latitude: number, longitude: number, stationCode: string | null = null) {
+  return { name, place_id: placeId, station_code: stationCode, latitude, longitude };
 }
 
 type FixtureEndpoint = ReturnType<typeof endpoint>;
@@ -37,6 +37,7 @@ function segment(
   duration: number,
   distance: number,
   path: Array<{ latitude: number; longitude: number }> = [],
+  options: { lineName?: string | null; serviceNumber?: string | null; operatorName?: string | null } = {},
 ) {
   return {
     segment_id: segmentId,
@@ -47,9 +48,9 @@ function segment(
     arrival_at: null,
     duration_minutes: duration,
     distance_meters: distance,
-    operator_name: null,
-    service_number: null,
-    line_name: null,
+    operator_name: options.operatorName ?? null,
+    service_number: options.serviceNumber ?? null,
+    line_name: options.lineName ?? null,
     cost_cny: null,
     path,
   };
@@ -63,6 +64,16 @@ function leg(
   distance: number,
   segments: FixtureSegment[],
   micro = false,
+  options: {
+    transferCount?: number;
+    totalCostCny?: number | null;
+    departureAt?: string | null;
+    arrivalAt?: string | null;
+    boardingStop?: FixtureEndpoint | null;
+    alightingStop?: FixtureEndpoint | null;
+    bookingStatus?: 'not_required' | 'recommended' | 'required' | 'booked' | 'unknown';
+    routeStatus?: 'pending' | 'ready' | 'unavailable';
+  } = {},
 ) {
   const first = segments[0].from_endpoint;
   const last = segments.at(-1)!.to_endpoint;
@@ -73,15 +84,17 @@ function leg(
     selected_mode: mode,
     from_endpoint: first,
     to_endpoint: last,
-    departure_at: null,
-    arrival_at: null,
+    boarding_stop: options.boardingStop ?? null,
+    alighting_stop: options.alightingStop ?? null,
+    departure_at: options.departureAt ?? null,
+    arrival_at: options.arrivalAt ?? null,
     duration_minutes: duration,
     distance_meters: distance,
-    total_cost_cny: null,
-    transfer_count: Math.max(0, segments.length - 1),
+    total_cost_cny: options.totalCostCny ?? null,
+    transfer_count: options.transferCount ?? Math.max(0, segments.length - 1),
     segments,
-    booking_status: 'not_required',
-    route_status: 'ready',
+    booking_status: options.bookingStatus ?? 'not_required',
+    route_status: options.routeStatus ?? 'ready',
     mode_preference: { locked_mode: null, excluded_modes: [] },
     intent_explanations: [],
     evidence_basis: EVIDENCE,
@@ -387,5 +400,228 @@ export function xianMixedTransportBundle() {
       projection_role: item.projection_role,
     }));
   });
+  return bundle;
+}
+
+export function xianLayoutBundle({ dayCount, longTitle = false, weather = 'none' }: {
+  dayCount: number;
+  longTitle?: boolean;
+  weather?: 'mixed' | 'none';
+}) {
+  const bundle = structuredClone(xianDeliveryBundle());
+  const baseDays = bundle.report_projection.document.days;
+  const longTheme = '秦唐遗韵 · 从临潼的兵马俑一路走到雁塔与城墙下的长街';
+  const dateFor = (index: number) => new Date(Date.UTC(2026, 10, 1 + index)).toISOString().slice(0, 10);
+  const days = Array.from({ length: dayCount }, (_, index) => {
+    const source = baseDays[index % baseDays.length];
+    const dayNumber = index + 1;
+    const dayId = `day-${dayNumber}`;
+    const blocks = index < baseDays.length
+      ? source.blocks
+      : source.blocks.map((item, blockIndex) => ({
+        ...item,
+        day_id: dayId,
+        details: {
+          ...item.details,
+          entry_id: `d${dayNumber}-${blockIndex}-${item.details.entry_id}`,
+        },
+      }));
+    return {
+      ...source,
+      day_id: dayId,
+      day: dayNumber,
+      date: dateFor(index),
+      theme: longTitle && index === 0 ? longTheme : source.theme,
+      blocks,
+    };
+  });
+  const plans = days.map((day) => ({
+    day_id: day.day_id,
+    day: day.day,
+    date: day.date,
+    destination_id: XI,
+    theme: day.theme,
+    timeline: day.blocks.map((item) => ({
+      entry_id: item.details.entry_id,
+      entity_type: item.entity_ref.entity_type,
+      entity_id: item.entity_ref.entity_id,
+      projection_role: item.projection_role,
+    })),
+    estimated_cost_cny: null,
+  }));
+  const tripTitle = longTitle ? '去西安看秋风里的城墙，再沿秦岭慢慢走一段很长的路' : '西安慢行 · 从秦唐到城墙';
+  bundle.workspace.itinerary.duration_days = dayCount;
+  bundle.workspace.itinerary.title = tripTitle;
+  bundle.workspace.itinerary.day_plans = plans;
+  bundle.report_projection.document.title = tripTitle;
+  bundle.report_projection.document.duration_days = dayCount;
+  bundle.report_projection.document.days = days;
+  bundle.report_projection.document.weather = weather === 'mixed'
+    ? days.map((day, index) => {
+      const seasonal = index === 2 || index === 5;
+      const historical = index === 1 || index === 6;
+      return {
+        destination_id: XI,
+        destination_name: '西安',
+        date: day.date,
+        data_kind: seasonal ? 'seasonal_baseline' as const : 'forecast' as const,
+        observed_at: historical ? '2025-11-02T08:00:00+08:00' : '2026-10-31T08:00:00+08:00',
+        weather_data_state: historical ? 'historical' as const : 'current' as const,
+        condition_label: seasonal ? '多云' : index % 2 === 0 ? '阴' : '晴',
+        high_c: 18 - index % 3,
+        low_c: 8,
+        precipitation_probability_pct: index % 4 === 0 ? 20 : null,
+        wind_speed_kph: 12,
+        citation_ids: [],
+      };
+    })
+    : [];
+  return bundle;
+}
+
+
+/** 交通展示专用离线夹具：高铁、飞机、地铁 0／1 次换乘、缺站点与缺价格。 */
+export function xianTransportDisplayBundle() {
+  const railFrom = endpoint('深圳北', 'station:shenzhen-north', 22.609, 114.029, 'IOQ');
+  const railTo = endpoint('北京西', 'station:beijing-west', 39.8955, 116.3216, 'BXP');
+  const flightFrom = endpoint('北京首都国际机场', 'airport:beijing-capital', 40.0801, 116.5846, 'PEK');
+  const flightTo = endpoint('西安咸阳国际机场', 'airport:xian-xianyang', 34.4471, 108.7517, 'XIY');
+  const bellTowerStop = endpoint('钟楼站', 'metro:zhonglou', 34.259, 108.945);
+  const xiaozhaiStop = endpoint('小寨站', 'metro:xiaozhai', 34.226, 108.953);
+  const beidajieStop = endpoint('北大街站（地铁2号线·4号线换乘）', 'metro:beidajie', 34.268, 108.946);
+  const dayantaStop = endpoint('大雁塔站（雁塔北路南口）', 'metro:dayanta', 34.218, 108.964);
+  const displayLegs = [
+    leg('leg-display-rail', 'high_speed_rail', 'long_distance', 469, 2400000, [
+      segment('segment-display-rail', 'high_speed_rail', railFrom, railTo, 469, 2400000, [railFrom, railTo], {
+        serviceNumber: 'G382',
+        operatorName: '中国铁路',
+      }),
+    ], false, {
+      totalCostCny: 1108,
+      departureAt: '2026-11-01T11:41:00+08:00',
+      arrivalAt: '2026-11-01T19:30:00+08:00',
+      bookingStatus: 'recommended',
+    }),
+    leg('leg-display-flight', 'flight', 'long_distance', 125, 910000, [
+      segment('segment-display-flight', 'flight', flightFrom, flightTo, 125, 910000, [flightFrom, flightTo], {
+        serviceNumber: 'CA1234',
+        operatorName: '中国国航',
+      }),
+    ], false, {
+      totalCostCny: 720,
+      departureAt: '2026-11-01T08:00:00+08:00',
+      arrivalAt: '2026-11-01T10:05:00+08:00',
+      bookingStatus: 'required',
+    }),
+    leg('leg-display-metro-direct', 'metro', 'public_transit', 42, 5800, [
+      segment('segment-display-walk-in', 'walk', points.hotel, bellTowerStop, 6, 420),
+      segment('segment-display-metro-2', 'metro', bellTowerStop, xiaozhaiStop, 28, 5200, [bellTowerStop, xiaozhaiStop], {
+        lineName: '地铁2号线',
+      }),
+      segment('segment-display-walk-out', 'walk', xiaozhaiStop, points.museum, 8, 540),
+    ], false, {
+      transferCount: 0,
+      totalCostCny: 5,
+      departureAt: '2026-11-01T09:00:00+08:00',
+      arrivalAt: '2026-11-01T09:42:00+08:00',
+      boardingStop: bellTowerStop,
+      alightingStop: xiaozhaiStop,
+    }),
+    leg('leg-display-metro-transfer', 'metro', 'public_transit', 38, 7600, [
+      segment('segment-display-metro-2b', 'metro', beidajieStop, xiaozhaiStop, 16, 3800, [beidajieStop, xiaozhaiStop], {
+        lineName: '地铁2号线',
+      }),
+      segment('segment-display-metro-4', 'metro', xiaozhaiStop, dayantaStop, 22, 3800, [xiaozhaiStop, dayantaStop], {
+        lineName: '地铁4号线',
+      }),
+    ], false, {
+      transferCount: 1,
+      totalCostCny: 6,
+      departureAt: '2026-11-01T15:00:00+08:00',
+      arrivalAt: '2026-11-01T15:38:00+08:00',
+      boardingStop: beidajieStop,
+      alightingStop: dayantaStop,
+    }),
+    leg('leg-display-metro-mixed', 'metro', 'public_transit', 45, 10300, [
+      segment('segment-display-mixed-metro', 'metro', beidajieStop, xiaozhaiStop, 16, 3800, [beidajieStop, xiaozhaiStop], {
+        lineName: '地铁2号线',
+      }),
+      segment('segment-display-mixed-bus', 'bus', xiaozhaiStop, dayantaStop, 19, 3300, [xiaozhaiStop, dayantaStop], {
+        lineName: '公交5路',
+      }),
+      segment('segment-display-mixed-last-metro', 'metro', dayantaStop, bellTowerStop, 10, 3200, [dayantaStop, bellTowerStop], {
+        lineName: '地铁4号线',
+      }),
+    ], false, {
+      transferCount: 2,
+      totalCostCny: 4,
+      departureAt: '2026-11-01T16:10:00+08:00',
+      arrivalAt: '2026-11-01T16:55:00+08:00',
+      boardingStop: beidajieStop,
+      alightingStop: bellTowerStop,
+    }),
+    leg('leg-display-metro-unproven', 'metro', 'public_transit', 27, 3100, [
+      segment('segment-display-metro-4b', 'metro', points.museum, points.lunchTwo, 27, 3100, [points.museum, points.lunchTwo], {
+        lineName: '地铁4号线',
+      }),
+    ], false, {
+      transferCount: 0,
+      totalCostCny: null,
+      departureAt: '2026-11-01T12:05:00+08:00',
+      arrivalAt: '2026-11-01T12:32:00+08:00',
+    }),
+  ];
+  const displayBlocks = [
+    block('d1-display-flight', 'transport_leg', 'leg-display-flight', 'transport', '飞往西安', '从北京首都国际机场飞往西安咸阳国际机场。', '08:00', { mode: 'flight', duration: '约 2 小时 5 分钟' }),
+    block('d1-display-rail', 'transport_leg', 'leg-display-rail', 'transport', '乘高铁返京', '从深圳北站乘高铁前往北京西站。', '11:41', { mode: 'high_speed_rail', duration: '约 7 小时 49 分钟' }),
+    block('d1-display-metro-direct', 'transport_leg', 'leg-display-metro-direct', 'transport', '地铁前往博物馆', '从钟楼站乘地铁 2 号线到小寨站。', '09:00', { mode: 'metro', duration: '约 42 分钟' }),
+    block('d1-display-metro-transfer', 'transport_leg', 'leg-display-metro-transfer', 'transport', '地铁换乘前往大雁塔', '在钟楼换乘 4 号线到大雁塔。', '15:00', { mode: 'metro', duration: '约 38 分钟' }),
+    block('d1-display-metro-mixed', 'transport_leg', 'leg-display-metro-mixed', 'transport', '地铁与公交衔接', '乘地铁、公交再回到地铁线路。', '16:10', { mode: 'metro', duration: '约 45 分钟' }),
+    block('d1-display-metro-unproven', 'transport_leg', 'leg-display-metro-unproven', 'transport', '地铁前往午餐', '站点信息暂未提供。', '12:05', { mode: 'metro', duration: '约 27 分钟' }),
+  ];
+  const bundle = structuredClone(xianDeliveryBundle());
+  const dayTheme = '交通展示 · 班次与地铁站点';
+  bundle.workspace.itinerary.duration_days = 1;
+  bundle.workspace.itinerary.title = '交通展示核对';
+  bundle.workspace.itinerary.transport_legs = displayLegs;
+  bundle.workspace.itinerary.visit_stops = [];
+  bundle.workspace.itinerary.dining_stops = [];
+  bundle.workspace.itinerary.lodging_stays = [];
+  bundle.workspace.itinerary.day_plans = [{
+    day_id: 'day-1',
+    day: 1,
+    date: '2026-11-01',
+    destination_id: XI,
+    theme: dayTheme,
+    timeline: displayBlocks.map((item) => ({
+      entry_id: item.details.entry_id,
+      entity_type: item.entity_ref.entity_type,
+      entity_id: item.entity_ref.entity_id,
+      projection_role: item.projection_role,
+    })),
+    estimated_cost_cny: null,
+  }];
+  bundle.report_projection.document.title = '交通展示核对';
+  bundle.report_projection.document.duration_days = 1;
+  bundle.report_projection.document.days = [{
+    day_id: 'day-1',
+    day: 1,
+    date: '2026-11-01',
+    destination_id: XI,
+    destination_name: '西安',
+    theme: dayTheme,
+    blocks: displayBlocks,
+  }];
+  bundle.map_projection.content.places = [];
+  bundle.map_projection.content.routes = displayLegs.map((item) => ({
+    entity_ref: ref('transport_leg', item.transport_leg_id),
+    transport_class: item.transport_class,
+    selected_mode: item.selected_mode,
+    route_status: item.route_status,
+    from_endpoint: item.from_endpoint,
+    to_endpoint: item.to_endpoint,
+    segments: item.segments,
+    citation_ids: [],
+  }));
   return bundle;
 }

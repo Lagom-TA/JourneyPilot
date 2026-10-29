@@ -6,6 +6,7 @@ import { cn } from '../../../../lib/utils';
 import { PresenceFrame } from '../../../../components/ui/PresenceSurface';
 import { selectDayTimeline, type DaySummaryVM, type DayTimelineNodeVM } from '../../model/itineraryPresentation';
 import { waypointSequenceFor, type WaypointPlacement } from '../../model/waypointOrder';
+import { transportRouteActionVisible } from '../../model/transportPresentation';
 import { type PublicDeliveryBundle } from '../../types/delivery';
 import {
   type PublicCustomBlock,
@@ -105,6 +106,8 @@ function OccurrenceCard({
   const transport = entity?.type === 'transport_leg';
   const custom = entity?.type === 'custom_block';
   const mappable = transport ? drawableRouteIds.has(node.entityId) : !custom && waypoint != null;
+  const routeActionVisible = transport && entity ? mappable && transportRouteActionVisible(entity) : mappable;
+  const showCardActions = routeActionVisible || Boolean(entity && !transport);
   const detailId = `journey-occurrence-detail-${node.key}`;
   const selectOnMap = () => {
     if (!mappable) return;
@@ -140,67 +143,76 @@ function OccurrenceCard({
       }}
     >
       <article className="journey-place-card">
-        <div className="journey-card-heading">
-          <span className="journey-card-mark">
-            <TimelineNodeMark node={node} />
-            {waypoint != null && <span className="journey-card-waypoint">{waypoint}</span>}
-          </span>
-          <p>{occurrenceLabel(node)}</p>
-          {node.timeLabel && <time>{node.timeLabel}</time>}
-        </div>
-
-        {transport && entity ? (
-          <div className="journey-transport-card">
-            <TransportLegCard leg={entity} sandboxNote={bundle.provider_environment.sandbox_note} />
-          </div>
-        ) : (
-          <div className="journey-card-copy">
-            <h3>{node.title}</h3>
-            {node.summary && <p>{node.summary}</p>}
-            {(node.durationLabel || node.priceLabel) && (
-              <div className="journey-card-readouts">
-                {node.durationLabel && <span>{node.durationLabel}</span>}
-                {node.priceLabel && <span>{node.priceLabel}</span>}
-              </div>
-            )}
+        {!transport && (
+          <div className="journey-occurrence-gutter">
+            {node.timeLabel && <time>{node.timeLabel}</time>}
+            <span className="journey-occurrence-mark">
+              <TimelineNodeMark node={node} ringed={false} />
+              {waypoint != null && <span className="journey-card-waypoint">{waypoint}</span>}
+            </span>
           </div>
         )}
 
-        {(mappable || (entity && !transport)) && (
-          <div className="journey-card-actions">
-            {mappable && (
-              <button type="button" data-map-focus-trigger onClick={selectOnMap}>
-                <MapPinned size={14} aria-hidden />{transport ? '查看路线' : '在地图查看'}
-              </button>
-            )}
-            {entity && !transport && (
-              <button
-                type="button"
-                className="journey-card-details-toggle"
-                aria-expanded={detailsOpen}
-                aria-controls={detailId}
-                onClick={() => setDetailsOpen((open) => !open)}
-              >
-                {detailsOpen ? '收起详情' : '查看详情'}
-                <ChevronDown size={13} aria-hidden className={cn('transition-transform', detailsOpen && 'rotate-180')} />
-              </button>
-            )}
-          </div>
-        )}
-
-        <AnimatePresence initial={false}>
-          {detailsOpen && entity && !transport && (
-            <PresenceFrame
-              id={detailId}
-              className="journey-card-details"
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0, transition: { duration: duration.base, ease: easing.decelerate } }}
-              exit={{ opacity: 0, y: -4, transition: { duration: duration.fast, ease: easing.accelerate } }}
-            >
-              <TimelineEntityDetails bundle={bundle} entity={entity} />
-            </PresenceFrame>
+        <div className="journey-occurrence-body">
+          {!transport && (
+            <div className="journey-card-heading">
+              <p>{occurrenceLabel(node)}</p>
+            </div>
           )}
-        </AnimatePresence>
+
+          {transport && entity ? (
+            <div className="journey-transport-card">
+              <TransportLegCard leg={entity} sandboxNote={bundle.provider_environment.sandbox_note} />
+            </div>
+          ) : (
+            <div className="journey-card-copy">
+              <h3>{node.title}</h3>
+              {node.summary && <p>{node.summary}</p>}
+              {(node.durationLabel || node.priceLabel) && (
+                <div className="journey-card-readouts">
+                  {node.durationLabel && <span>{node.durationLabel}</span>}
+                  {node.priceLabel && <span>{node.priceLabel}</span>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {showCardActions && (
+            <div className="journey-card-actions">
+              {routeActionVisible && (
+                <button type="button" data-map-focus-trigger onClick={selectOnMap}>
+                  <MapPinned size={14} aria-hidden />{transport ? '查看路线' : '在地图查看'}
+                </button>
+              )}
+              {entity && !transport && (
+                <button
+                  type="button"
+                  className="journey-card-details-toggle"
+                  aria-expanded={detailsOpen}
+                  aria-controls={detailId}
+                  onClick={() => setDetailsOpen((open) => !open)}
+                >
+                  {detailsOpen ? '收起详情' : '查看详情'}
+                  <ChevronDown size={13} aria-hidden className={cn('transition-transform', detailsOpen && 'rotate-180')} />
+                </button>
+              )}
+            </div>
+          )}
+
+          <AnimatePresence initial={false}>
+            {detailsOpen && entity && !transport && (
+              <PresenceFrame
+                id={detailId}
+                className="journey-card-details"
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0, transition: { duration: duration.base, ease: easing.decelerate } }}
+                exit={{ opacity: 0, y: -4, transition: { duration: duration.fast, ease: easing.accelerate } }}
+              >
+                <TimelineEntityDetails bundle={bundle} entity={entity} />
+              </PresenceFrame>
+            )}
+          </AnimatePresence>
+        </div>
       </article>
     </m.li>
   );

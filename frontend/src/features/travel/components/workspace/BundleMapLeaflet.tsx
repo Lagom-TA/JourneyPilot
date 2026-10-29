@@ -250,15 +250,17 @@ function EntranceMarker({ pin, selected, linked, seen, onSelect, onLink, onUnlin
 }
 const CLOSE_ENOUGH_ZOOM = 14;
 const FOCUS_ZOOM = 15;
-function MapViewport({ places, lines, selectedEntityId, linkedEntityId, overlayOffset = 0, }: Pick<BundleMapLeafletProps, 'places' | 'selectedEntityId' | 'linkedEntityId' | 'overlayOffset'> & {
+function MapViewport({ places, lines, selectedEntityId, overlayOffset = 0, }: Pick<BundleMapLeafletProps, 'places' | 'selectedEntityId' | 'overlayOffset'> & {
     lines: RouteLines[];
 }) {
     const map = useMap();
     const lastTarget = React.useRef('');
     const lastDataKey = React.useRef<string | null>(null);
+    const lastOverlayOffset = React.useRef(overlayOffset);
     const reducedMotion = useReducedMotion();
+    // 相机只认显式选中：悬浮／聚焦高亮不进入这个 effect 的依赖，也不构成聚焦目标。
     React.useEffect(() => {
-        const focusedEntityId = resolveMapFocusEntityId(selectedEntityId, linkedEntityId);
+        const focusedEntityId = resolveMapFocusEntityId(selectedEntityId);
         const focusedPlace = places.find((place) => (
             place.markerKind !== 'transport_endpoint' && place.entity_ref.entity_id === focusedEntityId
         ));
@@ -271,12 +273,15 @@ function MapViewport({ places, lines, selectedEntityId, linkedEntityId, overlayO
         ];
         const dataKey = mapViewportDataKey(allPoints);
         const previousDataKey = lastDataKey.current;
+        const previousOverlayOffset = lastOverlayOffset.current;
         lastDataKey.current = dataKey;
+        lastOverlayOffset.current = overlayOffset;
+        const hasSelection = Boolean(focusedPoint) || focusedPoints.length > 0;
         const fitAllOnContextChange = shouldAutoFitMap({
             dataKey,
             previousDataKey,
-            hasFocusTarget: Boolean(focusedPoint) || focusedPoints.length > 0,
-        });
+            hasSelection,
+        }) || (!hasSelection && previousOverlayOffset !== overlayOffset);
         if (focusedPlace && focusedPoint) {
             const key = `place:${focusedPlace.entity_ref.entity_id}`;
             if (lastTarget.current === key) return;
@@ -299,7 +304,7 @@ function MapViewport({ places, lines, selectedEntityId, linkedEntityId, overlayO
         if (!fitAllOnContextChange || allPoints.length === 0) return;
         if (allPoints.length === 1) map.setView(map.unproject(map.project(allPoints[0], 13).subtract([overlayOffset / 2, 0]), 13), 13, { animate: !reducedMotion });
         else map.fitBounds(L.latLngBounds(allPoints), { paddingTopLeft: [overlayOffset + 32, 76], paddingBottomRight: [32, 32], maxZoom: FOCUS_ZOOM, animate: !reducedMotion });
-    }, [map, places, lines, selectedEntityId, linkedEntityId, reducedMotion, overlayOffset]);
+    }, [map, places, lines, selectedEntityId, reducedMotion, overlayOffset]);
     React.useEffect(() => {
         map.invalidateSize();
         const frame = window.requestAnimationFrame(() => map.invalidateSize());
@@ -344,7 +349,7 @@ export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, rout
     const lines = useRouteLines(routes);
     const groups = React.useMemo(() => groupBundleMapPlaces(places), [places]);
     const pins = usePins(groups, expandedGroupId);
-    const focusedEntityId = resolveMapFocusEntityId(selectedEntityId, linkedEntityId);
+    const focusedEntityId = resolveMapFocusEntityId(selectedEntityId);
     React.useEffect(() => {
         setExpandedGroupId((current) => current && groups.some((group) => group.id === current) ? current : null);
     }, [groups]);
@@ -378,7 +383,7 @@ export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, rout
             tileerror: () => { tileErrors.current += 1; setBasemap('degraded'); },
         }}/>
       <ZoomControl position="bottomright" />
-      <MapViewport places={places} lines={lines} selectedEntityId={selectedEntityId} linkedEntityId={linkedEntityId} overlayOffset={overlayOffset}/>
+      <MapViewport places={places} lines={lines} selectedEntityId={selectedEntityId} overlayOffset={overlayOffset}/>
       {lines.map(({ route, segments }) => {
             const routeId = route.entity_ref.entity_id;
             const selected = routeId === selectedEntityId;

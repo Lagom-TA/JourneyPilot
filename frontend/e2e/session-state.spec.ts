@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { deliveryBundle, sessionDetail, sessionSummary } from './fixtures/sessionData';
-import { xianMixedTransportBundle } from './fixtures/xianBundle';
+import { xianLayoutBundle, xianMixedTransportBundle, xianTransportDisplayBundle } from './fixtures/xianBundle';
 
 test.skip(process.env.JP_SESSION_STATE_E2E !== '1', 'Explicit offline session-state opt-in required');
 const baseURL = process.env.JOURNEYPILOT_APP_URL || '';
@@ -120,6 +121,58 @@ async function assertOffline(page: Page, fixture: Awaited<ReturnType<typeof offl
   expect(fixture.pageErrors).toEqual([]); expect(fixture.escapes).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await test.info().attach('offline-boundaries', { body: JSON.stringify(fixture, null, 2), contentType: 'application/json' });
+}
+
+// 相机证据取自真实地图状态：瓦片 z 是当前缩放级别，Marker 在容器中的屏幕坐标
+// 覆盖平移与中心，map pane transform 一并留档；任一项变化都说明相机动过。
+type MapCamera = {
+  zoom: string[];
+  pane: string | null;
+  markers: Record<string, [number, number] | null>;
+};
+async function mapCamera(page: Page, markerIds: string[]): Promise<MapCamera> {
+  return page.evaluate((ids) => {
+    const map = document.querySelector('[data-testid="bundle-leaflet-map"]');
+    if (!map) throw new Error('map container is missing');
+    const mapBox = map.getBoundingClientRect();
+    const markers: Record<string, [number, number] | null> = {};
+    for (const id of ids) {
+      const marker = map.querySelector(`[data-bundle-map-entity="${id}"]`);
+      if (!marker) { markers[id] = null; continue; }
+      const box = marker.getBoundingClientRect();
+      markers[id] = [
+        Math.round((box.x + box.width / 2 - mapBox.x) * 10) / 10,
+        Math.round((box.y + box.height / 2 - mapBox.y) * 10) / 10,
+      ];
+    }
+    const pane = map.querySelector('.leaflet-map-pane') as HTMLElement | null;
+    const tileZooms = Array.from(map.querySelectorAll<HTMLImageElement>('.leaflet-tile'))
+      .map(tile => /[?&]z=(\d+)/.exec(tile.src)?.[1])
+      .filter((value): value is string => Boolean(value));
+    const zoom = Array.from(new Set(tileZooms)).sort();
+    return { zoom, pane: pane ? pane.style.transform : null, markers };
+  }, markerIds);
+}
+async function settleMap(page: Page) {
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+}
+// 等到连续两次快照一致才取值，甩动惯性或拖动收尾都不算相机自己动。
+async function settledCamera(page: Page, markerIds: string[]): Promise<MapCamera> {
+  await expect.poll(async () => (await mapCamera(page, markerIds)).zoom.length, { timeout: 8000 }).toBeGreaterThan(0);
+  let previous = await mapCamera(page, markerIds);
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    await page.waitForTimeout(100);
+    const current = await mapCamera(page, markerIds);
+    if (JSON.stringify(current) === JSON.stringify(previous)) return current;
+    previous = current;
+  }
+  return previous;
+}
+async function expectCameraHeld(page: Page, expected: MapCamera, markerIds = Object.keys(expected.markers)) {
+  await settleMap(page);
+  expect(await mapCamera(page, markerIds), 'map camera must not move').toEqual(expected);
 }
 
 test('restores persisted history and switches sessions without carrying the other answer', async ({ page }) => {
@@ -579,6 +632,8 @@ test('desktop itinerary cards and map stay linked across hover, selection, days 
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
+  await expect(page.locator('.journey-title-row h1')).toHaveText('西安两日 · 秦唐风物');
+  await expect(page.locator('.journey-sidebar-header > p').first()).toContainText('西安 · 2 天');
   await expect(page.getByTestId('itinerary-card-flow')).toHaveCount(0);
   await expect(page.getByTestId('day-summary-card-day-1')).toBeVisible();
   await page.getByTestId('day-summary-card-day-1').click();
@@ -593,32 +648,105 @@ test('desktop itinerary cards and map stay linked across hover, selection, days 
   expect(await page.locator('.leaflet-overlay-pane path').evaluateAll(paths => paths.flatMap(path => path.getAnimations()).length)).toBe(0);
 
   const terracotta = page.locator('[data-itinerary-occurrence="d1-terracotta"]');
+  const dayan = page.locator('[data-itinerary-occurrence="d1-dayan"]');
   const marker = page.locator('[data-bundle-map-entity="visit-terracotta"]');
+  const dayanMarker = page.locator('[data-bundle-map-entity="visit-dayan"]');
   const map = page.getByTestId('bundle-leaflet-map');
+  const mapTrigger = terracotta.getByRole('button', { name: '在地图查看', exact: true });
+  const detail = page.getByTestId('map-place-detail');
+  const initialCamera = await settledCamera(page, ['visit-terracotta', 'visit-dayan']);
+  expect(initialCamera.zoom).toHaveLength(1);
+  const contentScroll = page.getByTestId('interactive-itinerary');
+  const scrollBefore = await contentScroll.evaluate(node => node.scrollTop);
+
+  // 没有选中项：连续 hover 地点卡与路线只联动高亮，相机和详情都不动。
   await terracotta.hover();
   await expect(marker).toHaveAttribute('data-linked', 'on');
   await expect(terracotta).toHaveAttribute('data-linked', 'on');
-  await expect.poll(async () => {
-    const [mapBox, markerBox] = await Promise.all([map.boundingBox(), marker.boundingBox()]);
-    if (!mapBox || !markerBox) return false;
-    const markerCenterX = markerBox.x + markerBox.width / 2;
-    const markerCenterY = markerBox.y + markerBox.height / 2;
-    const mapCenterX = mapBox.x + mapBox.width / 2 + 230;
-    const mapCenterY = mapBox.y + mapBox.height / 2;
-    return Math.abs(markerCenterX - mapCenterX) < 40 && Math.abs(markerCenterY - mapCenterY) < 40;
-  }).toBe(true);
+  await expectCameraHeld(page, initialCamera);
+  expect(await contentScroll.evaluate(node => node.scrollTop)).toBe(scrollBefore);
 
-  const mapTrigger = terracotta.getByRole('button', { name: '在地图查看', exact: true });
+  await dayan.hover();
+  await expect(dayanMarker).toHaveAttribute('data-linked', 'on');
+  await expect(marker).not.toHaveAttribute('data-linked', 'on');
+  await expect(dayan).toHaveAttribute('data-linked', 'on');
+  await expectCameraHeld(page, initialCamera);
+  await expect(page.getByRole('button', { name: '第 1 天', exact: true })).toHaveAttribute('aria-pressed', 'true');
+
+  const routePoint = await page.locator('.leaflet-overlay-pane path[data-route-segment="segment-terracotta-lunch"]').evaluate((path) => {
+    const element = path as SVGPathElement;
+    const point = element.getPointAtLength(element.getTotalLength() / 2);
+    const matrix = element.getScreenCTM();
+    if (!matrix) throw new Error('route has no screen matrix');
+    return { x: matrix.a * point.x + matrix.c * point.y + matrix.e, y: matrix.b * point.x + matrix.d * point.y + matrix.f };
+  });
+  await page.mouse.move(routePoint.x, routePoint.y);
+  await expect(page.locator('[data-itinerary-occurrence="d1-transfer-lunch"]')).toHaveAttribute('data-linked', 'on');
+  await expectCameraHeld(page, initialCamera);
+  await page.mouse.move(4, 4);
+  await expectCameraHeld(page, initialCamera);
+  await expect(detail).toHaveCount(0);
+
+  // 地图 Marker 的 hover 也只联动高亮，与卡片 hover 同一边界。
+  await marker.hover();
+  await expect(terracotta).toHaveAttribute('data-linked', 'on');
+  await expectCameraHeld(page, initialCamera);
+
+  // 显式点击才定位并打开详情。
   await mapTrigger.click();
-  await expect(page.getByTestId('map-place-detail')).toBeVisible();
+  await expect(detail).toBeVisible();
   await expect(terracotta).toHaveAttribute('data-selected', 'on');
+  await expect.poll(async () => (await mapCamera(page, ['visit-terracotta'])).markers['visit-terracotta']).not.toEqual(initialCamera.markers['visit-terracotta']);
+  const focusedCamera = await settledCamera(page, ['visit-terracotta', 'visit-dayan']);
+  const mapBox = await map.boundingBox();
+  const panelBox = await page.locator('.journey-floating-panel').boundingBox();
+  const focusedBox = await marker.boundingBox();
+  expect(mapBox).not.toBeNull();
+  expect(panelBox).not.toBeNull();
+  expect(focusedBox).not.toBeNull();
+  // 相机偏移来自面板右缘，不在测试里复制一个固定像素。
+  const expectedShift = (panelBox!.x + panelBox!.width + 20 - mapBox!.x) / 2;
+  expect(Math.abs(focusedBox!.x + focusedBox!.width / 2 - (mapBox!.x + mapBox!.width / 2 + expectedShift))).toBeLessThan(40);
+  expect(Math.abs(focusedBox!.y + focusedBox!.height / 2 - (mapBox!.y + mapBox!.height / 2))).toBeLessThan(40);
+
+  // 已有锁定项时，hover 其他地点仍只是高亮：相机不动、详情不换。
+  await dayan.hover();
+  await expect(page.locator('[data-bundle-map-entity="visit-dayan"]')).toHaveAttribute('data-linked', 'on');
+  await expect(detail).toContainText('兵马俑');
+  await expectCameraHeld(page, focusedCamera);
+
+  // 关闭详情后的焦点恢复只做高亮，不把相机拉回全程，也不重新打开详情。
   await page.getByRole('button', { name: '关闭地点详情', exact: true }).click();
   await expect(mapTrigger).toBeFocused();
+  await expect(detail).toHaveCount(0);
+  await expectCameraHeld(page, focusedCamera);
 
+  // 键盘聚焦只高亮；Enter 激活才算显式操作。
+  await page.mouse.move(4, 4);
+  await expectCameraHeld(page, focusedCamera);
+  await page.keyboard.press('Tab');
+  await expect(terracotta.getByRole('button', { name: '查看详情', exact: true })).toBeFocused();
+  await expect(terracotta).toHaveAttribute('data-linked', 'on');
+  await expectCameraHeld(page, focusedCamera);
+  await page.keyboard.press('Shift+Tab');
+  await expect(mapTrigger).toBeFocused();
+  await expectCameraHeld(page, focusedCamera);
+  await mapTrigger.press('Enter');
+  await expect(detail).toBeVisible();
+  await expectCameraHeld(page, focusedCamera);
+  await page.keyboard.press('Escape');
+  await expect(detail).toHaveCount(0);
+  await expect(mapTrigger).toBeFocused();
+  await expectCameraHeld(page, focusedCamera);
+
+  // 真正的数据上下文变化（切日）仍然自动适配相机。
   await page.getByRole('button', { name: '第 2 天', exact: true }).click();
   await expect(page.locator('[data-itinerary-occurrence]')).toHaveCount(7);
   await expect(page.locator('[data-bundle-map-entity]')).toHaveCount(4);
   await expect(page.locator('.leaflet-overlay-pane path[data-route-entity]')).toHaveCount(3);
+  await expect.poll(async () => (await mapCamera(page, ['visit-shaanxi-museum'])).markers['visit-shaanxi-museum']).not.toBeNull();
+  const dayTwoCamera = await settledCamera(page, ['visit-shaanxi-museum', 'visit-yongning-gate']);
+  expect(dayTwoCamera.zoom).not.toEqual(initialCamera.zoom);
   await page.getByRole('button', { name: '图层', exact: true }).click();
   await page.getByRole('checkbox', { name: '餐饮', exact: true }).uncheck();
   await expect(page.locator('[data-bundle-map-entity]')).toHaveCount(3);
@@ -636,7 +764,258 @@ test('desktop itinerary cards and map stay linked across hover, selection, days 
   await page.getByRole('button', { name: '返回地图', exact: true }).click();
   await expect(page.getByTestId('itinerary-card-flow')).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __journeyMapElement: Element | null }).__journeyMapElement === document.querySelector('[data-testid="bundle-leaflet-map"]'))).toBe(true);
+  // 回到第 1 天：数据上下文再次改变，无选中项时相机回到与初次相同的视野。
+  await page.getByRole('button', { name: '第 1 天', exact: true }).click();
+  await expect.poll(async () => (await mapCamera(page, ['visit-terracotta'])).markers['visit-terracotta']).not.toBeNull();
+  await settleMap(page);
+  await expectCameraHeld(page, initialCamera);
   await page.screenshot({ path: test.info().outputPath('desktop-xian-floating-panel.png'), fullPage: true });
+
+  // 可画市内路线的显式操作也保留：点击“查看路线”才进入路线视野。
+  await page.locator('[data-itinerary-occurrence="d1-transfer-lunch"]').getByRole('button', { name: '查看路线', exact: true }).click();
+  await expect(page.getByTestId('map-place-detail')).toContainText('24 分钟');
+  await expect(page.getByTestId('map-place-detail')).toContainText('9.2 公里');
+  await expect.poll(async () => (await mapCamera(page, ['visit-terracotta'])).markers['visit-terracotta']).not.toEqual(initialCamera.markers['visit-terracotta']);
+  const routeCamera = await settledCamera(page, ['visit-terracotta', 'visit-dayan']);
+  await page.getByRole('button', { name: '关闭地点详情', exact: true }).click();
+  await expect(page.getByTestId('map-place-detail')).toHaveCount(0);
+  await expectCameraHeld(page, routeCamera);
+
+  // 用户手动拖动后，普通悬浮不再把视野抢回。
+  const dragFrom = await map.boundingBox();
+  expect(dragFrom).not.toBeNull();
+  await page.mouse.move(dragFrom!.x + 900, dragFrom!.y + 700);
+  await page.mouse.down();
+  await page.mouse.move(dragFrom!.x + 820, dragFrom!.y + 620, { steps: 8 });
+  await page.mouse.up();
+  const draggedCamera = await settledCamera(page, ['visit-terracotta', 'visit-dayan']);
+  expect(draggedCamera).not.toEqual(initialCamera);
+  await terracotta.hover();
+  await expect(terracotta).toHaveAttribute('data-linked', 'on');
+  await expectCameraHeld(page, draggedCamera);
+  await assertOffline(page, fixture);
+});
+
+test('map detail switches selections without overlapping detail panels', async ({ page }) => {
+  const fixture = await offlineApp(page, { bundle: true });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.goto('/');
+  await page.getByTestId('day-summary-card-day-1').click();
+  await page.locator('[data-itinerary-occurrence="d1-terracotta"]').getByRole('button', { name: '在地图查看', exact: true }).click();
+  const detail = page.getByTestId('map-place-detail');
+  await expect(detail).toContainText('兵马俑');
+  await page.evaluate(() => {
+    const evidence = { maximum: 0 };
+    (window as unknown as { detailPanelEvidence: typeof evidence }).detailPanelEvidence = evidence;
+    new MutationObserver(() => {
+      evidence.maximum = Math.max(evidence.maximum, document.querySelectorAll('[data-testid="map-place-detail"]').length);
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+  await page.locator('[data-itinerary-occurrence="d1-dayan"]').getByRole('button', { name: '在地图查看', exact: true }).click();
+  await expect(detail).toContainText('大雁塔');
+  await page.locator('[data-itinerary-occurrence="d1-terracotta"]').getByRole('button', { name: '在地图查看', exact: true }).click();
+  await expect(detail).toContainText('兵马俑');
+  expect(await page.evaluate(() => (window as unknown as { detailPanelEvidence: { maximum: number } }).detailPanelEvidence.maximum)).toBe(1);
+  await assertOffline(page, fixture);
+});
+
+test('desktop itinerary layout evidence keeps the panel wide and weather on the date row', async ({ page }) => {
+  const fixture = await offlineApp(page, { bundle: true, bundleData: xianLayoutBundle({ dayCount: 5, longTitle: true, weather: 'mixed' }) });
+  const evidenceDir = '../output/polish/20261029-1917-workspace-visual';
+  mkdirSync(evidenceDir, { recursive: true });
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await expect(page.locator('.journey-title-row h1')).toContainText('去西安看秋风里的城墙');
+  await expect(page.locator('.day-summary-card')).toHaveCount(5);
+  const panelBox = await page.locator('.journey-floating-panel').boundingBox();
+  expect(panelBox).not.toBeNull();
+  expect(panelBox!.width).toBeGreaterThanOrEqual(600);
+  expect(panelBox!.width).toBeLessThanOrEqual(640);
+  const controlsBox = await page.locator('.journey-map-top-controls').boundingBox();
+  expect(controlsBox).not.toBeNull();
+  expect(controlsBox!.x).toBeGreaterThanOrEqual(panelBox!.x + panelBox!.width);
+  await page.screenshot({ path: `${evidenceDir}/overview-2000.png`, fullPage: true });
+
+  await page.getByTestId('day-summary-card-day-1').click();
+  const header = page.getByTestId('day-header-day-1');
+  await expect(header).toBeVisible();
+  await expect(page.getByTestId('trip-overview')).toHaveCount(0);
+  const metaBox = await header.locator('.journey-day-header-meta').boundingBox();
+  const weatherBox = await header.getByTestId('day-weather-badge').boundingBox();
+  const sectionRight = await header.evaluate((node) => node.parentElement!.getBoundingClientRect().right);
+  expect(metaBox && weatherBox).not.toBeNull();
+  expect(Math.abs((weatherBox!.y + weatherBox!.height / 2) - (metaBox!.y + metaBox!.height / 2))).toBeLessThan(4);
+  expect(sectionRight - (weatherBox!.x + weatherBox!.width)).toBeLessThan(40);
+  expect(await header.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: `${evidenceDir}/day-2000.png`, fullPage: true });
+  await assertOffline(page, fixture);
+});
+
+test('desktop itinerary layout evidence holds at 1440 and 1280', async ({ page }) => {
+  const fixture = await offlineApp(page, { bundle: true, bundleData: xianLayoutBundle({ dayCount: 5, weather: 'mixed' }) });
+  const evidenceDir = '../output/polish/20261029-1917-workspace-visual';
+  mkdirSync(evidenceDir, { recursive: true });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  for (const viewport of [{ width: 1440, height: 960 }, { width: 1280, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto('/');
+    await expect(page.locator('.day-summary-card')).toHaveCount(5);
+    await page.getByTestId('day-summary-card-day-1').click();
+    const header = page.getByTestId('day-header-day-1');
+    await expect(header).toBeVisible();
+    await expect(page.getByTestId('trip-overview')).toHaveCount(0);
+    const metaBox = await header.locator('.journey-day-header-meta').boundingBox();
+    const weatherBox = await header.getByTestId('day-weather-badge').boundingBox();
+    const panelBox = await page.locator('.journey-floating-panel').boundingBox();
+    const controlsBox = await page.locator('.journey-map-top-controls').boundingBox();
+    expect(metaBox && weatherBox && panelBox && controlsBox).not.toBeNull();
+    expect(panelBox!.width).toBeGreaterThanOrEqual(viewport.width === 1440 ? 550 : 510);
+    expect(controlsBox!.x).toBeGreaterThanOrEqual(panelBox!.x + panelBox!.width);
+    expect(Math.abs((weatherBox!.y + weatherBox!.height / 2) - (metaBox!.y + metaBox!.height / 2))).toBeLessThan(4);
+    await page.screenshot({ path: `${evidenceDir}/day-${viewport.width}.png`, fullPage: true });
+    await assertOffline(page, fixture);
+  }
+});
+
+test('phone itinerary layout evidence handles 14 days, a long title and missing weather', async ({ page }) => {
+  const fixture = await offlineApp(page, { bundle: true, bundleData: xianLayoutBundle({ dayCount: 14, longTitle: true }) });
+  const evidenceDir = '../output/polish/20261029-1917-workspace-visual';
+  mkdirSync(evidenceDir, { recursive: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await page.getByTestId('canvas-pill').click();
+  const sheet = page.getByTestId('canvas-sheet');
+  await expect(sheet.locator('.day-summary-card')).toHaveCount(14);
+  await sheet.getByTestId('sheet-handle').click();
+  await expect(sheet).toHaveAttribute('data-detent', '92');
+  await page.screenshot({ path: `${evidenceDir}/phone-overview-14.png`, fullPage: true });
+  const lastDay = sheet.getByTestId('day-summary-card-day-14');
+  await lastDay.evaluate((node) => {
+    const scroller = node.closest('.journey-content-scroll');
+    if (!scroller) return;
+    const nodeRect = node.getBoundingClientRect();
+    const scrollerRect = scroller.getBoundingClientRect();
+    scroller.scrollTop += nodeRect.top - scrollerRect.top - 72;
+  });
+  await expect(lastDay).toBeInViewport();
+  await lastDay.click();
+  await expect(sheet.getByTestId('day-header-day-14')).toBeVisible();
+  await expect(sheet.getByTestId('trip-overview')).toHaveCount(0);
+  await expect(sheet.getByTestId('day-header-day-14').getByTestId('day-weather-badge')).toHaveCount(0);
+  expect(await sheet.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: `${evidenceDir}/phone-day-14.png`, fullPage: true });
+  await sheet.getByTestId('day-overview-back').click();
+  await expect(lastDay).toBeFocused();
+  await assertOffline(page, fixture);
+});
+
+test('phone itinerary layout evidence handles a single day', async ({ page }) => {
+  const fixture = await offlineApp(page, { bundle: true, bundleData: xianLayoutBundle({ dayCount: 1, weather: 'mixed' }) });
+  const evidenceDir = '../output/polish/20261029-1917-workspace-visual';
+  mkdirSync(evidenceDir, { recursive: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await page.getByTestId('canvas-pill').click();
+  const sheet = page.getByTestId('canvas-sheet');
+  await expect(sheet.locator('.day-summary-card')).toHaveCount(1);
+  await sheet.getByTestId('sheet-handle').click();
+  await expect(sheet).toHaveAttribute('data-detent', '92');
+  await sheet.getByTestId('day-summary-card-day-1').click();
+  await expect(sheet.getByTestId('day-header-day-1')).toBeVisible();
+  await expect(sheet.getByTestId('trip-overview')).toHaveCount(0);
+  expect(await sheet.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: `${evidenceDir}/phone-day-1.png`, fullPage: true });
+  await assertOffline(page, fixture);
+});
+
+test('desktop today view keeps hover highlights still and selects only on explicit activation', async ({ page }) => {
+  const fixture = await offlineApp(page, { bundle: true });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await expect(page.getByTestId('bundle-leaflet-map')).toBeVisible();
+  await page.getByRole('button', { name: '旅中查看', exact: true }).click();
+  const timeline = page.getByTestId('day-timeline');
+  await expect(timeline).toBeVisible();
+  await expect(timeline.locator('[data-testid^="day-timeline-node-"]')).toHaveCount(7);
+  const camera = await settledCamera(page, ['visit-terracotta', 'visit-dayan']);
+  expect(camera.zoom).toHaveLength(1);
+
+  // 今天视图与普通日程一样：悬浮时间线只高亮，相机、日期与详情均不动。
+  const terracotta = page.getByTestId('day-timeline-node-d1-terracotta');
+  const dayan = page.getByTestId('day-timeline-node-d1-dayan');
+  await terracotta.hover();
+  await expect(terracotta).toHaveAttribute('data-linked', 'on');
+  await expect(page.locator('[data-bundle-map-entity="visit-terracotta"]')).toHaveAttribute('data-linked', 'on');
+  await expectCameraHeld(page, camera);
+
+  await dayan.hover();
+  await expect(dayan).toHaveAttribute('data-linked', 'on');
+  await expect(terracotta).not.toHaveAttribute('data-linked', 'on');
+  await expectCameraHeld(page, camera);
+
+  // 地图 Marker 的点击仍是显式定位，并打开对应详情。
+  await page.locator('[data-bundle-map-entity="visit-dayan"]').click();
+  const detail = page.getByTestId('map-place-detail');
+  await expect(detail).toBeVisible();
+  await expect(detail).toContainText('大雁塔');
+  await expect.poll(async () => (await mapCamera(page, ['visit-dayan'])).markers['visit-dayan']).not.toEqual(camera.markers['visit-dayan']);
+  const focusedCamera = await settledCamera(page, ['visit-terracotta', 'visit-dayan']);
+
+  // 已有选中项后，悬浮其他时间线节点不再移动相机，也不换详情。
+  await terracotta.hover();
+  await expect(terracotta).toHaveAttribute('data-linked', 'on');
+  await expect(detail).toContainText('大雁塔');
+  await expectCameraHeld(page, focusedCamera);
+
+  await page.getByRole('button', { name: '关闭地点详情', exact: true }).click();
+  await expect(detail).toHaveCount(0);
+  await page.mouse.move(4, 4);
+  await expectCameraHeld(page, focusedCamera);
+  await page.screenshot({ path: test.info().outputPath('desktop-today-hover-stable.png'), fullPage: true });
+  await assertOffline(page, fixture);
+});
+
+test('hover intent evidence records camera state for hover and explicit selection', async ({ page }) => {
+  const fixture = await offlineApp(page, { bundle: true });
+  const evidenceDir = '../output/polish/20261029-1917-hover-intent';
+  mkdirSync(evidenceDir, { recursive: true });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await page.getByTestId('day-summary-card-day-1').click();
+  await expect(page.locator('[data-itinerary-occurrence]')).toHaveCount(7);
+  await settleMap(page);
+  const markerIds = ['visit-terracotta', 'visit-dayan'];
+  const snapshots: Record<string, MapCamera> = {};
+  const capture = async (name: string) => {
+    snapshots[name] = await settledCamera(page, markerIds);
+    await page.screenshot({ path: `${evidenceDir}/${name}.png` });
+  };
+
+  await capture('hover-before');
+  await page.locator('[data-itinerary-occurrence="d1-terracotta"]').hover();
+  await settleMap(page);
+  await capture('hover-terracotta');
+  await page.locator('[data-itinerary-occurrence="d1-dayan"]').hover();
+  await settleMap(page);
+  await capture('hover-dayan');
+  expect(snapshots['hover-terracotta']).toEqual(snapshots['hover-before']);
+  expect(snapshots['hover-dayan']).toEqual(snapshots['hover-before']);
+
+  await page.locator('[data-itinerary-occurrence="d1-terracotta"]').getByRole('button', { name: '在地图查看', exact: true }).click();
+  await expect(page.getByTestId('map-place-detail')).toBeVisible();
+  await settleMap(page);
+  await capture('selected-terracotta');
+  expect(snapshots['selected-terracotta'].markers['visit-terracotta']).not.toEqual(snapshots['hover-before'].markers['visit-terracotta']);
+  writeFileSync(`${evidenceDir}/camera-stability.json`, JSON.stringify({
+    viewport: '1440x960',
+    note: 'zoom 取自瓦片 z；markers 为 Marker 中心相对地图容器的屏幕坐标；pane 为 Leaflet map pane transform',
+    snapshots,
+  }, null, 2));
   await assertOffline(page, fixture);
 });
 
@@ -708,6 +1087,122 @@ test('mixed transport map stays clean and usable on a phone', async ({ page }) =
   await expect(page.getByTestId('canvas-pill')).toBeVisible();
   await page.waitForTimeout(500);
   await page.screenshot({ path: test.info().outputPath('phone-mixed-transport-map.png'), fullPage: true });
+  await assertOffline(page, fixture);
+});
+
+test('mixed transport display merges headings and keeps station truth', async ({ page }) => {
+  const fixture = await offlineApp(page, { bundle: true, bundleData: xianTransportDisplayBundle() });
+  const evidenceDir = '../output/polish/20261029-1917-transport-display';
+  mkdirSync(evidenceDir, { recursive: true });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await page.getByTestId('day-summary-card-day-1').click();
+
+  const rail = page.getByTestId('transport-card-leg-display-rail');
+  await expect(rail).toBeVisible();
+  await expect(rail).toContainText('高铁');
+  await expect(rail).toContainText('G382');
+  await expect(rail).toContainText('11:41–19:30');
+  await expect(rail).toContainText('7 小时 49 分钟');
+  await expect(rail).toContainText('¥1,108');
+  await expect(rail.locator('.transport-mode-icon')).toHaveCount(1);
+  await expect(rail).not.toContainText('班次');
+  await expect(rail).not.toContainText('IOQ');
+  await expect(rail).not.toContainText('BXP');
+  await expect(rail).not.toContainText('直达');
+  const railSummary = rail.getByTestId('transport-summary');
+  await expect(railSummary.locator('dt.sr-only')).toHaveCount(2);
+  await expect(railSummary).not.toContainText('换乘');
+  const railOccurrence = page.locator('[data-itinerary-occurrence="d1-display-rail"]');
+  await expect(railOccurrence.locator('[data-timeline-domain="transport"]')).toHaveCount(0);
+  await expect(railOccurrence.getByText('11:41–19:30')).toHaveCount(1);
+  await expect(railOccurrence.getByRole('button', { name: '查看路线', exact: true })).toHaveCount(0);
+
+  const flight = page.getByTestId('transport-card-leg-display-flight');
+  await expect(flight).toContainText('飞机');
+  await expect(flight).toContainText('CA1234');
+  await expect(flight).toContainText('PEK');
+  await expect(flight).toContainText('XIY');
+  await expect(flight.locator('.transport-mode-icon')).toHaveCount(1);
+  await expect(flight).not.toContainText('班次');
+  await expect(page.locator('[data-itinerary-occurrence="d1-display-flight"]').getByRole('button', { name: '查看路线', exact: true })).toHaveCount(0);
+
+  const direct = page.getByTestId('transport-card-leg-display-metro-direct');
+  await expect(direct).toContainText('钟楼站');
+  await expect(direct).toContainText('小寨站');
+  await expect(direct).toContainText('42 分钟');
+  await expect(direct).toContainText('¥5');
+  await expect(direct).not.toContainText('市内公共交通');
+  await expect(direct).not.toContainText('换乘');
+  await expect(direct).not.toContainText('直达');
+  await expect(direct.getByTestId('transport-summary').locator('dt.sr-only')).toHaveCount(2);
+  await expect(direct).not.toContainText('西安钟楼饭店');
+  await expect(direct).not.toContainText('陕西历史博物馆');
+  await expect(direct.locator('.transport-mode-icon')).toHaveCount(1);
+  await expect(direct.getByTestId('transport-segments-toggle')).toContainText('展开 3 个路线步骤');
+
+  const transfer = page.getByTestId('transport-card-leg-display-metro-transfer');
+  await expect(transfer).toContainText('北大街站（地铁2号线·4号线换乘）');
+  await expect(transfer).toContainText('大雁塔站（雁塔北路南口）');
+  await expect(transfer).toContainText('换乘 1 次');
+  await expect(transfer).toContainText('¥6');
+  await expect(transfer).not.toContainText('市内公共交通');
+  await expect(transfer.getByTestId('transport-summary').locator('dt.sr-only')).toHaveCount(2);
+
+  const mixed = page.getByTestId('transport-card-leg-display-metro-mixed');
+  await expect(mixed).toContainText('地铁 / 公交');
+  await expect(mixed).toContainText('地铁 北大街站（地铁2号线·4号线换乘）');
+  await expect(mixed).toContainText('地铁 钟楼站');
+  await expect(mixed).not.toContainText('公交 钟楼站');
+  await expect(mixed).not.toContainText('换乘 1 次');
+  await expect(mixed).not.toContainText('换乘 2 次');
+
+  const unproven = page.getByTestId('transport-card-leg-display-metro-unproven');
+  await expect(unproven).toContainText('27 分钟');
+  await expect(unproven).not.toContainText('陕西历史博物馆');
+  await expect(unproven).not.toContainText('子午路张记肉夹馍（小寨店）');
+  await expect(unproven).not.toContainText('¥0');
+  await expect(unproven).not.toContainText('换乘');
+
+  await page.screenshot({ path: `${evidenceDir}/transport-desktop-1440.png`, fullPage: true });
+
+  await transfer.evaluate((node) => {
+    const scroller = node.closest('.journey-content-scroll');
+    if (!scroller) return;
+    const nodeRect = node.getBoundingClientRect();
+    const scrollerRect = scroller.getBoundingClientRect();
+    scroller.scrollTop += nodeRect.top - scrollerRect.top - 120;
+  });
+  await expect(transfer).toBeInViewport();
+  await page.screenshot({ path: `${evidenceDir}/transport-metro-desktop-1440.png`, fullPage: true });
+
+  await direct.getByTestId('transport-segments-toggle').click();
+  await expect(direct.getByTestId('transport-segments')).toBeVisible();
+  await expect(direct).toContainText('地铁2号线');
+  await expect(direct).not.toContainText('3 次换乘');
+  await direct.getByTestId('transport-segments-toggle').click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.getByTestId('canvas-pill').click();
+  const sheet = page.getByTestId('canvas-sheet');
+  await sheet.getByTestId('sheet-handle').click();
+  await expect(sheet).toHaveAttribute('data-detent', '92');
+  await sheet.getByTestId('day-summary-card-day-1').click();
+  const phoneTransfer = sheet.getByTestId('transport-card-leg-display-metro-transfer');
+  await expect(phoneTransfer).toBeVisible();
+  await page.waitForTimeout(600);
+  await phoneTransfer.evaluate((node) => {
+    const scroller = node.closest('.journey-content-scroll');
+    if (!scroller) return;
+    const nodeRect = node.getBoundingClientRect();
+    const scrollerRect = scroller.getBoundingClientRect();
+    scroller.scrollTop += nodeRect.top - scrollerRect.top - 120;
+  });
+  await expect(phoneTransfer).toBeInViewport();
+  expect(await sheet.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: `${evidenceDir}/transport-phone-390.png`, fullPage: true });
   await assertOffline(page, fixture);
 });
 

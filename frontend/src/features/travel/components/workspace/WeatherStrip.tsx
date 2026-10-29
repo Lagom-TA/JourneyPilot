@@ -42,13 +42,13 @@ export const DayWeatherBadge: React.FC<{
     weather: DayWeatherVM;
 }> = ({ weather }) => {
     if (weather.dataKind === 'seasonal_baseline') {
-        return (<span data-testid="day-weather-badge" className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-label bg-surface px-2.5 py-1 text-[11px] font-medium text-ink-secondary">
+        return (<span data-testid="day-weather-badge" className="inline-flex min-h-6 max-w-full items-center gap-1.5 text-[11px] font-medium text-ink-secondary">
         <CalendarRange size={13} className="shrink-0 text-chart" aria-hidden/>
         <span className="break-words">季节参考{weather.temperatureLabel ? ` · 常见 ${weather.temperatureLabel}` : ''}</span>
         <WeatherFreshnessBadge weather={weather}/>
       </span>);
     }
-    return (<span data-testid="day-weather-badge" className="inline-flex min-h-7 max-w-full items-center gap-1.5 rounded-label bg-surface px-2.5 py-1 text-[11px] font-medium text-ink-secondary">
+    return (<span data-testid="day-weather-badge" className="inline-flex min-h-6 max-w-full items-center gap-1.5 text-[11px] font-medium text-ink-secondary">
       <WeatherIcon kind={weather.icon} size={14} className="shrink-0 text-accent" aria-hidden/>
       {weather.conditionLabel && <span className="break-words">{weather.conditionLabel}</span>}
       {weather.temperatureLabel && <span className="shrink-0 tabular-nums text-ink">{weather.temperatureLabel}</span>}

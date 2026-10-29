@@ -86,21 +86,22 @@ export function mapViewportDataKey(points: MapPoint[]): string {
   return JSON.stringify(points);
 }
 
-export function resolveMapFocusEntityId(
-  selectedEntityId: string | null | undefined,
-  linkedEntityId: string | null | undefined,
-): string | null {
-  return selectedEntityId ?? linkedEntityId ?? null;
+/**
+ * 相机只跟随显式选中。悬浮与普通焦点只换来临时高亮，不构成相机意图，
+ * 因此这里只读选中项，不接受联动／高亮状态。
+ */
+export function resolveMapFocusEntityId(selectedEntityId: string | null | undefined): string | null {
+  return selectedEntityId ?? null;
 }
 
 export function shouldAutoFitMap({
   dataKey,
   previousDataKey,
-  hasFocusTarget,
+  hasSelection,
 }: {
   dataKey: string;
   previousDataKey: string | null;
-  hasFocusTarget: boolean;
+  hasSelection: boolean;
 }): boolean {
-  return !hasFocusTarget && dataKey !== previousDataKey;
+  return !hasSelection && dataKey !== previousDataKey;
 }

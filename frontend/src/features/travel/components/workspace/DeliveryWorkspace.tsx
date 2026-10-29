@@ -169,6 +169,8 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   const conversationReturnFocusRef = React.useRef<'navigation' | 'toolbar' | null>(null);
   const navigationScrollRef = React.useRef<HTMLDivElement>(null);
   const contentScrollRef = React.useRef<HTMLDivElement>(null);
+  const floatingPanelRef = React.useRef<HTMLDivElement>(null);
+  const [panelOffset, setPanelOffset] = React.useState(0);
   const summaryCardRefs = React.useRef(new Map<string, HTMLButtonElement>());
   const overviewScrollTop = React.useRef(0);
   const returnFocusDayId = React.useRef<string | null>(null);
@@ -254,6 +256,27 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   React.useLayoutEffect(() => {
     previousSceneRef.current = contentScene;
   }, [contentScene]);
+
+  React.useLayoutEffect(() => {
+    if (!bundle || isMobile) {
+      setPanelOffset(0);
+      return;
+    }
+    const panel = floatingPanelRef.current;
+    if (!panel) return;
+    const update = () => {
+      const next = Math.round(panel.getBoundingClientRect().right + 20);
+      setPanelOffset((current) => current === next ? current : next);
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(panel);
+    window.addEventListener('resize', update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [bundle, isMobile]);
 
   React.useEffect(() => {
     setActiveDay(null);
@@ -528,7 +551,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
           onSelectEntity={handleMapSelect}
           linkedEntityId={linkedEntityId}
           onLinkEntity={setLinkedEntityId}
-          overlayOffset={isMobile ? 0 : 460}
+          overlayOffset={isMobile ? 0 : panelOffset}
         />
       ) : (
         <div className="journey-map-empty"><MapIcon size={28} /><p>已确认的地点会显示在这里</p></div>
@@ -562,7 +585,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
         )}
       </div>
 
-      <AnimatePresence mode="sync" initial={false} onExitComplete={restorePlaceFocus}>
+      <AnimatePresence mode="wait" initial={false} onExitComplete={restorePlaceFocus}>
         {bundle && selectedEntity && (
           <PresenceSection
             key={selectedEntityId}
@@ -605,10 +628,11 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
         >
             <PresenceSection
               className={cn('delivery-workspace', !bundle && 'is-generating', view === 'today' && 'is-today')}
+              style={{ '--journey-map-overlay': `${panelOffset}px` } as React.CSSProperties}
               aria-label="旅行地图工作区"
             >
               {bundle ? mapRegion : <div className="generation-workspace"><GenerationJourneyPanel /></div>}
-              {bundle && !isMobile && <PresenceFrame className="journey-floating-panel" initial={{ opacity: 0, x: reducedMotion ? 0 : -18 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reducedMotion ? 0 : duration.page, ease: easing.decelerate }}>{navigation}{content}</PresenceFrame>}
+              {bundle && !isMobile && <PresenceFrame ref={floatingPanelRef} className="journey-floating-panel" initial={{ opacity: 0, x: reducedMotion ? 0 : -18 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reducedMotion ? 0 : duration.page, ease: easing.decelerate }}>{navigation}{content}</PresenceFrame>}
               {isMobile && bundle && (
                 <Sheet open={state.mobileCanvasOpen} onClose={() => dispatch({ type: 'SET_MOBILE_CANVAS_OPEN', payload: false })} testId="canvas-sheet">
                   <div className="journey-mobile-panels">{navigation}{content}</div>

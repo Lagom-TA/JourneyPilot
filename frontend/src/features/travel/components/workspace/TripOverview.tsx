@@ -45,7 +45,11 @@ export const TripOverview: React.FC<TripOverviewProps> = ({ itinerary, summaries
           </div>)}
       </header>)}
 
-      <ol className="mt-5 space-y-3 sm:mt-6 sm:space-y-4" aria-label="每日行程摘要">
+      <div className="journey-directory-heading">
+        <span>这 {itinerary.duration_days} 天，慢慢走</span>
+        <span>每日安排</span>
+      </div>
+      <ol className="journey-day-directory" aria-label="每日行程摘要">
         {summaries.map((day) => (<li key={day.dayId}>
             <DaySummaryCard day={day} onOpen={() => onOpenDay(day)} cardRef={(node) => registerDayCard(day.dayId, node)} compact={compact} active={activeDay === day.day}/>
           </li>))}
