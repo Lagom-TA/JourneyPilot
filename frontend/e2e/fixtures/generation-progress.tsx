@@ -15,10 +15,10 @@ function Fixture() {
     dispatch({
       type: 'SET_CONTROLLED_TRIP_IDENTITY',
       payload: {
-        origin: place('上海'),
-        destinations: [place('杭州'), place('苏州')],
-        start_date: '2026-11-05',
-        end_date: '2026-11-08',
+        origin: place('深圳'),
+        destinations: [place('北京'), place('上海'), place('长春')],
+        start_date: '2026-11-02',
+        end_date: '2026-11-12',
         party: { adults: 2, children: 0, elderly_companions: false, accessibility_required: false },
         style: { primary: '经典均衡', secondary_interests: ['当地美食'], source: 'current' },
       },
@@ -40,12 +40,38 @@ function Fixture() {
           payload: { id: 'transport', agentName: 'transport_researcher', content: '', stepName: '查询城际交通', timestamp: new Date(), isToolCall: true, toolName: 'train_search', toolArgs: '{"from_name":"上海虹桥","to_name":"杭州东"}', toolResult: '已整理上海到杭州的火车衔接', toolStatus: 'completed', resultPreview: [{ title: '上海虹桥 → 杭州东', detail: '上午出发，约 1 小时到达', url: 'https://example.org/train' }] },
         });
       },
+      specialParty() {
+        dispatch({
+          type: 'SET_CONTROLLED_TRIP_IDENTITY',
+          payload: {
+            origin: place('深圳'),
+            destinations: [place('北京'), place('上海'), place('长春')],
+            start_date: '2026-11-02',
+            end_date: '2026-11-12',
+            party: { adults: 2, children: 1, elderly_companions: true, accessibility_required: true },
+            style: { primary: '轻松慢游', secondary_interests: ['当地美食', '人文体验'], source: 'current' },
+          },
+        });
+      },
       longTitle() {
         dispatch({
           type: 'SET_CONTROLLED_TRIP_IDENTITY',
           payload: {
             origin: place('上海'),
             destinations: ['呼伦贝尔', '锡林郭勒', '阿拉善左旗', '额济纳旗', '乌兰浩特'].map(place),
+            start_date: '2026-11-05',
+            end_date: '2026-11-10',
+            party: { adults: 2, children: 0, elderly_companions: false, accessibility_required: false },
+            style: { primary: '经典均衡', secondary_interests: ['当地美食'], source: 'current' },
+          },
+        });
+      },
+      longPlaceName() {
+        dispatch({
+          type: 'SET_CONTROLLED_TRIP_IDENTITY',
+          payload: {
+            origin: place('上海'),
+            destinations: [place('克孜勒苏柯尔克孜自治州')],
             start_date: '2026-11-05',
             end_date: '2026-11-10',
             party: { adults: 2, children: 0, elderly_companions: false, accessibility_required: false },

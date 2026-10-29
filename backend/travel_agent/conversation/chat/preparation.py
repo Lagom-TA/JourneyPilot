@@ -2,9 +2,12 @@ from __future__ import annotations
 import logging
 import uuid
 from typing import Any, Dict, Optional
+from travel_agent.config.loader import get_settings
 from travel_agent.conversation.intake import (
     IntakeUnderstandingUnavailable,
     apply_intake_answers,
+    controlled_identity_summary,
+    intake_answers_complete,
     merge_intake_answers,
     understand_trip_intake,
     unavailable_intake,
@@ -251,6 +254,19 @@ async def prepare_chat(
                 yield {"type": "chat_complete", "message_id": existing_run.assistant_message_id, "run_id": existing_run.run_id, "run_status": existing_run.status.value}
             return ImmediateChat(_replayed_run_sse())
 
+    if use_deep_research:
+        effective_gate = (
+            request.plan_gate
+            if request.plan_gate is not None
+            else get_settings().run_control.plan_gate_enabled
+        )
+        if not effective_gate:
+            raise PreparationRefused(PreparationRejection.PLAN_GATE_DISABLED)
+        if request.run_id is None and checkpointer is None:
+            raise PreparationRefused(
+                PreparationRejection.GATE_REQUIRES_CHECKPOINT
+            )
+
     if request.run_id is None and route_decision.route == RouteName.TRIP_PLANNING:
         try:
             saved_intake = await chat_session_memory.get_guided_intake(
@@ -259,36 +275,85 @@ async def prepare_chat(
         except PermissionError as exc:
             from .errors import SessionAccessDenied
             raise SessionAccessDenied() from exc
-        if request.guided_intake is not None:
+        answers_submitted = request.guided_intake is not None
+        if answers_submitted:
             if saved_intake is None:
                 raise PreparationRefused(PreparationRejection.INTAKE_NOT_FOUND)
             try:
                 guided = apply_intake_answers(saved_intake, request.guided_intake)
-                if request.controlled_trip_identity is not None:
-                    validate_intake_answers(guided)
             except ValueError as exc:
                 raise PreparationRefused(PreparationRejection.INTAKE_INVALID, explanation=str(exc)) from exc
         else:
             guided = saved_intake
+
         if request.controlled_trip_identity is not None:
-            if guided is not None:
+            # 条件表单入口也必须先经过与自然语言入口相同的实质缺口评估。
+            # 已答/已评估过的状态不会被重新出题；新身份才触发一次带身份的评估。
+            identity = request.controlled_trip_identity
+            # 之前的评估失败不能因为客户端补齐身份、附带 guided_intake 提交就被当作
+            # 已评估。只有评估成功过，或已保存的待答问题仍在等待回答时才跳过重评估。
+            needs_assessment = guided is None or (
+                guided.understanding_status == "unavailable"
+            ) or (
+                not answers_submitted
+                and guided.controlled_identity is None
+                and intake_answers_complete(guided)
+            )
+            if needs_assessment:
                 try:
-                    validate_intake_answers(guided)
+                    guided = await understand_trip_intake(
+                        guided.raw_input if guided is not None else user_message,
+                        route_decision,
+                        controlled_identity=identity,
+                        previous=guided,
+                    )
+                except IntakeUnderstandingUnavailable as exc:
+                    raise PreparationRefused(
+                        PreparationRejection.INTAKE_UNAVAILABLE
+                    ) from exc
+
+            guided = guided.model_copy(
+                update={
+                    "controlled_identity": identity,
+                    "missing_fields": [],
+                }
+            )
+            if guided.questions and not intake_answers_complete(guided):
+                try:
+                    validate_intake_answers(guided, require_complete=False)
                 except ValueError as exc:
-                    raise PreparationRefused(PreparationRejection.INTAKE_INVALID, explanation=str(exc)) from exc
-                confirmed = request.controlled_trip_identity
-                user_message = merge_intake_answers(guided) + (
-                    f"\n已确认旅行信息：从{confirmed.origin.name}出发，前往"
-                    f"{'、'.join(place.name for place in confirmed.destinations)}，"
-                    f"{confirmed.start_date} 至 {confirmed.end_date}，"
-                    f"{confirmed.party.adults}位成人"
-                    + (f"、{confirmed.party.children}位儿童" if confirmed.party.children else "")
-                    + ("，长辈同行" if confirmed.party.elderly_companions else "")
-                    + ("，需要无障碍安排" if confirmed.party.accessibility_required else "")
-                    + f"，旅行风格：{confirmed.style.primary}"
-                    + (f"，兴趣：{'、'.join(confirmed.style.secondary_interests)}" if confirmed.style.secondary_interests else "")
-                    + "。"
+                    raise PreparationRefused(
+                        PreparationRejection.INTAKE_INVALID,
+                        explanation=str(exc),
+                    ) from exc
+                await chat_session_memory.save_guided_intake(
+                    session_id=session_id,
+                    user_id=LOCAL_USER_ID,
+                    title_seed=guided.raw_input,
+                    guided_intake=guided,
+                    user_message_id=user_message_id,
+                    assistant_message_id=message_id,
                 )
+
+                async def _controlled_intake_sse():
+                    yield {
+                        "type": "guided_intake",
+                        "message_id": message_id,
+                        "session_id": session_id,
+                        "guided_intake": guided.model_dump(mode="json"),
+                    }
+                    yield {"type": "chat_complete", "message_id": message_id}
+
+                return ImmediateChat(_controlled_intake_sse())
+            try:
+                validate_intake_answers(guided)
+            except ValueError as exc:
+                raise PreparationRefused(
+                    PreparationRejection.INTAKE_INVALID, explanation=str(exc)
+                ) from exc
+            user_message = merge_intake_answers(guided) + (
+                "\n已确认旅行信息：" + controlled_identity_summary(identity)
+            )
         else:
             if guided is None:
                 try:
@@ -327,8 +392,6 @@ async def prepare_chat(
 
     if gate_resume and not request.run_id:
         raise PreparationRefused(PreparationRejection.GATE_REQUIRES_RUN)
-    if request.plan_gate is True and use_deep_research and checkpointer is None:
-        raise PreparationRefused(PreparationRejection.GATE_REQUIRES_CHECKPOINT)
     if request.run_id:
         detail = await trip_run_store.get_detail(request.run_id, event_limit=1)
         if detail is None:

@@ -104,6 +104,7 @@ tool_exposure:
 
 # 深度调研开始前是否暂停并等待用户确认计划。
 run_control:
+  # 完整调研依赖真实计划审批；保持 true。关闭时新的完整调研会被提前拒绝。
   plan_gate_enabled: true
   # 执行租约过期后由恢复扫描接管；心跳应小于租约的一半。
   lease_seconds: 45

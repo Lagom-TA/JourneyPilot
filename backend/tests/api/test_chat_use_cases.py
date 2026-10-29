@@ -103,6 +103,7 @@ async def test_intake_and_confirmation_short_circuit_before_lease(
         return decision(route, confirm=expected == "route_confirmation")
 
     monkeypatch.setattr(preparation, "classify_route", classify)
+    resources.checkpointer = object()
     response = await request("POST", "/api/chat-stream", chat_body(route_decision=None))
     assert response.status_code == 200
     assert [event["type"] for event in decode(response)] == [expected, "chat_complete"]

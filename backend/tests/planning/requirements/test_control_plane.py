@@ -23,6 +23,7 @@ from travel_agent.planning.requirements.intent_contracts import (
     IntentTarget,
     OutputRequirementValue,
     ScalarIntentValue,
+    UnresolvedClause,
     VerificationMode,
 )
 from travel_agent.planning.requirements.normalization.clauses import (
@@ -43,8 +44,10 @@ from travel_agent.planning.requirements.request_contracts import (
 from travel_agent.planning.requirements.revision import build_request_contract_revision
 from travel_agent.planning.research.brief_builder import build_research_brief
 from travel_agent.planning.research.capability_planning import build_capability_plan
+from travel_agent.planning.research.domains import ResearchDomain
 from travel_agent.planning.research.history import _latest_packets
 from travel_agent.planning.research.packets import ResearchPacket
+from travel_agent.planning.research.query_contracts import ResearchQueryKind
 from travel_agent.planning.research.query_planner import build_research_query_plan
 from travel_agent.planning.state import TravelAgentState
 
@@ -390,34 +393,272 @@ def test_contract_and_capability_plan_are_deterministic_and_cover_hard_intents()
     assert "查找合适的往返及跨城交通" in public_tasks
 
 
-@pytest.mark.parametrize("stages,overnight,owner", [
-    (["composition", "projection"], False, "itinerary_planner"),
-    (["research", "composition"], False, "itinerary_planner"),
-    (["research", "composition"], True, "accommodation_researcher"),
-])
-def test_lodging_exclusion_has_an_owner_without_unneeded_research(stages, overnight, owner):
+def _contract_with_extra_intents(*items):
     contract, generation = _contract()
-    identity = _identity()
-    if not overnight:
-        identity["end_date"] = identity["start_date"]
-    excluded = contract.intent_spec.active_items[0].model_copy(update={
-        "intent_id": "intent_no_hotel", "kind": IntentKind.MUST_EXCLUDE,
-        "target": IntentTarget.LODGING, "strength": IntentStrength.HARD,
-        "value": CategoryIntentValue(categories=["酒店"]),
-        "impact_stages": stages, "public_summary": "不安排酒店住宿",
-    })
-    contract = contract.model_copy(update={"intent_spec": contract.intent_spec.model_copy(update={
-        "active_items": [*contract.intent_spec.active_items, excluded],
-    })})
+    contract = contract.model_copy(
+        update={
+            "intent_spec": contract.intent_spec.model_copy(
+                update={
+                    "active_items": [
+                        *contract.intent_spec.active_items,
+                        *items,
+                    ]
+                }
+            )
+        }
+    )
+    return contract, generation
+
+
+def _research_plan(contract, identity, generation):
     brief = build_research_brief(contract, identity)
+    queries = build_research_query_plan(
+        intent_spec=contract.intent_spec, brief=brief
+    )
     plan = build_capability_plan(
-        request_contract=contract, brief=brief, plan_revision=generation.plan_revision,
-        research_query_plan=build_research_query_plan(intent_spec=contract.intent_spec, brief=brief),
+        request_contract=contract,
+        brief=brief,
+        plan_revision=generation.plan_revision,
+        research_query_plan=queries,
+    )
+    return brief, queries, plan
+
+
+def test_multi_day_trip_keeps_default_lodging_research_without_exclusion():
+    contract, generation = _contract()
+
+    brief, queries, plan = _research_plan(contract, _identity(), generation)
+
+    assert ResearchDomain.LODGING in {
+        objective.domain for objective in brief.domain_objectives
+    }
+    assert any(
+        query.domain is ResearchDomain.LODGING
+        and query.query_kind is ResearchQueryKind.STRUCTURAL
+        for query in queries.queries
+    )
+    assert "accommodation_researcher" in plan.assignments
+
+
+@pytest.mark.parametrize(
+    ("stages", "keeps_research"),
+    [
+        (["research", "composition"], False),
+        (["composition", "projection"], True),
+    ],
+)
+def test_domain_wide_lodging_exclusion_controls_default_research(
+    stages, keeps_research
+):
+    contract, generation = _contract_with_extra_intents(
+        IntentItem(
+            intent_id="intent_no_hotel",
+            kind=IntentKind.MUST_EXCLUDE,
+            target=IntentTarget.LODGING,
+            strength=IntentStrength.HARD,
+            priority=90,
+            value=CategoryIntentValue(categories=["酒店"]),
+            source_kind="current_request",
+            source_ref_id="query_main",
+            verification_mode=VerificationMode.MIXED,
+            impact_stages=stages,
+            public_summary="不要查酒店",
+        )
+    )
+
+    brief, queries, plan = _research_plan(contract, _identity(), generation)
+
+    assert (
+        ResearchDomain.LODGING
+        in {objective.domain for objective in brief.domain_objectives}
+    ) is keeps_research
+    assert (
+        any(query.domain is ResearchDomain.LODGING for query in queries.queries)
+    ) is keeps_research
+    assert (
+        "accommodation_researcher" in plan.assignments
+    ) is keeps_research
+    owner = (
+        "accommodation_researcher"
+        if keeps_research and "research" in stages
+        else "itinerary_planner"
     )
     assert "intent_no_hotel" in plan.assignments[owner].must_cover_intent_ids
-    assert ("accommodation_researcher" in plan.assignments) == (owner == "accommodation_researcher")
-    assert sum("intent_no_hotel" in assignment.must_cover_intent_ids
-               for assignment in plan.assignments.values()) == 1
+    if not keeps_research:
+        assert "住宿查询" not in " ".join(
+            assignment.objective for assignment in plan.assignments.values()
+        )
+        assert "不要查酒店" in plan.assignments["itinerary_planner"].objective
+
+
+@pytest.mark.parametrize("category", ["连锁酒店", "杭州西湖国宾馆"])
+def test_narrow_lodging_exclusion_keeps_default_research(category):
+    contract, generation = _contract_with_extra_intents(
+        IntentItem(
+            intent_id="intent_no_narrow_lodging",
+            kind=IntentKind.MUST_EXCLUDE,
+            target=IntentTarget.LODGING,
+            strength=IntentStrength.HARD,
+            priority=90,
+            value=CategoryIntentValue(categories=[category]),
+            source_kind="current_request",
+            source_ref_id="query_main",
+            verification_mode=VerificationMode.MIXED,
+            impact_stages=["research", "composition"],
+            public_summary=f"不要{category}",
+        )
+    )
+
+    brief, queries, plan = _research_plan(contract, _identity(), generation)
+
+    lodging = next(
+        objective
+        for objective in brief.domain_objectives
+        if objective.domain is ResearchDomain.LODGING
+    )
+    assert lodging.excluded_categories == [category]
+    assert any(
+        query.domain is ResearchDomain.LODGING
+        and query.query_kind is ResearchQueryKind.STRUCTURAL
+        for query in queries.queries
+    )
+    assert plan.assignments["accommodation_researcher"].excluded_categories == [
+        category
+    ]
+
+
+def test_positive_lodging_requirement_survives_a_domain_wide_exclusion():
+    contract, generation = _contract_with_extra_intents(
+        IntentItem(
+            intent_id="intent_prefer_guesthouse",
+            kind=IntentKind.MUST_INCLUDE,
+            target=IntentTarget.LODGING,
+            strength=IntentStrength.HARD,
+            priority=95,
+            value=CategoryIntentValue(categories=["民宿"]),
+            source_kind="current_request",
+            source_ref_id="query_main",
+            verification_mode=VerificationMode.MIXED,
+            impact_stages=["research", "composition"],
+            public_summary="住宿优先安排民宿",
+        ),
+        IntentItem(
+            intent_id="intent_no_hotel",
+            kind=IntentKind.MUST_EXCLUDE,
+            target=IntentTarget.LODGING,
+            strength=IntentStrength.HARD,
+            priority=90,
+            value=CategoryIntentValue(categories=["酒店"]),
+            source_kind="current_request",
+            source_ref_id="query_main",
+            verification_mode=VerificationMode.MIXED,
+            impact_stages=["research", "composition"],
+            public_summary="不要查酒店",
+        ),
+    )
+
+    brief, queries, plan = _research_plan(contract, _identity(), generation)
+
+    lodging = next(
+        objective
+        for objective in brief.domain_objectives
+        if objective.domain is ResearchDomain.LODGING
+    )
+    assert lodging.excluded_categories == ["酒店"]
+    assert "intent_prefer_guesthouse" in lodging.must_cover_intent_ids
+    assert plan.assignments["accommodation_researcher"].excluded_categories == [
+        "酒店"
+    ]
+    assert any(
+        "民宿" in query.query_text
+        for query in queries.queries
+        if query.domain is ResearchDomain.LODGING
+    )
+
+
+@pytest.mark.parametrize(
+    "stages",
+    [["projection"], ["composition", "projection"]],
+)
+def test_non_research_lodging_requirement_does_not_override_domain_wide_exclusion(
+    stages,
+):
+    contract, generation = _contract_with_extra_intents(
+        IntentItem(
+            intent_id="intent_existing_lodging_in_report",
+            kind=IntentKind.OUTPUT_REQUIREMENT,
+            target=IntentTarget.LODGING,
+            strength=IntentStrength.HARD,
+            priority=90,
+            value=OutputRequirementValue(
+                required_field="用户提供的已订住宿地址",
+                applies_to="trip",
+            ),
+            source_kind="current_request",
+            source_ref_id="query_main",
+            verification_mode=VerificationMode.DETERMINISTIC,
+            impact_stages=stages,
+            public_summary="把用户提供的已订住宿地址列入报告",
+        ),
+        IntentItem(
+            intent_id="intent_no_hotel",
+            kind=IntentKind.MUST_EXCLUDE,
+            target=IntentTarget.LODGING,
+            strength=IntentStrength.HARD,
+            priority=90,
+            value=CategoryIntentValue(categories=["酒店"]),
+            source_kind="current_request",
+            source_ref_id="query_main",
+            verification_mode=VerificationMode.MIXED,
+            impact_stages=["research", "composition"],
+            public_summary="不要查酒店",
+        ),
+    )
+
+    brief, queries, plan = _research_plan(contract, _identity(), generation)
+
+    assert ResearchDomain.LODGING not in {
+        objective.domain for objective in brief.domain_objectives
+    }
+    assert not any(
+        query.domain is ResearchDomain.LODGING for query in queries.queries
+    )
+    assert "accommodation_researcher" not in plan.assignments
+    assert any(
+        "已订住宿地址" in requirement
+        for requirement in brief.delivery_requirements
+    )
+
+
+def test_non_research_lodging_requirement_keeps_the_default_without_exclusion():
+    contract, generation = _contract_with_extra_intents(
+        IntentItem(
+            intent_id="intent_existing_lodging_in_report",
+            kind=IntentKind.OUTPUT_REQUIREMENT,
+            target=IntentTarget.LODGING,
+            strength=IntentStrength.HARD,
+            priority=90,
+            value=OutputRequirementValue(
+                required_field="用户提供的已订住宿地址",
+                applies_to="trip",
+            ),
+            source_kind="current_request",
+            source_ref_id="query_main",
+            verification_mode=VerificationMode.DETERMINISTIC,
+            impact_stages=["projection"],
+            public_summary="把用户提供的已订住宿地址列入报告",
+        )
+    )
+
+    brief, queries, plan = _research_plan(contract, _identity(), generation)
+
+    assert ResearchDomain.LODGING in {
+        objective.domain for objective in brief.domain_objectives
+    }
+    assert any(
+        query.domain is ResearchDomain.LODGING for query in queries.queries
+    )
+    assert "accommodation_researcher" in plan.assignments
 
 
 @pytest.mark.parametrize("same_city", [True, False])
@@ -634,6 +875,79 @@ def test_same_city_exclusions_do_not_create_hotel_or_intercity_research():
     assert "accommodation_researcher" not in plan.assignments
     assert {item.intent_id for item in exclusions} <= set(
         plan.assignments["itinerary_planner"].must_cover_intent_ids)
+
+
+def test_plan_gate_projects_current_trip_scope_and_same_execution_plan():
+    contract, generation = _contract()
+    identity = _identity()
+    second = identity["destinations"][0].copy()
+    second.update({
+        "place_id": "destination_suzhou",
+        "name": "苏州",
+        "display_name": "苏州",
+        "latitude": 31.2989,
+        "longitude": 120.5853,
+        "admin_path": ["江苏", "苏州"],
+    })
+    identity["destinations"] = [*identity["destinations"], second]
+    brief = build_research_brief(contract, identity)
+    query_plan = build_research_query_plan(
+        intent_spec=contract.intent_spec, brief=brief
+    )
+    plan = build_capability_plan(
+        request_contract=contract,
+        brief=brief,
+        plan_revision=generation.plan_revision,
+        research_query_plan=query_plan,
+    )
+    spec = contract.intent_spec.model_copy(
+        update={
+            "unresolved_clauses": [
+                UnresolvedClause(
+                    clause_id="unresolved_scope",
+                    source_ref_id="query_main",
+                    source_text="预算是否包含往返交通",
+                    reason_code="needs_clarification",
+                )
+            ]
+        }
+    )
+    payload = _build_plan_gate_payload(
+        SimpleNamespace(
+            execution_plan=plan.execution_plan,
+            agent_assignments={
+                key: value.model_dump(mode="json")
+                for key, value in plan.assignments.items()
+            },
+            controlled_trip_identity=identity,
+            intent_spec=spec,
+            constraint_pack={},
+            plan_gate_revision_count=0,
+            user_query="预算12000元，按合理默认安排，不再补充。",
+        )
+    )
+
+    text = payload["plan_text"]
+    assert "从上海出发" in text and "杭州 → 苏州" in text
+    assert "2026-09-01 至 2026-09-03" in text and "2位成人" in text
+    assert "建筑与本地文化" in text and "咖啡" in text
+    assert "待核实或需要取舍" in text and "预算是否包含往返交通" in text
+    assert "默认安排" in text and "出发地、目的地、日期和同行人数不使用默认值" in text
+    assert "query_" not in text and "search_web" not in text
+    assert {
+        query.destination_id for query in query_plan.queries
+    } == {"destination_hangzhou", "destination_suzhou"}
+    assert payload["plan"]["steps"] == [
+        {
+            "step": index,
+            "agents": agents,
+            "tasks": {
+                agent: plan.assignments[agent].objective for agent in agents
+            },
+        }
+        for index, agents in enumerate(plan.execution_plan, start=1)
+    ]
+    assert len(payload["plan"]["steps"]) == len(plan.execution_plan)
 
 
 def test_plan_gate_presents_recognized_requirements_without_clarification_controls():

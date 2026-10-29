@@ -57,21 +57,85 @@ def _assignment_task_text(value: Any) -> str:
     return " ".join(text.split())
 
 
+def _identity_plan_summary(value: Any) -> str:
+    """从受控身份投影公开旅行范围；格式不合法时不猜测。"""
+    from travel_agent.planning.requirements.identity_contracts import (
+        ControlledTripIdentity,
+    )
+
+    try:
+        identity = ControlledTripIdentity.model_validate(value or {})
+    except (TypeError, ValueError):
+        return ""
+    destinations = " → ".join(place.name for place in identity.destinations)
+    party = f"{identity.party.adults}位成人"
+    if identity.party.children:
+        party += f"、{identity.party.children}位儿童"
+    if identity.party.elderly_companions:
+        party += "、长辈同行"
+    if identity.party.accessibility_required:
+        party += "、需要无障碍安排"
+    style = identity.style.primary
+    if identity.style.secondary_interests:
+        style += f"（{'、'.join(identity.style.secondary_interests)}）"
+    return (
+        f"从{identity.origin.name}出发，按{destinations}的顺序，"
+        f"{identity.start_date.isoformat()} 至 {identity.end_date.isoformat()}"
+        f"（共{identity.duration_days}天），{party}；偏好：{style}。"
+    )
+
+
+def _plan_gaps(state: TravelAgentState) -> List[str]:
+    """只投影合同里真实存在的未决事项，不虚构固定缺口。"""
+    spec = getattr(state, "intent_spec", None)
+    if spec is None:
+        return []
+    gaps: List[str] = []
+    for clause in getattr(spec, "unresolved_clauses", []) or []:
+        text = " ".join(str(getattr(clause, "source_text", "")).split())
+        if text:
+            gaps.append(text)
+    for conflict in getattr(spec, "conflicts", []) or []:
+        text = " ".join(
+            str(getattr(conflict, "user_visible_summary", "")).split()
+        )
+        if text:
+            gaps.append(text)
+    return list(dict.fromkeys(gaps))
+
+
 def _serialize_plan_text(state: TravelAgentState) -> str:
     """把结构化执行计划序列化为规范化的 markdown 全文（后端单一数据源）。"""
     assignments = state.agent_assignments or {}
-    lines: List[str] = []
+    sections: List[str] = []
+    identity_summary = _identity_plan_summary(
+        getattr(state, "controlled_trip_identity", None)
+    )
+    if identity_summary:
+        sections.append(f"**本次旅行**：{identity_summary}")
+    steps: List[str] = []
     for index, group in enumerate(state.execution_plan or [], start=1):
         agents = [
             str(agent) for agent in (group if isinstance(group, list) else [group])
         ]
         agent_labels = "、".join(get_agent_display_name(agent) for agent in agents)
-        lines.append(f"### 步骤 {index}：{agent_labels}")
+        steps.append(f"### 步骤 {index}：{agent_labels}")
         for agent in agents:
             task = _assignment_task_text(assignments.get(agent)) or "（待补充任务描述）"
-            lines.append(f"- **{get_agent_display_name(agent)}**：{task}")
-        lines.append("")
-    return "\n".join(lines).rstrip()
+            steps.append(f"- **{get_agent_display_name(agent)}**：{task}")
+        steps.append("")
+    if steps:
+        sections.extend(["**执行计划**", *steps])
+    gaps = _plan_gaps(state)
+    if gaps:
+        sections.append("**待核实或需要取舍**：" + "；".join(gaps[:8]))
+    user_query = str(getattr(state, "user_query", "") or "")
+    if "按合理默认安排，不再补充" in user_query:
+        sections.append(
+            "**默认安排**：未明确的可选项按合理默认组织；"
+            "出发地、目的地、日期和同行人数不使用默认值。"
+        )
+    return "\n".join(sections).rstrip()
 
 
 def _build_plan_gate_payload(state: TravelAgentState) -> Dict[str, Any]:

@@ -245,7 +245,7 @@ test('双模式保留草稿、共享高度并按当前模式回填', async ({ pa
 
   await structuredTab.click();
   await origin.fill('深');
-  const budgetInput = page.getByLabel('总预算（可选）');
+  const budgetInput = page.getByLabel('预算（可选）');
   await expect(budgetInput).toHaveAttribute('type', 'text');
   await expect(budgetInput).toHaveAttribute('inputmode', 'decimal');
   await expect(budgetInput).not.toHaveAttribute('min');
@@ -254,7 +254,7 @@ test('双模式保留草稿、共享高度并按当前模式回填', async ({ pa
   await naturalTab.click();
   await structuredTab.click();
   await expect(origin).toHaveValue('深');
-  await expect(page.getByLabel('总预算（可选）')).toHaveValue('4567');
+  await expect(page.getByLabel('预算（可选）')).toHaveValue('4567');
   await expect(page.locator('.planner-party')).toContainText('3');
   await expect(page.getByRole('button', { name: '其他同行需求' })).toHaveCount(0);
   await expect(page.getByText('只用于花费参考', { exact: true })).toHaveCount(0);
@@ -271,7 +271,7 @@ test('双模式保留草稿、共享高度并按当前模式回填', async ({ pa
   await expect(origin).toHaveValue('广州');
   await expect(page.getByTestId('destination-token-0')).toContainText('海口');
   await expect(page.getByTestId('destination-token-1')).toContainText('三亚');
-  await expect(page.getByLabel('总预算（可选）')).toHaveValue('8000');
+  await expect(page.getByLabel('预算（可选）')).toHaveValue('8000');
   await expect(naturalInput).toHaveValue('想从广州去海口和三亚，5 天，2 位成人，想看海、吃海鲜，住得舒服一点，总预算约 8000 元。');
   await naturalTab.click();
   await expect(naturalInput).toBeVisible();
@@ -418,9 +418,14 @@ test('双模式共享稳定主按钮、紧凑偏好行与宽窄屏几何', async
 
     expect(styleOptions).not.toBeNull();
     expect(budget).not.toBeNull();
-    if (viewport.width >= 1440) {
-      expect(budget!.y).toBeGreaterThanOrEqual(styleOptions!.y - 2);
-      expect(budget!.y).toBeLessThanOrEqual(styleOptions!.y + styleOptions!.height - 2);
+    const dateTrigger = await page.getByTestId('date-range-trigger').boundingBox();
+    const party = await page.locator('.planner-party').boundingBox();
+    if (viewport.width >= 1024) {
+      expect(dateTrigger).not.toBeNull();
+      expect(party).not.toBeNull();
+      expect(Math.abs(dateTrigger!.y - party!.y)).toBeLessThan(8);
+      expect(Math.abs(dateTrigger!.y - budget!.y)).toBeLessThan(8);
+      expect(Math.abs(budget!.y - dateTrigger!.y)).toBeLessThan(5);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
@@ -508,9 +513,9 @@ test('目的地首站全宽常驻、紧凑小块换行与二维排序', async ({
   };
 
   const dragToken = async (from: number, to: number) => {
-    const handle = (await page.getByTestId(`destination-token-${from}`).locator('.destination-token-drag').boundingBox())!;
+    const handle = (await page.getByTestId(`destination-token-${from}`).boundingBox())!;
     const target = (await page.getByTestId(`destination-token-${to}`).boundingBox())!;
-    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.move(handle.x + 10, handle.y + handle.height / 2);
     await page.mouse.down();
     await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 8 });
     await page.mouse.up();
@@ -752,7 +757,7 @@ test('日历标记今天、禁用过去并限制跨月 14 天边界', async ({ p
   await expect(calendarDay(page, '2026-10-01')).toBeDisabled();
 
   await past.evaluate((element) => (element as HTMLButtonElement).click());
-  await expect(trigger).toHaveAttribute('aria-label', '选择开始日期 → 选择结束日期');
+  await expect(trigger).toHaveAttribute('aria-label', '旅行日期：开始日期 → 结束日期');
   await page.screenshot({ path: '../output/polish/20261029-1207-calendar-date-limits/calendar-desktop-today.png' });
 
   await today.click();
@@ -761,27 +766,27 @@ test('日历标记今天、禁用过去并限制跨月 14 天边界', async ({ p
   await expect(calendarDay(page, '2026-11-12')).toBeDisabled();
   await expect(calendarDay(page, '2026-11-12')).toHaveCSS('opacity', '0.42');
   await calendarDay(page, '2026-11-12').evaluate((element) => (element as HTMLButtonElement).click());
-  await expect(trigger).toHaveAttribute('aria-label', '2026-10-29 → 选择结束日期');
+  await expect(trigger).toHaveAttribute('aria-label', '旅行日期：2026-10-29 → 结束日期');
   await page.waitForTimeout(250);
   await page.screenshot({ path: '../output/polish/20261029-1207-calendar-date-limits/calendar-desktop-14-day-boundary.png' });
 
   await calendarDay(page, '2026-11-11').click();
-  await expect(trigger).toHaveAttribute('aria-label', '2026-10-29 → 2026-11-11 · 14 天 13 晚');
+  await expect(trigger).toHaveAttribute('aria-label', '旅行日期：2026-10-29 → 2026-11-11 · 14 天 13 晚');
   await expect(dialog.getByRole('button', { name: '确认日期 · 14 天 13 晚', exact: true })).toBeEnabled();
 
   await dialog.getByRole('button', { name: '清除日期', exact: true }).click();
-  await expect(trigger).toHaveAttribute('aria-label', '选择开始日期 → 选择结束日期');
+  await expect(trigger).toHaveAttribute('aria-label', '旅行日期：开始日期 → 结束日期');
   await expect(calendarDay(page, '2026-10-28')).toBeDisabled();
   await today.click();
   await today.click();
-  await expect(trigger).toHaveAttribute('aria-label', '2026-10-29 → 2026-10-29 · 1 天 0 晚');
+  await expect(trigger).toHaveAttribute('aria-label', '旅行日期：2026-10-29 → 2026-10-29 · 1 天 0 晚');
   await expect(dialog.getByRole('button', { name: '确认日期 · 1 天 0 晚', exact: true })).toBeEnabled();
 
   await dialog.getByRole('button', { name: '下个月', exact: true }).click();
   await calendarDay(page, '2026-11-20').click();
-  await expect(trigger).toHaveAttribute('aria-label', '2026-11-20 → 选择结束日期');
+  await expect(trigger).toHaveAttribute('aria-label', '旅行日期：2026-11-20 → 结束日期');
   await calendarDay(page, '2026-11-05').click();
-  await expect(trigger).toHaveAttribute('aria-label', '2026-11-05 → 选择结束日期');
+  await expect(trigger).toHaveAttribute('aria-label', '旅行日期：2026-11-05 → 结束日期');
   await page.getByRole('button', { name: '关闭日期选择', exact: true }).click();
   await expect(dialog).toBeHidden();
   await trigger.click();
@@ -808,7 +813,7 @@ test('日历跨年边界与重新打开定位有效起点', async ({ page }) => 
   await expect(calendarDay(page, '2027-01-07')).toBeEnabled();
   await expect(calendarDay(page, '2027-01-08')).toBeDisabled();
   await calendarDay(page, '2027-01-07').click();
-  await expect(trigger).toHaveAttribute('aria-label', '2026-12-25 → 2027-01-07 · 14 天 13 晚');
+  await expect(trigger).toHaveAttribute('aria-label', '旅行日期：2026-12-25 → 2027-01-07 · 14 天 13 晚');
 
   await dialog.getByRole('button', { name: '关闭日期选择', exact: true }).click();
   await trigger.click();
@@ -829,7 +834,7 @@ test.describe('夏令时日历边界', () => {
     await expect(calendarDay(page, '2027-03-23')).toBeEnabled();
     await expect(calendarDay(page, '2027-03-24')).toBeDisabled();
     await calendarDay(page, '2027-03-23').click();
-    await expect(page.getByTestId('date-range-trigger')).toHaveAttribute('aria-label', '2027-03-10 → 2027-03-23 · 14 天 13 晚');
+    await expect(page.getByTestId('date-range-trigger')).toHaveAttribute('aria-label', '旅行日期：2027-03-10 → 2027-03-23 · 14 天 13 晚');
     expectCleanFixture(fixture);
   });
 });
@@ -858,7 +863,7 @@ test('移动端单月显示今天与 14 天禁用边界', async ({ page }) => {
   expectCleanFixture(fixture);
 });
 
-test('390px 真实触摸可滚动页面并通过把手同排与跨行排序', async ({ browser }) => {
+test('390px 真实触摸可从非排序区滚动并按住目的地同排与跨行排序', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const page = await context.newPage();
   const fixture = await openHome(page, { width: 390, height: 844 });
@@ -892,9 +897,9 @@ test('390px 真实触摸可滚动页面并通过把手同排与跨行排序', as
     window: window.scrollY,
     hero: (document.querySelector('.new-trip-hero') as HTMLElement | null)?.scrollTop ?? 0,
   }));
-  await touch('touchStart', firstAgain.x + 14, firstAgain.y + firstAgain.height / 2);
-  await touch('touchMove', firstAgain.x + 14, firstAgain.y - 80);
-  await touch('touchMove', firstAgain.x + 14, firstAgain.y - 150);
+  await touch('touchStart', 12, 200);
+  await touch('touchMove', 12, 120);
+  await touch('touchMove', 12, 50);
   await page.waitForTimeout(120);
   await touch('touchEnd');
   await expect.poll(() => page.evaluate((before) => {
@@ -906,13 +911,14 @@ test('390px 真实触摸可滚动页面并通过把手同排与跨行排序', as
 
   await page.getByTestId('destination-token-0').scrollIntoViewIfNeeded();
   await page.waitForTimeout(250);
-  const handle = (await page.getByTestId('destination-token-0').locator('.destination-token-drag').boundingBox())!;
+  const handle = (await page.getByTestId('destination-token-0').boundingBox())!;
   const secondAfterScroll = (await page.getByTestId('destination-token-1').boundingBox())!;
-  await touch('touchStart', handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await touch('touchStart', handle.x + 10, handle.y + handle.height / 2);
+  await page.waitForTimeout(240);
   await expect(page.getByTestId('destination-token-0')).toHaveClass(/is-dragging/);
   const sameRowTarget = { x: secondAfterScroll.x + secondAfterScroll.width / 2, y: secondAfterScroll.y + secondAfterScroll.height / 2 };
   for (const ratio of [0.25, 0.5, 0.75, 1]) {
-    await touch('touchMove', handle.x + handle.width / 2 + (sameRowTarget.x - handle.x - handle.width / 2) * ratio, sameRowTarget.y);
+    await touch('touchMove', handle.x + 10 + (sameRowTarget.x - handle.x - 10) * ratio, sameRowTarget.y);
   }
   await expect(page.getByTestId('destination-token-1')).toHaveClass(/is-drop-target/);
   await page.waitForTimeout(60);
@@ -932,21 +938,25 @@ test('390px 真实触摸可滚动页面并通过把手同排与跨行排序', as
 
   await page.getByTestId('destination-token-0').scrollIntoViewIfNeeded();
   await page.waitForTimeout(250);
-  const fullHandle = (await page.getByTestId('destination-token-0').locator('.destination-token-drag').boundingBox())!;
+  const fullHandle = (await page.getByTestId('destination-token-0').boundingBox())!;
   const fullFirst = (await page.getByTestId('destination-token-0').boundingBox())!;
   const fullFourth = (await page.getByTestId('destination-token-3').boundingBox())!;
   expect(fullFourth.y).toBeGreaterThan(fullFirst.y + fullFirst.height / 2);
-  await touch('touchStart', fullHandle.x + fullHandle.width / 2, fullHandle.y + fullHandle.height / 2);
+  await touch('touchStart', fullHandle.x + 10, fullHandle.y + fullHandle.height / 2);
+  await page.waitForTimeout(240);
   await expect(page.getByTestId('destination-token-0')).toHaveClass(/is-dragging/);
-  const crossRowTarget = { x: fullHandle.x + fullHandle.width / 2, y: fullFourth.y + fullFourth.height / 2 };
+  const crossStart = { x: fullHandle.x + 10, y: fullHandle.y + fullHandle.height / 2 };
+  const crossRowTarget = { x: fullFourth.x + fullFourth.width / 2, y: fullFourth.y + fullFourth.height / 2 };
   for (const ratio of [0.25, 0.5, 0.75, 1]) {
-    await touch('touchMove', crossRowTarget.x, fullHandle.y + fullHandle.height / 2 + (crossRowTarget.y - fullHandle.y - fullHandle.height / 2) * ratio);
+    await touch('touchMove', crossStart.x + (crossRowTarget.x - crossStart.x) * ratio, crossStart.y + (crossRowTarget.y - crossStart.y) * ratio);
   }
   await expect(page.getByTestId('destination-token-3')).toHaveClass(/is-drop-target/);
   await page.waitForTimeout(60);
   await touch('touchEnd');
   const crossRowTouchOrder = await page.locator('.destination-token-name').allTextContents();
   expect(crossRowTouchOrder).toEqual(['苏州', '南京', '宁波', '杭州', '绍兴']);
+  mkdirSync('../output/polish/20261030-0108-home-form-compact', { recursive: true });
+  writeFileSync('../output/polish/20261030-0108-home-form-compact/touch-orders.json', JSON.stringify({ sameRow: sameRowTouchOrder, crossRow: crossRowTouchOrder }, null, 2));
   writeDestinationEvidence('destination-r9r10-touch-orders.json', {
     sameRow: sameRowTouchOrder,
     crossRow: crossRowTouchOrder,
@@ -1001,4 +1011,89 @@ test('目的地候选在 Escape、外部操作和切换模式后收起且旧搜�
   await expect(page.getByTestId('destination-token-0')).toContainText('苏州');
   await expect(candidates).toHaveCount(0);
   expectCleanFixture(fixture);
+});
+
+test('首页紧凑条件表单、开关首排与控件同行 2000px/1440px/390px', async ({ browser }) => {
+  const evidence = '../output/polish/20261030-0108-home-form-compact';
+  mkdirSync(evidence, { recursive: true });
+  const geometry: Record<string, unknown> = {};
+  for (const viewport of [{ width: 2000, height: 880 }, { width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+    const context = await browser.newContext({ viewport });
+    const page = await context.newPage();
+    const fixture = await openHome(page, viewport);
+    await page.getByRole('tab', { name: '按条件规划' }).click();
+    const skip = page.getByRole('button', { name: '暂时不用默认值', exact: true });
+    if (await skip.count()) await skip.click();
+    const add = page.getByTestId('add-destination');
+    const search = () => page.locator('.destination-search input');
+    const candidates = page.getByTestId('destination-candidates');
+    const choose = async (name: string) => {
+      if (await search().count() === 0) await add.click();
+      await search().fill(name);
+      await candidates.getByRole('button').filter({ hasText: name }).first().click();
+    };
+
+    await expect(page.getByText('精确日期', { exact: true })).toHaveCount(0);
+    await expect(page.locator('.planner-panel-structured').getByText('同行', { exact: true })).toHaveCount(0);
+    await expect(page.getByTestId('date-range-trigger')).toContainText('开始日期');
+    await expect(page.getByTestId('date-range-trigger')).toContainText('结束日期');
+    await expect(page.getByLabel('预算（可选）')).toHaveAttribute('placeholder', '预算（可选）');
+    await expect(page.locator('.destination-token-drag')).toHaveCount(0);
+    await expect(page.locator('.destination-token-sort-hint')).toHaveCount(0);
+    for (const name of ['北京', '上海', '长春']) await choose(name);
+    await expect(page.locator('.destination-token')).toHaveCount(3);
+    await expect(add).toHaveText('关闭新增');
+    const token0 = (await page.getByTestId('destination-token-0').boundingBox())!;
+    const addBox = (await add.boundingBox())!;
+    expect(addBox.y).toBeLessThanOrEqual(token0.y + 8);
+    expect(addBox.y + addBox.height).toBeLessThanOrEqual(token0.y + token0.height + 8);
+    const dateBox = (await page.getByTestId('date-range-trigger').boundingBox())!;
+    const partyBox = (await page.locator('.planner-party').boundingBox())!;
+    const budgetBox = (await page.locator('.planner-budget-input').boundingBox())!;
+    if (viewport.width >= 1024) {
+      expect(Math.abs(dateBox.y - partyBox.y)).toBeLessThan(8);
+      expect(Math.abs(dateBox.y - budgetBox.y)).toBeLessThan(8);
+      expect(dateBox.width).toBeLessThanOrEqual(340);
+      expect(budgetBox.width).toBeLessThanOrEqual(150);
+    } else {
+      expect(dateBox.width).toBeLessThanOrEqual(viewport.width - 32);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `${evidence}/home-${viewport.width}-three-expanded.png`, fullPage: true });
+
+    if (viewport.width === 390) {
+      await page.getByRole('button', { name: '更多偏好' }).click();
+      await page.screenshot({ path: `${evidence}/home-390-three-more-preferences.png`, fullPage: true });
+    }
+    await choose('南京');
+    await choose('杭州');
+    await expect(page.locator('.destination-token')).toHaveCount(5);
+    await expect(add).toHaveText('目的地到达上限');
+    const fiveToken0 = (await page.getByTestId('destination-token-0').boundingBox())!;
+    const fiveAdd = (await add.boundingBox())!;
+    expect(fiveAdd.y).toBeLessThanOrEqual(fiveToken0.y + 8);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: `${evidence}/home-${viewport.width}-five-limit.png`, fullPage: true });
+
+    for (let index = 0; index < 5; index += 1) {
+      await page.locator('.destination-token').last().focus();
+      await page.locator('.destination-token').last().press('Delete');
+    }
+    await expect(page.locator('.destination-token')).toHaveCount(0);
+    await expect(search()).toBeVisible();
+    await page.screenshot({ path: `${evidence}/home-${viewport.width}-zero.png`, fullPage: true });
+    geometry[viewport.width] = {
+      token0,
+      add: addBox,
+      fiveToken0,
+      fiveAdd,
+      date: dateBox,
+      party: partyBox,
+      budget: budgetBox,
+      overflow: await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+    };
+    expectCleanFixture(fixture);
+    await context.close();
+  }
+  writeFileSync(`${evidence}/geometry.json`, JSON.stringify(geometry, null, 2));
 });

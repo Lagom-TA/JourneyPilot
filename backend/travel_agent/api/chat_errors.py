@@ -24,6 +24,14 @@ def raise_chat_preparation_error(error: Exception) -> None:
             raise HTTPException(status_code=409, detail={"code": "intake_not_found", "message": "旅行需求草稿已变化，请刷新后继续。"}) from error
         if error.reason is PreparationRejection.INTAKE_INVALID:
             raise HTTPException(status_code=422, detail={"code": "intake_invalid", "message": error.explanation or "请完成必要的旅行信息。"}) from error
+        if error.reason is PreparationRejection.INTAKE_UNAVAILABLE:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "intake_unavailable",
+                    "message": "暂时无法评估这项旅行需求，请稍后重试；尚未创建调研任务。",
+                },
+            ) from error
         if error.reason is PreparationRejection.REFINEMENT_REQUIRES_RUN:
             raise HTTPException(
                 status_code=422, detail="调整行程需要已有 TripRun"
@@ -35,6 +43,14 @@ def raise_chat_preparation_error(error: Exception) -> None:
         if error.reason is PreparationRejection.GATE_REQUIRES_CHECKPOINT:
             raise HTTPException(
                 status_code=409, detail="当前服务未启用 checkpoint，无法使用计划审批门"
+            ) from error
+        if error.reason is PreparationRejection.PLAN_GATE_DISABLED:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "plan_gate_disabled",
+                    "message": "当前服务未启用计划审批门，完整调研不可用；快问快答仍可继续。",
+                },
             ) from error
         if error.reason is PreparationRejection.RUN_NOT_FOUND:
             raise HTTPException(status_code=404, detail="TripRun 不存在") from error

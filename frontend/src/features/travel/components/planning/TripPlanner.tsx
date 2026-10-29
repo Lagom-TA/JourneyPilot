@@ -9,7 +9,6 @@ import { cn } from '../../../../lib/utils';
 import { duration, easing } from '../../../../lib/motion';
 import { type ControlledTripIdentity, type GuidedIntakeState, type PlaceIdentity, type TripPlannerConfiguration } from '../../types/planner';
 import { Button } from '../../../../components/ui/Button';
-import { Field } from '../../../../components/ui/Input';
 import { Skeleton } from '../../../../components/ui/Skeleton';
 import { useApp } from '../../../../app/state/AppContext';
 import { useSendMessage } from '../../../../app/session/useSendMessage';
@@ -481,18 +480,31 @@ export const TripPlanner: React.FC<{
                 </div>
 
                 <div className="planner-form-grid">
-                  <DateRangePicker start={startDate} end={endDate} onChange={(nextStart, nextEnd) => { setStartDate(nextStart); setEndDate(nextEnd); setError(''); }} />
-                  <Field label="同行" className="planner-party">
-                    <Users size={16} className="shrink-0 text-accent" />
+                  <DateRangePicker
+                    start={startDate}
+                    end={endDate}
+                    hideLabel
+                    onChange={(nextStart, nextEnd) => { setStartDate(nextStart); setEndDate(nextEnd); setError(''); }}
+                  />
+                  <div className="planner-party" role="group" aria-label={`同行人数：${adults} 位成人，${children} 位儿童`}>
+                    <Users size={16} className="shrink-0 text-accent" aria-hidden />
                     {([['成人', adults, setAdults, 1], ['儿童', children, setChildren, 0]] as const).map(([label, value, setter, min]) => (
                       <div key={label} className="flex items-center gap-0.5">
-                        <span className="mr-1 text-[12px] text-ink-secondary">{label}</span>
-                        <button type="button" aria-label={`减少${label}`} disabled={value <= min} onClick={() => setter(value - 1)} className="planner-stepper"><Minus size={13} /></button>
-                        <span className="w-5 text-center font-mono text-[14px] tabular-nums">{value}</span>
-                        <button type="button" aria-label={`增加${label}`} onClick={() => setter(value + 1)} className="planner-stepper"><Plus size={13} /></button>
+                        <span className="mr-0.5 text-[11px] text-ink-secondary">{label}</span>
+                        <button type="button" aria-label={`减少${label}`} disabled={value <= min} onClick={() => setter(value - 1)} className="planner-stepper"><Minus size={12} /></button>
+                        <span className="w-4 text-center font-mono text-[13px] tabular-nums">{value}</span>
+                        <button type="button" aria-label={`增加${label}`} onClick={() => setter(value + 1)} className="planner-stepper"><Plus size={12} /></button>
                       </div>
                     ))}
-                  </Field>
+                  </div>
+                  <div className="planner-budget-field">
+                    <label htmlFor="planner-budget" className="sr-only">预算（可选）</label>
+                    <div className="planner-budget-input">
+                      <span aria-hidden>¥</span>
+                      <input id="planner-budget" inputMode="decimal" type="text" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="预算（可选）" aria-label="预算（可选）" />
+                      <span aria-hidden>元</span>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="planner-preference-block">
@@ -504,14 +516,6 @@ export const TripPlanner: React.FC<{
                           <button key={style.id} type="button" aria-pressed={primary === style.label} onClick={() => { setPrimary(style.label); setPrimaryTouched(true); }} className={cn(CHIP, primary === style.label ? CHIP_ON : CHIP_OFF)}>{style.label}</button>
                         ))}
                         <button type="button" aria-expanded={more} className="planner-more-preferences" onClick={() => setMore(!more)}>更多偏好</button>
-                      </div>
-                    </div>
-                    <div className="planner-budget-field">
-                      <label htmlFor="planner-budget" className="planner-field-label">总预算（可选）</label>
-                      <div className="planner-budget-input">
-                        <span>¥</span>
-                        <input id="planner-budget" inputMode="decimal" type="text" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="12,000" />
-                        <span>元</span>
                       </div>
                     </div>
                   </div>

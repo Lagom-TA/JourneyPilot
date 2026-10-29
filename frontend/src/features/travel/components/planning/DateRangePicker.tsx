@@ -96,7 +96,8 @@ export const DateRangePicker: React.FC<{
     start: string;
     end: string;
     onChange: (start: string, end: string) => void;
-}> = ({ start, end, onChange }) => {
+    hideLabel?: boolean;
+}> = ({ start, end, onChange, hideLabel = false }) => {
     const [open, setOpen] = React.useState(false);
     const [visibleMonth, setVisibleMonth] = React.useState(() => fromIso(start) || new Date());
     const today = localToday();
@@ -169,18 +170,18 @@ export const DateRangePicker: React.FC<{
     return (<div ref={rootRef} className="relative min-w-0 flex-1">
 
 
-      <div className="mb-1 flex items-baseline gap-2">
-        <label className={cn(FIELD_LABEL, 'mb-0')}>精确日期</label>
-
-
-        <span className="shrink-0 text-[11px] font-medium text-ink-muted">
-          {days > 0 ? `${days} 天 ${days - 1} 晚` : '最长 14 天'}
-        </span>
-      </div>
-      <button ref={triggerRef} type="button" data-testid="date-range-trigger" aria-haspopup="dialog" aria-expanded={open} aria-label={`${start || '选择开始日期'} → ${end || '选择结束日期'}${days > 0 ? ` · ${days} 天 ${days - 1} 晚` : ''}`} onClick={openPicker} className={cn(RULED_FIELD, 'text-left')}>
+      {!hideLabel && (
+        <div className="mb-1 flex items-baseline gap-2">
+          <label className={cn(FIELD_LABEL, 'mb-0')}>精确日期</label>
+          <span className="shrink-0 text-[11px] font-medium text-ink-muted">
+            {days > 0 ? `${days} 天 ${days - 1} 晚` : '最长 14 天'}
+          </span>
+        </div>
+      )}
+      <button ref={triggerRef} type="button" data-testid="date-range-trigger" aria-haspopup="dialog" aria-expanded={open} aria-label={`旅行日期：${start || '开始日期'} → ${end || '结束日期'}${days > 0 ? ` · ${days} 天 ${days - 1} 晚` : ''}`} onClick={openPicker} className={cn(RULED_FIELD, 'text-left')}>
         <CalendarDays size={17} className="shrink-0 text-chart"/>
         <span className={cn('min-w-0 flex-1 truncate', FIELD_VALUE)}>
-          {start || '选择开始日期'} <span className="text-chart">→</span> {end || '选择结束日期'}
+          {start || '开始日期'} <span className="text-chart">→</span> {end || '结束日期'}
         </span>
       </button>
 

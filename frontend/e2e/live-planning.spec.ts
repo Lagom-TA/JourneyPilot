@@ -62,7 +62,7 @@ test('真实跨城过夜旅行：表单 → 审批 → 调研 → 行程 → PDF
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
     const date = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
-    await page.getByRole('button', { name: '选择开始日期 → 选择结束日期' }).click();
+    await page.getByRole('button', { name: '旅行日期：开始日期 → 结束日期' }).click();
     await page.getByRole('button', { name: `选择 ${date(start)}`, exact: true }).click();
     await page.getByRole('button', { name: `选择 ${date(end)}`, exact: true }).click();
     await page.getByRole('button', { name: '确认日期 · 2 天 1 晚' }).click();

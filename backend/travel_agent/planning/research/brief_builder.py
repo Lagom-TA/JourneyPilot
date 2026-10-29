@@ -34,6 +34,26 @@ _TARGET_DOMAIN = {
 }
 
 
+# 这些类别代表住宿研究领域本身；带限定词的子类（“连锁酒店”“某家酒店”）
+# 只在候选阶段排除，不能关掉多日行程的默认住宿调研。
+_DOMAIN_WIDE_EXCLUDED_CATEGORIES = {
+    ResearchDomain.LODGING: frozenset(
+        {
+            "住宿",
+            "酒店",
+            "宾馆",
+            "旅馆",
+            "hotel",
+            "hotels",
+            "lodging",
+            "lodgings",
+            "accommodation",
+            "accommodations",
+        }
+    ),
+}
+
+
 def build_research_brief(
     request_contract: RequestContract,
     controlled_identity: Mapping[str, object],
@@ -59,7 +79,7 @@ def build_research_brief(
             domains.add(ResearchDomain.VISIT)
         elif candidate_kind == "dining":
             domains.add(ResearchDomain.DINING)
-    if identity.duration_days > 1:
+    if identity.duration_days > 1 and _default_lodging_research_allowed(active):
         domains.add(ResearchDomain.LODGING)
     if build_required_long_distance_legs(
         controlled_identity, cross_day_return_required=False
@@ -139,6 +159,37 @@ def build_research_brief(
         hard_intent_ids=hard_ids,
         soft_intent_ids=soft_ids,
         content_hash=content_hash,
+    )
+
+
+def _default_lodging_research_allowed(active: List[IntentItem]) -> bool:
+    """多日行程的默认住宿调研要被明确的领域级排除覆盖。
+
+    正向住宿要求（如指定民宿）与排除并存时保留调研，由候选排除处理剩余范围；
+    窄类或具体酒店排除不关闭整个住宿领域。
+    """
+    if any(
+        item.target is IntentTarget.LODGING
+        and item.kind is not IntentKind.MUST_EXCLUDE
+        and "research" in item.impact_stages
+        for item in active
+    ):
+        return True
+    return not any(
+        item.target is IntentTarget.LODGING
+        and item.kind is IntentKind.MUST_EXCLUDE
+        and "research" in item.impact_stages
+        and _excludes_whole_domain(item, ResearchDomain.LODGING)
+        for item in active
+    )
+
+
+def _excludes_whole_domain(item: IntentItem, domain: ResearchDomain) -> bool:
+    if not isinstance(item.value, CategoryIntentValue):
+        return False
+    labels = _DOMAIN_WIDE_EXCLUDED_CATEGORIES.get(domain, frozenset())
+    return any(
+        value.strip().casefold() in labels for value in item.value.categories
     )
 
 

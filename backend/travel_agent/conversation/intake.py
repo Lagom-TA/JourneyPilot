@@ -4,26 +4,114 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import datetime
-from typing import Any
+from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from openai import OpenAIError
 from pydantic import ValidationError
 
-from travel_agent.conversation.intake_contracts import GuidedIntakeState, IntakeDraft, RouteDecision
+from travel_agent.conversation.intake_contracts import (
+    GuidedIntakeState,
+    IntakeAnswer,
+    IntakeDraft,
+    IntakeQuestion,
+    IntakeQuestionOption,
+    RouteDecision,
+)
 from travel_agent.llm.router import get_model_router
 from travel_agent.llm.task_routing import TaskKind, llm_for_task
+from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
 from travel_agent.utils.json_helpers import safe_parse_json
 
 INTAKE_TIMEOUT_SECONDS = 45.0
+
+# 服务端统一的“不继续补充”出口。它只是一项普通问题选项，不新增持久化字段；
+# 用户选择后会和其它回答一起进入同一份需求文本，避免把显式默认误读成“未知”。
+DEFAULT_ANSWER_OPTION_ID = "sensible_default"
+DEFAULT_ANSWER_LABEL = "按合理默认安排，不再补充"
+
+_IDENTITY_QUESTION_IDS = {
+    "origin",
+    "destination",
+    "destinations",
+    "trip_dates",
+    "date",
+    "dates",
+    "date_range",
+    "party",
+    "travelers",
+    "travel_party",
+}
+# 只有“真的在问身份字段”的句子才视为重复身份问题。仅出现“出发地”“目的地”
+# 等词不代表身份未知，例如“总预算是否包含出发地至目的地的往返交通？”仍是
+# 需要保留的预算覆盖范围缺口。
+_IDENTITY_QUESTION_PATTERNS = tuple(
+    re.compile(pattern)
+    for pattern in (
+        r"^\s*(?:请问)?(?:你|你们)?(?:打算|计划|准备)?(?:从|由)?(?:哪里|哪儿|哪座城市|哪个城市)[^？?。]{0,8}(?:出发|启程)",
+        r"^\s*(?:请问)?(?:你|你们)?(?:的)?出发地[^？?。]{0,10}(?:是|为|在)[^？?。]{0,6}(?:哪|什么|何处)",
+        r"^\s*(?:请问)?(?:你|你们)?(?:的)?目的地[^？?。]{0,10}(?:是|为|在)[^？?。]{0,6}(?:哪|什么|何处)",
+        r"^\s*(?:请问)?(?:你|你们)?(?:打算|计划|准备|想)?去(?:哪些|哪几个|哪个|哪座)[^？?。]{0,8}(?:城市|地方)",
+        r"^\s*(?:请问)?(?:你|你们)?(?:计划|打算|准备)?(?:什么时候|哪天|哪几天|几号|几月几号|何时)[^？?。]{0,10}(?:出发|启程|去|开始|旅行)",
+        r"^\s*(?:请问)?(?:你|你们)?(?:的)?(?:出发|返程|行程|旅行)日期[^？?。]{0,10}(?:是|为|在)[^？?。]{0,6}(?:哪|什么|几)",
+        r"^\s*(?:请问)?(?:你|你们)?(?:几个人|几人|几位|多少人|和谁)[^？?。]{0,10}(?:去|一起|同行|旅行|出发)?\s*[？?]?\s*$",
+    )
+)
 
 
 class IntakeUnderstandingUnavailable(RuntimeError):
     """必要信息收集暂时不可用。"""
 
 
-def _prompt(raw_input: str) -> list[dict[str, str]]:
+def controlled_identity_summary(identity: ControlledTripIdentity) -> str:
+    """把已确认身份压成一段可供评估、需求文本和计划展示复用的公开摘要。"""
+    destinations = " → ".join(place.name for place in identity.destinations)
+    party = f"{identity.party.adults}位成人"
+    if identity.party.children:
+        party += f"、{identity.party.children}位儿童"
+    if identity.party.elderly_companions:
+        party += "、长辈同行"
+    if identity.party.accessibility_required:
+        party += "、需要无障碍安排"
+    style = identity.style.primary
+    if identity.style.secondary_interests:
+        style += f"（{'、'.join(identity.style.secondary_interests)}）"
+    return (
+        f"从{identity.origin.name}出发，按{destinations}的顺序，"
+        f"{identity.start_date.isoformat()} 至 {identity.end_date.isoformat()}"
+        f"（共{identity.duration_days}天），{party}，旅行风格：{style}。"
+    )
+
+
+def _answered_material(previous: GuidedIntakeState | None) -> list[dict[str, str]]:
+    if previous is None:
+        return []
+    questions = {question.id: question for question in previous.questions}
+    rows: list[dict[str, str]] = []
+    for answer in previous.answers:
+        question = questions.get(answer.question_id)
+        if question is None:
+            continue
+        options = {option.id: option.label for option in question.options}
+        selected = [
+            options[option_id]
+            for option_id in answer.selected_option_ids
+            if option_id in options
+        ]
+        text = "；".join([*selected, answer.supplement.strip()]).strip("；")
+        if text:
+            rows.append({"question": question.question, "answer": text})
+    return rows
+
+
+def _prompt(
+    raw_input: str,
+    *,
+    controlled_identity: ControlledTripIdentity | None = None,
+    previous: GuidedIntakeState | None = None,
+) -> list[dict[str, str]]:
     system = (
         "你是旅行规划的需求整理者。用户希望完成旅行规划，也可能还没有决定去哪。"
         "先识别原文明确的信息，不能把没有提及的事实当成用户确认。"
@@ -39,32 +127,71 @@ def _prompt(raw_input: str) -> list[dict[str, str]]:
         "最多提出三道确实影响选择且无法从标准表单直接确定的问题。出发地、目的地、确切日期和人数由后续表单补齐，不要用泛化选项代替它们。"
         "用户预算覆盖范围不明时可以询问是否包含往返交通；用户未提预算、餐饮等可选偏好时不要为收集而追问。"
         "每题提供二至六个清晰选项，允许用户自由补充。已经回答的问题不得重复询问。"
-        "只输出 JSON，必须包含 draft、recognized_requirements 和 questions；不输出行程，不声称信息已经足够。"
+        "如果 confirmed_trip_identity 已给出，出发地、目的地及顺序、日期、同行和风格都已确认，不得再问这些字段，也不得要求用户重复确认；"
+        "但预算覆盖范围、必去/排除项、节奏取舍等仍可能实质改变研究范围的信息可以问。"
+        "additional_requirements 是用户在确认前补充的实质要求，必须和原文、已答内容一起评估，不能遗漏或重复询问其中已明确的信息。"
+        "如果综合已确认身份、原文、补充要求和已答内容后没有会改变研究范围或可执行方案的实质缺口，questions 返回空数组；不要为了提问而提问。"
+        "不要断言“信息已经足够”，也不要在信息不足时伪造完成判断。"
+        "只输出 JSON，必须包含 draft、recognized_requirements 和 questions；不输出行程。"
     )
     payload = {
         "reference_date": datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat(),
         "raw_input": raw_input,
+        "confirmed_trip_identity": (
+            controlled_identity.model_dump(mode="json")
+            if controlled_identity is not None
+            else None
+        ),
+        "already_answered": _answered_material(previous),
+        "additional_requirements": (
+            previous.additional_requirements if previous is not None else ""
+        ),
         "output": {
             "draft": {
                 "origin_query": "明确出发地，否则为空字符串",
                 "destination_queries": ["明确选定的目的地检索名，否则空数组"],
                 "destination_decided": False,
-                "destination_suggestions": [{"name": "候选城市", "reason": "结合原文说明它适合什么、与其他候选有何取舍"}],
-                "start_date": None, "end_date": None, "duration_days": None,
-                "party": None, "style": None, "budget_text": "预算原文，否则空字符串",
+                "destination_suggestions": [
+                    {
+                        "name": "候选城市",
+                        "reason": "结合原文说明它适合什么、与其他候选有何取舍",
+                    }
+                ],
+                "start_date": None,
+                "end_date": None,
+                "duration_days": None,
+                "party": None,
+                "style": None,
+                "budget_text": "预算原文，否则空字符串",
             },
             "recognized_requirements": ["用户明确表达的需求"],
-            "questions": [{"id": "简短英文标识", "question": "必要问题", "kind": "single 或 multiple", "options": [{"id": "简短英文标识", "label": "选项"}]}],
+            "questions": [
+                {
+                    "id": "简短英文标识",
+                    "question": "必要问题",
+                    "kind": "single 或 multiple",
+                    "options": [
+                        {"id": "简短英文标识", "label": "选项"}
+                    ],
+                }
+            ],
         },
     }
-    return [{"role": "system", "content": system}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}]
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
 
 
-def intake_missing_fields(draft: IntakeDraft, *, has_destinations: bool = False) -> list[str]:
+def intake_missing_fields(
+    draft: IntakeDraft, *, has_destinations: bool = False
+) -> list[str]:
     missing = []
     if not draft.origin_query:
         missing.append("origin")
-    if not has_destinations and not (draft.destination_decided and draft.destination_queries):
+    if not has_destinations and not (
+        draft.destination_decided and draft.destination_queries
+    ):
         missing.append("destinations")
     if not draft.start_date or not draft.end_date or draft.end_date < draft.start_date:
         missing.append("dates")
@@ -74,30 +201,195 @@ def intake_missing_fields(draft: IntakeDraft, *, has_destinations: bool = False)
     return missing
 
 
-def unavailable_intake(raw_input: str, route_decision: RouteDecision) -> GuidedIntakeState:
+def unavailable_intake(
+    raw_input: str, route_decision: RouteDecision
+) -> GuidedIntakeState:
     return GuidedIntakeState(
-        raw_input=raw_input, route_decision=route_decision,
-        missing_fields=["origin", "destinations", "dates", "party", "place_confirmation"],
+        raw_input=raw_input,
+        route_decision=route_decision,
+        missing_fields=[
+            "origin",
+            "destinations",
+            "dates",
+            "party",
+            "place_confirmation",
+        ],
         understanding_status="unavailable",
     )
 
 
-async def understand_trip_intake(raw_input: str, route_decision: RouteDecision, *, llm: Any = None) -> GuidedIntakeState:
-    """识别已知信息，待补字段由业务规则计算，真实地点交由用户确认。"""
+def _with_default_option(
+    question: IntakeQuestion, *, trim_to_make_room: bool = False
+) -> IntakeQuestion:
+    if any(option.id == DEFAULT_ANSWER_OPTION_ID for option in question.options):
+        return question
+    options = list(question.options)
+    # 已保存问题里的选项可能正被历史回答引用，不能为了追加默认出口丢弃它。
+    if len(options) >= 6:
+        if not trim_to_make_room:
+            return question
+        options = options[:5]
+    options.append(
+        IntakeQuestionOption(id=DEFAULT_ANSWER_OPTION_ID, label=DEFAULT_ANSWER_LABEL)
+    )
+    return question.model_copy(update={"options": options})
+
+
+def _is_identity_question(question: IntakeQuestion) -> bool:
+    if question.id.strip().lower() in _IDENTITY_QUESTION_IDS:
+        return True
+    text = question.question.strip()
+    return any(pattern.search(text) for pattern in _IDENTITY_QUESTION_PATTERNS)
+
+
+def _question_text_key(question: IntakeQuestion) -> str:
+    return " ".join(question.question.split()).casefold()
+
+
+def _prepare_questions(
+    raw_questions: Sequence[Any],
+    *,
+    previous: GuidedIntakeState | None,
+    controlled_identity: ControlledTripIdentity | None,
+    max_new: int,
+) -> tuple[list[IntakeQuestion], list[IntakeAnswer]]:
+    answered = {answer.question_id for answer in (previous.answers if previous else [])}
+    answered_texts = {
+        _question_text_key(question)
+        for question in (previous.questions if previous else [])
+        if question.id in answered
+    }
+    history = [
+        _with_default_option(question)
+        for question in (previous.questions if previous else [])
+        if question.id in answered
+    ]
+    questions: list[IntakeQuestion] = []
+    if max_new <= 0:
+        return history, list(previous.answers if previous else [])
+    seen_ids = {question.id for question in history}
+    for raw in raw_questions:
+        question = IntakeQuestion.model_validate(raw)
+        if question.id in seen_ids:
+            continue
+        if controlled_identity is not None and _is_identity_question(question):
+            continue
+        if _question_text_key(question) in answered_texts:
+            continue
+        seen_ids.add(question.id)
+        questions.append(_with_default_option(question, trim_to_make_room=True))
+        if len(questions) >= max_new:
+            break
+    return [*history, *questions], list(previous.answers if previous else [])
+
+
+def _draft_for_identity(
+    parsed_draft: Mapping[str, Any], identity: ControlledTripIdentity
+) -> IntakeDraft:
+    draft = dict(parsed_draft)
+    draft.update(
+        {
+            "origin_query": identity.origin.name,
+            "destination_queries": [
+                place.name for place in identity.destinations
+            ],
+            "destination_decided": True,
+            "destination_suggestions": [],
+            "start_date": identity.start_date,
+            "end_date": identity.end_date,
+            "duration_days": identity.duration_days,
+            "party": identity.party.model_dump(mode="json"),
+            "style": identity.style.model_dump(mode="json"),
+            "confirmed_origin": identity.origin.model_dump(mode="json"),
+            "confirmed_destinations": [
+                place.model_dump(mode="json") for place in identity.destinations
+            ],
+        }
+    )
+    return IntakeDraft.model_validate(draft)
+
+
+def _coerce_identity(
+    value: ControlledTripIdentity | Mapping[str, Any] | None,
+) -> ControlledTripIdentity | None:
+    if value is None or isinstance(value, ControlledTripIdentity):
+        return value
+    return ControlledTripIdentity.model_validate(value)
+
+
+async def understand_trip_intake(
+    raw_input: str,
+    route_decision: RouteDecision,
+    *,
+    llm: Any = None,
+    controlled_identity: ControlledTripIdentity | Mapping[str, Any] | None = None,
+    previous: GuidedIntakeState | None = None,
+) -> GuidedIntakeState:
+    """服务端唯一的实质缺口评估入口。
+
+    条件表单与自然语言入口都从这里得到问题和识别结果。已确认身份只作为
+    输入，不替代评估；已答过的问题不重复出现，问题里固定提供“按合理默认”
+    的普通选项。
+    """
+    identity = _coerce_identity(controlled_identity)
     try:
         model = llm or llm_for_task(get_model_router(), TaskKind.INTENT_NORMALIZE)
-        response = await asyncio.wait_for(model.ainvoke(_prompt(raw_input), temperature=0), timeout=INTAKE_TIMEOUT_SECONDS)
-        parsed = safe_parse_json(getattr(response, "content", response), strip_think_tags=True)
-        if not isinstance(parsed, dict) or not {"draft", "recognized_requirements", "questions"} <= parsed.keys():
-            raise ValueError("需求理解未返回完整结构")
-        draft = IntakeDraft.model_validate(parsed["draft"])
-        return GuidedIntakeState(
-            raw_input=raw_input, route_decision=route_decision, draft=draft,
-            recognized_requirements=parsed["recognized_requirements"], questions=parsed["questions"],
-            missing_fields=intake_missing_fields(draft),
+        response = await asyncio.wait_for(
+            model.ainvoke(
+                _prompt(raw_input, controlled_identity=identity, previous=previous),
+                temperature=0,
+            ),
+            timeout=INTAKE_TIMEOUT_SECONDS,
         )
-    except (asyncio.TimeoutError, OpenAIError, TypeError, ValueError, RuntimeError, ValidationError, AttributeError) as exc:
-        raise IntakeUnderstandingUnavailable("暂时无法整理旅行需求，请确认下方旅行信息后继续") from exc
+        parsed = safe_parse_json(
+            getattr(response, "content", response), strip_think_tags=True
+        )
+        if not isinstance(parsed, dict) or not {
+            "draft",
+            "recognized_requirements",
+            "questions",
+        } <= parsed.keys():
+            raise ValueError("需求理解未返回完整结构")
+        previous_answered = len(previous.answers) if previous else 0
+        max_new = max(0, 4 - previous_answered)
+        questions, answers = _prepare_questions(
+            parsed["questions"],
+            previous=previous,
+            controlled_identity=identity,
+            max_new=max_new,
+        )
+        draft = (
+            _draft_for_identity(parsed["draft"], identity)
+            if identity is not None
+            else IntakeDraft.model_validate(parsed["draft"])
+        )
+        return GuidedIntakeState(
+            raw_input=raw_input,
+            route_decision=route_decision,
+            controlled_identity=identity,
+            draft=draft,
+            recognized_requirements=parsed["recognized_requirements"],
+            questions=questions,
+            answers=answers,
+            additional_requirements=(
+                previous.additional_requirements if previous else ""
+            ),
+            missing_fields=(
+                [] if identity is not None else intake_missing_fields(draft)
+            ),
+        )
+    except (
+        asyncio.TimeoutError,
+        OpenAIError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+        ValidationError,
+        AttributeError,
+    ) as exc:
+        raise IntakeUnderstandingUnavailable(
+            "暂时无法整理旅行需求，请确认下方旅行信息后继续"
+        ) from exc
 
 
 def merge_intake_answers(intake: GuidedIntakeState) -> str:
@@ -110,7 +402,11 @@ def merge_intake_answers(intake: GuidedIntakeState) -> str:
         if question is None:
             continue
         options = {option.id: option.label for option in question.options}
-        selected = [options[option_id] for option_id in answer.selected_option_ids if option_id in options]
+        selected = [
+            options[option_id]
+            for option_id in answer.selected_option_ids
+            if option_id in options
+        ]
         parts = ["、".join(selected)] if selected else []
         if answer.supplement.strip():
             parts.append(answer.supplement.strip())
@@ -123,7 +419,9 @@ def merge_intake_answers(intake: GuidedIntakeState) -> str:
     return "\n".join(lines).strip()
 
 
-def validate_intake_answers(intake: GuidedIntakeState, *, require_complete: bool = True) -> None:
+def validate_intake_answers(
+    intake: GuidedIntakeState, *, require_complete: bool = True
+) -> None:
     """回答只能引用当前问题，完整提交不能遗漏必要问题。"""
     questions = {question.id: question for question in intake.questions}
     seen: set[str] = set()
@@ -133,7 +431,12 @@ def validate_intake_answers(intake: GuidedIntakeState, *, require_complete: bool
             raise ValueError("需求回答与当前问题不匹配")
         seen.add(answer.question_id)
         option_ids = {option.id for option in question.options}
-        if len(set(answer.selected_option_ids)) != len(answer.selected_option_ids) or any(option_id not in option_ids for option_id in answer.selected_option_ids):
+        if len(set(answer.selected_option_ids)) != len(
+            answer.selected_option_ids
+        ) or any(
+            option_id not in option_ids
+            for option_id in answer.selected_option_ids
+        ):
             raise ValueError("需求回答包含无效选项")
         if question.kind == "single" and len(answer.selected_option_ids) > 1:
             raise ValueError("单选题只能选择一个选项")
@@ -143,15 +446,56 @@ def validate_intake_answers(intake: GuidedIntakeState, *, require_complete: bool
         raise ValueError("请先补充尚未回答的旅行问题")
 
 
-def apply_intake_answers(saved: GuidedIntakeState, submitted: GuidedIntakeState) -> GuidedIntakeState:
+def intake_answers_complete(intake: GuidedIntakeState) -> bool:
+    try:
+        validate_intake_answers(intake, require_complete=True)
+    except ValueError:
+        return False
+    return True
+
+
+def apply_intake_answers(
+    saved: GuidedIntakeState, submitted: GuidedIntakeState
+) -> GuidedIntakeState:
     """问题和原文来自服务端，客户端仅更新本轮回答与未确认草稿。"""
-    updated = saved.model_copy(update={"answers": [answer for answer in submitted.answers if answer.selected_option_ids or answer.supplement.strip()], "additional_requirements": submitted.additional_requirements, "draft": submitted.draft})
+    submitted_answers = [
+        answer
+        for answer in submitted.answers
+        if answer.selected_option_ids or answer.supplement.strip()
+    ]
+    submitted_ids = {answer.question_id for answer in submitted_answers}
+    # 客户端可能只回传本轮新问题的回答；服务端已保存的回答不能因此丢失。
+    answers = [
+        *[
+            answer
+            for answer in saved.answers
+            if answer.question_id not in submitted_ids
+        ],
+        *submitted_answers,
+    ]
+    updated = saved.model_copy(
+        update={
+            "answers": answers,
+            "additional_requirements": submitted.additional_requirements,
+            "draft": submitted.draft,
+        }
+    )
     validate_intake_answers(updated, require_complete=False)
-    from travel_agent.planning.requirements.identity_contracts import ORIGIN_PLACE_KINDS, DESTINATION_PLACE_KINDS
+    from travel_agent.planning.requirements.identity_contracts import (
+        DESTINATION_PLACE_KINDS,
+        ORIGIN_PLACE_KINDS,
+    )
+
     draft = updated.draft
-    if draft.confirmed_origin and draft.confirmed_origin.kind not in ORIGIN_PLACE_KINDS:
+    if (
+        draft.confirmed_origin
+        and draft.confirmed_origin.kind not in ORIGIN_PLACE_KINDS
+    ):
         raise ValueError("出发地请选择城市、机场或火车站")
-    if any(place.kind not in DESTINATION_PLACE_KINDS for place in draft.confirmed_destinations):
+    if any(
+        place.kind not in DESTINATION_PLACE_KINDS
+        for place in draft.confirmed_destinations
+    ):
         raise ValueError("目的地请选择城市或区域")
     missing = []
     if draft.confirmed_origin is None:
@@ -162,4 +506,6 @@ def apply_intake_answers(saved: GuidedIntakeState, submitted: GuidedIntakeState)
         missing.append("dates")
     if draft.party is None:
         missing.append("party")
-    return updated.model_copy(update={"missing_fields": missing, "ready_to_create": False})
+    return updated.model_copy(
+        update={"missing_fields": missing, "ready_to_create": False}
+    )

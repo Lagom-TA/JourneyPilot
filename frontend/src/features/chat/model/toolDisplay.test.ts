@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeToolStep, toolResultText } from "./toolDisplay";
+import { describeToolStep, isPublicActivityStep, toolResultCount, toolResultText } from "./toolDisplay";
 import { type ThinkingStep } from "../types/messages";
 function step(toolResult: string | undefined): Pick<ThinkingStep, 'toolResult'> {
     return { toolResult };
@@ -30,10 +30,89 @@ describe('toolResultText', () => {
         expect(display.fullSubject).toBeNull();
         expect(display.actionText).not.toContain('global_place_search');
     });
+    it('已知工具使用同一组中文别名，未知工具也回退到中文类别', () => {
+        const stepFor = (toolName: string, category: ThinkingStep['toolCategory'] = 'search') => ({ id: toolName, agentName: '目的地调研', content: '', stepName: '', timestamp: new Date(), isToolCall: true, toolName, toolCategory: category });
+        expect(describeToolStep(stepFor('global_place_search')).categoryLabel).toBe('地点搜索');
+        expect(describeToolStep(stepFor('knowledge_search')).categoryLabel).toBe('知识库检索');
+        expect(describeToolStep(stepFor('brave_web_search')).categoryLabel).toBe('网页搜索');
+        expect(describeToolStep(stepFor('firecrawl_search')).categoryLabel).toBe('网页搜索');
+        expect(describeToolStep(stepFor('tavily_search')).categoryLabel).toBe('网页搜索');
+        expect(describeToolStep(stepFor('some_new_mcp_tool')).categoryLabel).toBe('查询旅行信息');
+        expect(describeToolStep(stepFor('some_new_mcp_tool', 'internal')).categoryLabel).toBe('整理规划');
+    });
+    it('输入只展示已知字段的中文标签，不展示内部能力 query', () => {
+        const place = describeToolStep({ id: 'place', agentName: '目的地调研', content: '', stepName: '', timestamp: new Date(), isToolCall: true, toolName: 'global_place_search', toolArgs: JSON.stringify({ query: '西湖', lang: 'zh' }), toolStatus: 'completed' });
+        expect(place.inputs).toEqual([{ label: '查询内容', value: '西湖' }]);
+        const internal = describeToolStep({ id: 'internal', agentName: '整理旅行需求', content: '', stepName: '', timestamp: new Date(), isToolCall: true, toolName: 'search_tools', toolArgs: JSON.stringify({ query: 'global_place_search 地点' }), toolStatus: 'completed' });
+        expect(internal.inputs).toEqual([]);
+    });
+    it('输入与折叠主题都经过公开投影，保留正常和长查询', () => {
+        const place = (query: string) => describeToolStep({ id: 'place', agentName: '目的地调研', content: '', stepName: '', timestamp: new Date(), isToolCall: true, toolName: 'global_place_search', toolArgs: JSON.stringify({ query }), toolStatus: 'completed' });
+        for (const payload of [
+            '{"success":true,"provider":"tavily_search","contract_version":"v5"}',
+            'contract_version=journeypilot.research_packet.v5 research_packet_id=packet-1',
+            'Traceback (most recent call last): File "agent.py", line 42, in run',
+            'HTTP 500: upstream provider failed',
+        ]) {
+            const display = place(payload);
+            expect(display.inputs).toEqual([]);
+            expect(display.subject).toBeNull();
+            expect(display.fullSubject).toBeNull();
+        }
+        const internal = place('global_place_search brave_web_search 附近景点');
+        expect(internal.inputs).toEqual([{ label: '查询内容', value: '地点搜索 网页搜索 附近景点' }]);
+        expect(internal.fullSubject).toBe('地点搜索 网页搜索 附近景点');
+        for (const name of ['global_place_search', 'brave_web_search', 'tavily_search']) {
+            expect(internal.inputs[0].value).not.toContain(name);
+            expect(internal.fullSubject).not.toContain(name);
+        }
+        const normal = '杭州西湖周边适合雨天慢慢散步、喝咖啡并避开人群的路线与街区，并给出上午、午后和傍晚三个时间段的具体安排';
+        const display = place(normal);
+        expect(display.inputs).toEqual([{ label: '查询内容', value: normal }]);
+        expect(display.fullSubject).toBe(normal);
+    });
+    it('激活摘要按工具语义转成中文能力，内部名不会漏出', () => {
+        const text = toolResultText(step('激活工具：global_place_search, knowledge_search'));
+        expect(text).toBe('已启用：地点搜索、知识库检索');
+        const web = toolResultText(step('激活工具：brave_local_search, brave_web_search, firecrawl_search, free_web_search, tavily_search'));
+        expect(web).toContain('网页搜索');
+        for (const internal of ['global_place_search', 'knowledge_search', 'brave_local_search', 'brave_web_search', 'firecrawl_search', 'free_web_search', 'tavily_search']) {
+            expect(web).not.toContain(internal);
+            expect(text).not.toContain(internal);
+        }
+        expect(toolResultText(step('未匹配到工具'))).toBe('未匹配到工具');
+    });
+    it('普通摘要中的内部标识也按中文能力替换', () => {
+        const text = toolResultText(step('tavily_search 未返回结果，改用 free_web_search'));
+        expect(text).not.toContain('tavily_search');
+        expect(text).not.toContain('free_web_search');
+        expect(text).toContain('网页搜索');
+    });
+    it('只从公开摘要中的明确总数取计数，不用预览长度', () => {
+        expect(toolResultCount('找到 4 个结果：深圳湾公园、红树林')).toBe(4);
+        expect(toolResultCount('找到 等 4 个地点：甲、乙')).toBe(4);
+        expect(toolResultCount('搜索到 12 条结果')).toBe(12);
+        expect(toolResultCount('返回 四条结果')).toBe(4);
+        expect(toolResultCount('已返回部分结果')).toBeNull();
+        expect(toolResultCount('找到 3 个适合安排进行程的地点')).toBe(3);
+        expect(toolResultCount(null)).toBeNull();
+    });
     it('保留未截断的查询主题供展开后阅读', () => {
         const query = '杭州西湖周边适合雨天慢慢散步、喝咖啡并避开人群的路线与街区，并给出上午、午后和傍晚三个时间段的具体安排';
         const display = describeToolStep({ id: 'long', agentName: '目的地调研', content: '', stepName: '', timestamp: new Date(), isToolCall: true, toolName: 'global_place_search', toolArgs: JSON.stringify({ query }), toolStatus: 'completed' });
         expect(display.subject).not.toBe(query);
         expect(display.fullSubject).toBe(query);
+    });
+});
+
+describe('isPublicActivityStep', () => {
+    const base = (extra: Partial<ThinkingStep>): ThinkingStep => ({ id: 's', agentName: '目的地调研', content: '', stepName: '', timestamp: new Date(), ...extra });
+    it('排除失败工具、失败进展和未匹配的内部激活，保留成功空结果与参考能力', () => {
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'global_place_search', toolStatus: 'failed' }))).toBe(false);
+        expect(isPublicActivityStep(base({ progressStatus: 'failed' }))).toBe(false);
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'search_tools', toolStatus: 'completed', toolResult: '未匹配到工具' }))).toBe(false);
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'search_tools', toolStatus: 'completed', toolResult: '激活工具：global_place_search' }))).toBe(true);
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'global_place_search', toolStatus: 'completed', toolResult: '没有返回结果' }))).toBe(true);
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'hotel_search', toolStatus: 'capability_declared' }))).toBe(true);
     });
 });

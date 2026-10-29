@@ -1,4 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
+import { mkdirSync, writeFileSync } from 'node:fs';
+
+const EVIDENCE_DIR = '../output/polish/20261030-0108-process-disclosure';
 
 // 在 Vite dev 下运行：JP_COMPONENT_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8088 npm run test:e2e -- research-progress
 // 该 fixture 使用真实 UI 组件与合成事件，不调用付费 API。
@@ -29,28 +32,33 @@ for (const width of [320, 390, 1440]) {
     await expect(panel.getByTestId('research-agent-stay')).toBeVisible();
     await expect(panel).not.toContainText('contract_version');
     const destination = page.getByTestId('research-agent-destination');
-    await expect(destination.getByRole('button')).toHaveCount(0);
+    await expect(destination.getByRole('button')).toHaveCount(1);
+    await expect(destination.getByRole('button')).toHaveAttribute('aria-expanded', 'true');
     const query = destination.getByTestId('research-query');
     await expect(query).toContainText('长春 历史博物馆');
     await expect(query.locator('.research-source')).not.toBeVisible();
     await query.locator('summary').click();
     await expect(query).toContainText('长春市宽城区光复北路');
     await expect(query.getByRole('link', { name: '伪满皇宫博物院' })).toHaveAttribute('href', 'https://example.org/museum');
-    await expect(destination).toContainText('1 次查询');
+    await expect(destination.getByTestId('research-query')).toHaveCount(1);
     const stay = page.getByTestId('research-agent-stay');
-    await expect(stay.getByRole('button')).toHaveCount(0);
-    await expect(stay.getByTestId('research-query').first().locator('summary')).toHaveCount(0);
+    await expect(stay.getByRole('button')).toHaveCount(1);
+    await expect(stay.getByTestId('research-query').first().locator('summary')).toHaveCount(1);
     await expect(stay).toContainText('参考资料');
-    await expect(stay).toContainText('2 次查询 · 1 项资料需留意');
     await page.getByRole('button', { name: '住宿直接返回', exact: true }).click();
-    await expect(stay).toContainText('已整理 1 个住宿候选');
+    await expect(stay.locator('.research-agent-state')).toHaveText('已结束');
     await expect(stay.getByTestId('research-query')).toHaveCount(0);
+    await stay.getByRole('button').click();
+    await expect(stay).toContainText('已整理 1 个住宿候选');
     await page.getByRole('button', { name: '目的地完成', exact: true }).click();
     await expect(destination.locator('.research-agent-state')).toHaveText('已结束');
+    await expect(destination.getByTestId('research-query')).toHaveCount(0);
     await expect(page.getByTestId('research-agent-transport').locator('.research-agent-state')).toHaveText('进行中');
     await page.getByRole('button', { name: '停止', exact: true }).click();
     await expect(panel).toContainText('旅行规划已中断');
     await expect(page.getByTestId('research-agent-transport').locator('.research-agent-state')).toHaveText('已停止');
+    await destination.getByRole('button').click();
+    await destination.getByTestId('research-query').locator('summary').click();
     await expect(destination.getByRole('link', { name: '伪满皇宫博物院' })).toBeVisible();
     await expect(destination.getByTestId('research-query')).toContainText('伪满皇宫博物院');
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
@@ -64,48 +72,191 @@ test('workspace 工具行密度、展开长查询与真实阶段标题', async (
   await page.goto('/e2e/fixtures/research-progress.html');
   const panel = page.getByTestId('thinking-chain');
   await expect(panel.locator('.research-panel-title')).toHaveText('查找旅行资料');
-  await expect(panel.locator('.research-agent-heading button')).toHaveCount(0);
+  await expect(panel.locator('button.research-agent-heading[aria-expanded]')).toHaveCount(3);
   const transport = page.getByTestId('research-agent-transport');
   const stageHeight = await transport.locator('.research-agent-heading').evaluate(element => element.getBoundingClientRect().height);
-  expect(stageHeight).toBeGreaterThanOrEqual(40);
-  expect(stageHeight).toBeLessThanOrEqual(48);
+  expect(stageHeight).toBeGreaterThanOrEqual(30);
+  expect(stageHeight).toBeLessThanOrEqual(38);
   const row = transport.getByTestId('research-query').locator('.research-query-summary').first();
   const rowHeight = await row.evaluate(element => element.getBoundingClientRect().height);
   expect(rowHeight).toBeGreaterThanOrEqual(40);
   expect(rowHeight).toBeLessThanOrEqual(48);
+  const geometry = await page.evaluate(() => {
+    const research = document.querySelector<HTMLElement>('.research-panel-workspace')!;
+    const rect = research.getBoundingClientRect();
+    const style = getComputedStyle(research);
+    return { width: Math.round(rect.width), left: Math.round(rect.left), border: style.borderTopWidth, shadow: style.boxShadow, overflow: document.documentElement.scrollWidth - innerWidth };
+  });
+  expect(geometry.width).toBeGreaterThanOrEqual(900);
+  expect(geometry.width).toBeLessThanOrEqual(1044);
+  expect(Number.parseFloat(geometry.border)).toBe(0);
+  expect(geometry.shadow).toBe('none');
+  expect(geometry.overflow).toBeLessThanOrEqual(1);
 
   await page.getByRole('button', { name: '内部工具', exact: true }).click();
+  const planning = page.getByTestId('research-agent-planning');
+  await planning.getByRole('button').click();
   const internalRow = page.getByTestId('research-query').filter({ hasText: '已选择适合本次行程的地点与交通资料' });
   await expect(internalRow).toBeVisible();
   await expect(internalRow).toContainText('整理规划');
   await expect(internalRow).not.toContainText('global_place_search');
-  await page.screenshot({ path: '../output/polish/20261029-1817-compact-tool-activity/workspace-2000-compact-list.png' });
+  await internalRow.locator('summary').click();
+  await expect(internalRow.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
+  await expect(internalRow).not.toContainText('global_place_search');
+  await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-compact-list.png` });
 
   await page.getByRole('button', { name: '长查询', exact: true }).click();
   const longRow = page.getByTestId('research-query').filter({ hasText: '杭州西湖周边适合雨天慢慢散步' });
   await expect(longRow).toContainText('杭州西湖周边适合雨天慢慢散步、喝咖啡并避开人群的路线与街区');
-  await longRow.locator('summary').click();
+  await longRow.locator('summary').focus();
+  await page.keyboard.press('Enter');
   await expect(longRow.getByRole('link', { name: '北山街雨天散步路线' })).toBeVisible();
   await expect(longRow.locator('.research-query-title')).toHaveCSS('white-space', 'normal');
-  await page.screenshot({ path: '../output/polish/20261029-1817-compact-tool-activity/workspace-2000-expanded-query.png' });
+  await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-expanded-query.png` });
   await longRow.locator('summary').click();
 
   await page.getByRole('button', { name: '路线阶段', exact: true }).click();
   await expect(panel.locator('.research-panel-title')).toHaveText('安排每天路线');
-  await page.screenshot({ path: '../output/polish/20261029-1817-compact-tool-activity/workspace-2000-route-stage.png' });
+  await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-route-stage.png` });
   await page.getByRole('button', { name: '生成阶段', exact: true }).click();
   await expect(panel.locator('.research-panel-title')).toHaveText('生成完整计划');
-  await page.screenshot({ path: '../output/polish/20261029-1817-compact-tool-activity/workspace-2000-delivery-stage.png' });
+  await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-delivery-stage.png` });
 
   await page.setViewportSize({ width: 390, height: 844 });
   const phoneRow = page.getByTestId('research-query').filter({ hasText: '杭州西湖周边适合雨天慢慢散步' });
   await phoneRow.locator('summary').click();
   await expect(phoneRow.getByRole('link', { name: '北山街雨天散步路线' })).toBeVisible();
+  await expect(phoneRow.locator('.research-tool-input-value')).toContainText('杭州西湖周边适合雨天慢慢散步');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: '../output/polish/20261029-1817-compact-tool-activity/workspace-390-expanded-query.png', fullPage: true });
+  await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-390-expanded-query.png`, fullPage: true });
+  mkdirSync(EVIDENCE_DIR, { recursive: true });
+  writeFileSync(`${EVIDENCE_DIR}/desktop-measurements.json`, JSON.stringify({ stageHeight, rowHeight, workspace: geometry, phoneOverflow: await page.evaluate(() => document.documentElement.scrollWidth - innerWidth) }, null, 2));
 });
 
-type GenerationFixtureWindow = Window & { __generationFixture?: { addResearch: () => void; longTitle: () => void; stop: () => void; finish: () => void; failAfterPlanning: () => void; cancelAfterPlanning: () => void; requestCancelAfterPlanning: () => void } };
+test('workspace 激活摘要、真实计数、安全详情与后续事件保持展开', async ({ page }) => {
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/e2e/fixtures/research-progress.html');
+  const panel = page.getByTestId('thinking-chain');
+
+  await page.getByRole('button', { name: '激活摘要', exact: true }).click();
+  await page.getByRole('button', { name: '边界详情', exact: true }).click();
+  await page.getByRole('button', { name: '长查询', exact: true }).click();
+  await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-running-activity.png` });
+  const planning = page.getByTestId('research-agent-planning');
+  await planning.getByRole('button').click();
+
+  const activationPlace = page.getByTestId('research-query').filter({ hasText: '已启用：地点搜索、知识库检索' });
+  await expect(activationPlace).toHaveCount(1);
+  await expect(activationPlace).not.toContainText('global_place_search');
+  await expect(activationPlace).not.toContainText('knowledge_search');
+  await activationPlace.locator('summary').click();
+  await expect(activationPlace.locator('[data-detail-section="tool"]')).toContainText('整理规划');
+  await expect(activationPlace.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
+  await expect(activationPlace).not.toContainText('global_place_search');
+  await expect(activationPlace).not.toContainText('knowledge_search');
+  await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-expanded-activation.png` });
+
+  const activationWeb = page.getByTestId('research-query').filter({ hasText: '已启用：网页搜索' });
+  await expect(activationWeb).toHaveCount(1);
+  await activationWeb.locator('summary').click();
+  for (const internal of ['brave_local_search', 'brave_web_search', 'firecrawl_search', 'free_web_search', 'tavily_search']) {
+    await expect(activationWeb).not.toContainText(internal);
+  }
+  await expect(activationWeb).not.toContainText('brave');
+  await expect(activationWeb).not.toContainText('firecrawl');
+  await expect(activationWeb).not.toContainText('tavily');
+  await activationPlace.locator('summary').click();
+  await activationWeb.locator('summary').click();
+
+  const fourResults = page.getByTestId('research-query').filter({ hasText: '深圳湾公园 周边' });
+  await fourResults.locator('summary').click();
+  await expect(fourResults.locator('.research-tool-count')).toHaveText('返回 4 条结果');
+  await expect(fourResults).not.toContainText('返回 2 条结果');
+  await expect(fourResults).toContainText('找到 4 个结果：深圳湾公园、红树林、人才公园、海上世界');
+  await expect(fourResults.locator('.research-source')).toHaveCount(2);
+  await fourResults.locator('.research-tool-detail').scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-expanded-place.png` });
+
+  const onlySummary = page.getByTestId('research-query').filter({ hasText: '当地雨天备选活动' });
+  await onlySummary.locator('summary').click();
+  await expect(onlySummary).toContainText('已整理 3 条适合雨天的室内活动摘要');
+  await expect(onlySummary.locator('.research-tool-count')).toHaveCount(0);
+  await expect(onlySummary.locator('.research-source')).toHaveCount(0);
+
+  const noInputResult = page.getByTestId('research-query').filter({ hasText: '查询旅行信息' }).filter({ hasNotText: '已启用' }).filter({ hasNotText: '仅提供' });
+  await noInputResult.locator('summary').click();
+  await expect(noInputResult.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
+  await expect(noInputResult.locator('[data-detail-section="result"]')).toContainText('没有可公开的结果');
+
+  const jsonLeak = page.getByTestId('research-query').filter({ hasText: '海边天气' });
+  await jsonLeak.locator('summary').click();
+  await expect(jsonLeak.locator('[data-detail-section="result"]')).not.toContainText('success');
+  await expect(jsonLeak.locator('[data-detail-section="result"]')).not.toContainText('secret');
+  await expect(jsonLeak.locator('[data-detail-section="result"]')).not.toContainText('tavily_search');
+
+  const machineInput = page.getByTestId('research-query').filter({ hasText: '机器载荷输入已过滤' });
+  await machineInput.locator('summary').click();
+  await expect(machineInput.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
+  for (const leaked of ['success', 'provider', 'tavily_search', 'contract_version']) {
+    await expect(machineInput).not.toContainText(leaked);
+  }
+
+  const contractInput = page.getByTestId('research-query').filter({ hasText: '合同字段输入已过滤' });
+  await contractInput.locator('summary').click();
+  await expect(contractInput.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
+  for (const leaked of ['contract_version', 'research_packet_id', 'packet-1']) {
+    await expect(contractInput).not.toContainText(leaked);
+  }
+
+  const internalInput = page.getByTestId('research-query').filter({ hasText: '地点搜索 网页搜索 附近景点' });
+  await internalInput.locator('summary').click();
+  await expect(internalInput.locator('.research-tool-input-value')).toHaveText('地点搜索 网页搜索 附近景点');
+  for (const leaked of ['global_place_search', 'brave_web_search', 'tavily_search']) {
+    await expect(internalInput).not.toContainText(leaked);
+  }
+
+  const errorInput = page.getByTestId('research-query').filter({ hasText: '异常文本输入已过滤' });
+  await errorInput.locator('summary').click();
+  await expect(errorInput.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
+  for (const leaked of ['Traceback', 'File', 'line 42', 'agent.py']) {
+    await expect(errorInput).not.toContainText(leaked);
+  }
+
+  const longRow = page.getByTestId('research-query').filter({ hasText: '杭州西湖周边适合雨天慢慢散步' });
+  await longRow.locator('summary').focus();
+  await page.keyboard.press('Enter');
+  await expect(longRow.getByRole('link', { name: '北山街雨天散步路线' })).toBeVisible();
+  await expect(longRow.locator('.research-tool-input-value')).toContainText('上午、午后和傍晚三个时间段的具体安排');
+
+  // 阶段完成后自动收起；用户主动展开可继续查看正常结果，无关事件不会再次收起。
+  await expect(fourResults.locator('.research-tool-detail')).toBeVisible();
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  await page.getByRole('button', { name: '目的地完成', exact: true }).click();
+  const destination = page.getByTestId('research-agent-destination');
+  await expect(destination.locator('.research-agent-state')).toHaveText('已结束');
+  await expect(destination.locator('.research-agent-body')).toHaveCount(0);
+  await destination.getByRole('button').click();
+  const reopened = destination.getByTestId('research-query').filter({ hasText: '深圳湾公园 周边' });
+  await reopened.locator('summary').click();
+  await expect(reopened.locator('.research-tool-detail')).toBeVisible();
+  await expect(reopened.locator('.research-tool-count')).toHaveText('返回 4 条结果');
+  await page.getByRole('button', { name: '无关事件', exact: true }).click();
+  await expect(reopened.locator('.research-tool-detail')).toBeVisible();
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+
+  await page.getByRole('button', { name: '全部结束', exact: true }).click();
+  await expect(destination.locator('.research-agent-body')).toHaveCount(0);
+  await expect(panel.locator('.research-panel-title')).toHaveText('旅行规划已完成');
+  await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-completed-activity.png` });
+
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+  expect(errors).toEqual([]);
+});
+
+type GenerationFixtureWindow = Window & { __generationFixture?: { addResearch: () => void; longTitle: () => void; longPlaceName: () => void; specialParty: () => void; stop: () => void; finish: () => void; failAfterPlanning: () => void; cancelAfterPlanning: () => void; requestCancelAfterPlanning: () => void } };
 
 type GenerationSseStream = { push: (events: unknown[]) => void; close: () => void; requests: () => number };
 type GenerationSseWindow = Window & { __generationSse?: { start: () => void }; __generationSseStream?: GenerationSseStream };
@@ -191,27 +342,34 @@ test('真实 thinking 事件缺少 progress_status 时，终态展开记录不�
     { type: 'tool_result', message_id: 'assistant-generation-sse', agent_name: '目的地调研', tool_name: 'global_place_search', tool_call_id: 'sse-place', status: 'success', summary: '找到 1 个结果', result_preview: [{ title: '小麦岛公园', detail: '适合傍晚看海与散步', url: 'https://example.org/qingdao-coast' }], category: 'search', ts_ms: ts + 5 },
   ]);
   const planning = page.getByTestId('research-agent-planning');
-  await expect(page.getByTestId('research-agent-destination')).toContainText('找到 1 个结果');
+  const destinationPanel = page.getByTestId('research-agent-destination');
+  await expect(destinationPanel.locator('.research-agent-body')).toHaveCount(0);
+  await destinationPanel.getByRole('button').click();
+  await expect(destinationPanel).toContainText('找到 1 个结果');
   await fixture.push([{ type: 'run_failed', run_id: 'run-generation-sse', message: '离线合成：真实 thinking 事件形状后规划失败。', run_status: 'failed', ts_ms: ts + 6 }]);
   await expect(page.locator('.generation-progress > h2')).toHaveText('旅行规划未完成');
   await expect(page.locator('.research-panel-title')).toHaveText('旅行规划未完成');
   await expect(planning.locator('.research-agent-state')).toHaveText('已结束');
-  await expect(planning.getByTestId('research-agent-update')).toHaveText('已整理旅行偏好与同行信息');
+  await expect(planning.getByTestId('research-agent-update')).toHaveCount(0);
   await expect(planning).not.toContainText('正在分派并行调研任务');
   await expect(planning).not.toContainText('正在准备相关查询');
-  await expect(planning).not.toContainText('正在分派并行调研任务');
+  await expect(planning.locator('.research-agent-body')).toHaveCount(0);
+  await planning.getByRole('button').click();
   await expect(planning.locator('.research-agent-body')).toContainText('制定调研计划：目的地调研/交通查询/住宿查询');
   await expect(planning.locator('.research-agent-body')).not.toContainText('正在分派并行调研任务');
-  const destination = page.getByTestId('research-agent-destination');
-  await expect(destination).toContainText('找到 1 个结果');
-  await destination.getByTestId('research-query').locator('summary').click();
-  await expect(destination.getByRole('link', { name: '小麦岛公园' })).toBeVisible();
-  await page.screenshot({ path: '../output/polish/20261029-1817-compact-tool-activity/generation-2000-failed-expanded.png' });
+  await expect(destinationPanel.locator('.research-agent-body')).toHaveCount(0);
+  await destinationPanel.getByRole('button').click();
+  await expect(destinationPanel).toContainText('青岛 海岸线');
+  await destinationPanel.getByTestId('research-query').locator('summary').click();
+  await expect(destinationPanel).toContainText('返回 1 条结果');
+  await expect(destinationPanel).toContainText('找到 1 个结果');
+  await expect(destinationPanel.getByRole('link', { name: '小麦岛公园' })).toBeVisible();
+  await page.screenshot({ path: `${EVIDENCE_DIR}/generation-2000-failed-expanded.png` });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('.generation-activity').scrollIntoViewIfNeeded();
   await expect(planning).toBeInViewport();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: '../output/polish/20261029-1817-compact-tool-activity/generation-390-failed.png' });
+  await page.screenshot({ path: `${EVIDENCE_DIR}/generation-390-failed.png` });
   await fixture.close();
   expect(fixture.pageErrors).toEqual([]);
 });
@@ -232,6 +390,8 @@ test('真实 thinking 事件后取消也不在终态展开记录保留运行中�
   const planning = page.getByTestId('research-agent-planning');
   await expect(planning.locator('.research-agent-state')).toHaveText('已结束');
   await expect(planning).not.toContainText('正在分派并行调研任务');
+  await expect(planning.locator('.research-agent-body')).toHaveCount(0);
+  await planning.getByRole('button').click();
   await expect(planning.locator('.research-agent-body')).toContainText('制定调研计划：目的地调研/交通查询/住宿查询');
   await expect(planning.locator('.research-agent-body')).not.toContainText('正在分派并行调研任务');
   await fixture.close();
@@ -266,8 +426,9 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
       const research = document.querySelector('.research-panel-workspace')!.getBoundingClientRect();
       return { activity: activity.width, research: research.width };
     });
-    expect(geometry.research / geometry.activity).toBeGreaterThan(0.88);
-    expect(geometry.research).toBeGreaterThan(1200);
+    expect(geometry.research / geometry.activity).toBeGreaterThan(0.55);
+    expect(geometry.research).toBeGreaterThan(900);
+    expect(geometry.research).toBeLessThanOrEqual(1044);
     const active = page.locator('.generation-progress li.is-active');
     await expect(active).toHaveCount(1);
     const motion = await active.evaluate((element) => {
@@ -281,12 +442,13 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await expectPlanningCardWithoutDuplicateCopy(page, '已结束');
     const destination = page.getByTestId('research-agent-destination');
     const transport = page.getByTestId('research-agent-transport');
-    await expect(destination.getByTestId('research-agent-update')).toHaveText('正在查找杭州与苏州的景点、美食和步行路线');
-    await expect(transport.getByTestId('research-agent-update')).toHaveText('已整理上海到杭州的火车衔接');
-    await expect(transport).toContainText('1 次查询');
+    await expect(destination.getByTestId('research-agent-update')).toHaveCount(0);
+    await expect(transport.getByTestId('research-agent-update')).toHaveCount(0);
+    await expect(transport).toContainText('上海虹桥 -> 杭州东');
     await expect(page.locator('.research-agent-description')).toHaveCount(0);
     await page.screenshot({ path: '../output/polish/20261029-1252-generation-layout/generation-2000-research-r3.png' });
     await transport.getByTestId('research-query').locator('summary').click();
+    await expect(transport).toContainText('已整理上海到杭州的火车衔接');
     await expect(transport.getByRole('link', { name: '上海虹桥 → 杭州东' })).toBeVisible();
     await page.screenshot({ path: '../output/polish/20261029-1252-generation-layout/generation-2000-research-r3-details.png' });
     await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.longTitle());
@@ -410,4 +572,253 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await expect(page.getByTestId('research-agent-planning')).toBeInViewport();
     await page.screenshot({ path: '../output/polish/20261029-1252-generation-layout/generation-390-failed-r3.png' });
   });
+});
+
+test('内部失败、未匹配与激活失败不进入过程展示，成功空结果仍可查看', async ({ page }) => {
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('/e2e/fixtures/research-progress.html');
+  const panel = page.getByTestId('thinking-chain');
+  await page.getByRole('button', { name: '内部失败', exact: true }).click();
+
+  for (const leaked of ['失败调用不应展示', 'HTTP 500', '失败预览不应展示', 'secret-token', '未匹配到工具', '工具激活失败', '内部错误不应展示']) {
+    await expect(panel).not.toContainText(leaked);
+  }
+  await expect(panel.locator('[title*="失败调用不应展示"]')).toHaveCount(0);
+  const emptySuccess = page.getByTestId('research-query').filter({ hasText: '雨天空结果' });
+  await expect(emptySuccess).toBeVisible();
+  await expect(emptySuccess).toContainText('没有返回结果');
+  await expect(panel.getByTestId('research-query').filter({ hasText: '内部失败' })).toHaveCount(0);
+  await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-internal-failures-hidden.png` });
+  mkdirSync(EVIDENCE_DIR, { recursive: true });
+  writeFileSync(`${EVIDENCE_DIR}/failure-visibility.json`, JSON.stringify({
+    visibleText: await panel.innerText(),
+    hiddenDomMatches: await panel.locator('text=失败调用不应展示').count(),
+    failedPreviewDom: await panel.locator('[title*="失败预览不应展示"]').count(),
+    successfulEmptyVisible: await emptySuccess.isVisible(),
+  }, null, 2));
+  expect(errors).toEqual([]);
+});
+
+test('阶段先有正常结果后失败仍按真实生命周期结束并自动折叠，失败正文不泄露', async ({ page }) => {
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/e2e/fixtures/research-progress.html');
+  const panel = page.getByTestId('thinking-chain');
+  await page.getByRole('button', { name: '结果后失败', exact: true }).click();
+  const destination = page.getByTestId('research-agent-destination');
+  await expect(destination.locator('.research-agent-state')).toHaveText('未完成');
+  await expect(destination.locator('.research-agent-body')).toHaveCount(0);
+  await expect(panel).not.toContainText('阶段失败正文不应展示');
+  await destination.getByRole('button').click();
+  await expect(destination.locator('.research-agent-body')).toContainText('长春 历史博物馆');
+  await expect(destination).not.toContainText('阶段失败正文不应展示');
+  mkdirSync(EVIDENCE_DIR, { recursive: true });
+  writeFileSync(`${EVIDENCE_DIR}/failed-after-result.json`, JSON.stringify({
+    status: await destination.locator('.research-agent-state').innerText(),
+    bodyVisibleAfterFailure: await destination.locator('.research-agent-body').count(),
+    leakedFailureCopy: await panel.getByText('阶段失败正文不应展示').count(),
+  }, null, 2));
+  await page.screenshot({ path: `${EVIDENCE_DIR}/process-2000-failed-after-result.png`, fullPage: true });
+});
+
+test('同 Run 补充轮次重新展开阶段并隔离旧轮次工具详情', async ({ page }) => {
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/e2e/fixtures/research-progress.html');
+  const destination = page.getByTestId('research-agent-destination');
+  const oldRow = destination.getByTestId('research-query').filter({ hasText: '长春 历史博物馆' });
+  await oldRow.locator('summary').click();
+  await expect(oldRow.getByRole('link', { name: '伪满皇宫博物院' })).toBeVisible();
+  await page.getByRole('button', { name: '目的地完成', exact: true }).click();
+  await expect(destination.locator('.research-agent-state')).toHaveText('已结束');
+  await expect(destination.locator('.research-agent-body')).toHaveCount(0);
+
+  await page.getByRole('button', { name: '补充轮次', exact: true }).click();
+  await expect(destination.locator('.research-agent-state')).toHaveText('进行中');
+  await expect(destination.locator('button.research-agent-heading')).toHaveAttribute('aria-expanded', 'true');
+  await expect(destination.locator('.research-agent-body')).toContainText('长春 雨天备选');
+  await expect(oldRow.locator('.research-tool-detail')).not.toBeVisible();
+  const newRow = destination.getByTestId('research-query').filter({ hasText: '长春 雨天备选' });
+  await expect(newRow.getByRole('link', { name: '吉林省博物院' })).not.toBeVisible();
+  await newRow.locator('summary').click();
+  await expect(newRow.getByRole('link', { name: '吉林省博物院' })).toBeVisible();
+  mkdirSync(EVIDENCE_DIR, { recursive: true });
+  writeFileSync(`${EVIDENCE_DIR}/supplement-round-reset.json`, JSON.stringify({
+    status: await destination.locator('.research-agent-state').innerText(),
+    ariaExpanded: await destination.locator('button.research-agent-heading').getAttribute('aria-expanded'),
+    oldRoundDetailVisible: await oldRow.locator('.research-tool-detail').isVisible(),
+    newRoundDetailVisible: await newRow.locator('.research-tool-detail').isVisible(),
+  }, null, 2));
+  await page.screenshot({ path: `${EVIDENCE_DIR}/process-2000-supplement-round.png`, fullPage: true });
+});
+
+test('新 Run 不继承旧 Run 的工具详情展开状态', async ({ page }) => {
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/e2e/fixtures/research-progress.html');
+  await page.getByRole('button', { name: '长查询', exact: true }).click();
+  const longRow = page.getByTestId('research-query').filter({ hasText: '杭州西湖周边适合雨天慢慢散步' });
+  await longRow.locator('summary').click();
+  await expect(longRow.getByRole('link', { name: '北山街雨天散步路线' })).toBeVisible();
+  await page.getByRole('button', { name: '新 Run', exact: true }).click();
+  const newRunRow = page.getByTestId('research-query').filter({ hasText: '杭州西湖周边适合雨天慢慢散步' });
+  await expect(newRunRow.locator('.research-tool-detail')).not.toBeVisible();
+  const newRunDetailVisibleBeforeClick = await newRunRow.locator('.research-tool-detail').isVisible();
+  await newRunRow.locator('summary').click();
+  await expect(newRunRow.getByRole('link', { name: '北山街雨天散步路线' })).toBeVisible();
+  await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-new-run-reset.png` });
+  writeFileSync(`${EVIDENCE_DIR}/new-run-reset.json`, JSON.stringify({
+    oldRunExpanded: true,
+    newRunDetailVisibleBeforeClick,
+  }, null, 2));
+});
+
+test('侧栏多城站序、无重复信息与特殊同行 2000px/390px', async ({ page }) => {
+  const evidence = '../output/polish/20261030-0108-planning-summary';
+  expect(typeof evidence).toBe('string');
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/e2e/fixtures/generation-progress.html');
+  const card = page.locator('.generation-trip-card');
+  const title = card.locator('.generation-trip-card-header h1');
+  await expect(title.locator('.generation-trip-title-place')).toHaveText(['北京', '上海', '长春']);
+  await expect(title).toContainText('11 日');
+  await expect(card.locator('.generation-trip-card-sub')).toContainText('深圳出发');
+  const facts = card.locator('.generation-trip-card-facts');
+  await expect(facts).toContainText('同行');
+  await expect(facts).not.toContainText('目的地');
+  await expect(facts).not.toContainText('行程');
+  await expect(card.locator('.generation-trip-tags')).toContainText('经典均衡');
+  await page.screenshot({ path: `${evidence}/generation-2000-three-cities.png`, fullPage: true });
+
+  await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.specialParty());
+  await expect(card.locator('.generation-trip-card-facts')).toContainText('2 位成人 · 1 位儿童 · 有长辈同行 · 需要无障碍安排');
+  await expect(card.locator('.generation-trip-tags')).toContainText('轻松慢游');
+  await page.screenshot({ path: `${evidence}/generation-2000-special-party.png`, fullPage: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await expect(card.locator('.generation-trip-card-facts')).toContainText('1 位儿童');
+  const order = await page.evaluate(() => {
+    const trip = document.querySelector('.generation-trip-card')!.getBoundingClientRect();
+    const activity = document.querySelector('.generation-activity')!.getBoundingClientRect();
+    return { cardBottom: trip.bottom, activityTop: activity.top };
+  });
+  expect(order.activityTop).toBeGreaterThanOrEqual(order.cardBottom - 1);
+  await page.screenshot({ path: `${evidence}/generation-390-special-party.png`, fullPage: true });
+
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.longTitle());
+  await expect(title.locator('.generation-trip-title-place')).toHaveCount(5);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: `${evidence}/generation-2000-five-long-cities.png`, fullPage: true });
+  mkdirSync(evidence, { recursive: true });
+  writeFileSync(`${evidence}/sidebar-geometry.json`, JSON.stringify({
+    stationOrder: await title.locator('.generation-trip-title-place').allTextContents(),
+    factsText: await card.locator('.generation-trip-card-facts').innerText(),
+    overflow: await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+  }, null, 2));
+});
+
+test('390px 合法超长城市名可在侧栏换行，不覆盖天数或操作', async ({ page }) => {
+  const evidence = '../output/polish/20261030-0108-planning-summary';
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/e2e/fixtures/generation-progress.html');
+  await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.longPlaceName());
+  const card = page.locator('.generation-trip-card');
+  const title = card.locator('.generation-trip-card-header h1');
+  const placeName = title.locator('.generation-trip-title-place');
+  await expect(placeName).toHaveText('克孜勒苏柯尔克孜自治州');
+  await expect(title).toContainText('6 日');
+  const geometry = await placeName.evaluate((element) => {
+    const place = element.getBoundingClientRect();
+    const segment = element.closest('.generation-trip-title-segment')!.getBoundingClientRect();
+    const destinations = element.closest('.generation-trip-title-destinations')!.getBoundingClientRect();
+    const duration = element.closest('h1')!.querySelector('.generation-trip-title-duration')!.getBoundingClientRect();
+    return {
+      place: { left: place.left, right: place.right, width: place.width, height: place.height },
+      segment: { left: segment.left, right: segment.right, width: segment.width },
+      destinations: { left: destinations.left, right: destinations.right, width: destinations.width },
+      duration: { left: duration.left, right: duration.right, width: duration.width },
+      whiteSpace: getComputedStyle(element.closest('.generation-trip-title-segment')!).whiteSpace,
+      overflow: document.documentElement.scrollWidth - innerWidth,
+    };
+  });
+  expect(geometry.whiteSpace).toBe('normal');
+  expect(geometry.place.right).toBeLessThanOrEqual(geometry.destinations.right + 1);
+  expect(geometry.place.right).toBeLessThanOrEqual(geometry.duration.left + 1);
+  expect(geometry.place.height).toBeGreaterThan(20);
+  expect(geometry.overflow).toBeLessThanOrEqual(1);
+  mkdirSync(evidence, { recursive: true });
+  mkdirSync('../output/polish/20261030-0108-feedback-workflow/review', { recursive: true });
+  writeFileSync(`${evidence}/long-name-390.json`, JSON.stringify(geometry, null, 2));
+  await page.screenshot({ path: `${evidence}/long-name-390.png`, fullPage: true });
+  await page.screenshot({ path: '../output/polish/20261030-0108-feedback-workflow/review/long-name-390-fixed.png', fullPage: true });
+});
+
+test('过程披露实屏证据：仅规划去重、完成收起、展开来源与终端失败 2000px/390px', async ({ page }) => {
+  test.setTimeout(60_000);
+  const measurements: Record<string, unknown> = {};
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/e2e/fixtures/generation-progress.html');
+  const panel = page.getByTestId('thinking-chain');
+  await expect(panel.locator('.research-panel-title')).toHaveText('整理旅行需求');
+  await expect(panel.getByText('整理旅行需求', { exact: true })).toHaveCount(1);
+  measurements.planningOnly = await page.evaluate(() => {
+    const panelElement = document.querySelector('.research-panel-workspace') as HTMLElement;
+    const title = panelElement.querySelector('.research-panel-title') as HTMLElement;
+    const heading = panelElement.querySelector('.research-agent-heading') as HTMLElement;
+    const status = panelElement.querySelector('.research-agent-state') as HTMLElement;
+    return {
+      title: title?.textContent,
+      headingText: heading?.textContent,
+      lineHeight: heading ? getComputedStyle(heading).lineHeight : null,
+      contentWidth: panelElement.getBoundingClientRect().width,
+      statusVisible: Boolean(status?.textContent),
+    };
+  });
+  await page.screenshot({ path: `${EVIDENCE_DIR}/process-2000-planning-only.png`, fullPage: true });
+
+  await page.goto('/e2e/fixtures/research-progress.html');
+  const destination = page.getByTestId('research-agent-destination');
+  await page.getByRole('button', { name: '目的地完成', exact: true }).click();
+  await expect(destination.locator('.research-agent-body')).toHaveCount(0);
+  await expect(page.getByTestId('research-agent-transport')).toContainText('进行中');
+  await page.screenshot({ path: `${EVIDENCE_DIR}/process-2000-destination-completed.png`, fullPage: true });
+  await destination.getByRole('button').click();
+  await destination.getByTestId('research-query').locator('summary').click();
+  await expect(destination.getByRole('link', { name: '伪满皇宫博物院' })).toBeVisible();
+  await page.screenshot({ path: `${EVIDENCE_DIR}/process-2000-expanded-source.png`, fullPage: true });
+  const borderCheck = await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('.research-query'));
+    const agents = Array.from(document.querySelectorAll('.research-agent'));
+    return {
+      rowBorders: rows.map((row) => getComputedStyle(row).borderTopWidth),
+      agentBorders: agents.map((agent) => getComputedStyle(agent).borderTopWidth),
+      rowHeights: rows.slice(0, 3).map((row) => (row.querySelector('.research-query-summary') as HTMLElement)?.getBoundingClientRect().height),
+    };
+  });
+  await page.getByRole('button', { name: '全部结束', exact: true }).click();
+  await expect(destination.locator('.research-agent-body')).toHaveCount(0);
+  await page.screenshot({ path: `${EVIDENCE_DIR}/process-2000-terminal-collapsed.png`, fullPage: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await destination.getByRole('button').click();
+  await destination.getByTestId('research-query').locator('summary').click();
+  await expect(destination.getByRole('link', { name: '伪满皇宫博物院' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: `${EVIDENCE_DIR}/process-390-completed-expanded.png`, fullPage: true });
+
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.goto('/e2e/fixtures/generation-progress.html');
+  await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.failAfterPlanning());
+  await expect(page.getByText('这次规划没有完成，你可以回到新旅行重新尝试。', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '返回新旅行', exact: true })).toBeVisible();
+  await page.screenshot({ path: `${EVIDENCE_DIR}/process-2000-run-failed-actions.png`, fullPage: true });
+  writeFileSync(`${EVIDENCE_DIR}/measurements.json`, JSON.stringify({ ...measurements, borderCheck }, null, 2));
 });

@@ -8,7 +8,7 @@ const intake = {
   controlled_identity: null, seed_destinations: [], missing_fields: ['origin', 'destinations', 'dates', 'place_confirmation'], ready_to_create: false,
   recognized_requirements: ['第一次独自旅行', '海边城市', '预算5000元'], understanding_status: 'ready',
   draft: { origin_query: '', destination_queries: [], start_date: '2026-11-05', end_date: '2026-11-08', duration_days: 4, party: { adults: 1, children: 0, elderly_companions: false, accessibility_required: false }, style: null, budget_text: '预算5000元', destination_decided: false, destination_suggestions: [{ name: '青岛', reason: '城市交通便利，海边散步和城市体验容易组合' }], confirmed_origin: null, confirmed_destinations: [] },
-  questions: [{ id: 'budget', question: '5000元包括往返交通和住宿吗？', kind: 'single', options: [{ id: 'all', label: '包括往返交通和住宿' }, { id: 'local', label: '只算当地花费' }] }],
+  questions: [{ id: 'budget', question: '5000元包括往返交通和住宿吗？', kind: 'single', options: [{ id: 'all', label: '包括往返交通和住宿' }, { id: 'local', label: '只算当地花费' }, { id: 'sensible_default', label: '按合理默认安排，不再补充' }] }],
   answers: [], additional_requirements: '',
 };
 
@@ -39,7 +39,7 @@ for (const mobile of [false, true]) {
         }
         const events = body.controlled_trip_identity ? [
           { type: 'chat_start', session_id: 'intake-e2e', run_id: 'trip-intake', message_id: 'assistant-run', route_decision: routeDecision },
-          { type: 'approval_gate_raised', run_id: 'trip-intake', gate: 'plan', run_status: 'awaiting_input', payload: { gate: 'plan', revision: 0, revision_limit: 2, decision_options: ['approve', 'supplement', 'cancel'], plan: { steps: [{ step: 1, agents: ['destination_researcher'], tasks: { destination_researcher: '安排适合独自旅行的海边路线' } }] }, recognized_requirements: { hard: [], preferences: [{ requirement_id: 'solo', summary: '第一次独自旅行' }], attention: [{ requirement_id: 'duration', summary: '需要进一步说明：2—3天' }] }, unresolved_requirement_ids: ['duration'] } },
+          { type: 'approval_gate_raised', run_id: 'trip-intake', gate: 'plan', run_status: 'awaiting_input', payload: { gate: 'plan', revision: 0, revision_limit: 2, decision_options: ['approve', 'supplement', 'cancel'], plan: { steps: [{ step: 1, agents: ['destination_researcher'], tasks: { destination_researcher: '安排适合独自旅行的海边路线' } }] }, plan_text: '**本次旅行**：从上海出发，按青岛 → 苏州 → 南京 → 绍兴 → 宁波的顺序，2026-11-05 至 2026-11-10，独自旅行；偏好：经典均衡。\n\n**执行计划**\n### 步骤 1：目的地调研\n- **目的地调研**：安排适合独自旅行的海边路线\n\n**待核实或需要取舍**：海边天气与每日节奏是否适合独自出行', recognized_requirements: { hard: [], preferences: [{ requirement_id: 'solo', summary: '第一次独自旅行' }], attention: [{ requirement_id: 'duration', summary: '需要进一步说明：2—3天' }] }, unresolved_requirement_ids: ['duration'] } },
           { type: 'chat_complete', run_id: 'trip-intake', run_status: 'awaiting_input' },
         ] : [{ type: 'guided_intake', session_id: 'intake-e2e', guided_intake: pending }, { type: 'chat_complete' }];
         return route.fulfill({ status: 200, contentType: 'text/event-stream', body: events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('') });
@@ -81,15 +81,20 @@ for (const mobile of [false, true]) {
     await expect(page.getByTestId('guided-intake')).toBeVisible();
     await expect(page.locator('.new-trip-content > .planner-card').getByTestId('guided-intake')).toBeVisible();
     await expect(page.getByTestId('new-trip-hero')).toHaveAttribute('data-mount-probe', 'kept');
+    await expect(page.getByRole('button', { name: '按合理默认安排，不再补充', exact: true })).toBeVisible();
+    await expect(page.getByText('不确定时可以选择「按合理默认安排，不再补充」', { exact: false })).toBeVisible();
     await expect(page.getByRole('heading', { name: '确认旅行信息', exact: true })).toBeVisible();
     await expect(page.getByText('信息已经足够了，正在为你开始规划。')).toHaveCount(0);
+    mkdirSync('../output/polish/20261030-0108-requirement-research-plan', { recursive: true });
+    await page.getByRole('button', { name: '按合理默认安排，不再补充', exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `../output/polish/20261030-0108-requirement-research-plan/intake-${mobile ? '390' : '2000'}-question.png`, fullPage: true });
     await page.screenshot({ path: `../output/polish/20261029-1252-inline-intake/${mobile ? 'home-390-expanded' : 'home-2000-expanded'}.png`, fullPage: true });
-    await page.getByRole('button', { name: '包括往返交通和住宿', exact: true }).click();
-    await expect.poll(() => pending?.answers.length).toBe(1);
+    await page.getByRole('button', { name: '按合理默认安排，不再补充', exact: true }).click();
+    await expect.poll(() => pending?.answers[0]?.selected_option_ids).toEqual(['sensible_default']);
     await page.reload();
     await expect(page.getByTestId('new-trip-hero')).toBeVisible();
     await expect(page.getByTestId('guided-intake')).toBeVisible();
-    await expect(page.getByRole('button', { name: /5000元包括往返交通和住宿吗/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /5000元包括往返交通和住宿吗/ })).toContainText('按合理默认安排，不再补充');
     await page.getByRole('textbox', { name: '出发地', exact: true }).fill('上海');
     await page.getByRole('button', { name: '上海 上海，中国', exact: true }).click();
     await page.getByRole('button', { name: /青岛 城市交通便利/ }).click();
@@ -121,9 +126,9 @@ for (const mobile of [false, true]) {
     await expect(page.getByTestId('add-destination')).toHaveText('目的地到达上限');
     const fiveBeforeDrag = await page.locator('.destination-token-name').allTextContents();
     expect(fiveBeforeDrag).toEqual(['苏州', '青岛', '南京', '宁波', '绍兴']);
-    const fiveHandle = (await page.getByTestId('destination-token-0').locator('.destination-token-drag').boundingBox())!;
+    const fiveHandle = (await page.getByTestId('destination-token-0').boundingBox())!;
     const fiveSecond = (await page.getByTestId('destination-token-1').boundingBox())!;
-    await page.mouse.move(fiveHandle.x + fiveHandle.width / 2, fiveHandle.y + fiveHandle.height / 2);
+    await page.mouse.move(fiveHandle.x + 10, fiveHandle.y + fiveHandle.height / 2);
     await page.mouse.down();
     await page.mouse.move(fiveSecond.x + fiveSecond.width / 2, fiveSecond.y + fiveSecond.height / 2, { steps: 6 });
     await page.mouse.up();
@@ -156,12 +161,17 @@ for (const mobile of [false, true]) {
     await expect(page.getByRole('heading', { name: '确认这趟旅行', exact: true })).toHaveCount(0);
     await expect(page.getByTestId('trip-brief-plan-gate')).toContainText('第一次独自旅行');
     await expect(page.getByTestId('trip-brief-plan-gate')).toContainText('已识别的旅行要求');
+    await expect(page.getByTestId('trip-brief-plan-gate')).toContainText('本次会这样研究');
+    await expect(page.getByTestId('trip-brief-plan-gate')).toContainText('从上海出发，按青岛 → 苏州 → 南京 → 绍兴 → 宁波的顺序');
+    await expect(page.getByTestId('trip-brief-plan-gate')).toContainText('安排适合独自旅行的海边路线');
+    await expect(page.getByTestId('trip-brief-plan-gate')).toContainText('待核实或需要取舍');
     await expect(page.getByTestId('trip-brief-plan-gate')).not.toContainText('责任');
+    await page.screenshot({ path: `../output/polish/20261030-0108-requirement-research-plan/gate-${mobile ? '390' : '2000'}-plan.png`, fullPage: true });
     if (!mobile) {
       const gateWidth = await page.getByTestId('trip-brief-plan-gate').evaluate(element => element.getBoundingClientRect().width);
       expect(gateWidth).toBeGreaterThan(600);
     }
-    await expect(page.getByText(/需要进一步说明/)).toHaveCount(0);
+    await expect(page.getByTestId('trip-brief-plan-gate')).not.toContainText('需要进一步说明：2—3天');
     await expect(page.getByRole('checkbox')).toHaveCount(0);
     await expect(page.getByRole('button', { name: '确认并开始生成', exact: true })).toBeEnabled();
     await expect(page.getByTestId('guided-intake')).toHaveCount(0);
@@ -171,7 +181,7 @@ for (const mobile of [false, true]) {
     expect(requests).toHaveLength(2);
     expect(requests[1].controlled_trip_identity.destinations.map((item: { name: string }) => item.name)).toEqual(['青岛', '苏州', '南京', '绍兴', '宁波']);
     expect(requests[1].guided_intake.draft.confirmed_destinations.map((item: { name: string }) => item.name)).toEqual(['青岛', '苏州', '南京', '绍兴', '宁波']);
-    expect(requests[1].guided_intake.answers[0].selected_option_ids).toEqual(['all']);
+    expect(requests[1].guided_intake.answers[0].selected_option_ids).toEqual(['sensible_default']);
     expect(requests[1].guided_intake.raw_input).toBe(loopIntake.raw_input);
     mkdirSync('../output/polish/20261029-1252-destination-tokens', { recursive: true });
     writeFileSync(`../output/polish/20261029-1252-destination-tokens/destination-r9r10-intake-five-order-${mobile ? '390' : '2000'}.json`, JSON.stringify({

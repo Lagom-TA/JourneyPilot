@@ -1,15 +1,21 @@
 """规划前的一轮需求收集。"""
 
+import json
 from types import SimpleNamespace
 
 import pytest
 
 from tests.fixtures.chat_execution import resources as resources, request, decode, prepare
+import travel_agent.conversation.intake as intake_module
 from travel_agent.conversation.chat import preparation
-from travel_agent.conversation.chat.preparation import PreparedChat
+from travel_agent.conversation.chat.errors import PreparationRefused, PreparationRejection
+from travel_agent.conversation.chat.preparation import ImmediateChat, PreparedChat
 from travel_agent.conversation.intake import IntakeUnderstandingUnavailable
 from travel_agent.conversation.intake import merge_intake_answers
+from travel_agent.conversation.intake import DEFAULT_ANSWER_LABEL
+from travel_agent.conversation.intake import DEFAULT_ANSWER_OPTION_ID
 from travel_agent.conversation.intake import understand_trip_intake
+from travel_agent.conversation.intake import unavailable_intake
 from travel_agent.conversation.intake import validate_intake_answers
 from travel_agent.conversation.intake_contracts import GuidedIntakeState
 from travel_agent.conversation.intake_contracts import RouteDecision
@@ -73,6 +79,7 @@ async def test_intake_failure_keeps_missing_fields_without_creating_run(resource
     async def unavailable(*_args, **_kwargs):
         raise IntakeUnderstandingUnavailable("unavailable")
     monkeypatch.setattr(preparation, "understand_trip_intake", unavailable)
+    resources.checkpointer = object()
     response = await request("POST", "/api/chat-stream", {"messages": [{"role": "user", "content": "想找一个适合第一次独自旅行的海边城市，预算5000元"}], "route": "trip_planning", "session_id": "intake-failure"})
     assert response.status_code == 200
     intake = decode(response)[0]["guided_intake"]
@@ -97,6 +104,7 @@ async def test_answers_are_saved_and_create_run_with_original_requirements(resou
     place = {"place_id": "osm:relation:1", "provider": "osm", "kind": "city", "name": "上海", "display_name": "上海", "country_code": "CN", "latitude": 31.23, "longitude": 121.47, "admin_path": []}
     identity = {"origin": place, "destinations": [{**place, "place_id": "osm:relation:2", "name": "青岛"}], "start_date": "2026-11-05", "end_date": "2026-11-08", "party": {"adults": 1, "children": 0}, "style": {"primary": "轻松慢游", "secondary_interests": []}}
     body = {"messages": [{"role": "user", "content": "确认旅行", "message_id": "confirm-intake"}], "session_id": "intake-complete", "route": "trip_planning", "guided_intake": submitted, "controlled_trip_identity": identity}
+    resources.checkpointer = object()
     prepared = await prepare(body, resources)
     assert isinstance(prepared, PreparedChat)
     assert saved.raw_input in prepared.user_message
@@ -160,3 +168,426 @@ def test_required_answer_cannot_be_omitted():
     intake = GuidedIntakeState.model_validate({"raw_input": "规划旅行", "route_decision": decision().model_dump(mode="json"), "questions": [{"id": "budget", "question": "预算范围？", "kind": "single", "options": [{"id": "all", "label": "全程"}, {"id": "local", "label": "当地"}]}]})
     with pytest.raises(ValueError, match="尚未回答"):
         validate_intake_answers(intake)
+
+
+def _identity(destination: str = "青岛") -> ControlledTripIdentity:
+    place = {"place_id": "osm:relation:1", "provider": "osm", "kind": "city", "name": "上海", "display_name": "上海", "country_code": "CN", "latitude": 31.23, "longitude": 121.47, "admin_path": []}
+    return ControlledTripIdentity.model_validate({
+        "origin": place,
+        "destinations": [{**place, "place_id": "osm:relation:2", "name": destination}],
+        "start_date": "2026-11-05",
+        "end_date": "2026-11-08",
+        "party": {"adults": 1, "children": 0},
+        "style": {"primary": "轻松慢游", "secondary_interests": ["海边"]},
+    })
+
+
+def _question(question_id: str = "budget_scope", text: str = "总预算是否包含往返交通？") -> dict:
+    return {
+        "id": question_id,
+        "question": text,
+        "kind": "single",
+        "options": [
+            {"id": "all", "label": "包含往返交通和住宿"},
+            {"id": "local", "label": "仅当地花费"},
+        ],
+    }
+
+
+async def test_unavailable_assessment_is_reevaluated_when_answers_are_submitted(resources, monkeypatch):
+    identity = _identity()
+    saved = unavailable_intake("规划这趟旅行，总预算12000元", decision())
+    await resources.chat_session_memory.save_guided_intake(
+        session_id="identity-unavailable-answer", guided_intake=saved
+    )
+    calls = []
+
+    async def assess(raw_input, route_decision, *, controlled_identity=None, previous=None, **_kwargs):
+        calls.append((raw_input, controlled_identity, previous))
+        return GuidedIntakeState.model_validate({
+            "raw_input": raw_input,
+            "route_decision": route_decision.model_dump(mode="json"),
+            "controlled_identity": identity.model_dump(mode="json"),
+            "draft": identity.model_dump(mode="json"),
+            "questions": [],
+            "missing_fields": [],
+        })
+
+    monkeypatch.setattr(preparation, "understand_trip_intake", assess)
+    resources.checkpointer = object()
+    body = {
+        "messages": [{"role": "user", "content": "确认旅行", "message_id": "identity-unavailable-answer"}],
+        "session_id": "identity-unavailable-answer",
+        "route": "trip_planning",
+        "guided_intake": saved.model_dump(mode="json"),
+        "controlled_trip_identity": identity.model_dump(mode="json"),
+    }
+    prepared = await prepare(body, resources)
+    assert isinstance(prepared, PreparedChat)
+    assert len(calls) == 1
+    assert calls[0][0] == saved.raw_input
+    assert calls[0][1] == identity
+    assert calls[0][2].understanding_status == "unavailable"
+    assert len(resources.trip_run_store.runs) == 1
+
+
+async def test_reassessment_includes_submitted_additional_requirements(resources, monkeypatch):
+    identity = _identity()
+    saved = unavailable_intake("规划这趟旅行，预算12000元，带长辈", decision())
+    submitted = saved.model_copy(update={
+        "additional_requirements": "总预算12000元，带长辈，不确定是否自驾",
+    })
+    await resources.chat_session_memory.save_guided_intake(
+        session_id="identity-additional-requirements", guided_intake=saved
+    )
+    payloads = []
+
+    class LLM:
+        async def ainvoke(self, messages, **kwargs):
+            payloads.append(json.loads(messages[-1]["content"]))
+            return SimpleNamespace(content=json.dumps({
+                "draft": {},
+                "recognized_requirements": [],
+                "questions": [],
+            }, ensure_ascii=False))
+
+    monkeypatch.setattr(intake_module, "get_model_router", lambda: object())
+    monkeypatch.setattr(intake_module, "llm_for_task", lambda *_args, **_kwargs: LLM())
+    resources.checkpointer = object()
+    body = {
+        "messages": [{"role": "user", "content": "确认旅行", "message_id": "identity-additional-requirements"}],
+        "session_id": "identity-additional-requirements",
+        "route": "trip_planning",
+        "guided_intake": submitted.model_dump(mode="json"),
+        "controlled_trip_identity": identity.model_dump(mode="json"),
+    }
+    prepared = await prepare(body, resources)
+    assert isinstance(prepared, PreparedChat)
+    assert payloads[0]["additional_requirements"] == submitted.additional_requirements
+    assert "总预算12000元" in prepared.user_message
+    assert len(resources.trip_run_store.runs) == 1
+    await prepared.lease_keeper.release(reason="test_complete")
+
+
+async def test_reassessment_prompt_keeps_additional_requirements_without_answers():
+    previous = GuidedIntakeState.model_validate({
+        "raw_input": "规划旅行",
+        "route_decision": decision().model_dump(mode="json"),
+        "additional_requirements": "预算已明确为12000元，包含往返交通和住宿",
+    })
+    payloads = []
+
+    class LLM:
+        async def ainvoke(self, messages, **kwargs):
+            payloads.append(json.loads(messages[-1]["content"]))
+            return SimpleNamespace(content=json.dumps({
+                "draft": {},
+                "recognized_requirements": [],
+                "questions": [],
+            }, ensure_ascii=False))
+
+    await understand_trip_intake(
+        previous.raw_input,
+        decision(),
+        llm=LLM(),
+        controlled_identity=_identity(),
+        previous=previous,
+    )
+    assert payloads[0]["additional_requirements"] == previous.additional_requirements
+    assert payloads[0]["already_answered"] == []
+
+
+async def test_unavailable_assessment_still_unavailable_blocks_run_after_answers(resources, monkeypatch):
+    identity = _identity()
+    saved = unavailable_intake("规划这趟旅行，总预算12000元", decision())
+    await resources.chat_session_memory.save_guided_intake(
+        session_id="identity-unavailable-retry", guided_intake=saved
+    )
+    calls = []
+
+    async def unavailable(*_args, **_kwargs):
+        calls.append(True)
+        raise IntakeUnderstandingUnavailable("offline")
+
+    monkeypatch.setattr(preparation, "understand_trip_intake", unavailable)
+    resources.checkpointer = object()
+    body = {
+        "messages": [{"role": "user", "content": "确认旅行", "message_id": "identity-unavailable-retry"}],
+        "session_id": "identity-unavailable-retry",
+        "route": "trip_planning",
+        "guided_intake": saved.model_dump(mode="json"),
+        "controlled_trip_identity": identity.model_dump(mode="json"),
+    }
+    with pytest.raises(PreparationRefused) as caught:
+        await prepare(body, resources)
+    assert caught.value.reason is PreparationRejection.INTAKE_UNAVAILABLE
+    assert calls == [True]
+    assert not resources.trip_run_store.runs
+
+
+async def test_material_gap_that_mentions_identity_fields_is_not_dropped():
+    identity = _identity()
+
+    class LLM:
+        async def ainvoke(self, *_args, **_kwargs):
+            return SimpleNamespace(content=json.dumps({
+                "draft": {},
+                "recognized_requirements": ["总预算12000元"],
+                "questions": [_question(
+                    "budget_scope",
+                    "总预算是否包含出发地至目的地的往返交通？",
+                )],
+            }, ensure_ascii=False))
+
+    assessed = await understand_trip_intake(
+        "规划这趟旅行，总预算12000元",
+        decision(),
+        llm=LLM(),
+        controlled_identity=identity,
+    )
+    assert [item.id for item in assessed.questions] == ["budget_scope"]
+    assert assessed.questions[0].options[-1].id == DEFAULT_ANSWER_OPTION_ID
+    assert assessed.ready_to_create is False
+
+
+async def test_real_identity_question_is_still_removed_when_identity_is_confirmed():
+    identity = _identity()
+
+    class LLM:
+        async def ainvoke(self, *_args, **_kwargs):
+            return SimpleNamespace(content=json.dumps({
+                "draft": {},
+                "recognized_requirements": [],
+                "questions": [_question("schedule", "出发地是哪里？")],
+            }, ensure_ascii=False))
+
+    assessed = await understand_trip_intake(
+        "规划这趟旅行",
+        decision(),
+        llm=LLM(),
+        controlled_identity=identity,
+    )
+    assert assessed.questions == []
+
+
+async def test_complete_identity_with_material_gap_stops_for_clarification(resources, monkeypatch):
+    identity = _identity()
+    observed = {}
+
+    original = preparation.understand_trip_intake
+
+    class LLM:
+        async def ainvoke(self, *_args, **_kwargs):
+            return SimpleNamespace(content=json.dumps({
+                "draft": {},
+                "recognized_requirements": ["总预算12000元"],
+                "questions": [_question()],
+            }, ensure_ascii=False))
+
+    async def assess(raw_input, route_decision, *, controlled_identity=None, previous=None, **kwargs):
+        observed["raw_input"] = raw_input
+        observed["identity"] = controlled_identity
+        return await original(
+            raw_input,
+            route_decision,
+            llm=LLM(),
+            controlled_identity=controlled_identity,
+            previous=previous,
+        )
+
+    monkeypatch.setattr(preparation, "understand_trip_intake", assess)
+    resources.checkpointer = object()
+    body = {
+        "messages": [{"role": "user", "content": "规划这趟旅行，总预算12000元", "message_id": "identity-gap"}],
+        "session_id": "identity-gap",
+        "route": "trip_planning",
+        "controlled_trip_identity": identity.model_dump(mode="json"),
+    }
+    prepared = await prepare(body, resources)
+    assert isinstance(prepared, ImmediateChat)
+    events = [event async for event in prepared.events]
+    payload = events[0]["guided_intake"]
+    assert observed["identity"] == identity
+    assert payload["questions"][0]["id"] == "budget_scope"
+    assert payload["questions"][0]["options"][-1] == {
+        "id": DEFAULT_ANSWER_OPTION_ID,
+        "label": DEFAULT_ANSWER_LABEL,
+    }
+    assert not resources.trip_run_store.runs
+    saved = await resources.chat_session_memory.get_guided_intake(session_id="identity-gap", user_id="local")
+    assert saved.controlled_identity.origin.name == "上海"
+
+
+async def test_refresh_keeps_pending_questions_and_does_not_reassess(resources, monkeypatch):
+    identity = _identity()
+    saved = GuidedIntakeState.model_validate({
+        "raw_input": "规划这趟旅行，总预算12000元",
+        "route_decision": decision().model_dump(mode="json"),
+        "controlled_identity": identity.model_dump(mode="json"),
+        "draft": identity.model_dump(mode="json"),
+        "questions": [_question()],
+        "missing_fields": [],
+    })
+    await resources.chat_session_memory.save_guided_intake(
+        session_id="identity-refresh", guided_intake=saved
+    )
+
+    async def should_not_reassess(*_args, **_kwargs):
+        raise AssertionError("a pending saved intake must be shown again, not reassessed")
+
+    monkeypatch.setattr(preparation, "understand_trip_intake", should_not_reassess)
+    resources.checkpointer = object()
+    body = {
+        "messages": [{"role": "user", "content": "规划这趟旅行，总预算12000元", "message_id": "identity-refresh"}],
+        "session_id": "identity-refresh",
+        "route": "trip_planning",
+        "controlled_trip_identity": identity.model_dump(mode="json"),
+    }
+    prepared = await prepare(body, resources)
+    assert isinstance(prepared, ImmediateChat)
+    events = [event async for event in prepared.events]
+    assert [item["id"] for item in events[0]["guided_intake"]["questions"]] == ["budget_scope"]
+    assert not resources.trip_run_store.runs
+
+
+async def test_complete_unambiguous_identity_creates_run_without_extra_questions(resources, monkeypatch):
+    identity = _identity()
+    calls = []
+
+    async def assess(raw_input, route_decision, *, controlled_identity=None, previous=None, **_kwargs):
+        calls.append(controlled_identity)
+        return GuidedIntakeState.model_validate({
+            "raw_input": raw_input,
+            "route_decision": route_decision.model_dump(mode="json"),
+            "controlled_identity": identity.model_dump(mode="json"),
+            "draft": identity.model_dump(mode="json"),
+            "questions": [],
+            "missing_fields": [],
+        })
+
+    monkeypatch.setattr(preparation, "understand_trip_intake", assess)
+    resources.checkpointer = object()
+    body = {
+        "messages": [{"role": "user", "content": "从上海去青岛，11月5日至8日，一个人，轻松慢游", "message_id": "identity-clear"}],
+        "session_id": "identity-clear",
+        "route": "trip_planning",
+        "controlled_trip_identity": identity.model_dump(mode="json"),
+    }
+    prepared = await prepare(body, resources)
+    assert isinstance(prepared, PreparedChat)
+    assert calls == [identity]
+    assert "青岛" in prepared.user_message and "2026-11-05" in prepared.user_message
+    assert "用户补充确认" not in prepared.user_message
+    assert len(resources.trip_run_store.runs) == 1
+
+
+async def test_answered_and_default_questions_are_not_reasked():
+    identity = _identity()
+    previous = GuidedIntakeState.model_validate({
+        "raw_input": "预算12000元",
+        "route_decision": decision().model_dump(mode="json"),
+        "questions": [_question()],
+        "answers": [{"question_id": "budget_scope", "selected_option_ids": [DEFAULT_ANSWER_OPTION_ID]}],
+    })
+
+    class LLM:
+        async def ainvoke(self, messages, **kwargs):
+            return SimpleNamespace(content=json.dumps({
+                "draft": {},
+                "recognized_requirements": ["预算12000元"],
+                "questions": [
+                    _question(),
+                    {
+                        "id": "pace",
+                        "question": "希望紧凑还是留白？",
+                        "kind": "single",
+                        "options": [
+                            {"id": "packed", "label": "紧凑"},
+                            {"id": "slow", "label": "留白"},
+                        ],
+                    },
+                ],
+            }, ensure_ascii=False))
+
+    assessed = await understand_trip_intake(
+        previous.raw_input,
+        decision(),
+        llm=LLM(),
+        controlled_identity=identity,
+        previous=previous,
+    )
+    assert [item.id for item in assessed.questions] == ["budget_scope", "pace"]
+    assert assessed.answers[0].selected_option_ids == [DEFAULT_ANSWER_OPTION_ID]
+    assert assessed.questions[1].options[-1].id == DEFAULT_ANSWER_OPTION_ID
+    assert assessed.ready_to_create is False
+
+
+async def test_complete_identity_assessment_failure_refuses_without_creating_run(resources, monkeypatch):
+    async def unavailable(*_args, **_kwargs):
+        raise IntakeUnderstandingUnavailable("offline")
+
+    monkeypatch.setattr(preparation, "understand_trip_intake", unavailable)
+    resources.checkpointer = object()
+    body = {
+        "messages": [{"role": "user", "content": "规划这趟旅行", "message_id": "identity-unavailable"}],
+        "session_id": "identity-unavailable",
+        "route": "trip_planning",
+        "controlled_trip_identity": _identity().model_dump(mode="json"),
+    }
+    with pytest.raises(PreparationRefused) as caught:
+        await prepare(body, resources)
+    assert caught.value.reason is PreparationRejection.INTAKE_UNAVAILABLE
+    assert not resources.trip_run_store.runs
+
+
+async def test_disabled_plan_gate_rejects_natural_entry_before_assessment(resources, monkeypatch):
+    async def should_not_assess(*_args, **_kwargs):
+        raise AssertionError("a disabled plan gate must reject before intake assessment")
+
+    monkeypatch.setattr(preparation, "understand_trip_intake", should_not_assess)
+    body = {
+        "messages": [{"role": "user", "content": "规划这趟旅行", "message_id": "gate-natural"}],
+        "session_id": "gate-natural",
+        "route": "trip_planning",
+        "plan_gate": False,
+    }
+    with pytest.raises(PreparationRefused) as caught:
+        await prepare(body, resources)
+    assert caught.value.reason is PreparationRejection.PLAN_GATE_DISABLED
+    assert not resources.trip_run_store.runs
+
+
+async def test_unsupported_plan_gate_rejects_deep_planning_before_run(resources, monkeypatch):
+    identity = _identity()
+    calls = []
+
+    async def no_gap(raw_input, route_decision, *, controlled_identity=None, previous=None, **_kwargs):
+        calls.append(controlled_identity)
+        return GuidedIntakeState.model_validate({
+            "raw_input": raw_input,
+            "route_decision": route_decision.model_dump(mode="json"),
+            "controlled_identity": identity.model_dump(mode="json"),
+            "draft": identity.model_dump(mode="json"),
+            "questions": [],
+            "missing_fields": [],
+        })
+
+    monkeypatch.setattr(preparation, "understand_trip_intake", no_gap)
+    base = {
+        "messages": [{"role": "user", "content": "规划这趟旅行", "message_id": "gate-check"}],
+        "session_id": "gate-check",
+        "route": "trip_planning",
+        "controlled_trip_identity": identity.model_dump(mode="json"),
+    }
+    with pytest.raises(PreparationRefused) as missing_checkpoint:
+        await prepare(base, resources)
+    assert missing_checkpoint.value.reason is PreparationRejection.GATE_REQUIRES_CHECKPOINT
+    assert not resources.trip_run_store.runs
+    assert calls == []
+
+    resources.checkpointer = object()
+    with pytest.raises(PreparationRefused) as disabled:
+        await prepare({**base, "plan_gate": False}, resources)
+    assert disabled.value.reason is PreparationRejection.PLAN_GATE_DISABLED
+    assert not resources.trip_run_store.runs
+    assert calls == []

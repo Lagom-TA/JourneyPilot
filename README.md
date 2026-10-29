@@ -241,7 +241,7 @@ startup — a typo should not be a silent no-op.
 | `primary_model.*` | Main OpenAI-compatible model used for planning and research. |
 | `fast_model.*` | Optional lower-latency model. Empty connection values fall back to the primary model. |
 | `embedding.*` | Local Qwen3 ONNX embeddings by default, or an OpenAI-compatible embedding service. |
-| `run_control.plan_gate_enabled` | Pauses a deep-research run for plan review before research begins. |
+| `run_control.plan_gate_enabled` | Must stay enabled for deep research: pauses a run for plan review before research begins. When disabled, new deep-research requests are rejected early; fast answers still work. |
 | `rerank.*` | Second-stage ranking for knowledge-base retrieval. |
 | `run_deadline.*` | The four time windows one deep research run may spend. |
 | `run_budget.*` | Call, token and cost ceilings sealed when a run is authorised. |

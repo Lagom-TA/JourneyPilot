@@ -7,6 +7,7 @@ import { Button } from '../../../../components/ui/Button';
 import { cn } from '../../../../lib/utils';
 import { emphasisEnter } from '../../../../lib/motion';
 import { RESEARCH_START_TEXT } from '../../../chat/model/conversationFlow';
+import { Markdown } from '../../../chat/components/Markdown';
 import { planGateEntries } from '../../model/planGateActions';
 import React from 'react';
 
@@ -36,6 +37,8 @@ export const TripBriefPlanGate: React.FC = () => {
   const controlsBlocked = state.isStreaming || submitting !== null;
   const { hard, preferences } = gate.recognizedRequirements;
   const canRevise = entries.supplement;
+  const planText = gate.planText.trim();
+  const planSteps = gate.steps.filter((step) => step.agents.length > 0);
   const requirements = [...hard, ...preferences].filter((item, index, items) => item.summary && items.findIndex((other) => other.summary === item.summary) === index);
   const partySummary = identity
     ? [
@@ -84,6 +87,25 @@ export const TripBriefPlanGate: React.FC = () => {
         </div>
       )}
 
+      {(planText || planSteps.length > 0) && (
+        <section className="plan-gate-plan" aria-labelledby="plan-gate-plan-title">
+          <h3 id="plan-gate-plan-title">本次会这样研究</h3>
+          {planText ? (
+            <Markdown content={planText} className="plan-gate-plan-text" />
+          ) : (
+            <ol className="plan-gate-plan-steps">
+              {planSteps.map((step) => (
+                <li key={step.step}>
+                  <strong>步骤 {step.step}</strong>
+                  <span>{Object.values(step.tasks || {}).filter(Boolean).join('；') || step.agents.join('、')}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+          <p className="plan-gate-plan-note">确认后，下面的调研会按这份计划执行；有修改会在重新整理后更新。</p>
+        </section>
+      )}
+
       {requirements.length > 0 ? (
         <section className="plan-gate-requirements" aria-labelledby="plan-gate-requirements-title">
           <h3 id="plan-gate-requirements-title">已识别的旅行要求</h3>
@@ -91,7 +113,7 @@ export const TripBriefPlanGate: React.FC = () => {
             {requirements.map((item) => <li key={item.requirementId} data-requirement={item.requirementId}><Check size={14} aria-hidden />{item.summary}</li>)}
           </ul>
         </section>
-      ) : (
+      ) : planText || planSteps.length > 0 ? null : (
         <p className="plan-gate-note">还没有识别到额外要求，可以直接开始规划。</p>
       )}
 

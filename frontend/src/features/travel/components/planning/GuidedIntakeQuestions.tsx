@@ -607,10 +607,16 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
               {activeQuestion && (
                 <div ref={questionRef} tabIndex={-1} className="travel-intake-question">
                   <p>{activeQuestion.question}</p>
+                  {activeQuestion.options.some((option) => option.id === 'sensible_default') && (
+                    <p className="travel-intake-default-hint">
+                      不确定时可以选择「按合理默认安排，不再补充」，我们会按常规节奏继续，不再重复询问。
+                    </p>
+                  )}
                   <div>
                     {activeQuestion.options.map((option) => (
                       <button
                         type="button"
+                        data-default-option={option.id === 'sensible_default' ? 'true' : undefined}
                         aria-pressed={
                           activeAnswer?.selected_option_ids.includes(
                             option.id,

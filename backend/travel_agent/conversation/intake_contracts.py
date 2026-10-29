@@ -102,5 +102,13 @@ class GuidedIntakeState(BaseModel):
     def require_identity_before_creation(self) -> "GuidedIntakeState":
         if len({question.id for question in self.questions}) != len(self.questions):
             raise ValueError("问题标识不能重复")
-        self.ready_to_create = self.controlled_identity is not None and not self.missing_fields
+        answered = {answer.question_id for answer in self.answers}
+        questions_complete = all(
+            question.id in answered for question in self.questions
+        )
+        self.ready_to_create = (
+            self.controlled_identity is not None
+            and not self.missing_fields
+            and questions_complete
+        )
         return self

@@ -1,4 +1,4 @@
-import { Check, GripVertical, MapPin, Plus, X } from 'lucide-react';
+import { Check, MapPin, Plus, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { createPlaceSearchRunner, type PlaceSearchCandidate } from '../../model/placeSearch';
 import type { PlaceIdentity } from '../../types/planner';
@@ -269,6 +269,7 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
   const [focusSearchTick, setFocusSearchTick] = React.useState(0);
   const [focusAddTick, setFocusAddTick] = React.useState(0);
   const [focusTokenIndex, setFocusTokenIndex] = React.useState<number | null>(null);
+  const [sortAnnouncement, setSortAnnouncement] = React.useState('');
   const addRef = React.useRef<HTMLButtonElement>(null);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const tokenRefs = React.useRef(new Map<number, HTMLLIElement>());
@@ -279,10 +280,13 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
   const dragRef = React.useRef<{
     from: number;
     pointerId: number;
+    startX: number;
     startY: number;
     element: HTMLElement;
     dropIndex: number;
     captured: boolean;
+    activated: boolean;
+    timer: number | null;
   } | null>(null);
   const searchId = React.useId();
   const full = confirmed.length >= MAX_DESTINATIONS;
@@ -431,6 +435,7 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
     next.splice(to, 0, place);
     emit(next, draft, open);
     setFocusTokenIndex(to);
+    setSortAnnouncement(`已调整顺序：${next.map((item) => item.name).join('、')}`);
   };
 
   const releaseCapture = (state: NonNullable<typeof dragRef.current>) => {
@@ -464,10 +469,32 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
     setDropIndex(best);
   };
 
+  const clearPendingTimer = (state: NonNullable<typeof dragRef.current>) => {
+    if (state.timer !== null) {
+      window.clearTimeout(state.timer);
+      state.timer = null;
+    }
+  };
+
+  const activateDrag = (state: NonNullable<typeof dragRef.current>) => {
+    clearPendingTimer(state);
+    if (dragRef.current !== state) return;
+    state.activated = true;
+    try {
+      state.element.setPointerCapture(state.pointerId);
+      state.captured = true;
+    } catch {
+      state.captured = false;
+    }
+    setDragFrom(state.from);
+    setDropIndex(state.from);
+  };
+
   const endDrag = (event: React.PointerEvent<HTMLElement>) => {
     const state = dragRef.current;
     if (!state || state.pointerId !== event.pointerId) return;
-    if (state.dropIndex !== state.from) moveConfirmed(state.from, state.dropIndex);
+    clearPendingTimer(state);
+    if (state.activated && state.dropIndex !== state.from) moveConfirmed(state.from, state.dropIndex);
     releaseCapture(state);
     dragRef.current = null;
     setDragFrom(null);
@@ -476,7 +503,10 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
 
   const cancelDrag = () => {
     const state = dragRef.current;
-    if (state) releaseCapture(state);
+    if (state) {
+      clearPendingTimer(state);
+      releaseCapture(state);
+    }
     dragRef.current = null;
     setDragFrom(null);
     setDropIndex(null);
@@ -484,30 +514,35 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
 
   const startDrag = (event: React.PointerEvent<HTMLElement>, index: number) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
-    event.preventDefault();
-    event.stopPropagation();
+    if ((event.target as HTMLElement).closest('button')) return;
     const state = {
       from: index,
       pointerId: event.pointerId,
+      startX: event.clientX,
       startY: event.clientY,
       element: event.currentTarget,
       dropIndex: index,
       captured: false,
+      activated: false,
+      timer: null as number | null,
     };
     dragRef.current = state;
-    try {
-      state.element.setPointerCapture(event.pointerId);
-      state.captured = true;
-    } catch {
-      state.captured = false;
+    if (event.pointerType === 'mouse') {
+      event.preventDefault();
+      activateDrag(state);
+      return;
     }
-    setDragFrom(index);
-    setDropIndex(index);
+    // 触摸时先等待短按，让普通上下滑动继续滚动页面；按住后再进入排序。
+    state.timer = window.setTimeout(() => activateDrag(state), 180);
   };
 
   const moveDrag = (event: React.PointerEvent<HTMLElement>) => {
     const state = dragRef.current;
     if (!state || state.pointerId !== event.pointerId) return;
+    if (!state.activated) {
+      if (Math.hypot(event.clientX - state.startX, event.clientY - state.startY) > 8) cancelDrag();
+      return;
+    }
     event.preventDefault();
     updateDropIndex(event.clientX, event.clientY);
   };
@@ -518,6 +553,7 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
       data-testid="destination-token-field"
       data-state={full ? 'limit' : confirmed.length === 0 ? 'base' : open ? 'open' : 'closed'}
     >
+      <p className="sr-only" role="status" aria-live="polite">{sortAnnouncement}</p>
       <div className="destination-token-flow">
       {confirmed.length === 0 ? (
         <div id={searchId} className="destination-base-search">
@@ -543,12 +579,18 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
               role="listitem"
               tabIndex={0}
               data-testid={`destination-token-${index}`}
-              aria-label={`第 ${index + 1} 站 ${place.name}。拖动右侧把手或按方向键调整顺序，Delete 删除。`}
+              aria-label={`第 ${index + 1} 站 ${place.name}。按住可拖动排序，也可以用方向键调整顺序，Delete 删除。`}
               className={cn(
                 'destination-token',
                 dragFrom === index && 'is-dragging',
                 dropIndex === index && dragFrom !== null && dragFrom !== index && 'is-drop-target',
               )}
+              onPointerDown={(event) => startDrag(event, index)}
+              onPointerMove={moveDrag}
+              onPointerUp={endDrag}
+              onPointerCancel={cancelDrag}
+              onLostPointerCapture={() => { if (dragRef.current?.captured) cancelDrag(); }}
+              onContextMenu={(event) => { if (dragRef.current?.activated) event.preventDefault(); }}
               onKeyDown={(event) => {
                 if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
                   event.preventDefault();
@@ -574,19 +616,6 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
               >
                 <X size={14} />
               </button>
-              <span
-                className="destination-token-drag"
-                data-token-drag
-                aria-hidden
-                onPointerDown={(event) => startDrag(event, index)}
-                onPointerMove={moveDrag}
-                onPointerUp={endDrag}
-                onPointerCancel={cancelDrag}
-                onLostPointerCapture={() => { if (dragRef.current?.captured) cancelDrag(); }}
-                onContextMenu={(event) => { if (dragRef.current) event.preventDefault(); }}
-              >
-                <GripVertical size={16} />
-              </span>
             </li>
           ))}
         </ol>
@@ -608,9 +637,6 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
           </button>
         </div>
       </div>
-      {confirmed.length > 1 && (
-        <p className="destination-token-sort-hint">拖动右侧把手或按方向键调整顺序</p>
-      )}
       {confirmed.length > 0 && open && !full && (
         <div id={searchId} className="destination-add-panel">
           <DestinationSearch

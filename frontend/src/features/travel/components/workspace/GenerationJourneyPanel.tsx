@@ -1,4 +1,4 @@
-import { Check, Loader2, MapPin, Play, Route, Square, Users } from 'lucide-react';
+import { Check, Loader2, Play, Square, Users } from 'lucide-react';
 import { useApp } from '../../../../app/state/AppContext';
 import { useSendMessage } from '../../../../app/session/useSendMessage';
 import { useStopRun } from '../../../../app/session/useStopRun';
@@ -114,10 +114,10 @@ export const GenerationJourneyPanel: React.FC = () => {
                 <div>
                   <p className="generation-trip-eyebrow">你的旅行</p>
                   <h1 tabIndex={-1} data-workspace-handoff-focus>
-                    <span className="generation-trip-title-destinations">
+                    <span className="generation-trip-title-destinations" aria-label={`目的地顺序：${identity.destinations.map((place) => place.name).join('、')}`}>
                       {identity.destinations.map((place, index) => (
                         <span key={place.place_id} className={cn('generation-trip-title-segment', index === 0 && 'is-first')}>
-                          {index > 0 && <span className="generation-trip-title-plus">＋</span>}
+                          <span className="generation-trip-title-index" aria-hidden>{index + 1}</span>
                           <span className="generation-trip-title-place">{place.name}</span>
                         </span>
                       ))}
@@ -133,8 +133,6 @@ export const GenerationJourneyPanel: React.FC = () => {
               </div>
               <p className="generation-trip-card-sub">{identity.origin.name}出发 · {identity.start_date} — {identity.end_date}</p>
               <dl className="generation-trip-card-facts">
-                <div><dt><MapPin size={14} />目的地</dt><dd>{identity.destinations.map((place) => place.name).join('、')}</dd></div>
-                <div><dt><Route size={14} />行程</dt><dd>{days} 天 · {identity.origin.name}出发</dd></div>
                 <div><dt><Users size={14} />同行</dt><dd>{identity.party.adults} 位成人{identity.party.children ? ` · ${identity.party.children} 位儿童` : ''}{identity.party.elderly_companions ? ' · 有长辈同行' : ''}{identity.party.accessibility_required ? ' · 需要无障碍安排' : ''}</dd></div>
               </dl>
               <div className="generation-trip-tags">
@@ -187,6 +185,7 @@ export const GenerationJourneyPanel: React.FC = () => {
                   layout="workspace"
                   runStatus={runStatus}
                   gatePending={gatePending}
+                  runKey={runId}
                 />
               )}
             </div>

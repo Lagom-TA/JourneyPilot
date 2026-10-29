@@ -18,6 +18,7 @@ describe('normalizePlanApprovalGate', () => {
                 },
             },
         });
+        expect(gate?.planText).toBe('Research Tokyo');
         expect(gate?.recognizedRequirements).toEqual({
             hard: [{ requirementId: 'intent_no_museum', summary: '不安排博物馆' }],
             preferences: [{ requirementId: 'intent_architecture', summary: '偏好当代建筑' }],

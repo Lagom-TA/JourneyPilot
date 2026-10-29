@@ -10,6 +10,23 @@ const CAPABILITY_DECLARATION_STATUSES: readonly ToolExecutionStatus[] = [
 export function isCapabilityDeclaration(status: string | undefined): boolean {
     return CAPABILITY_DECLARATION_STATUSES.includes(status as ToolExecutionStatus);
 }
+/**
+ * 过程区只公开正常、可追溯的旅行行动。
+ * 失败工具、失败的阶段进展和 search_tools 未匹配/激活失败属于内部过程，
+ * 不能进入标题、摘要、计数或展开详情；Run 级失败仍由状态区单独表达。
+ */
+export function isPublicActivityStep(step: ThinkingStep): boolean {
+    if (!step.isToolCall)
+        return step.progressStatus !== 'failed';
+    if (step.toolStatus === 'failed')
+        return false;
+    if (step.toolName && /(^|[_:])search_tools($|[_:])/i.test(step.toolName)) {
+        const result = (step.toolResult || '').trim();
+        if (/未匹配到工具|激活失败|没有可用工具|未启用/.test(result))
+            return false;
+    }
+    return true;
+}
 export function thinkingStepStatusFromToolResult(status: SSEEvent['status']): NonNullable<ThinkingStep['toolStatus']> {
     if (isCapabilityDeclaration(status))
         return 'capability_declared';
@@ -33,30 +50,35 @@ type DisplayKind = 'web_search' | 'web_page' | 'place_search' | 'geocode' | 'wea
 interface ArgsMap {
     [key: string]: string;
 }
+export interface ToolInputField {
+    label: string;
+    value: string;
+}
 export interface ToolDisplay {
     kind: DisplayKind;
     categoryLabel: string;
     actionText: string;
     subject: string | null;
     fullSubject: string | null;
+    inputs: ToolInputField[];
     technicalLabel: string;
     status: ToolStatus;
 }
 const KIND_LABELS: Record<DisplayKind, string> = {
-    web_search: '联网搜索',
+    web_search: '网页搜索',
     web_page: '网页读取',
     place_search: '地点搜索',
     geocode: '地点定位',
     weather: '天气查询',
     route: '路线查询',
-    flight: '航班搜索',
-    train: '火车查询',
+    flight: '班次查询',
+    train: '班次查询',
     currency: '汇率换算',
-    knowledge: '资料库检索',
+    knowledge: '知识库检索',
     calculation: '预算计算',
     internal: '整理规划',
     data: '旅行数据',
-    other: '数据连接',
+    other: '查询旅行信息',
 };
 const RUNNING_VERB: Record<DisplayKind, string> = {
     web_search: '正在搜索',
@@ -193,9 +215,11 @@ function classifyTool(toolName: string | undefined, category: ToolCategory | und
     const name = normalizeToolName(toolName);
     if (/search_tools/.test(name))
         return 'internal';
-    if (/tavily_extract|extract|fetch|crawler|crawl|firecrawl|browser/.test(name))
+    if (/search|query/.test(name) && /tavily|brave|duckduckgo|firecrawl|free_web|web|google/.test(name))
+        return 'web_search';
+    if (/tavily_extract|extract|scrape|fetch|crawler|crawl|browser/.test(name))
         return 'web_page';
-    if (/tavily|brave|duckduckgo|free_web_search|web_search|google_search|search_web/.test(name))
+    if (/tavily|brave|duckduckgo|free_web_search|web_search|google_search|search_web|firecrawl/.test(name))
         return 'web_search';
     if (/maps?_weather|forecast|weather/.test(name))
         return 'weather';
@@ -219,7 +243,7 @@ function classifyTool(toolName: string | undefined, category: ToolCategory | und
         return 'internal';
     if (category === 'data')
         return 'data';
-    return category === 'search' ? 'web_search' : 'other';
+    return 'other';
 }
 function subjectForKind(kind: DisplayKind, args: ArgsMap): string | null {
     switch (kind) {
@@ -252,6 +276,54 @@ function subjectForKind(kind: DisplayKind, args: ArgsMap): string | null {
             return firstArg(args, ['query', 'q', 'name', 'title', 'city', 'address']);
     }
 }
+function inputFieldsForKind(kind: DisplayKind, args: ArgsMap): ToolInputField[] {
+    const fields: ToolInputField[] = [];
+    const add = (label: string, keys: string[]) => {
+        const value = publicToolArgText(firstArg(args, keys));
+        if (!value || fields.some(field => field.value === value))
+            return;
+        fields.push({ label, value });
+    };
+    switch (kind) {
+        case 'web_search':
+        case 'place_search':
+        case 'knowledge':
+            add('查询内容', ['query', 'q', 'search_query', 'keywords', 'keyword', 'text']);
+            break;
+        case 'web_page':
+            add('网页地址', ['url', 'uri', 'link', 'href', 'website']);
+            break;
+        case 'geocode':
+        case 'weather':
+            add('地点', ['address', 'location', 'city', 'query']);
+            add('日期', ['date', 'forecast_date']);
+            break;
+        case 'route':
+        case 'flight':
+        case 'train':
+            add('出发地', ['from_name', 'origin', 'from', 'from_city', 'departure', 'departure_city', 'source']);
+            add('目的地', ['to_name', 'destination', 'to', 'to_city', 'arrival', 'arrival_city', 'target']);
+            add('日期', ['date', 'departure_date', 'travel_date']);
+            add('路线', ['route', 'query', 'q']);
+            break;
+        case 'currency':
+            add('金额', ['amount']);
+            add('原币种', ['from', 'base', 'base_currency']);
+            add('目标币种', ['to', 'target', 'to_currency', 'target_currency', 'to_currencies']);
+            break;
+        case 'internal':
+            // search_tools 的 query 是内部能力标识，不作为旅行者输入展示。
+            break;
+        case 'calculation':
+        case 'data':
+        case 'other':
+            add('查询内容', ['query', 'q', 'search_query', 'keywords', 'keyword', 'text']);
+            add('地点', ['city', 'location', 'address']);
+            add('日期', ['date', 'departure_date', 'travel_date']);
+            break;
+    }
+    return fields;
+}
 function statusForStep(step: ThinkingStep): ToolStatus {
     if (step.toolStatus === 'failed')
         return 'failed';
@@ -266,7 +338,7 @@ function statusForStep(step: ThinkingStep): ToolStatus {
 export function describeToolStep(step: ThinkingStep): ToolDisplay {
     const kind = classifyTool(step.toolName, step.toolCategory);
     const args = parseToolArgs(step.toolArgs);
-    const subject = subjectForKind(kind, args);
+    const subject = publicToolArgText(subjectForKind(kind, args));
     const status = statusForStep(step);
     const verb = status === 'running'
         ? RUNNING_VERB[kind]
@@ -282,7 +354,8 @@ export function describeToolStep(step: ThinkingStep): ToolDisplay {
         actionText,
         subject: subject ? truncate(subject, 44) : null,
         fullSubject: subject,
-        technicalLabel: step.toolName || KIND_LABELS[kind],
+        inputs: inputFieldsForKind(kind, args),
+        technicalLabel: KIND_LABELS[kind],
         status,
     };
 }
@@ -290,11 +363,78 @@ function looksLikeMachinePayload(text: string): boolean {
     const trimmed = text.trimStart();
     return !publicProgressText(trimmed);
 }
+function aliasForInternalIdentifier(value: string): string {
+    return KIND_LABELS[classifyTool(value, undefined)];
+}
+const INTERNAL_IDENTIFIER = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/gi;
+const PROVIDER_IDENTIFIER = /\b(?:brave|tavily|firecrawl|duckduckgo|nominatim|amap|duffel|frankfurter)\b/gi;
+function activationSummary(text: string): string | null {
+    const match = /^激活工具\s*[：:]\s*([\s\S]*)$/.exec(text);
+    if (!match)
+        return null;
+    const raw = match[1].trim();
+    if (!raw || raw === '未匹配到工具')
+        return raw === '未匹配到工具' ? raw : '已启用本次规划所需能力';
+    const aliases = [...new Set(raw
+            .split(/[,，、\s]+/)
+            .map(token => token.trim())
+            .filter(Boolean)
+            .map(aliasForInternalIdentifier))];
+    return aliases.length ? `已启用：${aliases.join('、')}` : '已启用本次规划所需能力';
+}
+function sanitizeInternalIdentifiers(text: string): string {
+    return text
+        .replace(INTERNAL_IDENTIFIER, token => aliasForInternalIdentifier(token))
+        .replace(PROVIDER_IDENTIFIER, token => aliasForInternalIdentifier(token));
+}
+const TECHNICAL_INPUT_FIELDS = /\b(?:contract_version|research_packet_id|tool_call_id|run_id|session_id|provider|status_code|args_summary|sanitized_result|raw_result)\b\s*[:=]/i;
+const TECHNICAL_ERROR_TEXT = [
+    /^\s*(?:error|exception|traceback|typeerror|valueerror|runtimeerror|keyerror|httpx?error|urllib3)\b/i,
+    /\b(?:traceback \(most recent call last\)|stack trace|internal server error|service unavailable|bad gateway|gateway timeout)\b/i,
+    /\b(?:errno|econnrefused|etimedout|enotfound|econnreset)\b/i,
+    /\b(?:status|status_code|http status|http)\s*[:：=]?\s*[45]\d\d\b/i,
+    /(?:请求|服务|接口|上游|工具)(?:调用|请求|响应)?失败\s*[：:].*(?:HTTP|状态码|[45]\d\d)/i,
+    /\bFile\s+"[^"]+",\s*line\s+\d+/i,
+    /\bat\s+[\w.$<>]+\s+\([^)]*:\d+:\d+\)/i,
+];
+function publicToolArgText(value: string | null | undefined): string | null {
+    const text = publicProgressText(value || undefined);
+    if (!text || TECHNICAL_INPUT_FIELDS.test(text) || TECHNICAL_ERROR_TEXT.some(pattern => pattern.test(text)))
+        return null;
+    return sanitizeInternalIdentifiers(text);
+}
 export function toolResultText(step: Pick<ThinkingStep, 'toolResult'>): string | null {
     const text = step.toolResult?.trim();
     if (!text || looksLikeMachinePayload(text))
         return null;
-    return text;
+    const activation = activationSummary(text);
+    if (activation)
+        return activation;
+    return sanitizeInternalIdentifiers(text);
+}
+const CHINESE_DIGITS: Record<string, number> = {
+    一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9,
+};
+function parseCountValue(value: string): number | null {
+    if (/^\d+$/.test(value))
+        return parseInt(value, 10);
+    if (value === '十')
+        return 10;
+    const tenIndex = value.indexOf('十');
+    if (tenIndex >= 0) {
+        const tens = tenIndex === 0 ? 1 : CHINESE_DIGITS[value[tenIndex - 1]];
+        const ones = tenIndex === value.length - 1 ? 0 : CHINESE_DIGITS[value[tenIndex + 1]];
+        return tens != null && ones != null ? tens * 10 + ones : null;
+    }
+    return CHINESE_DIGITS[value] ?? null;
+}
+export function toolResultCount(summary: string | null): number | null {
+    if (!summary)
+        return null;
+    const match = /(?:找到|搜索到|返回|获取到|整理出|共)\s*(?:等|了)?\s*([0-9]+|[一二两三四五六七八九十]+)\s*(?:个|条|项|处|家|座|班)?\s*[^，。；:：\d]{0,12}?(?:结果|地点|网页|候选|路线|班次|住宿|资料|选项|来源)/.exec(summary);
+    if (!match)
+        return null;
+    return parseCountValue(match[1]);
 }
 export function toolSourceLabel(toolName: string | undefined): string {
     const name = (toolName || '').trim();

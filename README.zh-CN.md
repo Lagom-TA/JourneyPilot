@@ -236,7 +236,7 @@ UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/jour
 | `primary_model.*` | 规划和调研使用的主要模型，支持 OpenAI 兼容接口。 |
 | `fast_model.*` | 可选的低延迟模型；连接信息留空时会沿用主要模型。 |
 | `embedding.*` | 默认使用本地 Qwen3 ONNX 向量模型，也可以连接 OpenAI 兼容的向量服务。 |
-| `run_control.plan_gate_enabled` | 完整调研开始前是否暂停，等待确认研究计划。 |
+| `run_control.plan_gate_enabled` | 完整调研必须保持开启：调研开始前暂停并等待确认研究计划。关闭后，新的完整调研会在创建 Run 前被明确拒绝；快问快答不受影响。 |
 | `rerank.*` | 知识库检索的第二阶段排序。 |
 | `run_deadline.*` | 一次完整调研可以花掉的四段时间窗。 |
 | `run_budget.*` | Run 被授权时封存的调用数 / token / 费用上限。 |
