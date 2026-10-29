@@ -44,6 +44,7 @@ def _normalization_prompt(
     system = (
         "你是 JourneyPilot 请求合同规范化器。逐条处理输入 clause，不得遗漏、合并或新增 clause。"
         "仅把本次任务要求写成 Intent；目的地、日期、出发地等已经存在于 controlled identity 的事实标记为 controlled_identity。"
+        "同行人数以 controlled_identity.party 为准，0位儿童或明确不带儿童不能产生儿童友好或亲子约束。"
         "旅行安全、预算、交通、住宿和行动能力要求同时写入 constraints；数量、频率、主题、排除、"
         "顺序、输出字段和多方案要求属于 Intent。冲突和无法可靠理解的指令标记 unresolved，不得猜测。"
         "明确要求必须包含多个命名事项时，每个事项分别输出一个 hard MUST_INCLUDE Intent，不得合并成 objective。"
@@ -54,6 +55,7 @@ def _normalization_prompt(
         "住宿安排使用 target=lodging；逐日时间和逐日交通的呈现要求使用 output_requirement。"
         "locked_local_mode 只表示市内接驳方式，禁止写入高铁、航班等跨城方式。"
         "明确要求备选方案时输出 hard ALTERNATIVES，target=delivery；未写数量表示主方案之外至少一个备选，count=2。"
+        "source_kind=saved_preference 只携带长期偏好；其中别次旅行的目的地、日期、人数和预算不得变成本次要求，应标记 background_context。"
         "source_kind 只用于确定优先级，不得改写。"
         f"{wire_contract}只输出符合 JSON Schema 的对象，不要解释。"
     )

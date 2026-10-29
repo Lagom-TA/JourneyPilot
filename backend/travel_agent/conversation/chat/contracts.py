@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
 from pydantic import model_validator
-from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
+from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity, PlaceIdentity
 from travel_agent.conversation.intake_contracts import GuidedIntakeState
 from travel_agent.conversation.intake_contracts import RouteDecision
 from travel_agent.conversation.intake_contracts import RouteName
@@ -46,6 +46,7 @@ class ChatRequest(BaseModel):
     route_decision: Optional[RouteDecision] = None
     controlled_trip_identity: Optional[ControlledTripIdentity] = None
     guided_intake: Optional[GuidedIntakeState] = None
+    intake_destination: Optional[PlaceIdentity] = None
     selected_mcp_servers: List[str] = Field(default_factory=list)
     plan_gate: Optional[bool] = None
     gate_decision: Optional[GateDecision] = None

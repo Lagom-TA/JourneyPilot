@@ -163,10 +163,10 @@ def _criterion(item: IntentItem) -> SuccessCriterion:
 def _domain_summary(domain: ResearchDomain, scoped: List[IntentItem]) -> str:
     labels = [item.public_summary for item in scoped]
     base = {
-        ResearchDomain.VISIT: "查明符合主题和限制的具体游览候选",
-        ResearchDomain.DINING: "查明符合用餐要求的具体餐饮候选",
-        ResearchDomain.LODGING: "查明覆盖过夜责任的住宿候选",
-        ResearchDomain.LOCAL_TRANSPORT: "查明行程内连接段的可执行交通",
-        ResearchDomain.LONG_DISTANCE_TRANSPORT: "查明出发、返程和跨城交通责任",
+        ResearchDomain.VISIT: "查找符合主题和要求的景点与体验",
+        ResearchDomain.DINING: "查找符合用餐要求的餐饮选择",
+        ResearchDomain.LODGING: "查找覆盖整个行程的住宿选择",
+        ResearchDomain.LOCAL_TRANSPORT: "查询每天行程中的市内交通与衔接方式",
+        ResearchDomain.LONG_DISTANCE_TRANSPORT: "查找合适的往返及跨城交通",
     }[domain]
     return (base + ("；" + "；".join(labels) if labels else ""))[:500]

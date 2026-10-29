@@ -29,7 +29,7 @@ class PlaceKind(str, Enum):
     RESTAURANT = "restaurant"
 
 
-MAX_CONTROLLED_DESTINATIONS = 3
+MAX_CONTROLLED_DESTINATIONS = 5
 
 
 ORIGIN_PLACE_KINDS = {PlaceKind.CITY, PlaceKind.AIRPORT, PlaceKind.TRAIN_STATION}

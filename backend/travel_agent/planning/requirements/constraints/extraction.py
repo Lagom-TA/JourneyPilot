@@ -130,6 +130,7 @@ def deterministic_budget_constraints(text: str) -> List[Dict[str, Any]]:
     """不依赖模型，抽取明确的数字预算上限。"""
 
     out: List[Dict[str, Any]] = []
+    text = re.sub(r"(?<=\d)[,，](?=\d{3}(?:\D|$))", "", text)
 
     patterns = [
         (r"(?:总预算|全程|整趟|整程)[^\d]{0,8}(\d+(?:\.\d+)?)", "total"),
@@ -138,6 +139,7 @@ def deterministic_budget_constraints(text: str) -> List[Dict[str, Any]]:
         (r"(\d+(?:\.\d+)?)[^\d]{0,6}(?:每晚|一晚|/晚|每夜|一夜)", "night"),
         (r"(?:每天|每日|一天)[^\d]{0,8}(\d+(?:\.\d+)?)", "day"),
         (r"(\d+(?:\.\d+)?)[^\d]{0,6}(?:每天|每日|一天)", "day"),
+        (r"(?:预算|费用|花费|开销)[^\d]{0,8}(\d+(?:\.\d+)?)", "total"),
     ]
     for pattern, per in patterns:
         m = re.search(pattern, text, re.IGNORECASE)
@@ -163,7 +165,7 @@ def deterministic_budget_constraints(text: str) -> List[Dict[str, Any]]:
             if not any(cue in nearby for cue in money_cues):
                 continue
         amount = _budget_amount_param(m.group(1))
-        if amount and any(h in text.lower() for h in _HARD_HINTS):
+        if amount and ("预算" in text or any(h in text.lower() for h in _HARD_HINTS)):
             label = {"night": "每晚预算", "day": "每日预算", "total": "总预算"}[per]
             out.append(
                 {
@@ -252,7 +254,8 @@ def _rule_fallback_extract(
                     "params": _canonical_mobility_params(text, None),
                 }
             )
-        if any(k in text for k in ("孩子", "儿童", "小孩", "亲子")):
+        child_text = re.sub(r"(?:0|零)\s*(?:位|名|个)?(?:儿童|孩子|小孩)|(?:没有|不带|无)(?:儿童|孩子|小孩)", "", text)
+        if any(k in child_text for k in ("孩子", "儿童", "小孩", "亲子")):
             found.append(
                 {
                     "category": "child_friendly",

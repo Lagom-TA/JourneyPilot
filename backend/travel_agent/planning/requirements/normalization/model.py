@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from openai import OpenAIError
 from pydantic import ValidationError
-from travel_agent.planning.requirements.normalization.clauses import logger
+from travel_agent.planning.requirements.normalization.clauses import logger, is_material_clause
+from travel_agent.planning.requirements.request_contracts import ClauseDisposition
 from travel_agent.planning.requirements.normalization.contracts import (
     NormalizedClauseDraft,
 )
@@ -88,7 +89,13 @@ async def normalize_clauses(
         str(last_error)[:800] if last_error is not None else "",
     )
     fallback = _fallback_normalization(pending, controlled_identity)
-    fallback_by_id = {draft.clause_id: draft for draft in fallback.clauses}
+    pending_sources = {clause.clause_id: clause for clause in pending}
+    fallback_by_id = {
+        draft.clause_id: draft.model_copy(update={"disposition": ClauseDisposition.BACKGROUND_CONTEXT, "reason_code": None})
+        if draft.disposition == ClauseDisposition.UNRESOLVED and pending_sources[draft.clause_id].source_kind == "saved_preference"
+        else draft
+        for draft in fallback.clauses
+    }
     return RequestContractNormalizationResult(
         clauses=[
             accepted.get(clause.clause_id) or fallback_by_id[clause.clause_id]
@@ -138,6 +145,8 @@ def _validated_model_clause_rows(
         except (ValidationError, TypeError, ValueError) as exc:
             errors.append(f"{source.clause_id}: {type(exc).__name__}: {str(exc)[:500]}")
             continue
+        if source.source_kind != "saved_preference" and is_material_clause(source.source_text) and draft.disposition in {ClauseDisposition.BACKGROUND_CONTEXT, ClauseDisposition.NON_ACTIONABLE}:
+            draft = draft.model_copy(update={"disposition": ClauseDisposition.UNRESOLVED, "reason_code": "material_requirement_needs_clarification"})
         accepted[source.clause_id] = draft
     unknown_ids = sorted(
         clause_id

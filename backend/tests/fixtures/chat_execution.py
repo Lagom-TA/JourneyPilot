@@ -97,6 +97,16 @@ class ChatMemory:
     async def get_anchor(self, **kwargs):
         return None, 0
 
+    async def get_guided_intake(self, **kwargs):
+        saved = getattr(self, 'guided_intake', None)
+        return saved['guided_intake'] if saved and saved['session_id'] == kwargs['session_id'] else None
+
+    async def save_guided_intake(self, **kwargs):
+        self.guided_intake = kwargs
+
+    async def clear_guided_intake(self, **kwargs):
+        self.guided_intake = None
+
     async def save_turn(self, **kwargs):
         self.turns.append(kwargs)
 

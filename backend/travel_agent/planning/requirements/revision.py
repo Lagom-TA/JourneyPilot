@@ -104,7 +104,7 @@ def build_request_contract_revision(
                 clause_id=clause.clause_id,
                 source_ref_id=clause.source_ref_id,
                 source_text=clause.source_text,
-                material=is_material_clause(clause.source_text),
+                material=(source_kind != "saved_preference" and is_material_clause(clause.source_text)) or draft.disposition in {ClauseDisposition.UNRESOLVED, ClauseDisposition.UNSUPPORTED},
                 disposition=draft.disposition,
                 mapped_intent_ids=mapped_ids,
                 reason_code=draft.reason_code,

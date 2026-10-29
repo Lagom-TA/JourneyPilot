@@ -195,6 +195,15 @@ class TripRunStore:
         }
         state = TripRunState(run_id=run.run_id, status=run.status, latest_state_summary=initial_summary)
         async with get_db_session() as session:
+            if run_id is not None:
+                await session.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:run_id, 0))"), {"run_id": run_id})
+                previous = await session.execute(text("SELECT * FROM trip_runs WHERE run_id = :run_id"), {"run_id": run_id})
+                row = previous.mappings().first()
+                if row is not None:
+                    existing = _run_from_row(dict(row))
+                    if existing.user_id != run.user_id or existing.session_id != session_id or existing.request_message_id != request_message_id:
+                        raise ValueError("运行标识已用于其他请求")
+                    return existing
             await session.execute(
                 text(
                     """
@@ -1376,6 +1385,9 @@ class InMemoryTripRunStore(TripRunStore):
             controlled_trip_identity=controlled_trip_identity,
         )
         if run.run_id in self.runs:
+            existing = self.runs[run.run_id]
+            if run_id is not None and existing.user_id == run.user_id and existing.session_id == session_id and existing.request_message_id == request_message_id:
+                return existing
             raise ValueError(f"TripRun already exists: {run.run_id}")
         self.runs[run.run_id] = run
         initial_summary = {

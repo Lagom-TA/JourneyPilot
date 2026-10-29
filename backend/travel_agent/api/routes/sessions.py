@@ -13,6 +13,9 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query
 
+from travel_agent.conversation.intake import apply_intake_answers
+from travel_agent.conversation.intake_contracts import GuidedIntakeState
+
 from travel_agent.bootstrap.registry import get_components
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from ...memory.chat_session import TURN_PAGE_LIMIT
@@ -21,6 +24,25 @@ from travel_agent.api.schemas.sessions import SessionTurnPage
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["sessions"])
+
+
+@router.patch("/sessions/{session_id}/intake", response_model=GuidedIntakeState)
+async def update_intake(session_id: str, submitted: GuidedIntakeState):
+    memory = get_components().chat_session_memory
+    try:
+        saved = await memory.get_guided_intake(session_id=session_id, user_id=LOCAL_USER_ID)
+        if saved is None:
+            raise HTTPException(status_code=409, detail="旅行需求草稿已变化，请刷新后继续")
+        updated = apply_intake_answers(saved, submitted)
+        await memory.save_guided_intake(
+            session_id=session_id, user_id=LOCAL_USER_ID,
+            title_seed=saved.raw_input, guided_intake=updated,
+        )
+        return updated
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="无权访问该会话") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/sessions/{session_id}/turns", response_model=SessionTurnPage)

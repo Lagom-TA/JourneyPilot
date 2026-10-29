@@ -384,6 +384,10 @@ def test_contract_and_capability_plan_are_deterministic_and_cover_hard_intents()
         for assignment in plan.assignments.values()
         for query_id in assignment.research_query_ids
     } == set(query_plan.query_index())
+    public_tasks = " ".join(assignment.objective for assignment in plan.assignments.values())
+    assert "责任" not in public_tasks
+    assert "查找覆盖整个行程的住宿选择" in public_tasks
+    assert "查找合适的往返及跨城交通" in public_tasks
 
 
 @pytest.mark.parametrize("stages,overnight,owner", [
@@ -463,6 +467,136 @@ def test_planner_assigns_authoritative_transport_scopes_for_local_and_intercity_
     assert [leg.leg_role for leg in legs] == ([] if same_city else ["outbound", "return"])
 
 
+@pytest.mark.parametrize(
+    ("destination_order", "expected_legs", "expected_day_destinations"),
+    [
+        (
+            ("origin_shenzhen", "destination_beijing"),
+            [
+                (
+                    "inter_destination",
+                    "origin_shenzhen",
+                    "destination_beijing",
+                    "2026-11-01",
+                    False,
+                ),
+                (
+                    "return",
+                    "destination_beijing",
+                    "origin_shenzhen",
+                    "2026-11-03",
+                    True,
+                ),
+            ],
+            ["origin_shenzhen"] * 3 + ["destination_beijing"] * 3,
+        ),
+        (
+            ("destination_beijing", "origin_shenzhen"),
+            [
+                (
+                    "outbound",
+                    "origin_shenzhen",
+                    "destination_beijing",
+                    "2026-10-29",
+                    False,
+                ),
+                (
+                    "inter_destination",
+                    "destination_beijing",
+                    "origin_shenzhen",
+                    "2026-11-01",
+                    False,
+                ),
+            ],
+            ["destination_beijing"] * 3 + ["origin_shenzhen"] * 3,
+        ),
+    ],
+)
+def test_origin_first_and_origin_last_multi_stop_keep_distinct_transport_legs(
+    destination_order, expected_legs, expected_day_destinations
+):
+    from travel_agent.planning.delivery.minimum_draft import (
+        build_minimum_delivery_draft,
+    )
+    from travel_agent.planning.research.plan import planner_node
+    from travel_agent.planning.research.transport.scope import (
+        transport_provider_assignments,
+    )
+
+    contract, generation = _contract()
+    base_identity = _identity()
+    shenzhen = {
+        **base_identity["origin"],
+        "place_id": "origin_shenzhen",
+        "name": "深圳",
+        "display_name": "深圳",
+        "latitude": 22.5431,
+        "longitude": 114.0579,
+        "admin_path": ["广东", "深圳"],
+    }
+    beijing = {
+        **shenzhen,
+        "place_id": "destination_beijing",
+        "name": "北京",
+        "display_name": "北京",
+        "latitude": 39.9042,
+        "longitude": 116.4074,
+        "admin_path": ["北京"],
+    }
+    places = {item["place_id"]: item for item in (shenzhen, beijing)}
+    identity = {
+        **base_identity,
+        "origin": shenzhen,
+        "destinations": [places[item] for item in destination_order],
+        "start_date": "2026-10-29",
+        "end_date": "2026-11-03",
+    }
+    brief = build_research_brief(contract, identity)
+    state = TravelAgentState(
+        run_id="run_origin_first",
+        user_query="需要跨日返程",
+        controlled_trip_identity=identity,
+        request_contract=contract,
+        intent_spec=contract.intent_spec,
+        intent_spec_revision=contract.intent_spec.revision,
+        research_brief=brief,
+        planning_generation=generation,
+        constraint_pack_revision=contract.constraint_pack_revision,
+    )
+    result = asyncio.run(planner_node(state))
+    assignment = result["agent_assignments"]["transport_researcher"]
+    assignments = transport_provider_assignments(assignment, state)
+    legs = [item.scope.route_leg for item in assignments if item.scope.route_leg]
+    assert [
+        (
+            leg.leg_role,
+            leg.from_place_id,
+            leg.to_place_id,
+            leg.service_date.isoformat(),
+            leg.cross_day_required,
+        )
+        for leg in legs
+    ] == expected_legs
+    assert all(leg.from_place_id != leg.to_place_id for leg in legs)
+    assert [
+        item.place_id for item in brief.controlled_trip_identity.destinations
+    ] == list(destination_order)
+
+    draft = build_minimum_delivery_draft(state)
+    assert draft is not None
+    assert [
+        shell.destination_id for shell in draft.day_shells
+    ] == expected_day_destinations
+    assert [shell.date.isoformat() for shell in draft.day_shells] == [
+        "2026-10-29",
+        "2026-10-30",
+        "2026-10-31",
+        "2026-11-01",
+        "2026-11-02",
+        "2026-11-03",
+    ]
+
+
 @pytest.mark.parametrize("assignment", [{"provider_evidence_assignments": []}, {}])
 def test_transport_rejects_empty_or_missing_same_city_scopes(assignment):
     from travel_agent.planning.research.transport.scope import (
@@ -502,7 +636,7 @@ def test_same_city_exclusions_do_not_create_hotel_or_intercity_research():
         plan.assignments["itinerary_planner"].must_cover_intent_ids)
 
 
-def test_plan_gate_separates_hard_preferences_and_attention():
+def test_plan_gate_presents_recognized_requirements_without_clarification_controls():
     contract, _generation = _contract()
     hard = contract.intent_spec.active_items[0]
     soft = contract.intent_spec.active_items[1].model_copy(
@@ -539,10 +673,93 @@ def test_plan_gate_separates_hard_preferences_and_attention():
     assert [item["requirement_id"] for item in recognized["preferences"]] == [
         soft.intent_id
     ]
-    assert recognized["attention"] == [
-        {"requirement_id": "conflict_test", "summary": "两项要求需要取舍"}
-    ]
+    assert set(recognized) == {"hard", "preferences"}
+    assert "approve" in payload["decision_options"]
     assert "must_obey" not in payload
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("revision_count", [0, 1])
+@pytest.mark.parametrize("prior_action", [None, "projection_amendment_pending"])
+async def test_requirement_classification_does_not_require_an_extra_approval_step(
+    monkeypatch, revision_count, prior_action
+):
+    from travel_agent.planning.requirements import approval
+    from travel_agent.planning.requirements.intent_contracts import UnresolvedClause
+
+    contract, _generation = _contract()
+    spec = contract.intent_spec.model_copy(
+        update={
+            "unresolved_clauses": [
+                UnresolvedClause(
+                    clause_id="unresolved-1",
+                    source_ref_id="query_main",
+                    source_text="希望更特别一点",
+                    reason_code="needs_clarification",
+                )
+            ],
+            "conflicts": [
+                IntentConflict(
+                    conflict_id="conflict_test",
+                    intent_ids=[item.intent_id for item in contract.intent_spec.active_items[:2]],
+                    conflict_type="direct_contradiction",
+                    blocking=True,
+                    user_visible_summary="两项要求需要取舍",
+                )
+            ],
+        }
+    )
+    state = SimpleNamespace(
+        run_id="gate-summary",
+        plan_gate_decision={"action": prior_action} if prior_action else None,
+        execution_plan=[["destination_researcher"]],
+        agent_assignments={},
+        plan_gate_revision_count=revision_count,
+        constraint_pack={},
+        intent_spec=spec,
+    )
+    calls = []
+
+    def choose(payload):
+        calls.append(payload)
+        assert len(calls) == 1
+        assert "approve" in payload["decision_options"]
+        assert set(payload["recognized_requirements"]) == {"hard", "preferences"}
+        return {"action": "approve"}
+
+    monkeypatch.setattr(approval, "interrupt", choose)
+    monkeypatch.setattr(approval, "seal_minimum_delivery_draft", lambda _state: {"planning_authorized": True})
+    result = await approval.plan_gate_node(state, {"configurable": {"plan_gate_enabled": True}})
+    assert len(calls) == (0 if prior_action else 1)
+    assert result["plan_gate_decision"]["action"] == "approve"
+    assert result["planning_authorized"] is True
+
+
+@pytest.mark.parametrize(("text", "amount"), [("预算5000元", 5000), ("预算最多 12,000 元", 12000), ("总预算约 5,000 元", 5000)])
+def test_budget_amount_survives_thousands_separator_and_clause_splitting(text, amount):
+    [clause] = split_source_clauses([("query_main", "current_request", text)])
+    [budget] = deterministic_budget_constraints(clause.source_text)
+    assert budget["params"]["amount"] == amount
+
+
+@pytest.mark.asyncio
+async def test_model_context_classification_does_not_crash_material_requirement():
+    clause = _clause(0, "必须住得安静")
+    class ContextModel:
+        async def ainvoke(self, *_args, **_kwargs):
+            return json.dumps({"clauses": [{"clause_id": clause.clause_id, "disposition": "background_context", "reason_code": None, "intents": [], "constraints": []}]})
+    normalized = await normalize_clauses(clauses=[clause], controlled_identity=_identity(), llm=ContextModel())
+    [draft] = normalized.clauses
+    assert draft.disposition is ClauseDisposition.UNRESOLVED
+    contract, _generation = build_request_contract_revision(run_id="material-context", identity=_identity(), identity_revision=1, constraint_pack={}, constraint_pack_revision=1, clauses=[clause], normalized=normalized)
+    assert contract.has_unresolved_material_clauses
+
+
+def test_previous_trip_facts_do_not_become_current_requirements():
+    from travel_agent.planning.requirements.constraints.sources import constraint_free_text_sources
+    state = SimpleNamespace(user_query="这次独自去青岛", session_anchor={}, plan_gate_amendment=None, pending_intent_amendments=[])
+    sources = constraint_free_text_sources(state, [{"category": "trip_plan", "content": "上次西安旅行，两位成人"}, {"category": "preference", "content": "喜欢海边散步"}])
+    assert [item["text"] for item in sources] == ["这次独自去青岛", "喜欢海边散步"]
 
 
 def test_full_trip_sentence_does_not_treat_party_size_as_nightly_budget():

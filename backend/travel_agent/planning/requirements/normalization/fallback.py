@@ -149,13 +149,13 @@ def _fallback_clause(
                 VerificationMode.SEMANTIC,
             )
         )
-    if any(token in text for token in ("解释", "说明", "列出", "标注")):
+    if any(token in text for token in ("解释", "说明", "列出", "标注", "报告", "输出", "格式", "简洁", "措辞", "排版", "摘要")):
         intents.append(
             _intent(
                 IntentKind.OUTPUT_REQUIREMENT,
-                _target_for_text(text),
+                IntentTarget.DELIVERY if any(token in text for token in ("报告", "输出", "格式", "简洁", "措辞", "排版", "摘要")) else _target_for_text(text),
                 IntentStrength.HARD,
-                OutputRequirementValue(required_field=text, applies_to="each_item"),
+                OutputRequirementValue(required_field=text, applies_to="delivery" if any(token in text for token in ("报告", "输出", "格式", "简洁", "措辞", "排版", "摘要")) else "each_item"),
                 text,
                 ["projection"],
                 VerificationMode.MIXED,
@@ -244,7 +244,8 @@ def _fallback_clause(
         )
     return NormalizedClauseDraft(
         clause_id=clause.clause_id,
-        disposition=ClauseDisposition.BACKGROUND_CONTEXT,
+        disposition=ClauseDisposition.UNRESOLVED,
+        reason_code="semantic_normalization_required",
     )
 
 

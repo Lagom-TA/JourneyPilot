@@ -130,7 +130,7 @@ def public_plan_gate_payload(payload: Any) -> Dict[str, Any]:
                 )
                 if isinstance(item, Mapping)
             ]
-            for key in ("hard", "preferences", "attention")
+            for key in ("hard", "preferences")
         },
         "decision_options": payload.get("decision_options"),
     }

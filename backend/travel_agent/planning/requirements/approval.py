@@ -18,6 +18,7 @@ from travel_agent.planning.nodes import (
     NODE_REQUEST_CONTRACT_NORMALIZER,
 )
 from travel_agent.planning.presentation import get_agent_display_name
+from travel_agent.planning.requirements.amendments import classify_amendment
 from travel_agent.planning.requirements.request_contracts import (
     AmendmentImpact,
     IntentAmendment,
@@ -105,7 +106,6 @@ def _build_plan_gate_payload(state: TravelAgentState) -> Dict[str, Any]:
         if isinstance(item, dict) and item.get("status") in (None, "active")
     ]
     preferences: List[Dict[str, str]] = []
-    attention: List[Dict[str, str]] = []
     if state.intent_spec is not None:
         existing_summaries = {item["summary"] for item in hard_requirements}
         for item in state.intent_spec.active_items:
@@ -119,20 +119,6 @@ def _build_plan_gate_payload(state: TravelAgentState) -> Dict[str, Any]:
                     existing_summaries.add(row["summary"])
             else:
                 preferences.append(row)
-        attention.extend(
-            {
-                "requirement_id": conflict.conflict_id,
-                "summary": conflict.user_visible_summary,
-            }
-            for conflict in state.intent_spec.conflicts
-        )
-        attention.extend(
-            {
-                "requirement_id": clause.clause_id,
-                "summary": f"暂未纳入：{clause.source_text}",
-            }
-            for clause in state.intent_spec.unresolved_clauses
-        )
     return {
         "gate": "plan",
         "revision": revision,
@@ -145,7 +131,6 @@ def _build_plan_gate_payload(state: TravelAgentState) -> Dict[str, Any]:
         "recognized_requirements": {
             "hard": hard_requirements,
             "preferences": preferences,
-            "attention": attention,
         },
         "decision_options": ["approve", "cancel"]
         if limit_reached
@@ -154,23 +139,8 @@ def _build_plan_gate_payload(state: TravelAgentState) -> Dict[str, Any]:
 
 
 def _projection_only_amendment(content: str) -> bool:
-    lowered = content.lower()
-    presentation = ("报告", "输出", "措辞", "简洁", "格式", "排版", "summary", "format")
-    material = (
-        "不要",
-        "安排",
-        "每天",
-        "景点",
-        "餐",
-        "酒店",
-        "交通",
-        "预算",
-        "must",
-        "avoid",
-    )
-    return any(token in lowered for token in presentation) and not any(
-        token in lowered for token in material
-    )
+    amendment = IntentAmendment(command_id="classification", category="other", content=content, source_kind="plan_gate_amendment")
+    return classify_amendment(amendment) is AmendmentImpact.PROJECTION_ONLY
 
 
 async def plan_gate_node(
@@ -210,10 +180,7 @@ async def plan_gate_node(
 
         if action in ("edit", "supplement"):
             if limit_reached:
-                logger.info(
-                    "plan_gate: 修改额度已用满，忽略 %s，重新等待 approve/cancel",
-                    action,
-                )
+                logger.info("计划修改次数已达上限，继续等待用户确认或取消")
                 continue
             content = " ".join(str(decision.get("content") or "").split())[:2000]
 

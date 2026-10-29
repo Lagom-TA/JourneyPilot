@@ -7,6 +7,7 @@ from typing import List
 from typing import Optional
 from pydantic import BaseModel
 from pydantic import Field
+from travel_agent.conversation.intake_contracts import GuidedIntakeState
 
 
 class SessionStatus(str, Enum):
@@ -35,6 +36,7 @@ class ChatSessionDetail(BaseModel):
     created_at: str
     updated_at: str
     messages: List[Dict[str, Any]]
+    pending_clarify: Optional[GuidedIntakeState] = None
     #: 再往回翻的游标；`None` 表示这一页已经到底。
     next_before: Optional[str] = None
     has_more: bool = False

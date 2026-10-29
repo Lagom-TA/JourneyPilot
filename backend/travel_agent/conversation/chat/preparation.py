@@ -2,6 +2,14 @@ from __future__ import annotations
 import logging
 import uuid
 from typing import Any, Dict, Optional
+from travel_agent.conversation.intake import (
+    IntakeUnderstandingUnavailable,
+    apply_intake_answers,
+    merge_intake_answers,
+    understand_trip_intake,
+    unavailable_intake,
+    validate_intake_answers,
+)
 from travel_agent.conversation.intake_contracts import RouteName
 from travel_agent.planning.requirements.identity_amendments import (
     classify_locked_identity_intent,
@@ -103,7 +111,8 @@ async def prepare_chat(
 
     user_message = user_msg.content.strip()
     user_message_id = user_msg.message_id or str(uuid.uuid4())
-    session_id = request.session_id or str(uuid.uuid4())
+    session_id = request.session_id or str(uuid.uuid5(uuid.NAMESPACE_URL, f"{LOCAL_USER_ID}:session:{user_message_id}"))
+    new_run_id = "trip_" + uuid.uuid5(uuid.NAMESPACE_URL, f"{LOCAL_USER_ID}:{session_id}:{user_message_id}").hex
     message_id = str(uuid.uuid4())
     if request.route_decision is not None:
         route_decision = request.route_decision
@@ -225,35 +234,85 @@ async def prepare_chat(
 
         return ImmediateChat(_route_confirmation_sse())
 
-    if (
-        request.run_id is None
-        and route_decision.route == RouteName.TRIP_PLANNING
-        and request.controlled_trip_identity is None
-    ):
-        guided = (
-            request.guided_intake.model_dump(mode="json")
-            if request.guided_intake
-            else {
-                "raw_input": user_message,
-                "route_decision": route_decision.model_dump(mode="json"),
-                "controlled_identity": None,
-                "missing_fields": ["origin", "destinations", "dates", "party", "style"],
-                "ready_to_create": False,
-            }
-        )
+    existing_run = None
+    if request.run_id is None and request.controlled_trip_identity is not None:
+        existing_run = await trip_run_store.get_run(new_run_id)
+        if existing_run is not None and (
+            existing_run.status != TripRunStatus.CREATED
+            or await run_execution_store.has_live_lease(existing_run.run_id)
+        ):
+            async def _replayed_run_sse():
+                yield {"type": "chat_start", "message_id": existing_run.assistant_message_id, "session_id": session_id, "run_id": existing_run.run_id, "route_decision": route_decision.model_dump(mode="json")}
+                if existing_run.status == TripRunStatus.AWAITING_INPUT:
+                    detail = await trip_run_store.get_detail(existing_run.run_id, event_limit=1)
+                    choice = detail.state.pending_user_choice if detail else None
+                    if isinstance(choice, dict) and choice.get("gate") == "plan":
+                        yield {"type": "approval_gate_raised", "run_id": existing_run.run_id, "gate": "plan", "run_status": existing_run.status.value, "payload": choice.get("payload", {})}
+                yield {"type": "chat_complete", "message_id": existing_run.assistant_message_id, "run_id": existing_run.run_id, "run_status": existing_run.status.value}
+            return ImmediateChat(_replayed_run_sse())
 
-        async def _guided_intake_sse():
-            yield (
-                {
-                    "type": "guided_intake",
-                    "message_id": message_id,
-                    "session_id": session_id,
-                    "guided_intake": guided,
-                }
+    if request.run_id is None and route_decision.route == RouteName.TRIP_PLANNING:
+        try:
+            saved_intake = await chat_session_memory.get_guided_intake(
+                session_id=session_id, user_id=LOCAL_USER_ID,
             )
-            yield ({"type": "chat_complete", "message_id": message_id})
+        except PermissionError as exc:
+            from .errors import SessionAccessDenied
+            raise SessionAccessDenied() from exc
+        if request.guided_intake is not None:
+            if saved_intake is None:
+                raise PreparationRefused(PreparationRejection.INTAKE_NOT_FOUND)
+            try:
+                guided = apply_intake_answers(saved_intake, request.guided_intake)
+                if request.controlled_trip_identity is not None:
+                    validate_intake_answers(guided)
+            except ValueError as exc:
+                raise PreparationRefused(PreparationRejection.INTAKE_INVALID, explanation=str(exc)) from exc
+        else:
+            guided = saved_intake
+        if request.controlled_trip_identity is not None:
+            if guided is not None:
+                try:
+                    validate_intake_answers(guided)
+                except ValueError as exc:
+                    raise PreparationRefused(PreparationRejection.INTAKE_INVALID, explanation=str(exc)) from exc
+                confirmed = request.controlled_trip_identity
+                user_message = merge_intake_answers(guided) + (
+                    f"\n已确认旅行信息：从{confirmed.origin.name}出发，前往"
+                    f"{'、'.join(place.name for place in confirmed.destinations)}，"
+                    f"{confirmed.start_date} 至 {confirmed.end_date}，"
+                    f"{confirmed.party.adults}位成人"
+                    + (f"、{confirmed.party.children}位儿童" if confirmed.party.children else "")
+                    + ("，长辈同行" if confirmed.party.elderly_companions else "")
+                    + ("，需要无障碍安排" if confirmed.party.accessibility_required else "")
+                    + f"，旅行风格：{confirmed.style.primary}"
+                    + (f"，兴趣：{'、'.join(confirmed.style.secondary_interests)}" if confirmed.style.secondary_interests else "")
+                    + "。"
+                )
+        else:
+            if guided is None:
+                try:
+                    guided = await understand_trip_intake(user_message, route_decision)
+                except IntakeUnderstandingUnavailable:
+                    logger.warning("需求理解不可用，保留原文并显示待确认字段", exc_info=True)
+                    guided = unavailable_intake(user_message, route_decision)
+            elif request.guided_intake is None and user_message != guided.raw_input:
+                guided = guided.model_copy(update={"additional_requirements": "\n".join(filter(None, [guided.additional_requirements, user_message]))[:1000]})
+            if request.intake_destination is not None:
+                from travel_agent.planning.requirements.identity_contracts import DESTINATION_PLACE_KINDS
+                if request.intake_destination.kind not in DESTINATION_PLACE_KINDS:
+                    raise PreparationRefused(PreparationRejection.INTAKE_INVALID, explanation="请选择可用于规划的城市或区域")
+                guided = guided.model_copy(update={"seed_destinations": [request.intake_destination], "draft": guided.draft.model_copy(update={"destination_queries": [request.intake_destination.name], "destination_decided": True, "confirmed_destinations": [request.intake_destination]})})
+            await chat_session_memory.save_guided_intake(
+                session_id=session_id, user_id=LOCAL_USER_ID, title_seed=user_message,
+                guided_intake=guided, user_message_id=user_message_id, assistant_message_id=message_id,
+            )
 
-        return ImmediateChat(_guided_intake_sse())
+            async def _guided_intake_sse():
+                yield {"type": "guided_intake", "message_id": message_id, "session_id": session_id, "guided_intake": guided.model_dump(mode="json")}
+                yield {"type": "chat_complete", "message_id": message_id}
+
+            return ImmediateChat(_guided_intake_sse())
 
     preset_context, preset_pack_constraints = await load_preset_context(
         request.preset_id, LOCAL_USER_ID
@@ -406,7 +465,14 @@ async def prepare_chat(
             ),
             controlled_trip_identity=authoritative_controlled_trip_identity or None,
             route_decision=route_decision.model_dump(mode="json"),
+            run_id=new_run_id,
         )
+        if trip_run.status != TripRunStatus.CREATED:
+            async def _existing_run_sse():
+                yield {"type": "chat_start", "message_id": trip_run.assistant_message_id, "session_id": session_id, "run_id": trip_run.run_id, "route_decision": route_decision.model_dump(mode="json")}
+                yield {"type": "chat_complete", "message_id": trip_run.assistant_message_id, "run_id": trip_run.run_id, "run_status": trip_run.status.value}
+            return ImmediateChat(_existing_run_sse())
+        message_id = trip_run.assistant_message_id
     if lease_keeper is None:
         lease_keeper = await lease.claim(trip_run.run_id)
     if checkpoint_resume:

@@ -96,19 +96,19 @@ def build_trip_summary_card(brief: Dict[str, Any], boundary: str) -> Dict[str, A
         brief.get("travel_style")
     )
     if not priorities:
-        priorities = ["行程可执行", "信息核验"]
+        priorities = ["路线顺路", "信息清晰"]
 
     summary = (
-        f"从{departure_city}出发前往{destination}，优先围绕已确认的旅行偏好收敛可执行方案。"
+        f"从{departure_city}出发前往{destination}，根据你的旅行偏好安排交通、住宿和每日路线。"
         if departure_provided
-        else f"目的地为{destination}；出发地稍后决定，先收敛目的地内路线与住宿，交通方案可按出发地替换。"
+        else f"目的地为{destination}；出发地稍后决定，先安排当地路线与住宿，再补充往返交通。"
     )
     if boundary == "verified":
-        current_focus = "已完成关键结论核验，正在根据可信信息收敛最终行程。"
-        next_milestone = "生成可执行行程"
+        current_focus = "已核对主要旅行信息，正在整理完整行程。"
+        next_milestone = "生成完整旅行计划"
     else:
-        current_focus = "正在将已确认需求拆成交通、住宿和行程动线的调研任务。"
-        next_milestone = "核验关键交通与开放信息"
+        current_focus = "正在根据旅行需求查询交通、住宿和沿途路线。"
+        next_milestone = "核对主要交通与开放信息"
 
     return TripSummaryCard(
         headline=headline,

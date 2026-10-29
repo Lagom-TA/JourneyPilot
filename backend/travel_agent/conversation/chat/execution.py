@@ -209,6 +209,8 @@ async def execute_chat(
                 }:
                     raise RunCancelled(trip_run.run_id, "workflow")
                 raise
+        if not checkpoint_resume and use_deep_research:
+            await chat_session_memory.clear_guided_intake(session_id=session_id, user_id=LOCAL_USER_ID)
         yield {
             "type": "chat_start",
             "message_id": message_id,

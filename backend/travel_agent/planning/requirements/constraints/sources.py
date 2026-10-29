@@ -260,7 +260,7 @@ def constraint_free_text_sources(
                 }
             )
     for index, fact in enumerate(memory_facts or []):
-        if isinstance(fact, dict):
+        if isinstance(fact, dict) and fact.get("category") in {"preference", "constraint"}:
             free_items.append(
                 {
                     "id": f"fact_{index}",

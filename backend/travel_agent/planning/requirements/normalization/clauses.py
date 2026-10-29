@@ -20,7 +20,7 @@ import re
 logger = logging.getLogger(__name__)
 
 
-_BOUNDARY = re.compile(r"[^，,。；;！？!?\n]+")
+_BOUNDARY = re.compile(r"(?:[^，,。；;！？!?\n]|(?<=\d)[,，](?=\d{3}(?:\D|$)))+")
 
 
 _MATERIAL_CUES = (
@@ -115,6 +115,11 @@ def _identity_tokens(identity: Dict[str, object]) -> List[str]:
                 str(destination.get(key) or "") for key in ("name", "display_name")
             )
     tokens.extend(str(identity.get(key) or "") for key in ("start_date", "end_date"))
+    party = identity.get("party")
+    if isinstance(party, dict):
+        for key, labels in (("adults", ("位成人", "名成人")), ("children", ("位儿童", "名儿童"))):
+            if key in party:
+                tokens.extend(f"{party[key]}{label}" for label in labels)
     return [token for token in tokens if token]
 
 
