@@ -152,6 +152,8 @@ class TransportCandidate(CandidateBase):
     selected_mode: TransportMode
     from_endpoint: TransportEndpoint
     to_endpoint: TransportEndpoint
+    boarding_stop: Optional[TransportEndpoint] = None
+    alighting_stop: Optional[TransportEndpoint] = None
     departure_at: Optional[datetime] = None
     arrival_at: Optional[datetime] = None
     duration_minutes: int = Field(ge=0)

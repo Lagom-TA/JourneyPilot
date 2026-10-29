@@ -84,6 +84,22 @@ def _endpoint(
     }
 
 
+def _provided_stop(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """只保留 Provider 明确给出的站点，缺失时不借用查询起终点。"""
+    name = str(raw.get("name") or "").strip()
+    if not name:
+        return None
+    stop_id = str(raw.get("stopId") or "").strip()
+    latitude = raw.get("lat")
+    longitude = raw.get("lon")
+    return {
+        "name": name,
+        "place_id": f"transitous-stop:{stop_id}" if stop_id else None,
+        "latitude": float(latitude) if isinstance(latitude, (int, float)) else None,
+        "longitude": float(longitude) if isinstance(longitude, (int, float)) else None,
+    }
+
+
 def _minutes(seconds: Any) -> int:
     try:
         return max(0, math.ceil(float(seconds) / 60.0))
@@ -186,6 +202,9 @@ def _normalize_route(
     if not isinstance(raw_legs, list) or not raw_legs:
         return None
     segments: list[Dict[str, Any]] = []
+    boarding_stop: Optional[Dict[str, Any]] = None
+    alighting_stop: Optional[Dict[str, Any]] = None
+    saw_ridden_segment = False
     for index, raw_leg in enumerate(raw_legs):
         if not isinstance(raw_leg, dict):
             return None
@@ -195,6 +214,11 @@ def _normalize_route(
             return None
         raw_from = raw_leg.get("from") if isinstance(raw_leg.get("from"), dict) else {}
         raw_to = raw_leg.get("to") if isinstance(raw_leg.get("to"), dict) else {}
+        if mode == "public_transit" and normalized_mode not in {"walk", "bike"}:
+            if not saw_ridden_segment:
+                boarding_stop = _provided_stop(raw_from)
+                saw_ridden_segment = True
+            alighting_stop = _provided_stop(raw_to)
         from_endpoint = _endpoint(
             raw_from,
             fallback_name=from_name,
@@ -243,7 +267,9 @@ def _normalize_route(
                 "operator_name": raw_leg.get("agencyName"),
                 "service_number": raw_leg.get("tripShortName")
                 or raw_leg.get("routeShortName"),
-                "line_name": raw_leg.get("routeLongName") or raw_leg.get("displayName"),
+                "line_name": raw_leg.get("routeLongName")
+                or raw_leg.get("routeShortName")
+                or raw_leg.get("displayName"),
                 "cost_cny": None,
                 "path": _decode_leg_geometry(raw_leg.get("legGeometry")),
             }
@@ -275,6 +301,8 @@ def _normalize_route(
         "selected_mode": selected_mode,
         "from_endpoint": segments[0]["from_endpoint"],
         "to_endpoint": segments[-1]["to_endpoint"],
+        "boarding_stop": boarding_stop,
+        "alighting_stop": alighting_stop,
         "departure_at": _in_request_timezone(
             itinerary.get("startTime"), request_departure_time
         ),

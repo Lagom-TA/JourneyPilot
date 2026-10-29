@@ -125,27 +125,54 @@ def _stop_endpoint(raw: Any, *, fallback: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(raw, dict):
         return dict(fallback)
     name = str(raw.get("name") or "").strip()
-    latitude: Optional[float] = None
-    longitude: Optional[float] = None
-    location = str(raw.get("location") or "")
-    if "," in location:
-        try:
-            raw_longitude, raw_latitude = (
-                float(part) for part in location.split(",", 1)
-            )
-        except ValueError:
-            raw_longitude = raw_latitude = None
-        if raw_longitude is not None and raw_latitude is not None:
-            longitude, latitude = gcj02_to_wgs84(raw_longitude, raw_latitude)
     if not name:
         return dict(fallback)
     stop_id = str(raw.get("id") or "").strip()
     return {
         "name": name,
         "place_id": f"amap:stop:{stop_id}" if stop_id else fallback["place_id"],
-        "latitude": latitude if latitude is not None else fallback["latitude"],
-        "longitude": longitude if longitude is not None else fallback["longitude"],
+        "latitude": _stop_latitude(raw, fallback=fallback),
+        "longitude": _stop_longitude(raw, fallback=fallback),
     }
+
+
+def _provider_stop(raw: Any) -> Optional[Dict[str, Any]]:
+    """只保留 Provider 明确给出的站点，缺失时不借用查询起终点。"""
+    if not isinstance(raw, dict):
+        return None
+    name = str(raw.get("name") or "").strip()
+    if not name:
+        return None
+    stop_id = str(raw.get("id") or "").strip()
+    latitude, longitude = _stop_coordinates(raw)
+    return {
+        "name": name,
+        "place_id": f"amap:stop:{stop_id}" if stop_id else None,
+        "latitude": latitude,
+        "longitude": longitude,
+    }
+
+
+def _stop_coordinates(raw: Any) -> Tuple[Optional[float], Optional[float]]:
+    location = str(raw.get("location") or "") if isinstance(raw, dict) else ""
+    if "," not in location:
+        return None, None
+    try:
+        raw_longitude, raw_latitude = (float(part) for part in location.split(",", 1))
+    except ValueError:
+        return None, None
+    longitude, latitude = gcj02_to_wgs84(raw_longitude, raw_latitude)
+    return latitude, longitude
+
+
+def _stop_latitude(raw: Any, *, fallback: Dict[str, Any]) -> Optional[float]:
+    latitude, _longitude = _stop_coordinates(raw)
+    return latitude if latitude is not None else fallback["latitude"]
+
+
+def _stop_longitude(raw: Any, *, fallback: Dict[str, Any]) -> Optional[float]:
+    _latitude, longitude = _stop_coordinates(raw)
+    return longitude if longitude is not None else fallback["longitude"]
 
 
 def _seconds_to_minutes(value: Any) -> Optional[int]:
@@ -247,14 +274,20 @@ def _transit_segments(
     *,
     origin: Dict[str, Any],
     destination: Dict[str, Any],
-) -> List[Dict[str, Any]]:
+) -> Tuple[
+    List[Dict[str, Any]], Optional[Dict[str, Any]], Optional[Dict[str, Any]]
+]:
     """把一个 amap 公交方案展平成有序的步行与线路段。
 
     amap 把步行与乘车线路嵌在同一个 ``segments`` 条目里，因此一个条目可能拆成
     两个段。零距离步行会被丢弃：amap 会在出站口与下一个入口之间生成这种段，
-    0 米的段不是实际行程。
+    0 米的段不是实际行程。返回的上下车站只在 Provider 给出站名时存在，
+    首末段仍收敛到整段查询起终点，以维持接驳缺口匹配。
     """
     segments: List[Dict[str, Any]] = []
+    boarding_stop: Optional[Dict[str, Any]] = None
+    alighting_stop: Optional[Dict[str, Any]] = None
+    saw_ridden_segment = False
     cursor = dict(origin)
     for entry in transit.get("segments") or ():
         if not isinstance(entry, dict):
@@ -288,6 +321,10 @@ def _transit_segments(
                 cursor = target
         if ridden is None:
             continue
+        if not saw_ridden_segment:
+            boarding_stop = _provider_stop(ridden.get("departure_stop"))
+            saw_ridden_segment = True
+        alighting_stop = _provider_stop(ridden.get("arrival_stop"))
         boarding = _stop_endpoint(ridden.get("departure_stop"), fallback=cursor)
         alighting = _stop_endpoint(ridden.get("arrival_stop"), fallback=destination)
         line_name = str(ridden.get("name") or "").strip() or None
@@ -305,11 +342,11 @@ def _transit_segments(
         )
         cursor = alighting
     if not segments:
-        return []
+        return [], None, None
 
     segments[0] = {**segments[0], "from_endpoint": dict(origin)}
     segments[-1] = {**segments[-1], "to_endpoint": dict(destination)}
-    return segments
+    return segments, boarding_stop, alighting_stop
 
 
 def _route_id(material: Any) -> str:
@@ -328,7 +365,9 @@ def _normalize_route(
         transit = next((item for item in transits if isinstance(item, dict)), None)
         if transit is None:
             return None
-        segments = _transit_segments(transit, origin=origin, destination=destination)
+        segments, boarding_stop, alighting_stop = _transit_segments(
+            transit, origin=origin, destination=destination
+        )
         if not segments:
             return None
         ridden = [item for item in segments if item["mode"] != "walk"]
@@ -341,6 +380,8 @@ def _normalize_route(
             "selected_mode": selected_mode,
             "from_endpoint": segments[0]["from_endpoint"],
             "to_endpoint": segments[-1]["to_endpoint"],
+            "boarding_stop": boarding_stop,
+            "alighting_stop": alighting_stop,
             "departure_at": None,
             "arrival_at": None,
             "duration_minutes": duration_minutes if duration_minutes is not None else 0,
@@ -373,6 +414,8 @@ def _normalize_route(
         "selected_mode": street_mode,
         "from_endpoint": dict(origin),
         "to_endpoint": dict(destination),
+        "boarding_stop": None,
+        "alighting_stop": None,
         "departure_at": None,
         "arrival_at": None,
         "duration_minutes": duration_minutes if duration_minutes is not None else 0,

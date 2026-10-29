@@ -190,3 +190,164 @@ async def test_route_search_fetches_once_and_keeps_geometry_out_of_raw_snapshots
         _GCJ_POINTS[:3]
     )
     assert result["provider_response"] == raw
+
+def test_metro_only_transit_keeps_provider_stops_and_poi_endpoints():
+    payload = {
+        "status": "1",
+        "route": {
+            "transits": [
+                {
+                    "duration": "900",
+                    "distance": "4000",
+                    "segments": [
+                        {
+                            "bus": {
+                                "buslines": [
+                                    {
+                                        "name": "地铁1号线",
+                                        "type": "地铁",
+                                        "duration": "900",
+                                        "distance": "3800",
+                                        "departure_stop": {
+                                            "name": "复兴门站",
+                                            "id": "station_fuxingmen",
+                                            "location": _location(_GCJ_POINTS[0]),
+                                        },
+                                        "arrival_stop": {
+                                            "name": "王府井站",
+                                            "id": "station_wangfujing",
+                                            "location": _location(_GCJ_POINTS[3]),
+                                        },
+                                        "polyline": _polyline(
+                                            _GCJ_POINTS[0], _GCJ_POINTS[3]
+                                        ),
+                                    }
+                                ]
+                            }
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+
+    route = _normalize(payload, "public_transit")
+
+    assert route["from_endpoint"] == _endpoints()[0]
+    assert route["to_endpoint"] == _endpoints()[1]
+    assert route["boarding_stop"]["name"] == "复兴门站"
+    assert route["boarding_stop"]["place_id"] == "amap:stop:station_fuxingmen"
+    boarding_coordinates = _wgs_path([_GCJ_POINTS[0]])[0]
+    assert route["boarding_stop"]["latitude"] == pytest.approx(
+        boarding_coordinates["latitude"]
+    )
+    assert route["boarding_stop"]["longitude"] == pytest.approx(
+        boarding_coordinates["longitude"]
+    )
+    assert route["alighting_stop"]["name"] == "王府井站"
+    alighting_coordinates = _wgs_path([_GCJ_POINTS[3]])[0]
+    assert route["alighting_stop"]["latitude"] == pytest.approx(
+        alighting_coordinates["latitude"]
+    )
+    assert route["alighting_stop"]["longitude"] == pytest.approx(
+        alighting_coordinates["longitude"]
+    )
+    assert route["segments"][0]["from_endpoint"] == _endpoints()[0]
+    assert route["segments"][0]["to_endpoint"] == _endpoints()[1]
+
+
+def test_transit_boundary_stops_do_not_borrow_intermediate_stations():
+    transfer_location = _location(_GCJ_POINTS[1])
+    payload = {
+        "status": "1",
+        "route": {
+            "transits": [
+                {
+                    "duration": "900",
+                    "distance": "4000",
+                    "segments": [
+                        {
+                            "bus": {
+                                "buslines": [
+                                    {
+                                        "name": "地铁1号线",
+                                        "type": "地铁",
+                                        "duration": "400",
+                                        "distance": "1800",
+                                        "departure_stop": {},
+                                        "arrival_stop": {
+                                            "name": "换乘站",
+                                            "id": "station_transfer",
+                                            "location": transfer_location,
+                                        },
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "bus": {
+                                "buslines": [
+                                    {
+                                        "name": "地铁2号线",
+                                        "type": "地铁",
+                                        "duration": "500",
+                                        "distance": "2200",
+                                        "departure_stop": {
+                                            "name": "换乘站",
+                                            "id": "station_transfer",
+                                            "location": transfer_location,
+                                        },
+                                        "arrival_stop": {},
+                                    }
+                                ]
+                            }
+                        },
+                    ],
+                }
+            ]
+        },
+    }
+
+    route = _normalize(payload, "public_transit")
+
+    assert route["boarding_stop"] is None
+    assert route["alighting_stop"] is None
+    assert route["from_endpoint"] == _endpoints()[0]
+    assert route["to_endpoint"] == _endpoints()[1]
+
+
+def test_transit_without_provider_stop_names_keeps_stop_facts_missing():
+    payload = {
+        "status": "1",
+        "route": {
+            "transits": [
+                {
+                    "duration": "900",
+                    "distance": "4000",
+                    "segments": [
+                        {
+                            "bus": {
+                                "buslines": [
+                                    {
+                                        "name": "地铁1号线",
+                                        "type": "地铁",
+                                        "duration": "900",
+                                        "distance": "3800",
+                                        "departure_stop": {},
+                                        "arrival_stop": {},
+                                    }
+                                ]
+                            }
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+
+    route = _normalize(payload, "public_transit")
+
+    assert route["boarding_stop"] is None
+    assert route["alighting_stop"] is None
+    assert route["from_endpoint"] == _endpoints()[0]
+    assert route["to_endpoint"] == _endpoints()[1]

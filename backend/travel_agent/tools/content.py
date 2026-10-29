@@ -42,6 +42,8 @@ _ROUTE_IDENTITY_KEYS = (
     "selected_mode",
     "from_endpoint",
     "to_endpoint",
+    "boarding_stop",
+    "alighting_stop",
     "from_place_id",
     "to_place_id",
     "departure_at",

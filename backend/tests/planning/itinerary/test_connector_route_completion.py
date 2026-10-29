@@ -14,6 +14,12 @@ from travel_agent.planning.itinerary.draft import AuthoredRoute
 from travel_agent.planning.itinerary.parsing import parse_itinerary_composition
 from travel_agent.planning.research.candidates import TransportCandidate
 from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryOrigin
+from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
+from travel_agent.planning.delivery.public.itinerary import _public_itinerary
+from travel_agent.planning.itinerary.models import TransportLeg
+from travel_agent.planning.itinerary.mutations.transport import (
+    _transport_from_candidate,
+)
 from travel_agent.planning.research.transport import local_routes
 from travel_agent.tools.governance import build_tool_execution_envelope
 
@@ -100,6 +106,8 @@ def _route_result(
     path_point_count=2,
     selected_mode="metro",
     transport_class="public_transit",
+    boarding_stop=None,
+    alighting_stop=None,
 ):
     def endpoint(prefix):
         return {
@@ -149,6 +157,8 @@ def _route_result(
                 "selected_mode": selected_mode,
                 "from_endpoint": origin,
                 "to_endpoint": destination,
+                "boarding_stop": boarding_stop,
+                "alighting_stop": alighting_stop,
                 "departure_at": None,
                 "arrival_at": None,
                 "duration_minutes": 12,
@@ -433,3 +443,78 @@ async def test_road_service_modes_query_drive_and_keep_display_lock_and_path(
     assert [point.model_dump() for point in candidate.segments[0].path] == [
         point.model_dump() for point in leg.segments[0].path
     ]
+
+@pytest.mark.asyncio
+async def test_provider_station_facts_survive_model_public_projection_and_readback(
+    monkeypatch,
+):
+    current = _planning_state()
+    _allow_route_tool(monkeypatch)
+
+    async def execute(tool_name, arguments, **kwargs):
+        return _envelope(
+            _route_result(
+                arguments,
+                boarding_stop={
+                    "name": "复兴门站",
+                    "place_id": "amap:stop:station_fuxingmen",
+                    "latitude": 39.907,
+                    "longitude": 116.356,
+                },
+                alighting_stop={
+                    "name": "王府井站",
+                    "place_id": "amap:stop:station_wangfujing",
+                    "latitude": 39.915,
+                    "longitude": 116.412,
+                },
+            ),
+            arguments,
+        )
+
+    async def no_estimation(*args, **kwargs):
+        pytest.fail("the Provider route with station facts must be selected")
+
+    monkeypatch.setattr(local_routes, "execute_tool", execute)
+    monkeypatch.setattr(node, "_author_connector_routes", no_estimation)
+
+    completed = await _complete(current)
+
+    leg = completed.trip_workspace_v2.itinerary.transport_legs[0]
+    assert leg.from_endpoint.place_id == "place_candidate_0"
+    assert leg.to_endpoint.place_id == "place_candidate_1"
+    assert leg.boarding_stop is not None
+    assert leg.boarding_stop.name == "复兴门站"
+    assert leg.alighting_stop is not None
+    assert leg.alighting_stop.name == "王府井站"
+
+    public = _public_itinerary(
+        completed.trip_workspace_v2.itinerary,
+        EvidenceBasisView.from_itinerary(completed.trip_workspace_v2.itinerary),
+    )
+    public_leg = public["transport_legs"][0]
+    assert public_leg["from_endpoint"]["place_id"] == "place_candidate_0"
+    assert public_leg["boarding_stop"]["name"] == "复兴门站"
+    assert public_leg["alighting_stop"]["name"] == "王府井站"
+
+    read_back = TransportLeg.model_validate(leg.model_dump())
+    assert read_back.boarding_stop == leg.boarding_stop
+    assert read_back.alighting_stop == leg.alighting_stop
+
+    legacy_payload = leg.model_dump()
+    legacy_payload.pop("boarding_stop")
+    legacy_payload.pop("alighting_stop")
+    legacy = TransportLeg.model_validate(legacy_payload)
+    assert legacy.boarding_stop is None
+    assert legacy.alighting_stop is None
+    assert legacy.from_endpoint == leg.from_endpoint
+    assert legacy.to_endpoint == leg.to_endpoint
+
+    candidate = completed.recommendation_catalog.candidate_index()[
+        leg.lineage.candidate_id
+    ]
+    assert isinstance(candidate, TransportCandidate)
+    assert candidate.boarding_stop is not None
+    assert candidate.alighting_stop is not None
+    replaced = _transport_from_candidate(leg, candidate)
+    assert replaced.boarding_stop == leg.boarding_stop
+    assert replaced.alighting_stop == leg.alighting_stop

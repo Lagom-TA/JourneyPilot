@@ -37,6 +37,8 @@ def _transport_from_candidate(
         ),
         from_endpoint=candidate.from_endpoint,
         to_endpoint=candidate.to_endpoint,
+        boarding_stop=candidate.boarding_stop,
+        alighting_stop=candidate.alighting_stop,
         departure_at=candidate.departure_at,
         arrival_at=candidate.arrival_at,
         duration_minutes=candidate.duration_minutes,

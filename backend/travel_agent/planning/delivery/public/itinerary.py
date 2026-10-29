@@ -160,6 +160,12 @@ def _public_transport_leg(
         "selected_mode": leg.selected_mode.value,
         "from_endpoint": _public_endpoint(leg.from_endpoint),
         "to_endpoint": _public_endpoint(leg.to_endpoint),
+        "boarding_stop": _public_endpoint(leg.boarding_stop)
+        if leg.boarding_stop is not None
+        else None,
+        "alighting_stop": _public_endpoint(leg.alighting_stop)
+        if leg.alighting_stop is not None
+        else None,
         "departure_at": _timestamp(leg.departure_at),
         "arrival_at": _timestamp(leg.arrival_at),
         "duration_minutes": leg.duration_minutes,

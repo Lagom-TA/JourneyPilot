@@ -30,6 +30,8 @@ class TransportLeg(StrictModel):
     selected_mode: TransportMode
     from_endpoint: TransportEndpoint
     to_endpoint: TransportEndpoint
+    boarding_stop: Optional[TransportEndpoint] = None
+    alighting_stop: Optional[TransportEndpoint] = None
     departure_at: Optional[datetime] = None
     arrival_at: Optional[datetime] = None
     duration_minutes: Optional[int] = Field(default=None, ge=0)

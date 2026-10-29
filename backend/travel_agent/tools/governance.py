@@ -23,6 +23,9 @@ _MAX_SUMMARY = 180
 _MAX_LIST_ITEMS = 5
 _MAX_SEARCH_RESULTS = 120
 _MAX_ROUTE_SEGMENTS = 12
+
+
+_MAX_ROUTE_ITEMS = 16
 _MAX_DICT_ITEMS = 12
 _REDACTED = "[redacted]"
 _SENSITIVE_KEY_RE = re.compile(
@@ -517,9 +520,10 @@ def _sanitize_value(
         return _compact_summary(value, limit=120)
     if isinstance(value, dict):
         out: Dict[str, Any] = {}
+        item_limit = _MAX_ROUTE_ITEMS if key == "routes" else _MAX_DICT_ITEMS
         for idx, (k, v) in enumerate(value.items()):
             # 路径位于可选展示字段之后，只对该字段保留完整结构。
-            if idx >= _MAX_DICT_ITEMS and not (key == "segments" and k == "path"):
+            if idx >= item_limit and not (key == "segments" and k == "path"):
                 out["truncated"] = True
                 break
             nested_key = (

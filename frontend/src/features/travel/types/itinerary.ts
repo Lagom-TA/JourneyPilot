@@ -81,6 +81,8 @@ export interface PublicTransportLeg {
     selected_mode: TransportMode;
     from_endpoint: TransportEndpoint;
     to_endpoint: TransportEndpoint;
+    boarding_stop: TransportEndpoint | null;
+    alighting_stop: TransportEndpoint | null;
     departure_at: string | null;
     arrival_at: string | null;
     duration_minutes: number | null;
