@@ -44,7 +44,7 @@ JOURNEYPILOT_APP_URL=http://127.0.0.1:8088 \
   npx playwright test e2e/home-inspiration.spec.ts
 ```
 
-离线会话与地图工作区回归使用本地两日西安夹具，覆盖连续地点卡、三类地点 Marker、真实路径与端点示意、悬浮定位、详情焦点、日期与图层、阅读版地图实例以及移动 Sheet。API 与地图瓦片都在浏览器内拦截，不访问外部服务，也不修改会话。先启动 Vite 开发服务器，再运行：
+离线会话与地图工作区回归使用本地两日西安夹具，覆盖连续地点卡、三类地点 Marker、真实路径与端点示意、悬浮只高亮、点击才定位与打开详情、详情焦点、日期与图层、阅读版地图实例以及移动 Sheet。API 与地图瓦片都在浏览器内拦截，不访问外部服务，也不修改会话。先启动 Vite 开发服务器，再运行：
 
 ```bash
 JP_SESSION_STATE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:5173 \
