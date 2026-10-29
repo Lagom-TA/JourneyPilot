@@ -1,6 +1,6 @@
-import { AnimatePresence } from 'motion/react';
+import { AnimatePresence, useReducedMotion } from 'motion/react';
 import type { Variants } from 'motion/react';
-import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, ChevronDown, Layers3, Map as MapIcon, MessageCircle, Sun, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, CalendarDays, ChevronDown, Layers3, Map as MapIcon, MessageCircle, Sun, X } from 'lucide-react';
 import { useApp } from '../../../../app/state/AppContext';
 import { useIsMobileViewport } from '../../../../hooks/useMediaQuery';
 import { Sheet } from '../../../../components/ui/Sheet';
@@ -89,30 +89,6 @@ function buildEntityIndex(bundle: PublicDeliveryBundle): Map<string, TimelineEnt
   return new Map(entities.map((entity) => [entityId(entity), entity]));
 }
 
-function identityPlaces(identity: ControlledTripIdentity): BundleMapPlace[] {
-  const seen = new Set<string>();
-  return [identity.origin, ...identity.destinations]
-    .filter((place) => {
-      const key = place.place_id || `${place.latitude},${place.longitude}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .map((place, index) => ({
-      entity_ref: { entity_type: 'visit_stop', entity_id: `identity-${index}-${place.place_id}` },
-      name: place.name,
-      place_id: place.place_id,
-      latitude: place.latitude,
-      longitude: place.longitude,
-      citation_ids: [],
-      days: [],
-      sequence: index + 1,
-      markerId: `identity:${index}:${place.place_id}`,
-      markerKind: 'identity',
-      modes: [],
-    }));
-}
-
 function routeIsDrawable(route: MapProjection['content']['routes'][number]): boolean {
   return routeLines(route).length > 0;
 }
@@ -180,6 +156,7 @@ function ReadingWorkspace({ bundle }: { bundle: PublicDeliveryBundle }) {
 export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) => {
   const { state, dispatch } = useApp();
   const isMobile = useIsMobileViewport();
+  const reducedMotion = useReducedMotion();
   const [activeDay, setActiveDay] = React.useState<number | null>(null);
   const [sidebarMode, setSidebarMode] = React.useState<'itinerary' | 'conversation'>('itinerary');
   const [selectedEntityId, setSelectedEntityId] = React.useState<string | null>(null);
@@ -359,9 +336,9 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   }, [activeDay]);
 
   const mappedPlaces = React.useMemo<BundleMapPlace[]>(() => {
-    if (!bundle) return identity ? identityPlaces(identity) : [];
+    if (!bundle) return [];
     return buildBundleMapPlaces(bundle, waypointOrder);
-  }, [bundle, identity, waypointOrder]);
+  }, [bundle, waypointOrder]);
   const projectedRoutes = React.useMemo(() => bundle?.map_projection.content.routes ?? [], [bundle]);
   const visiblePlaces = React.useMemo(() => mappedPlaces.filter((place) => (
     !hiddenLayers.includes(place.entity_ref.entity_type as PlaceLayer)
@@ -432,56 +409,26 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
     dispatch({ type: 'SET_DELIVERABLE_VIEW', payload: view === 'today' ? 'interactive_itinerary' : 'today' });
   }, [dispatch, view]);
 
-  const navigation = (
+  const navigation = bundle && (
     <aside className="journey-sidebar journey-navigation" aria-label={view === 'today' ? '旅中今天安排' : '旅行导航'}>
-      {!bundle ? <GenerationJourneyPanel /> : (
-        <>
-          <header className="journey-sidebar-header">
-            <button type="button" className="journey-back-trips" onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'trips' })}><ArrowLeft size={14} />我的行程</button>
-            <div className="journey-title-row">
-              <h1>{title}</h1>
-              {state.currentTripRunReadOnly && <span>历史结果 · 只读</span>}
-            </div>
-            {dateLabel && <p>{dateLabel}</p>}
-            <div className="journey-view-actions">
-              <button type="button" className="journey-view-action" onClick={openReading}><BookOpen size={14} />阅读版</button>
-              <PdfDownloadButton bundle={bundle} compact />
-              <button type="button" className={cn('journey-view-action', view === 'today' && 'is-active')} onClick={toggleToday}><Sun size={14} />{view === 'today' ? '返回全程' : '旅中查看'}</button>
-              {isMobile && view === 'interactive_itinerary' && !state.currentTripRunReadOnly && !conversationOpen && (
-                <button type="button" data-conversation-trigger="navigation" className="journey-view-action" onClick={openConversation}><MessageCircle size={14} />调整</button>
-              )}
-            </div>
-          </header>
-
-          {isMobile ? (
-            <div className="journey-mobile-day-nav"><MapDayNav days={bundle.workspace.itinerary.day_plans} activeDay={activeDay} onSelect={selectDay} /></div>
-          ) : (
-            <div ref={navigationScrollRef} className="journey-sidebar-scroll journey-navigation-scroll">
-              <button type="button" className={cn('journey-all-days', activeDay == null && 'is-active')} aria-pressed={activeDay == null} onClick={restoreOverview}>
-                <span>全程行程</span><span>{bundle.workspace.itinerary.duration_days} 天</span>
-              </button>
-              <TripOverview
-                itinerary={bundle.workspace.itinerary}
-                summaries={daySummaries}
-                costCoverageStatement={formatTripCostSummary(bundle.report_projection.document?.cost_summary)}
-                importantNotes={[]}
-                onOpenDay={openDay}
-                registerDayCard={registerDayCard}
-                showHeader={false}
-                compact
-                activeDay={activeDay}
-              />
-            </div>
+      <header className="journey-sidebar-header">
+        <button type="button" className="journey-back-trips" onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'trips' })}><ArrowLeft size={14} />我的行程</button>
+        <div className="journey-title-row">
+          <h1>{title}</h1>
+          {state.currentTripRunReadOnly && <span>历史结果 · 只读</span>}
+        </div>
+        {dateLabel && <p>{dateLabel}</p>}
+        <div className="journey-view-actions">
+          <button type="button" className="journey-view-action" onClick={openReading}><BookOpen size={14} />阅读版</button>
+          <PdfDownloadButton bundle={bundle} compact />
+          <button type="button" className={cn('journey-view-action', view === 'today' && 'is-active')} onClick={toggleToday}><Sun size={14} />{view === 'today' ? '返回全程' : '旅中查看'}</button>
+          {view === 'interactive_itinerary' && !state.currentTripRunReadOnly && !conversationOpen && (
+            <button type="button" data-conversation-trigger="navigation" className="journey-view-action" onClick={openConversation}><MessageCircle size={14} />调整</button>
           )}
-
-          {view === 'interactive_itinerary' && !state.currentTripRunReadOnly && !conversationOpen && !isMobile && (
-            <button type="button" data-conversation-trigger="navigation" className="journey-adjust-entry" onClick={openConversation}>
-              <MessageCircle size={16} /><span>告诉我想怎么改……</span><ArrowRight size={15} />
-            </button>
-          )}
-          {state.currentTripRunReadOnly && <div className="journey-readonly-footer">这份生成记录仅供查看</div>}
-        </>
-      )}
+        </div>
+      </header>
+      {isMobile && <div className="journey-mobile-day-nav"><MapDayNav days={bundle.workspace.itinerary.day_plans} activeDay={activeDay} onSelect={selectDay} /></div>}
+      {state.currentTripRunReadOnly && <div className="journey-readonly-footer">这份生成记录仅供查看</div>}
     </aside>
   );
 
@@ -512,8 +459,21 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
     </div>
   ) : bundle ? (
     <>
+      {activeDay == null && (
+        <TripOverview
+          itinerary={bundle.workspace.itinerary}
+          summaries={daySummaries}
+          costCoverageStatement={formatTripCostSummary(bundle.report_projection.document?.cost_summary)}
+          importantNotes={[]}
+          onOpenDay={openDay}
+          registerDayCard={registerDayCard}
+          showHeader={false}
+          compact
+          activeDay={activeDay}
+        />
+      )}
       {activeDay != null && <button type="button" data-testid="day-overview-back" onClick={restoreOverview} className="journey-back-overview"><ArrowLeft size={15} />返回全程</button>}
-      <ItineraryCardFlow
+      {activeDay != null && <ItineraryCardFlow
         bundle={bundle}
         days={daysToRender}
         summaries={daySummaries}
@@ -525,21 +485,12 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
         selectedOccurrenceKey={selectedOccurrenceKey}
         onLinkEntity={setLinkedEntityId}
         onSelectEntity={handleCardSelect}
-      />
+      />}
     </>
   ) : null;
 
   const content = bundle && (
     <section className="journey-content" aria-label={conversationOpen ? '调整旅行会话' : '行程卡片'}>
-      <header className="journey-content-toolbar">
-        <div><span>当前行程</span><strong>{title}</strong></div>
-        <div>
-          <button type="button" aria-label="阅读版" onClick={openReading}><BookOpen size={15} /></button>
-          <PdfDownloadButton bundle={bundle} compact />
-          <button type="button" aria-label={view === 'today' ? '返回全程' : '旅中查看'} onClick={toggleToday}><Sun size={15} /></button>
-          {view === 'interactive_itinerary' && !state.currentTripRunReadOnly && <button type="button" data-conversation-trigger="toolbar" aria-label="调整这趟旅行" onClick={openConversation}><MessageCircle size={15} /></button>}
-        </div>
-      </header>
       <div className="journey-content-viewport">
         <AnimatePresence mode="popLayout" initial={false} custom={sceneTransition}>
           <PresenceFrame
@@ -570,6 +521,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
           onSelectEntity={handleMapSelect}
           linkedEntityId={linkedEntityId}
           onLinkEntity={setLinkedEntityId}
+          overlayOffset={isMobile ? 0 : 460}
         />
       ) : (
         <div className="journey-map-empty"><MapIcon size={28} /><p>已确认的地点会显示在这里</p></div>
@@ -645,12 +597,11 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
           className="delivery-interactive-layer"
         >
             <PresenceSection
-              className={cn('delivery-workspace', !bundle && 'is-generating', state.planApprovalGate && 'is-reviewing', view === 'today' && 'is-today')}
+              className={cn('delivery-workspace', !bundle && 'is-generating', view === 'today' && 'is-today')}
               aria-label="旅行地图工作区"
             >
-              {(!isMobile || !bundle) && navigation}
-              {!isMobile && content}
-              {(!isMobile || bundle) && mapRegion}
+              {bundle ? mapRegion : <div className="generation-workspace"><GenerationJourneyPanel /></div>}
+              {bundle && !isMobile && <PresenceFrame className="journey-floating-panel" initial={{ opacity: 0, x: reducedMotion ? 0 : -18 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reducedMotion ? 0 : duration.page, ease: easing.decelerate }}>{navigation}{content}</PresenceFrame>}
               {isMobile && bundle && (
                 <Sheet open={state.mobileCanvasOpen} onClose={() => dispatch({ type: 'SET_MOBILE_CANVAS_OPEN', payload: false })} testId="canvas-sheet">
                   <div className="journey-mobile-panels">{navigation}{content}</div>

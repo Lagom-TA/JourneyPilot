@@ -5,6 +5,8 @@ import { chatReducer } from "../../features/chat/model/reducer";
 import { travelReducer } from "../../features/travel/model/reducer";
 export function appReducer(state: AppState, action: AppAction): AppState {
     switch (action.type) {
+        case 'SESSION_INITIALIZED':
+            return { ...state, sessionInitialized: true };
         case 'SET_ACTIVE_VIEW':
             return {
                 ...state,
@@ -86,7 +88,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             };
         }
         case 'CLEAR_TRACE':
-            return { ...state, tripSummaryCard: null, planApprovalGate: null, runCostLive: null, runCostSummary: null };
+            return { ...state, tripSummaryCard: null, planApprovalGate: action.payload?.preservePlanGate ? state.planApprovalGate : null, runCostLive: null, runCostSummary: null };
         case 'SET_MOBILE_CANVAS_OPEN':
             return { ...state, mobileCanvasOpen: action.payload };
         case 'SET_ACTIVE_PRESET':
@@ -148,6 +150,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_INPUT_MODE':
         case 'REMOVE_MESSAGE_BY_ID':
             return chatReducer(state, action);
+        case 'SET_TRIP_RUN_RECOVERY':
         case 'SET_DELIVERY_BUNDLE_LOAD_STATE':
         case 'SET_DELIVERABLE_VIEW':
         case 'BUMP_TRIP_RUN_REFRESH':

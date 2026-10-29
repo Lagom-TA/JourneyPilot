@@ -7,11 +7,11 @@ const baseURL = process.env.JOURNEYPILOT_APP_URL || '';
 if (process.env.JP_SESSION_STATE_E2E === '1' && !/^http:\/\/127\.0\.0\.1:\d+$/.test(baseURL)) throw new Error('Offline suite requires an explicit loopback Vite URL');
 
 type StreamHarness = { send: (events: unknown[]) => void; close: () => void };
-type FixtureWindow = Window & { offlineStream?: StreamHarness };
+type FixtureWindow = Window & { offlineStream?: StreamHarness; __offlineChatBodies?: unknown[]; __offlineFailChatAttempts?: number };
 
-async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: boolean; delayedA?: boolean; bundleData?: ReturnType<typeof deliveryBundle> } = {}) {
+async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: boolean; delayedA?: boolean; research?: boolean; planGate?: boolean; specialParty?: boolean; bundleData?: ReturnType<typeof deliveryBundle> } = {}) {
   const pageErrors: string[] = [], escapes: string[] = [], requests: string[] = [];
-  let status: string = options.bundle ? 'completed' : 'running';
+  let status: string = options.planGate ? 'awaiting_input' : options.bundle ? 'completed' : 'running';
   let recovered = false, releaseA: (() => void) | undefined;
   let aReads = 0;
   const aWait = new Promise<void>(resolve => { releaseA = resolve; });
@@ -22,9 +22,16 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
       localStorage.setItem('sta_last_session_id', 'A');
     }
     const originalFetch = window.fetch.bind(window);
+    const fixtureWindow = window as FixtureWindow;
+    fixtureWindow.__offlineChatBodies = [];
     window.fetch = (input, init) => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
       if (url.pathname !== '/api/chat-stream') return originalFetch(input, init);
+      try { fixtureWindow.__offlineChatBodies?.push(JSON.parse(String(init?.body ?? '{}'))); } catch { /* ignore non-JSON bodies */ }
+      if ((fixtureWindow.__offlineFailChatAttempts ?? 0) > 0) {
+        fixtureWindow.__offlineFailChatAttempts = (fixtureWindow.__offlineFailChatAttempts ?? 0) - 1;
+        return Promise.resolve(new Response(JSON.stringify({ detail: '离线模拟提交失败' }), { status: 503, headers: { 'content-type': 'application/json' } }));
+      }
       const encoder = new TextEncoder();
       const stream = new ReadableStream<Uint8Array>({ start(controller) {
         (window as FixtureWindow).offlineStream = {
@@ -55,19 +62,35 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
     if (/^\/user\/sessions\/[AB]$/.test(path)) {
       const id = path.at(-1)!;
       if (id === 'A' && ++aReads > 1 && options.delayedA) await aWait;
-      return json(sessionDetail(id));
+      return json(id === 'A' && options.research ? {
+        ...sessionDetail(id),
+        messages: [{
+          id: 'research-message', role: 'assistant', content: '', display_content: '', timestamp: '2026-10-25T08:00:00Z',
+          thinking_steps: [
+            { step_id: 'research-start', agent_name: '目的地调研', step_name: '查询景点与体验', content: '正在整理厦门的海岸步道与市区体验', timestamp: '2026-10-25T08:00:00Z', progress_status: 'running' },
+            { step_id: 'place-result', agent_name: '目的地调研', step_name: '地点搜索', content: '', timestamp: '2026-10-25T08:00:01Z', is_tool_call: true, tool_name: 'global_place_search', tool_args: '{"query":"厦门 海岸步道"}', tool_result: '找到 3 个适合安排进行程的地点', tool_status: 'completed', result_preview: [{ title: '环岛路海岸步道', detail: '适合安排半天散步与骑行，可串联曾厝垵和音乐广场。', url: 'https://example.org/xiamen-coast' }] },
+            { step_id: 'transport-start', agent_name: '交通查询', step_name: '查询往返交通', content: '正在比较深圳到厦门的火车方案', timestamp: '2026-10-25T08:00:02Z', progress_status: 'running' },
+            { step_id: 'route-result', agent_name: '交通查询', step_name: '火车查询', content: '', timestamp: '2026-10-25T08:00:03Z', is_tool_call: true, tool_name: 'train_search', tool_args: '{"from_name":"深圳北","to_name":"厦门北","date":"2026-11-01"}', tool_result: '已整理往返车次与到站衔接', tool_status: 'completed' },
+            { step_id: 'stay-start', agent_name: '住宿查询', step_name: '查询住宿', content: '正在筛选交通方便的住宿区域', timestamp: '2026-10-25T08:00:04Z', progress_status: 'running' },
+          ],
+        }],
+      } : sessionDetail(id));
     }
     if (path === '/trip-runs') {
       const id = url.searchParams.get('session_id');
-      return json({ runs: id === 'A' && (options.bundle || options.recovery) ? [{ run_id: 'run-A', session_id: 'A', status, title: '离线运行', mode: 'deep', created_at: '2026-10-25T08:00:00Z', updated_at: '2026-10-25T08:00:00Z' }] : [], total: id === 'A' ? 1 : 0 });
+      return json({ runs: id === 'A' && (options.bundle || options.recovery || options.planGate) ? [{ run_id: 'run-A', session_id: 'A', status, title: '离线运行', mode: 'deep', created_at: '2026-10-25T08:00:00Z', updated_at: '2026-10-25T08:00:00Z' }] : [], total: id === 'A' ? 1 : 0 });
     }
-    if (path === '/trip-runs/run-A') return json({ run: { run_id: 'run-A', session_id: 'A', status }, state: { pending_user_choice: null, latest_state_summary: {} }, execution: null, available_actions: [], events: [], controlled_trip_identity: { origin: { name: '北京' }, destinations: [{ name: '西安' }], start_date: '2026-11-01', end_date: '2026-11-02', party: { adults: 1, children: 0, elderly_companions: false, accessibility_required: false }, style: { primary: '轻松', secondary_interests: [], source: 'current' } } });
+    if (path === '/trip-runs/run-A') return json({ run: { run_id: 'run-A', session_id: 'A', status }, state: { pending_user_choice: options.planGate ? {
+      type: 'approval_gate', gate: 'plan', read_only: false, terminal_status: null,
+      payload: { gate: 'plan', revision: 0, revision_limit: 2, decision_options: ['approve', 'supplement', 'cancel'], plan: { steps: [{ step: 1, agents: ['destination_researcher'], tasks: { destination_researcher: '安排适合放松的城市路线' } }] }, recognized_requirements: { hard: [], preferences: [{ requirement_id: 'slow', summary: '想慢一点，每天少走一些' }], attention: [] }, unresolved_requirement_ids: [] },
+    } : null, latest_state_summary: {} }, execution: null, available_actions: [], events: [], controlled_trip_identity: { origin: { name: '北京' }, destinations: [{ name: '西安' }], start_date: '2026-11-01', end_date: '2026-11-02', party: options.specialParty ? { adults: 2, children: 1, elderly_companions: true, accessibility_required: true } : { adults: 1, children: 0, elderly_companions: false, accessibility_required: false }, style: { primary: '轻松', secondary_interests: ['当地美食'], source: 'current' } } });
     if (path === '/trip-runs/run-A/bundle/current') return options.bundle || recovered ? json(bundle) : json({ detail: 'not ready' }, 404);
     if (path === '/trip-runs/run-A/events') {
       const after = Number(url.searchParams.get('after_sequence'));
       const ready = options.bundle || recovered;
-      return json({ run_id: 'run-A', requested_after_sequence: after, replay_floor_sequence: 1, latest_sequence: ready ? 2 : 0, next_after_sequence: ready ? Math.max(after, 2) : after, window_expired: false, run_status: ready ? 'completed' : status, current_bundle_id: ready ? 'bundle-1' : null,
-        events: ready && after < 2 ? [{ event_id: 2, run_id: 'run-A', sequence: 2, event_type: 'run.terminal', payload: { status: 'completed', bundle_id: 'bundle-1' }, created_at: '2026-10-25T08:00:00Z' }] : [] });
+      const terminalReady = ready && !options.planGate;
+      return json({ run_id: 'run-A', requested_after_sequence: after, replay_floor_sequence: 1, latest_sequence: terminalReady ? 2 : 0, next_after_sequence: terminalReady ? Math.max(after, 2) : after, window_expired: false, run_status: options.planGate ? 'awaiting_input' : ready ? 'completed' : status, current_bundle_id: terminalReady ? 'bundle-1' : null,
+        events: terminalReady && after < 2 ? [{ event_id: 2, run_id: 'run-A', sequence: 2, event_type: 'run.terminal', payload: { status: 'completed', bundle_id: 'bundle-1' }, created_at: '2026-10-25T08:00:00Z' }] : [] });
     }
     if (path === '/trip-runs/run-A/control') { expect(request.postDataJSON()).toEqual({ action: 'cancel', session_id: 'A' }); status = 'cancelled'; return json({ accepted: true, run_status: 'cancelled', message: '已取消' }); }
     if (path === '/trip-runs/run-A/bundle/current/weather/refresh') return json({ refresh_id: request.postDataJSON().refresh_id, attempted: false, committed: false, used_previous_values: true, refusal_reason: null, bundle });
@@ -166,6 +189,20 @@ test('recovers durable delivery without a stream and keeps recovery mounted acro
   const fixture = await offlineApp(page, { recovery: true });
   await page.goto('/');
   await expect(page.getByTestId('generation-journey-panel')).toBeVisible();
+  await expect(page.getByTestId('thinking-chain')).toBeVisible();
+  await expect(page.getByTestId('thinking-chain').getByRole('button').first()).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('generation-journey-panel')).not.toContainText('每一步安排，都有据可查');
+  await expect(page.getByText('规划过程', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('查看不同阶段的思考摘要、查询内容和已找到的旅行资料。', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('规划进度', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('正在整理这趟旅行的基本信息。', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('generation-journey-panel').locator('.generation-trip-card')).toBeVisible();
+  await expect(page.getByTestId('generation-journey-panel').locator('.research-panel-workspace')).toBeVisible();
+  await expect(page.getByTestId('generation-journey-panel').locator('.generation-progress')).toHaveAttribute('data-active', 'false');
+  await expect(page.getByTestId('generation-journey-panel')).not.toContainText('责任');
+  await expect(page.getByTestId('itinerary-map-region')).toHaveCount(0);
+  await expect(page.getByTestId('bundle-leaflet-map')).toHaveCount(0);
+  await page.screenshot({ path: test.info().outputPath('desktop-generation-workspace.png'), fullPage: true });
   await page.getByRole('link', { name: '偏好与资料', exact: true }).click();
   await page.getByRole('link', { name: '资料来源', exact: true }).click();
   await expect(page.getByRole('heading', { name: '资料来源', exact: true })).toBeVisible();
@@ -177,6 +214,255 @@ test('recovers durable delivery without a stream and keeps recovery mounted acro
   await expect(page.getByTestId('full-report')).toBeVisible();
   await expect(page.getByText('离线旅行报告', { exact: true })).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('desktop-session-report.png'), fullPage: true });
+  await assertOffline(page, fixture);
+});
+
+test('restores staged research with formatted tool calls and results', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const fixture = await offlineApp(page, { recovery: true, research: true });
+  await page.goto('/');
+  const workspace = page.getByTestId('generation-journey-panel');
+  await expect(workspace.getByTestId('research-agent-destination')).toContainText('找到 3 个适合安排进行程的地点');
+  await expect(workspace.getByTestId('research-agent-destination').getByRole('button')).toHaveCount(0);
+  await expect(workspace.getByTestId('research-agent-destination')).toContainText('厦门 海岸步道');
+  await workspace.getByTestId('research-agent-destination').getByTestId('research-query').locator('summary').click();
+  await expect(workspace.getByRole('link', { name: '环岛路海岸步道' })).toBeVisible();
+  await expect(workspace.getByTestId('research-agent-transport')).toContainText('已整理往返车次与到站衔接');
+  await expect(workspace.getByTestId('research-agent-transport')).toContainText('深圳北 -> 厦门北');
+  await expect(workspace.getByTestId('research-agent-stay')).toContainText('已结束');
+  await expect(workspace.getByTestId('research-agent-stay')).not.toContainText('正在筛选交通方便的住宿区域');
+  await page.screenshot({ path: test.info().outputPath('desktop-generation-research.png'), fullPage: true });
+  await assertOffline(page, fixture);
+});
+
+test('plan gate stays inside the generation workspace through revise retry and approve', async ({ page }) => {
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const fixture = await offlineApp(page, { planGate: true });
+  await page.goto('/');
+  const workspace = page.getByTestId('generation-journey-panel');
+  const gate = page.getByTestId('trip-brief-plan-gate');
+  const sidebar = workspace.locator('.generation-planning-sidebar');
+  await expect(workspace).toBeVisible();
+  await expect(sidebar.locator('.generation-trip-card')).toBeVisible();
+  await expect(workspace.locator('.generation-progress > h2')).toHaveText('等待确认旅行需求');
+  await expect(gate).toBeVisible();
+  await expect(gate).toContainText('想慢一点，每天少走一些');
+  await expect(page.getByRole('heading', { name: '确认这趟旅行', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '接下来，我们会这样安排', exact: true })).toHaveCount(0);
+  await sidebar.evaluate(node => node.setAttribute('data-mount-probe', 'kept'));
+  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/workspace-2000-pending-gate.png', fullPage: true });
+
+  await gate.getByRole('button', { name: '补充或调整旅行要求', exact: true }).click();
+  const guide = gate.getByLabel('想改哪里？');
+  await guide.fill('每天只安排一个主要景点，午后留出休息时间');
+  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/workspace-2000-gate-editing.png', fullPage: true });
+  await page.evaluate(() => { (window as FixtureWindow).__offlineFailChatAttempts = 3; });
+  await gate.getByTestId('plan-gate-supplement').click();
+  await expect(gate.getByRole('alert')).toContainText('旅行信息和修改已保留');
+  await expect(guide).toHaveValue('每天只安排一个主要景点，午后留出休息时间');
+  await expect(sidebar).toHaveAttribute('data-mount-probe', 'kept');
+
+  await gate.getByTestId('plan-gate-supplement').click();
+  await expect.poll(() => page.evaluate(() => {
+    const bodies = (window as FixtureWindow).__offlineChatBodies ?? [];
+    return (bodies[bodies.length - 1] as { gate_decision?: { action?: string; content?: string } } | undefined)?.gate_decision;
+  })).toEqual({ action: 'supplement', content: '每天只安排一个主要景点，午后留出休息时间' });
+  await sendFrames(page, [
+    { type: 'chat_start', session_id: 'A', run_id: 'run-A', message_id: 'gate-supplement', route_decision: { route: 'trip_refinement' } },
+    { type: 'approval_gate_raised', run_id: 'run-A', gate: 'plan', run_status: 'awaiting_input', payload: { gate: 'plan', revision: 1, revision_limit: 2, decision_options: ['approve', 'supplement', 'cancel'], plan: { steps: [{ step: 1, agents: ['destination_researcher'], tasks: {} }] }, recognized_requirements: { hard: [], preferences: [{ requirement_id: 'slow', summary: '每天只安排一个主要景点' }], attention: [] }, unresolved_requirement_ids: [] } },
+    { type: 'chat_complete', run_id: 'run-A', run_status: 'awaiting_input', ts_ms: Date.now() },
+  ], true);
+  await expect(gate).toContainText('每天只安排一个主要景点');
+  await expect(guide).toHaveValue('');
+  await expect(sidebar).toHaveAttribute('data-mount-probe', 'kept');
+  await expect(workspace.locator('.generation-progress > h2')).toHaveText('等待确认旅行需求');
+
+  await gate.getByRole('button', { name: '确认并开始生成', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const bodies = (window as FixtureWindow).__offlineChatBodies ?? [];
+    return (bodies[bodies.length - 1] as { gate_decision?: { action?: string } } | undefined)?.gate_decision?.action;
+  })).toBe('approve');
+  await sendFrames(page, [
+    { type: 'chat_start', session_id: 'A', run_id: 'run-A', message_id: 'gate-approve', route_decision: { route: 'trip_refinement' } },
+    { type: 'thinking', message_id: 'gate-approve', agent_name: '行程规划', content: '正在把景点和交通排进每天路线', step_name: '安排路线', ts_ms: Date.now() },
+  ]);
+  await expect(gate).toHaveCount(0);
+  await expect(workspace.locator('.research-panel-title')).toHaveText('安排每天路线');
+  await expect(sidebar).toHaveAttribute('data-mount-probe', 'kept');
+  await expect(sidebar.locator('.generation-trip-card')).toBeVisible();
+  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/workspace-2000-approved-research.png', fullPage: true });
+  await assertOffline(page, fixture);
+});
+
+test('cancel keeps the current run workspace and restores a pending gate on phone', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const fixture = await offlineApp(page, { planGate: true });
+  await page.goto('/');
+  const workspace = page.getByTestId('generation-journey-panel');
+  const gate = page.getByTestId('trip-brief-plan-gate');
+  await expect(gate).toBeVisible();
+  await expect(workspace.locator('.generation-trip-card')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/workspace-390-pending-gate.png', fullPage: true });
+
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.reload();
+  await expect(gate).toBeVisible();
+  await expect(workspace.locator('.generation-progress > h2')).toHaveText('等待确认旅行需求');
+  const sidebar = workspace.locator('.generation-planning-sidebar');
+  await sidebar.evaluate(node => node.setAttribute('data-mount-probe', 'kept'));
+
+  await gate.getByRole('button', { name: '取消规划', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const bodies = (window as FixtureWindow).__offlineChatBodies ?? [];
+    return (bodies[bodies.length - 1] as { gate_decision?: { action?: string } } | undefined)?.gate_decision?.action;
+  })).toBe('cancel');
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
+  await sendFrames(page, [{ type: 'run_cancelled', run_id: 'run-A', final_content: '已取消当前规划。', ts_ms: Date.now() }]);
+  await expect(gate).toHaveCount(0);
+  await expect(workspace).toBeVisible();
+  await expect(sidebar).toHaveAttribute('data-mount-probe', 'kept');
+  await expect(workspace.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
+  await expect(page.getByText('这次规划已取消。', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('new-trip-hero')).toHaveCount(0);
+  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/workspace-2000-cancelled.png', fullPage: true });
+  await assertOffline(page, fixture);
+});
+
+test('narrow plan gate keeps actions visible and party conditions readable through reload and approve', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const fixture = await offlineApp(page, { planGate: true, specialParty: true });
+  const assertGateGeometry = async () => {
+    const gate = page.getByTestId('trip-brief-plan-gate');
+    const geometry = await gate.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const actions = element.querySelector('.plan-gate-actions') as HTMLElement;
+      const buttons = Array.from(actions.querySelectorAll('button')).map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, width: rect.width };
+      });
+      return {
+        boxLeft: box.left,
+        boxRight: box.right,
+        overflow: element.scrollWidth - element.clientWidth,
+        actionOverflow: actions.scrollWidth - actions.clientWidth,
+        buttons,
+        viewport: window.innerWidth,
+      };
+    });
+    expect(geometry.overflow).toBeLessThanOrEqual(1);
+    expect(geometry.actionOverflow).toBeLessThanOrEqual(1);
+    expect(geometry.buttons.length).toBeGreaterThanOrEqual(2);
+    for (const button of geometry.buttons) {
+      expect(button.width).toBeGreaterThan(0);
+      expect(button.left).toBeGreaterThanOrEqual(geometry.boxLeft - 1);
+      expect(button.right).toBeLessThanOrEqual(geometry.boxRight + 1);
+      expect(button.right).toBeLessThanOrEqual(geometry.viewport + 1);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  };
+
+  for (const width of [640, 660, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width === 640) await page.goto('/');
+    else await page.reload();
+    const gate = page.getByTestId('trip-brief-plan-gate');
+    const workspace = page.getByTestId('generation-journey-panel');
+    await expect(gate).toBeVisible();
+    await expect(gate).toContainText('有长辈同行');
+    await expect(gate).toContainText('需要无障碍安排');
+    await expect(workspace.locator('.generation-trip-card')).toContainText('1 位儿童');
+    await expect(workspace.locator('.generation-trip-card')).toContainText('有长辈同行');
+    await expect(workspace.locator('.generation-trip-card')).toContainText('需要无障碍安排');
+    await expect(gate.getByRole('button', { name: '确认并开始生成', exact: true })).toBeVisible();
+    await expect(gate.getByRole('button', { name: '确认并开始生成', exact: true })).toBeEnabled();
+    await expect(gate.getByRole('button', { name: '取消规划', exact: true })).toBeVisible();
+    await expect(gate.getByRole('button', { name: '取消规划', exact: true })).toBeEnabled();
+    await assertGateGeometry();
+    if (width === 640) await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/workspace-640-pending-gate-special.png', fullPage: true });
+    await gate.getByRole('button', { name: '补充或调整旅行要求', exact: true }).click();
+    const guide = gate.getByLabel('想改哪里？');
+    await guide.fill('每天少走一些，预留无障碍休息点');
+    await expect(gate.getByTestId('plan-gate-supplement')).toBeVisible();
+    await expect(gate.getByTestId('plan-gate-supplement')).toBeEnabled();
+    await assertGateGeometry();
+  }
+
+  await page.setViewportSize({ width: 640, height: 900 });
+  await page.reload();
+  const gate = page.getByTestId('trip-brief-plan-gate');
+  const workspace = page.getByTestId('generation-journey-panel');
+  await expect(gate).toBeVisible();
+  await expect(gate).toContainText('有长辈同行');
+  await expect(gate).toContainText('需要无障碍安排');
+  await expect(workspace.locator('.generation-trip-card')).toContainText('1 位儿童');
+  await expect(workspace.locator('.generation-trip-card')).toContainText('有长辈同行');
+  await expect(workspace.locator('.generation-trip-card')).toContainText('需要无障碍安排');
+  await gate.getByRole('button', { name: '确认并开始生成', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
+  await sendFrames(page, [
+    { type: 'chat_start', session_id: 'A', run_id: 'run-A', message_id: 'special-party-approve', route_decision: { route: 'trip_refinement' } },
+    { type: 'thinking', message_id: 'special-party-approve', agent_name: '行程规划', content: '正在安排每天路线并预留休息点', step_name: '安排路线', ts_ms: Date.now() },
+  ]);
+  await expect(gate).toHaveCount(0);
+  await expect(workspace.locator('.generation-trip-card')).toContainText('1 位儿童');
+  await expect(workspace.locator('.generation-trip-card')).toContainText('有长辈同行');
+  await expect(workspace.locator('.generation-trip-card')).toContainText('需要无障碍安排');
+  await assertOffline(page, fixture);
+});
+
+test('delivered trip refinement gate keeps party context and actions inside the narrow conversation', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const fixture = await offlineApp(page, { bundle: true, planGate: true, specialParty: true });
+  await page.goto('/');
+  await expect(page.getByTestId('interactive-itinerary')).toBeVisible();
+  await page.getByRole('button', { name: '调整', exact: true }).first().click();
+  const gate = page.getByTestId('trip-brief-plan-gate');
+  await expect(gate).toBeVisible();
+  await expect(gate).toContainText('2 位成人');
+  await expect(gate).toContainText('1 位儿童');
+  await expect(gate).toContainText('有长辈同行');
+  await expect(gate).toContainText('需要无障碍安排');
+  const geometry = await gate.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const actions = element.querySelector('.plan-gate-actions') as HTMLElement;
+    return {
+      width: box.width,
+      overflow: element.scrollWidth - element.clientWidth,
+      actionOverflow: actions.scrollWidth - actions.clientWidth,
+      buttons: Array.from(actions.querySelectorAll('button')).map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, width: rect.width };
+      }),
+      boxLeft: box.left,
+      boxRight: box.right,
+    };
+  });
+  expect(geometry.width).toBeLessThan(440);
+  expect(geometry.overflow).toBeLessThanOrEqual(1);
+  expect(geometry.actionOverflow).toBeLessThanOrEqual(1);
+  for (const button of geometry.buttons) {
+    expect(button.width).toBeGreaterThan(0);
+    expect(button.left).toBeGreaterThanOrEqual(geometry.boxLeft - 1);
+    expect(button.right).toBeLessThanOrEqual(geometry.boxRight + 1);
+  }
+  const approve = gate.getByRole('button', { name: '确认并开始生成', exact: true });
+  const cancel = gate.getByRole('button', { name: '取消规划', exact: true });
+  await expect(approve).toBeEnabled();
+  await expect(cancel).toBeEnabled();
+  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/bundle-adjustment-gate-1280.png', fullPage: true });
+  await gate.locator('.plan-gate-actions').scrollIntoViewIfNeeded();
+  await expect(approve).toBeVisible();
+  await expect(cancel).toBeVisible();
+  expect(await gate.locator('.plan-gate-actions').evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return rect.top >= 0 && rect.bottom <= window.innerHeight;
+  })).toBe(true);
+  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/bundle-adjustment-gate-actions-1280.png', fullPage: true });
   await assertOffline(page, fixture);
 });
 
@@ -293,12 +579,14 @@ test('desktop itinerary cards and map stay linked across hover, selection, days 
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  await expect(page.getByTestId('itinerary-card-flow')).toBeVisible();
-  await expect(page.locator('[data-itinerary-occurrence]')).toHaveCount(14);
-  await expect(page.locator('[data-bundle-map-entity]')).toHaveCount(7);
-  await expect(page.locator('.leaflet-overlay-pane path[data-route-entity]')).toHaveCount(6);
-  await expect(page.locator('.leaflet-overlay-pane path[data-route-geometry="provider"]')).toHaveCount(4);
-  await expect(page.locator('.leaflet-overlay-pane path[data-route-geometry="endpoint"]')).toHaveCount(2);
+  await expect(page.getByTestId('itinerary-card-flow')).toHaveCount(0);
+  await expect(page.getByTestId('day-summary-card-day-1')).toBeVisible();
+  await page.getByTestId('day-summary-card-day-1').click();
+  await expect(page.locator('[data-itinerary-occurrence]')).toHaveCount(7);
+  await expect(page.locator('[data-bundle-map-entity]')).toHaveCount(4);
+  await expect(page.locator('.leaflet-overlay-pane path[data-route-entity]')).toHaveCount(3);
+  await expect(page.locator('.leaflet-overlay-pane path[data-route-geometry="provider"]')).toHaveCount(2);
+  await expect(page.locator('.leaflet-overlay-pane path[data-route-geometry="endpoint"]')).toHaveCount(1);
   expect(await page.locator('[data-itinerary-occurrence]').evaluateAll(nodes => nodes.slice(0, 7).map(node => node.getAttribute('data-entity-id')))).toEqual([
     'visit-terracotta', 'leg-terracotta-lunch', 'dining-lintong', 'leg-lunch-dayan', 'visit-dayan', 'leg-dayan-hotel', 'stay-bell-tower',
   ]);
@@ -315,7 +603,7 @@ test('desktop itinerary cards and map stay linked across hover, selection, days 
     if (!mapBox || !markerBox) return false;
     const markerCenterX = markerBox.x + markerBox.width / 2;
     const markerCenterY = markerBox.y + markerBox.height / 2;
-    const mapCenterX = mapBox.x + mapBox.width / 2;
+    const mapCenterX = mapBox.x + mapBox.width / 2 + 230;
     const mapCenterY = mapBox.y + mapBox.height / 2;
     return Math.abs(markerCenterX - mapCenterX) < 40 && Math.abs(markerCenterY - mapCenterY) < 40;
   }).toBe(true);
@@ -327,7 +615,7 @@ test('desktop itinerary cards and map stay linked across hover, selection, days 
   await page.getByRole('button', { name: '关闭地点详情', exact: true }).click();
   await expect(mapTrigger).toBeFocused();
 
-  await page.getByTestId('day-summary-card-day-2').click();
+  await page.getByRole('button', { name: '第 2 天', exact: true }).click();
   await expect(page.locator('[data-itinerary-occurrence]')).toHaveCount(7);
   await expect(page.locator('[data-bundle-map-entity]')).toHaveCount(4);
   await expect(page.locator('.leaflet-overlay-pane path[data-route-entity]')).toHaveCount(3);
@@ -348,7 +636,7 @@ test('desktop itinerary cards and map stay linked across hover, selection, days 
   await page.getByRole('button', { name: '返回地图', exact: true }).click();
   await expect(page.getByTestId('itinerary-card-flow')).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __journeyMapElement: Element | null }).__journeyMapElement === document.querySelector('[data-testid="bundle-leaflet-map"]'))).toBe(true);
-  await page.screenshot({ path: test.info().outputPath('desktop-xian-three-columns.png'), fullPage: true });
+  await page.screenshot({ path: test.info().outputPath('desktop-xian-floating-panel.png'), fullPage: true });
   await assertOffline(page, fixture);
 });
 
@@ -360,26 +648,24 @@ test('mixed transport map keeps every target, mode color and geometry visible', 
   const map = page.getByTestId('bundle-leaflet-map');
   await expect(map).toBeVisible();
   await expect(page.getByTestId('interactive-itinerary')).toBeVisible();
-  await expect(page.locator('[data-itinerary-occurrence]')).toHaveCount(19);
+  await page.getByTestId('day-summary-card-day-1').click();
+  await expect(page.locator('[data-itinerary-occurrence]')).toHaveCount(10);
   const contentEntityIds = await page.locator('[data-itinerary-occurrence]').evaluateAll(nodes => nodes.map(node => node.getAttribute('data-entity-id') ?? ''));
   expect(contentEntityIds.slice(0, 3)).toEqual(['leg-flight-demo', 'leg-ride-demo', 'visit-terracotta']);
-  expect(contentEntityIds.slice(-2)).toEqual(['leg-station-taxi-demo', 'leg-rail-demo']);
-  await expect(page.locator('[data-bundle-map-kind="transport_endpoint"]')).toHaveCount(4);
+  await expect(page.locator('[data-bundle-map-kind="transport_endpoint"]')).toHaveCount(2);
   await expect(page.getByLabel('路线图例')).toHaveCount(0);
   await expect(page.getByTestId('map-unlocated-places')).toHaveCount(0);
 
   const paths = page.locator('.leaflet-overlay-pane path[data-route-entity]');
-  await expect(paths).toHaveCount(10);
+  await expect(paths).toHaveCount(5);
   const mappedEntityIds = await paths.evaluateAll(nodes => nodes.map(node => node.getAttribute('data-route-entity') ?? '').sort());
   expect(mappedEntityIds).toEqual(contentEntityIds.filter(id => id.startsWith('leg-')).sort());
-  await expect(page.locator('path[data-route-geometry="provider"]')).toHaveCount(7);
+  await expect(page.locator('path[data-route-geometry="provider"]')).toHaveCount(3);
   await expect(page.locator('path[data-route-geometry="direct"]')).toHaveCount(1);
-  await expect(page.locator('path[data-route-geometry="endpoint"]')).toHaveCount(2);
+  await expect(page.locator('path[data-route-geometry="endpoint"]')).toHaveCount(1);
   await expect(page.locator('path[data-route-segment="segment-flight-demo"]')).toHaveCSS('stroke', 'rgb(108, 99, 206)');
-  await expect(page.locator('path[data-route-segment="segment-rail-demo"]')).toHaveCSS('stroke', 'rgb(198, 75, 69)');
   await expect(page.locator('path[data-route-segment="segment-ride-demo"]')).toHaveAttribute('data-route-mode', 'ride_hailing');
   await expect(page.locator('path[data-route-segment="segment-ride-demo"]')).toHaveCSS('stroke', 'rgb(194, 106, 27)');
-  await expect(page.locator('path[data-route-segment="segment-station-taxi-demo"]')).toHaveAttribute('data-route-mode', 'taxi');
 
   const driveCard = page.getByTestId('transport-card-leg-terracotta-lunch');
   const cardColor = await driveCard.locator('.transport-mode-icon').first().evaluate(node => getComputedStyle(node).color);
@@ -430,7 +716,7 @@ test('conversation restores focus to its newly rendered trigger on Escape and re
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  const adjust = page.getByRole('button', { name: '告诉我想怎么改……', exact: true });
+  const adjust = page.getByRole('button', { name: '调整', exact: true });
   await adjust.click();
   const composer = page.getByRole('textbox', { name: '告诉我想怎么改……', exact: true });
   await expect(composer).toBeFocused();
@@ -449,6 +735,8 @@ test('phone card selection closes the sheet and reveals the selected map place',
   await page.goto('/');
   await page.getByTestId('canvas-pill').click();
   const sheet = page.getByTestId('canvas-sheet');
+  await expect(sheet.getByTestId('itinerary-card-flow')).toHaveCount(0);
+  await sheet.getByTestId('day-summary-card-day-1').click();
   await expect(sheet.getByTestId('itinerary-card-flow')).toBeVisible();
   const dayan = sheet.locator('[data-itinerary-occurrence="d1-dayan"]');
   await dayan.scrollIntoViewIfNeeded();

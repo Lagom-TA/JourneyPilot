@@ -7,34 +7,34 @@ export interface StageDef {
     responsibility: string;
 }
 export const STAGE_DEFS: StageDef[] = [
-    { id: 'planning', label: '规划', responsibility: '理解你的需求，拆解调研计划并分派任务' },
-    { id: 'research', label: '调研', responsibility: '并行调研目的地、交通、住宿，编排每日行程' },
-    { id: 'synthesis', label: '交付', responsibility: '生成统一投影并原子保存正式旅行结果' },
+    { id: 'planning', label: '规划', responsibility: '理解你的需求，整理旅行信息并准备相关查询' },
+    { id: 'research', label: '调研', responsibility: '查询目的地、交通和住宿，安排每日行程' },
+    { id: 'synthesis', label: '交付', responsibility: '汇总旅行内容并保存完整计划' },
 ];
 const NODE_STAGES: ReadonlyArray<readonly [
     node: string,
     display: string,
     stage: StageId
 ]> = [
-    ['supervisor', '智能调度', 'planning'],
+    ['supervisor', '规划协调', 'planning'],
     ['scope_clarifier', '需求确认', 'planning'],
-    ['request_contract_normalizer', '需求合同', 'planning'],
-    ['research_brief_builder', '调研简报', 'planning'],
-    ['minimum_delivery_draft_builder', '行程骨架', 'planning'],
+    ['request_contract_normalizer', '整理需求', 'planning'],
+    ['research_brief_builder', '准备查询', 'planning'],
+    ['minimum_delivery_draft_builder', '行程框架', 'planning'],
     ['intent_amendment_router', '要求更新', 'planning'],
     ['destination_geo_resolver', '目的地定位', 'planning'],
-    ['weather_context_builder', '天气事实', 'planning'],
+    ['weather_context_builder', '天气信息', 'planning'],
     ['trip_summary_card_brief', '旅行摘要', 'planning'],
-    ['planner', '任务规划', 'planning'],
-    ['plan_gate', '计划审批', 'planning'],
-    ['dispatcher', '任务分发', 'planning'],
+    ['planner', '制定计划', 'planning'],
+    ['plan_gate', '确认计划', 'planning'],
+    ['dispatcher', '安排查询', 'planning'],
     ['destination_researcher', '目的地调研', 'research'],
     ['transport_researcher', '交通查询', 'research'],
     ['accommodation_researcher', '住宿查询', 'research'],
     ['itinerary_planner', '行程规划', 'research'],
     ['budget_estimate', '预算估算', 'synthesis'],
-    ['delivery_projector', '交付内容', 'synthesis'],
-    ['delivery_finalizer', '交付定稿', 'synthesis'],
+    ['delivery_projector', '整理行程', 'synthesis'],
+    ['delivery_finalizer', '保存计划', 'synthesis'],
 ];
 export const AGENT_TO_STAGE: Record<string, StageId> = Object.fromEntries(NODE_STAGES.flatMap(([node, display, stage]) => [
     [node, stage],
@@ -53,13 +53,95 @@ export function parseAgentRound(agentName: string): {
     base: string;
     round: number;
 } {
-    const m = /^(.+?)_r(\d+)$/.exec(agentName);
+    const name = agentName.trim();
+    const m = /^(.+?)_r(\d+)$/.exec(name);
     if (m)
         return { base: m[1], round: parseInt(m[2], 10) };
-    const display = /^(.+?)（第(\d+)轮补充）$/.exec(agentName);
+    const display = /^(.+?)[（(]第(\d+)轮(?:补充)?[）)]$/.exec(name);
     if (display)
         return { base: display[1], round: parseInt(display[2], 10) };
-    return { base: agentName, round: 0 };
+    return { base: name, round: 0 };
+}
+export type ActivityStageId = 'requirements' | 'research' | 'route' | 'delivery';
+const ACTIVITY_STAGE_BY_NODE: Record<string, ActivityStageId> = {
+    supervisor: 'requirements',
+    scope_clarifier: 'requirements',
+    request_contract_normalizer: 'requirements',
+    research_brief_builder: 'requirements',
+    minimum_delivery_draft_builder: 'requirements',
+    intent_amendment_router: 'requirements',
+    destination_geo_resolver: 'requirements',
+    weather_context_builder: 'requirements',
+    trip_summary_card_brief: 'requirements',
+    planner: 'requirements',
+    plan_gate: 'requirements',
+    dispatcher: 'research',
+    destination_researcher: 'research',
+    transport_researcher: 'research',
+    accommodation_researcher: 'research',
+    itinerary_planner: 'route',
+    budget_estimate: 'delivery',
+    delivery_projector: 'delivery',
+    delivery_finalizer: 'delivery',
+};
+for (const [node, display, stage] of NODE_STAGES) {
+    if (stage === 'planning')
+        ACTIVITY_STAGE_BY_NODE[display] = 'requirements';
+    else if (stage === 'synthesis')
+        ACTIVITY_STAGE_BY_NODE[display] = 'delivery';
+    else
+        ACTIVITY_STAGE_BY_NODE[display] = node === 'itinerary_planner' || display === '行程规划' ? 'route' : 'research';
+}
+ACTIVITY_STAGE_BY_NODE['安排查询'] = 'research';
+export function getActivityStageIdForAgent(agentName: string): ActivityStageId | null {
+    return ACTIVITY_STAGE_BY_NODE[parseAgentRound(agentName).base] ?? null;
+}
+export const ACTIVITY_STAGE_TITLES: Record<ActivityStageId, string> = {
+    requirements: '整理旅行需求',
+    research: '查找旅行资料',
+    route: '安排每天路线',
+    delivery: '生成完整计划',
+};
+export function deriveActivityTitle(args: {
+    steps: ThinkingStep[];
+    isStreaming: boolean;
+    isSynthesizing: boolean;
+    answerStarted: boolean;
+    runStatus?: string | null;
+    gatePending?: boolean;
+    interrupted?: boolean;
+}): string {
+    if (args.gatePending)
+        return '等待确认旅行需求';
+    switch (args.runStatus) {
+        case 'awaiting_input': return '等待确认旅行需求';
+        case 'cancel_requested': return '正在停止规划';
+        case 'cancelled': return '旅行规划已取消';
+        case 'interrupted': return '旅行规划已中断';
+        case 'failed': return '旅行规划未完成';
+        case 'completed': return '旅行规划已完成';
+    }
+    if (args.interrupted)
+        return '旅行规划已中断';
+    if (args.isSynthesizing || (args.isStreaming && args.answerStarted))
+        return ACTIVITY_STAGE_TITLES.delivery;
+    const rank: Record<ActivityStageId, number> = { requirements: 0, research: 1, route: 2, delivery: 3 };
+    let current: ActivityStageId | null = null;
+    for (const step of args.steps) {
+        const stage = getActivityStageIdForAgent(step.agentName || '');
+        if (!stage)
+            continue;
+        // 新补充轮次会重新整理需求；并行研究较晚到达的工具事件不应把已进入的路线/生成阶段拉回。
+        if (stage === 'requirements') {
+            current = stage;
+            continue;
+        }
+        if (!current || rank[stage] > rank[current])
+            current = stage;
+    }
+    if (current)
+        return ACTIVITY_STAGE_TITLES[current];
+    return args.isStreaming ? ACTIVITY_STAGE_TITLES.requirements : '旅行规划记录';
 }
 export interface StageView extends StageDef {
     status: StageStatus;
@@ -76,6 +158,7 @@ export interface StageSignals {
     isStreaming: boolean;
     isSynthesizing: boolean;
     answerStarted: boolean;
+    completed?: boolean;
 }
 export function deriveStages(steps: ThinkingStep[], signals: StageSignals): DerivedStages {
     const touched = new Set<StageId>();
@@ -103,7 +186,7 @@ export function deriveStages(steps: ThinkingStep[], signals: StageSignals): Deri
     }
     const { isStreaming, isSynthesizing, answerStarted } = signals;
     const synthesisActive = isSynthesizing || (isStreaming && answerStarted);
-    const synthesisDone = !isStreaming && answerStarted;
+    const synthesisDone = signals.completed === true;
     let headIndex: number;
     let headActive: boolean;
     if (synthesisDone) {
@@ -133,7 +216,7 @@ export function deriveStages(steps: ThinkingStep[], signals: StageSignals): Deri
             status = 'done';
         }
         else if (idx === headIndex) {
-            status = headActive ? 'active' : 'done';
+            status = headActive ? 'active' : synthesisDone ? 'done' : 'pending';
         }
         else {
             status = touched.has(def.id) ? 'done' : 'pending';

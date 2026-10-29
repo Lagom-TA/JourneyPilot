@@ -8,31 +8,50 @@ import { useIsCompactViewport } from "../../../../hooks/useMediaQuery";
 import { duration, easing } from "../../../../lib/motion";
 import React from 'react';
 const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+const MAX_TRIP_DAYS = 14;
+const DAY_MS = 86400000;
 function iso(date: Date): string {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 function fromIso(value: string): Date | null {
-    if (!value)
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match)
         return null;
-    const [year, month, day] = value.split('-').map(Number);
-    return new Date(year, month - 1, day);
+    const [, year, month, day] = match.map(Number);
+    const date = new Date(year, month - 1, day);
+    if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day)
+        return null;
+    return date;
+}
+function localToday(): string {
+    return iso(new Date());
+}
+function calendarDay(value: string): number {
+    const date = fromIso(value);
+    if (!date)
+        return Number.NaN;
+    return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / DAY_MS);
 }
 function addMonths(date: Date, amount: number): Date {
     return new Date(date.getFullYear(), date.getMonth() + amount, 1);
 }
 function daysBetween(start: string, end: string): number {
-    const left = fromIso(start);
-    const right = fromIso(end);
-    if (!left || !right)
+    const left = calendarDay(start);
+    const right = calendarDay(end);
+    if (!Number.isFinite(left) || !Number.isFinite(right))
         return 0;
-    return Math.floor((right.getTime() - left.getTime()) / 86400000) + 1;
+    return right - left + 1;
 }
 const Month: React.FC<{
     month: Date;
     start: string;
     end: string;
+    today: string;
     onSelect: (value: string) => void;
-}> = ({ month, start, end, onSelect }) => {
+}> = ({ month, start, end, today, onSelect }) => {
+    const todayDay = calendarDay(today);
+    const startDay = calendarDay(start);
+    const hasStartOnly = Boolean(start && !end);
     const first = new Date(month.getFullYear(), month.getMonth(), 1);
     const count = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
     const cells: Array<number | null> = Array(first.getDay()).fill(null);
@@ -48,12 +67,17 @@ const Month: React.FC<{
             if (!day)
                 return <span key={`blank-${index}`}/>;
             const value = iso(new Date(month.getFullYear(), month.getMonth(), day));
+            const valueDay = calendarDay(value);
             const isStart = value === start;
             const isEnd = value === end && value !== start;
             const selected = isStart || isEnd;
             const inRange = Boolean(start && end && value > start && value < end);
             const caption = isStart ? '出发' : isEnd ? '返程' : '';
-            return (<button key={value} type="button" aria-label={`选择 ${value}${caption ? `（${caption}）` : ''}`} aria-pressed={selected} onClick={() => onSelect(value)} className={cn('flex aspect-square min-h-9 flex-col items-center justify-center rounded-card text-sm transition-colors', selected && 'bg-accent font-semibold text-white', inRange && 'bg-accent-soft text-accent', !selected && !inRange && 'text-ink hover:bg-surface')}>
+            const isToday = value === today;
+            const isPast = valueDay < todayDay;
+            const exceedsRange = hasStartOnly && valueDay - startDay >= MAX_TRIP_DAYS;
+            const disabled = isPast || exceedsRange;
+            return (<button key={value} type="button" aria-label={`选择 ${value}${caption ? `（${caption}）` : ''}`} aria-current={isToday ? 'date' : undefined} aria-pressed={selected} disabled={disabled} onClick={() => onSelect(value)} className={cn('date-range-day flex aspect-square min-h-9 flex-col items-center justify-center rounded-card text-sm transition-colors', selected && 'bg-accent font-semibold text-white', inRange && 'bg-accent-soft text-accent', !selected && !inRange && !disabled && 'text-ink hover:bg-surface', disabled && 'is-disabled', isToday && 'is-today')}>
 
               {caption && <span className="pointer-events-none -mt-0.5 mb-px text-xs font-semibold leading-none text-white">{caption}</span>}
               <span className="leading-none">{day}</span>
@@ -75,6 +99,7 @@ export const DateRangePicker: React.FC<{
 }> = ({ start, end, onChange }) => {
     const [open, setOpen] = React.useState(false);
     const [visibleMonth, setVisibleMonth] = React.useState(() => fromIso(start) || new Date());
+    const today = localToday();
     const rootRef = React.useRef<HTMLDivElement>(null);
     const triggerRef = React.useRef<HTMLButtonElement>(null);
     const panelRef = React.useRef<HTMLDivElement>(null);
@@ -82,6 +107,8 @@ export const DateRangePicker: React.FC<{
     const isCompact = useIsCompactViewport();
     const close = React.useCallback(() => setOpen(false), []);
     const days = daysBetween(start, end);
+    const todayDay = calendarDay(today);
+    const startDay = calendarDay(start);
     const updateAnchor = React.useCallback(() => {
         const trigger = triggerRef.current?.getBoundingClientRect();
         if (!trigger) return;
@@ -123,12 +150,17 @@ export const DateRangePicker: React.FC<{
         };
     }, [close, open]);
     useOverlayDismiss({ open, onDismiss: close, panelRef });
+    const openPicker = () => {
+        setVisibleMonth(fromIso(start) || new Date());
+        setOpen(true);
+    };
     const select = (value: string) => {
-        if (!start || end || value < start) {
-            onChange(value, '');
+        const valueDay = calendarDay(value);
+        if (valueDay < todayDay)
             return;
-        }
-        if (daysBetween(start, value) > 14) {
+        if (start && !end && valueDay - startDay >= MAX_TRIP_DAYS)
+            return;
+        if (!start || end || valueDay < startDay) {
             onChange(value, '');
             return;
         }
@@ -145,7 +177,7 @@ export const DateRangePicker: React.FC<{
           {days > 0 ? `${days} 天 ${days - 1} 晚` : '最长 14 天'}
         </span>
       </div>
-      <button ref={triggerRef} type="button" data-testid="date-range-trigger" aria-haspopup="dialog" aria-expanded={open} aria-label={`${start || '选择开始日期'} → ${end || '选择结束日期'}${days > 0 ? ` · ${days} 天 ${days - 1} 晚` : ''}`} onClick={() => setOpen(true)} className={cn(RULED_FIELD, 'text-left')}>
+      <button ref={triggerRef} type="button" data-testid="date-range-trigger" aria-haspopup="dialog" aria-expanded={open} aria-label={`${start || '选择开始日期'} → ${end || '选择结束日期'}${days > 0 ? ` · ${days} 天 ${days - 1} 晚` : ''}`} onClick={openPicker} className={cn(RULED_FIELD, 'text-left')}>
         <CalendarDays size={17} className="shrink-0 text-chart"/>
         <span className={cn('min-w-0 flex-1 truncate', FIELD_VALUE)}>
           {start || '选择开始日期'} <span className="text-chart">→</span> {end || '选择结束日期'}
@@ -195,8 +227,8 @@ export const DateRangePicker: React.FC<{
                 </div>
               </div>
               <div className="flex gap-8">
-                <Month month={visibleMonth} start={start} end={end} onSelect={select}/>
-                <div className="hidden flex-1 sm:block"><Month month={addMonths(visibleMonth, 1)} start={start} end={end} onSelect={select}/></div>
+                <Month month={visibleMonth} start={start} end={end} today={today} onSelect={select}/>
+                <div className="hidden flex-1 sm:block"><Month month={addMonths(visibleMonth, 1)} start={start} end={end} today={today} onSelect={select}/></div>
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-stroke pt-4">
                 <button type="button" onClick={() => onChange('', '')} className="min-h-10 text-sm text-ink-secondary hover:text-ink">清除日期</button>

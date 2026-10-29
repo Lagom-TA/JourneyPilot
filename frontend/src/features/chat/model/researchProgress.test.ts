@@ -11,6 +11,11 @@ describe('public research activity', () => {
         expect(publicProgressText('```json\n{"candidates":[]}')).toBe('');
         expect(publicProgressText('找到 1 个结果')).toBe('找到 1 个结果');
     });
+    it('projects stage cards without a fixed role description', () => {
+        const [planning] = researchGroups([step('request_contract_normalizer', { progressStatus: 'running' })], true, false);
+        expect(planning.title).toBe('整理旅行需求');
+        expect('description' in planning).toBe(false);
+    });
     it('keeps simultaneous workers separate and does not finish one when another emits', () => {
         const steps = [step('目的地调研', { progressStatus: 'running' }), step('交通查询', { progressStatus: 'running' }), step('目的地调研', { progressStatus: 'completed', endTime: new Date() })];
         expect(researchGroups(steps, true, false).map(g => [g.title, g.status])).toEqual([['目的地调研', 'completed'], ['交通查询', 'running']]);

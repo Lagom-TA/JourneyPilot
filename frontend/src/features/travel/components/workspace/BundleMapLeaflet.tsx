@@ -28,6 +28,7 @@ interface BundleMapLeafletProps {
     onSelectEntity: (entityId: string) => void;
     linkedEntityId?: string | null;
     onLinkEntity?: (entityId: string | null) => void;
+    overlayOffset?: number;
 }
 const TILE_URL = 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}';
 const TILE_SUBDOMAINS = ['1', '2', '3', '4'];
@@ -249,7 +250,7 @@ function EntranceMarker({ pin, selected, linked, seen, onSelect, onLink, onUnlin
 }
 const CLOSE_ENOUGH_ZOOM = 14;
 const FOCUS_ZOOM = 15;
-function MapViewport({ places, lines, selectedEntityId, linkedEntityId, }: Pick<BundleMapLeafletProps, 'places' | 'selectedEntityId' | 'linkedEntityId'> & {
+function MapViewport({ places, lines, selectedEntityId, linkedEntityId, overlayOffset = 0, }: Pick<BundleMapLeafletProps, 'places' | 'selectedEntityId' | 'linkedEntityId' | 'overlayOffset'> & {
     lines: RouteLines[];
 }) {
     const map = useMap();
@@ -280,7 +281,7 @@ function MapViewport({ places, lines, selectedEntityId, linkedEntityId, }: Pick<
             const key = `place:${focusedPlace.entity_ref.entity_id}`;
             if (lastTarget.current === key) return;
             lastTarget.current = key;
-            const target = L.latLng(focusedPoint);
+            const target = map.unproject(map.project(L.latLng(focusedPoint), FOCUS_ZOOM).subtract([overlayOffset / 2, 0]), FOCUS_ZOOM);
             if (map.getZoom() >= CLOSE_ENOUGH_ZOOM) map.panTo(target, { animate: !reducedMotion });
             else if (reducedMotion) map.setView(target, FOCUS_ZOOM, { animate: false });
             else map.flyTo(target, FOCUS_ZOOM, { duration: 0.35 });
@@ -291,14 +292,14 @@ function MapViewport({ places, lines, selectedEntityId, linkedEntityId, }: Pick<
             if (lastTarget.current === key) return;
             lastTarget.current = key;
             const bounds = L.latLngBounds(focusedPoints);
-            map.fitBounds(bounds, { padding: [36, 36], maxZoom: FOCUS_ZOOM, animate: !reducedMotion });
+            map.fitBounds(bounds, { paddingTopLeft: [overlayOffset + 36, 76], paddingBottomRight: [36, 36], maxZoom: FOCUS_ZOOM, animate: !reducedMotion });
             return;
         }
         lastTarget.current = '';
         if (!fitAllOnContextChange || allPoints.length === 0) return;
-        if (allPoints.length === 1) map.setView(allPoints[0], 13, { animate: !reducedMotion });
-        else map.fitBounds(L.latLngBounds(allPoints), { padding: [32, 32], maxZoom: FOCUS_ZOOM, animate: !reducedMotion });
-    }, [map, places, lines, selectedEntityId, linkedEntityId, reducedMotion]);
+        if (allPoints.length === 1) map.setView(map.unproject(map.project(allPoints[0], 13).subtract([overlayOffset / 2, 0]), 13), 13, { animate: !reducedMotion });
+        else map.fitBounds(L.latLngBounds(allPoints), { paddingTopLeft: [overlayOffset + 32, 76], paddingBottomRight: [32, 32], maxZoom: FOCUS_ZOOM, animate: !reducedMotion });
+    }, [map, places, lines, selectedEntityId, linkedEntityId, reducedMotion, overlayOffset]);
     React.useEffect(() => {
         map.invalidateSize();
         const frame = window.requestAnimationFrame(() => map.invalidateSize());
@@ -317,7 +318,7 @@ const BASEMAP_NOTICE: Record<BasemapState, string | null> = {
     ready: null,
     degraded: '底图暂时没加载出来 · 针的位置仍然准确',
 };
-export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, routes, selectedEntityId, onSelectEntity, linkedEntityId = null, onLinkEntity, }) => {
+export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, routes, selectedEntityId, onSelectEntity, linkedEntityId = null, onLinkEntity, overlayOffset = 0, }) => {
     const [basemap, setBasemap] = React.useState<BasemapState>('loading');
     const [expandedGroupId, setExpandedGroupId] = React.useState<string | null>(null);
     const tileErrors = React.useRef(0);
@@ -377,7 +378,7 @@ export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, rout
             tileerror: () => { tileErrors.current += 1; setBasemap('degraded'); },
         }}/>
       <ZoomControl position="bottomright" />
-      <MapViewport places={places} lines={lines} selectedEntityId={selectedEntityId} linkedEntityId={linkedEntityId}/>
+      <MapViewport places={places} lines={lines} selectedEntityId={selectedEntityId} linkedEntityId={linkedEntityId} overlayOffset={overlayOffset}/>
       {lines.map(({ route, segments }) => {
             const routeId = route.entity_ref.entity_id;
             const selected = routeId === selectedEntityId;

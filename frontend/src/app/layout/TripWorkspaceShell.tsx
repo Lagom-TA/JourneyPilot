@@ -1,16 +1,25 @@
-import { AnimatePresence } from 'motion/react';
+import { AnimatePresence, useReducedMotion } from 'motion/react';
+import type { Variants } from 'motion/react';
 import { getCurrentDeliveryBundle } from '../../features/travel/api/delivery';
 import { PresenceFrame } from '../../components/ui/PresenceSurface';
 import { useApp } from '../state/AppContext';
 import { useCurrentBundleWeatherRefresh } from '../session/useCurrentBundleWeatherRefresh';
 import { isPublicDeliveryBundle } from '../../features/travel/types/delivery';
 import { ConversationThread } from '../../features/chat/components/ConversationThread';
+import { PageSkeleton } from '../components/PageSkeleton';
 import { DeliveryWorkspace } from '../../features/travel/components/workspace/DeliveryWorkspace';
 import { emphasisEnter, slideUp } from '../../lib/motion';
 import React from 'react';
 
+const directHandoff: Variants = {
+  hidden: { opacity: 1 },
+  visible: { opacity: 1, transition: { duration: 0 } },
+  exit: { opacity: 1, transition: { duration: 0 } },
+};
+
 export const TripWorkspaceShell: React.FC = () => {
   const { state, dispatch, currentStateRef } = useApp();
+  const reducedMotion = useReducedMotion();
   const retryCurrentBundle = React.useCallback(async () => {
     const runId = state.currentTripRunId;
     if (!runId) return;
@@ -33,7 +42,21 @@ export const TripWorkspaceShell: React.FC = () => {
 
   const hasJourneyWorkspace = state.deliveryBundle !== null
     || Boolean(state.currentTripRunId && state.controlledTripIdentity);
+  const previousJourneyWorkspaceRef = React.useRef(hasJourneyWorkspace);
+  const handoffFocusPendingRef = React.useRef(false);
+  React.useEffect(() => {
+    const previous = previousJourneyWorkspaceRef.current;
+    previousJourneyWorkspaceRef.current = hasJourneyWorkspace;
+    if (previous !== hasJourneyWorkspace) handoffFocusPendingRef.current = hasJourneyWorkspace;
+  }, [hasJourneyWorkspace]);
+  const focusJourneyWorkspace = React.useCallback(() => {
+    if (!handoffFocusPendingRef.current) return;
+    handoffFocusPendingRef.current = false;
+    document.querySelector<HTMLElement>('[data-workspace-handoff-focus]')?.focus({ preventScroll: true });
+  }, []);
   useCurrentBundleWeatherRefresh(state.deliveryBundle !== null && state.deliverableView !== 'full_report');
+
+  if (!state.sessionInitialized) return <PageSkeleton />;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-bg">
@@ -53,14 +76,23 @@ export const TripWorkspaceShell: React.FC = () => {
         </div>
       )}
 
-      <div className="min-h-0 flex-1" data-testid="trip-workspace-layout">
+      <div className="relative min-h-0 flex-1" data-testid="trip-workspace-layout">
         <AnimatePresence mode="popLayout" initial={false}>
           {hasJourneyWorkspace ? (
-            <PresenceFrame key="journey-workspace" className="h-full min-h-0 w-full" variants={emphasisEnter} initial="hidden" animate="visible" exit="exit">
+            <PresenceFrame
+              key="journey-workspace"
+              className="h-full min-h-0 w-full"
+              data-testid="journey-workspace"
+              variants={reducedMotion ? directHandoff : emphasisEnter}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              onAnimationComplete={focusJourneyWorkspace}
+            >
               <DeliveryWorkspace bundle={state.deliveryBundle} />
             </PresenceFrame>
           ) : (
-            <PresenceFrame key="workspace-conversation" className="h-full min-h-0 w-full" data-testid="workspace-conversation" variants={slideUp} initial="hidden" animate="visible" exit="exit">
+            <PresenceFrame key="workspace-conversation" className="h-full min-h-0 w-full" data-testid="workspace-conversation" variants={reducedMotion ? directHandoff : slideUp} initial="hidden" animate="visible" exit="exit">
               <ConversationThread />
             </PresenceFrame>
           )}

@@ -1,6 +1,8 @@
 import { type TravelState, type TravelAction } from "./state";
 export function travelReducer<T extends TravelState>(state: T, action: TravelAction): T {
     switch (action.type) {
+        case 'SET_TRIP_RUN_RECOVERY':
+            return { ...state, currentTripRunRecovery: action.payload };
         case 'SET_DELIVERY_BUNDLE_LOAD_STATE':
             return { ...state, deliveryBundleLoadState: action.payload };
         case 'SET_DELIVERABLE_VIEW':

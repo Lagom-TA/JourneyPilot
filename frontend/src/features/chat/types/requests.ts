@@ -1,4 +1,4 @@
-import { type JourneyRoute, type RouteDecision, type ControlledTripIdentity, type GuidedIntakeState, type PlanGateDecisionAction } from "../../travel/types/planner";
+import { type JourneyRoute, type RouteDecision, type ControlledTripIdentity, type GuidedIntakeState, type PlaceIdentity, type PlanGateDecisionAction } from "../../travel/types/planner";
 export interface ChatRequest {
     messages: Array<{
         role: string;
@@ -12,6 +12,7 @@ export interface ChatRequest {
     route_decision?: RouteDecision | null;
     controlled_trip_identity?: ControlledTripIdentity | null;
     guided_intake?: GuidedIntakeState | null;
+    intake_destination?: PlaceIdentity | null;
     preset_id?: string | null;
     selected_mcp_servers?: string[];
     plan_gate?: boolean | null;

@@ -1,5 +1,5 @@
 import { m } from 'motion/react';
-import { ArrowRight, CalendarDays, Check, Loader2, MapPin, PencilLine, Route, Users } from 'lucide-react';
+import { ArrowRight, Check, Loader2, PencilLine, Users } from 'lucide-react';
 import { useApp } from '../../../../app/state/AppContext';
 import { useSendMessage } from '../../../../app/session/useSendMessage';
 import { type PlanGateDecisionAction } from '../../types/planner';
@@ -11,17 +11,19 @@ import { planGateEntries } from '../../model/planGateActions';
 import React from 'react';
 
 export const TripBriefPlanGate: React.FC = () => {
-  const { state, dispatch } = useApp();
+  const { state } = useApp();
   const { sendMessage } = useSendMessage();
   const gate = state.planApprovalGate;
   const [editing, setEditing] = React.useState(false);
   const [guide, setGuide] = React.useState('');
   const [submitting, setSubmitting] = React.useState<PlanGateDecisionAction | null>(null);
+  const [error, setError] = React.useState('');
   const revisionKey = gate ? `${gate.runId}#${gate.revision}` : null;
 
   React.useEffect(() => {
     setGuide('');
     setEditing(false);
+    setError('');
   }, [revisionKey]);
 
   React.useEffect(() => {
@@ -32,20 +34,24 @@ export const TripBriefPlanGate: React.FC = () => {
   const entries = planGateEntries(gate);
   const identity = state.controlledTripIdentity;
   const controlsBlocked = state.isStreaming || submitting !== null;
-  const requirements = [
-    ...gate.recognizedRequirements.hard,
-    ...gate.recognizedRequirements.preferences,
-    ...gate.recognizedRequirements.attention,
-  ];
-  const stayRequirements = requirements.filter((item) => /晚|停留/.test(item.summary));
-  const budgetRequirements = requirements.filter((item) => /预算|花费|费用/.test(item.summary));
-  const generalRequirements = requirements.filter((item) => !stayRequirements.includes(item) && !budgetRequirements.includes(item));
-  const canRevise = entries.supplement && !gate.revisionLimitReached;
+  const { hard, preferences } = gate.recognizedRequirements;
+  const canRevise = entries.supplement;
+  const requirements = [...hard, ...preferences].filter((item, index, items) => item.summary && items.findIndex((other) => other.summary === item.summary) === index);
+  const partySummary = identity
+    ? [
+      `${identity.party.adults} 位成人`,
+      identity.party.children ? `${identity.party.children} 位儿童` : '',
+      identity.party.elderly_companions ? '有长辈同行' : '',
+      identity.party.accessibility_required ? '需要无障碍安排' : '',
+    ].filter(Boolean).join(' · ')
+    : '';
+  const styleTags = identity ? [identity.style.primary, ...identity.style.secondary_interests].filter(Boolean) : [];
 
   const submit = async (action: PlanGateDecisionAction) => {
     const content = guide.trim();
     if (controlsBlocked || (action === 'supplement' && !content)) return;
     setSubmitting(action);
+    setError('');
     try {
       const sent = await sendMessage(action === 'approve' ? RESEARCH_START_TEXT : action === 'supplement' ? '按这些修改重新整理旅行' : '取消本次规划', undefined, {
         resumeRunId: gate.runId,
@@ -53,77 +59,58 @@ export const TripBriefPlanGate: React.FC = () => {
         gateDecision: { action, content: action === 'approve' || action === 'supplement' ? content : '' },
         assistantPendingLabel: action === 'approve' ? '正在开始调研' : action === 'supplement' ? '正在按你的修改重新整理' : undefined,
       });
-      if (sent && action === 'cancel') {
-        dispatch({ type: 'CLEAR_CHAT' });
+      if (!sent) {
+        setError('这次操作未完成，旅行信息和修改已保留，请重试。');
       }
+    } catch {
+      setError('暂时无法提交，旅行信息和修改已保留，请重试。');
     } finally {
       setSubmitting(null);
     }
   };
 
   return (
-    <m.section data-testid="trip-brief-plan-gate" aria-labelledby="trip-brief-plan-gate-title" className="plan-review-card" variants={emphasisEnter} initial="hidden" animate="visible">
-      <div className="plan-review-identity">
-        <h2 id="trip-brief-plan-gate-title" tabIndex={-1}>这趟旅行</h2>
-        {identity ? (
-          <dl>
-            <div><dt><Route size={15} />出发</dt><dd>{identity.origin.name}</dd></div>
-            <div><dt><MapPin size={15} />目的地</dt><dd>{identity.destinations.map((place) => place.name).join('＋')}</dd></div>
-            <div><dt><CalendarDays size={15} />日期</dt><dd>{identity.start_date}<br />{identity.end_date}</dd></div>
-            <div><dt><Users size={15} />同行</dt><dd>{identity.party.adults} 位成人{identity.party.children ? `＋${identity.party.children} 位儿童` : ''}</dd></div>
-          </dl>
-        ) : (
-          <p className="plan-review-fallback">请在下方确认本次旅行的需求与安排。</p>
-        )}
-      </div>
+    <m.section data-testid="trip-brief-plan-gate" aria-labelledby="trip-brief-plan-gate-title" className="plan-gate-card" variants={emphasisEnter} initial="hidden" animate="visible">
+      <header className="plan-gate-header">
+        <p>开始规划前</p>
+        <h2 id="trip-brief-plan-gate-title" tabIndex={-1}>确认旅行需求</h2>
+        <span>{identity ? '已整理这趟旅行的信息。确认下面的要求后开始，或补充调整。' : '请确认本次旅行的需求与安排。'}</span>
+      </header>
 
       {identity && (
-        <div className="plan-review-style">
-          <span>{identity.style.primary}</span>
-          {identity.style.secondary_interests.map((item) => <span key={item}>{item}</span>)}
-          {identity.party.elderly_companions && <span>老人同行</span>}
+        <div className="plan-gate-context" aria-label="旅行摘要">
+          <p><Users size={14} aria-hidden /><span>{partySummary}</span></p>
+          {styleTags.length > 0 && <div className="plan-gate-context-tags" aria-label="旅行风格">{styleTags.map((item) => <span key={item}>{item}</span>)}</div>}
         </div>
       )}
 
-      {stayRequirements.length > 0 && (
-        <section className="plan-review-stays">
-          <h2>每城停留</h2>
-          <ul>{stayRequirements.map((item) => <li key={item.requirementId}>{item.summary}</li>)}</ul>
-        </section>
-      )}
-
-      {budgetRequirements.length > 0 && (
-        <section className="plan-review-budget">
-          <h2>花费参考</h2>
-          <p>{budgetRequirements.map((item) => item.summary).join('；')}</p>
-        </section>
-      )}
-
-      {generalRequirements.length > 0 && (
-        <section className="plan-review-requirements" aria-labelledby="plan-review-requirements-title">
-          <h2 id="plan-review-requirements-title">已识别的旅行要求</h2>
+      {requirements.length > 0 ? (
+        <section className="plan-gate-requirements" aria-labelledby="plan-gate-requirements-title">
+          <h3 id="plan-gate-requirements-title">已识别的旅行要求</h3>
           <ul>
-            {generalRequirements.map((item) => <li key={item.requirementId} data-requirement={item.requirementId}><Check size={13} aria-hidden />{item.summary}</li>)}
+            {requirements.map((item) => <li key={item.requirementId} data-requirement={item.requirementId}><Check size={14} aria-hidden />{item.summary}</li>)}
           </ul>
         </section>
+      ) : (
+        <p className="plan-gate-note">还没有识别到额外要求，可以直接开始规划。</p>
       )}
 
       {canRevise && (
-        <div className="plan-review-edit">
+        <div className="plan-gate-edit">
           <button type="button" aria-expanded={editing} onClick={() => setEditing((value) => !value)} disabled={controlsBlocked}>
-            <PencilLine size={14} />修改旅行信息
+            <PencilLine size={15} />补充或调整旅行要求
           </button>
-          <div className={cn('plan-review-edit-panel', editing && 'is-open')}>
+          <div className={cn('plan-gate-edit-panel', editing && 'is-open')}>
             <div>
-              <label htmlFor="plan-review-guide">想改哪里？</label>
+              <label htmlFor="plan-gate-guide">想改哪里？</label>
               <textarea
-                id="plan-review-guide"
+                id="plan-gate-guide"
                 value={guide}
                 onChange={(event) => setGuide(event.target.value)}
                 disabled={controlsBlocked}
                 rows={3}
                 maxLength={500}
-                placeholder="例如：成都多住一晚，首日中午后到达，最后一天傍晚前返程。"
+                placeholder="例如：每天少安排一个景点，住宿选在地铁附近，首日中午后开始活动。"
               />
               {editing && <Button variant="secondary" data-testid="plan-gate-supplement" disabled={controlsBlocked || !guide.trim()} onClick={() => void submit('supplement')}>
                 {submitting === 'supplement' ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
@@ -134,17 +121,17 @@ export const TripBriefPlanGate: React.FC = () => {
         </div>
       )}
 
-      <section className="plan-review-next" aria-label="接下来的生成步骤">
-        <h2>接下来</h2>
-        <div><span>01</span><p>查找交通与住宿</p><span>02</span><p>编排每天路线</p><span>03</span><p>生成完整计划</p></div>
-      </section>
+      {error && <p role="alert" className="plan-gate-error">{error}</p>}
 
-      <div className="plan-review-actions">
-        {entries.approve && <Button size="lg" disabled={controlsBlocked} onClick={() => void submit('approve')}>
-          {submitting === 'approve' ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-          确认并开始生成
-        </Button>}
-        {entries.cancel && <button type="button" disabled={controlsBlocked} onClick={() => void submit('cancel')}>取消规划</button>}
+      <div className="plan-gate-actions">
+        <p>{gate.revision > 0 ? '修改后会按这一版要求重新整理。' : '确认后开始查询资料，再安排每天路线。'}</p>
+        <div>
+          {entries.cancel && <button type="button" disabled={controlsBlocked} onClick={() => void submit('cancel')}>取消规划</button>}
+          {entries.approve && <Button size="lg" disabled={controlsBlocked} onClick={() => void submit('approve')}>
+            {submitting === 'approve' ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+            确认并开始生成
+          </Button>}
+        </div>
       </div>
     </m.section>
   );

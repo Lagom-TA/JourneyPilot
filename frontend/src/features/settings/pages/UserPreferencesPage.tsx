@@ -17,7 +17,7 @@ import { buildPreferencePayload, preferenceChipGroups, togglePreferenceOption } 
 import { ChartMark } from "../../../components/ui/ChartMark";
 import { type MemoryFactItem } from "../types/memory";
 import { type PreferenceOptionGroup } from "../types/profile";
-import { PlaceField } from "../../travel/components/planning/TripPlanner";
+import { PlaceField } from "../../travel/components/planning/PlaceField";
 import React, { useState } from 'react';
 const memoryCategoryLabels: Record<string, string> = {
     preference: '偏好',

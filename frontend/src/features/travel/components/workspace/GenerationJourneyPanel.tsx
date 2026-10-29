@@ -3,7 +3,9 @@ import { useApp } from '../../../../app/state/AppContext';
 import { useSendMessage } from '../../../../app/session/useSendMessage';
 import { useStopRun } from '../../../../app/session/useStopRun';
 import { derivePlanningStageSnapshot } from '../../model/travelProgress';
+import { getActivityStageIdForAgent } from '../../../chat/model/agentStages';
 import { TripBriefPlanGate } from '../planning/TripBriefPlanGate';
+import { ThinkingChain } from '../../../chat/components/ThinkingChain';
 import { cn } from '../../../../lib/utils';
 import React from 'react';
 
@@ -23,12 +25,13 @@ export const GenerationJourneyPanel: React.FC = () => {
   const identity = state.controlledTripIdentity;
   const runId = state.currentTripRunId;
   const lastAssistant = [...state.currentMessages].reverse().find((message) => message.role === 'assistant');
-  const answerStarted = Boolean(lastAssistant?.content?.trim());
+  const answerStarted = lastAssistant?.type !== 'error' && Boolean(lastAssistant?.content?.trim());
   const snapshot = derivePlanningStageSnapshot({
     steps: state.thinkingSteps,
     isStreaming: state.isStreaming,
     isSynthesizing: state.isSynthesizing,
     answerStarted,
+    completed: state.currentTripRunStatus === 'completed',
   });
   const runStatus = state.currentTripRunStatus;
   const recovery = state.currentTripRunRecovery;
@@ -40,28 +43,44 @@ export const GenerationJourneyPanel: React.FC = () => {
   const planning = snapshot.stages[0];
   const research = snapshot.stages[1];
   const synthesis = snapshot.stages[2];
-  const itineraryTouched = state.thinkingSteps.some((step) => step.agentName.replace(/_r\d+$/, '') === 'itinerary_planner');
-  const synthesisStarted = synthesis.status !== 'pending';
-  const routeStatus: StageStatus = synthesisStarted ? 'done' : itineraryTouched ? research.status : 'pending';
-  const researchStatus: StageStatus = routeStatus !== 'pending' || synthesisStarted ? 'done' : research.status;
+  const itineraryTouched = state.thinkingSteps.some((step) => getActivityStageIdForAgent(step.agentName) === 'route');
+  const completed = runStatus === 'completed';
+  const synthesisStarted = synthesis.status === 'active' || completed;
+  const routeStatus: StageStatus = completed || (state.isStreaming && synthesisStarted) ? 'done' : itineraryTouched ? research.status : 'pending';
+  const researchStatus: StageStatus = completed || (state.isStreaming && (routeStatus !== 'pending' || synthesisStarted)) ? 'done' : research.status;
   const stages: Array<{ title: string; description: string; status: StageStatus }> = [
     { title: '整理旅行需求', description: '目的地、时间、同行人与旅行偏好', status: gatePending ? 'active' : planning.status },
     { title: '查找交通与住宿', description: '把城际衔接、市内交通和住宿放在一起考虑', status: researchStatus },
     { title: '安排每天路线', description: '让景点、美食与休息节奏顺路衔接', status: routeStatus },
     { title: '生成完整计划', description: '整理日程、地图、阅读版与费用参考', status: synthesis.status },
   ];
-  const activeStage = stages.find((stage) => stage.status === 'active');
   const days = tripDays(identity.start_date, identity.end_date);
-  const title = `${identity.destinations.map((place) => place.name).join('＋')} ${days || ''} 日`;
   const statusMessage = runStatus === 'failed'
     ? '这次规划没有完成，你可以回到新旅行重新尝试。'
     : runStatus === 'cancelled'
       ? '这次规划已取消。'
       : runStatus === 'interrupted'
         ? canResume ? '规划已中断，可以从最近的位置继续。' : '这次规划已中断。'
-        : null;
+        : runStatus === 'cancel_requested'
+          ? '正在停止这次规划。'
+          : null;
+  const progressTitle = runStatus === 'failed'
+    ? '旅行规划未完成'
+    : runStatus === 'cancelled'
+      ? '旅行规划已取消'
+      : runStatus === 'interrupted'
+        ? '旅行规划已中断'
+        : runStatus === 'cancel_requested'
+          ? '正在停止规划'
+          : runStatus === 'awaiting_input'
+          ? '等待确认旅行需求'
+          : runStatus === 'completed'
+            ? '旅行规划已完成'
+            : '正在规划你的旅行';
 
   const canStartOver = (runStatus === 'failed' || runStatus === 'cancelled' || (runStatus === 'interrupted' && !canResume));
+  const runStopped = runStatus === 'failed' || runStatus === 'cancelled' || runStatus === 'interrupted' || runStatus === 'cancel_requested';
+  const showActiveSweep = state.isStreaming && !gatePending && (runStatus === null || runStatus === 'running');
 
   const resume = async () => {
     if (resuming || state.isStreaming) return;
@@ -88,56 +107,91 @@ export const GenerationJourneyPanel: React.FC = () => {
 
   return (
     <div className="generation-journey-panel" data-testid="generation-journey-panel">
-      <header className="generation-journey-heading">
-        <p>{gatePending ? '生成前的最后复核' : '你的旅行正在成形'}</p>
-        <h1>{gatePending ? '确认这趟旅行' : title}</h1>
-        {!gatePending && <span>{identity.origin.name}出发 · {identity.start_date} — {identity.end_date}</span>}
-      </header>
+        <div className="generation-planning-layout">
+          <aside className="generation-planning-sidebar">
+            <section className="generation-trip-card" aria-label="旅行信息">
+              <div className="generation-trip-card-header">
+                <div>
+                  <p className="generation-trip-eyebrow">你的旅行</p>
+                  <h1 tabIndex={-1} data-workspace-handoff-focus>
+                    <span className="generation-trip-title-destinations">
+                      {identity.destinations.map((place, index) => (
+                        <span key={place.place_id} className={cn('generation-trip-title-segment', index === 0 && 'is-first')}>
+                          {index > 0 && <span className="generation-trip-title-plus">＋</span>}
+                          <span className="generation-trip-title-place">{place.name}</span>
+                        </span>
+                      ))}
+                    </span>
+                    {days > 0 && <span className="generation-trip-title-duration">{days} 日</span>}
+                  </h1>
+                </div>
+                {state.isStreaming && (
+                  <button type="button" data-testid="boarding-pass-stop" className="generation-stop-btn" onClick={() => void stopRun()} aria-label="停止生成">
+                    <Square size={12} />停止
+                  </button>
+                )}
+              </div>
+              <p className="generation-trip-card-sub">{identity.origin.name}出发 · {identity.start_date} — {identity.end_date}</p>
+              <dl className="generation-trip-card-facts">
+                <div><dt><MapPin size={14} />目的地</dt><dd>{identity.destinations.map((place) => place.name).join('、')}</dd></div>
+                <div><dt><Route size={14} />行程</dt><dd>{days} 天 · {identity.origin.name}出发</dd></div>
+                <div><dt><Users size={14} />同行</dt><dd>{identity.party.adults} 位成人{identity.party.children ? ` · ${identity.party.children} 位儿童` : ''}{identity.party.elderly_companions ? ' · 有长辈同行' : ''}{identity.party.accessibility_required ? ' · 需要无障碍安排' : ''}</dd></div>
+              </dl>
+              <div className="generation-trip-tags">
+                {[identity.style.primary, ...identity.style.secondary_interests].map((item) => <span key={item}>{item}</span>)}
+              </div>
+            </section>
 
-      {state.planApprovalGate ? (
-        <TripBriefPlanGate />
-      ) : (
-        <>
-          <section className="generation-progress" aria-label="旅行生成进度">
-            <h2>正在规划你的旅行</h2>
-            <p role={statusMessage ? 'alert' : 'status'} aria-live="polite">{statusMessage ?? activeStage?.description ?? state.tripSummaryCard?.currentFocus ?? '正在整理这趟旅行的基本信息。'}</p>
-            <ol>
-              {stages.map((stage, index) => (
-                <li key={stage.title} className={cn(`is-${stage.status}`)}>
-                  <span className="generation-stage-mark" aria-hidden>
-                    {stage.status === 'done' ? <Check size={14} /> : stage.status === 'active' ? <Loader2 size={14} className="generation-stage-spinner" /> : index + 1}
-                  </span>
-                  <div>
-                    <h3>{stage.title}</h3>
-                    <p>{stage.description}</p>
-                    {stage.status === 'active' && state.tripSummaryCard?.currentFocus && <span>{state.tripSummaryCard.currentFocus}</span>}
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </section>
+            <section className="generation-progress" data-active={showActiveSweep ? 'true' : 'false'} aria-label="旅行生成进度">
+              <h2>{progressTitle}</h2>
+              {statusMessage && <p role="alert" aria-live="polite">{statusMessage}</p>}
+              <ol>
+                {stages.map((stage, index) => (
+                  <li key={stage.title} className={cn(`is-${stage.status}`)}>
+                    <span className="generation-stage-mark" aria-hidden>
+                      {stage.status === 'done' ? <Check size={14} /> : stage.status === 'active' ? <Loader2 size={14} className="generation-stage-spinner" /> : index + 1}
+                    </span>
+                    <div>
+                      <h3>{stage.title}</h3>
+                      <p>{stage.description}</p>
+                      {stage.status === 'active' && state.tripSummaryCard?.currentFocus && <span>{state.tripSummaryCard.currentFocus}</span>}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
 
-          {(canResume || state.isStreaming || canStartOver) && (
-            <div className="generation-run-actions">
-              {canStartOver && <button type="button" onClick={startOver}>返回新旅行</button>}
-              {canResume && !state.isStreaming && <button type="button" data-testid="boarding-pass-resume" onClick={() => void resume()} disabled={resuming}><Play size={14} />{resuming ? '正在继续' : '继续生成'}</button>}
-              {state.isStreaming && <button type="button" data-testid="boarding-pass-stop" className="is-stop" onClick={() => void stopRun()}><Square size={13} />停止</button>}
+            {(canResume || canStartOver) && !state.isStreaming && (
+              <div className="generation-run-actions">
+                {canStartOver && <button type="button" onClick={startOver}>返回新旅行</button>}
+                {canResume && <button type="button" data-testid="boarding-pass-resume" onClick={() => void resume()} disabled={resuming}><Play size={14} />{resuming ? '正在继续' : '继续生成'}</button>}
+              </div>
+            )}
+          </aside>
+
+          <main className={cn('generation-activity', gatePending && 'is-confirming')} aria-label="规划与调研动态">
+            <div className="generation-activity-body">
+              {lastAssistant?.type === 'error' && (
+                <p role="alert" className="generation-activity-error">{lastAssistant.displayContent || lastAssistant.content}</p>
+              )}
+              {gatePending ? <TripBriefPlanGate /> : (
+                <ThinkingChain
+                  steps={state.thinkingSteps}
+                  isGenerating={state.isStreaming}
+                  displayContent={lastAssistant?.displayContent}
+                  isSynthesizing={state.isSynthesizing}
+                  pendingStatusText={lastAssistant?.pendingStatusText}
+                  variant={runStopped ? 'interrupted' : 'default'}
+                  startedAt={lastAssistant?.timestamp}
+                  regionId={`generation-thinking-${runId}`}
+                  layout="workspace"
+                  runStatus={runStatus}
+                  gatePending={gatePending}
+                />
+              )}
             </div>
-          )}
-
-          <section className="generation-trip-facts" aria-label="旅行信息">
-            <h2>旅行信息</h2>
-            <dl>
-              <div><dt><MapPin size={14} />目的地</dt><dd>{identity.destinations.map((place) => place.name).join('、')}</dd></div>
-              <div><dt><Route size={14} />行程</dt><dd>{days} 天 · {identity.origin.name}出发</dd></div>
-              <div><dt><Users size={14} />同行</dt><dd>{identity.party.adults} 位成人{identity.party.children ? ` · ${identity.party.children} 位儿童` : ''}</dd></div>
-            </dl>
-            <div className="generation-trip-tags">
-              {[identity.style.primary, ...identity.style.secondary_interests].map((item) => <span key={item}>{item}</span>)}
-            </div>
-          </section>
-        </>
-      )}
+          </main>
+        </div>
     </div>
   );
 };

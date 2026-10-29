@@ -9,19 +9,17 @@ export function publicProgressText(value: string | undefined): string {
 export interface ResearchGroup {
     id: string;
     title: string;
-    description: string;
     steps: ThinkingStep[];
     status: 'running' | 'completed' | 'stopped' | 'failed';
 }
 const WORKERS: Record<string, [
     string,
-    string,
     string
 ]> = {
-    destination_researcher: ['destination', '目的地调研', '景点、美食与当地体验'],
-    transport_researcher: ['transport', '交通查询', '往返方式与沿途衔接'],
-    accommodation_researcher: ['stay', '住宿查询', '住宿位置与出行便利性'],
-    itinerary_planner: ['itinerary', '行程规划', '每日安排与游览节奏'],
+    destination_researcher: ['destination', '目的地调研'],
+    transport_researcher: ['transport', '交通查询'],
+    accommodation_researcher: ['stay', '住宿查询'],
+    itinerary_planner: ['itinerary', '行程规划'],
 };
 for (const entry of Object.values(WORKERS))
     WORKERS[entry[1]] = entry;
@@ -30,10 +28,10 @@ export function researchGroups(steps: ThinkingStep[], live: boolean, interrupted
     for (const step of steps) {
         const { base } = parseAgentRound(step.agentName);
         const stage = getStageIdForAgent(base);
-        const [id, title, description] = WORKERS[base] || (stage === 'synthesis'
-            ? ['delivery', '整理行程', '汇总调研，形成旅行方案']
-            : ['planning', '需求与调度', '理解偏好，准备调研任务']);
-        const group = groups.get(id) || { id, title, description, steps: [], status: 'running' as const };
+        const [id, title] = WORKERS[base] || (stage === 'synthesis'
+            ? ['delivery', '整理行程']
+            : ['planning', '整理旅行需求']);
+        const group = groups.get(id) || { id, title, steps: [], status: 'running' as const };
         group.steps.push(step);
         groups.set(id, group);
     }

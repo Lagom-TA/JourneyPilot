@@ -24,7 +24,7 @@ const TOOL_STATUS_LABELS: Record<ToolStatus, string> = {
     completed: '已完成',
     degraded: '已完成（备用通道）',
     failed: '未完成',
-    capability_declared: '能力边界 · 仅参考资料',
+    capability_declared: '参考资料',
 };
 export function toolStatusLabel(status: ThinkingStep['toolStatus']): string {
     return status ? TOOL_STATUS_LABELS[status] : '';
@@ -38,6 +38,7 @@ export interface ToolDisplay {
     categoryLabel: string;
     actionText: string;
     subject: string | null;
+    fullSubject: string | null;
     technicalLabel: string;
     status: ToolStatus;
 }
@@ -71,7 +72,7 @@ const RUNNING_VERB: Record<DisplayKind, string> = {
     calculation: '正在计算',
     internal: '正在整理',
     data: '正在读取旅行数据',
-    other: '正在调用数据连接',
+    other: '正在读取旅行资料',
 };
 const DONE_VERB: Record<DisplayKind, string> = {
     web_search: '已读取联网资料',
@@ -103,7 +104,7 @@ const FAILED_VERB: Record<DisplayKind, string> = {
     calculation: '计算未完成',
     internal: '整理未完成',
     data: '旅行数据读取未完成',
-    other: '数据连接未完成',
+    other: '旅行资料读取未完成',
 };
 const CAPABILITY_VERB: Record<DisplayKind, string> = {
     web_search: '联网资料未覆盖该日期',
@@ -119,7 +120,7 @@ const CAPABILITY_VERB: Record<DisplayKind, string> = {
     calculation: '该日期不适用本次计算',
     internal: '该步不适用',
     data: '旅行数据未覆盖该日期',
-    other: '该数据源未覆盖该日期',
+    other: '该资料来源未覆盖该日期',
 };
 function normalizeToolName(toolName: string | undefined): string {
     return (toolName || '').toLowerCase().replace(/[\s:]+/g, '_');
@@ -244,6 +245,9 @@ function subjectForKind(kind: DisplayKind, args: ArgsMap): string | null {
                 return `${amount} ${from} -> ${to}`;
             return from && to ? `${from} -> ${to}` : null;
         }
+        case 'internal':
+            // search_tools 的 query 是内部能力标识，不能当作旅行者可读的查询主题。
+            return null;
         default:
             return firstArg(args, ['query', 'q', 'name', 'title', 'city', 'address']);
     }
@@ -277,6 +281,7 @@ export function describeToolStep(step: ThinkingStep): ToolDisplay {
         categoryLabel: KIND_LABELS[kind],
         actionText,
         subject: subject ? truncate(subject, 44) : null,
+        fullSubject: subject,
         technicalLabel: step.toolName || KIND_LABELS[kind],
         status,
     };

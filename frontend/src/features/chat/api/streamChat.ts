@@ -66,6 +66,9 @@ async function openChatStream(request: ChatRequest, signal?: AbortSignal): Promi
             if (typeof detail === 'string' && detail.trim()) {
                 parts.push(detail.trim());
             }
+            else if (Array.isArray(detail)) {
+                parts.push(...detail.map(item => item && typeof item === 'object' && typeof item.msg === 'string' ? item.msg : '').filter(Boolean));
+            }
             else if (detail && typeof detail === 'object') {
                 const record = detail as Record<string, unknown>;
                 if (typeof record.code === 'string' && record.code)

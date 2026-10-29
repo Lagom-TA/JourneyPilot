@@ -16,6 +16,7 @@ export function isActiveView(value: string | null | undefined): value is ActiveV
 }
 export interface AppState extends ChatState, TravelState {
     activeView: ActiveView;
+    sessionInitialized: boolean;
     sidebarCollapsed: boolean;
     currentSessionId: string | null;
     canvasOpen: boolean;
@@ -24,6 +25,8 @@ export interface AppState extends ChatState, TravelState {
     activePresetName: string | null;
 }
 export type AppAction = ChatAction | TravelAction | {
+    type: 'SESSION_INITIALIZED';
+} | {
     type: 'SET_ACTIVE_VIEW';
     payload: ActiveView;
 } | {
@@ -51,6 +54,7 @@ export type AppAction = ChatAction | TravelAction | {
     payload: SessionRuntimeSnapshot;
 } | {
     type: 'CLEAR_TRACE';
+    payload?: { preservePlanGate: boolean };
 } | {
     type: 'SET_MOBILE_CANVAS_OPEN';
     payload: boolean;

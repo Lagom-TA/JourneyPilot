@@ -8,7 +8,7 @@ import { generateId } from "../../lib/utils";
 import { useSessionManager } from "./useSessionManager";
 import { type Message } from "../../features/chat/types/messages";
 import { type ChatRequest } from "../../features/chat/types/requests";
-import { type ControlledTripIdentity, type JourneyRoute, type PlanGateDecisionAction, type RouteDecision } from "../../features/travel/types/planner";
+import { type ControlledTripIdentity, type GuidedIntakeState, type JourneyRoute, type PlaceIdentity, type PlanGateDecisionAction, type RouteDecision } from "../../features/travel/types/planner";
 export function useSendMessage() {
     const { state, dispatch, activeStreamAbortRef, activeStreamRef, currentStateRef, sessionRuntimeCacheRef } = useApp();
     const { refreshSessions, setLastSession } = useSessionManager();
@@ -19,6 +19,8 @@ export function useSendMessage() {
         route?: JourneyRoute;
         routeDecision?: RouteDecision;
         controlledTripIdentity?: ControlledTripIdentity;
+        guidedIntake?: GuidedIntakeState;
+        intakeDestination?: PlaceIdentity;
         gateDecision?: {
             action: PlanGateDecisionAction;
             content?: string;
@@ -51,12 +53,9 @@ export function useSendMessage() {
         if (options?.controlledTripIdentity) {
             dispatch({ type: 'SET_CONTROLLED_TRIP_IDENTITY', payload: options.controlledTripIdentity });
         }
-        if (options?.gateDecision) {
-            dispatch({ type: 'RESOLVE_WAITING_MESSAGES' });
-        }
         dispatch({ type: 'SET_STREAMING', payload: true });
         dispatch({ type: 'SET_THINKING_STEPS', payload: [] });
-        dispatch({ type: 'CLEAR_TRACE' });
+        dispatch({ type: 'CLEAR_TRACE', payload: { preservePlanGate: Boolean(options?.gateDecision) } });
         const request: ChatRequest = {
             messages: [{
                     role: userMessage.role,
@@ -68,6 +67,8 @@ export function useSendMessage() {
             run_id: initialRunId,
             route: options?.route ?? (initialRunId ? 'trip_refinement' : null),
             route_decision: options?.routeDecision ?? null,
+            ...(options?.guidedIntake ? { guided_intake: options.guidedIntake } : {}),
+            ...(options?.intakeDestination ? { intake_destination: options.intakeDestination } : {}),
             ...(options?.controlledTripIdentity
                 ? { controlled_trip_identity: options.controlledTripIdentity }
                 : {}),

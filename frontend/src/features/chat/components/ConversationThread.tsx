@@ -1,4 +1,4 @@
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence, m, useIsPresent } from "motion/react";
 import { useApp } from "../../../app/state/AppContext";
 import { useSendMessage } from "../../../app/session/useSendMessage";
 import { useSessionManager } from "../../../app/session/useSessionManager";
@@ -13,19 +13,33 @@ import { TripBriefPlanGate } from "../../travel/components/planning/TripBriefPla
 import { DiscoveryToIntake } from "../../travel/components/planning/DiscoveryToIntake";
 import { TravelAtlas } from "../../travel/components/planning/TravelAtlas";
 import type { AtlasScene } from "../../travel/components/planning/TravelAtlasScenes";
+import type { GuidedIntakeState } from "../../travel/types/planner";
 import React from 'react';
-export const HeroEmptyState: React.FC = () => {
+export const HeroEmptyState: React.FC<{
+    homeFlowActive?: boolean;
+    homePendingLabel?: string;
+    homeError?: string;
+    inlineIntake?: GuidedIntakeState | null;
+    onHomePlanSubmitted?: () => void;
+}> = ({ homeFlowActive = false, homePendingLabel = '', homeError = '', inlineIntake = null, onHomePlanSubmitted }) => {
     const [inspiration, setInspiration] = React.useState<PlannerInspiration | null>(null);
     const useInspiration = (scene: AtlasScene) => {
         setInspiration((previous) => ({ id: (previous?.id ?? 0) + 1, text: scene.prompt, scene }));
     };
-    return (<div className="new-trip-hero">
+    return (<div className="new-trip-hero" data-testid="new-trip-hero">
       <div className="new-trip-main hero-scroll">
         <div className="new-trip-content">
           <header className="new-trip-copy">
             <h1>想去哪里，告诉我<span>。</span></h1>
           </header>
-          <TripPlanner inspiration={inspiration} />
+          <TripPlanner
+            inspiration={inspiration}
+            inlineIntake={inlineIntake}
+            homeFlowActive={homeFlowActive}
+            homePendingLabel={homePendingLabel}
+            homeError={homeError}
+            onHomePlanSubmitted={onHomePlanSubmitted}
+          />
         </div>
       </div>
       <TravelAtlas onUseExample={useInspiration} />
@@ -37,10 +51,43 @@ export const ConversationThread: React.FC<{
     const { state, dispatch } = useApp();
     const { sendMessage } = useSendMessage();
     const { loadEarlierHistory } = useSessionManager();
+    const isPresent = useIsPresent();
     const messages = state.currentMessages;
     const planGatePending = Boolean(state.planApprovalGate && state.planApprovalGate.status !== 'cancelled');
     const visibleMessages = React.useMemo(() => projectVisibleMessages(messages, { planGatePending }), [messages, planGatePending]);
-    const isEmpty = messages.length === 0;
+    const isEmpty = messages.length === 0 && !state.pendingGuidedIntake && !state.pendingRouteConfirmation;
+    const hasJourneyWorkspace = state.deliveryBundle !== null || Boolean(state.currentTripRunId && state.controlledTripIdentity);
+    const [homePlanning, setHomePlanning] = React.useState(false);
+    React.useEffect(() => {
+        setHomePlanning(false);
+    }, [state.conversationEpoch]);
+    React.useEffect(() => {
+        if (!homePlanning) return;
+        if (state.pendingRouteConfirmation || (state.lastRouteDecision && state.lastRouteDecision.route !== 'trip_planning')) {
+            setHomePlanning(false);
+            return;
+        }
+        if (!state.isStreaming && !state.pendingGuidedIntake) {
+            const last = messages[messages.length - 1];
+            if (last?.type !== 'error') setHomePlanning(false);
+        }
+    }, [homePlanning, messages, state.isStreaming, state.lastRouteDecision, state.pendingGuidedIntake, state.pendingRouteConfirmation]);
+    const lastAssistant = React.useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant'), [messages]);
+    const homeView = React.useMemo(() => {
+        const homeFlowActive = !hasJourneyWorkspace && (homePlanning || Boolean(state.pendingGuidedIntake));
+        return {
+            flowActive: homeFlowActive,
+            show: !hasJourneyWorkspace && (isEmpty || homeFlowActive),
+            intake: state.pendingGuidedIntake,
+            pendingLabel: state.isStreaming ? lastAssistant?.pendingStatusText || '正在理解你的旅行想法' : '',
+            error: lastAssistant?.type === 'error' ? (lastAssistant.displayContent || lastAssistant.content) : '',
+        };
+    }, [hasJourneyWorkspace, homePlanning, isEmpty, lastAssistant, state.isStreaming, state.pendingGuidedIntake]);
+    // 图形离场期间状态仍会前进：保留离开前最后一次首页内容，避免旧帧在退场动画里变成聊天页。
+    const homeViewRef = React.useRef(homeView);
+    if (isPresent) homeViewRef.current = homeView;
+    const presentedHome = isPresent ? homeView : homeViewRef.current;
+    const showHome = presentedHome.show;
     const showCanvas = state.canvasOpen && state.deliveryBundle !== null;
     const lastUserText = React.useMemo(() => {
         for (let i = visibleMessages.length - 1; i >= 0; i -= 1) {
@@ -52,8 +99,11 @@ export const ConversationThread: React.FC<{
     const retryLastUserMessage = React.useCallback(() => {
         if (!lastUserText || state.isStreaming)
             return;
-        void sendMessage(lastUserText);
-    }, [lastUserText, sendMessage, state.isStreaming]);
+        if (state.pendingGuidedIntake) return;
+        void sendMessage(lastUserText, undefined, state.currentTripRunId
+            ? { resumeRunId: state.currentTripRunId, route: 'trip_refinement' }
+            : state.lastRouteDecision ? { route: state.lastRouteDecision.route } : undefined);
+    }, [lastUserText, sendMessage, state.isStreaming, state.pendingGuidedIntake, state.currentTripRunId, state.lastRouteDecision]);
     const scrollRef = React.useRef<HTMLDivElement>(null);
     const stickRef = React.useRef(true);
     const restoreAnchorRef = React.useRef<{
@@ -96,8 +146,14 @@ export const ConversationThread: React.FC<{
             return;
         el.scrollTop = el.scrollHeight;
     }, [visibleMessages.length, lastLen, lastSteps, state.isStreaming, state.planApprovalGate]);
-    const body = isEmpty && !embedded ? (<div className="flex h-full flex-col">
-      <HeroEmptyState />
+    const body = showHome && !embedded ? (<div className="flex h-full flex-col">
+      <HeroEmptyState
+        homeFlowActive={presentedHome.flowActive}
+        homePendingLabel={presentedHome.pendingLabel}
+        homeError={presentedHome.error}
+        inlineIntake={presentedHome.intake}
+        onHomePlanSubmitted={() => setHomePlanning(true)}
+      />
     </div>) : (<div className="flex h-full min-h-0 flex-col">
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
 
@@ -116,7 +172,7 @@ export const ConversationThread: React.FC<{
             const canRetry = message.type === 'error' && !!lastUserText;
             return (<MessageBubble key={message.id} message={message} isGenerating={isGenerating} isLast={isLast} onRetry={canRetry ? retryLastUserMessage : undefined} retryDisabled={state.isStreaming}/>);
         })}
-          {state.planApprovalGate && <TripBriefPlanGate />}
+          {planGatePending && <TripBriefPlanGate />}
           {state.pendingRouteConfirmation && (<section className="rounded-card border border-stroke bg-panel p-4 shadow-sm sm:p-5" aria-labelledby="route-confirmation-title">
               <h2 id="route-confirmation-title" className="text-xl font-semibold text-ink">你希望我先做哪件事？</h2>
               <p className="mt-1 text-sm text-ink-secondary">这句话可能有两种理解。</p>
@@ -147,12 +203,6 @@ export const ConversationThread: React.FC<{
               </div>
             </section>)}
           {state.lastRouteDecision?.route === 'destination_discovery' && !state.isStreaming && !state.currentTripRunId && !state.pendingGuidedIntake && (<DiscoveryToIntake rawInput={lastUserText || ''}/>)}
-          {state.pendingGuidedIntake && (<div data-testid="guided-intake" className="rounded-card border border-stroke bg-surface/40 p-4 sm:p-5">
-              <p className="font-mono text-[11px] text-chart">正在整理旅行信息</p>
-              <h2 className="mt-2 mb-4 text-xl font-semibold text-ink">补齐后再创建这趟旅行</h2>
-
-              <TripPlanner key={state.pendingGuidedIntake.raw_input} guidedText={state.pendingGuidedIntake.raw_input} initialDestinations={state.pendingGuidedIntake.seed_destinations} compact/>
-            </div>)}
         </div>
       </div>
 

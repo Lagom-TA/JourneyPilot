@@ -26,6 +26,9 @@ export interface TravelState {
     controlledTripIdentity: ControlledTripIdentity | null;
 }
 export type TravelAction = {
+    type: 'SET_TRIP_RUN_RECOVERY';
+    payload: TripRunRecovery | null;
+} | {
     type: 'SET_DELIVERY_BUNDLE_LOAD_STATE';
     payload: TravelState['deliveryBundleLoadState'];
 } | {

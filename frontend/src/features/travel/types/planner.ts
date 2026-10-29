@@ -58,11 +58,42 @@ export interface TripPlannerConfiguration {
     inspiration_rotation_ms: number;
     inspiration_prompts: string[];
 }
+export interface IntakeQuestion {
+    id: string;
+    question: string;
+    kind: 'single' | 'multiple';
+    options: Array<{ id: string; label: string }>;
+}
+export interface IntakeAnswer {
+    question_id: string;
+    selected_option_ids: string[];
+    supplement: string;
+}
+export interface IntakeDraft {
+    origin_query: string;
+    destination_queries: string[];
+    start_date: string | null;
+    end_date: string | null;
+    duration_days: number | null;
+    party: ControlledTripIdentity['party'] | null;
+    style: ControlledTripIdentity['style'] | null;
+    budget_text: string;
+    destination_decided: boolean;
+    destination_suggestions: Array<{ name: string; reason: string }>;
+    confirmed_origin: PlaceIdentity | null;
+    confirmed_destinations: PlaceIdentity[];
+}
 export interface GuidedIntakeState {
+    draft?: IntakeDraft;
+    understanding_status?: 'ready' | 'unavailable';
     raw_input: string;
     route_decision: RouteDecision;
     controlled_identity: ControlledTripIdentity | null;
     seed_destinations?: PlaceIdentity[];
     missing_fields: Array<'origin' | 'destinations' | 'dates' | 'party' | 'style' | 'place_confirmation'>;
     ready_to_create: boolean;
+    recognized_requirements?: string[];
+    questions?: IntakeQuestion[];
+    answers?: IntakeAnswer[];
+    additional_requirements?: string;
 }

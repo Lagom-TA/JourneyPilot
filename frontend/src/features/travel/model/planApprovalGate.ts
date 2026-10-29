@@ -22,7 +22,6 @@ function normalizeRecognizedRequirements(raw: unknown): PlanGateRecognizedRequir
     return {
         hard: normalizeRequirements(source.hard),
         preferences: normalizeRequirements(source.preferences),
-        attention: normalizeRequirements(source.attention),
     };
 }
 export function normalizePlanApprovalGate(event: {

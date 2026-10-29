@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveStages, getStageIdForAgent } from "./agentStages";
+import { deriveActivityTitle, deriveStages, getStageIdForAgent, parseAgentRound } from "./agentStages";
 import { type ThinkingStep } from "../types/messages";
 function step(agentName: string): ThinkingStep {
     return {
@@ -11,6 +11,12 @@ function step(agentName: string): ThinkingStep {
     };
 }
 describe('agent stage projection', () => {
+    it('只在服务端确认完成后将全部阶段标为完成', () => {
+        const signals = { isStreaming: false, isSynthesizing: false, answerStarted: true };
+        expect(deriveStages([], signals).stages.every(stage => stage.status === 'pending')).toBe(true);
+        expect(deriveStages([], { ...signals, completed: true }).stages.every(stage => stage.status === 'done')).toBe(true);
+        expect(deriveStages([step('delivery_projector')], { ...signals, answerStarted: false, completed: false }).stages.find(stage => stage.id === 'synthesis')?.status).toBe('pending');
+    });
     it.each([
         ['中文节点', '目的地调研', 'research'],
         ['内部节点', 'delivery_finalizer', 'synthesis'],
@@ -24,6 +30,26 @@ describe('agent stage projection', () => {
         expect(hasDeepWorkflow).toBe(true);
         expect(stages.find((stage) => stage.id === 'planning')?.status).toBe('done');
         expect(stages.find((stage) => stage.id === 'research')?.status).toBe('active');
+    });
+    it('解析中英文节点名与补充轮次', () => {
+        expect(parseAgentRound('destination_researcher_r2')).toEqual({ base: 'destination_researcher', round: 2 });
+        expect(parseAgentRound('目的地调研（第3轮补充）')).toEqual({ base: '目的地调研', round: 3 });
+        expect(parseAgentRound('目的地调研(第4轮)')).toEqual({ base: '目的地调研', round: 4 });
+    });
+    it('按真实步骤投影当前过程标题，并允许补充轮次回退', () => {
+        const base = { isStreaming: true, isSynthesizing: false, answerStarted: false };
+        expect(deriveActivityTitle({ ...base, steps: [] })).toBe('整理旅行需求');
+        expect(deriveActivityTitle({ ...base, steps: [step('request_contract_normalizer')] })).toBe('整理旅行需求');
+        expect(deriveActivityTitle({ ...base, steps: [step('目的地调研（第2轮补充）')] })).toBe('查找旅行资料');
+        expect(deriveActivityTitle({ ...base, steps: [step('安排查询'), step('行程规划')] })).toBe('安排每天路线');
+        // 路线开始后迟到的并行研究事件不回退阶段。
+        expect(deriveActivityTitle({ ...base, steps: [step('行程规划'), step('目的地调研')] })).toBe('安排每天路线');
+        // 真正重新整理需求的补充轮次可以回退。
+        expect(deriveActivityTitle({ ...base, steps: [step('行程规划'), step('整理需求（第2轮补充）')] })).toBe('整理旅行需求');
+        expect(deriveActivityTitle({ ...base, steps: [step('delivery_projector')] })).toBe('生成完整计划');
+        expect(deriveActivityTitle({ ...base, steps: [step('行程规划')], runStatus: 'completed' })).toBe('旅行规划已完成');
+        expect(deriveActivityTitle({ ...base, steps: [step('行程规划')], runStatus: 'failed' })).toBe('旅行规划未完成');
+        expect(deriveActivityTitle({ ...base, steps: [step('行程规划')], runStatus: 'cancelled' })).toBe('旅行规划已取消');
     });
     it('快答节点不进入深度阶段', () => {
         const { stages, hasDeepWorkflow } = deriveStages([step('fast_answer_agent')], { isStreaming: true, isSynthesizing: false, answerStarted: false });

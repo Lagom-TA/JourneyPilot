@@ -1,5 +1,7 @@
 import { getCurrentDeliveryBundle } from "../../features/travel/api/delivery";
-import { getTripRunEventWindow } from "../../features/travel/api/runs";
+import { getTripRunEventWindow, getTripRunDetail } from "../../features/travel/api/runs";
+import { normalizePlanApprovalGate } from '../../features/travel/model/planApprovalGate';
+import { isTripRunStatus, tripRunRecoveryFromDetail } from '../../features/travel/types/runs';
 import { useApp } from "../state/AppContext";
 import { isPublicDeliveryBundle } from "../../features/travel/types/delivery";
 import { type TripRunEventResponse, type TripRunEventWindowResponse } from "../../features/travel/types/runs";
@@ -144,7 +146,23 @@ export function useDeliveryEventRecovery(): void {
                         return;
                     }
                     if (TERMINAL_WITHOUT_DELIVERY.has(window.run_status)
-                        || PAUSED_STATUSES.has(window.run_status)) {
+                        || PAUSED_STATUSES.has(window.run_status)
+                        || window.run_status === 'interrupted') {
+                        if (currentStateRef.current.isStreaming) {
+                            await wait(POLL_INTERVAL_MS);
+                            continue;
+                        }
+                        if (isTripRunStatus(window.run_status)) dispatch({ type: 'SET_TRIP_RUN_STATUS', payload: window.run_status });
+                        if (window.run_status === 'awaiting_input' || window.run_status === 'interrupted') {
+                            const detail = await getTripRunDetail(runId, { sessionId });
+                            if (!active || currentStateRef.current.currentTripRunId !== runId) return;
+                            const choice = detail.state.pending_user_choice;
+                            if (choice?.gate === 'plan' && choice.payload && typeof choice.payload === 'object' && !Array.isArray(choice.payload)) {
+                                const gate = normalizePlanApprovalGate({ run_id: runId, gate: 'plan', payload: choice.payload as Record<string, unknown> });
+                                if (gate) dispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: gate });
+                            }
+                            dispatch({ type: 'SET_TRIP_RUN_RECOVERY', payload: tripRunRecoveryFromDetail(detail) });
+                        }
                         return;
                     }
                     await wait(POLL_INTERVAL_MS);

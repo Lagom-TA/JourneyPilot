@@ -8,6 +8,7 @@ function getInitialActiveView(): ActiveView {
 }
 export const initialState: AppState = {
     activeView: getInitialActiveView(),
+    sessionInitialized: false,
     sidebarCollapsed: typeof window !== 'undefined' && window.innerWidth < 1024,
     historyPaging: { nextBefore: null, hasMore: false, loading: false },
     currentSessionId: null,

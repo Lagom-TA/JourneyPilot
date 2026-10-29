@@ -61,6 +61,12 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                         scopedDispatch({ type: 'SET_LAST_ROUTE_DECISION', payload: event.guided_intake.route_decision });
                         scopedDispatch({ type: 'SET_ROUTE_CONFIRMATION', payload: null });
                         scopedDispatch({ type: 'SET_GUIDED_INTAKE', payload: event.guided_intake });
+                        if (event.session_id) {
+                            identity.sessionId = event.session_id;
+                            updateActiveStreamHandle({ sessionId: event.session_id });
+                            scopedDispatch({ type: 'SET_SESSION_ID', payload: event.session_id });
+                            if (isStreamVisible()) setLastSession(event.session_id);
+                        }
                         scopedDispatch({ type: 'REMOVE_MESSAGE_BY_ID', payload: assistantMessage.id });
                     }
                     break;
@@ -88,6 +94,9 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     if (event.run_id) {
                         identity.runId = event.run_id;
                         updateActiveStreamHandle({ runId: event.run_id });
+                        scopedDispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: null });
+                        scopedDispatch({ type: 'RESOLVE_WAITING_MESSAGES' });
+                        scopedDispatch({ type: 'SET_GUIDED_INTAKE', payload: null });
                         if (event.route_decision?.route === 'trip_planning' || event.route_decision?.route === 'trip_refinement') {
                             scopedDispatch({
                                 type: 'SET_CURRENT_TRIP_RUN',

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizePlanApprovalGate } from "./planApprovalGate";
 describe('normalizePlanApprovalGate', () => {
-    it('keeps hard requirements, preferences, and attention separate', () => {
+    it('restores the requirement summary without clarification controls', () => {
         const gate = normalizePlanApprovalGate({
             run_id: 'run_test',
             gate: 'plan',
@@ -21,7 +21,6 @@ describe('normalizePlanApprovalGate', () => {
         expect(gate?.recognizedRequirements).toEqual({
             hard: [{ requirementId: 'intent_no_museum', summary: '不安排博物馆' }],
             preferences: [{ requirementId: 'intent_architecture', summary: '偏好当代建筑' }],
-            attention: [{ requirementId: 'conflict_1', summary: '两项要求相互冲突' }],
         });
     });
 });

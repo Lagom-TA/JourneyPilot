@@ -1,20 +1,23 @@
 import { m, useReducedMotion } from 'motion/react';
-import { ArrowDown, ArrowRight, ArrowUp, MapPin, Minus, Plus, Users, X } from 'lucide-react';
+import { ArrowRight, Minus, Plus, Users } from 'lucide-react';
 import { getTripPlannerConfiguration } from '../../api/planner';
 import { getDefaultOrigin, setDefaultOrigin } from '../../../settings/api/defaultOrigin';
-import { createPlaceSearchRunner, type PlaceSearchCandidate } from '../../model/placeSearch';
 import { describeRequestFailure, type RequestFailure } from '../../../../lib/requestFailureMessage';
 import { RequestFailureNotice } from '../../../../components/ui/RequestFailureNotice';
 import { SegmentedTabs, type SegmentedTab } from '../../../../components/ui/SegmentedTabs';
 import { cn } from '../../../../lib/utils';
 import { duration, easing } from '../../../../lib/motion';
-import { type ControlledTripIdentity, type PlaceIdentity, type TripPlannerConfiguration } from '../../types/planner';
+import { type ControlledTripIdentity, type GuidedIntakeState, type PlaceIdentity, type TripPlannerConfiguration } from '../../types/planner';
 import { Button } from '../../../../components/ui/Button';
-import { Field, FIELD_LABEL, FIELD_VALUE, RULED_FIELD } from '../../../../components/ui/Input';
+import { Field } from '../../../../components/ui/Input';
 import { Skeleton } from '../../../../components/ui/Skeleton';
 import { useApp } from '../../../../app/state/AppContext';
 import { useSendMessage } from '../../../../app/session/useSendMessage';
 import { DateRangePicker } from './DateRangePicker';
+import { PlaceField } from './PlaceField';
+import { DestinationTokenField, MAX_DESTINATIONS } from './DestinationTokenField';
+import { GuidedIntakeQuestions } from './GuidedIntakeQuestions';
+import { parseTripBudget, tripIdentityError } from '../../model/tripIdentityValidation';
 import type { AtlasScene } from './TravelAtlasScenes';
 import React from 'react';
 
@@ -31,7 +34,7 @@ const PLANNER_TABS: ReadonlyArray<SegmentedTab<PlannerMode>> = [
   { id: 'structured', label: '按条件规划', testId: 'planner-structured-tab' },
 ];
 
-const CHIP = 'min-h-10 rounded-label border border-transparent px-3 text-[13px] transition-colors duration-fast ease-standard';
+const CHIP = 'min-h-10 rounded-label border border-transparent px-2.5 text-[13px] transition-colors duration-fast ease-standard';
 const CHIP_ON = 'border-accent/20 bg-accent-soft font-medium text-accent';
 const CHIP_OFF = 'bg-surface/70 text-ink-secondary hover:bg-accent-soft/60 hover:text-ink';
 const VISIBLE_PRIMARY_STYLES = 4;
@@ -59,11 +62,6 @@ function factsFromNaturalText(text: string, config: TripPlannerConfiguration) {
   } as const;
 }
 
-function tripDays(start: string, end: string): number {
-  if (!start || !end) return 0;
-  return Math.floor((new Date(`${end}T00:00:00`).getTime() - new Date(`${start}T00:00:00`).getTime()) / 86400000) + 1;
-}
-
 function endDateForDuration(start: string, days: number): string {
   if (!start) return '';
   const date = new Date(`${start}T00:00:00`);
@@ -73,101 +71,29 @@ function endDateForDuration(start: string, days: number): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-export const PlaceField: React.FC<{
-  role: 'origin' | 'destination';
-  value: PlaceIdentity | null;
-  onChange: (value: PlaceIdentity) => void;
-  label: string;
-  frequent?: boolean;
-  initialQuery?: string;
-  className?: string;
-}> = ({ role, value, onChange, label, frequent, initialQuery = '', className }) => {
-  const [query, setQuery] = React.useState(value?.name || initialQuery);
-  const [candidates, setCandidates] = React.useState<PlaceSearchCandidate[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState('');
-  const runner = React.useMemo(() => createPlaceSearchRunner(role), [role]);
-  React.useEffect(() => () => runner.cancel(), [runner]);
-
-  const search = React.useCallback(async (raw: string) => {
-    const q = raw.trim();
-    if (q.length < 2) return;
-    await runner.run(q, { setLoading, setError, setCandidates });
-  }, [runner]);
-
-  React.useEffect(() => {
-    if (value) setQuery(value.name);
-  }, [value]);
-
-  React.useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2 || q === value?.name) {
-      runner.cancel();
-      setCandidates([]);
-      setError('');
-      setLoading(false);
-      return;
-    }
-    const timer = window.setTimeout(() => void search(q), 280);
-    return () => window.clearTimeout(timer);
-  }, [query, value?.name, search, runner]);
-
-  return (
-    <div className={cn('relative min-w-0 flex-1', className)}>
-      <label className={FIELD_LABEL}>{label}</label>
-      <div className={RULED_FIELD}>
-        <MapPin size={15} className="shrink-0 text-accent" />
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              void search(query);
-            }
-          }}
-          className={cn('min-w-0 flex-1 bg-transparent py-2', FIELD_VALUE)}
-          placeholder={role === 'origin' ? '城市、机场或火车站' : '城市或区域'}
-          aria-label={label}
-          autoComplete="off"
-        />
-        {frequent && value && <span className="rounded-label bg-chart/8 px-1.5 py-0.5 text-[11px] text-chart">常用</span>}
-        {loading && <span className="text-[11px] text-ink-muted">搜索中…</span>}
-      </div>
-
-      {(candidates.length > 0 || error) && (
-        <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-card border border-stroke bg-panel p-1 shadow-lg">
-          {candidates.map(({ place }) => (
-            <button
-              key={place.place_id}
-              type="button"
-              onClick={() => {
-                onChange(place);
-                setCandidates([]);
-                setError('');
-              }}
-              className="flex min-h-11 w-full items-start gap-2 rounded-label px-3 py-2 text-left transition-colors hover:bg-accent-soft"
-            >
-              <MapPin size={14} className="mt-0.5 shrink-0 text-accent" />
-              <span className="min-w-0">
-                <strong className="block truncate text-sm font-medium text-ink">{place.name}</strong>
-                <span className="block truncate text-xs text-ink-secondary">{place.display_name}</span>
-              </span>
-            </button>
-          ))}
-          {error && <p role="status" className="px-3 py-2 text-xs text-error">{error}</p>}
-        </div>
-      )}
-    </div>
-  );
-};
-
 export const TripPlanner: React.FC<{
   guidedText?: string;
   compact?: boolean;
   initialDestinations?: PlaceIdentity[];
   inspiration?: PlannerInspiration | null;
-}> = ({ guidedText = '', compact = false, initialDestinations = [], inspiration = null }) => {
+  guidedIntake?: GuidedIntakeState | null;
+  inlineIntake?: GuidedIntakeState | null;
+  homeFlowActive?: boolean;
+  homePendingLabel?: string;
+  homeError?: string;
+  onHomePlanSubmitted?: () => void;
+}> = ({
+  guidedText = '',
+  compact = false,
+  initialDestinations = [],
+  inspiration = null,
+  guidedIntake = null,
+  inlineIntake = null,
+  homeFlowActive = false,
+  homePendingLabel = '',
+  homeError = '',
+  onHomePlanSubmitted,
+}) => {
   const { state, dispatch } = useApp();
   const { sendMessage } = useSendMessage();
   const reducedMotion = useReducedMotion();
@@ -182,8 +108,12 @@ export const TripPlanner: React.FC<{
   const [config, setConfig] = React.useState<TripPlannerConfiguration | null>(null);
   const [configError, setConfigError] = React.useState<RequestFailure | null>(null);
   const [origin, setOrigin] = React.useState<PlaceIdentity | null>(null);
+  const initialDestinationValues = initialDestinations.slice(0, MAX_DESTINATIONS);
   const [destinations, setDestinations] = React.useState<Array<PlaceIdentity | null>>(
-    initialDestinations.length ? initialDestinations.slice(0, 3) : [null],
+    initialDestinationValues.length ? initialDestinationValues : [null],
+  );
+  const [destinationQueries, setDestinationQueries] = React.useState<string[]>(
+    initialDestinationValues.length ? initialDestinationValues.map((place) => place.name) : [''],
   );
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
@@ -236,6 +166,7 @@ export const TripPlanner: React.FC<{
     setOrigin(scene.origin);
     setOriginReady(true);
     setDestinations([...scene.destinations]);
+    setDestinationQueries(scene.destinations.map((place) => place.name));
     setAdults(scene.adults);
     setChildren(0);
     setElderly(false);
@@ -294,24 +225,18 @@ export const TripPlanner: React.FC<{
     };
   }, [extracted?.origin]);
 
-  const days = tripDays(startDate, endDate);
-
   const submitStructured = async () => {
     setError('');
     const selectedDestinations = destinations.filter((item): item is PlaceIdentity => Boolean(item));
-    if (!origin || selectedDestinations.length !== destinations.length) {
-      setError('请从地点候选中确认出发地和所有目的地');
+    const validation = tripIdentityError({ origin, destinations, start_date: startDate, end_date: endDate, party: { adults, children, elderly_companions: elderly, accessibility_required: false }, style: { primary, secondary_interests: interests, source: primaryTouched ? 'current' : 'suggested' } });
+    if (validation) { setError(validation); return; }
+    if (!origin) return;
+    const parsedBudget = parseTripBudget(budget);
+    if (parsedBudget.error) {
+      setError(parsedBudget.error);
       return;
     }
-    if (days < 1 || days > 14) {
-      setError(days > 14 ? '单次旅行最多 14 天，请拆分后再规划' : '请选择正确的开始和结束日期');
-      return;
-    }
-    const numericBudget = budget.trim() ? Number(budget) : null;
-    if (numericBudget !== null && (!Number.isFinite(numericBudget) || numericBudget <= 0)) {
-      setError('总预算请输入大于 0 的金额');
-      return;
-    }
+    const numericBudget = parsedBudget.value;
     const identity: ControlledTripIdentity = {
       origin,
       destinations: selectedDestinations,
@@ -323,9 +248,11 @@ export const TripPlanner: React.FC<{
     dispatch({ type: 'SET_GUIDED_INTAKE', payload: null });
     const budgetText = numericBudget !== null ? `，总预算约 ${numericBudget.toLocaleString('zh-CN')} 元` : '';
     const summary = `${guidedText || `从${origin.name}出发，前往${selectedDestinations.map((item) => item.name).join('、')}，${startDate} 至 ${endDate}`}${budgetText}`;
+    onHomePlanSubmitted?.();
     await sendMessage(summary, undefined, {
       route: 'trip_planning',
       controlledTripIdentity: identity,
+      ...(guidedIntake ? { guidedIntake } : {}),
       assistantPendingLabel: '正在整理旅行信息',
     });
   };
@@ -334,7 +261,11 @@ export const TripPlanner: React.FC<{
     const text = naturalText.trim();
     if (!text || state.isStreaming) return;
     setError('');
-    await sendMessage(text, undefined, { assistantPendingLabel: '正在理解你的旅行想法' });
+    onHomePlanSubmitted?.();
+    await sendMessage(text, undefined, {
+      route: 'trip_planning',
+      assistantPendingLabel: '正在理解你的旅行想法',
+    });
   };
 
   const appendNaturalDetail = (detail: string) => {
@@ -412,21 +343,29 @@ export const TripPlanner: React.FC<{
     );
   }
 
+  const showInlineIntake = Boolean(homeFlowActive && inlineIntake);
+
   return (
-    <section ref={plannerRef} className={cn('planner-card', compact && 'planner-card-compact')} aria-label="旅行规划卡">
-      {tabs}
-      <div className="planner-panels">
-        <m.div
-          role="tabpanel"
-          id={`${tabsId}-natural-panel`}
-          aria-labelledby={`${tabsId}-natural-tab`}
-          ref={naturalPanelRef}
-          aria-hidden={mode !== 'natural'}
-          className={cn('planner-panel planner-panel-natural', mode === 'natural' ? 'is-active' : 'is-inactive')}
-          initial={false}
-          animate={{ opacity: mode === 'natural' ? 1 : 0, y: mode === 'natural' ? 0 : -4 }}
-          transition={{ duration: reducedMotion ? 0 : duration.base, ease: easing.decelerate }}
-        >
+    <m.section
+      ref={plannerRef}
+      layout={homeFlowActive && !reducedMotion}
+      className={cn('planner-card', compact && 'planner-card-compact')}
+      aria-label="旅行规划卡"
+    >
+      <div className={cn('planner-standard-flow', showInlineIntake && 'is-concealed')}>
+        {compact ? <p className="planner-compact-label">确认旅行信息</p> : tabs}
+        <div className="planner-panels">
+          <m.div
+            role="tabpanel"
+            id={`${tabsId}-natural-panel`}
+            aria-labelledby={`${tabsId}-natural-tab`}
+            ref={naturalPanelRef}
+            aria-hidden={mode !== 'natural'}
+            className={cn('planner-panel planner-panel-natural', mode === 'natural' ? 'is-active' : 'is-inactive')}
+            initial={false}
+            animate={{ opacity: mode === 'natural' ? 1 : 0, y: mode === 'natural' ? 0 : -4 }}
+            transition={{ duration: reducedMotion ? 0 : duration.base, ease: easing.decelerate }}
+          >
             <div className="planner-natural-input">
               <textarea
                 ref={naturalInputRef}
@@ -483,34 +422,19 @@ export const TripPlanner: React.FC<{
                   </div>
                 </section>
               )}
-              <button
-                type="button"
-                className="planner-natural-discovery"
-                onClick={() => {
-                  setNaturalText('还没有确定目的地，想找一个节奏轻松、能吃当地美食的地方，大约 5 天。');
-                  naturalInputRef.current?.focus({ preventScroll: true });
-                }}
-              >
-                还没定目的地？从偏好开始
-                <ArrowRight size={13} aria-hidden />
-              </button>
             </div>
-            {error && <p className="planner-error" role="alert">{error}</p>}
-            <Button size="lg" className="planner-main-action" disabled={!naturalText.trim() || state.isStreaming} onClick={() => void submitNatural()}>
-              开始规划 <ArrowRight size={17} aria-hidden />
-            </Button>
-        </m.div>
-        <m.div
-          role="tabpanel"
-          id={`${tabsId}-structured-panel`}
-          aria-labelledby={`${tabsId}-structured-tab`}
-          ref={structuredPanelRef}
-          aria-hidden={mode !== 'structured'}
-          className={cn('planner-panel', mode === 'structured' ? 'is-active' : 'is-inactive')}
-          initial={false}
-          animate={{ opacity: mode === 'structured' ? 1 : 0, y: mode === 'structured' ? 0 : 4 }}
-          transition={{ duration: reducedMotion ? 0 : duration.base, ease: easing.decelerate }}
-        >
+          </m.div>
+          <m.div
+            role="tabpanel"
+            id={`${tabsId}-structured-panel`}
+            aria-labelledby={`${tabsId}-structured-tab`}
+            ref={structuredPanelRef}
+            aria-hidden={mode !== 'structured'}
+            className={cn('planner-panel planner-panel-structured', mode === 'structured' ? 'is-active' : 'is-inactive')}
+            initial={false}
+            animate={{ opacity: mode === 'structured' ? 1 : 0, y: mode === 'structured' ? 0 : 4 }}
+            transition={{ duration: reducedMotion ? 0 : duration.base, ease: easing.decelerate }}
+          >
             {originReady === null ? (
               <div className="flex flex-col gap-4" aria-label="正在读取常用出发地">
                 <Skeleton radius="label" className="h-11 w-full" />
@@ -542,30 +466,17 @@ export const TripPlanner: React.FC<{
                 <div className="planner-route-fields">
                   <PlaceField role="origin" value={origin} onChange={setOrigin} label="从哪里出发" frequent={!extracted.origin} initialQuery={extracted.origin} />
                   <ArrowRight className="planner-route-arrow" size={16} aria-hidden />
-                  <div className="planner-destination-fields">
-                    {destinations.map((destination, index) => (
-                      <div key={index} className="planner-destination-row">
-                        <PlaceField
-                          role="destination"
-                          value={destination}
-                          onChange={(place) => setDestinations((items) => items.map((item, i) => (i === index ? place : item)))}
-                          label={index === 0 ? '去哪里' : `第 ${index + 1} 站`}
-                          initialQuery={index === 0 ? extracted.destination : ''}
-                        />
-                        {destinations.length > 1 && (
-                          <div className="flex shrink-0 items-center self-end">
-                            <button type="button" aria-label="上移目的地" disabled={index === 0} onClick={() => setDestinations((items) => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })} className="planner-icon-action"><ArrowUp size={14} /></button>
-                            <button type="button" aria-label="下移目的地" disabled={index === destinations.length - 1} onClick={() => setDestinations((items) => { const next = [...items]; [next[index + 1], next[index]] = [next[index + 1], next[index]]; return next; })} className="planner-icon-action"><ArrowDown size={14} /></button>
-                            <button type="button" aria-label={`删除第 ${index + 1} 个目的地`} onClick={() => setDestinations((items) => items.filter((_, i) => i !== index))} className="planner-icon-action hover:text-error"><X size={14} /></button>
-                          </div>
-                        )}
-                        {index === destinations.length - 1 && destinations.length < 3 && (
-                          <button type="button" className="planner-add-destination" onClick={() => setDestinations((items) => [...items, null])}>
-                            <Plus size={13} aria-hidden />添加目的地
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                  <div className="planner-destination-field-wrap">
+                    <span className="planner-field-label">去哪里</span>
+                    <DestinationTokenField
+                      values={destinations}
+                      queries={destinationQueries}
+                      onChange={(nextValues, nextQueries) => {
+                        setDestinations(nextValues);
+                        setDestinationQueries(nextQueries);
+                        setError('');
+                      }}
+                    />
                   </div>
                 </div>
 
@@ -585,25 +496,27 @@ export const TripPlanner: React.FC<{
                 </div>
 
                 <div className="planner-preference-block">
-                  <div className="planner-preference-heading">
-                    <p className={FIELD_LABEL}>这次想要</p>
+                  <div className="planner-preference-row">
+                    <div className="planner-style-field">
+                      <span className="planner-field-label">旅行偏好</span>
+                      <div className="planner-style-options" role="group" aria-label="旅行风格">
+                        {config.primary_styles.slice(0, VISIBLE_PRIMARY_STYLES).map((style) => (
+                          <button key={style.id} type="button" aria-pressed={primary === style.label} onClick={() => { setPrimary(style.label); setPrimaryTouched(true); }} className={cn(CHIP, primary === style.label ? CHIP_ON : CHIP_OFF)}>{style.label}</button>
+                        ))}
+                        <button type="button" aria-expanded={more} className="planner-more-preferences" onClick={() => setMore(!more)}>更多偏好</button>
+                      </div>
+                    </div>
                     <div className="planner-budget-field">
-                      <label htmlFor="planner-budget">总预算（可选）</label>
+                      <label htmlFor="planner-budget" className="planner-field-label">总预算（可选）</label>
                       <div className="planner-budget-input">
                         <span>¥</span>
-                        <input id="planner-budget" inputMode="numeric" min="0" type="number" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="12,000" />
+                        <input id="planner-budget" inputMode="decimal" type="text" value={budget} onChange={(event) => setBudget(event.target.value)} placeholder="12,000" />
                         <span>元</span>
                       </div>
                     </div>
                   </div>
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    {config.primary_styles.slice(0, VISIBLE_PRIMARY_STYLES).map((style) => (
-                      <button key={style.id} type="button" aria-pressed={primary === style.label} onClick={() => { setPrimary(style.label); setPrimaryTouched(true); }} className={cn(CHIP, primary === style.label ? CHIP_ON : CHIP_OFF)}>{style.label}</button>
-                    ))}
-                    <button type="button" aria-expanded={more} className="min-h-9 px-2 text-[12px] font-medium text-accent hover:underline" onClick={() => setMore(!more)}>更多偏好</button>
-                  </div>
                   {more && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
+                    <div className="planner-more-preferences-options">
                       {config.primary_styles.slice(VISIBLE_PRIMARY_STYLES).map((style) => (
                         <button key={style.id} type="button" aria-pressed={primary === style.label} onClick={() => { setPrimary(style.label); setPrimaryTouched(true); }} className={cn(CHIP, primary === style.label ? CHIP_ON : CHIP_OFF)}>{style.label}</button>
                       ))}
@@ -613,15 +526,49 @@ export const TripPlanner: React.FC<{
                     </div>
                   )}
                 </div>
-
-                {error && <p className="planner-error" role="alert">{error}</p>}
-                <Button size="lg" className="planner-main-action" onClick={() => void submitStructured()} disabled={state.isStreaming}>
-                  开始规划 <ArrowRight size={17} aria-hidden />
-                </Button>
               </>
             )}
-        </m.div>
+          </m.div>
+        </div>
+        {(mode === 'natural' || originReady === true) && (
+          <div className="planner-action-area">
+            {error && <p className="planner-error" role="alert">{error}</p>}
+            <Button
+              size="lg"
+              className="planner-main-action"
+              disabled={state.isStreaming || (mode === 'natural' && !naturalText.trim())}
+              onClick={() => { if (mode === 'natural') void submitNatural(); else void submitStructured(); }}
+            >
+              开始规划 <ArrowRight size={17} aria-hidden />
+            </Button>
+          </div>
+        )}
+        {homeFlowActive && !showInlineIntake && (homeError || homePendingLabel) && (
+          <div className={cn('planner-home-flow-status', homeError && 'is-error')} role={homeError ? 'alert' : 'status'} aria-live="polite">
+            {homeError ? (
+              <>
+                <strong>这次还没有开始规划</strong>
+                <span>{homeError}</span>
+                <small>修改上面的内容后可以再次开始规划。</small>
+              </>
+            ) : (
+              <>
+                <span className="planner-pending-dot" aria-hidden />
+                <span>{homePendingLabel || '正在理解你的旅行想法'}</span>
+              </>
+            )}
+          </div>
+        )}
       </div>
-    </section>
+      {showInlineIntake && inlineIntake && (
+        <div className="planner-inline-intake">
+          <GuidedIntakeQuestions
+            key={`inline-intake-${state.conversationEpoch}`}
+            intake={inlineIntake}
+            inline
+          />
+        </div>
+      )}
+    </m.section>
   );
 };

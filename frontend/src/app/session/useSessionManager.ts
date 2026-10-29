@@ -70,7 +70,7 @@ export function useSessionManager() {
             throw new Error('trip run does not belong to this session');
         const selectedRun = requestedRunId
             ? (requestedRunIsLatest ? latestRun : requestedRunDetail?.run ?? null)
-            : latestRun;
+            : detail.pending_clarify ? null : latestRun;
         const currentTripRunReadOnly = Boolean(requestedRunId && selectedRun && latestRun && selectedRun.run_id !== latestRun.run_id);
         const [selectedRunDetail, currentBundleResult] = selectedRun
             ? await Promise.all([
@@ -136,7 +136,7 @@ export function useSessionManager() {
             deliveryBundleLoadState,
             tripSummaryCard: latestSummaryCard,
             planApprovalGate: restoredPlanGate,
-            pendingGuidedIntake: null,
+            pendingGuidedIntake: selectedRun ? null : detail.pending_clarify ?? null,
             pendingRouteConfirmation: null,
             lastRouteDecision: null,
             controlledTripIdentity: restoredIdentity as ControlledTripIdentity | null,
@@ -178,11 +178,15 @@ export function useSessionManager() {
             if (!targetId) {
                 return;
             }
+            if (currentStateRef.current.currentMessages.length || currentStateRef.current.pendingGuidedIntake || activeStreamRef.current) return;
             await openSession(targetId);
         }
         catch {
         }
-    }, [currentStateRef, openSession, refreshSessions]);
+        finally {
+            dispatch({ type: 'SESSION_INITIALIZED' });
+        }
+    }, [activeStreamRef, currentStateRef, dispatch, openSession, refreshSessions]);
     const deleteSession = useCallback(async (sessionId: string) => {
         await deleteSessionRequest(sessionId);
         dispatch({ type: 'REMOVE_SESSION', payload: sessionId });

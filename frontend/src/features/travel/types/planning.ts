@@ -26,7 +26,6 @@ export interface PlanGateRequirement {
 export interface PlanGateRecognizedRequirements {
     hard: PlanGateRequirement[];
     preferences: PlanGateRequirement[];
-    attention: PlanGateRequirement[];
 }
 export interface PlanApprovalGate {
     gate: string;
