@@ -23,6 +23,8 @@ class DomainResearchObjective(StrictModel):
     must_cover_intent_ids: List[str] = Field(default_factory=list)
     optional_intent_ids: List[str] = Field(default_factory=list)
     excluded_categories: List[str] = Field(default_factory=list)
+    # 独立研究计划模型从已授权候选中选择的检索短语；旧 checkpoint 可缺省。
+    search_terms: List[str] = Field(default_factory=list)
     success_criteria: List[SuccessCriterion] = Field(default_factory=list)
 
 
@@ -36,6 +38,11 @@ class ResearchBriefV2(StrictModel):
     intent_spec_revision: int = Field(ge=1)
     constraint_pack_revision: int = Field(ge=0)
     objective_summary: str = Field(min_length=1, max_length=500)
+    research_plan_summary: str = Field(default="", max_length=500)
+    # 旧 checkpoint 没有该字段，不能默认成“本次模型失败”。
+    research_plan_source: Literal[
+        "model", "deterministic_fallback", "unrecorded"
+    ] = "unrecorded"
     controlled_trip_identity: ControlledTripIdentity
     domain_objectives: List[DomainResearchObjective] = Field(default_factory=list)
     delivery_requirements: List[str] = Field(default_factory=list)

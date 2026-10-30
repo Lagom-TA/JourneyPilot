@@ -11,6 +11,9 @@ from travel_agent.runtime.events import run_ts_ms, set_run_ts_anchor
 from travel_agent.runtime.events import build_event_buffer
 
 from travel_agent.conversation.chat.contracts import ChatRequest
+from travel_agent.conversation.intake_lock import (
+    IntakeChangedBeforeStart, intake_fingerprint, intake_session_lock,
+)
 from travel_agent.memory.extraction_jobs import load_user_profile
 from .presentation import ChatPresentation, _trace_event_payload
 from contextlib import aclosing
@@ -32,6 +35,39 @@ from .progress_events import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _clear_checkpointed_intake(
+    *, run_id: str, session_id: str, expected_fingerprint: str,
+    expected_user_message: str, expected_identity: Dict[str, Any],
+    expected_evidence_sources: list[dict[str, Any]],
+    workflow: Any, trip_run_store: Any, chat_session_memory: Any,
+) -> bool:
+    """仅在确认 checkpoint 已落盘后清除同一版 intake。"""
+    probe = getattr(workflow, "probe_checkpoint_input", None)
+    if probe is None:
+        return False
+    try:
+        available, checkpoint_id = await probe(
+            run_id, session_id=session_id, user_message=expected_user_message,
+            controlled_trip_identity=expected_identity, intake_evidence_sources=expected_evidence_sources,
+        )
+    except Exception:
+        logger.warning("无法确认 checkpoint；保留待恢复的旅行输入 run_id=%s", run_id, exc_info=True)
+        return False
+    if not available or not checkpoint_id:
+        return False
+    async with intake_session_lock(session_id):
+        async with trip_run_store.transaction(run_id) as db_session:
+            current = await chat_session_memory.get_guided_intake(
+                session_id=session_id, user_id=LOCAL_USER_ID, db_session=db_session, for_update=True,
+            )
+            if intake_fingerprint(current) == expected_fingerprint:
+                await chat_session_memory.clear_guided_intake(
+                    session_id=session_id, user_id=LOCAL_USER_ID, db_session=db_session,
+                )
+    return True
+
 
 _SSE_HANDLERS = {
     "token": _handle_token,
@@ -161,6 +197,8 @@ async def execute_chat(
                 workflow_kwargs["controlled_trip_identity"] = (
                     authoritative_controlled_trip_identity
                 )
+                if not checkpoint_resume and prepared.intake_evidence_sources is not None:
+                    workflow_kwargs["intake_evidence_sources"] = prepared.intake_evidence_sources
             async for state_event in workflow.astream(
                 **workflow_kwargs,
             ):
@@ -193,13 +231,15 @@ async def execute_chat(
         lifecycle.command_coordinator.start()
 
         lease_keeper.start()
-        if not checkpoint_resume:
+
+        async def start_run(db_session: Any = None) -> None:
             try:
                 await trip_run_store.transition_status(
                     trip_run.run_id,
                     TripRunStatus.RUNNING,
                     event_type="run.started",
                     payload={"mode": mode, "checkpoint_thread_id": trip_run.run_id},
+                    **({"db_session": db_session} if db_session is not None else {}),
                 )
             except ValueError:
                 current_run = await trip_run_store.get_run(trip_run.run_id)
@@ -209,8 +249,22 @@ async def execute_chat(
                 }:
                     raise RunCancelled(trip_run.run_id, "workflow")
                 raise
-        if not checkpoint_resume and use_deep_research:
-            await chat_session_memory.clear_guided_intake(session_id=session_id, user_id=LOCAL_USER_ID)
+
+        if not checkpoint_resume:
+            if use_deep_research and prepared.intake_fingerprint:
+                async with intake_session_lock(session_id):
+                    async with trip_run_store.transaction(trip_run.run_id) as db_session:
+                        current = await chat_session_memory.get_guided_intake(
+                            session_id=session_id, user_id=LOCAL_USER_ID,
+                            db_session=db_session, for_update=True,
+                        )
+                        if intake_fingerprint(current) != prepared.intake_fingerprint:
+                            raise IntakeChangedBeforeStart("旅行信息已更新，请重新整理后继续。")
+                        # Keep the exact saved input until a durable checkpoint
+                        # exists; a crash after chat_start must not erase it.
+                        await start_run(db_session)
+            else:
+                await start_run()
         yield {
             "type": "chat_start",
             "message_id": message_id,
@@ -220,6 +274,7 @@ async def execute_chat(
         }
         lifecycle.workflow_task = asyncio.create_task(run_workflow())
 
+        intake_needs_checkpoint = bool(not checkpoint_resume and prepared.intake_fingerprint)
         while True:
             if event_queue.stalled:
                 logger.warning(
@@ -257,6 +312,15 @@ async def execute_chat(
                     trip_run.run_id,
                     state_snapshot=state_snapshot,
                 )
+                if intake_needs_checkpoint and prepared.intake_fingerprint:
+                    intake_needs_checkpoint = not await _clear_checkpointed_intake(
+                        run_id=trip_run.run_id, session_id=session_id,
+                        expected_fingerprint=prepared.intake_fingerprint,
+                        expected_user_message=user_message, expected_identity=authoritative_controlled_trip_identity,
+                        expected_evidence_sources=prepared.intake_evidence_sources or [],
+                        workflow=travel_workflow, trip_run_store=trip_run_store,
+                        chat_session_memory=chat_session_memory,
+                    )
                 continue
             if kind == "gate":
                 _, payload = item
@@ -281,6 +345,15 @@ async def execute_chat(
                 )
 
                 await lifecycle.mark_safe_boundary()
+                if intake_needs_checkpoint and prepared.intake_fingerprint:
+                    intake_needs_checkpoint = not await _clear_checkpointed_intake(
+                        run_id=trip_run.run_id, session_id=session_id,
+                        expected_fingerprint=prepared.intake_fingerprint,
+                        expected_user_message=user_message, expected_identity=authoritative_controlled_trip_identity,
+                        expected_evidence_sources=prepared.intake_evidence_sources or [],
+                        workflow=travel_workflow, trip_run_store=trip_run_store,
+                        chat_session_memory=chat_session_memory,
+                    )
                 yield {
                     "type": "approval_gate_raised",
                     "message_id": message_id,
@@ -309,6 +382,23 @@ async def execute_chat(
                         node=node_name,
                         trace_event_count=len(ctx.trace_events),
                     )
+                if node_name == "plan_gate" and isinstance(state_update, dict):
+                    decision = state_update.get("plan_gate_decision")
+                    probe = getattr(travel_workflow, "probe_semantic_decision", None)
+                    if isinstance(decision, dict) and decision.get("action") in {"semantic_confirmed", "semantic_correction"} and probe is not None:
+                        try:
+                            confirmed = await probe(
+                                trip_run.run_id, action=decision["action"],
+                                challenge_id=str(decision.get("challenge_id") or ""),
+                                approval_token=str(decision.get("approval_token") or ""),
+                            )
+                        except Exception:
+                            confirmed = False
+                            logger.warning("无法验证语义确认 checkpoint run_id=%s", trip_run.run_id, exc_info=True)
+                        if confirmed:
+                            projected = dict(state_update)
+                            projected["plan_gate_decision"] = {**decision, "checkpoint_confirmed": True}
+                            item = (kind, node_name, projected)
             async for ev in handler(item, ctx):
                 if ev.get("type") == "trace_event":
                     await trip_run_store.append_event(

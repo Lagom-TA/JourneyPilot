@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
 from travel_agent.planning.requirements.constraints.extraction import (
@@ -131,7 +132,30 @@ async def build_constraint_pack(
         if s not in source_layers:
             source_layers.append(s)
 
-    constraints = _resolve_conflicts(_dedupe_constraints(constraints))
+    # A later model response omitting a previously active constraint is not a
+    # user-authorized revocation. Retain it until an explicit lifecycle decision.
+    previous_pack = _get(state, "constraint_pack") or {}
+    if isinstance(previous_pack, dict):
+        for previous in previous_pack.get("constraints") or []:
+            if not isinstance(previous, dict) or previous.get("status") not in (None, "active"):
+                continue
+            constraints.append(deepcopy(previous))
+            for ref in previous.get("source_refs") or []:
+                source = str(ref.get("source") or "") if isinstance(ref, dict) else ""
+                if source and source not in source_layers:
+                    source_layers.append(source)
+
+    previous_contract = _get(state, "request_contract") or _get(state, "request_contract_candidate")
+    previous_spec = getattr(previous_contract, "intent_spec", None)
+    prior_command_ids = list(getattr(previous_spec, "generated_from_command_ids", None) or [])
+    source_ids = list(dict.fromkeys([
+        "query_main",
+        *prior_command_ids,
+        *(str(item.get("id") or "") for item in free_items
+          if item.get("source") in {"plan_gate_amendment", "run_supplement"}),
+    ]))
+    source_order = {source_id: index for index, source_id in enumerate(source_ids) if source_id}
+    constraints = _resolve_conflicts(_dedupe_constraints(constraints), source_order=source_order)
     active = [c for c in constraints if c["status"] == "active"]
     free_text_sources_total = len(
         [it for it in free_items if str(it.get("text") or "").strip()]

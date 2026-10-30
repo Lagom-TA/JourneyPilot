@@ -20,7 +20,7 @@ from typing import Iterable
 from typing import List
 
 
-CAPABILITY_PLAN_POLICY_VERSION = "capability_plan.v2"
+CAPABILITY_PLAN_POLICY_VERSION = "capability_plan.v3"
 
 
 _DOMAIN_OWNER: Dict[ResearchDomain, AgentName] = {
@@ -204,7 +204,15 @@ def _assignment_objective(
             "结合候选目录与用户要求组合可执行按天行程"
             + ("；" + "；".join(labels) if labels else "")
         )[:1000]
-    return "；".join(item.summary for item in objectives)[:1000]
+    parts = [item.summary for item in objectives]
+    terms = list(
+        dict.fromkeys(
+            term for objective in objectives for term in objective.search_terms
+        )
+    )
+    if terms:
+        parts.append("检索词：" + "、".join(terms))
+    return "；".join(parts)[:1000]
 
 
 def _candidate_kinds(objectives: Iterable[DomainResearchObjective]) -> List[str]:

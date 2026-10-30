@@ -191,14 +191,15 @@ POSTGRES_IMAGE=journeypilot-postgres:pg18-zhparser docker compose -f infra/compo
 
 ## 工作方式
 
-JourneyPilot 会先判断请求适合快速回答还是完整规划。签证、汇率等简单问题会直接进入快速流程；多日行程则会先梳理需求和硬性限制，再并行查询地点、住宿、交通、路线、天气和公开资料，组合行程后生成最终交付。
+JourneyPilot 会先判断请求适合快速回答还是完整规划。签证、汇率等简单问题会直接进入快速流程；多日行程会先梳理需求，有必要时追问并在回答后重新分析，再展示研究计划供确认。确认后才开展地点、住宿、交通、路线、天气和公开资料的正式调研，组合行程并生成最终交付。
 
 ```mermaid
 flowchart LR
     Brief["旅行需求"] --> Route{"请求类型"}
     Route -->|简单问题| Fast["快速回答"]
     Route -->|多日行程| Clarify["确认需求与限制"]
-    Clarify --> Research["并行调研"]
+    Clarify --> Approve["确认研究计划"]
+    Approve --> Research["并行调研"]
     Research --> Places["地点与住宿"]
     Research --> Transport["交通与路线"]
     Research --> Context["天气与网络资料"]

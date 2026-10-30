@@ -113,6 +113,68 @@ class TravelPlanningWorkflow:
         checkpoint_id = configurable.get("checkpoint_id")
         return available, str(checkpoint_id) if checkpoint_id else None
 
+    async def probe_checkpoint_input(
+        self, run_id: str, *, session_id: str, user_message: str,
+        controlled_trip_identity: Dict[str, Any], intake_evidence_sources: List[Dict[str, Any]],
+    ) -> tuple[bool, Optional[str]]:
+        """Only a checkpoint containing this exact Run input may replace intake."""
+        if self._checkpointer is None:
+            return False, None
+        snapshot = await self._graph.aget_state({"configurable": {"thread_id": run_id}})
+        if not isinstance(snapshot.values, dict) or not snapshot.values:
+            return False, None
+        state = TravelAgentState.model_validate(snapshot.values)
+        configurable = (snapshot.config or {}).get("configurable") or {}
+        checkpoint_id = configurable.get("checkpoint_id")
+        matches = (
+            state.run_id == run_id
+            and state.session_id == session_id
+            and state.user_id == LOCAL_USER_ID
+            and state.user_query == user_message
+            and state.controlled_trip_identity == controlled_trip_identity
+            and state.intake_evidence_sources == intake_evidence_sources
+        )
+        return bool(matches and checkpoint_id), str(checkpoint_id) if checkpoint_id else None
+
+    async def probe_semantic_decision(
+        self, run_id: str, *, action: str, challenge_id: str, approval_token: str,
+    ) -> bool:
+        """Acknowledge a semantic action only after its checkpoint is durable."""
+        if self._checkpointer is None or action not in {"semantic_confirmed", "semantic_correction"}:
+            return False
+        snapshot = await self._graph.aget_state({"configurable": {"thread_id": run_id}})
+        if not isinstance(snapshot.values, dict) or not snapshot.values:
+            return False
+        checkpoint_id = ((snapshot.config or {}).get("configurable") or {}).get("checkpoint_id")
+        decision = snapshot.values.get("plan_gate_decision")
+        if not checkpoint_id or not isinstance(decision, dict) or (
+            snapshot.values.get("run_id") != run_id
+            or decision.get("action") != action
+            or decision.get("challenge_id") != challenge_id
+            or decision.get("approval_token") != approval_token
+        ):
+            return False
+        if action == "semantic_confirmed":
+            from travel_agent.planning.requirements.confirmation_contracts import ConfirmationReceipt
+            from travel_agent.planning.requirements.intent_contracts import canonical_json_hash
+
+            raw = snapshot.values.get("semantic_receipt")
+            if hasattr(raw, "model_dump"):
+                raw = raw.model_dump(mode="json")
+            try:
+                receipt = ConfirmationReceipt.model_validate(raw)
+            except (TypeError, ValueError):
+                return False
+            if (
+                receipt.incomplete or receipt.run_id != run_id
+                or receipt.session_id != (snapshot.values.get("session_id") or run_id)
+                or receipt.challenge_token != challenge_id
+                or receipt.candidate_contract_hash != snapshot.values.get("semantic_candidate_hash")
+                or receipt.identity_hash != canonical_json_hash(snapshot.values.get("controlled_trip_identity") or {})
+            ):
+                return False
+        return True
+
     async def astream(
         self,
         user_message: str,
@@ -132,6 +194,7 @@ class TravelPlanningWorkflow:
         plan_gate_enabled: Optional[bool] = None,
         controlled_trip_identity: Optional[Dict[str, Any]] = None,
         route_decision: Optional[Dict[str, Any]] = None,
+        intake_evidence_sources: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """流式执行深度调研工作流。"""
         import datetime
@@ -150,6 +213,7 @@ class TravelPlanningWorkflow:
                 user_id=user_id,
                 selected_mcp_servers=selected_mcp_servers or [],
                 user_query=user_message,
+                intake_evidence_sources=intake_evidence_sources or [],
                 run_id=effective_run_id,
                 current_time=current_time
                 or datetime.datetime.now().strftime("%Y-%m-%d %A %H:%M:%S"),

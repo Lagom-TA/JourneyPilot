@@ -13,7 +13,11 @@ import json
 
 
 def _normalization_prompt(
-    clauses: List[SourceClause], controlled_identity: Dict[str, object]
+    clauses: List[SourceClause],
+    controlled_identity: Dict[str, object],
+    previous_intents: List[Dict[str, object]] | None = None,
+    existing_constraints: List[Dict[str, object]] | None = None,
+    unresolved_items: List[Dict[str, object]] | None = None,
 ) -> List[Dict[str, str]]:
     payload = [
         {
@@ -57,10 +61,24 @@ def _normalization_prompt(
         "明确要求备选方案时输出 hard ALTERNATIVES，target=delivery；未写数量表示主方案之外至少一个备选，count=2。"
         "source_kind=saved_preference 只携带长期偏好；其中别次旅行的目的地、日期、人数和预算不得变成本次要求，应标记 background_context。"
         "source_kind 只用于确定优先级，不得改写。"
+        "existing_constraints 是已经成立的长期或既有约束（如过敏、无障碍、预算、住宿设施）；"
+        "unresolved_items 是尚未解决的实质要求。只输出待用户核对的结构化理解，"
+        "不得遗漏、覆盖或与它们冲突，也不要重复已经成立的要求。"
+        "本调用不生成研究计划，不得添加 research_plan 或任何计划字段。"
         f"{wire_contract}只输出符合 JSON Schema 的对象，不要解释。"
     )
+    user_payload: Dict[str, object] = {
+        "controlled_identity": controlled_identity,
+        "clauses": payload,
+    }
+    if previous_intents:
+        user_payload["previous_active_intents"] = previous_intents
+    if existing_constraints:
+        user_payload["existing_constraints"] = existing_constraints
+    if unresolved_items:
+        user_payload["unresolved_items"] = unresolved_items
     user = json.dumps(
-        {"controlled_identity": controlled_identity, "clauses": payload},
+        user_payload,
         ensure_ascii=False,
         separators=(",", ":"),
         default=str,
@@ -76,6 +94,10 @@ def _normalization_response_format(
     """把通用契约 schema 绑定到本次调用的分句清单。"""
 
     model_schema = RequestContractNormalizationResult.model_json_schema()
+    model_schema["properties"].pop("research_plan", None)
+    model_schema["required"] = [
+        name for name in model_schema.get("required", []) if name != "research_plan"
+    ]
     clause_array = model_schema["properties"]["clauses"]
     clause_array["minItems"] = len(clauses)
     clause_array["maxItems"] = len(clauses)

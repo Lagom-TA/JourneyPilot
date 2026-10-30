@@ -24,12 +24,14 @@ def raise_chat_preparation_error(error: Exception) -> None:
             raise HTTPException(status_code=409, detail={"code": "intake_not_found", "message": "旅行需求草稿已变化，请刷新后继续。"}) from error
         if error.reason is PreparationRejection.INTAKE_INVALID:
             raise HTTPException(status_code=422, detail={"code": "intake_invalid", "message": error.explanation or "请完成必要的旅行信息。"}) from error
+        if error.reason is PreparationRejection.INTAKE_VERSION_STALE:
+            raise HTTPException(status_code=409, detail={"code": "intake_version_stale", "message": "旅行需求已更新，请刷新后重新核对。", "current_revision": error.current_revision}) from error
         if error.reason is PreparationRejection.INTAKE_UNAVAILABLE:
             raise HTTPException(
                 status_code=503,
                 detail={
                     "code": "intake_unavailable",
-                    "message": "暂时无法评估这项旅行需求，请稍后重试；尚未创建调研任务。",
+                    "message": error.explanation or "暂时无法评估这项旅行需求，请稍后重试；尚未创建调研任务。",
                 },
             ) from error
         if error.reason is PreparationRejection.REFINEMENT_REQUIRES_RUN:
@@ -113,6 +115,14 @@ def raise_chat_preparation_error(error: Exception) -> None:
             raise HTTPException(
                 status_code=409, detail="TripRun 当前状态不可提交计划审批决策"
             ) from error
+        if error.reason is PreparationRejection.GATE_VERSION_STALE:
+            detail: dict = {
+                "code": "plan_gate_version_stale",
+                "message": "计划版本已变化或缺少版本凭据，请刷新后查看最新计划再确认。",
+            }
+            if error.current_revision is not None:
+                detail["current_revision"] = error.current_revision
+            raise HTTPException(status_code=409, detail=detail) from error
     if isinstance(error, SessionAccessDenied):
         raise HTTPException(status_code=403, detail="无权访问该会话") from error
     if isinstance(error, SessionHistoryUnavailable):

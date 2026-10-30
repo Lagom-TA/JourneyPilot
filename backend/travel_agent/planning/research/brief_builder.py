@@ -18,11 +18,23 @@ from travel_agent.planning.research.brief_contracts import DomainResearchObjecti
 from travel_agent.planning.research.brief_contracts import ResearchBriefV2
 from travel_agent.planning.research.brief_contracts import SuccessCriterion
 from travel_agent.planning.research.domains import ResearchDomain
+from travel_agent.planning.research.research_plan_validation import (
+    validate_research_plan_for_contract,
+)
 from typing import List
 from typing import Mapping
 
 
-RESEARCH_BRIEF_POLICY_VERSION = "research_brief_projection.v3"
+RESEARCH_BRIEF_POLICY_VERSION = "research_brief_projection.v4"
+
+
+_DOMAIN_LABELS = {
+    ResearchDomain.VISIT: "景点与体验",
+    ResearchDomain.DINING: "餐饮",
+    ResearchDomain.LODGING: "住宿",
+    ResearchDomain.LOCAL_TRANSPORT: "市内交通",
+    ResearchDomain.LONG_DISTANCE_TRANSPORT: "跨城交通",
+}
 
 
 _TARGET_DOMAIN = {
@@ -54,19 +66,12 @@ _DOMAIN_WIDE_EXCLUDED_CATEGORIES = {
 }
 
 
-def build_research_brief(
+def required_research_domains(
     request_contract: RequestContract,
     controlled_identity: Mapping[str, object],
-) -> ResearchBriefV2:
+) -> set[ResearchDomain]:
     identity = ControlledTripIdentity.model_validate(controlled_identity)
     active = request_contract.intent_spec.active_items
-    hard_ids = [
-        item.intent_id for item in active if item.strength is IntentStrength.HARD
-    ]
-    soft_ids = [
-        item.intent_id for item in active if item.strength is IntentStrength.SOFT
-    ]
-
     domains = {
         _TARGET_DOMAIN[item.target]
         for item in active
@@ -85,7 +90,46 @@ def build_research_brief(
         controlled_identity, cross_day_return_required=False
     ):
         domains.add(ResearchDomain.LONG_DISTANCE_TRANSPORT)
+    return domains
 
+
+def build_research_brief(
+    request_contract: RequestContract,
+    controlled_identity: Mapping[str, object],
+    *,
+    candidate_selection=None,
+    confirmation_digest: str | None = None,
+) -> ResearchBriefV2:
+    identity = ControlledTripIdentity.model_validate(controlled_identity)
+    active = request_contract.intent_spec.active_items
+    hard_ids = [
+        item.intent_id for item in active if item.strength is IntentStrength.HARD
+    ]
+    soft_ids = [
+        item.intent_id for item in active if item.strength is IntentStrength.SOFT
+    ]
+
+    domains = required_research_domains(request_contract, controlled_identity)
+    model_domains, _plan_rejection = validate_research_plan_for_contract(
+        request_contract.research_plan,
+        identity=identity,
+        active_items=active,
+        constraint_pack=request_contract.constraint_pack,
+        required_domains=domains,
+        clause_texts=[item.source_text for item in request_contract.clause_ledger],
+        candidate_selection=candidate_selection,
+        confirmation_digest=confirmation_digest,
+    )
+    plan_source = "model" if model_domains is not None else "deterministic_fallback"
+    # 确定性投影只保证同一输入得到同一范围；旧文本校验本身不证明语义授权。
+    plan_summary = (
+        "按本次需求研究"
+        + "、".join(_DOMAIN_LABELS[domain] for domain in sorted(domains, key=lambda item: item.value))
+        + f"，共 {len(domains)} 个方向；关注点与检索词来自本次需求结构化模型，"
+        "已按受控身份、硬约束和排除项校验。"
+        if model_domains is not None
+        else ""
+    )
     objectives: List[DomainResearchObjective] = []
     for domain in sorted(domains, key=lambda item: item.value):
         scoped = [
@@ -116,15 +160,23 @@ def build_research_brief(
             "optional": optional,
             "excluded": excluded,
         }
+        model_domain = (
+            model_domains.get(domain) if model_domains is not None else None
+        )
         objectives.append(
             DomainResearchObjective(
                 objective_id="objective_"
                 + canonical_json_hash(objective_material)[:24],
                 domain=domain,
-                summary=_domain_summary(domain, scoped),
+                summary=_domain_summary(domain, scoped, model_domain),
                 must_cover_intent_ids=must,
                 optional_intent_ids=optional,
                 excluded_categories=excluded,
+                search_terms=(
+                    list(model_domain.search_terms)
+                    if model_domain is not None
+                    else []
+                ),
                 success_criteria=criteria,
             )
         )
@@ -139,6 +191,8 @@ def build_research_brief(
         "intent_revision": request_contract.intent_spec.revision,
         "constraint_revision": request_contract.constraint_pack_revision,
         "objective_summary": request_contract.intent_spec.objective_summary,
+        "research_plan_summary": plan_summary,
+        "research_plan_source": plan_source,
         "identity": identity.model_dump(mode="json"),
         "objectives": [item.model_dump(mode="json") for item in objectives],
         "delivery_requirements": delivery_requirements,
@@ -153,6 +207,8 @@ def build_research_brief(
         intent_spec_revision=request_contract.intent_spec.revision,
         constraint_pack_revision=request_contract.constraint_pack_revision,
         objective_summary=request_contract.intent_spec.objective_summary,
+        research_plan_summary=plan_summary,
+        research_plan_source=plan_source,
         controlled_trip_identity=identity,
         domain_objectives=objectives,
         delivery_requirements=delivery_requirements,
@@ -211,7 +267,11 @@ def _criterion(item: IntentItem) -> SuccessCriterion:
     )
 
 
-def _domain_summary(domain: ResearchDomain, scoped: List[IntentItem]) -> str:
+def _domain_summary(
+    domain: ResearchDomain,
+    scoped: List[IntentItem],
+    model_domain: object | None = None,
+) -> str:
     labels = [item.public_summary for item in scoped]
     base = {
         ResearchDomain.VISIT: "查找符合主题和要求的景点与体验",
@@ -220,4 +280,12 @@ def _domain_summary(domain: ResearchDomain, scoped: List[IntentItem]) -> str:
         ResearchDomain.LOCAL_TRANSPORT: "查询每天行程中的市内交通与衔接方式",
         ResearchDomain.LONG_DISTANCE_TRANSPORT: "查找合适的往返及跨城交通",
     }[domain]
-    return (base + ("；" + "；".join(labels) if labels else ""))[:500]
+    atoms = [
+        str(atom) for atom in (getattr(model_domain, "focus_atoms", None) or [])
+    ]
+    parts = [base]
+    if atoms:
+        parts.append("研究重点：" + "、".join(f"「{atom}」" for atom in atoms))
+    if labels:
+        parts.append("；".join(labels))
+    return "；".join(parts)[:500]

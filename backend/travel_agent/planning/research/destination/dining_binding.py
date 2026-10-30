@@ -18,6 +18,10 @@ from travel_agent.planning.research.output.options import (
     has_required_provider_place_selection,
 )
 from travel_agent.planning.research.output.transcript import authoritative_tool_messages
+from travel_agent.planning.research.query_contracts import (
+    ResearchQuery,
+    ResearchQueryKind,
+)
 from travel_agent.tools.content import compact_tool_content_for_model
 from travel_agent.tools.execution import execute_tool
 from travel_agent.utils.coordinates import amap_location_to_wgs84
@@ -114,6 +118,28 @@ def _cn_only_destination_boundaries(
     )
 
 
+def select_amap_dining_query(queries: List[ResearchQuery]) -> ResearchQuery:
+    """选择本轮高德餐饮检索使用的已批准查询。"""
+    return next(
+        (
+            query
+            for query in queries
+            if query.query_kind is ResearchQueryKind.STRUCTURAL and query.aliases
+        ),
+        queries[0],
+    )
+
+
+def amap_dining_keywords(query: ResearchQuery) -> str:
+    return " ".join(query.aliases).strip() or "餐饮"
+
+
+def build_amap_dining_search_arguments(
+    *, keywords: str, city: str
+) -> Dict[str, Any]:
+    return {"keywords": keywords, "city": city}
+
+
 async def discover_amap_dining(
     *,
     messages: List[Dict[str, Any]],
@@ -144,7 +170,9 @@ async def discover_amap_dining(
         try:
             env = await execute_tool(
                 "maps_text_search",
-                {"keywords": query_text, "city": city_hint},
+                build_amap_dining_search_arguments(
+                    keywords=query_text, city=city_hint
+                ),
                 available_tools=available_tools,
                 node_name=_NODE_NAME,
                 activation_source="amap_dining_search",
@@ -158,6 +186,9 @@ async def discover_amap_dining(
             )
             continue
         if not isinstance(env, dict) or env.get("status") != "success":
+            if isinstance(env, dict):
+                messages.append({"role": "tool", "content": compact_tool_content_for_model(env)})
+                authoritative_tool_results.append(env)
             logger.info(
                 "[destination_researcher] amap dining search for %s status=%s",
                 city_hint,
@@ -189,6 +220,8 @@ async def discover_amap_dining(
             bool(audit_id),
         )
         if not restaurants or not audit_id:
+            messages.append({"role": "tool", "content": compact_tool_content_for_model(env)})
+            authoritative_tool_results.append(env)
             continue
         retrieved_at = str(
             env.get("retrieved_at")

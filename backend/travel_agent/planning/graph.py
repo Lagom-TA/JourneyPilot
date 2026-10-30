@@ -31,6 +31,7 @@ from travel_agent.planning.nodes import (
     NODE_PLANNER,
     NODE_REQUEST_CONTRACT_NORMALIZER,
     NODE_RESEARCH_BRIEF_BUILDER,
+    NODE_RESEARCH_PLAN_GENERATOR,
     NODE_SUMMARY_CARD_BRIEF,
     NODE_TRANSPORT,
     NODE_WEATHER_CONTEXT_BUILDER,
@@ -57,11 +58,13 @@ from travel_agent.planning.research.dispatch import (
     route_after_dispatcher,
 )
 from travel_agent.planning.research.plan import planner_node
+from travel_agent.planning.research.research_plan_node import research_plan_generator_node
 from travel_agent.planning.research.transport.node import transport_researcher_node
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.weather.node import (
     destination_geo_resolver_node,
     weather_context_builder_node,
+    weather_research_authorized,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,6 +79,24 @@ def route_after_destination(state: TravelAgentState) -> str:
     return "dispatcher"
 
 
+def _route_after_normalization(state: TravelAgentState) -> str:
+    contract = state.request_contract_candidate or state.request_contract
+    if state.request_contract_candidate is not None or (
+        contract is not None
+        and (contract.has_blocking_conflicts or contract.has_unresolved_material_clauses)
+    ):
+        return NODE_PLAN_GATE
+    return NODE_RESEARCH_BRIEF_BUILDER
+
+
+def _route_after_research_plan_generation(state: TravelAgentState) -> str:
+    if state.pending_intent_amendments:
+        return NODE_INTENT_AMENDMENT_ROUTER
+    if state.research_plan_error:
+        return NODE_PLAN_GATE
+    return NODE_RESEARCH_BRIEF_BUILDER
+
+
 def _route_after_boundary(next_node: str):
     def route(state: TravelAgentState) -> str:
         if state.pending_intent_amendments:
@@ -83,6 +104,15 @@ def _route_after_boundary(next_node: str):
         return next_node
 
     return route
+
+
+def _route_after_weather(state: TravelAgentState) -> str:
+    if state.pending_intent_amendments:
+        return NODE_INTENT_AMENDMENT_ROUTER
+    # 旧 checkpoint 可能把未审批的天气节点作为下一步；回到计划准备。
+    if not weather_research_authorized(state):
+        return NODE_SUMMARY_CARD_BRIEF
+    return NODE_DISPATCHER
 
 
 def _route_after_dispatcher_with_amendments(state: TravelAgentState):
@@ -112,6 +142,10 @@ def build_travel_workflow() -> StateGraph:
     graph.add_node(
         NODE_RESEARCH_BRIEF_BUILDER,
         with_run_control(NODE_RESEARCH_BRIEF_BUILDER, research_brief_builder_node),
+    )
+    graph.add_node(
+        NODE_RESEARCH_PLAN_GENERATOR,
+        with_run_control(NODE_RESEARCH_PLAN_GENERATOR, research_plan_generator_node),
     )
     graph.add_node(
         NODE_INTENT_AMENDMENT_ROUTER,
@@ -179,12 +213,27 @@ def build_travel_workflow() -> StateGraph:
     )
 
     graph.add_edge(START, NODE_CLARIFIER)
-    graph.add_edge(NODE_REQUEST_CONTRACT_NORMALIZER, NODE_RESEARCH_BRIEF_BUILDER)
+    graph.add_conditional_edges(
+        NODE_REQUEST_CONTRACT_NORMALIZER,
+        _route_after_normalization,
+        {
+            NODE_RESEARCH_BRIEF_BUILDER: NODE_RESEARCH_BRIEF_BUILDER,
+            NODE_PLAN_GATE: NODE_PLAN_GATE,
+        },
+    )
+    graph.add_conditional_edges(
+        NODE_RESEARCH_PLAN_GENERATOR,
+        _route_after_research_plan_generation,
+        {
+            NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
+            NODE_PLAN_GATE: NODE_PLAN_GATE,
+            NODE_RESEARCH_BRIEF_BUILDER: NODE_RESEARCH_BRIEF_BUILDER,
+        },
+    )
     for source, target in (
         (NODE_RESEARCH_BRIEF_BUILDER, NODE_MINIMUM_DELIVERY_DRAFT),
         (NODE_MINIMUM_DELIVERY_DRAFT, NODE_DESTINATION_GEO_RESOLVER),
-        (NODE_DESTINATION_GEO_RESOLVER, NODE_WEATHER_CONTEXT_BUILDER),
-        (NODE_WEATHER_CONTEXT_BUILDER, NODE_SUMMARY_CARD_BRIEF),
+        (NODE_DESTINATION_GEO_RESOLVER, NODE_SUMMARY_CARD_BRIEF),
         (NODE_SUMMARY_CARD_BRIEF, NODE_PLANNER),
         (NODE_PLANNER, NODE_PLAN_GATE),
         (NODE_BUDGET_ESTIMATE, NODE_DELIVERY_PROJECTOR),
@@ -198,6 +247,16 @@ def build_travel_workflow() -> StateGraph:
                 target: target,
             },
         )
+
+    graph.add_conditional_edges(
+        NODE_WEATHER_CONTEXT_BUILDER,
+        _route_after_weather,
+        {
+            NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
+            NODE_SUMMARY_CARD_BRIEF: NODE_SUMMARY_CARD_BRIEF,
+            NODE_DISPATCHER: NODE_DISPATCHER,
+        },
+    )
 
     graph.add_conditional_edges(
         NODE_DELIVERY_FINALIZER,
@@ -235,13 +294,16 @@ def build_travel_workflow() -> StateGraph:
         {
             NODE_REQUEST_CONTRACT_NORMALIZER: NODE_REQUEST_CONTRACT_NORMALIZER,
             NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
-            NODE_DISPATCHER: NODE_DISPATCHER,
+            NODE_RESEARCH_PLAN_GENERATOR: NODE_RESEARCH_PLAN_GENERATOR,
+            # The gate seals authorization before any external weather request.
+            NODE_DISPATCHER: NODE_WEATHER_CONTEXT_BUILDER,
         },
     )
 
     amendment_continuations = {
         NODE_REQUEST_CONTRACT_NORMALIZER,
         NODE_RESEARCH_BRIEF_BUILDER,
+        NODE_RESEARCH_PLAN_GENERATOR,
         NODE_MINIMUM_DELIVERY_DRAFT,
         NODE_DESTINATION_GEO_RESOLVER,
         NODE_WEATHER_CONTEXT_BUILDER,

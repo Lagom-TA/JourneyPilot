@@ -12,7 +12,11 @@ from travel_agent.integrations.weather import (
 )
 from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
 from travel_agent.planning.state import TravelAgentState
-from travel_agent.planning.weather.context_builder import WeatherContextBuilder
+from travel_agent.planning.weather.context_builder import (
+    WeatherContextBuilder,
+    unavailable_weather_context,
+)
+from travel_agent.runtime.operations import ModelWindowClosed, await_model_operation
 from travel_agent.planning.weather.geography_contracts import DestinationGeoPoint
 
 
@@ -48,11 +52,28 @@ def _configured_builder(config: Optional[RunnableConfig]) -> WeatherContextBuild
     return WeatherContextBuilder(default_weather_providers())
 
 
+def weather_research_authorized(state: TravelAgentState) -> bool:
+    draft = state.minimum_delivery_draft
+    return bool(
+        draft is not None
+        and draft.planning_authorized
+        and state.request_contract is not None
+        and state.research_operation_manifest is not None
+        and state.research_operation_approval is not None
+        and state.run_budget is not None
+        and state.run_deadline is not None
+    )
+
+
 async def weather_context_builder_node(
     state: TravelAgentState,
     config: Optional[RunnableConfig] = None,
 ) -> Dict[str, Any]:
-    """在任何规划或调研之前构建一张目的地/日期天气网格。"""
+    """用户批准后构建目的地/日期天气网格。"""
+    # 旧 checkpoint 可能仍停在审批前的天气节点。只做空更新并由图路由回
+    # 计划准备，不在未授权或预算/期限未封存的状态下调用 Provider。
+    if not weather_research_authorized(state):
+        return {}
 
     identity = ControlledTripIdentity.model_validate(state.controlled_trip_identity)
     if not state.destination_geo:
@@ -78,12 +99,20 @@ async def weather_context_builder_node(
         )
         for item in state.destination_geo
     ]
-    result = await _configured_builder(config).build(
-        requests=requests,
-        weather_data_revision=0,
-        trip_start_date=identity.start_date,
-        trip_end_date=identity.end_date,
-    )
+    try:
+        result = await await_model_operation(
+            _configured_builder(config).build(
+                requests=requests,
+                weather_data_revision=0,
+                trip_start_date=identity.start_date,
+                trip_end_date=identity.end_date,
+            ),
+            operation="weather.context",
+        )
+    except ModelWindowClosed:
+        result = unavailable_weather_context(
+            requests, trip_start_date=identity.start_date, trip_end_date=identity.end_date
+        )
     resolved_timezones = {
         day.destination_id: day.timezone
         for day in result.weather_snapshot.days

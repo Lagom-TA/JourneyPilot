@@ -22,6 +22,7 @@ from tests.fixtures.chat_execution import (
     resources as resources,
 )
 from travel_agent.api.routes import chat as chat_api
+from travel_agent.conversation import intake as intake_module
 from travel_agent.conversation.chat import completion, failures, lifecycle, preparation
 from travel_agent.conversation.chat.accounting import ChatAccounting
 from travel_agent.conversation.chat.lease import RequestExecutionLease
@@ -89,6 +90,148 @@ async def test_missing_preset_precedes_triprun_side_effects(resources, monkeypat
     assert not resources.run_execution_store.rows
 
 
+async def _awaiting_plan_gate_run(resources, *, revision=1, token="current-token"):
+    run = await resources.trip_run_store.create_run(
+        session_id="gate-version",
+        user_id="local",
+        mode="deep",
+        resume_policy="checkpoint",
+    )
+    payload = {
+        "gate": "plan",
+        "revision": revision,
+        "approval_token": token,
+        "plan": {"steps": [{"step": 1, "agents": ["destination_researcher"], "tasks": {}}]},
+        "plan_text": "当前计划",
+        "recognized_requirements": {"hard": [], "preferences": []},
+        "decision_options": ["approve", "edit", "supplement", "cancel"],
+    }
+    await resources.trip_run_store.transition_status(
+        run.run_id,
+        TripRunStatus.RUNNING,
+    )
+    await resources.trip_run_store.transition_status(
+        run.run_id,
+        TripRunStatus.AWAITING_INPUT,
+        current_node="plan_gate",
+        pending_user_choice={
+            "type": "approval_gate",
+            "gate": "plan",
+            "payload": payload,
+        },
+        event_type="run.gate_raised",
+        payload={"gate": "plan", "payload": payload},
+    )
+    return run, payload
+
+
+def _gate_resume_body(run, decision_payload):
+    return chat_body(
+        run_id=run.run_id,
+        session_id="gate-version",
+        route_decision=decision(RouteName.TRIP_PLANNING).model_dump(mode="json"),
+        gate_decision=decision_payload,
+    )
+
+
+@pytest.mark.parametrize(
+    "decision_payload",
+    [
+        {"action": "approve"},
+        {"action": "approve", "approval_token": "stale-token"},
+        {"action": "approve", "approval_token": "过期版本"},
+        {"action": "approve", "approval_token": "\ud800"},
+        {"action": "approve", "approval_token": "\udfff"},
+        {
+            "action": "supplement",
+            "content": "住得安静一些",
+            "approval_token": "stale-token",
+        },
+        {
+            "action": "edit",
+            "content": "改成更慢的节奏",
+            "approval_token": "stale-token",
+        },
+    ],
+)
+async def test_stale_plan_gate_decision_is_rejected_before_lease(
+    resources, decision_payload
+):
+    run, _payload = await _awaiting_plan_gate_run(resources)
+
+    response = await request(
+        "POST", "/api/chat-stream", _gate_resume_body(run, decision_payload)
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "code": "plan_gate_version_stale",
+        "message": "计划版本已变化或缺少版本凭据，请刷新后查看最新计划再确认。",
+        "current_revision": 1,
+    }
+    assert resources.trip_run_store.runs[run.run_id].status is TripRunStatus.AWAITING_INPUT
+    assert not resources.run_execution_store.rows
+    assert not resources.fast_workflow.calls
+
+
+async def test_current_plan_gate_token_passes_version_check(resources):
+    run, payload = await _awaiting_plan_gate_run(resources)
+    resources.checkpointer = object()
+
+    class MissingCheckpointWorkflow:
+        async def probe_checkpoint(self, run_id):
+            return False, None
+
+    resources.travel_workflow = MissingCheckpointWorkflow()
+
+    response = await request(
+        "POST",
+        "/api/chat-stream",
+        _gate_resume_body(
+            run,
+            {"action": "approve", "approval_token": payload["approval_token"]},
+        ),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "未找到该 TripRun 的 checkpoint，无法断点续跑"
+    assert resources.trip_run_store.runs[run.run_id].status is TripRunStatus.AWAITING_INPUT
+    assert not resources.run_execution_store.rows
+
+
+async def test_legacy_gate_without_checkpoint_cannot_resume_or_cancel(resources):
+    run, _payload = await _awaiting_plan_gate_run(resources, token=None)
+
+    stale = await request(
+        "POST", "/api/chat-stream", _gate_resume_body(run, {"action": "approve"})
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"] == "当前服务未启用 checkpoint，无法断点续跑"
+
+    cancel = await request(
+        "POST", "/api/chat-stream", _gate_resume_body(run, {"action": "cancel"})
+    )
+    assert cancel.status_code == 409
+    assert cancel.json()["detail"] == "当前服务未启用 checkpoint，无法断点续跑"
+    assert resources.trip_run_store.runs[run.run_id].status is TripRunStatus.AWAITING_INPUT
+    assert not resources.run_execution_store.rows
+
+
+async def test_cancel_plan_gate_decision_does_not_require_a_token(resources):
+    run, _payload = await _awaiting_plan_gate_run(resources)
+
+    response = await request(
+        "POST",
+        "/api/chat-stream",
+        _gate_resume_body(run, {"action": "cancel"}),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "当前服务未启用 checkpoint，无法断点续跑"
+    assert resources.trip_run_store.runs[run.run_id].status is TripRunStatus.AWAITING_INPUT
+    assert not resources.run_execution_store.rows
+
+
 @pytest.mark.parametrize(
     "route,expected",
     [
@@ -102,7 +245,13 @@ async def test_intake_and_confirmation_short_circuit_before_lease(
     async def classify(*args, **kwargs):
         return decision(route, confirm=expected == "route_confirmation")
 
+    class OfflineIntakeModel:
+        async def ainvoke(self, *_args, **_kwargs):
+            return SimpleNamespace(content=json.dumps({"draft": {}, "recognized_requirements": [], "questions": []}))
+
     monkeypatch.setattr(preparation, "classify_route", classify)
+    monkeypatch.setattr(intake_module, "get_model_router", lambda: object())
+    monkeypatch.setattr(intake_module, "llm_for_task", lambda *_args: OfflineIntakeModel())
     resources.checkpointer = object()
     response = await request("POST", "/api/chat-stream", chat_body(route_decision=None))
     assert response.status_code == 200

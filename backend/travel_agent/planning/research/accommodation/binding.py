@@ -75,6 +75,28 @@ async def _enrich_amap_hotel_coordinates(
 _NOMINATIM_PLACE_SEARCH_LIMIT = 10
 
 
+def build_amap_lodging_search_arguments(
+    *, query_text: str, dest_name: str
+) -> Dict[str, Any]:
+    return {"keywords": query_text, "city": dest_name}
+
+
+def build_nominatim_lodging_search_arguments(
+    *,
+    query_text: str,
+    country_code: str,
+    destination_latitude: Any,
+    destination_longitude: Any,
+) -> Dict[str, Any]:
+    return {
+        "query": query_text,
+        "country_code": country_code,
+        "limit": _NOMINATIM_PLACE_SEARCH_LIMIT,
+        "destination_latitude": destination_latitude,
+        "destination_longitude": destination_longitude,
+    }
+
+
 async def _bind_amap_lodging(
     dest: Mapping[str, Any],
     *,
@@ -89,7 +111,9 @@ async def _bind_amap_lodging(
     try:
         env = await execute_tool(
             "maps_text_search",
-            {"keywords": query_text, "city": dest_name},
+            build_amap_lodging_search_arguments(
+                query_text=query_text, dest_name=dest_name
+            ),
             available_tools=available_tools,
             node_name=_NODE_NAME,
             activation_source="amap_hotel_search",
@@ -186,13 +210,12 @@ async def _bind_nominatim_lodging(
     try:
         env = await execute_tool(
             "global_place_search",
-            {
-                "query": query_text,
-                "country_code": country_code,
-                "limit": _NOMINATIM_PLACE_SEARCH_LIMIT,
-                "destination_latitude": dest.get("latitude"),
-                "destination_longitude": dest.get("longitude"),
-            },
+            build_nominatim_lodging_search_arguments(
+                query_text=query_text,
+                country_code=country_code,
+                destination_latitude=dest.get("latitude"),
+                destination_longitude=dest.get("longitude"),
+            ),
             available_tools=available_tools,
             node_name=_NODE_NAME,
             activation_source="nominatim_hotel_search",

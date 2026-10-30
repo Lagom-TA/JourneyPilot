@@ -259,6 +259,41 @@ def constraint_free_text_sources(
                     "updated_at": now,
                 }
             )
+    seen_source_ids = {str(item.get("id") or "") for item in free_items}
+    for amendment in _get(state, "unresolved_intent_amendments") or []:
+        content = str(getattr(amendment, "content", "") or "").strip()
+        command_id = str(getattr(amendment, "command_id", "") or "").strip()
+        if content and command_id and command_id not in seen_source_ids:
+            free_items.append({
+                "id": command_id, "source": amendment.source_kind, "text": content, "updated_at": now,
+            })
+            seen_source_ids.add(command_id)
+
+    # Checkpoints retain ledger clauses even after an amendment is resolved.
+    # The constraint pack is rebuilt every revision, so replay each prior user
+    # amendment in full rather than losing its already accepted constraints.
+    contract = _get(state, "request_contract") or _get(state, "request_contract_candidate")
+    intent_spec = getattr(contract, "intent_spec", None)
+    command_ids = set(getattr(intent_spec, "generated_from_command_ids", None) or [])
+    ledger = list(getattr(contract, "clause_ledger", None) or [])
+    recovered: Dict[str, List[Any]] = {}
+    for clause in ledger:
+        ref = str(getattr(clause, "source_ref_id", "") or "")
+        if ref in command_ids and ref not in seen_source_ids:
+            recovered.setdefault(ref, []).append(clause)
+    for command_id, records in recovered.items():
+        source = (
+            "plan_gate_amendment"
+            if command_id.startswith(("plan_gate_", "clarification_"))
+            else "run_supplement"
+        )
+        free_items.append({
+            "id": command_id, "source": source,
+            "text": "；".join(item.source_text for item in records),
+            "updated_at": now,
+            "replayed_clauses": [(item.clause_id, item.source_text) for item in records],
+        })
+        seen_source_ids.add(command_id)
     for index, fact in enumerate(memory_facts or []):
         if isinstance(fact, dict) and fact.get("category") in {"preference", "constraint"}:
             free_items.append(
@@ -272,3 +307,63 @@ def constraint_free_text_sources(
                 }
             )
     return free_items
+
+
+def structured_constraint_context(
+    state: Any,
+    *,
+    user_profile: Any = None,
+    manual_memory_facts: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """给同一次需求归一化调用提供已成立的约束，而不是只给自由文本。
+
+    既有的 Constraint Pack 可能来自上一次归一化；用户画像、手写记忆和 preset
+    则还没有进入 Pack。这里只做确定性映射与去重，不调用模型。
+    """
+
+    rows: List[Dict[str, Any]] = []
+    now = _now_iso()
+    if user_profile is not None:
+        rows.extend(_map_manual_profile(user_profile, now))
+    rows.extend(_map_manual_memory_facts(manual_memory_facts, now))
+    rows.extend(_map_preset_constraints(_get(state, "preset_pack_constraints"), now))
+    pack = _get(state, "constraint_pack") or {}
+    if isinstance(pack, dict):
+        for item in pack.get("constraints") or []:
+            if (
+                isinstance(item, dict)
+                and item.get("status") in (None, "active")
+                and item.get("visibility") != "internal_only"
+            ):
+                rows.append(item)
+
+    compact: List[Dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        category = str(item.get("category") or "other")
+        value = " ".join(str(item.get("value") or "").split())[:300]
+        if not value:
+            continue
+        key = (category, value.casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+        row: Dict[str, Any] = {"category": category, "value": value}
+        params = item.get("params")
+        if isinstance(params, dict) and params:
+            row["params"] = params
+        summary = " ".join(str(item.get("public_summary") or "").split())[:300]
+        if summary:
+            row["public_summary"] = summary
+        ctype = str(item.get("type") or "").strip()
+        if ctype:
+            row["type"] = ctype
+        source = str(item.get("source") or "").strip()
+        if source:
+            row["source"] = source
+        compact.append(row)
+        if len(compact) >= 40:
+            break
+    return compact

@@ -17,6 +17,7 @@ from travel_agent.planning import execution
 from travel_agent.planning.execution import with_run_control
 from travel_agent.planning.requirements.request_contracts import (
     AmendmentImpact,
+    IntentAmendment,
     IntentAmendmentRejection,
 )
 from travel_agent.planning.state import TravelAgentState
@@ -177,6 +178,36 @@ async def test_supplement_is_consumed_only_after_contract_normalization(
         "run.supplement_applied"
     ]
     # 已经生效的要求不会在下一个节点边界再进一次 state。
+    assert handle.pending_supplements() == []
+
+
+async def test_unresolved_supplement_waits_for_clarification_before_consumption(wired, run_id) -> None:
+    handle, store, _runs, coordinator = wired
+    command, _ = await store.enqueue(
+        run_id, RunCommandType.SUPPLEMENT, {"category": "mobility", "content": "长辈行动限制待明确"},
+    )
+    await coordinator.poll_once()
+    amendment = IntentAmendment(
+        command_id=command.command_id, category="mobility", content="长辈行动限制待明确",
+        source_kind="run_supplement",
+    )
+    state = TravelAgentState(run_id=run_id, unresolved_intent_amendments=[amendment])
+
+    async def clarification_gate(current):
+        assert not current.pending_intent_amendments
+        assert current.unresolved_intent_amendments[0].command_id == command.command_id
+        return {"next_agent": "awaiting_clarification"}
+
+    update = await with_run_control("plan_gate", clarification_gate)(state)
+    assert update["next_agent"] == "awaiting_clarification"
+    assert store.commands[command.command_id].status is RunCommandStatus.CLAIMED
+    assert len(handle.pending_supplements()) == 1
+
+    async def resolved(_state):
+        return {"unresolved_intent_amendments": [], "applied_intent_amendment_ids": [command.command_id]}
+
+    await with_run_control("request_contract_normalizer", resolved)(state)
+    assert store.commands[command.command_id].status is RunCommandStatus.CONSUMED
     assert handle.pending_supplements() == []
 
 

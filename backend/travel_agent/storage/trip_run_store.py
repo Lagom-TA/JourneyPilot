@@ -160,6 +160,11 @@ class TripRunStore:
     ) -> None:
         self._failure_injector = failure_injector
 
+    @asynccontextmanager
+    async def transaction(self, run_id: str):
+        async with get_db_session() as session:
+            yield session
+
     def _inject(self, boundary: DeliveryCompletionBoundary) -> None:
         if self._failure_injector is not None:
             self._failure_injector(boundary.value)
@@ -548,9 +553,10 @@ class TripRunStore:
         event_type: Optional[str] = None,
         payload: Optional[Dict[str, Any]] = None,
         allow_same: bool = True,
+        db_session: Any = None,
     ) -> TripRun:
         target = coerce_status(target_status)
-        async with get_db_session() as session:
+        async with _session_scope(db_session) as session:
             result = await session.execute(
                 text("SELECT * FROM trip_runs WHERE run_id = :run_id FOR UPDATE"),
                 {"run_id": run_id},
@@ -1335,6 +1341,22 @@ class InMemoryTripRunStore(TripRunStore):
         self.states: Dict[str, TripRunState] = {}
         self.events: Dict[str, List[TripRunEvent]] = defaultdict(list)
 
+    @asynccontextmanager
+    async def transaction(self, run_id: str):
+        run = deepcopy(self.runs.get(run_id))
+        state = deepcopy(self.states.get(run_id))
+        events = deepcopy(self.events.get(run_id))
+        try:
+            yield None
+        except BaseException:
+            if run is not None:
+                self.runs[run_id] = run
+            if state is not None:
+                self.states[run_id] = state
+            if events is not None:
+                self.events[run_id] = events
+            raise
+
     def snapshot_for_initial_delivery(
         self,
     ) -> tuple[Dict[str, TripRun], Dict[str, TripRunState], Dict[str, List[TripRunEvent]]]:
@@ -1546,6 +1568,7 @@ class InMemoryTripRunStore(TripRunStore):
         event_type: Optional[str] = None,
         payload: Optional[Dict[str, Any]] = None,
         allow_same: bool = True,
+        db_session: Any = None,
     ) -> TripRun:
         run = self.runs.get(run_id)
         if run is None:

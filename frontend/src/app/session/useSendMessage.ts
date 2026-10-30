@@ -24,7 +24,14 @@ export function useSendMessage() {
         gateDecision?: {
             action: PlanGateDecisionAction;
             content?: string;
+            approval_token?: string;
+            semantic_confirmation?: {
+                challenge_id: string; revision: number;
+                decisions: Array<{ assertion_id: string; decision: 'include' | 'avoid' | 'historical' | 'unknown' }>;
+            };
         };
+        onSemanticAccepted?: (action: 'confirm' | 'correction', challengeId: string, approvalToken: string) => void;
+        onRequestError?: (error: Error) => void;
     }) => {
         if (!text.trim() || state.isStreaming)
             return false;
@@ -68,6 +75,12 @@ export function useSendMessage() {
             route: options?.route ?? (initialRunId ? 'trip_refinement' : null),
             route_decision: options?.routeDecision ?? null,
             ...(options?.guidedIntake ? { guided_intake: options.guidedIntake } : {}),
+            ...(!options?.guidedIntake && state.pendingGuidedIntake
+                ? {
+                    ...(state.pendingGuidedIntake.intake_id ? { intake_id: state.pendingGuidedIntake.intake_id } : {}),
+                    intake_revision: state.pendingGuidedIntake.intake_revision ?? 0,
+                }
+                : {}),
             ...(options?.intakeDestination ? { intake_destination: options.intakeDestination } : {}),
             ...(options?.controlledTripIdentity
                 ? { controlled_trip_identity: options.controlledTripIdentity }
@@ -91,7 +104,7 @@ export function useSendMessage() {
         const { identity, scopedDispatch, isStreamVisible } = ownership;
         const frame = createStreamFrameBatch(scopedDispatch, assistantMessage);
         const { flushFrameNow } = frame;
-        const events = createStreamEvents(ownership, assistantMessage, text, state.currentTripRunId, options?.assistantPendingLabel, currentStateRef, setLastSession, frame);
+        const events = createStreamEvents(ownership, assistantMessage, text, state.currentTripRunId, options?.assistantPendingLabel, currentStateRef, setLastSession, frame, options?.gateDecision?.action, options?.onSemanticAccepted);
         const { protocol } = events;
         let requestFailed = false;
         let deliveryStreamInterrupted = false;
@@ -102,6 +115,7 @@ export function useSendMessage() {
                     return;
                 }
                 requestFailed = true;
+                options?.onRequestError?.(error);
                 scopedDispatch({
                     type: 'UPDATE_LAST_MESSAGE',
                     payload: {
@@ -141,7 +155,7 @@ export function useSendMessage() {
                 setLastSession(identity.sessionId);
             }
         }
-        return !requestFailed && !effectiveSignal.aborted;
+        return !requestFailed && !events.failed && !effectiveSignal.aborted;
     }, [
         activeStreamAbortRef,
         activeStreamRef,

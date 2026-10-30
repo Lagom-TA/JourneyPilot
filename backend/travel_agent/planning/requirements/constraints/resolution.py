@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from travel_agent.planning.requirements.constraints.items import _public_summary
 from travel_agent.planning.requirements.constraints.parameters import (
@@ -78,22 +78,31 @@ def _item_source(item: Dict[str, Any]) -> str:
     return ""
 
 
-def _resolve_conflicts(constraints: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """单值冲突先取较新记录，同一时刻按来源优先级仲裁。"""
+def _resolve_conflicts(
+    constraints: List[Dict[str, Any]], *, source_order: Optional[Mapping[str, int]] = None
+) -> List[Dict[str, Any]]:
+    """单值冲突按用户请求的实际顺序仲裁；历史重放不能伪装成新输入。"""
+
+    def rank(item: Dict[str, Any]) -> tuple[Any, ...]:
+        refs = [ref for ref in item.get("source_refs") or [] if isinstance(ref, dict)]
+        position = max(
+            ((source_order or {}).get(str(ref.get("origin_ref") or ""), -1) for ref in refs),
+            default=-1,
+        )
+        return (
+            1 if position >= 0 else 0,
+            position,
+            item.get("updated_at") or "",
+            _SINGULAR_SOURCE_PRECEDENCE.get(_item_source(item), -1),
+            1 if item.get("type") == "hard" else 0,
+        )
+
     by_cat: Dict[str, List[Dict[str, Any]]] = {}
     for c in constraints:
         by_cat.setdefault(c["category"], []).append(c)
     for cat, group in by_cat.items():
         if cat in _SINGULAR_CATEGORIES and len(group) > 1:
-            ordered = sorted(
-                group,
-                key=lambda item: (
-                    item.get("updated_at") or "",
-                    _SINGULAR_SOURCE_PRECEDENCE.get(_item_source(item), -1),
-                    1 if item.get("type") == "hard" else 0,
-                ),
-                reverse=True,
-            )
+            ordered = sorted(group, key=rank, reverse=True)
             winner, older = ordered[0], ordered[1:]
             winner["supersedes"] = older[0]["constraint_id"] if older else None
             for o in older:

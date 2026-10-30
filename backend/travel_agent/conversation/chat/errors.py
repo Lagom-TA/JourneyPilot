@@ -8,6 +8,7 @@ class PreparationRejection(str, Enum):
     ROUTE_UNAVAILABLE = "route_unavailable"
     INTAKE_NOT_FOUND = "intake_not_found"
     INTAKE_INVALID = "intake_invalid"
+    INTAKE_VERSION_STALE = "intake_version_stale"
     INTAKE_UNAVAILABLE = "intake_unavailable"
     REFINEMENT_REQUIRES_RUN = "refinement_requires_run"
     GATE_REQUIRES_RUN = "gate_requires_run"
@@ -25,6 +26,7 @@ class PreparationRejection(str, Enum):
     CHECKPOINT_NOT_FOUND = "checkpoint_not_found"
     RESUME_STATUS_RACE = "resume_status_race"
     GATE_STATUS_NOT_CONTINUABLE = "gate_status_not_continuable"
+    GATE_VERSION_STALE = "gate_version_stale"
 
 
 @dataclass
@@ -32,6 +34,7 @@ class PreparationRefused(Exception):
     reason: PreparationRejection
     current_status: str | None = None
     explanation: str | None = None
+    current_revision: int | None = None
 
 
 class SessionAccessDenied(Exception):

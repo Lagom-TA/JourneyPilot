@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -31,6 +32,15 @@ TURN_PAGE_LIMIT = 30
 TURN_PAGE_MAX_EVENTS = 1500
 # 标题上限只有一个，判据与派生都在 `conversation/titles.py`。
 _TITLE_MAX_LEN = TITLE_MAX_LEN
+
+
+@asynccontextmanager
+async def _session_scope(db_session: Any = None):
+    if db_session is not None:
+        yield db_session
+    else:
+        async with get_db_session() as session:
+            yield session
 
 
 def _utc_now_iso() -> str:
@@ -466,12 +476,14 @@ class ChatSessionMemory:
             row = result.mappings().first()
         return str(row["content"]) if row and row["content"] is not None else None
 
-    async def get_guided_intake(self, *, session_id: str, user_id: str):
-        from travel_agent.conversation.intake_contracts import GuidedIntakeState
+    async def get_guided_intake(
+        self, *, session_id: str, user_id: str, db_session: Any = None, for_update: bool = False
+    ):
+        from travel_agent.conversation.intake_contracts import normalize_stored_intake
 
-        async with get_db_session() as session:
+        async with _session_scope(db_session) as session:
             result = await session.execute(
-                text("SELECT user_id, pending_clarify FROM chat_sessions WHERE session_id = :sid"),
+                text("SELECT user_id, pending_clarify FROM chat_sessions WHERE session_id = :sid" + (" FOR UPDATE" if for_update else "")),
                 {"sid": session_id},
             )
             row = result.mappings().first()
@@ -480,10 +492,10 @@ class ChatSessionMemory:
         if row["user_id"] != user_id:
             raise PermissionError("会话不属于当前用户")
         payload = _to_jsonable(row["pending_clarify"], None)
-        return GuidedIntakeState.model_validate(payload) if payload else None
+        return normalize_stored_intake(payload, session_id=session_id, user_id=user_id) if payload else None
 
-    async def clear_guided_intake(self, *, session_id: str, user_id: str) -> None:
-        async with get_db_session() as session:
+    async def clear_guided_intake(self, *, session_id: str, user_id: str, db_session: Any = None) -> None:
+        async with _session_scope(db_session) as session:
             await session.execute(
                 text("UPDATE chat_sessions SET pending_clarify = NULL, updated_at = NOW() WHERE session_id = :sid AND user_id = :uid"),
                 {"sid": session_id, "uid": user_id},
@@ -492,6 +504,8 @@ class ChatSessionMemory:
     async def save_guided_intake(
         self, *, session_id: str, user_id: str, title_seed: str, guided_intake: Any,
         user_message_id: str | None = None, assistant_message_id: str | None = None,
+        expected_revision: int | None = None, expected_intake_id: str | None = None,
+        expect_absent: bool = False,
     ) -> None:
         """草稿和首次需求消息一起保存，重复握手不重复插入消息。"""
         await self.ensure_session(
@@ -500,12 +514,27 @@ class ChatSessionMemory:
         )
         async with get_db_session() as session:
             result = await session.execute(
-                text("SELECT user_id FROM chat_sessions WHERE session_id = :sid FOR UPDATE"),
+                text("SELECT user_id, pending_clarify FROM chat_sessions WHERE session_id = :sid FOR UPDATE"),
                 {"sid": session_id},
             )
             row = result.mappings().first()
             if row is None or row["user_id"] != user_id:
                 raise PermissionError("会话不属于当前用户")
+            current = _to_jsonable(row["pending_clarify"], None)
+            from travel_agent.conversation.intake_contracts import normalize_stored_intake
+
+            normalized = (
+                normalize_stored_intake(current, session_id=session_id, user_id=user_id)
+                if isinstance(current, dict) and current else None
+            )
+            actual_revision = normalized.intake_revision if normalized else None
+            actual_id = normalized.intake_id if normalized else None
+            if (expect_absent and current is not None) or (
+                expected_revision is not None and actual_revision != expected_revision
+            ) or (expected_intake_id is not None and actual_id != expected_intake_id):
+                from travel_agent.conversation.intake import IntakeRevisionStale
+
+                raise IntakeRevisionStale(actual_revision or 0)
             increment = 0
             if user_message_id and assistant_message_id:
                 existing = await session.execute(
@@ -725,7 +754,6 @@ class ChatSessionMemory:
                         mode = :mode,
                         last_message_preview = :preview,
                         message_count = message_count + :inc,
-                        pending_clarify = CASE WHEN :clear_intake THEN NULL ELSE pending_clarify END,
                         updated_at = NOW()
                     WHERE session_id = :sid
                 """),
@@ -735,7 +763,6 @@ class ChatSessionMemory:
                     "mode": mode,
                     "preview": preview,
                     "inc": message_increment,
-                    "clear_intake": bool(controlled_trip_identity),
                 },
             )
 
@@ -1135,13 +1162,26 @@ class ChatSessionMemory:
     def _row_to_summary(self, row: Dict[str, Any]) -> Dict[str, Any]:
         created_at = row.get("created_at")
         updated_at = row.get("updated_at")
+        pending = _to_jsonable(row.get("pending_clarify"), None)
+        if isinstance(pending, dict) and pending:
+            from travel_agent.conversation.intake_contracts import normalize_stored_intake
+
+            try:
+                pending = normalize_stored_intake(
+                    pending, session_id=str(row.get("session_id") or ""),
+                    user_id=str(row.get("user_id") or ""),
+                ).model_dump(mode="json")
+            except (TypeError, ValueError) as exc:
+                # Session summaries remain readable; invalid drafts stay intact
+                # and are rejected by the detail/intake validation boundary.
+                logger.warning("会话草稿无法投影为当前格式 error_type=%s", type(exc).__name__)
         return {
             "session_id": row.get("session_id", ""),
             "title": row.get("title", "新对话"),
             "status": row.get("status", STATUS_ACTIVE),
             "mode": row.get("mode", "fast"),
             "last_message_preview": row.get("last_message_preview", ""),
-            "pending_clarify": _to_jsonable(row.get("pending_clarify"), None),
+            "pending_clarify": pending,
             "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at or ""),
             "updated_at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else str(updated_at or ""),
         }

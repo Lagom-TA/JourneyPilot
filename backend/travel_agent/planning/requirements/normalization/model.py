@@ -25,6 +25,7 @@ from travel_agent.planning.requirements.normalization.prompts import (
 from travel_agent.utils.json_helpers import safe_parse_json
 from typing import Dict
 from typing import List
+from typing import Optional
 import asyncio
 
 
@@ -39,6 +40,9 @@ async def normalize_clauses(
     clauses: List[SourceClause],
     controlled_identity: Dict[str, object],
     llm: object,
+    previous_intents: Optional[List[Dict[str, object]]] = None,
+    existing_constraints: Optional[List[Dict[str, object]]] = None,
+    unresolved_items: Optional[List[Dict[str, object]]] = None,
 ) -> RequestContractNormalizationResult:
     """调用一次结构化模型，逐行做 Pydantic 校验；未通过的行走确定性 fallback。"""
     if not clauses:
@@ -52,10 +56,17 @@ async def normalize_clauses(
 
     accepted: Dict[str, NormalizedClauseDraft] = {}
     last_error: Exception | None = None
+    validation_errors: List[str] = []
     try:
         raw = await asyncio.wait_for(
             llm.ainvoke(
-                _normalization_prompt(clauses, controlled_identity),
+                _normalization_prompt(
+                    clauses,
+                    controlled_identity,
+                    previous_intents=previous_intents,
+                    existing_constraints=existing_constraints,
+                    unresolved_items=unresolved_items,
+                ),
                 response_format=response_format,
                 temperature=0,
             ),
@@ -77,7 +88,8 @@ async def normalize_clauses(
     pending = [clause for clause in clauses if clause.clause_id not in accepted]
     if not pending:
         return RequestContractNormalizationResult(
-            clauses=[accepted[clause.clause_id] for clause in clauses]
+            clauses=[accepted[clause.clause_id] for clause in clauses],
+            research_plan=None,
         )
 
     logger.warning(
@@ -100,7 +112,8 @@ async def normalize_clauses(
         clauses=[
             accepted.get(clause.clause_id) or fallback_by_id[clause.clause_id]
             for clause in clauses
-        ]
+        ],
+        research_plan=None,
     )
 
 

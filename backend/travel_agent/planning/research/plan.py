@@ -75,6 +75,7 @@ async def planner_node(state: TravelAgentState) -> Dict[str, Any]:
     query_plan = build_research_query_plan(
         intent_spec=state.request_contract.intent_spec,
         brief=state.research_brief,
+        constraint_pack=state.request_contract.constraint_pack,
     )
     plan = build_capability_plan(
         request_contract=state.request_contract,

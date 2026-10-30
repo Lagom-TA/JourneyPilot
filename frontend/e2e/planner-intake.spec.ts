@@ -757,10 +757,13 @@ test('确认后旧首页保持到退场结束，延迟首帧在新工作区连�
   await page.screenshot({ path: `${handoffEvidence}/r6-handoff-2000-mid-transition.png` });
   await expect(page.getByTestId('journey-workspace')).toBeAttached();
   await expect(page.getByTestId('thinking-chain')).toContainText('整理旅行需求');
-  await expect(page.getByTestId('thinking-chain')).toContainText('正在根据已确认的信息准备旅行计划');
+  const guidedProcess = page.getByTestId('thinking-chain').locator('.research-panel-heading');
+  await expect(guidedProcess).toHaveAttribute('aria-expanded', 'false');
   await expect.poll(() => page.evaluate(() => document.activeElement?.hasAttribute('data-workspace-handoff-focus') ?? false)).toBe(true);
   await expect(page.getByTestId('workspace-conversation')).toHaveCount(0);
   await page.screenshot({ path: `${handoffEvidence}/r6-handoff-2000-workspace-waiting.png`, fullPage: true });
+  await guidedProcess.click();
+  await expect(page.getByTestId('thinking-chain')).toContainText('正在根据已确认的信息准备旅行计划');
 
   await page.evaluate((event) => (window as unknown as { __handoffSse: { push: (value: unknown) => void } }).__handoffSse.push(event), handoffProgress('trip-handoff-guided'));
   await expect(page.getByTestId('research-agent-destination')).toBeVisible();
@@ -886,9 +889,12 @@ test('条件规划直接开始 reduced-motion 无等待交接，旧运行不污�
   }), handoffChatStart('handoff-direct', 'trip-handoff-direct'));
   expect(visibleMs).toBeLessThan(200);
   await expect(page.getByTestId('thinking-chain')).toContainText('整理旅行需求');
-  await expect(page.getByTestId('thinking-chain')).toContainText('正在整理旅行信息');
+  const directProcess = page.getByTestId('thinking-chain').locator('.research-panel-heading');
+  await expect(directProcess).toHaveAttribute('aria-expanded', 'false');
   await expect.poll(() => page.evaluate(() => document.activeElement?.hasAttribute('data-workspace-handoff-focus') ?? false)).toBe(true);
   await page.screenshot({ path: `${handoffEvidence}/r6-handoff-390-reduced-workspace-waiting.png`, fullPage: true });
+  await directProcess.click();
+  await expect(page.getByTestId('thinking-chain')).toContainText('正在整理旅行信息');
   const handoffFrames = await page.evaluate(() => {
     const probe = (window as unknown as { __handoffProbe: { frames: Array<Record<string, unknown>> } }).__handoffProbe;
     return probe.frames.slice();

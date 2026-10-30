@@ -42,8 +42,13 @@ from travel_agent.planning.requirements.request_contracts import (
     IntentAmendment,
 )
 from travel_agent.planning.requirements.revision import build_request_contract_revision
+from travel_agent.planning.requirements.research_plan_contracts import (
+    ResearchDomainPlanDraft,
+    ResearchPlanDraft,
+)
 from travel_agent.planning.research.brief_builder import build_research_brief
 from travel_agent.planning.research.capability_planning import build_capability_plan
+from travel_agent.planning.research.dispatch import dispatcher_node, route_after_dispatcher
 from travel_agent.planning.research.domains import ResearchDomain
 from travel_agent.planning.research.history import _latest_packets
 from travel_agent.planning.research.packets import ResearchPacket
@@ -346,6 +351,167 @@ def _contract():
     )
 
 
+def _model_research_plan(
+    terms: tuple[str, str, str],
+    *,
+    focus_atoms: tuple[str, str, str] = ("住宿", "交通", "建筑"),
+):
+    """一份结构合法的 fake 研究计划：只给可回溯的关注点和检索词。"""
+
+    return ResearchPlanDraft(
+        domains=[
+            ResearchDomainPlanDraft(
+                domain=ResearchDomain.LODGING,
+                focus_atoms=[focus_atoms[0]],
+                search_terms=[terms[0]],
+            ),
+            ResearchDomainPlanDraft(
+                domain=ResearchDomain.LONG_DISTANCE_TRANSPORT,
+                focus_atoms=[focus_atoms[1]],
+                search_terms=[terms[1]],
+            ),
+            ResearchDomainPlanDraft(
+                domain=ResearchDomain.VISIT,
+                focus_atoms=[focus_atoms[2]],
+                search_terms=[terms[2]],
+            ),
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_unsolicited_research_plan_is_ignored_during_clause_normalization():
+    clause = _clause(0, "帮我规划杭州行程")
+
+    class _Model:
+        capabilities = SimpleNamespace(supports_json_schema=False)
+
+        async def ainvoke(self, *_args, **_kwargs):
+            return json.dumps(
+                {
+                    "clauses": [
+                        {
+                            "clause_id": clause.clause_id,
+                            "disposition": "mapped_to_intent",
+                            "intents": [
+                                {
+                                    "kind": "objective",
+                                    "target": "trip",
+                                    "strength": "hard",
+                                    "priority": 90,
+                                    "value": {
+                                        "value_type": "scalar",
+                                        "value": "规划杭州可执行行程",
+                                    },
+                                    "verification_mode": "mixed",
+                                    "impact_stages": [
+                                        "research",
+                                        "composition",
+                                        "projection",
+                                    ],
+                                    "public_summary": "规划杭州可执行行程",
+                                }
+                            ],
+                        }
+                    ],
+                    "research_plan": {
+                        "domains": [
+                            {
+                                "domain": "visit",
+                                "focus_atoms": ["建筑", "文化"],
+                                "search_terms": ["建筑 文化"],
+                            },
+                            {
+                                "domain": "lodging",
+                                "focus_atoms": ["住宿"],
+                                "search_terms": ["杭州 地铁 住宿"],
+                            },
+                            {
+                                "domain": "long_distance_transport",
+                                "focus_atoms": ["交通"],
+                                "search_terms": ["上海 杭州 高铁"],
+                            },
+                        ],
+                    },
+                },
+                ensure_ascii=False,
+            )
+
+    result = await normalize_clauses(
+        clauses=[clause], controlled_identity=_identity(), llm=_Model()
+    )
+
+    assert result.research_plan is None
+    contract, generation = build_request_contract_revision(
+        run_id="run_model_plan_normalizer",
+        identity=_identity(),
+        identity_revision=1,
+        constraint_pack={
+            "constraints": [],
+            "hard_constraints": [],
+            "soft_preferences": [],
+            "pack_meta": {},
+        },
+        constraint_pack_revision=1,
+        clauses=[clause],
+        normalized=result,
+        research_plan=result.research_plan,
+    )
+    assert contract.research_plan is None
+    brief = build_research_brief(contract, _identity())
+    queries = build_research_query_plan(
+        intent_spec=contract.intent_spec, brief=brief
+    )
+    plan = build_capability_plan(
+        request_contract=contract,
+        brief=brief,
+        plan_revision=generation.plan_revision,
+        research_query_plan=queries,
+    )
+    assert brief.research_plan_source == "deterministic_fallback"
+    assert all(
+        "建筑 文化" not in query.query_text
+        for query in queries.queries
+        if query.domain is ResearchDomain.VISIT
+        and query.query_kind is ResearchQueryKind.STRUCTURAL
+    )
+    assert "检索词：建筑 文化" not in plan.assignments[
+        "destination_researcher"
+    ].objective
+
+
+@pytest.mark.asyncio
+async def test_model_plan_is_discarded_when_clause_rows_need_fallback():
+    clause = _clause(0, "并给出备选方案")
+
+    class _Model:
+        capabilities = SimpleNamespace(supports_json_schema=False)
+
+        async def ainvoke(self, *_args, **_kwargs):
+            return json.dumps(
+                {
+                    "clauses": [],
+                    "research_plan": {
+                        "domains": [
+                            {
+                                "domain": "visit",
+                                "focus_atoms": ["景点"],
+                                "search_terms": ["景点"],
+                            }
+                        ],
+                    },
+                },
+                ensure_ascii=False,
+            )
+
+    result = await normalize_clauses(
+        clauses=[clause], controlled_identity=_identity(), llm=_Model()
+    )
+
+    assert result.research_plan is None
+    assert result.clauses[0].intents
+
+
 def test_contract_and_capability_plan_are_deterministic_and_cover_hard_intents():
     contract, generation = _contract()
     repeated, repeated_generation = _contract()
@@ -422,6 +588,246 @@ def _research_plan(contract, identity, generation):
         research_query_plan=queries,
     )
     return brief, queries, plan
+
+
+def test_model_research_plan_drives_contract_projection_and_execution_deterministically():
+    contract, generation = _contract()
+    first_contract = contract.model_copy(
+        update={
+            "research_plan": _model_research_plan(
+                ("安静 住宿", "往返 交通", "建筑 文化")
+            )
+        }
+    )
+    second_contract = contract.model_copy(
+        update={
+            "research_plan": _model_research_plan(
+                ("地铁 住宿", "车次 交通", "本地文化"),
+                focus_atoms=("住宿", "交通", "文化"),
+            )
+        }
+    )
+
+    first_brief = build_research_brief(first_contract, _identity())
+    first_queries = build_research_query_plan(
+        intent_spec=first_contract.intent_spec, brief=first_brief
+    )
+    first_plan = build_capability_plan(
+        request_contract=first_contract,
+        brief=first_brief,
+        plan_revision=generation.plan_revision,
+        research_query_plan=first_queries,
+    )
+    repeated_brief = build_research_brief(first_contract, _identity())
+    repeated_queries = build_research_query_plan(
+        intent_spec=first_contract.intent_spec, brief=repeated_brief
+    )
+    repeated_plan = build_capability_plan(
+        request_contract=first_contract,
+        brief=repeated_brief,
+        plan_revision=generation.plan_revision,
+        research_query_plan=repeated_queries,
+    )
+    second_brief = build_research_brief(second_contract, _identity())
+    second_queries = build_research_query_plan(
+        intent_spec=second_contract.intent_spec, brief=second_brief
+    )
+
+    assert first_brief.research_plan_source == "model"
+    assert first_brief.research_plan_summary.startswith("按本次需求研究")
+    assert first_brief.content_hash == repeated_brief.content_hash
+    assert first_queries.content_hash == repeated_queries.content_hash
+    assert first_plan.content_hash == repeated_plan.content_hash
+    assert second_brief.content_hash != first_brief.content_hash
+    assert second_queries.content_hash != first_queries.content_hash
+    first_structural = {
+        query.domain.value: query.query_text
+        for query in first_queries.queries
+        if query.query_kind is ResearchQueryKind.STRUCTURAL
+    }
+    second_structural = {
+        query.domain.value: query.query_text
+        for query in second_queries.queries
+        if query.query_kind is ResearchQueryKind.STRUCTURAL
+    }
+    assert "建筑 文化" in first_structural["visit"]
+    assert "本地文化" in second_structural["visit"]
+    assert first_structural != second_structural
+    assert (
+        "检索词：安静 住宿"
+        in first_plan.assignments["accommodation_researcher"].objective
+    )
+    assert set(first_plan.assignments["accommodation_researcher"].research_query_ids) <= set(
+        first_queries.query_index()
+    )
+
+    payload = _build_plan_gate_payload(
+        SimpleNamespace(
+            execution_plan=first_plan.execution_plan,
+            agent_assignments={
+                key: value.model_dump(mode="json")
+                for key, value in first_plan.assignments.items()
+            },
+            controlled_trip_identity=_identity(),
+            intent_spec=first_contract.intent_spec,
+            constraint_pack={},
+            research_brief=first_brief,
+            research_query_plan=first_queries,
+            plan_gate_revision_count=0,
+        )
+    )
+    assert "**研究重点**：按本次需求研究" in payload["plan_text"]
+    assert "研究重点：「建筑」" in payload["plan_text"]
+    assert "计划来源" not in payload["plan_text"]
+
+    async def _dispatch():
+        state = TravelAgentState(
+            run_id="run_model_plan",
+            execution_plan=first_plan.execution_plan,
+            current_plan_step=0,
+            intent_spec=first_contract.intent_spec,
+            intent_spec_revision=first_contract.intent_spec.revision,
+            planning_generation=generation,
+            research_brief=first_brief,
+            research_query_plan=first_queries,
+            agent_assignments={
+                key: value.model_dump(mode="json")
+                for key, value in first_plan.assignments.items()
+            },
+        )
+        dispatched = await dispatcher_node(state)
+        routed_state = state.model_copy(update=dispatched)
+        routes = route_after_dispatcher(routed_state)
+        return dispatched, routes
+
+    dispatched, routes = asyncio.run(_dispatch())
+    assert dispatched["next_agent"] == "dispatch_group"
+    assert routes == "destination_researcher"
+    destination_assignment = first_plan.assignments["destination_researcher"]
+    assert destination_assignment.research_query_ids
+    assert {
+        first_queries.query_index()[query_id].query_text
+        for query_id in destination_assignment.research_query_ids
+    } >= {"杭州 建筑 文化"}
+
+
+def test_supplement_replaces_model_research_plan_in_a_new_generation():
+    contract, generation = _contract()
+    first_contract = contract.model_copy(
+        update={
+            "research_plan": _model_research_plan(
+                ("安静 住宿", "往返 交通", "建筑 文化")
+            )
+        }
+    )
+    clause = _clause(4, "不要查酒店", source_kind="run_supplement")
+    normalized = RequestContractNormalizationResult(
+        clauses=[
+            NormalizedClauseDraft(
+                clause_id=clause.clause_id,
+                disposition=ClauseDisposition.MAPPED_TO_INTENT,
+                intents=[
+                    _intent(
+                        IntentKind.MUST_EXCLUDE,
+                        IntentTarget.LODGING,
+                        CategoryIntentValue(categories=["酒店"]),
+                        "不要查酒店",
+                        ["research", "composition"],
+                    )
+                ],
+            )
+        ],
+        research_plan=ResearchPlanDraft(
+            domains=[
+                ResearchDomainPlanDraft(
+                    domain=ResearchDomain.LONG_DISTANCE_TRANSPORT,
+                    focus_atoms=["交通"],
+                    search_terms=["往返 交通"],
+                ),
+                ResearchDomainPlanDraft(
+                    domain=ResearchDomain.VISIT,
+                    focus_atoms=["建筑", "文化"],
+                    search_terms=["建筑 文化"],
+                ),
+            ],
+        ),
+    )
+    revised, revised_generation = build_request_contract_revision(
+        run_id="run_intent_contract",
+        identity=_identity(),
+        identity_revision=1,
+        constraint_pack={
+            "constraints": [],
+            "hard_constraints": [],
+            "soft_preferences": [],
+            "pack_meta": {},
+        },
+        constraint_pack_revision=1,
+        clauses=[clause],
+        normalized=normalized,
+        previous=first_contract,
+        plan_revision=1,
+        research_plan=normalized.research_plan,
+    )
+
+    assert revised_generation.generation_id != generation.generation_id
+    assert revised_generation.plan_revision == 1
+    assert revised.research_plan == normalized.research_plan
+    brief = build_research_brief(revised, _identity())
+    queries = build_research_query_plan(
+        intent_spec=revised.intent_spec, brief=brief
+    )
+    assert brief.research_plan_source == "model"
+    assert "跨城交通" in brief.research_plan_summary
+    assert all(
+        objective.domain is not ResearchDomain.LODGING
+        for objective in brief.domain_objectives
+    )
+    assert all(
+        query.domain is not ResearchDomain.LODGING for query in queries.queries
+    )
+    assert "建筑 文化" in next(
+        query.query_text
+        for query in queries.queries
+        if query.domain is ResearchDomain.VISIT
+        and query.query_kind is ResearchQueryKind.STRUCTURAL
+    )
+
+
+def test_incomplete_model_research_plan_falls_back_with_explicit_source():
+    contract, _generation = _contract()
+    incomplete = ResearchPlanDraft(
+        domains=[
+            ResearchDomainPlanDraft(
+                domain=ResearchDomain.VISIT,
+                focus_atoms=["建筑"],
+                search_terms=["architecture"],
+            )
+        ],
+    )
+    brief = build_research_brief(
+        contract.model_copy(update={"research_plan": incomplete}), _identity()
+    )
+
+    assert brief.research_plan_source == "deterministic_fallback"
+    assert brief.research_plan_summary == ""
+    assert all(not objective.search_terms for objective in brief.domain_objectives)
+    payload = _build_plan_gate_payload(
+        SimpleNamespace(
+            execution_plan=[["destination_researcher"]],
+            agent_assignments={
+                "destination_researcher": {"objective": "查找景点"}
+            },
+            controlled_trip_identity=_identity(),
+            intent_spec=contract.intent_spec,
+            constraint_pack={},
+            research_brief=brief,
+            plan_gate_revision_count=0,
+        )
+    )
+    assert "**生成说明**" in payload["plan_text"]
+    assert "模型研究计划" in payload["plan_text"]
+    assert "**研究范围与检索词**" not in payload["plan_text"]
 
 
 def test_multi_day_trip_keeps_default_lodging_research_without_exclusion():
@@ -992,6 +1398,159 @@ def test_plan_gate_presents_recognized_requirements_without_clarification_contro
     assert "must_obey" not in payload
 
 
+def _gate_state(**updates):
+    state = SimpleNamespace(
+        run_id="run_gate_version",
+        plan_gate_decision=None,
+        execution_plan=[["destination_researcher"]],
+        agent_assignments={
+            "destination_researcher": {"objective": "查找建筑与本地文化地点"}
+        },
+        controlled_trip_identity=_identity(),
+        intent_spec=None,
+        constraint_pack={},
+        research_brief=None,
+        research_query_plan=None,
+        capability_plan=None,
+        request_contract=SimpleNamespace(content_hash="a" * 64),
+        plan_gate_revision_count=0,
+    )
+    for key, value in updates.items():
+        setattr(state, key, value)
+    return state
+
+
+def test_plan_gate_approval_token_is_stable_and_binds_plan_version():
+    state = _gate_state()
+    payload = _build_plan_gate_payload(state)
+    repeated = _build_plan_gate_payload(state)
+
+    assert payload["approval_token"] == repeated["approval_token"]
+    assert payload["approval_token"].startswith("plan_gate.approval.v1:")
+
+    changed_plan = _build_plan_gate_payload(
+        _gate_state(
+            execution_plan=[["accommodation_researcher"]],
+            agent_assignments={
+                "accommodation_researcher": {"objective": "查找地铁附近住宿"}
+            },
+        )
+    )
+    changed_revision = _build_plan_gate_payload(
+        _gate_state(plan_gate_revision_count=1)
+    )
+    changed_contract = _build_plan_gate_payload(
+        _gate_state(request_contract=SimpleNamespace(content_hash="b" * 64))
+    )
+    changed_run = _build_plan_gate_payload(
+        _gate_state(run_id="run_gate_version_other")
+    )
+
+    tokens = {
+        payload["approval_token"],
+        changed_plan["approval_token"],
+        changed_revision["approval_token"],
+        changed_contract["approval_token"],
+        changed_run["approval_token"],
+    }
+    assert len(tokens) == 5
+
+
+def test_plan_gate_approval_token_survives_sse_and_recovery_projection():
+    from travel_agent.api.presenters.runs import _public_pending_user_choice
+    from travel_agent.api.sse_projection import project_sse_payload
+
+    payload = _build_plan_gate_payload(_gate_state())
+    token = payload["approval_token"]
+
+    live = project_sse_payload(
+        {
+            "type": "approval_gate_raised",
+            "run_id": "run_gate_version",
+            "gate": "plan",
+            "payload": payload,
+        }
+    )
+    recovered = _public_pending_user_choice(
+        {"type": "approval_gate", "gate": "plan", "payload": payload}
+    )
+
+    assert live["payload"]["approval_token"] == token
+    assert recovered["payload"]["approval_token"] == token
+    assert recovered["payload"]["revision"] == payload["revision"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["approve", "edit", "supplement"])
+async def test_plan_gate_rejects_stale_token_at_checkpoint_consumption(
+    monkeypatch, action
+):
+    from travel_agent.planning.requirements import approval
+
+    stale_payload = _build_plan_gate_payload(_gate_state())
+    current_state = _gate_state(
+        execution_plan=[["accommodation_researcher"]],
+        agent_assignments={
+            "accommodation_researcher": {"objective": "查找地铁附近住宿"}
+        },
+    )
+    current_payload = _build_plan_gate_payload(current_state)
+    stale_decision = {
+        "action": action,
+        "approval_token": stale_payload["approval_token"],
+    }
+    current_decision = {
+        "action": action,
+        "approval_token": current_payload["approval_token"],
+    }
+    if action in {"edit", "supplement"}:
+        stale_decision["content"] = "更安静一些"
+        current_decision["content"] = "更安静一些"
+    decisions = iter([stale_decision, current_decision])
+    calls = []
+
+    def choose(payload):
+        calls.append(payload)
+        return next(decisions)
+
+    monkeypatch.setattr(approval, "interrupt", choose)
+    monkeypatch.setattr(
+        approval,
+        "seal_minimum_delivery_draft",
+        lambda _state: {"planning_authorized": True},
+    )
+
+    result = await approval.plan_gate_node(
+        current_state, {"configurable": {"plan_gate_enabled": True}}
+    )
+
+    assert len(calls) == 2
+    assert calls[0]["approval_token"] == current_payload["approval_token"]
+    assert calls[1]["approval_token"] == current_payload["approval_token"]
+    if action == "approve":
+        assert result["plan_gate_decision"] == {
+            "action": "approve",
+            "revision": 0,
+        }
+        assert result["planning_authorized"] is True
+    else:
+        assert result["plan_gate_amendment"].content == "更安静一些"
+        assert result["plan_gate_revision_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_plan_gate_cancel_does_not_require_an_approval_token(monkeypatch):
+    from travel_agent.planning.requirements import approval
+    from travel_agent.runtime.cancellation import RunCancelled
+
+    monkeypatch.setattr(approval, "interrupt", lambda _payload: {"action": "cancel"})
+
+    with pytest.raises(RunCancelled):
+        await approval.plan_gate_node(
+            _gate_state(), {"configurable": {"plan_gate_enabled": True}}
+        )
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("revision_count", [0, 1])
 @pytest.mark.parametrize("prior_action", [None, "projection_amendment_pending"])
@@ -1039,12 +1598,16 @@ async def test_requirement_classification_does_not_require_an_extra_approval_ste
         assert len(calls) == 1
         assert "approve" in payload["decision_options"]
         assert set(payload["recognized_requirements"]) == {"hard", "preferences"}
-        return {"action": "approve"}
+        return {
+            "action": "approve",
+            "approval_token": payload["approval_token"],
+        }
 
     monkeypatch.setattr(approval, "interrupt", choose)
     monkeypatch.setattr(approval, "seal_minimum_delivery_draft", lambda _state: {"planning_authorized": True})
     result = await approval.plan_gate_node(state, {"configurable": {"plan_gate_enabled": True}})
-    assert len(calls) == (0 if prior_action else 1)
+    # 展示性修改也必须让用户看到新计划后再次确认，不能沿用旧决定静默批准。
+    assert len(calls) == 1
     assert result["plan_gate_decision"]["action"] == "approve"
     assert result["planning_authorized"] is True
 
@@ -1605,3 +2168,349 @@ def test_projection_only_revision_preserves_the_research_generation():
     assert revised.generation_id == generation.generation_id
     assert revised.intent_spec.revision == contract.intent_spec.revision + 1
     assert len(revised.clause_ledger) == len(contract.clause_ledger) + 1
+
+
+def _model_plan_payload_state(contract, brief, *, revision=0):
+    return SimpleNamespace(
+        run_id="run_model_plan_gate",
+        execution_plan=[["destination_researcher"]],
+        agent_assignments={
+            "destination_researcher": {"objective": "查找建筑与本地文化地点"}
+        },
+        controlled_trip_identity=_identity(),
+        intent_spec=contract.intent_spec,
+        constraint_pack=contract.constraint_pack,
+        research_brief=brief,
+        research_query_plan=None,
+        capability_plan=None,
+        request_contract=contract,
+        plan_gate_revision_count=revision,
+    )
+
+
+def test_model_plan_with_unapproved_search_term_is_rejected_before_execution():
+    contract, _generation = _contract()
+    identity = dict(_identity())
+    identity["party"] = {
+        **identity["party"],
+        "accessibility_required": True,
+    }
+    unapproved = _model_research_plan(
+        ("东京 夜店 台阶", "往返 交通", "建筑 文化")
+    )
+    brief = build_research_brief(
+        contract.model_copy(update={"research_plan": unapproved}), identity
+    )
+
+    assert brief.research_plan_source == "deterministic_fallback"
+    queries = build_research_query_plan(
+        intent_spec=contract.intent_spec, brief=brief
+    )
+    executed_text = " ".join(query.query_text for query in queries.queries)
+    assert "东京" not in executed_text
+    assert "夜店" not in executed_text
+    assert "台阶" not in executed_text
+    assert all(not objective.search_terms for objective in brief.domain_objectives)
+
+    payload = _build_plan_gate_payload(_model_plan_payload_state(contract, brief))
+    assert payload["plan"]["source"] == "deterministic_fallback"
+    assert "东京" not in payload["plan_text"]
+    assert "夜店" not in payload["plan_text"]
+    assert "台阶" not in payload["plan_text"]
+    assert "**研究范围与检索词**" not in payload["plan_text"]
+
+
+def test_model_plan_contradicting_a_hard_exclusion_is_rejected_as_a_whole():
+    contract, _generation = _contract()
+    # 用户写了「不要连锁咖啡」：即使模型把排除句当成研究重点引用，也整份拒绝。
+    plan = _model_research_plan(
+        ("安静 住宿", "往返 交通", "建筑 文化"),
+        focus_atoms=("住宿", "交通", "不要连锁咖啡"),
+    )
+    brief = build_research_brief(
+        contract.model_copy(update={"research_plan": plan}), _identity()
+    )
+
+    assert brief.research_plan_source == "deterministic_fallback"
+    assert "连锁咖啡" not in brief.research_plan_summary
+    queries = build_research_query_plan(
+        intent_spec=contract.intent_spec, brief=brief
+    )
+    assert all(
+        "连锁咖啡" not in query.query_text for query in queries.queries
+    )
+
+
+def test_legacy_free_text_plan_fields_are_never_confirmed_or_executed():
+    contract, _generation = _contract()
+    # 旧模型/旧 checkpoint 的正文可以反序列化，但不能进入确认正文或检索参数。
+    legacy = _model_research_plan(
+        ("安静 住宿", "往返 交通", "建筑 文化")
+    ).model_copy(
+        update={
+            "summary": "东京迪士尼、大阪夜生活、五人十二月行程",
+        }
+    )
+    legacy = legacy.model_copy(
+        update={
+            "domains": [
+                row.model_copy(
+                    update={"focus": "顺便查东京迪士尼和五人十二月行程"}
+                )
+                for row in legacy.domains
+            ]
+        }
+    )
+    brief = build_research_brief(
+        contract.model_copy(update={"research_plan": legacy}), _identity()
+    )
+
+    assert brief.research_plan_source == "model"
+    payload = _build_plan_gate_payload(_model_plan_payload_state(contract, brief))
+    haystack = " ".join(
+        [
+            payload["plan_text"],
+            *[str(task) for step in payload["plan"]["steps"] for task in step["tasks"].values()],
+            *[row["focus"] for row in payload["plan"]["research_scope"]],
+            *[objective.summary for objective in brief.domain_objectives],
+        ]
+    )
+    for forbidden in ("东京", "大阪", "五人", "十二月", "迪士尼"):
+        assert forbidden not in haystack
+    queries = build_research_query_plan(
+        intent_spec=contract.intent_spec, brief=brief
+    )
+    executed = " ".join(query.query_text for query in queries.queries)
+    for forbidden in ("东京", "大阪", "五人", "十二月", "迪士尼"):
+        assert forbidden not in executed
+
+
+def test_plan_gate_shows_model_search_terms_and_keeps_them_in_sse_projection():
+    from travel_agent.api.sse_projection import public_plan_gate_payload
+
+    contract, _generation = _contract()
+    plan = _model_research_plan(("安静 住宿", "往返 交通", "建筑 文化"))
+    brief = build_research_brief(
+        contract.model_copy(update={"research_plan": plan}), _identity()
+    )
+    payload = _build_plan_gate_payload(_model_plan_payload_state(contract, brief))
+
+    assert payload["plan"]["source"] == "model"
+    assert "**研究范围与检索词**" in payload["plan_text"]
+    assert "建筑 文化" in payload["plan_text"]
+    assert "安静 住宿" in payload["plan_text"]
+    projected = public_plan_gate_payload(payload)
+    assert projected["plan"]["source"] == "model"
+    assert {
+        term
+        for row in projected["plan"]["research_scope"]
+        for term in row["search_terms"]
+    } >= {"安静 住宿", "往返 交通", "建筑 文化"}
+    assert projected["retry_available"] is True
+    assert projected["approval_token"] == payload["approval_token"]
+
+
+def test_failed_or_unrecorded_plan_keeps_a_real_retry_path_after_the_revision_limit():
+    contract, _generation = _contract()
+    fallback = build_research_brief(contract, _identity())
+    fallback_payload = _build_plan_gate_payload(
+        _model_plan_payload_state(contract, fallback, revision=1)
+    )
+    assert fallback.research_plan_source == "deterministic_fallback"
+    assert fallback_payload["retry_available"] is True
+    assert "supplement" in fallback_payload["decision_options"]
+    assert "可补充调整后重试" in fallback_payload["plan_text"]
+
+    unrecorded = fallback.model_copy(update={"research_plan_source": "unrecorded"})
+    unrecorded_payload = _build_plan_gate_payload(
+        _model_plan_payload_state(contract, unrecorded, revision=1)
+    )
+    assert "历史计划" in unrecorded_payload["plan_text"]
+    assert "模型研究计划缺失" not in unrecorded_payload["plan_text"]
+    assert unrecorded_payload["retry_available"] is True
+    assert "supplement" in unrecorded_payload["decision_options"]
+
+    model_plan = _model_research_plan(("安静 住宿", "往返 交通", "建筑 文化"))
+    model_brief = build_research_brief(
+        contract.model_copy(update={"research_plan": model_plan}), _identity()
+    )
+    model_payload = _build_plan_gate_payload(
+        _model_plan_payload_state(contract, model_brief, revision=1)
+    )
+    assert model_payload["retry_available"] is False
+    assert model_payload["decision_options"] == ["approve", "cancel"]
+    assert "修改额度已用完" in model_payload["plan_text"]
+
+
+@pytest.mark.asyncio
+async def test_normalizer_receives_structured_identity_and_existing_constraints(monkeypatch):
+    from travel_agent.planning.requirements.constraints.loading import (
+        LoadedConstraintSources,
+    )
+    from travel_agent.planning.requirements.normalization import node as normalization_node
+
+    class _Model:
+        capabilities = SimpleNamespace(supports_json_schema=False)
+
+        def __init__(self):
+            self.payload = None
+
+        async def ainvoke(self, messages, **_kwargs):
+            self.payload = json.loads(messages[-1]["content"])
+            return json.dumps(
+                {
+                    "clauses": [
+                        {
+                            "clause_id": item["clause_id"],
+                            "disposition": "controlled_identity",
+                            "reason_code": None,
+                            "intents": [],
+                            "constraints": [],
+                        }
+                        for item in self.payload["clauses"]
+                    ],
+                    "research_plan": None,
+                },
+                ensure_ascii=False,
+            )
+
+    profile = SimpleNamespace(
+        preferences=SimpleNamespace(
+            dietary_restrictions=["花生过敏"],
+            accommodation_type="住宿必须提供电梯",
+            travel_styles=[],
+            typical_budget_level="",
+            pace="",
+            preferred_transport=[],
+        )
+    )
+
+    async def _load(_state):
+        return LoadedConstraintSources(
+            user_profile=profile,
+            manual_memory_facts=[],
+            manual_memory_truncated=False,
+            memory_facts=[],
+            missing_layers=[],
+            partial_reasons=[],
+        )
+
+    async def _pack(_state, **_kwargs):
+        return {
+            "constraints": [],
+            "hard_constraints": [],
+            "soft_preferences": [],
+            "pack_meta": {},
+        }
+
+    model = _Model()
+    monkeypatch.setattr(normalization_node, "load_constraint_sources", _load)
+    monkeypatch.setattr(normalization_node, "build_run_constraint_pack", _pack)
+    monkeypatch.setattr(normalization_node, "get_model_router", lambda: object())
+    monkeypatch.setattr(
+        normalization_node, "llm_for_task", lambda *_args, **_kwargs: model
+    )
+
+    await normalization_node.request_contract_normalizer_node(
+        TravelAgentState(
+            run_id="run_structured_input",
+            user_query="帮我规划杭州行程",
+            controlled_trip_identity=_identity(),
+            controlled_trip_identity_revision=1,
+        )
+    )
+
+    assert model.payload is not None
+    assert model.payload["controlled_identity"]["party"]["adults"] == 2
+    assert model.payload["controlled_identity"]["style"]["primary"] == "建筑与本地文化"
+    assert model.payload["clauses"][0]["source_kind"] == "current_request"
+    constraints = model.payload["existing_constraints"]
+    assert any("花生过敏" in item["value"] for item in constraints)
+    assert any(
+        "电梯" in (item.get("public_summary") or item["value"])
+        for item in constraints
+    )
+
+
+@pytest.mark.asyncio
+async def test_oversized_model_search_term_is_rejected_without_entering_the_contract():
+    from pydantic import ValidationError
+    from travel_agent.planning.requirements.research_plan_contracts import (
+        ResearchDomainPlanDraft,
+    )
+
+    with pytest.raises(ValidationError):
+        ResearchDomainPlanDraft(
+            domain="visit", focus="查找景点", search_terms=[" " * 100003]
+        )
+
+    clause = _clause(0, "帮我规划杭州行程")
+
+    class _Model:
+        capabilities = SimpleNamespace(supports_json_schema=False)
+
+        async def ainvoke(self, *_args, **_kwargs):
+            return json.dumps(
+                {
+                    "clauses": [
+                        {
+                            "clause_id": clause.clause_id,
+                            "disposition": "mapped_to_intent",
+                            "intents": [
+                                {
+                                    "kind": "objective",
+                                    "target": "trip",
+                                    "strength": "hard",
+                                    "priority": 90,
+                                    "value": {
+                                        "value_type": "scalar",
+                                        "value": "规划杭州可执行行程",
+                                    },
+                                    "verification_mode": "mixed",
+                                    "impact_stages": [
+                                        "research",
+                                        "composition",
+                                        "projection",
+                                    ],
+                                    "public_summary": "规划杭州可执行行程",
+                                }
+                            ],
+                        }
+                    ],
+                    "research_plan": {
+                        "summary": "查清杭州。",
+                        "domains": [
+                            {
+                                "domain": "visit",
+                                "focus": "查找景点。",
+                                "search_terms": [" " * 100003],
+                            }
+                        ],
+                    },
+                },
+                ensure_ascii=False,
+            )
+
+    result = await normalize_clauses(
+        clauses=[clause], controlled_identity=_identity(), llm=_Model()
+    )
+    assert result.research_plan is None
+    assert result.clauses[0].intents
+
+
+def test_legacy_brief_without_source_fields_is_unrecorded_not_a_failed_model_call():
+    from travel_agent.planning.research.brief_contracts import ResearchBriefV2
+
+    contract, _generation = _contract()
+    current = build_research_brief(contract, _identity())
+    legacy_data = current.model_dump(mode="json")
+    legacy_data.pop("research_plan_source")
+    legacy_data.pop("research_plan_summary")
+    legacy = ResearchBriefV2.model_validate(legacy_data)
+
+    assert legacy.research_plan_source == "unrecorded"
+    payload = _build_plan_gate_payload(
+        _model_plan_payload_state(contract, legacy, revision=1)
+    )
+    assert "历史计划" in payload["plan_text"]
+    assert "模型研究计划缺失" not in payload["plan_text"]

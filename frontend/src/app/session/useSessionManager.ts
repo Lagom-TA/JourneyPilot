@@ -100,7 +100,7 @@ export function useSessionManager() {
                     run_id: selectedRun.run_id,
                     gate: 'plan',
                     payload,
-                }, hasCancelledChoice ? 'cancelled' : 'pending');
+                }, hasCancelledChoice ? 'cancelled' : 'pending', 'restored');
             }
         }
         const latestSummaryCard = [...detail.messages]

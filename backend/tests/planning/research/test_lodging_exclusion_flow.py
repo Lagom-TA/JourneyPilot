@@ -1,6 +1,7 @@
 """真实准备到住宿调研分派的离线集成回归。"""
 
 import json
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +19,7 @@ from travel_agent.planning.delivery.minimum_draft import (
 from travel_agent.planning.requirements import approval
 from travel_agent.planning.requirements.constraints import loading
 from travel_agent.planning.requirements.normalization import node as normalization
+from travel_agent.planning.research import research_plan_node
 from travel_agent.planning.research.accommodation import binding
 from travel_agent.planning.research.accommodation.discovery import (
     discover_deterministic_hotels,
@@ -29,7 +31,12 @@ from travel_agent.planning.research.dispatch import (
 )
 from travel_agent.planning.research.domains import ResearchDomain
 from travel_agent.planning.research.plan import planner_node
+from travel_agent.planning.research.research_plan_node import (
+    research_plan_generator_node,
+)
 from travel_agent.planning.state import TravelAgentState
+
+_BUDGET = re.compile(r"总预算\s*\d+(?:\.\d+)?(?:\s*元)")
 
 
 def _place(name):
@@ -84,61 +91,91 @@ class _Assessment:
         )
 
 
-class _Normalizer:
+class _PlanningModel:
+    capabilities = SimpleNamespace(supports_json_schema=False)
+
     async def ainvoke(self, messages, **kwargs):
-        rows = []
-        for clause in json.loads(messages[-1]["content"])["clauses"]:
-            text = clause["text"]
-            excluded = "不要查酒店" in text
-            projection = "已订住宿地址" in text
-            if projection:
-                intent = {
-                    "kind": "output_requirement",
-                    "target": "lodging",
-                    "strength": "hard",
-                    "priority": 90,
-                    "value": {
-                        "value_type": "output_requirement",
-                        "required_field": "用户提供的已订住宿地址",
-                        "applies_to": "trip",
-                    },
-                    "verification_mode": "deterministic",
-                    "impact_stages": ["projection"],
-                    "public_summary": "把用户提供的已订住宿地址列入报告",
-                }
-            else:
-                intent = {
-                    "kind": (
-                        "must_exclude" if excluded else "attribute_preference"
-                    ),
-                    "target": "lodging" if excluded else "trip",
-                    "strength": "hard" if excluded else "soft",
-                    "priority": 100 if excluded else 50,
-                    "value": (
-                        {"value_type": "category", "categories": ["酒店"]}
-                        if excluded
-                        else {"value_type": "scalar", "value": text[:500]}
-                    ),
-                    "verification_mode": (
-                        "deterministic" if excluded else "semantic"
-                    ),
-                    "impact_stages": (
-                        ["research", "composition"]
-                        if excluded
-                        else ["composition"]
-                    ),
-                    "public_summary": text[:300],
-                }
-            rows.append(
+        payload = json.loads(messages[-1]["content"])
+        if "clauses" in payload:
+            return json.dumps(
                 {
-                    "clause_id": clause["clause_id"],
-                    "disposition": "mapped_to_intent",
-                    "reason_code": None,
-                    "intents": [intent],
-                    "constraints": [],
+                    "clauses": [
+                        self._clause_row(clause) for clause in payload["clauses"]
+                    ]
+                },
+                ensure_ascii=False,
+            )
+        domains = {}
+        for domain in payload["required_domains"]:
+            candidates = [
+                item for item in payload["candidates"] if item["domain"] == domain
+            ]
+            selected = candidates[0]
+            domains[domain] = {
+                "focus_candidate_ids": [selected["candidate_id"]],
+                "search_candidate_ids": [selected["candidate_id"]],
+            }
+        return json.dumps({"domains": domains}, ensure_ascii=False)
+
+    def _clause_row(self, clause):
+        text = clause["text"]
+        excluded = "不要查酒店" in text or "避开酒店" in text
+        projection = "已订住宿地址" in text
+        constraints = []
+        budget = _BUDGET.search(text)
+        if budget is not None:
+            amount = float(re.search(r"\d+(?:\.\d+)?", budget.group(0)).group(0))
+            constraints.append(
+                {
+                    "category": "budget_cap",
+                    "value": budget.group(0),
+                    "params": {
+                        "amount": amount,
+                        "currency": "CNY",
+                        "per": "total",
+                    },
                 }
             )
-        return json.dumps({"clauses": rows}, ensure_ascii=False)
+        if projection:
+            intent = {
+                "kind": "attribute_preference",
+                "target": "trip",
+                "strength": "hard",
+                "priority": 90,
+                "value": {"value_type": "scalar", "value": text},
+                "verification_mode": "deterministic",
+                "impact_stages": ["projection"],
+                "public_summary": "把用户提供的已订住宿地址列入报告",
+            }
+        elif excluded:
+            intent = {
+                "kind": "must_exclude",
+                "target": "lodging",
+                "strength": "hard",
+                "priority": 100,
+                "value": {"value_type": "category", "categories": ["酒店"]},
+                "verification_mode": "deterministic",
+                "impact_stages": ["research", "composition"],
+                "public_summary": text[:300],
+            }
+        else:
+            intent = {
+                "kind": "attribute_preference",
+                "target": "trip",
+                "strength": "soft",
+                "priority": 50,
+                "value": {"value_type": "scalar", "value": text[:500]},
+                "verification_mode": "semantic",
+                "impact_stages": ["composition"],
+                "public_summary": text[:300],
+            }
+        return {
+            "clause_id": clause["clause_id"],
+            "disposition": "mapped_to_intent",
+            "reason_code": None,
+            "intents": [intent],
+            "constraints": constraints,
+        }
 
 
 class _Memory:
@@ -150,6 +187,62 @@ class _Memory:
 
     async def search_facts(self, *args, **kwargs):
         return []
+
+
+def _route_after_normalization(state: TravelAgentState) -> str:
+    if state.request_contract_candidate is not None:
+        return "plan_gate"
+    return "brief"
+
+
+def _install_boundaries(monkeypatch, model):
+    monkeypatch.setattr(intake, "get_model_router", lambda: object())
+    monkeypatch.setattr(intake, "llm_for_task", lambda *args, **kwargs: _Assessment())
+    for module in (normalization, loading):
+        monkeypatch.setattr(module, "get_model_router", lambda: object())
+        monkeypatch.setattr(module, "llm_for_task", lambda *args, **kwargs: model)
+    monkeypatch.setattr(loading, "UserProfileMemory", _Memory)
+    monkeypatch.setattr(loading, "MemoryStore", _Memory)
+    monkeypatch.setattr(research_plan_node, "get_model_router", lambda: object())
+    monkeypatch.setattr(
+        research_plan_node, "llm_for_task", lambda *args, **kwargs: model
+    )
+
+
+def _graph():
+    builder = StateGraph(TravelAgentState)
+    nodes = [
+        ("request_contract_normalizer", normalization.request_contract_normalizer_node),
+        ("research_plan_generator", research_plan_generator_node),
+        ("brief", research_brief_builder_node),
+        ("draft", minimum_delivery_draft_builder_node),
+        ("planner", planner_node),
+        ("plan_gate", approval.plan_gate_node),
+        ("dispatcher", dispatcher_node),
+    ]
+    for name, node in nodes:
+        builder.add_node(name, node)
+    builder.add_edge(START, "request_contract_normalizer")
+    builder.add_conditional_edges(
+        "request_contract_normalizer",
+        _route_after_normalization,
+        {"plan_gate": "plan_gate", "brief": "brief"},
+    )
+    builder.add_edge("research_plan_generator", "brief")
+    builder.add_edge("brief", "draft")
+    builder.add_edge("draft", "planner")
+    builder.add_edge("planner", "plan_gate")
+    builder.add_conditional_edges(
+        "plan_gate",
+        approval.route_after_plan_gate,
+        {
+            "request_contract_normalizer": "request_contract_normalizer",
+            "research_plan_generator": "research_plan_generator",
+            "dispatcher": "dispatcher",
+        },
+    )
+    builder.add_edge("dispatcher", END)
+    return builder.compile(checkpointer=InMemorySaver())
 
 
 @pytest.mark.parametrize(
@@ -166,15 +259,7 @@ async def test_domain_wide_lodging_exclusion_reaches_plan_and_discovery(
     monkeypatch, resources, initial_text, projection_only
 ):
     resources.checkpointer = object()
-    monkeypatch.setattr(intake, "get_model_router", lambda: object())
-    monkeypatch.setattr(intake, "llm_for_task", lambda *args, **kwargs: _Assessment())
-    for module in (normalization, loading):
-        monkeypatch.setattr(module, "get_model_router", lambda: object())
-        monkeypatch.setattr(
-            module, "llm_for_task", lambda *args, **kwargs: _Normalizer()
-        )
-    monkeypatch.setattr(loading, "UserProfileMemory", _Memory)
-    monkeypatch.setattr(loading, "MemoryStore", _Memory)
+    _install_boundaries(monkeypatch, _PlanningModel())
 
     body = {
         "messages": [
@@ -205,38 +290,7 @@ async def test_domain_wide_lodging_exclusion_reaches_plan_and_discovery(
     assert isinstance(prepared, PreparedChat)
     assert "按合理默认安排，不再补充" in prepared.user_message
     try:
-        builder = StateGraph(TravelAgentState)
-        nodes = [
-            (
-                "request_contract_normalizer",
-                normalization.request_contract_normalizer_node,
-            ),
-            ("brief", research_brief_builder_node),
-            ("draft", minimum_delivery_draft_builder_node),
-            ("planner", planner_node),
-            ("plan_gate", approval.plan_gate_node),
-            ("dispatcher", dispatcher_node),
-        ]
-        for name, node in nodes:
-            builder.add_node(name, node)
-        for source, target in [
-            (START, "request_contract_normalizer"),
-            ("request_contract_normalizer", "brief"),
-            ("brief", "draft"),
-            ("draft", "planner"),
-            ("planner", "plan_gate"),
-        ]:
-            builder.add_edge(source, target)
-        builder.add_conditional_edges(
-            "plan_gate",
-            approval.route_after_plan_gate,
-            {
-                "request_contract_normalizer": "request_contract_normalizer",
-                "dispatcher": "dispatcher",
-            },
-        )
-        builder.add_edge("dispatcher", END)
-        graph = builder.compile(checkpointer=InMemorySaver())
+        graph = _graph()
         config = {
             "configurable": {
                 "thread_id": prepared.trip_run.run_id,
@@ -251,30 +305,62 @@ async def test_domain_wide_lodging_exclusion_reaches_plan_and_discovery(
             "controlled_trip_identity": _IDENTITY,
         }
 
-        before = await graph.ainvoke(TravelAgentState(**initial), config)
-        assert "默认安排" in before["__interrupt__"][0].value["plan_text"]
+        first_plan = await graph.ainvoke(TravelAgentState(**initial), config)
+        before_payload = first_plan["__interrupt__"][0].value
+        assert before_payload.get("phase") is None
+        assert "默认安排" in before_payload["plan_text"]
+        assert before_payload["approval_token"].startswith(
+            "plan_gate.approval.v1:"
+        )
+
+        amended = await graph.ainvoke(
+            Command(
+                resume={
+                    "action": "supplement",
+                    "content": "不要查酒店",
+                    "approval_token": before_payload["approval_token"],
+                }
+            ),
+            config,
+        )
+        question = amended["__interrupt__"][0].value
+        # 排除项先给简短确认问题；此时还没有计划或研究授权。
+        assert question["plan"]["steps"] == []
+        assert "不要查酒店" in question["plan_text"]
+        assert "approve" not in question["decision_options"]
+        assert amended["research_brief"] is None
+        if projection_only:
+            assert any(
+                item.target.value == "trip"
+                and item.kind.value == "attribute_preference"
+                and item.impact_stages == ["projection"]
+                and "已订住宿地址" in item.public_summary
+                for item in amended["intent_spec"].active_items
+            )
 
         after = await graph.ainvoke(
-            Command(resume={"action": "supplement", "content": "不要查酒店"}),
+            Command(
+                resume={
+                    "action": "supplement",
+                    "content": "是的，要避开酒店",
+                    "approval_token": question["approval_token"],
+                }
+            ),
             config,
+        )
+        payload = after["__interrupt__"][0].value
+        assert payload["plan"]["steps"], (
+            "exclusion confirmation must resume planning instead of asking again"
         )
         if projection_only:
             assert any(
-                item.target.value == "lodging"
-                and item.kind.value == "output_requirement"
-                and item.impact_stages == ["projection"]
-                for item in after["intent_spec"].active_items
-            )
-            assert any(
                 "已订住宿地址" in requirement
-                for requirement in after[
-                    "research_brief"
-                ].delivery_requirements
+                for requirement in after["research_brief"].delivery_requirements
             )
-        payload = after["__interrupt__"][0].value
-        assert payload["revision"] == 1
+        assert payload["revision"] == 2
+        assert payload["approval_token"] != before_payload["approval_token"]
         assert (
-            before["planning_generation"].generation_id
+            first_plan["planning_generation"].generation_id
             != after["planning_generation"].generation_id
         )
         assert payload["plan"]["steps"] == [
@@ -300,10 +386,17 @@ async def test_domain_wide_lodging_exclusion_reaches_plan_and_discovery(
         )
 
         approved = await graph.ainvoke(
-            Command(resume={"action": "approve"}), config
+            Command(
+                resume={
+                    "action": "approve",
+                    "approval_token": payload["approval_token"],
+                }
+            ),
+            config,
         )
         assert approved["planning_generation"] == after["planning_generation"]
         assert approved["minimum_delivery_draft"].planning_authorized
+        assert approved["research_operation_approval"] is not None
         assert approved["run_budget"] and approved["run_deadline"]
 
         state = TravelAgentState.model_validate(approved)

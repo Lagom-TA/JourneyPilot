@@ -18,7 +18,8 @@ from travel_agent.planning.itinerary.mutation_contracts import CompositionMutati
 from travel_agent.planning.outcomes import DeliveryFailureRecord
 from travel_agent.planning.requirements.generation_contracts import PlanningGeneration
 from travel_agent.planning.requirements.inputs import MinimumDeliveryDraft
-from travel_agent.planning.requirements.intent_contracts import IntentSpec
+from travel_agent.planning.requirements.intent_contracts import IntentSpec, canonical_json_hash
+from travel_agent.planning.requirements.confirmation_contracts import ConfirmationReceipt
 from travel_agent.planning.requirements.request_contracts import IntentAmendment
 from travel_agent.planning.requirements.request_contracts import (
     IntentAmendmentRejection,
@@ -32,6 +33,11 @@ from travel_agent.planning.research.evidence import FactStoreSnapshot
 from travel_agent.planning.research.evidence import FieldProvenance
 from travel_agent.planning.research.evidence import SourceRecord
 from travel_agent.planning.research.packets import ResearchPacket
+from travel_agent.planning.research.operation_authority import (
+    ApprovedOperationManifest,
+    OperationApproval,
+    research_approval_confirmation_hash,
+)
 from travel_agent.planning.research.provider_contracts import ProviderEvidenceOutcome
 from travel_agent.planning.research.provider_outcomes import (
     merge_provider_evidence_outcomes,
@@ -210,6 +216,7 @@ class TravelAgentState(BaseModel):
     session_id: str = ""
     user_id: str = LOCAL_USER_ID
     user_query: str = ""
+    intake_evidence_sources: List[Dict[str, Any]] = Field(default_factory=list, max_length=256)
     run_id: str = ""
 
     controlled_trip_identity: Dict[str, Any] = Field(default_factory=dict)
@@ -217,12 +224,21 @@ class TravelAgentState(BaseModel):
     route_decision: Dict[str, Any] = Field(default_factory=dict)
 
     request_contract: Optional[RequestContract] = None
+    request_contract_candidate: Optional[RequestContract] = None
+    research_plan_error: Optional[Dict[str, str]] = None
+    research_plan_retry_count: int = Field(default=0, ge=0)
+    clarified_exclusion_keys: List[str] = Field(default_factory=list)
+    semantic_candidate_hash: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    semantic_receipt: Optional[ConfirmationReceipt] = None
     intent_spec: Optional[IntentSpec] = None
     intent_spec_revision: int = Field(default=0, ge=0)
     planning_generation: Optional[PlanningGeneration] = None
     research_brief: Optional[ResearchBriefV2] = None
     capability_plan: Optional[CapabilityPlan] = None
     research_query_plan: Optional[ResearchQueryPlan] = None
+    research_operation_manifest: Optional[ApprovedOperationManifest] = None
+    research_operation_approval: Optional[OperationApproval] = None
+    research_operation_limitations: List[str] = Field(default_factory=list)
     previous_selected_candidate_ids: List[str] = Field(default_factory=list)
 
     trip_summary_card: Dict[str, Any] = Field(default_factory=dict)
@@ -302,6 +318,9 @@ class TravelAgentState(BaseModel):
     pending_intent_amendments: Annotated[List[IntentAmendment], _replace_amendments] = (
         Field(default_factory=list)
     )
+    unresolved_intent_amendments: Annotated[List[IntentAmendment], _replace_amendments] = (
+        Field(default_factory=list)
+    )
     intent_amendment_resume_node: Annotated[
         Optional[str], _take_latest_value_allow_clear
     ] = None
@@ -352,19 +371,27 @@ class TravelAgentState(BaseModel):
         校验放在共享状态边界：格式不合法的 checkpoint 不应恢复出与 Draft
         不匹配的预算。
         """
-        if self.request_contract is not None:
+        if self.semantic_receipt is not None:
+            if (
+                self.semantic_receipt.run_id != self.run_id
+                or self.semantic_receipt.session_id != (self.session_id or self.run_id)
+                or self.semantic_receipt.identity_hash != canonical_json_hash(self.controlled_trip_identity)
+                or self.semantic_receipt.candidate_contract_hash != self.semantic_candidate_hash
+            ):
+                raise ValueError("semantic receipt does not match the current run, identity or candidate")
+        if self.request_contract is not None and self.request_contract_candidate is not None:
+            raise ValueError("tentative and authorized request contracts must not coexist")
+        contract = self.request_contract or self.request_contract_candidate
+        if contract is not None:
             if self.intent_spec is None or self.planning_generation is None:
                 raise ValueError(
                     "request contract requires intent and planning generation state"
                 )
-            if self.request_contract.intent_spec != self.intent_spec:
+            if contract.intent_spec != self.intent_spec:
                 raise ValueError(
                     "state intent specification differs from request contract"
                 )
-            if (
-                self.request_contract.generation_id
-                != self.planning_generation.generation_id
-            ):
+            if contract.generation_id != self.planning_generation.generation_id:
                 raise ValueError("request contract and planning generation differ")
             if self.intent_spec_revision != self.intent_spec.revision:
                 raise ValueError(
@@ -384,6 +411,31 @@ class TravelAgentState(BaseModel):
                 raise ValueError(
                     "research query plan belongs to an obsolete intent generation"
                 )
+        if (self.research_operation_manifest is None) != (self.research_operation_approval is None):
+            raise ValueError("operation manifest and independent approval must coexist")
+        if self.research_operation_approval is not None:
+            manifest = self.research_operation_manifest
+            approval = self.research_operation_approval
+            if (
+                approval.approved_manifest_hash != manifest.manifest_hash
+                or approval.approval_token != manifest.approval_token
+                or approval.run_id != self.run_id
+                or manifest.run_id != self.run_id
+                or approval.identity_hash != canonical_json_hash(self.controlled_trip_identity)
+                or manifest.identity_hash != approval.identity_hash
+                or self.research_query_plan is None
+                or approval.query_plan_hash != self.research_query_plan.content_hash
+                or manifest.query_plan_hash != approval.query_plan_hash
+                or self.request_contract is None
+                or approval.confirmation_hash != research_approval_confirmation_hash(
+                    self.request_contract.content_hash, approval.approval_token,
+                )
+                or manifest.confirmation_hash != approval.confirmation_hash
+                or self.planning_generation is None
+                or approval.generation_id != self.planning_generation.generation_id
+                or manifest.generation_id != approval.generation_id
+            ):
+                raise ValueError("operation approval does not match the authorized run state")
         if self.capability_plan is not None:
             if self.research_query_plan is None:
                 raise ValueError("capability plan requires a research query plan")

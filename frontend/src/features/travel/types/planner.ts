@@ -1,7 +1,7 @@
 export type PlaceKind = 'city' | 'administrative_area' | 'island' | 'scenic_area' | 'airport' | 'train_station' | 'country' | 'poi' | 'hotel' | 'restaurant';
 export type JourneyRoute = 'trip_planning' | 'destination_discovery' | 'fast_answer' | 'trip_refinement';
 export type TripSupplementCategory = 'food' | 'transport' | 'accommodation' | 'pace' | 'must_do' | 'other';
-export type PlanGateDecisionAction = 'approve' | 'edit' | 'supplement' | 'cancel';
+export type PlanGateDecisionAction = 'approve' | 'edit' | 'supplement' | 'retry' | 'cancel';
 export interface PlaceIdentity {
     place_id: string;
     provider: 'osm' | 'amap' | 'manual_verified';
@@ -84,6 +84,8 @@ export interface IntakeDraft {
     confirmed_destinations: PlaceIdentity[];
 }
 export interface GuidedIntakeState {
+    intake_id?: string | null;
+    intake_revision?: number;
     draft?: IntakeDraft;
     understanding_status?: 'ready' | 'unavailable';
     raw_input: string;
@@ -95,5 +97,6 @@ export interface GuidedIntakeState {
     recognized_requirements?: string[];
     questions?: IntakeQuestion[];
     answers?: IntakeAnswer[];
+    archived_answers?: Array<{ question_id: string; question: string; answer: string }>;
     additional_requirements?: string;
 }

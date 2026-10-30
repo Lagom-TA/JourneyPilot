@@ -1,10 +1,13 @@
 from __future__ import annotations
+import hmac
 import logging
 import uuid
 from typing import Any, Dict, Optional
 from travel_agent.config.loader import get_settings
 from travel_agent.conversation.intake import (
     IntakeUnderstandingUnavailable,
+    IntakeRevisionStale,
+    advance_intake_revision,
     apply_intake_answers,
     controlled_identity_summary,
     intake_answers_complete,
@@ -14,6 +17,8 @@ from travel_agent.conversation.intake import (
     validate_intake_answers,
 )
 from travel_agent.conversation.intake_contracts import RouteName
+from travel_agent.conversation.intake_evidence import intake_evidence_sources
+from travel_agent.conversation.intake_lock import intake_fingerprint, intake_session_lock
 from travel_agent.planning.requirements.identity_amendments import (
     classify_locked_identity_intent,
 )
@@ -69,6 +74,58 @@ class PreparedChat:
     history: list
     session_anchor_data: Any
     session_compressed: bool
+    intake_fingerprint: Optional[str] = None
+    intake_evidence_sources: Optional[list[dict[str, Any]]] = None
+
+
+def _pending_plan_gate_payload(detail: Any) -> Dict[str, Any]:
+    """读取持久化 gate payload；没有 plan gate 时返回空对象。"""
+
+    state = getattr(detail, "state", None)
+    choice = getattr(state, "pending_user_choice", None)
+    if not isinstance(choice, dict) or choice.get("gate") != "plan":
+        return {}
+    payload = choice.get("payload")
+    return dict(payload) if isinstance(payload, dict) else {}
+
+
+def _validate_gate_decision_version(detail: Any, decision: Any) -> None:
+    """非取消决定必须绑定当前持久化的 gate 版本。
+
+    这里先挡住旧页面提交的 A 版决定；checkpoint 消费处还会用当前 state 重建
+    的 payload 再校验一次，覆盖“校验后 gate 又被更新”的竞态。
+
+    没有 token 的旧 checkpoint（本次版本之前写入的 gate）不能静默升级为可批准
+    状态，也不能卡死：这里放它进入 checkpoint 恢复，由 ``plan_gate_node`` 用
+    确定性重投影重新弹出一版带 token 的 gate。那次重投影不调用模型、不写入
+    gate 决定，用户拿到新 token 后再确认；取消仍由 ``plan_gate_node`` 放行。
+    """
+
+    if decision is None or decision.action == "cancel":
+        return
+    payload = _pending_plan_gate_payload(detail)
+    expected = str(payload.get("approval_token") or "").strip()
+    supplied = str(decision.approval_token or "").strip()
+    if not expected:
+        # 旧 gate：没有版本凭据可对照，只有重新展示一条路。
+        return
+    try:
+        matches = bool(supplied) and hmac.compare_digest(
+            supplied.encode("utf-8"), expected.encode("utf-8")
+        )
+    except UnicodeEncodeError:
+        matches = False
+    if matches:
+        return
+    revision = payload.get("revision")
+    raise PreparationRefused(
+        PreparationRejection.GATE_VERSION_STALE,
+        current_revision=(
+            revision
+            if isinstance(revision, int) and not isinstance(revision, bool)
+            else None
+        ),
+    )
 
 
 def _resume_blocked_by_projection_failure(detail: Any) -> bool:
@@ -92,7 +149,53 @@ async def check_input_guard(user_message: str):
     return await guard.check(user_message)
 
 
+async def _save_intake_snapshot(memory: Any, previous: Any, **kwargs: Any) -> None:
+    try:
+        await memory.save_guided_intake(
+            **kwargs,
+            expected_revision=previous.intake_revision if previous is not None else None,
+            expected_intake_id=previous.intake_id if previous is not None else None,
+            expect_absent=previous is None,
+        )
+    except IntakeRevisionStale as exc:
+        raise PreparationRefused(
+            PreparationRejection.INTAKE_VERSION_STALE, current_revision=exc.current_revision,
+        ) from exc
+
+
 async def prepare_chat(
+    request: ChatRequest,
+    *,
+    trip_run_store,
+    chat_session_memory,
+    run_execution_store,
+    travel_workflow,
+    checkpointer,
+) -> PreparedChat | ImmediateChat:
+    user_msg = next(
+        (item for item in reversed(request.messages) if item.role == "user" and item.content.strip()),
+        None,
+    )
+    session_id = request.session_id
+    if not session_id and user_msg is not None and user_msg.message_id:
+        session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{LOCAL_USER_ID}:session:{user_msg.message_id}"))
+    if not session_id and user_msg is not None:
+        session_id = str(uuid.uuid4())
+        request = request.model_copy(update={"session_id": session_id})
+    kwargs = {
+        "trip_run_store": trip_run_store,
+        "chat_session_memory": chat_session_memory,
+        "run_execution_store": run_execution_store,
+        "travel_workflow": travel_workflow,
+        "checkpointer": checkpointer,
+    }
+    if session_id and not request.run_id:
+        async with intake_session_lock(session_id):
+            return await _prepare_chat(request, **kwargs)
+    return await _prepare_chat(request, **kwargs)
+
+
+async def _prepare_chat(
     request: ChatRequest,
     *,
     trip_run_store,
@@ -117,6 +220,8 @@ async def prepare_chat(
     session_id = request.session_id or str(uuid.uuid5(uuid.NAMESPACE_URL, f"{LOCAL_USER_ID}:session:{user_message_id}"))
     new_run_id = "trip_" + uuid.uuid5(uuid.NAMESPACE_URL, f"{LOCAL_USER_ID}:{session_id}:{user_message_id}").hex
     message_id = str(uuid.uuid4())
+    accepted_intake_fingerprint: Optional[str] = None
+    accepted_intake_sources: Optional[list[dict[str, Any]]] = None
     if request.route_decision is not None:
         route_decision = request.route_decision
     else:
@@ -279,26 +384,52 @@ async def prepare_chat(
         if answers_submitted:
             if saved_intake is None:
                 raise PreparationRefused(PreparationRejection.INTAKE_NOT_FOUND)
+            if (
+                not {"intake_id", "intake_revision"} <= request.guided_intake.model_fields_set
+                or request.guided_intake.intake_id != saved_intake.intake_id
+                or request.guided_intake.intake_revision != saved_intake.intake_revision
+            ):
+                raise PreparationRefused(
+                    PreparationRejection.INTAKE_VERSION_STALE,
+                    current_revision=saved_intake.intake_revision,
+                )
             try:
                 guided = apply_intake_answers(saved_intake, request.guided_intake)
+            except IntakeRevisionStale as exc:
+                raise PreparationRefused(
+                    PreparationRejection.INTAKE_VERSION_STALE, current_revision=exc.current_revision,
+                ) from exc
             except ValueError as exc:
                 raise PreparationRefused(PreparationRejection.INTAKE_INVALID, explanation=str(exc)) from exc
         else:
             guided = saved_intake
+            if saved_intake is not None:
+                readonly_replay = (
+                    not intake_answers_complete(saved_intake)
+                    and user_message == saved_intake.raw_input
+                    and request.intake_destination is None
+                    and (request.controlled_trip_identity is None or request.controlled_trip_identity == saved_intake.controlled_identity)
+                )
+                if readonly_replay:
+                    async def _existing_intake_sse():
+                        yield {"type": "guided_intake", "message_id": message_id, "session_id": session_id, "guided_intake": saved_intake.model_dump(mode="json")}
+                        yield {"type": "chat_complete", "message_id": message_id}
+                    return ImmediateChat(_existing_intake_sse())
+                if request.intake_id != saved_intake.intake_id or request.intake_revision != saved_intake.intake_revision:
+                    raise PreparationRefused(
+                        PreparationRejection.INTAKE_VERSION_STALE,
+                        current_revision=saved_intake.intake_revision,
+                    )
 
         if request.controlled_trip_identity is not None:
             # 条件表单入口也必须先经过与自然语言入口相同的实质缺口评估。
             # 已答/已评估过的状态不会被重新出题；新身份才触发一次带身份的评估。
             identity = request.controlled_trip_identity
-            # 之前的评估失败不能因为客户端补齐身份、附带 guided_intake 提交就被当作
-            # 已评估。只有评估成功过，或已保存的待答问题仍在等待回答时才跳过重评估。
+            # 一轮问题答完后必须重新评估：答案或补充可能引出新的实质缺口。
+            # 未答完时重展示服务端保存的问题，避免刷新或部分提交丢失问题。
             needs_assessment = guided is None or (
                 guided.understanding_status == "unavailable"
-            ) or (
-                not answers_submitted
-                and guided.controlled_identity is None
-                and intake_answers_complete(guided)
-            )
+            ) or intake_answers_complete(guided)
             if needs_assessment:
                 try:
                     guided = await understand_trip_intake(
@@ -309,7 +440,7 @@ async def prepare_chat(
                     )
                 except IntakeUnderstandingUnavailable as exc:
                     raise PreparationRefused(
-                        PreparationRejection.INTAKE_UNAVAILABLE
+                        PreparationRejection.INTAKE_UNAVAILABLE, explanation=str(exc)
                     ) from exc
 
             guided = guided.model_copy(
@@ -326,7 +457,9 @@ async def prepare_chat(
                         PreparationRejection.INTAKE_INVALID,
                         explanation=str(exc),
                     ) from exc
-                await chat_session_memory.save_guided_intake(
+                guided = advance_intake_revision(saved_intake, guided)
+                await _save_intake_snapshot(
+                    chat_session_memory, saved_intake,
                     session_id=session_id,
                     user_id=LOCAL_USER_ID,
                     title_seed=guided.raw_input,
@@ -351,9 +484,25 @@ async def prepare_chat(
                 raise PreparationRefused(
                     PreparationRejection.INTAKE_INVALID, explanation=str(exc)
                 ) from exc
+            guided = advance_intake_revision(saved_intake, guided)
+            try:
+                accepted_intake_sources = intake_evidence_sources(guided)
+            except ValueError as exc:
+                raise PreparationRefused(
+                    PreparationRejection.INTAKE_UNAVAILABLE,
+                    explanation="旅行需求过多或不完整，请重新核对后继续。",
+                ) from exc
             user_message = merge_intake_answers(guided) + (
                 "\n已确认旅行信息：" + controlled_identity_summary(identity)
             )
+            # The assessment snapshot is saved before Run creation. Execution
+            # verifies it again, so a newer answer cannot be silently cleared or run.
+            await _save_intake_snapshot(
+                chat_session_memory, saved_intake,
+                session_id=session_id, user_id=LOCAL_USER_ID,
+                title_seed=guided.raw_input, guided_intake=guided,
+            )
+            accepted_intake_fingerprint = intake_fingerprint(guided)
         else:
             if guided is None:
                 try:
@@ -368,7 +517,9 @@ async def prepare_chat(
                 if request.intake_destination.kind not in DESTINATION_PLACE_KINDS:
                     raise PreparationRefused(PreparationRejection.INTAKE_INVALID, explanation="请选择可用于规划的城市或区域")
                 guided = guided.model_copy(update={"seed_destinations": [request.intake_destination], "draft": guided.draft.model_copy(update={"destination_queries": [request.intake_destination.name], "destination_decided": True, "confirmed_destinations": [request.intake_destination]})})
-            await chat_session_memory.save_guided_intake(
+            guided = advance_intake_revision(saved_intake, guided)
+            await _save_intake_snapshot(
+                chat_session_memory, saved_intake,
                 session_id=session_id, user_id=LOCAL_USER_ID, title_seed=user_message,
                 guided_intake=guided, user_message_id=user_message_id, assistant_message_id=message_id,
             )
@@ -436,6 +587,8 @@ async def prepare_chat(
             raise PreparationRefused(PreparationRejection.GATE_DECISION_REQUIRED)
         if gate_resume and not gate_node:
             raise PreparationRefused(PreparationRejection.GATE_NODE_REQUIRED)
+        if gate_resume:
+            _validate_gate_decision_version(detail, request.gate_decision)
 
         checkpoint_resume = (
             use_deep_research
@@ -571,6 +724,8 @@ async def prepare_chat(
         history=history,
         session_anchor_data=session_anchor_data,
         session_compressed=session_compressed,
+        intake_fingerprint=accepted_intake_fingerprint,
+        intake_evidence_sources=accepted_intake_sources,
     )
 
 

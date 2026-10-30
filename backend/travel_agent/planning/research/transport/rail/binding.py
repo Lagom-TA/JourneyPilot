@@ -53,6 +53,46 @@ logger = logging.getLogger(__name__)
 _DOMESTIC_RAIL_TOOL_NAMES = frozenset({"get-tickets", "get-station-code-of-citys"})
 
 
+def build_rail_station_code_arguments(*, origin_name: str, dest_name: str) -> Dict[str, Any]:
+    return {
+        "citys": (
+            f"{_normalize_cn_city_for_rail(origin_name)}|"
+            f"{_normalize_cn_city_for_rail(dest_name)}"
+        )
+    }
+
+
+def build_rail_ticket_arguments(
+    *, service_date: str, from_code: str, to_code: str
+) -> Dict[str, Any]:
+    return {
+        "date": service_date,
+        "fromStation": from_code,
+        "toStation": to_code,
+    }
+
+
+def rail_ticket_station_pairs(
+    *,
+    origin_name: str,
+    dest_name: str,
+    from_code: str,
+    to_code: str,
+) -> List[tuple[str, str]]:
+    """与执行时相同的站码尝试顺序：内置候选优先，再补当前站码对。"""
+    query_origin = _normalize_cn_city_for_rail(origin_name)
+    query_dest = _normalize_cn_city_for_rail(dest_name)
+    station_pairs: List[tuple[str, str]] = []
+    for left in _builtin_station_telecode_candidates(query_origin) or [from_code]:
+        for right in _builtin_station_telecode_candidates(query_dest) or [to_code]:
+            pair = (left, right)
+            if pair not in station_pairs:
+                station_pairs.append(pair)
+    if (from_code, to_code) not in station_pairs:
+        station_pairs.append((from_code, to_code))
+    return station_pairs
+
+
 def _build_rail_route_envelope(
     *,
     train: Mapping[str, Any],
@@ -243,7 +283,9 @@ async def _bind_one_rail_leg(
             try:
                 code_env = await execute_tool(
                     "get-station-code-of-citys",
-                    {"citys": f"{query_origin}|{query_dest}"},
+                    build_rail_station_code_arguments(
+                        origin_name=origin_name, dest_name=dest_name
+                    ),
                     allowed_tool_names=_DOMESTIC_RAIL_TOOL_NAMES,
                     node_name=_NODE_NAME,
                     activation_source="domestic_rail_station_code",
@@ -309,15 +351,12 @@ async def _bind_one_rail_leg(
                 query_dest,
             )
 
-        station_pairs: List[tuple[str, str]] = []
-        for left in _builtin_station_telecode_candidates(query_origin) or [from_code]:
-            for right in _builtin_station_telecode_candidates(query_dest) or [to_code]:
-                pair = (left, right)
-                if pair not in station_pairs:
-                    station_pairs.append(pair)
-
-        if (from_code, to_code) not in station_pairs:
-            station_pairs.append((from_code, to_code))
+        station_pairs = rail_ticket_station_pairs(
+            origin_name=origin_name,
+            dest_name=dest_name,
+            from_code=from_code,
+            to_code=to_code,
+        )
 
         ticket_dates = [
             (
@@ -348,11 +387,11 @@ async def _bind_one_rail_leg(
             for pair in station_pairs:
                 env = await execute_tool(
                     "get-tickets",
-                    {
-                        "date": query_date,
-                        "fromStation": pair[0],
-                        "toStation": pair[1],
-                    },
+                    build_rail_ticket_arguments(
+                        service_date=query_date,
+                        from_code=pair[0],
+                        to_code=pair[1],
+                    ),
                     allowed_tool_names=_DOMESTIC_RAIL_TOOL_NAMES,
                     node_name=_NODE_NAME,
                     activation_source="domestic_rail_tickets",

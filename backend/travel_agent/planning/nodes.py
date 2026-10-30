@@ -10,6 +10,9 @@ NODE_REQUEST_CONTRACT_NORMALIZER = "request_contract_normalizer"
 NODE_RESEARCH_BRIEF_BUILDER = "research_brief_builder"
 
 
+NODE_RESEARCH_PLAN_GENERATOR = "research_plan_generator"
+
+
 NODE_INTENT_AMENDMENT_ROUTER = "intent_amendment_router"
 
 

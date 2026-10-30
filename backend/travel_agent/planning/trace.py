@@ -14,6 +14,7 @@ NODE_PHASES: Dict[str, str] = {
     "scope_clarifier": "scope",
     "request_contract_normalizer": "scope",
     "research_brief_builder": "scope",
+    "research_plan_generator": "scope",
     "intent_amendment_router": "planning",
     "minimum_delivery_draft_builder": "planning",
     "destination_geo_resolver": "planning",

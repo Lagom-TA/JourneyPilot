@@ -20,6 +20,7 @@ from travel_agent.planning.requirements.normalization.contracts import (
     RequestContractNormalizationResult,
 )
 from travel_agent.planning.requirements.normalization.contracts import SourceClause
+from travel_agent.planning.requirements.research_plan_contracts import ResearchPlanDraft
 from travel_agent.planning.requirements.request_contracts import ClauseDisposition
 from travel_agent.planning.requirements.request_contracts import InputClauseRecord
 from travel_agent.planning.requirements.request_contracts import RequestContract
@@ -58,6 +59,8 @@ def build_request_contract_revision(
     previous: Optional[RequestContract] = None,
     plan_revision: int = 0,
     preserve_generation_id: bool = False,
+    research_plan: Optional[ResearchPlanDraft] = None,
+    inherit_previous_research_plan: bool = True,
 ) -> tuple[RequestContract, PlanningGeneration]:
     normalized_by_id = {item.clause_id: item for item in normalized.clauses}
     constraint_links = _constraint_links(constraint_pack)
@@ -203,6 +206,11 @@ def build_request_contract_revision(
             )
         ),
     )
+    research_plan = research_plan or (
+        previous.research_plan
+        if inherit_previous_research_plan and preserve_generation_id and previous is not None
+        else None
+    )
     request_material = {
         "generation_id": generation_id,
         "identity_revision": identity_revision,
@@ -210,6 +218,11 @@ def build_request_contract_revision(
         "intent_spec": intent_spec.model_dump(mode="json"),
         "constraint_pack": _constraint_semantic_payload(constraint_pack),
         "clause_ledger": [item.model_dump(mode="json") for item in ledger],
+        "research_plan": (
+            research_plan.model_dump(mode="json")
+            if research_plan is not None
+            else None
+        ),
     }
     request_hash = canonical_json_hash(request_material)
     contract = RequestContract(
@@ -220,6 +233,7 @@ def build_request_contract_revision(
         intent_spec=intent_spec,
         constraint_pack=constraint_pack,
         clause_ledger=ledger,
+        research_plan=research_plan,
         content_hash=request_hash,
     )
     generation = PlanningGeneration(
@@ -233,6 +247,33 @@ def build_request_contract_revision(
         constraint_hash=constraint_hash,
     )
     return contract, generation
+
+
+def request_contract_with_research_plan(
+    contract: RequestContract,
+    research_plan: Optional[ResearchPlanDraft],
+) -> RequestContract:
+    material = {
+        "generation_id": contract.generation_id,
+        "identity_revision": contract.controlled_trip_identity_revision,
+        "constraint_revision": contract.constraint_pack_revision,
+        "intent_spec": contract.intent_spec.model_dump(mode="json"),
+        "constraint_pack": _constraint_semantic_payload(contract.constraint_pack),
+        "clause_ledger": [item.model_dump(mode="json") for item in contract.clause_ledger],
+        "research_plan": research_plan.model_dump(mode="json") if research_plan is not None else None,
+    }
+    digest = canonical_json_hash(material)
+    return RequestContract(
+        request_contract_id=f"request_contract_{digest[:24]}",
+        generation_id=contract.generation_id,
+        controlled_trip_identity_revision=contract.controlled_trip_identity_revision,
+        constraint_pack_revision=contract.constraint_pack_revision,
+        intent_spec=contract.intent_spec,
+        constraint_pack=contract.constraint_pack,
+        clause_ledger=contract.clause_ledger,
+        research_plan=research_plan,
+        content_hash=digest,
+    )
 
 
 def _source_kind(value: str) -> IntentSourceKind:

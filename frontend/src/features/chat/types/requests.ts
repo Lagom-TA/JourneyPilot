@@ -12,6 +12,8 @@ export interface ChatRequest {
     route_decision?: RouteDecision | null;
     controlled_trip_identity?: ControlledTripIdentity | null;
     guided_intake?: GuidedIntakeState | null;
+    intake_id?: string;
+    intake_revision?: number;
     intake_destination?: PlaceIdentity | null;
     preset_id?: string | null;
     selected_mcp_servers?: string[];
@@ -19,5 +21,11 @@ export interface ChatRequest {
     gate_decision?: {
         action: PlanGateDecisionAction;
         content?: string;
+        approval_token?: string;
+        semantic_confirmation?: {
+            challenge_id: string;
+            revision: number;
+            decisions: Array<{ assertion_id: string; decision: 'include' | 'avoid' | 'historical' | 'unknown' }>;
+        };
     } | null;
 }

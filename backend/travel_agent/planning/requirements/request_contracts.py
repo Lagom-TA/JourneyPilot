@@ -6,6 +6,7 @@ from enum import Enum
 from pydantic import Field
 from pydantic import model_validator
 from travel_agent.planning.requirements.intent_contracts import IntentSpec
+from travel_agent.planning.requirements.research_plan_contracts import ResearchPlanDraft
 from travel_agent.schema import StrictModel
 from typing import Any
 from typing import Dict
@@ -94,6 +95,8 @@ class RequestContract(StrictModel):
     intent_spec: IntentSpec
     constraint_pack: Dict[str, Any]
     clause_ledger: List[InputClauseRecord] = Field(default_factory=list)
+    # 逐项确认后由独立计划节点生成；旧 checkpoint 可缺省或需要重新核对。
+    research_plan: Optional[ResearchPlanDraft] = None
     content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")

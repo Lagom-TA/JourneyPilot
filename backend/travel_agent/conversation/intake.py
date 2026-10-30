@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import re
+import uuid
 from datetime import datetime
 from typing import Any, Mapping, Sequence
 from zoneinfo import ZoneInfo
@@ -15,17 +17,23 @@ from pydantic import ValidationError
 from travel_agent.conversation.intake_contracts import (
     GuidedIntakeState,
     IntakeAnswer,
+    IntakeAnswerRecord,
     IntakeDraft,
     IntakeQuestion,
     IntakeQuestionOption,
+    MAX_ARCHIVED_INTAKE_ANSWERS,
+    MAX_ARCHIVED_INTAKE_CHARS,
+    MAX_INTAKE_QUESTIONS,
     RouteDecision,
 )
 from travel_agent.llm.router import get_model_router
 from travel_agent.llm.task_routing import TaskKind, llm_for_task
+from travel_agent.llm.token_counting import estimate_request_tokens
 from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
 from travel_agent.utils.json_helpers import safe_parse_json
 
 INTAKE_TIMEOUT_SECONDS = 45.0
+INTAKE_PROMPT_MAX_ESTIMATED_TOKENS = 12000
 
 # 服务端统一的“不继续补充”出口。它只是一项普通问题选项，不新增持久化字段；
 # 用户选择后会和其它回答一起进入同一份需求文本，避免把显式默认误读成“未知”。
@@ -65,6 +73,36 @@ class IntakeUnderstandingUnavailable(RuntimeError):
     """必要信息收集暂时不可用。"""
 
 
+class IntakeRevisionStale(ValueError):
+    """The client edited an older server-saved intake."""
+
+    def __init__(self, current_revision: int) -> None:
+        self.current_revision = current_revision
+        super().__init__("旅行需求已更新，请刷新后重新核对。")
+
+
+def advance_intake_revision(
+    previous: GuidedIntakeState | None, updated: GuidedIntakeState
+) -> GuidedIntakeState:
+    payload = updated.model_dump(mode="json")
+    payload["intake_id"] = previous.intake_id if previous else "it_" + uuid.uuid4().hex
+    if not payload["intake_id"]:
+        raise IntakeRevisionStale(previous.intake_revision if previous else 0)
+    payload["intake_revision"] = (previous.intake_revision if previous else 0) + 1
+    return GuidedIntakeState.model_validate(payload)
+
+
+def intake_edit_effects_equal(left: GuidedIntakeState, right: GuidedIntakeState) -> bool:
+    def answers(state: GuidedIntakeState) -> dict[str, object]:
+        return {item.question_id: item.model_dump(mode="json") for item in state.answers}
+
+    return (
+        answers(left) == answers(right)
+        and left.draft == right.draft
+        and left.additional_requirements == right.additional_requirements
+    )
+
+
 def controlled_identity_summary(identity: ControlledTripIdentity) -> str:
     """把已确认身份压成一段可供评估、需求文本和计划展示复用的公开摘要。"""
     destinations = " → ".join(place.name for place in identity.destinations)
@@ -85,7 +123,7 @@ def controlled_identity_summary(identity: ControlledTripIdentity) -> str:
     )
 
 
-def _answered_material(previous: GuidedIntakeState | None) -> list[dict[str, str]]:
+def _current_answered_material(previous: GuidedIntakeState | None) -> list[dict[str, str]]:
     if previous is None:
         return []
     questions = {question.id: question for question in previous.questions}
@@ -102,8 +140,16 @@ def _answered_material(previous: GuidedIntakeState | None) -> list[dict[str, str
         ]
         text = "；".join([*selected, answer.supplement.strip()]).strip("；")
         if text:
-            rows.append({"question": question.question, "answer": text})
+            rows.append({"question_id": question.id, "question": question.question, "answer": text})
     return rows
+
+
+def _answered_material(previous: GuidedIntakeState | None) -> list[dict[str, str]]:
+    if previous is None:
+        return []
+    archived = [{"question": item.question, "answer": item.answer} for item in previous.archived_answers]
+    current = [{"question": item["question"], "answer": item["answer"]} for item in _current_answered_material(previous)]
+    return [*archived, *current]
 
 
 def _prompt(
@@ -267,16 +313,29 @@ def _prepare_questions(
     questions: list[IntakeQuestion] = []
     if max_new <= 0:
         return history, list(previous.answers if previous else [])
-    seen_ids = {question.id for question in history}
+    seen_ids = {question.id for question in history} | {
+        item.question_id for item in (previous.archived_answers if previous else [])
+    }
+    seen_texts = {
+        *answered_texts,
+        *(" ".join(item.question.split()).casefold() for item in (previous.archived_answers if previous else [])),
+    }
     for raw in raw_questions:
         question = IntakeQuestion.model_validate(raw)
-        if question.id in seen_ids:
-            continue
         if controlled_identity is not None and _is_identity_question(question):
             continue
-        if _question_text_key(question) in answered_texts:
+        text_key = _question_text_key(question)
+        if text_key in seen_texts:
             continue
+        if question.id in seen_ids:
+            # Models can reuse an identifier for a genuinely different follow-up.
+            # Keep the new question with a server-generated, stable identifier.
+            digest = hashlib.sha256(text_key.encode("utf-8")).hexdigest()[:12]
+            question = question.model_copy(update={"id": f"{question.id[:51]}_{digest}"})
+            if question.id in seen_ids:
+                raise ValueError("需求问题标识冲突")
         seen_ids.add(question.id)
+        seen_texts.add(text_key)
         questions.append(_with_default_option(question, trim_to_make_room=True))
         if len(questions) >= max_new:
             break
@@ -333,10 +392,16 @@ async def understand_trip_intake(
     """
     identity = _coerce_identity(controlled_identity)
     try:
+        messages = _prompt(raw_input, controlled_identity=identity, previous=previous)
+        estimated_tokens, _ = estimate_request_tokens({"messages": messages})
+        if estimated_tokens > INTAKE_PROMPT_MAX_ESTIMATED_TOKENS:
+            raise IntakeUnderstandingUnavailable(
+                "已保存的要求过长，请复制保留的信息并开始新旅行；尚未创建调研任务。"
+            )
         model = llm or llm_for_task(get_model_router(), TaskKind.INTENT_NORMALIZE)
         response = await asyncio.wait_for(
             model.ainvoke(
-                _prompt(raw_input, controlled_identity=identity, previous=previous),
+                messages,
                 temperature=0,
             ),
             timeout=INTAKE_TIMEOUT_SECONDS,
@@ -350,20 +415,34 @@ async def understand_trip_intake(
             "questions",
         } <= parsed.keys():
             raise ValueError("需求理解未返回完整结构")
-        previous_answered = len(previous.answers) if previous else 0
-        max_new = max(0, 4 - previous_answered)
+        if not isinstance(parsed["questions"], list):
+            raise ValueError("需求问题必须是数组")
         questions, answers = _prepare_questions(
             parsed["questions"],
             previous=previous,
             controlled_identity=identity,
-            max_new=max_new,
+            # Detect overflow rather than silently treating unanswered questions
+            # as completed when the saved conversation reaches its bound.
+            max_new=MAX_INTAKE_QUESTIONS + 1,
         )
+        if len(questions) > MAX_INTAKE_QUESTIONS and previous is not None:
+            previous = compact_answer_history(previous)
+            questions, answers = _prepare_questions(
+                parsed["questions"], previous=previous, controlled_identity=identity,
+                max_new=MAX_INTAKE_QUESTIONS + 1,
+            )
+        if len(questions) > MAX_INTAKE_QUESTIONS:
+            raise IntakeUnderstandingUnavailable(
+                "本轮待确认的问题过多，请精简要求后重试；尚未创建调研任务。"
+            )
         draft = (
             _draft_for_identity(parsed["draft"], identity)
             if identity is not None
             else IntakeDraft.model_validate(parsed["draft"])
         )
         return GuidedIntakeState(
+            intake_id=previous.intake_id if previous else None,
+            intake_revision=previous.intake_revision if previous else 0,
             raw_input=raw_input,
             route_decision=route_decision,
             controlled_identity=identity,
@@ -371,6 +450,7 @@ async def understand_trip_intake(
             recognized_requirements=parsed["recognized_requirements"],
             questions=questions,
             answers=answers,
+            archived_answers=previous.archived_answers if previous else [],
             additional_requirements=(
                 previous.additional_requirements if previous else ""
             ),
@@ -378,6 +458,8 @@ async def understand_trip_intake(
                 [] if identity is not None else intake_missing_fields(draft)
             ),
         )
+    except IntakeUnderstandingUnavailable:
+        raise
     except (
         asyncio.TimeoutError,
         OpenAIError,
@@ -396,7 +478,7 @@ def merge_intake_answers(intake: GuidedIntakeState) -> str:
     """原始输入保持不变，按当前回答重建一次需求文本。"""
     questions = {question.id: question for question in intake.questions}
     lines = [intake.raw_input.strip()]
-    details = []
+    details = [f"{item.question}：{item.answer}" for item in intake.archived_answers]
     for answer in intake.answers:
         question = questions.get(answer.question_id)
         if question is None:
@@ -417,6 +499,40 @@ def merge_intake_answers(intake: GuidedIntakeState) -> str:
     if intake.additional_requirements.strip():
         lines.append(f"其他补充：{intake.additional_requirements.strip()}")
     return "\n".join(lines).strip()
+
+
+def compact_answer_history(intake: GuidedIntakeState) -> GuidedIntakeState:
+    """归档已回答问题，保留原文与完整答案以便安全继续。"""
+    validate_intake_answers(intake)
+    answered = {answer.question_id for answer in intake.answers}
+    questions = {question.id: question for question in intake.questions}
+    answers = {answer.question_id: answer for answer in intake.answers}
+    archive = []
+    for item in _current_answered_material(intake):
+        question = questions[item["question_id"]]
+        answer = answers[question.id]
+        options = {option.id: option.label for option in question.options}
+        archive.append(IntakeAnswerRecord.model_validate({
+            **item,
+            "selected_option_ids": answer.selected_option_ids,
+            "selected_labels": [options[option_id] for option_id in answer.selected_option_ids],
+            "supplement": answer.supplement,
+        }))
+    retained = [question for question in intake.questions if question.id not in answered]
+    all_archived = [*intake.archived_answers, *archive]
+    if (
+        len(all_archived) > MAX_ARCHIVED_INTAKE_ANSWERS
+        or sum(len(item.question) + len(item.answer) for item in all_archived) > MAX_ARCHIVED_INTAKE_CHARS
+    ):
+        raise IntakeUnderstandingUnavailable(
+            "已回答的问题过多，请复制保留的要求后开始新旅行；尚未创建调研任务。"
+        )
+    return intake.model_copy(update={
+        "archived_answers": all_archived,
+        "questions": retained,
+        "answers": [],
+        "ready_to_create": False,
+    })
 
 
 def validate_intake_answers(
@@ -458,6 +574,12 @@ def apply_intake_answers(
     saved: GuidedIntakeState, submitted: GuidedIntakeState
 ) -> GuidedIntakeState:
     """问题和原文来自服务端，客户端仅更新本轮回答与未确认草稿。"""
+    if (
+        not {"intake_id", "intake_revision"} <= submitted.model_fields_set
+        or not submitted.intake_id
+        or submitted.intake_id != saved.intake_id
+    ):
+        raise IntakeRevisionStale(saved.intake_revision)
     submitted_answers = [
         answer
         for answer in submitted.answers
@@ -506,6 +628,9 @@ def apply_intake_answers(
         missing.append("dates")
     if draft.party is None:
         missing.append("party")
-    return updated.model_copy(
-        update={"missing_fields": missing, "ready_to_create": False}
-    )
+    updated = updated.model_copy(update={"missing_fields": missing, "ready_to_create": False})
+    if submitted.intake_revision != saved.intake_revision:
+        if intake_edit_effects_equal(saved, updated):
+            return saved
+        raise IntakeRevisionStale(saved.intake_revision)
+    return updated

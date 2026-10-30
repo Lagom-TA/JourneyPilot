@@ -93,6 +93,41 @@ async def test_await_input_persists_then_marks_checkpoint_then_displays(
     assert not await resources.run_execution_store.has_live_lease(run.run_id)
 
 
+@pytest.mark.parametrize("durable", [False, True])
+async def test_semantic_ack_is_sent_only_after_checkpoint_verification(resources, durable):
+    runs = resources.trip_run_store
+    run = await runs.create_run(session_id="semantic-ack", user_id="local", mode="deep", resume_policy="checkpoint")
+    challenge = "challenge_" + "a" * 64
+
+    class Workflow:
+        async def probe_checkpoint(self, _run_id):
+            return True, "checkpoint"
+
+        async def probe_semantic_decision(self, _run_id, **kwargs):
+            assert kwargs == {"action": "semantic_confirmed", "challenge_id": challenge, "approval_token": "token"}
+            return durable
+
+        async def astream(self, **_kwargs):
+            yield {"plan_gate": {"plan_gate_decision": {
+                "action": "semantic_confirmed", "challenge_id": challenge, "approval_token": "token",
+            }}}
+            yield {"__interrupt__": [{"gate": "plan", "type": "approval_gate", "payload": {}}]}
+
+    resources.travel_workflow = Workflow()
+    resources.checkpointer = object()
+    body = chat_body(
+        run_id=run.run_id, session_id="semantic-ack",
+        route_decision=decision(RouteName.TRIP_PLANNING).model_dump(mode="json"),
+    )
+    prepared = await prepare(body, resources)
+    events = [event async for event in execute(body, prepared, resources) if event is not None]
+    acknowledgments = [event for event in events if event.get("type") == "semantic_confirmation_accepted"]
+    assert len(acknowledgments) == int(durable)
+    if durable:
+        assert acknowledgments[0]["challenge_id"] == challenge
+        assert acknowledgments[0]["semantic_action"] == "confirm"
+
+
 async def test_pending_cancel_is_consumed_before_workflow_can_start(resources):
     run = await resources.trip_run_store.create_run(
         session_id="pending", user_id="local", mode="fast"

@@ -6,12 +6,14 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Mapping, Optional
 
 from travel_agent.conversation.intake_contracts import GuidedIntakeState, RouteDecision
 from travel_agent.runtime.run_contracts import TripRunStatus
 from travel_agent.planning.delivery.summary_card_contracts import TripSummaryCard
 from travel_agent.planning.delivery.public.bundle import public_event_manifest
+from travel_agent.planning.requirements.confirmation_contracts import RequirementExecution
 from .audit_projection import audit_safe_value
 from travel_agent.tools.display import public_text, result_preview
 
@@ -23,6 +25,7 @@ _NORMAL_SSE_EVENT_TYPES = frozenset(
         "route_confirmation",
         "guided_intake",
         "approval_gate_raised",
+        "semantic_confirmation_accepted",
         "chat_complete",
         "delivery_ready",
         "run_terminal",
@@ -85,6 +88,57 @@ def _project_summary_card(value: Any) -> Dict[str, Any]:
     return TripSummaryCard.model_validate(value).model_dump(mode="json")
 
 
+def _public_semantic_assertions(value: Any) -> Optional[list[Dict[str, Any]]]:
+    """拒绝任何隐藏字段或不完整条目，不截断用户需要核对的内容。"""
+    allowed_fields = {
+        "assertion_id", "source_kind", "context", "question_context", "quote",
+        "object_label", "domain_label", "allowed_decisions", "execution",
+    }
+    kinds = {"current_request", "explicit_supplement", "explicit_selection", "structured_form", "saved_preference", "trip_context"}
+    domains = {"地点", "景点与体验", "餐饮", "住宿", "交通", "节奏", "预算", "无障碍", "时间安排", "其他限制", "输出要求"}
+    decisions = {"include", "avoid", "historical", "unknown"}
+    if not isinstance(value, list) or not 0 < len(value) <= 128:
+        return None
+    output: list[Dict[str, Any]] = []
+    seen: set[str] = set()
+    total = 0
+    for item in value:
+        if not isinstance(item, Mapping) or set(item) - allowed_fields:
+            return None
+        limits = {"assertion_id": 128, "context": 20000, "quote": 500, "object_label": 200, "domain_label": 200}
+        if any(not isinstance(item.get(key), str) or not item[key].strip() or len(item[key]) > limit for key, limit in limits.items()):
+            return None
+        assertion_id = item["assertion_id"]
+        kind = item.get("source_kind")
+        options = item.get("allowed_decisions")
+        question = item.get("question_context")
+        try:
+            execution = RequirementExecution.model_validate(item.get("execution"))
+        except (TypeError, ValueError):
+            return None
+        execution_payload = execution.model_dump(mode="json")
+        if execution_payload != item.get("execution"):
+            return None
+        if (
+            assertion_id in seen or not isinstance(kind, str) or kind not in kinds
+            or item["domain_label"] not in domains
+            or not isinstance(options, list) or not options or len(options) > 4
+            or any(not isinstance(option, str) or option not in decisions for option in options)
+            or len(options) != len(set(options))
+            or (kind in {"saved_preference", "trip_context"} and any(option in {"include", "avoid"} for option in options))
+            or (question is not None and (not isinstance(question, str) or not question.strip() or len(question) > 4000))
+            or item["quote"] not in item["context"] or item["object_label"] not in item["quote"]
+        ):
+            return None
+        seen.add(assertion_id)
+        total += sum(len(entry) for entry in item.values() if isinstance(entry, str))
+        total += len(str(execution_payload))
+        if total > 64000:
+            return None
+        output.append(dict(item))
+    return output
+
+
 def public_plan_gate_payload(payload: Any) -> Dict[str, Any]:
     """投影计划审批门的客户端载荷。
 
@@ -97,11 +151,33 @@ def public_plan_gate_payload(payload: Any) -> Dict[str, Any]:
 
     if not isinstance(payload, Mapping):
         return {}
+    if payload.get("phase") == "semantics":
+        challenge_id = payload.get("challenge_id")
+        revision = payload.get("revision")
+        token = payload.get("approval_token")
+        header_valid = (
+            isinstance(challenge_id, str) and re.fullmatch(r"challenge_[0-9a-f]{64}", challenge_id) is not None
+            and isinstance(revision, int) and not isinstance(revision, bool) and revision >= 0
+            and isinstance(token, str) and bool(token.strip()) and len(token) <= 200
+        )
+        if header_valid:
+            try:
+                token.encode("utf-8")
+            except UnicodeEncodeError:
+                header_valid = False
+        return {
+            "gate": payload.get("gate"), "phase": "semantics",
+            "challenge_id": challenge_id, "revision": revision,
+            "approval_token": token,
+            "assertions": _public_semantic_assertions(payload.get("assertions")) if header_valid else None,
+        }
     plan = payload.get("plan") if isinstance(payload.get("plan"), Mapping) else {}
     steps = plan.get("steps") if isinstance(plan.get("steps"), list) else []
+    scope = plan.get("research_scope")
     return {
         "gate": payload.get("gate"),
         "revision": payload.get("revision"),
+        "approval_token": payload.get("approval_token"),
         "revision_limit": payload.get("revision_limit"),
         "revision_limit_reached": payload.get("revision_limit_reached"),
         "plan": {
@@ -114,6 +190,25 @@ def public_plan_gate_payload(payload: Any) -> Dict[str, Any]:
                 }
                 for step in steps
                 if isinstance(step, Mapping)
+            ],
+            "source": plan.get("source"),
+            "research_scope": [
+                {
+                    "domain": row.get("domain"),
+                    "label": row.get("label"),
+                    "focus": row.get("focus"),
+                    "search_terms": [
+                        str(term)
+                        for term in (
+                            row.get("search_terms")
+                            if isinstance(row.get("search_terms"), list)
+                            else []
+                        )
+                        if str(term).strip()
+                    ],
+                }
+                for row in (scope if isinstance(scope, list) else [])
+                if isinstance(row, Mapping)
             ],
         },
         "plan_text": payload.get("plan_text"),
@@ -132,6 +227,7 @@ def public_plan_gate_payload(payload: Any) -> Dict[str, Any]:
             ]
             for key in ("hard", "preferences")
         },
+        "retry_available": payload.get("retry_available"),
         "decision_options": payload.get("decision_options"),
     }
 
@@ -315,6 +411,13 @@ def _project_product_event(event_type: str, payload: Dict[str, Any]) -> Dict[str
         return {
             **common,
             "guided_intake": _project_guided_intake(payload.get("guided_intake")),
+        }
+    if event_type == "semantic_confirmation_accepted":
+        return {
+            **common,
+            "challenge_id": payload.get("challenge_id"),
+            "approval_token": payload.get("approval_token"),
+            "semantic_action": payload.get("semantic_action"),
         }
     if event_type == "approval_gate_raised":
         # ``run_status`` 由后端统一给出并被客户端读取，前端不重复硬编码；

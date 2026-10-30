@@ -107,27 +107,36 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
 ## 一次请求走过什么
 
 1. **路由**：简单问题走快问快答；多日行程进入 planning 工作流。
-2. **入口与合同化**：`scope_clarifier` 确认受控旅行身份；`request_contract_normalizer`
-   把当前要求、会话上下文与个人约束归一为 clause ledger、`IntentSpec` 与 Constraint Pack，
-   封装为唯一 `RequestContract`。
-3. **编排**：`research_brief_builder` 从合同投影 `ResearchBriefV2`；
-   `minimum_delivery_draft_builder` 生成 `MinimumDeliveryDraft`；`destination_geo_resolver` 与
-   `weather_context_builder` 准备目的地坐标与规划天气；`trip_summary_card_brief` 生成摘要；
-   `planner` 由纯函数生成 `ResearchQueryPlan`、`CapabilityPlan` 与 `execution_plan`。
-4. **计划确认**：`plan_gate` 强制暂停，等待用户 approve / edit / supplement / cancel；
+2. **入口与候选合同**：自然语言与表单都先评估必要信息；有问题时等待回答并重新评估。
+   `scope_clarifier` 确认受控旅行身份；`request_contract_normalizer` 把当前要求、会话上下文
+   与个人约束归一为 clause ledger、`IntentSpec` 与 Constraint Pack，但只形成 tentative
+   `request_contract_candidate`，不同时生成研究计划。
+3. **必要问答**：服务端检查候选合同是否还有缺失、来源不明、排除歧义或预算口径问题。
+   只在需要时通过普通补充问题等待用户回答，再经同一归一化边界重新分析；没有未决项时
+   直接进入计划生成，不展示单独的参数确认页。
+4. **独立计划与编排**：`research_plan_generator` 让模型仅从已澄清合同允许的候选 ID 中选择
+   研究重点和检索词，失败时显式重试、补充或取消，不使用模板冒充模型计划。随后
+   `research_brief_builder` 从同一合同投影 `ResearchBriefV2`；`minimum_delivery_draft_builder`
+   生成 `MinimumDeliveryDraft`；`destination_geo_resolver` 使用已确认地点坐标准备目的地边界；
+   `trip_summary_card_brief` 生成摘要；`planner` 由纯函数生成 `ResearchQueryPlan`、
+   `CapabilityPlan` 与 `execution_plan`。
+5. **计划确认**：`plan_gate` 强制暂停，等待用户 approve / edit / supplement / cancel；
    `run_control.plan_gate_enabled` 必须开启，否则 Run 直接失败。确认时封存 Draft、
    `RunDeadlineSnapshot` 与 `RunBudgetSnapshot`，时间与费用上限从这一刻起固定。
-   修改转成 `IntentAmendment`，回到同一个合同边界。
-5. **研究**：`dispatcher` 按 `execution_plan` 扇出 `destination_researcher`、
-   `transport_researcher` 与 `accommodation_researcher`。Worker 按 assignment 中的 Query ID
-   执行 Provider 查询与 RAG 工具调用，返回带字段和来源的 `ResearchPacket`。
-6. **候选目录**：Worker 完成后，`dispatcher` 收齐 packet，调用 `assembly.py` 的
+   服务端同时保存精确 operation manifest 和独立的批准记录，批准记录绑定合同、计划 token、
+   manifest hash 与执行范围。修改转成 `IntentAmendment`，回到同一个合同边界并失效旧授权。
+6. **研究**：批准并封存预算后，`weather_context_builder` 获取规划天气；`dispatcher` 按
+   `execution_plan` 扇出 `destination_researcher`、
+   `transport_researcher` 与 `accommodation_researcher`。Worker 在模型、Provider、fallback、
+   cache 或 journal 重放前核对精确操作权限与当前租约，按 assignment 中的 Query ID
+   返回带字段和来源的 `ResearchPacket`。
+7. **候选目录**：Worker 完成后，`dispatcher` 收齐 packet，调用 `assembly.py` 的
    `build_candidate_catalog` 构建 `RecommendationCatalog`；
    catalog 保留 generation 与 revision 一致性检查，拦截过期产物。
-7. **组合**：`itinerary_planner` 读取 catalog，由模型直接写出完整行程草稿，再物化为
+8. **组合**：`itinerary_planner` 读取 catalog，由模型直接写出完整行程草稿，再物化为
    `TripWorkspaceV2`。服务端负责结构解析、身份绑定与时间线物化，不做内容质量裁决；
    接驳、用户编辑与撤销记录在 mutation history 中。
-8. **交付**：`budget_estimate` 清理不受支持的总额字段，不调用模型或 Provider；
+9. **交付**：`budget_estimate` 清理不受支持的总额字段，不调用模型或 Provider；
    `delivery_projector` 从同一 Workspace 生成报告、地图与来源索引；`delivery_finalizer`
    原子提交唯一的 `DeliveryBundle`。工作台、报告、PDF 与来源列表都来自这份记录。
 

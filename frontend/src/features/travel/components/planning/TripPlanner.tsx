@@ -567,7 +567,7 @@ export const TripPlanner: React.FC<{
       {showInlineIntake && inlineIntake && (
         <div className="planner-inline-intake">
           <GuidedIntakeQuestions
-            key={`inline-intake-${state.conversationEpoch}`}
+            key={`inline-intake-${state.conversationEpoch}-${inlineIntake.intake_id ?? "legacy"}`}
             intake={inlineIntake}
             inline
           />

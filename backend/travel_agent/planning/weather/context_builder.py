@@ -41,6 +41,33 @@ def _dates(start: date, end: date) -> List[date]:
     return [start + timedelta(days=offset) for offset in range((end - start).days + 1)]
 
 
+def unavailable_weather_context(
+    requests: Sequence[WeatherProviderRequest], *, trip_start_date: date, trip_end_date: date
+) -> WeatherContextBuildResult:
+    """保留天气覆盖缺口，不因时间窗关闭伪造天气事实。"""
+    days = [
+        WeatherDayContext(
+            destination_id=request.destination_id, date=day, timezone=request.timezone,
+            latitude=request.latitude, longitude=request.longitude, data_kind="unavailable",
+        )
+        for request in requests for day in _dates(request.start_date, request.end_date)
+    ]
+    coverage = [
+        WeatherCoverage(
+            destination_id=request.destination_id, start_date=request.start_date,
+            end_date=request.end_date, status="unavailable",
+            unavailable_dates=_dates(request.start_date, request.end_date),
+        )
+        for request in requests
+    ]
+    return WeatherContextBuildResult(
+        weather_snapshot=WeatherContextSnapshot(
+            weather_data_revision=0, trip_start_date=trip_start_date, trip_end_date=trip_end_date,
+            days=days, coverage=coverage, retrieved_at=datetime.now(timezone.utc),
+        )
+    )
+
+
 class WeatherContextBuilder:
     """按顺序查询 provider，并物化预报日与不可用日。
 

@@ -12,6 +12,7 @@ from travel_agent.planning.requirements.intent_contracts import IntentTarget
 from travel_agent.planning.requirements.intent_contracts import IntentValue
 from travel_agent.planning.requirements.intent_contracts import VerificationMode
 from travel_agent.planning.requirements.request_contracts import ClauseDisposition
+from travel_agent.planning.requirements.research_plan_contracts import ResearchPlanDraft
 from travel_agent.schema import StrictModel
 from typing import Dict
 from typing import List
@@ -101,6 +102,8 @@ class NormalizedClauseDraft(StrictModel):
 
 class RequestContractNormalizationResult(StrictModel):
     clauses: List[NormalizedClauseDraft] = Field(min_length=1)
+    # 仅为旧 checkpoint 反序列化保留；新归一化调用不生成或接受研究计划。
+    research_plan: Optional[ResearchPlanDraft] = None
 
 
 @dataclass(frozen=True)
@@ -109,5 +112,5 @@ class SourceClause:
     source_ref_id: str
     source_kind: str
     source_text: str
-    span_start: int
-    span_end: int
+    span_start: Optional[int]
+    span_end: Optional[int]

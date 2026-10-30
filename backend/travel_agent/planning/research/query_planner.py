@@ -18,7 +18,7 @@ from typing import Mapping
 from typing import Sequence
 
 
-RESEARCH_QUERY_POLICY_VERSION = "research_query_planner.v2"
+RESEARCH_QUERY_POLICY_VERSION = "research_query_planner.v3"
 
 
 PER_DOMAIN_QUERY_LIMITS = {
@@ -58,7 +58,7 @@ def _aliases(intent: IntentItem) -> list[str]:
         return list(dict.fromkeys(intent.value.categories))
     if isinstance(intent.value, ScalarIntentValue):
         return [intent.value.value]
-    return [intent.public_summary]
+    return [intent.source_text] if intent.source_text else []
 
 
 def _query_text(
@@ -77,7 +77,13 @@ def _query_text(
     return f"{destination_name} {terms} {domain_label}".strip()
 
 
-def _structural_query(destination_name: str, domain: ResearchDomain) -> str:
+def _structural_query(
+    destination_name: str,
+    domain: ResearchDomain,
+    search_terms: Sequence[str] = (),
+) -> str:
+    if search_terms:
+        return f"{destination_name} {' '.join(search_terms)}".strip()[:500]
     suffix = {
         ResearchDomain.VISIT: "official tourism itineraries neighbourhood experiences named places",
         ResearchDomain.DINING: "specific dining venues",
@@ -108,7 +114,27 @@ def build_research_query_plan(
     *,
     intent_spec: IntentSpec,
     brief: ResearchBriefV2,
+    constraint_pack: Mapping[str, object] | None = None,
 ) -> ResearchQueryPlan:
+    from travel_agent.planning.research.research_plan_validation import (
+        build_research_plan_binding,
+    )
+
+    restriction_binding = (
+        build_research_plan_binding(
+            identity=brief.controlled_trip_identity,
+            active_items=intent_spec.active_items,
+            constraint_pack=constraint_pack or {},
+            clause_texts=[
+                item.source_text
+                for item in intent_spec.active_items
+                if item.source_kind in {"current_request", "plan_gate_amendment", "run_supplement"}
+                and item.source_text
+            ],
+        )
+        if constraint_pack is not None
+        else None
+    )
     queries: list[ResearchQuery] = []
     active_by_id = {item.intent_id: item for item in intent_spec.active_items}
     excluded_by_domain: dict[ResearchDomain, list[str]] = defaultdict(list)
@@ -144,6 +170,12 @@ def build_research_query_plan(
                 if intent_id in active_by_id
                 and active_by_id[intent_id].kind is not IntentKind.MUST_EXCLUDE
                 and "research" in active_by_id[intent_id].impact_stages
+                and not (
+                    restriction_binding is not None
+                    and restriction_binding.contradicts_restriction(
+                        " ".join(_aliases(active_by_id[intent_id]))
+                    )
+                )
             ]
             primary_intents.sort(key=lambda item: (-item.priority, item.intent_id))
             for intent in primary_intents[
@@ -181,7 +213,9 @@ def build_research_query_plan(
                 "destination_id": destination_id,
                 "domain": domain.value,
                 "kind": ResearchQueryKind.STRUCTURAL.value,
-                "query_text": _structural_query(destination_name, domain),
+                "query_text": _structural_query(
+                    destination_name, domain, objective.search_terms
+                ),
             }
             structural_id = _query_id(structural_material)
             queries.append(
@@ -192,6 +226,9 @@ def build_research_query_plan(
                     destination_id=destination_id,
                     query_kind=ResearchQueryKind.STRUCTURAL,
                     query_text=str(structural_material["query_text"]),
+                    # 结构性查询也必须把模型给出的本领域检索词带进 Provider 参数，
+                    # 否则高德路径会只看到空 aliases 并退回固定关键词。
+                    aliases=list(objective.search_terms),
                     intent_ids=intent_ids,
                     excluded_categories=domain_exclusions,
                     desired_candidate_count=2,

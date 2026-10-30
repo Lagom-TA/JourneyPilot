@@ -194,14 +194,15 @@ Same volume, same port, same service name. Rebuild the lexical indexes after swi
 
 ## How it works
 
-JourneyPilot chooses an execution path based on the request. Simple travel questions use a fast-answer workflow. Multi-day trips enter a research workflow that clarifies the brief, resolves constraints, gathers provider data in parallel, composes the itinerary, and assembles the final delivery.
+JourneyPilot chooses an execution path based on the request. Simple travel questions use a fast-answer workflow. For multi-day trips, it reviews the brief, asks for necessary details and reassesses the answers, then presents a research plan for approval. Only after approval does it start formal provider research, compose the itinerary, and assemble the final delivery.
 
 ```mermaid
 flowchart LR
     Brief["Trip brief"] --> Route{"Request type"}
     Route -->|Simple question| Fast["Fast answer"]
     Route -->|Multi-day trip| Clarify["Clarify scope and constraints"]
-    Clarify --> Research["Parallel research"]
+    Clarify --> Approve["Review research plan"]
+    Approve --> Research["Parallel research"]
     Research --> Places["Places and stays"]
     Research --> Transport["Transport and routes"]
     Research --> Context["Weather and web context"]

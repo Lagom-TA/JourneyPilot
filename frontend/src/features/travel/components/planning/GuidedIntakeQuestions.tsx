@@ -15,6 +15,7 @@ import { saveIntakeDraft } from "../../../chat/api/sessions";
 import { getTripPlannerConfiguration } from "../../api/planner";
 import { Button } from "../../../../components/ui/Button";
 import { cn } from "../../../../lib/utils";
+import { ApiError } from "../../../../lib/http";
 import { emphasisEnter } from "../../../../lib/motion";
 import { DateRangePicker } from "./DateRangePicker";
 import { tripIdentityError } from "../../model/tripIdentityValidation";
@@ -28,6 +29,14 @@ import type {
   PlaceIdentity,
   TripPlannerConfiguration,
 } from "../../types/planner";
+
+function isStaleIntake(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 409) return false;
+  const body = error.body as { detail?: { code?: string } } | null;
+  return body?.detail?.code === 'intake_version_stale';
+}
+
+const STALE_INTAKE_MESSAGE = '旅行需求已在其他页面更新。请先复制未提交的内容，再刷新并重新核对。';
 
 function initialDraft(intake: GuidedIntakeState): IntakeDraft {
   return {
@@ -116,8 +125,17 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
   const [collapsing, setCollapsing] = React.useState(false);
   const initial = React.useRef(true);
   const saveQueue = React.useRef<Promise<unknown>>(Promise.resolve());
+  const intakeRevision = React.useRef(intake.intake_revision ?? 0);
+  const revisionConflict = React.useRef(false);
   const sessionId = state.currentSessionId;
   const questions = intake.questions ?? [];
+  const questionSignature = JSON.stringify(questions);
+  const previousQuestionSignature = React.useRef(questionSignature);
+  React.useEffect(() => {
+    if (typeof intake.intake_revision === 'number' && intake.intake_revision > intakeRevision.current) {
+      intakeRevision.current = intake.intake_revision;
+    }
+  }, [intake.intake_revision]);
   const currentIndex = questions.findIndex(
     (question) =>
       !answers.some(
@@ -131,6 +149,21 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
   const [editingQuestion, setEditingQuestion] = React.useState<string | null>(
     null,
   );
+  React.useEffect(() => {
+    if (previousQuestionSignature.current === questionSignature) return;
+    previousQuestionSignature.current = questionSignature;
+    intakeRevision.current = intake.intake_revision ?? intakeRevision.current;
+    revisionConflict.current = false;
+    if (questions.some((item) => !intake.answers?.some((answer) =>
+      answer.question_id === item.id && (answer.selected_option_ids.length || answer.supplement.trim()),
+    ))) {
+      setAnswers(intake.answers ?? []);
+      setEditingQuestion(null);
+      setFreeText("");
+      setError("");
+      setCollapsing(false);
+    }
+  }, [questionSignature, questions, intake.answers]);
   const activeQuestion =
     questions.find((item) => item.id === editingQuestion) ?? question;
   const activeAnswer = answers.find(
@@ -214,7 +247,7 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
       initial.current = false;
       return;
     }
-    if (!sessionId || submitting || state.isStreaming) return;
+    if (!sessionId || submitting || state.isStreaming || revisionConflict.current) return;
     const saveEpoch = state.conversationEpoch;
     const timer = window.setTimeout(() => {
       if (!mountedRef.current || currentStateRef.current.currentSessionId !== sessionId || currentStateRef.current.conversationEpoch !== saveEpoch) return;
@@ -225,10 +258,23 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
         .catch(() => undefined)
         .then(async () => {
           try {
-            await saveIntakeDraft(saveSessionId, snapshot);
-            if (mountedRef.current && currentStateRef.current.currentSessionId === saveSessionId && currentStateRef.current.conversationEpoch === saveEpoch) setSaveState("saved");
-          } catch {
-            if (mountedRef.current && currentStateRef.current.currentSessionId === saveSessionId && currentStateRef.current.conversationEpoch === saveEpoch) setSaveState("error");
+            const saved = await saveIntakeDraft(saveSessionId, { ...snapshot, intake_revision: intakeRevision.current });
+            if (mountedRef.current && currentStateRef.current.currentSessionId === saveSessionId && currentStateRef.current.conversationEpoch === saveEpoch) {
+              intakeRevision.current = saved.intake_revision ?? intakeRevision.current;
+              const current = currentStateRef.current.pendingGuidedIntake;
+              if (current && (current.intake_revision ?? 0) <= intakeRevision.current) {
+                dispatch({ type: "SET_GUIDED_INTAKE", payload: { ...current, intake_revision: intakeRevision.current } });
+              }
+              setSaveState("saved");
+            }
+          } catch (saveError) {
+            if (mountedRef.current && currentStateRef.current.currentSessionId === saveSessionId && currentStateRef.current.conversationEpoch === saveEpoch) {
+              if (isStaleIntake(saveError)) {
+                revisionConflict.current = true;
+                setError(STALE_INTAKE_MESSAGE);
+              }
+              setSaveState("error");
+            }
           }
         });
     }, 500);
@@ -263,6 +309,10 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
 
   const start = async () => {
     if (submitting || state.isStreaming) return;
+    if (revisionConflict.current) {
+      setError(STALE_INTAKE_MESSAGE);
+      return;
+    }
     setError("");
     const validation = tripIdentityError({
       origin,
@@ -309,9 +359,17 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
     try {
       await saveQueue.current.catch(() => undefined);
       if (!ownsRequest()) return;
-      if (startSessionId) await saveIntakeDraft(startSessionId, snapshot);
+      if (revisionConflict.current) {
+        setError(STALE_INTAKE_MESSAGE);
+        return;
+      }
+      let submitted: GuidedIntakeState = { ...snapshot, intake_revision: intakeRevision.current };
+      if (startSessionId) {
+        submitted = await saveIntakeDraft(startSessionId, submitted);
+        intakeRevision.current = submitted.intake_revision ?? intakeRevision.current;
+      }
       if (!ownsRequest()) return;
-      dispatch({ type: "SET_GUIDED_INTAKE", payload: snapshot });
+      dispatch({ type: "SET_GUIDED_INTAKE", payload: submitted });
       if (inline && !reducedMotion) {
         if (!ownsRequest()) return;
         setCollapsing(true);
@@ -322,7 +380,7 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
       const sent = await sendMessage(intake.raw_input, undefined, {
         route: "trip_planning",
         controlledTripIdentity: identity,
-        guidedIntake: snapshot,
+        guidedIntake: submitted,
         displayText: `确认${destination.name}旅行：${draft.start_date} 至 ${draft.end_date}，从${origin.name}出发`,
         assistantPendingLabel: "正在根据已确认的信息准备旅行计划",
       });
@@ -331,10 +389,11 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
         setCollapsing(false);
         setError("暂时无法开始规划，旅行信息已保留，请重试。");
       }
-    } catch {
+    } catch (saveError) {
       if (!ownsRequest()) return;
       setCollapsing(false);
-      setError("暂时无法保存旅行信息，请重试。");
+      if (isStaleIntake(saveError)) revisionConflict.current = true;
+      setError(isStaleIntake(saveError) ? STALE_INTAKE_MESSAGE : "暂时无法保存旅行信息，请重试。");
     } finally {
       if (ownsRequest()) setSubmitting(false);
     }
@@ -561,12 +620,18 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
               )}
             </div>
           </section>
-          {questions.length > 0 && (
+          {(questions.length > 0 || (intake.archived_answers?.length ?? 0) > 0) && (
             <section className="travel-intake-section">
               <div className="travel-intake-section-title">
                 <span>03</span>
                 <h2>再确认一点</h2>
               </div>
+              {(intake.archived_answers ?? []).map((item) => (
+                <div key={`archived-${item.question_id}`} className="travel-intake-answer">
+                  <Check size={14} />
+                  <span>{item.question}<strong>{item.answer}</strong></span>
+                </div>
+              ))}
               {questions
                 .filter((item) => item.id !== activeQuestion?.id)
                 .map((item) => {

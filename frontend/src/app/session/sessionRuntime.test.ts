@@ -118,6 +118,25 @@ describe('session runtime behavior', () => {
     expect(state.currentMessages[0]).toMatchObject({ content: '最终回答', displayContent: '最终回答', streamCompleted: true });
   });
 
+  it('accepts semantic acknowledgments only for the visible current run', () => {
+    let state = stateFor('A');
+    const currentStateRef = { current: state };
+    const dispatch = (action: AppAction) => { state = appReducer(state, action); currentStateRef.current = state; };
+    const active = { current: { token: 'token', sessionId: 'A', runId: 'run-A', controller: null } };
+    const owner = createStreamOwnership('token', 'A', 0, 'run-A', null, active, currentStateRef, { current: new Map() }, dispatch);
+    const assistant = message('temporary', '');
+    const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);
+    const accepted = vi.fn();
+    const events = createStreamEvents(owner, assistant, '确认', 'run-A', undefined, currentStateRef, vi.fn(), frame, 'supplement', accepted);
+    events.handleEvent({ type: 'semantic_confirmation_accepted', run_id: 'run-B', semantic_action: 'confirm', challenge_id: 'challenge', approval_token: 'token' });
+    expect(accepted).not.toHaveBeenCalled();
+    events.handleEvent({ type: 'semantic_confirmation_accepted', run_id: 'run-A', semantic_action: 'confirm', challenge_id: 'challenge', approval_token: 'token' });
+    expect(accepted).toHaveBeenCalledOnce();
+    state = stateFor('B'); currentStateRef.current = state;
+    events.handleEvent({ type: 'semantic_confirmation_accepted', run_id: 'run-A', semantic_action: 'confirm', challenge_id: 'old', approval_token: 'old' });
+    expect(accepted).toHaveBeenCalledOnce();
+  });
+
   it('batches usage before text and flushes queued frames before finalization', () => {
     let callback: FrameRequestCallback | undefined;
     const cancel = vi.fn();

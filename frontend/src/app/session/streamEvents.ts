@@ -4,16 +4,18 @@ import { normalizePlanApprovalGate } from "../../features/travel/model/planAppro
 import { type Message } from "../../features/chat/types/messages";
 import { type SSEEvent } from "../../features/chat/types/events";
 import { isTripRunStatus } from "../../features/travel/types/runs";
-import { type JourneyRoute } from "../../features/travel/types/planner";
+import { type JourneyRoute, type PlanGateDecisionAction } from "../../features/travel/types/planner";
 import { type MutableRefObject } from "react";
 import { type StreamOwnership } from "./streamOwnership";
 import { createStreamPresentation } from "../../features/chat/model/streamPresentation";
 import { createDeliveryProtocol } from "../../features/travel/model/deliveryProtocol";
 import { type StreamFrameBatch } from "../../features/chat/model/streamFrameBatch";
-export function createStreamEvents(ownership: StreamOwnership, assistantMessage: Message, text: string, initialCurrentTripRunId: string | null, pendingLabel: string | undefined, currentStateRef: MutableRefObject<AppState>, setLastSession: (id: string | null) => void, frame: StreamFrameBatch) {
+export function createStreamEvents(ownership: StreamOwnership, assistantMessage: Message, text: string, initialCurrentTripRunId: string | null, pendingLabel: string | undefined, currentStateRef: MutableRefObject<AppState>, setLastSession: (id: string | null) => void, frame: StreamFrameBatch, gateAction?: PlanGateDecisionAction, onSemanticAccepted?: (action: 'confirm' | 'correction', challengeId: string, approvalToken: string) => void) {
     const { identity, scopedDispatch, isStreamVisible, updateActiveStreamHandle } = ownership;
     const { flushFrameNow } = frame;
     let intakeOnly = false;
+    let streamFailed = false;
+    let waitingForGateAcceptance = Boolean(gateAction);
     const presentation = createStreamPresentation(scopedDispatch, assistantMessage, pendingLabel, frame);
     const routeStatus = (route?: JourneyRoute) => ({
         destination_discovery: '正在推荐目的地',
@@ -51,7 +53,14 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
         scopedDispatch({ type: 'RESOLVE_WAITING_MESSAGES' });
         scopedDispatch({ type: 'SET_SYNTHESIZING', payload: false });
     });
-    return { protocol, handleEvent(event: SSEEvent) {
+    return { protocol, get failed() { return streamFailed; }, handleEvent(event: SSEEvent) {
+            // chat_start only means the stream opened. A later workflow event proves
+            // that the interrupted gate has actually resumed.
+            if (waitingForGateAcceptance && ['thinking', 'agent_progress', 'tool_start', 'trip_summary_card', 'chat_chunk'].includes(event.type)) {
+                waitingForGateAcceptance = false;
+                scopedDispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: null });
+                scopedDispatch({ type: 'RESOLVE_WAITING_MESSAGES' });
+            }
             if (presentation.handle(event))
                 return;
             switch (event.type) {
@@ -94,8 +103,10 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     if (event.run_id) {
                         identity.runId = event.run_id;
                         updateActiveStreamHandle({ runId: event.run_id });
-                        scopedDispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: null });
-                        scopedDispatch({ type: 'RESOLVE_WAITING_MESSAGES' });
+                        if (!waitingForGateAcceptance) {
+                            scopedDispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: null });
+                            scopedDispatch({ type: 'RESOLVE_WAITING_MESSAGES' });
+                        }
                         scopedDispatch({ type: 'SET_GUIDED_INTAKE', payload: null });
                         if (event.route_decision?.route === 'trip_planning' || event.route_decision?.route === 'trip_refinement') {
                             scopedDispatch({
@@ -122,7 +133,16 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                         scopedDispatch({ type: 'SET_TRIP_SUMMARY_CARD', payload: card });
                     break;
                 }
+                case 'semantic_confirmation_accepted': {
+                    if (isStreamVisible() && event.run_id === identity.runId
+                        && (event.semantic_action === 'confirm' || event.semantic_action === 'correction')
+                        && typeof event.challenge_id === 'string' && typeof event.approval_token === 'string') {
+                        onSemanticAccepted?.(event.semantic_action, event.challenge_id, event.approval_token);
+                    }
+                    break;
+                }
                 case 'approval_gate_raised': {
+                    waitingForGateAcceptance = false;
                     flushFrameNow();
                     scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: new Date() } });
                     const gate = normalizePlanApprovalGate(event);
@@ -247,6 +267,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     break;
                 }
                 case 'run_failed': {
+                    streamFailed = true;
                     if (event.run_cost_summary !== undefined) {
                         scopedDispatch({ type: 'SET_RUN_COST_SUMMARY', payload: event.run_cost_summary });
                     }
@@ -277,6 +298,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     break;
                 }
                 case 'error':
+                    streamFailed = true;
                     flushFrameNow();
                     if (!presentation.hasReceivedChunk) {
                         scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: new Date() } });

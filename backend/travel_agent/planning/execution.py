@@ -305,7 +305,20 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                 existing_amendments = list(
                     getattr(state, "pending_intent_amendments", None) or []
                 )
-                existing_ids = {item.command_id for item in existing_amendments}
+                existing_ids = {
+                    item.command_id
+                    for item in [
+                        *existing_amendments,
+                        *(getattr(state, "unresolved_intent_amendments", None) or []),
+                    ]
+                }
+                contract = getattr(state, "request_contract", None)
+                command_ids = set(getattr(getattr(contract, "intent_spec", None), "generated_from_command_ids", None) or [])
+                existing_ids.update(
+                    clause.source_ref_id for clause in (getattr(contract, "clause_ledger", None) or [])
+                    if getattr(clause.disposition, "value", "") in {"unresolved", "unsupported"}
+                    and clause.source_ref_id in command_ids
+                )
                 fresh_amendments = _claim_fresh_amendments(
                     claimed_supplements, existing_ids=existing_ids
                 )

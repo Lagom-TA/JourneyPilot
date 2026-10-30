@@ -5,7 +5,9 @@ from typing import Any, Dict, List
 
 from travel_agent.planning.research.destination.dining_binding import (
     _cn_only_destination_boundaries,
+    amap_dining_keywords,
     discover_amap_dining,
+    select_amap_dining_query,
 )
 from travel_agent.planning.research.destination.scope import (
     _NODE_NAME,
@@ -26,8 +28,46 @@ from travel_agent.planning.research.query_contracts import (
 )
 from travel_agent.tools.content import compact_tool_content_for_model
 from travel_agent.tools.execution import execute_tool
+from travel_agent.tools.governance import (
+    PROVIDER_RESULT_OUTCOME_EMPTY_SUCCESS, PROVIDER_RESULT_OUTCOME_METADATA_KEY,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def build_semantic_discovery_arguments(query: ResearchQuery) -> Dict[str, Any]:
+    """网页发现工具只接收已批准查询文本。"""
+    return {"query": query.query_text, "max_results": 5}
+
+
+def build_semantic_amap_arguments(
+    query: ResearchQuery, boundary: Dict[str, Any]
+) -> Dict[str, Any]:
+    return {
+        "keywords": " ".join(query.aliases)
+        or ("景点" if query.domain is ResearchDomain.VISIT else "餐饮"),
+        "city": str(boundary.get("name") or ""),
+    }
+
+
+def build_global_place_search_arguments(
+    query: ResearchQuery, boundary: Dict[str, Any], candidate_kind: str
+) -> Dict[str, Any]:
+    destination_id = str(boundary.get("destination_id") or "")
+    arguments: Dict[str, Any] = {
+        "query": query.query_text,
+        "country_code": str(boundary.get("country_code") or "").casefold(),
+        "limit": 10,
+        "candidate_kind": candidate_kind,
+        "aliases": list(query.aliases),
+        "destination_place_id": destination_id,
+    }
+    latitude, longitude = boundary.get("latitude"), boundary.get("longitude")
+    if isinstance(latitude, (int, float)) and isinstance(longitude, (int, float)):
+        arguments.update(
+            destination_latitude=latitude, destination_longitude=longitude
+        )
+    return arguments
 
 
 async def discover_and_resolve_required_places(
@@ -43,10 +83,13 @@ async def discover_and_resolve_required_places(
 ) -> None:
     """为范围内缺失的地点领域执行确定性发现，并绑定稳定的 Provider 身份。"""
     required_kinds = list(dict.fromkeys(required_candidate_kinds or []))
-    if not required_kinds or has_required_provider_place_selection(
-        authoritative_tool_messages(authoritative_tool_results),
-        expected_worker=_NODE_NAME,
-        required_candidate_kinds=required_kinds,
+    if not required_kinds or (
+        len(destination_boundaries) == 1
+        and has_required_provider_place_selection(
+            authoritative_tool_messages(authoritative_tool_results),
+            expected_worker=_NODE_NAME,
+            required_candidate_kinds=required_kinds,
+        )
     ):
         return
     available_names = {
@@ -57,25 +100,18 @@ async def discover_and_resolve_required_places(
         (name for name in _SCOPED_DISCOVERY_TOOLS if name in available_names),
         None,
     )
-    country_codes = {
-        boundary.get("country_code", "").casefold()
-        for boundary in destination_boundaries
-        if boundary.get("country_code")
-    }
-    country_code = next(iter(country_codes)) if len(country_codes) == 1 else None
     fallback_policy = FallbackQueryPolicy()
-    discovered_domains: set[ResearchDomain] = set()
+    discovered_domains: set[tuple[str, ResearchDomain]] = set()
 
     async def discover_semantic_query(query: ResearchQuery) -> bool:
         """发现查询只提名名称，不用于查询地点身份。"""
         name = discovery_name
-        arguments: Dict[str, Any] = {"query": query.query_text, "max_results": 5}
+        arguments: Dict[str, Any] = build_semantic_discovery_arguments(query)
         if (
             name is None
             and _cn_only_destination_boundaries(destination_boundaries)
             and "maps_text_search" in available_names
         ):
-            name = "maps_text_search"
             boundary = next(
                 (
                     row
@@ -86,12 +122,8 @@ async def discover_and_resolve_required_places(
             )
             if boundary is None:
                 return False
-
-            arguments = {
-                "keywords": " ".join(query.aliases)
-                or ("景点" if query.domain is ResearchDomain.VISIT else "餐饮"),
-                "city": str(boundary.get("name") or ""),
-            }
+            name = "maps_text_search"
+            arguments = build_semantic_amap_arguments(query, boundary)
         if name is None:
             return False
         envelope = await execute_tool(
@@ -107,8 +139,12 @@ async def discover_and_resolve_required_places(
             {"role": "tool", "content": compact_tool_content_for_model(envelope)}
         )
         authoritative_tool_results.append(envelope)
-        if envelope.get("status") == "success":
-            discovered_domains.add(query.domain)
+        metadata = envelope.get("metadata")
+        empty = isinstance(metadata, dict) and (
+            metadata.get(PROVIDER_RESULT_OUTCOME_METADATA_KEY) == PROVIDER_RESULT_OUTCOME_EMPTY_SUCCESS
+        )
+        if envelope.get("status") == "success" and not empty:
+            discovered_domains.add((query.destination_id, query.domain))
         return True
 
     def domain_queries(
@@ -137,160 +173,99 @@ async def discover_and_resolve_required_places(
             ],
         ]
 
-    if "visit" in required_kinds and country_code and len(destination_boundaries) == 1:
-        boundary = destination_boundaries[0]
-        destination_id = boundary.get("destination_id")
-        for query in domain_queries(ResearchDomain.VISIT, str(destination_id or "")):
-            if query.query_kind is ResearchQueryKind.GENERIC_FALLBACK:
-                if query.domain in discovered_domains:
-                    continue
-                research_window_open, run_budget_available = runtime_fallback_capacity()
-                if not fallback_policy.is_allowed(
-                    query,
-                    executed_query_ids=set(executed_query_ids),
-                    research_window_open=research_window_open,
-                    run_budget_available=run_budget_available,
-                ):
-                    continue
-            if query.provider_route != "global_place_search":
-                await discover_semantic_query(query)
-                continue
-            if "global_place_search" not in available_names:
-                continue
-            visit_arguments: Dict[str, Any] = {
-                "query": query.query_text,
-                "country_code": country_code,
-                "limit": 10,
-                "candidate_kind": "visit",
-                "aliases": query.aliases,
-            }
-            if destination_id:
-                visit_arguments["destination_place_id"] = destination_id
-            latitude = boundary.get("latitude")
-            longitude = boundary.get("longitude")
-            if isinstance(latitude, (int, float)) and isinstance(
-                longitude, (int, float)
-            ):
-                visit_arguments["destination_latitude"] = latitude
-                visit_arguments["destination_longitude"] = longitude
-            visit_envelope = await execute_tool(
-                "global_place_search",
-                visit_arguments,
-                available_tools=available_tools,
-                node_name=_NODE_NAME,
-                activation_source=f"research_query:{query.query_id}",
-                **tool_context,
-            )
-            executed_query_ids.append(query.query_id)
-            messages.append(
-                {
-                    "role": "tool",
-                    "content": compact_tool_content_for_model(visit_envelope),
-                }
-            )
-            authoritative_tool_results.append(visit_envelope)
-            visit_result = visit_envelope.get("sanitized_result")
-            visit_places = (
-                visit_result.get("results") if isinstance(visit_result, dict) else None
-            ) or []
-            if visit_places:
-                break
+    def allowed(query: ResearchQuery) -> bool:
+        if query.query_kind is not ResearchQueryKind.GENERIC_FALLBACK:
+            return True
+        if (query.destination_id, query.domain) in discovered_domains:
+            return False
+        research_window_open, run_budget_available = runtime_fallback_capacity()
+        return fallback_policy.is_allowed(
+            query,
+            executed_query_ids=set(executed_query_ids),
+            research_window_open=research_window_open,
+            run_budget_available=run_budget_available,
+        )
 
-    if "dining" not in required_kinds:
-        return
+    for boundary in destination_boundaries:
+        destination_id = str(boundary.get("destination_id") or "")
+        country_code = str(boundary.get("country_code") or "").casefold()
+        if not destination_id or not country_code:
+            continue
 
-    dining_queries = domain_queries(
-        ResearchDomain.DINING,
-        str(destination_boundaries[0].get("destination_id") or "")
-        if len(destination_boundaries) == 1
-        else "",
-    )
-    if dining_queries:
-        amap_query = dining_queries[0]
-        amap_attempted = (
-            _cn_only_destination_boundaries(destination_boundaries)
+        if "visit" in required_kinds:
+            for query in domain_queries(ResearchDomain.VISIT, destination_id):
+                if not allowed(query):
+                    continue
+                if query.provider_route != "global_place_search":
+                    await discover_semantic_query(query)
+                    continue
+                if "global_place_search" not in available_names:
+                    continue
+                arguments = build_global_place_search_arguments(
+                    query, boundary, "visit"
+                )
+                envelope = await execute_tool(
+                    "global_place_search", arguments, available_tools=available_tools,
+                    node_name=_NODE_NAME, activation_source=f"research_query:{query.query_id}",
+                    **tool_context,
+                )
+                executed_query_ids.append(query.query_id)
+                messages.append({"role": "tool", "content": compact_tool_content_for_model(envelope)})
+                authoritative_tool_results.append(envelope)
+                result = envelope.get("sanitized_result")
+                if isinstance(result, dict) and result.get("results"):
+                    discovered_domains.add((destination_id, query.domain))
+                    break
+
+        if "dining" not in required_kinds:
+            continue
+        dining_queries = domain_queries(ResearchDomain.DINING, destination_id)
+        if not dining_queries:
+            continue
+        amap_query = select_amap_dining_query(dining_queries)
+        if (
+            _cn_only_destination_boundaries([boundary])
             and "maps_text_search" in available_names
-        )
-        if amap_attempted:
-            executed_query_ids.append(amap_query.query_id)
-        if await discover_amap_dining(
-            messages=messages,
-            available_tools=available_tools,
-            destination_boundaries=destination_boundaries,
-            tool_context=tool_context,
-            authoritative_tool_results=authoritative_tool_results,
-            query_text=" ".join(amap_query.aliases) or "餐饮",
+            and str(boundary.get("name") or "").strip()
         ):
-            return
+            amap_keywords = amap_dining_keywords(amap_query)
+            found = await discover_amap_dining(
+                messages=messages,
+                available_tools=available_tools,
+                destination_boundaries=[boundary],
+                tool_context=tool_context,
+                authoritative_tool_results=authoritative_tool_results,
+                query_text=amap_keywords,
+            )
+            executed_query_ids.append(amap_query.query_id)
+            if found:
+                discovered_domains.add((destination_id, ResearchDomain.DINING))
+                continue
 
-    if discovery_name is None:
-        return
-
-    if country_code and len(destination_boundaries) == 1:
-        boundary = destination_boundaries[0]
-        destination_id = boundary.get("destination_id")
-        identity_envelope: Dict[str, Any] = {}
-        for query in domain_queries(ResearchDomain.DINING, str(destination_id or "")):
-            if query.query_kind is ResearchQueryKind.GENERIC_FALLBACK:
-                if query.domain in discovered_domains:
-                    continue
-                research_window_open, run_budget_available = runtime_fallback_capacity()
-                if not fallback_policy.is_allowed(
-                    query,
-                    executed_query_ids=set(executed_query_ids),
-                    research_window_open=research_window_open,
-                    run_budget_available=run_budget_available,
-                ):
-                    continue
+        if discovery_name is None:
+            continue
+        for query in dining_queries:
+            if not allowed(query):
+                continue
             if query.provider_route != "global_place_search":
                 await discover_semantic_query(query)
                 continue
             if "global_place_search" not in available_names:
                 continue
-            identity_arguments: Dict[str, Any] = {
-                "query": query.query_text,
-                "country_code": country_code,
-                "limit": 10,
-                "candidate_kind": "dining",
-                "aliases": query.aliases,
-            }
-            if destination_id:
-                identity_arguments["destination_place_id"] = destination_id
-            latitude = boundary.get("latitude")
-            longitude = boundary.get("longitude")
-            if isinstance(latitude, (int, float)) and isinstance(
-                longitude, (int, float)
-            ):
-                identity_arguments["destination_latitude"] = latitude
-                identity_arguments["destination_longitude"] = longitude
-            identity_envelope = await execute_tool(
-                "global_place_search",
-                identity_arguments,
-                available_tools=available_tools,
-                node_name=_NODE_NAME,
-                activation_source=f"research_query:{query.query_id}",
+            arguments = build_global_place_search_arguments(
+                query, boundary, "dining"
+            )
+            envelope = await execute_tool(
+                "global_place_search", arguments, available_tools=available_tools,
+                node_name=_NODE_NAME, activation_source=f"research_query:{query.query_id}",
                 **tool_context,
             )
             executed_query_ids.append(query.query_id)
-            identity_payload = identity_envelope.get("sanitized_result") or {}
-            identity_results = (
-                identity_payload.get("results")
-                if isinstance(identity_payload, dict)
-                else None
-            )
-            if identity_results:
+            messages.append({"role": "tool", "content": compact_tool_content_for_model(envelope)})
+            authoritative_tool_results.append(envelope)
+            result = envelope.get("sanitized_result") or {}
+            places = result.get("results") if isinstance(result, dict) else None
+            if places:
+                logger.info("[destination_researcher] dining identities injected for %s: %d", boundary.get("name", ""), len(places))
+                discovered_domains.add((destination_id, query.domain))
                 break
-
-    if identity_envelope:
-        logger.info(
-            "[destination_researcher] dining identities injected for %s: %d",
-            boundary.get("name", ""),
-            len(identity_results or []),
-        )
-        messages.append(
-            {
-                "role": "tool",
-                "content": compact_tool_content_for_model(identity_envelope),
-            }
-        )
-        authoritative_tool_results.append(identity_envelope)

@@ -13,8 +13,12 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query
 
-from travel_agent.conversation.intake import apply_intake_answers
+from travel_agent.conversation.intake import (
+    IntakeRevisionStale, advance_intake_revision, apply_intake_answers,
+    intake_edit_effects_equal,
+)
 from travel_agent.conversation.intake_contracts import GuidedIntakeState
+from travel_agent.conversation.intake_lock import intake_session_lock
 
 from travel_agent.bootstrap.registry import get_components
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
@@ -29,20 +33,28 @@ router = APIRouter(prefix="/api", tags=["sessions"])
 @router.patch("/sessions/{session_id}/intake", response_model=GuidedIntakeState)
 async def update_intake(session_id: str, submitted: GuidedIntakeState):
     memory = get_components().chat_session_memory
-    try:
-        saved = await memory.get_guided_intake(session_id=session_id, user_id=LOCAL_USER_ID)
-        if saved is None:
-            raise HTTPException(status_code=409, detail="旅行需求草稿已变化，请刷新后继续")
-        updated = apply_intake_answers(saved, submitted)
-        await memory.save_guided_intake(
-            session_id=session_id, user_id=LOCAL_USER_ID,
-            title_seed=saved.raw_input, guided_intake=updated,
-        )
-        return updated
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail="无权访问该会话") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    async with intake_session_lock(session_id):
+        try:
+            saved = await memory.get_guided_intake(session_id=session_id, user_id=LOCAL_USER_ID)
+            if saved is None:
+                raise HTTPException(status_code=409, detail="旅行需求草稿已变化，请刷新后继续")
+            updated = apply_intake_answers(saved, submitted)
+            updated = saved if intake_edit_effects_equal(saved, updated) else advance_intake_revision(saved, updated)
+            await memory.save_guided_intake(
+                session_id=session_id, user_id=LOCAL_USER_ID,
+                title_seed=saved.raw_input, guided_intake=updated,
+                expected_revision=saved.intake_revision, expected_intake_id=saved.intake_id,
+            )
+            return updated
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail="无权访问该会话") from exc
+        except IntakeRevisionStale as exc:
+            raise HTTPException(status_code=409, detail={
+                "code": "intake_version_stale", "message": str(exc),
+                "current_revision": exc.current_revision,
+            }) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/sessions/{session_id}/turns", response_model=SessionTurnPage)

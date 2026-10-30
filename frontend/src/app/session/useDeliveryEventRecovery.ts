@@ -158,7 +158,7 @@ export function useDeliveryEventRecovery(): void {
                             if (!active || currentStateRef.current.currentTripRunId !== runId) return;
                             const choice = detail.state.pending_user_choice;
                             if (choice?.gate === 'plan' && choice.payload && typeof choice.payload === 'object' && !Array.isArray(choice.payload)) {
-                                const gate = normalizePlanApprovalGate({ run_id: runId, gate: 'plan', payload: choice.payload as Record<string, unknown> });
+                                const gate = normalizePlanApprovalGate({ run_id: runId, gate: 'plan', payload: choice.payload as Record<string, unknown> }, 'pending', 'restored');
                                 if (gate) dispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: gate });
                             }
                             dispatch({ type: 'SET_TRIP_RUN_RECOVERY', payload: tripRunRecoveryFromDetail(detail) });

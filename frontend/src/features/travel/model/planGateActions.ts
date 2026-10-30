@@ -9,6 +9,7 @@ export function planGateEntries(gate: Pick<PlanApprovalGate, 'decisionOptions' |
         approve: has('approve'),
         edit: has('edit'),
         supplement: has('supplement'),
+        retry: has('retry'),
         cancel: has('cancel'),
     };
 }

@@ -88,19 +88,29 @@ async def test_intake_failure_keeps_missing_fields_without_creating_run(resource
     assert not intake["ready_to_create"] and not resources.trip_run_store.runs
 
 
-async def test_answers_are_saved_and_create_run_with_original_requirements(resources):
+async def test_answers_are_saved_and_create_run_with_original_requirements(resources, monkeypatch):
+    class LLM:
+        async def ainvoke(self, *_args, **_kwargs):
+            return SimpleNamespace(content=json.dumps({
+                "draft": {}, "recognized_requirements": [], "questions": [],
+            }, ensure_ascii=False))
+
+    monkeypatch.setattr(intake_module, "get_model_router", lambda: object())
+    monkeypatch.setattr(intake_module, "llm_for_task", lambda *_args, **_kwargs: LLM())
     saved = GuidedIntakeState.model_validate({
         "raw_input": "想找一个适合第一次独自旅行的海边城市，预算5000元",
         "route_decision": decision().model_dump(mode="json"),
         "questions": [{"id": "budget", "question": "预算包括往返交通吗？", "kind": "single", "options": [{"id": "all", "label": "包含往返交通和住宿"}, {"id": "local", "label": "仅当地花费"}]}],
     })
     await resources.chat_session_memory.save_guided_intake(session_id="intake-complete", guided_intake=saved)
+    saved = await resources.chat_session_memory.get_guided_intake(session_id="intake-complete", user_id="local")
     submitted = saved.model_dump(mode="json")
     submitted["raw_input"] = "客户端不能替换原始需求"
     submitted["answers"] = [{"question_id": "budget", "selected_option_ids": ["all"], "supplement": ""}]
     response = await request("PATCH", "/api/sessions/intake-complete/intake", submitted)
     assert response.status_code == 200
     assert response.json()["raw_input"] == saved.raw_input
+    submitted = response.json()
     place = {"place_id": "osm:relation:1", "provider": "osm", "kind": "city", "name": "上海", "display_name": "上海", "country_code": "CN", "latitude": 31.23, "longitude": 121.47, "admin_path": []}
     identity = {"origin": place, "destinations": [{**place, "place_id": "osm:relation:2", "name": "青岛"}], "start_date": "2026-11-05", "end_date": "2026-11-08", "party": {"adults": 1, "children": 0}, "style": {"primary": "轻松慢游", "secondary_interests": []}}
     body = {"messages": [{"role": "user", "content": "确认旅行", "message_id": "confirm-intake"}], "session_id": "intake-complete", "route": "trip_planning", "guided_intake": submitted, "controlled_trip_identity": identity}
@@ -200,6 +210,7 @@ async def test_unavailable_assessment_is_reevaluated_when_answers_are_submitted(
     await resources.chat_session_memory.save_guided_intake(
         session_id="identity-unavailable-answer", guided_intake=saved
     )
+    saved = await resources.chat_session_memory.get_guided_intake(session_id="identity-unavailable-answer", user_id="local")
     calls = []
 
     async def assess(raw_input, route_decision, *, controlled_identity=None, previous=None, **_kwargs):
@@ -234,12 +245,13 @@ async def test_unavailable_assessment_is_reevaluated_when_answers_are_submitted(
 async def test_reassessment_includes_submitted_additional_requirements(resources, monkeypatch):
     identity = _identity()
     saved = unavailable_intake("规划这趟旅行，预算12000元，带长辈", decision())
-    submitted = saved.model_copy(update={
-        "additional_requirements": "总预算12000元，带长辈，不确定是否自驾",
-    })
     await resources.chat_session_memory.save_guided_intake(
         session_id="identity-additional-requirements", guided_intake=saved
     )
+    saved = await resources.chat_session_memory.get_guided_intake(session_id="identity-additional-requirements", user_id="local")
+    submitted = saved.model_copy(update={
+        "additional_requirements": "总预算12000元，带长辈，不确定是否自驾",
+    })
     payloads = []
 
     class LLM:
@@ -303,6 +315,7 @@ async def test_unavailable_assessment_still_unavailable_blocks_run_after_answers
     await resources.chat_session_memory.save_guided_intake(
         session_id="identity-unavailable-retry", guided_intake=saved
     )
+    saved = await resources.chat_session_memory.get_guided_intake(session_id="identity-unavailable-retry", user_id="local")
     calls = []
 
     async def unavailable(*_args, **_kwargs):

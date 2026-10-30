@@ -3,7 +3,7 @@ import { type ResultPreview, type ToolExecutionStatus } from "./messages";
 import { type DeliveryRevisionManifest, type PublicDeliveryBundle } from "../../travel/types/delivery";
 import { type RunCostSummary } from "./cost";
 export interface SSEEvent {
-    type: 'chat_start' | 'thinking' | 'agent_progress' | 'agent_thinking' | 'tool_start' | 'tool_result' | 'chat_chunk' | 'chat_complete' | 'delivery_ready' | 'run_terminal' | 'run_cancelled' | 'run_failed' | 'approval_gate_raised' | 'error' | 'usage_update' | 'context_report' | 'context_compaction' | 'trip_summary_card' | 'guided_intake' | 'route_confirmation';
+    type: 'chat_start' | 'thinking' | 'agent_progress' | 'agent_thinking' | 'tool_start' | 'tool_result' | 'chat_chunk' | 'chat_complete' | 'delivery_ready' | 'run_terminal' | 'run_cancelled' | 'run_failed' | 'approval_gate_raised' | 'semantic_confirmation_accepted' | 'error' | 'usage_update' | 'context_report' | 'context_compaction' | 'trip_summary_card' | 'guided_intake' | 'route_confirmation';
     message_id?: string;
     session_id?: string;
     run_id?: string;
@@ -15,6 +15,9 @@ export interface SSEEvent {
     guard_blocked?: boolean;
     run_status?: string;
     gate?: string;
+    challenge_id?: string;
+    approval_token?: string;
+    semantic_action?: 'confirm' | 'correction';
     guided_intake?: GuidedIntakeState;
     route_decision?: RouteDecision;
     tool_name?: string;
