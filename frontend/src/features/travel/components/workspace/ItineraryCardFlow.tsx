@@ -6,7 +6,7 @@ import { cn } from '../../../../lib/utils';
 import { PresenceFrame } from '../../../../components/ui/PresenceSurface';
 import { selectDayTimeline, type DaySummaryVM, type DayTimelineNodeVM } from '../../model/itineraryPresentation';
 import { waypointSequenceFor, type WaypointPlacement } from '../../model/waypointOrder';
-import { transportRouteActionVisible } from '../../model/transportPresentation';
+import { transportMapCardLabel, transportMapEntryVisible } from '../../model/transportPresentation';
 import { type PublicDeliveryBundle } from '../../types/delivery';
 import {
   type PublicCustomBlock,
@@ -106,8 +106,8 @@ function OccurrenceCard({
   const transport = entity?.type === 'transport_leg';
   const custom = entity?.type === 'custom_block';
   const mappable = transport ? drawableRouteIds.has(node.entityId) : !custom && waypoint != null;
-  const routeActionVisible = transport && entity ? mappable && transportRouteActionVisible(entity) : mappable;
-  const showCardActions = routeActionVisible || Boolean(entity && !transport);
+  const transportEntryVisible = transport && entity ? mappable && transportMapEntryVisible(entity) : false;
+  const showCardActions = Boolean(entity && !transport);
   const detailId = `journey-occurrence-detail-${node.key}`;
   const selectOnMap = () => {
     if (!mappable) return;
@@ -117,6 +117,19 @@ function OccurrenceCard({
       day,
       entityType: entity?.type ?? 'custom_block',
     });
+  };
+  const selectFromTransportCard = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!transportEntryVisible) return;
+    const nested = (event.target as HTMLElement).closest('button, a, input, select, textarea, [role="button"]');
+    if (nested && nested !== event.currentTarget) return;
+    selectOnMap();
+  };
+  const selectFromTransportCardKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!transportEntryVisible || event.target !== event.currentTarget) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      selectOnMap();
+    }
   };
 
   return (
@@ -161,7 +174,16 @@ function OccurrenceCard({
           )}
 
           {transport && entity ? (
-            <div className="journey-transport-card">
+            <div
+              className={cn('journey-transport-card', transportEntryVisible && 'is-interactive')}
+              data-map-focus-trigger={transportEntryVisible ? '' : undefined}
+              data-testid={transportEntryVisible ? 'transport-map-entry' : undefined}
+              role={transportEntryVisible ? 'button' : undefined}
+              tabIndex={transportEntryVisible ? 0 : undefined}
+              aria-label={transportEntryVisible ? transportMapCardLabel(entity) : undefined}
+              onClick={transportEntryVisible ? selectFromTransportCard : undefined}
+              onKeyDown={transportEntryVisible ? selectFromTransportCardKey : undefined}
+            >
               <TransportLegCard leg={entity} sandboxNote={bundle.provider_environment.sandbox_note} />
             </div>
           ) : (
@@ -179,9 +201,9 @@ function OccurrenceCard({
 
           {showCardActions && (
             <div className="journey-card-actions">
-              {routeActionVisible && (
+              {mappable && (
                 <button type="button" data-map-focus-trigger onClick={selectOnMap}>
-                  <MapPinned size={14} aria-hidden />{transport ? '查看路线' : '在地图查看'}
+                  <MapPinned size={14} aria-hidden />在地图查看
                 </button>
               )}
               {entity && !transport && (

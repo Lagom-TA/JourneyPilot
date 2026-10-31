@@ -490,6 +490,8 @@ export function xianTransportDisplayBundle() {
   const xiaozhaiStop = endpoint('小寨站', 'metro:xiaozhai', 34.226, 108.953);
   const beidajieStop = endpoint('北大街站（地铁2号线·4号线换乘）', 'metro:beidajie', 34.268, 108.946);
   const dayantaStop = endpoint('大雁塔站（雁塔北路南口）', 'metro:dayanta', 34.218, 108.964);
+  const donganmenStop = endpoint('东安门大街站', 'tram:donganmen', 34.259, 108.944);
+  const shenwumenStop = endpoint('神武门站', 'tram:shenwumen', 34.262, 108.949);
   const displayLegs = [
     leg('leg-display-rail', 'high_speed_rail', 'long_distance', 469, 2400000, [
       segment('segment-display-rail', 'high_speed_rail', railFrom, railTo, 469, 2400000, [railFrom, railTo], {
@@ -570,6 +572,39 @@ export function xianTransportDisplayBundle() {
       departureAt: '2026-11-01T12:05:00+08:00',
       arrivalAt: '2026-11-01T12:32:00+08:00',
     }),
+    leg('leg-display-tram', 'tram', 'public_transit', 38, 6200, [
+      segment('segment-display-tram-walk-in', 'walk', points.hotel, donganmenStop, 5, 380),
+      segment('segment-display-tram-103', 'tram', donganmenStop, shenwumenStop, 28, 5400, [donganmenStop, shenwumenStop], {
+        lineName: '103路(北京站西--动物园枢纽站)',
+      }),
+      segment('segment-display-tram-walk-out', 'walk', shenwumenStop, points.museum, 5, 420),
+    ], false, {
+      transferCount: 0,
+      totalCostCny: 2,
+      departureAt: '2026-11-01T09:20:00+08:00',
+      arrivalAt: '2026-11-01T09:58:00+08:00',
+      boardingStop: donganmenStop,
+      alightingStop: shenwumenStop,
+    }),
+    leg('leg-display-metro-noline', 'metro', 'public_transit', 24, 4200, [
+      segment('segment-display-noline-ride', 'metro', bellTowerStop, dayantaStop, 24, 4200, [bellTowerStop, dayantaStop]),
+    ], false, {
+      transferCount: 0,
+      totalCostCny: 4,
+      departureAt: '2026-11-01T13:10:00+08:00',
+      arrivalAt: '2026-11-01T13:34:00+08:00',
+      boardingStop: bellTowerStop,
+      alightingStop: dayantaStop,
+    }),
+    leg('leg-display-metro-pending', 'metro', 'public_transit', 18, 2600, [
+      segment('segment-display-pending-ride', 'metro', xiaozhaiStop, bellTowerStop, 18, 2600, [xiaozhaiStop, bellTowerStop], {
+        lineName: '地铁3号线',
+      }),
+    ], false, {
+      transferCount: 0,
+      totalCostCny: null,
+      routeStatus: 'pending',
+    }),
   ];
   const displayBlocks = [
     block('d1-display-flight', 'transport_leg', 'leg-display-flight', 'transport', '飞往西安', '从北京首都国际机场飞往西安咸阳国际机场。', '08:00', { mode: 'flight', duration: '约 2 小时 5 分钟' }),
@@ -578,6 +613,9 @@ export function xianTransportDisplayBundle() {
     block('d1-display-metro-transfer', 'transport_leg', 'leg-display-metro-transfer', 'transport', '地铁换乘前往大雁塔', '在钟楼换乘 4 号线到大雁塔。', '15:00', { mode: 'metro', duration: '约 38 分钟' }),
     block('d1-display-metro-mixed', 'transport_leg', 'leg-display-metro-mixed', 'transport', '地铁与公交衔接', '乘地铁、公交再回到地铁线路。', '16:10', { mode: 'metro', duration: '约 45 分钟' }),
     block('d1-display-metro-unproven', 'transport_leg', 'leg-display-metro-unproven', 'transport', '地铁前往午餐', '站点信息暂未提供。', '12:05', { mode: 'metro', duration: '约 27 分钟' }),
+    block('d1-display-tram', 'transport_leg', 'leg-display-tram', 'transport', '乘有轨电车前往神武门', '从东安门大街站乘 103 路到神武门站。', '09:20', { mode: 'tram', duration: '约 38 分钟' }),
+    block('d1-display-metro-noline', 'transport_leg', 'leg-display-metro-noline', 'transport', '地铁前往大雁塔', '线路名称暂未提供。', '13:10', { mode: 'metro', duration: '约 24 分钟' }),
+    block('d1-display-metro-pending', 'transport_leg', 'leg-display-metro-pending', 'transport', '地铁前往钟楼', '路线信息正在更新。', '17:20', { mode: 'metro', duration: '约 18 分钟' }),
   ];
   const bundle = structuredClone(xianDeliveryBundle());
   const dayTheme = '交通展示 · 班次与地铁站点';

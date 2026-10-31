@@ -7,13 +7,16 @@ import {
   legSummary,
   showsEndpointCode,
   transitDisplayMode,
+  transitLineChain,
   transitModeLabel,
   transitRideModes,
+  transitRides,
   transitStationModes,
   transitStations,
+  transportMapCardLabel,
+  transportMapEntryVisible,
   transportModeColor,
   transportModeStyle,
-  transportRouteActionVisible,
   transportSegmentDisplayMode,
 } from './transportPresentation';
 
@@ -21,7 +24,14 @@ function endpoint(name: string, stationCode: string | null = null) {
   return { name, place_id: `place:${name}`, station_code: stationCode, latitude: null, longitude: null };
 }
 
-function segment(id: string, mode: TransportMode, from: string, to: string, lineName: string | null = null) {
+function segment(
+  id: string,
+  mode: TransportMode,
+  from: string,
+  to: string,
+  lineName: string | null = null,
+  options: { serviceNumber?: string | null; operatorName?: string | null; duration?: number | null; distance?: number | null } = {},
+) {
   return {
     segment_id: id,
     mode,
@@ -29,10 +39,10 @@ function segment(id: string, mode: TransportMode, from: string, to: string, line
     to_endpoint: endpoint(to),
     departure_at: null,
     arrival_at: null,
-    duration_minutes: null,
-    distance_meters: null,
-    operator_name: null,
-    service_number: null,
+    duration_minutes: options.duration ?? null,
+    distance_meters: options.distance ?? null,
+    operator_name: options.operatorName ?? null,
+    service_number: options.serviceNumber ?? null,
     line_name: lineName,
     cost_cny: null,
     path: [],
@@ -123,7 +133,7 @@ describe('transport card facts', () => {
       total_cost_cny: 1108,
       segments: [segment('rail', 'high_speed_rail', '深圳北', '北京西', null)],
     }));
-    expect(summary).toEqual({ duration: '7 小时 49 分钟', transfer: null, cost: '¥1,108' });
+    expect(summary).toEqual({ duration: '7 小时 49 分钟', cost: '¥1,108' });
   });
 
   it('does not invent a zero fare when the price is missing', () => {
@@ -132,12 +142,19 @@ describe('transport card facts', () => {
     expect(summary.cost).toBeNull();
   });
 
-  it('hides a zero transfer instead of writing direct', () => {
-    expect(confirmedMetroTransferCount(transportLeg({ segments: walkMetroWalk, transfer_count: 0 }))).toBe(0);
-    expect(legSummary(transportLeg({ segments: walkMetroWalk, transfer_count: 0 })).transfer).toBeNull();
+  it('keeps transfer wording out of the compact readout', () => {
+    const twoLines = [
+      segment('metro-2', 'metro', '北大街站', '行政中心站', '地铁2号线'),
+      segment('metro-4', 'metro', '行政中心站', '大雁塔站', '地铁4号线'),
+    ];
+    expect(legSummary(transportLeg({ segments: twoLines, transfer_count: 1 }))).toEqual({
+      duration: '42 分钟',
+      cost: '¥5',
+    });
   });
 
   it('counts only a real change between metro lines', () => {
+    expect(confirmedMetroTransferCount(transportLeg({ segments: walkMetroWalk, transfer_count: 0 }))).toBe(0);
     const sameLineSplit = [
       segment('metro-2a', 'metro', '钟楼站', '北大街站', '地铁2号线'),
       segment('metro-2b', 'metro', '北大街站', '小寨站', '地铁2号线'),
@@ -148,7 +165,6 @@ describe('transport card facts', () => {
       segment('metro-4', 'metro', '行政中心站', '大雁塔站', '地铁4号线'),
     ];
     expect(confirmedMetroTransferCount(transportLeg({ segments: twoLines, transfer_count: 1 }))).toBe(1);
-    expect(legSummary(transportLeg({ segments: twoLines, transfer_count: 1 })).transfer).toBe('换乘 1 次');
   });
 
   it('does not read a mixed bus service count as a metro transfer', () => {
@@ -166,7 +182,6 @@ describe('transport card facts', () => {
       { ...segment('metro-1b', 'metro', '北大街站', '小寨站', '地铁1号线'), operator_name: '运营方乙' },
     ];
     expect(confirmedMetroTransferCount(transportLeg({ segments: sameLine, transfer_count: 1 }))).toBe(0);
-    expect(legSummary(transportLeg({ segments: sameLine, transfer_count: 1 })).transfer).toBeNull();
   });
 
   it('labels mixed transit with every ride mode and qualifies each station', () => {
@@ -193,7 +208,7 @@ describe('transport card facts', () => {
     ];
     const leg = transportLeg({ segments: trips, transfer_count: 1 });
     expect(confirmedMetroTransferCount(leg)).toBe(0);
-    expect(legSummary(leg).transfer).toBeNull();
+    expect(transitLineChain(leg).expandable).toBe(false);
   });
 
   it('keeps the last ride mode when a mixed route returns to metro', () => {
@@ -224,11 +239,158 @@ describe('transport card facts', () => {
     expect(showsEndpointCode('train')).toBe(false);
   });
 
-  it('hides route actions for high-speed rail and flights while retaining other modes', () => {
-    expect(transportRouteActionVisible(transportLeg({ selected_mode: 'high_speed_rail' }))).toBe(false);
-    expect(transportRouteActionVisible(transportLeg({ selected_mode: 'flight' }))).toBe(false);
-    for (const selected_mode of ['train', 'coach', 'ferry', 'metro', 'drive'] as const) {
-      expect(transportRouteActionVisible(transportLeg({ selected_mode }))).toBe(true);
+  it('hides map entry for high-speed rail and flights while retaining other modes', () => {
+    expect(transportMapEntryVisible(transportLeg({ selected_mode: 'high_speed_rail' }))).toBe(false);
+    expect(transportMapEntryVisible(transportLeg({ selected_mode: 'flight' }))).toBe(false);
+    for (const selected_mode of ['train', 'coach', 'ferry', 'metro', 'drive', 'walk'] as const) {
+      expect(transportMapEntryVisible(transportLeg({ selected_mode }))).toBe(true);
     }
+  });
+});
+
+describe('public transit ride chain', () => {
+  it('treats walks and bikes as access, never as route steps', () => {
+    const leg = transportLeg({ segments: walkMetroWalk });
+    const rides = transitRides(leg);
+    expect(rides).toHaveLength(1);
+    expect(rides[0].segment.mode).toBe('metro');
+    expect(rides[0].label).toBe('地铁2号线');
+  });
+
+  it('shows a direct ride without a chain or disclosure', () => {
+    const leg = transportLeg({
+      segments: walkMetroWalk,
+      boarding_stop: endpoint('钟楼站'),
+      alighting_stop: endpoint('小寨站'),
+    });
+    const chain = transitLineChain(leg);
+    expect(chain.steps).toHaveLength(1);
+    expect(chain.steps[0].label).toBe('地铁2号线');
+    expect(chain.steps[0].direction).toBe('小寨站');
+    expect(chain.expandable).toBe(false);
+    expect(chain.transferCount).toBe(0);
+  });
+
+  it('merges a same-line split without inventing a transfer', () => {
+    const split = [
+      segment('metro-2a', 'metro', '钟楼站', '北大街站', '地铁2号线'),
+      segment('metro-2b', 'metro', '北大街站', '小寨站', '地铁2号线'),
+    ];
+    const leg = transportLeg({
+      segments: split,
+      boarding_stop: endpoint('钟楼站'),
+      alighting_stop: endpoint('小寨站'),
+    });
+    const chain = transitLineChain(leg);
+    expect(chain.rides).toHaveLength(2);
+    expect(chain.steps).toHaveLength(1);
+    expect(chain.steps[0].label).toBe('地铁2号线');
+    expect(chain.steps[0].direction).toBe('小寨站');
+    expect(chain.expandable).toBe(false);
+  });
+
+  it('builds a real line chain and matches the confirmed metro transfer count', () => {
+    const twoLines = [
+      segment('metro-2', 'metro', '北大街站', '小寨站', '地铁2号线'),
+      segment('metro-4', 'metro', '小寨站', '大雁塔站', '地铁4号线'),
+    ];
+    const leg = transportLeg({
+      segments: twoLines,
+      boarding_stop: endpoint('北大街站'),
+      alighting_stop: endpoint('大雁塔站'),
+      transfer_count: 1,
+    });
+    const chain = transitLineChain(leg);
+    expect(chain.steps.map((step) => step.label)).toEqual(['地铁2号线', '地铁4号线']);
+    expect(chain.steps.map((step) => step.direction)).toEqual(['小寨站', '大雁塔站']);
+    expect(chain.expandable).toBe(true);
+    expect(chain.transferCount).toBe(confirmedMetroTransferCount(leg));
+  });
+
+  it('uses different modes as a chain and never reports them as metro transfers', () => {
+    const mixed = [
+      segment('metro-2', 'metro', '北大街站', '小寨站', '地铁2号线'),
+      segment('bus-5', 'bus', '小寨站', '大雁塔站', '公交5路'),
+      segment('metro-4', 'metro', '大雁塔站', '钟楼站', '地铁4号线'),
+    ];
+    const leg = transportLeg({ segments: mixed, transfer_count: 2 });
+    const chain = transitLineChain(leg);
+    expect(chain.steps.map((step) => step.label)).toEqual(['地铁2号线', '公交5路', '地铁4号线']);
+    expect(chain.transferCount).toBe(2);
+    expect(confirmedMetroTransferCount(leg)).toBe(0);
+  });
+
+  it('falls back to the mode label and never fakes a direction without a proven stop', () => {
+    const leg = transportLeg({
+      segments: [segment('metro-4b', 'metro', '陕西历史博物馆', '子午路张记肉夹馍（小寨店）')],
+    });
+    const chain = transitLineChain(leg);
+    expect(chain.steps[0].label).toBe('地铁');
+    expect(chain.steps[0].direction).toBeNull();
+    expect(chain.expandable).toBe(false);
+    expect(transitRides(leg)[0].direction).toBeNull();
+  });
+
+  it('does not infer a transfer when a line identity is missing', () => {
+    const partial = [
+      segment('metro-2', 'metro', '北大街站', '小寨站', '地铁2号线'),
+      segment('metro-unknown', 'metro', '小寨站', '大雁塔站'),
+    ];
+    const chain = transitLineChain(transportLeg({ segments: partial }));
+    expect(chain.steps).toHaveLength(1);
+    expect(chain.steps[0].label).toBe('地铁');
+    expect(chain.expandable).toBe(false);
+  });
+
+  it('keeps a long line name compact on the first screen and complete in the ride row', () => {
+    const tram = segment('tram-103', 'tram', '东安门大街站', '神武门站', '103路(北京站西--动物园枢纽站)');
+    const leg = transportLeg({
+      selected_mode: 'tram',
+      segments: [
+        segment('walk-in', 'walk', '东安门大街', '东安门大街站'),
+        tram,
+        segment('walk-out', 'walk', '神武门站', '神武门'),
+      ],
+      boarding_stop: endpoint('东安门大街站'),
+      alighting_stop: endpoint('神武门站'),
+    });
+    const chain = transitLineChain(leg);
+    expect(chain.steps[0].label).toBe('103路');
+    expect(chain.rides[0].rowLabel).toBe('103路(北京站西--动物园枢纽站)');
+    expect(chain.steps[0].direction).toBe('神武门站');
+  });
+
+  it('prefers the service number for the line label', () => {
+    const tram = segment('tram-103', 'tram', '东安门大街站', '神武门站', '103路(北京站西--动物园枢纽站)', {
+      serviceNumber: '103',
+    });
+    const leg = transportLeg({ selected_mode: 'tram', segments: [tram] });
+    expect(transitLineChain(leg).steps[0].label).toBe('103');
+  });
+
+  it('takes each ride direction from the next boarding stop and the final alighting stop', () => {
+    const twoLines = [
+      segment('metro-2', 'metro', '北大街站', '小寨站', '地铁2号线'),
+      segment('metro-4', 'metro', '小寨站', '大雁塔站', '地铁4号线'),
+    ];
+    const leg = transportLeg({
+      segments: twoLines,
+      alighting_stop: endpoint('大雁塔站'),
+    });
+    expect(transitRides(leg).map((ride) => ride.direction)).toEqual(['小寨站', '大雁塔站']);
+  });
+
+  it('describes line, stations and map action in the card accessible name', () => {
+    const leg = transportLeg({
+      segments: walkMetroWalk,
+      boarding_stop: endpoint('钟楼站'),
+      alighting_stop: endpoint('小寨站'),
+    });
+    const label = transportMapCardLabel(leg);
+    expect(label).toContain('地铁2号线');
+    expect(label).toContain('钟楼站到小寨站');
+    expect(label).toContain('42 分钟');
+    expect(label).toContain('¥5');
+    expect(label).toContain('在地图中查看');
   });
 });

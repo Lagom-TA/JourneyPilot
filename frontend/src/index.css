@@ -3381,9 +3381,14 @@ summary.research-query-summary { cursor: pointer; }
 .journey-card-actions > .journey-card-details-toggle:hover { background: var(--color-surface); color: var(--color-ink); }
 .journey-card-details { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--color-stroke); }
 
-.journey-occurrence.is-transport .journey-place-card { grid-template-columns: minmax(0, 1fr); padding-top: 13px; padding-bottom: 13px; }
+.journey-occurrence.is-transport .journey-place-card { grid-template-columns: minmax(0, 1fr); padding-top: 6px; padding-bottom: 6px; }
 .journey-occurrence.is-transport .journey-card-actions { margin-top: 5px; }
-.journey-transport-card { min-width: 0; margin-top: 2px; padding: 13px 15px; border: 1px solid color-mix(in srgb, var(--color-stroke) 76%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--color-surface) 58%, var(--color-panel)); }
+.journey-transport-card { min-width: 0; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--color-stroke) 76%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--color-surface) 58%, var(--color-panel)); transition: border-color var(--dur-fast), background-color var(--dur-fast); }
+.journey-transport-card.is-interactive { cursor: pointer; }
+.journey-transport-card.is-interactive:hover { border-color: color-mix(in srgb, var(--color-accent) 32%, var(--color-stroke)); }
+.journey-transport-card.is-interactive:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.journey-occurrence[data-linked='on'] .journey-transport-card,
+.journey-occurrence[data-entity-selected='on'] .journey-transport-card { border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-stroke)); }
 .journey-transport-card [data-transport-variant]:not([data-transport-variant='micro']) { margin: 0; padding: 0; border: 0; background: transparent; }
 .journey-occurrence.is-custom .journey-place-card { background: color-mix(in srgb, var(--color-surface) 30%, transparent); }
 
@@ -4334,7 +4339,7 @@ summary.research-query-summary { cursor: pointer; }
   .journey-place-card { grid-template-columns: 48px minmax(0, 1fr); gap: 10px; }
   .journey-occurrence.is-transport .journey-place-card { grid-template-columns: minmax(0, 1fr); }
   .journey-card-copy h3 { font-size: 18px; }
-  .journey-transport-card { padding: 11px 12px; }
+  .journey-transport-card { padding: 9px 11px; }
   .journey-map-top-controls { align-items: flex-start; }
   .journey-layer-control > button { width: 44px; padding: 0; justify-content: center; }
   .journey-layer-control > button > svg:last-child,

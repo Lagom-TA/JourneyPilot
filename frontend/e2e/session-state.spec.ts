@@ -1576,14 +1576,16 @@ test('desktop itinerary cards and map stay linked across hover, selection, days 
   await expectCameraHeld(page, initialCamera);
   await page.screenshot({ path: test.info().outputPath('desktop-xian-floating-panel.png'), fullPage: true });
 
-  // 可画市内路线的显式操作也保留：点击“查看路线”才进入路线视野。
-  await page.locator('[data-itinerary-occurrence="d1-transfer-lunch"]').getByRole('button', { name: '查看路线', exact: true }).click();
+  // 可画市内路线的交通卡片整卡进入路线视野，不再有独立按钮。
+  const routeEntry = page.locator('[data-itinerary-occurrence="d1-transfer-lunch"]').getByTestId('transport-map-entry');
+  await routeEntry.click();
   await expect(page.getByTestId('map-place-detail')).toContainText('24 分钟');
   await expect(page.getByTestId('map-place-detail')).toContainText('9.2 公里');
   await expect.poll(async () => (await mapCamera(page, ['visit-terracotta'])).markers['visit-terracotta']).not.toEqual(initialCamera.markers['visit-terracotta']);
   const routeCamera = await settledCamera(page, ['visit-terracotta', 'visit-dayan']);
   await page.getByRole('button', { name: '关闭地点详情', exact: true }).click();
   await expect(page.getByTestId('map-place-detail')).toHaveCount(0);
+  await expect(routeEntry).toBeFocused();
   await expectCameraHeld(page, routeCamera);
 
   // 用户手动拖动后，普通悬浮不再把视野抢回。
@@ -1897,7 +1899,7 @@ test('mixed transport map stays clean and usable on a phone', async ({ page }) =
 
 test('mixed transport display merges headings and keeps station truth', async ({ page }) => {
   const fixture = await offlineApp(page, { bundle: true, bundleData: xianTransportDisplayBundle() });
-  const evidenceDir = '../output/polish/20261029-1917-transport-display';
+  const evidenceDir = '../output/polish/20261031-1431-transit-card-redesign';
   mkdirSync(evidenceDir, { recursive: true });
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -1922,7 +1924,8 @@ test('mixed transport display merges headings and keeps station truth', async ({
   const railOccurrence = page.locator('[data-itinerary-occurrence="d1-display-rail"]');
   await expect(railOccurrence.locator('[data-timeline-domain="transport"]')).toHaveCount(0);
   await expect(railOccurrence.getByText('11:41–19:30')).toHaveCount(1);
-  await expect(railOccurrence.getByRole('button', { name: '查看路线', exact: true })).toHaveCount(0);
+  await expect(railOccurrence.getByTestId('transport-map-entry')).toHaveCount(0);
+  await expect(railOccurrence.getByRole('button', { name: /在地图中查看/ })).toHaveCount(0);
 
   const flight = page.getByTestId('transport-card-leg-display-flight');
   await expect(flight).toContainText('飞机');
@@ -1931,11 +1934,16 @@ test('mixed transport display merges headings and keeps station truth', async ({
   await expect(flight).toContainText('XIY');
   await expect(flight.locator('.transport-mode-icon')).toHaveCount(1);
   await expect(flight).not.toContainText('班次');
-  await expect(page.locator('[data-itinerary-occurrence="d1-display-flight"]').getByRole('button', { name: '查看路线', exact: true })).toHaveCount(0);
+  const flightOccurrence = page.locator('[data-itinerary-occurrence="d1-display-flight"]');
+  await expect(flightOccurrence.getByTestId('transport-map-entry')).toHaveCount(0);
+  await expect(flightOccurrence.getByRole('button', { name: /在地图中查看/ })).toHaveCount(0);
 
   const direct = page.getByTestId('transport-card-leg-display-metro-direct');
+  await expect(direct).toContainText('地铁2号线');
+  await expect(direct).toContainText('往小寨站');
   await expect(direct).toContainText('钟楼站');
   await expect(direct).toContainText('小寨站');
+  await expect(direct).toContainText('09:00–09:42');
   await expect(direct).toContainText('42 分钟');
   await expect(direct).toContainText('¥5');
   await expect(direct).not.toContainText('市内公共交通');
@@ -1945,32 +1953,85 @@ test('mixed transport display merges headings and keeps station truth', async ({
   await expect(direct).not.toContainText('西安钟楼饭店');
   await expect(direct).not.toContainText('陕西历史博物馆');
   await expect(direct.locator('.transport-mode-icon')).toHaveCount(1);
-  await expect(direct.getByTestId('transport-segments-toggle')).toContainText('展开 3 个路线步骤');
+  await expect(direct.getByTestId('transit-line-chain')).toHaveCount(0);
+  await expect(direct.getByTestId('transport-rides')).toHaveCount(0);
+  await expect(direct.getByTestId('transport-segments-toggle')).toHaveCount(0);
+  const directOccurrence = page.locator('[data-itinerary-occurrence="d1-display-metro-direct"]');
+  const directEntry = directOccurrence.getByTestId('transport-map-entry');
+  await expect(directEntry).toHaveCount(1);
+  await expect(directEntry).toHaveAttribute('role', 'button');
+  await expect(directEntry).toHaveAttribute('aria-label', /地铁2号线/);
+  await expect(directEntry).toHaveAttribute('aria-label', /钟楼站到小寨站/);
+  await expect(directEntry).toHaveAttribute('aria-label', /在地图中查看/);
+  await expect(directOccurrence.getByRole('button', { name: '查看路线', exact: true })).toHaveCount(0);
+  await directEntry.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('map-place-detail')).toBeVisible();
+  await expect(page.getByTestId('map-place-detail')).toContainText('地铁2号线');
+  await page.getByRole('button', { name: '关闭地点详情', exact: true }).click();
+  await expect(page.getByTestId('map-place-detail')).toHaveCount(0);
+  await expect(directEntry).toBeFocused();
 
   const transfer = page.getByTestId('transport-card-leg-display-metro-transfer');
+  await expect(transfer).toContainText('地铁2号线');
+  await expect(transfer).toContainText('地铁4号线');
   await expect(transfer).toContainText('北大街站（地铁2号线·4号线换乘）');
   await expect(transfer).toContainText('大雁塔站（雁塔北路南口）');
-  await expect(transfer).toContainText('换乘 1 次');
+  await expect(transfer).toContainText('15:00–15:38');
   await expect(transfer).toContainText('¥6');
+  await expect(transfer).not.toContainText('换乘 1 次');
   await expect(transfer).not.toContainText('市内公共交通');
   await expect(transfer.getByTestId('transport-summary').locator('dt.sr-only')).toHaveCount(2);
+  const chain = transfer.getByTestId('transit-line-chain');
+  await expect(chain).toHaveAttribute('aria-expanded', 'false');
+  await expect(transfer.getByTestId('transport-rides')).toBeHidden();
 
   const mixed = page.getByTestId('transport-card-leg-display-metro-mixed');
-  await expect(mixed).toContainText('地铁 / 公交');
-  await expect(mixed).toContainText('地铁 北大街站（地铁2号线·4号线换乘）');
-  await expect(mixed).toContainText('地铁 钟楼站');
-  await expect(mixed).not.toContainText('公交 钟楼站');
+  await expect(mixed).toContainText('地铁2号线');
+  await expect(mixed).toContainText('公交5路');
+  await expect(mixed).toContainText('地铁4号线');
+  await expect(mixed).not.toContainText('地铁 / 公交');
+  await expect(mixed).not.toContainText('地铁 北大街站');
   await expect(mixed).not.toContainText('换乘 1 次');
   await expect(mixed).not.toContainText('换乘 2 次');
+  await expect(mixed.getByTestId('transit-line-chain')).toBeVisible();
+
+  const tram = page.getByTestId('transport-card-leg-display-tram');
+  await expect(tram).toContainText('103路');
+  await expect(tram).toContainText('往神武门站');
+  await expect(tram).toContainText('东安门大街站');
+  await expect(tram).toContainText('神武门站');
+  await expect(tram).toContainText('09:20–09:58');
+  await expect(tram).toContainText('38 分钟');
+  await expect(tram).toContainText('¥2');
+  await expect(tram).not.toContainText('北京站西');
+  await expect(tram.getByTestId('transit-line-chain')).toHaveCount(0);
+  await expect(tram.getByTestId('transport-rides')).toHaveCount(0);
+
+  const noLine = page.getByTestId('transport-card-leg-display-metro-noline');
+  await expect(noLine).toContainText('地铁');
+  await expect(noLine).toContainText('往大雁塔站（雁塔北路南口）');
+  await expect(noLine).toContainText('钟楼站');
+  await expect(noLine).toContainText('24 分钟');
+  await expect(noLine).toContainText('¥4');
+  await expect(noLine.getByTestId('transit-line-chain')).toHaveCount(0);
 
   const unproven = page.getByTestId('transport-card-leg-display-metro-unproven');
+  await expect(unproven).toContainText('地铁4号线');
   await expect(unproven).toContainText('27 分钟');
   await expect(unproven).not.toContainText('陕西历史博物馆');
   await expect(unproven).not.toContainText('子午路张记肉夹馍（小寨店）');
   await expect(unproven).not.toContainText('¥0');
-  await expect(unproven).not.toContainText('换乘');
+  await expect(unproven.getByTestId('transit-direction')).toHaveCount(0);
 
-  await page.screenshot({ path: `${evidenceDir}/transport-desktop-1440.png`, fullPage: true });
+  const pending = page.getByTestId('transport-card-leg-display-metro-pending');
+  await expect(pending).toContainText('路线正在更新。');
+  await expect(pending.getByTestId('transport-stations')).toHaveCount(0);
+  await expect(pending.getByTestId('transport-summary')).toHaveCount(0);
+
+  await expect(page.getByText('查看路线', { exact: true })).toHaveCount(0);
+
+  await page.screenshot({ path: `${evidenceDir}/transit-desktop-1440.png`, fullPage: true });
 
   await transfer.evaluate((node) => {
     const scroller = node.closest('.journey-content-scroll');
@@ -1980,13 +2041,47 @@ test('mixed transport display merges headings and keeps station truth', async ({
     scroller.scrollTop += nodeRect.top - scrollerRect.top - 120;
   });
   await expect(transfer).toBeInViewport();
-  await page.screenshot({ path: `${evidenceDir}/transport-metro-desktop-1440.png`, fullPage: true });
+  await page.screenshot({ path: `${evidenceDir}/transit-transfer-collapsed-1440.png`, fullPage: true });
 
-  await direct.getByTestId('transport-segments-toggle').click();
-  await expect(direct.getByTestId('transport-segments')).toBeVisible();
-  await expect(direct).toContainText('地铁2号线');
-  await expect(direct).not.toContainText('3 次换乘');
-  await direct.getByTestId('transport-segments-toggle').click();
+  await chain.click();
+  await expect(chain).toHaveAttribute('aria-expanded', 'true');
+  const rides = transfer.getByTestId('transport-rides');
+  await expect(rides).toBeVisible();
+  await expect(rides.locator(':scope > li')).toHaveCount(2);
+  await expect(rides).not.toContainText('步行');
+  await expect(rides).toContainText('北大街站（地铁2号线·4号线换乘） → 小寨站');
+  await expect(rides).toContainText('小寨站 → 大雁塔站（雁塔北路南口）');
+  await expect(page.getByTestId('map-place-detail')).toHaveCount(0);
+  await page.screenshot({ path: `${evidenceDir}/transit-transfer-expanded-1440.png`, fullPage: true });
+
+  await transfer.getByTestId('transport-stations').click();
+  const detail = page.getByTestId('map-place-detail');
+  await expect(detail).toBeVisible();
+  await expect(detail).toContainText('地铁4号线');
+  await page.screenshot({ path: `${evidenceDir}/transit-map-detail-1440.png`, fullPage: true });
+  await page.getByRole('button', { name: '关闭地点详情', exact: true }).click();
+  await expect(detail).toHaveCount(0);
+  await expect(page.locator('[data-itinerary-occurrence="d1-display-metro-transfer"]').getByTestId('transport-map-entry')).toBeFocused();
+
+  await tram.evaluate((node) => {
+    const scroller = node.closest('.journey-content-scroll');
+    if (!scroller) return;
+    const nodeRect = node.getBoundingClientRect();
+    const scrollerRect = scroller.getBoundingClientRect();
+    scroller.scrollTop += nodeRect.top - scrollerRect.top - 120;
+  });
+  await expect(tram).toBeInViewport();
+  await page.screenshot({ path: `${evidenceDir}/transit-tram-1440.png`, fullPage: true });
+
+  await pending.evaluate((node) => {
+    const scroller = node.closest('.journey-content-scroll');
+    if (!scroller) return;
+    const nodeRect = node.getBoundingClientRect();
+    const scrollerRect = scroller.getBoundingClientRect();
+    scroller.scrollTop += nodeRect.top - scrollerRect.top - 120;
+  });
+  await expect(pending).toBeInViewport();
+  await page.screenshot({ path: `${evidenceDir}/transit-degraded-1440.png`, fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/');
@@ -1997,6 +2092,9 @@ test('mixed transport display merges headings and keeps station truth', async ({
   await sheet.getByTestId('day-summary-card-day-1').click();
   const phoneTransfer = sheet.getByTestId('transport-card-leg-display-metro-transfer');
   await expect(phoneTransfer).toBeVisible();
+  await expect(phoneTransfer.getByTestId('transit-line-chain')).toBeVisible();
+  await expect(phoneTransfer).toContainText('地铁2号线');
+  await expect(phoneTransfer).toContainText('地铁4号线');
   await page.waitForTimeout(600);
   await phoneTransfer.evaluate((node) => {
     const scroller = node.closest('.journey-content-scroll');
@@ -2006,8 +2104,47 @@ test('mixed transport display merges headings and keeps station truth', async ({
     scroller.scrollTop += nodeRect.top - scrollerRect.top - 120;
   });
   await expect(phoneTransfer).toBeInViewport();
+  await phoneTransfer.getByTestId('transit-line-chain').click();
+  await expect(phoneTransfer.getByTestId('transport-rides')).toBeVisible();
+  await expect(phoneTransfer.getByTestId('transport-rides').locator(':scope > li')).toHaveCount(2);
   expect(await sheet.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
-  await page.screenshot({ path: `${evidenceDir}/transport-phone-390.png`, fullPage: true });
+  await page.screenshot({ path: `${evidenceDir}/transit-phone-390.png`, fullPage: true });
+
+  const phoneTram = sheet.getByTestId('transport-card-leg-display-tram');
+  await phoneTram.evaluate((node) => {
+    const scroller = node.closest('.journey-content-scroll');
+    if (!scroller) return;
+    const nodeRect = node.getBoundingClientRect();
+    const scrollerRect = scroller.getBoundingClientRect();
+    scroller.scrollTop += nodeRect.top - scrollerRect.top - 120;
+  });
+  await expect(phoneTram).toBeInViewport();
+  await page.screenshot({ path: `${evidenceDir}/transit-tram-phone-390.png`, fullPage: true });
+
+  const phonePending = sheet.getByTestId('transport-card-leg-display-metro-pending');
+  await phonePending.evaluate((node) => {
+    const scroller = node.closest('.journey-content-scroll');
+    if (!scroller) return;
+    const nodeRect = node.getBoundingClientRect();
+    const scrollerRect = scroller.getBoundingClientRect();
+    scroller.scrollTop += nodeRect.top - scrollerRect.top - 120;
+  });
+  await expect(phonePending).toBeInViewport();
+  await page.screenshot({ path: `${evidenceDir}/transit-degraded-phone-390.png`, fullPage: true });
+
+  const phoneDirect = sheet.getByTestId('transport-card-leg-display-metro-direct');
+  await phoneDirect.evaluate((node) => {
+    const scroller = node.closest('.journey-content-scroll');
+    if (!scroller) return;
+    const nodeRect = node.getBoundingClientRect();
+    const scrollerRect = scroller.getBoundingClientRect();
+    scroller.scrollTop += nodeRect.top - scrollerRect.top - 120;
+  });
+  await expect(phoneDirect).toBeInViewport();
+  await phoneDirect.getByTestId('transport-stations').click();
+  await expect(page.getByTestId('canvas-sheet')).toHaveCount(0);
+  await expect(page.getByTestId('map-place-detail')).toBeVisible();
+  await page.screenshot({ path: `${evidenceDir}/transit-map-detail-phone-390.png`, fullPage: true });
   await assertOffline(page, fixture);
 });
 
