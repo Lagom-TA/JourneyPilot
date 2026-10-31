@@ -94,4 +94,5 @@ UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/jour
 - 前端由 Vite 提供热更新，开发时访问 `http://localhost:8080`，无需为每次修改运行生产构建。
 - `run.sh` 启动后端时显式关闭 Python 自动重载；修改后端代码后需要 `./run.sh restart`，并沿用启动时的环境变量。
 - 后端健康而前端代理失败时，检查前端日志；通过 `run.sh` 重启可重新设置正确的 `VITE_PROXY_TARGET`。
+- 已交付行程的地图区域提示加载失败，且浏览器网络面板对 `node_modules/.vite/deps/react-leaflet.js`、`leaflet.js` 返回 504 `Outdated Optimize Dep` 时，是 Vite 的预打包依赖缓存缺失或过期。在 `frontend/` 运行 `npx vite optimize` 重建依赖，或执行 `./run.sh restart`；不要为此删除行程或数据库数据。
 - `./run.sh stop` 关闭前后端，PostgreSQL 和 Redis 容器继续保留。不要为停止网页服务执行删除数据库卷的命令。

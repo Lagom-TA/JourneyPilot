@@ -5,11 +5,17 @@ import { Button } from './Button';
 interface LazyViewBoundaryProps {
   children: React.ReactNode;
   resetKey?: React.Key;
+  /* 失败提示只描述当前可确认的状态，不对未知异常断言原因。 */
+  message?: string;
+  retryLabel?: string;
 }
 
 interface LazyViewBoundaryState {
   failed: boolean;
 }
+
+const DEFAULT_FAILURE_MESSAGE = '这个页面没能加载出来。';
+const DEFAULT_RETRY_LABEL = '重新加载';
 
 export class LazyViewBoundary extends React.Component<
   LazyViewBoundaryProps,
@@ -34,14 +40,14 @@ export class LazyViewBoundary extends React.Component<
   render() {
     if (this.state.failed) {
       return (
-        <div className="flex h-full items-center justify-center bg-bg p-6">
+        <div data-testid="lazy-view-failure" role="alert" className="flex h-full items-center justify-center bg-bg p-6">
           <div className="max-w-[52ch] rounded-card border border-stroke bg-panel p-6 text-center shadow-sm">
             <p className="text-sm leading-relaxed text-ink-secondary">
-              这个页面没能加载出来，通常是网络中断导致的。
+              {this.props.message ?? DEFAULT_FAILURE_MESSAGE}
             </p>
             <div className="mt-4 flex justify-center">
               <Button variant="secondary" size="sm" onClick={this.handleReload}>
-                重新加载
+                {this.props.retryLabel ?? DEFAULT_RETRY_LABEL}
               </Button>
             </div>
           </div>
