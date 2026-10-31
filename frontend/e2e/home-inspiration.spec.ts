@@ -1097,3 +1097,608 @@ test('首页紧凑条件表单、开关首排与控件同行 2000px/1440px/390px
   }
   writeFileSync(`${evidence}/geometry.json`, JSON.stringify(geometry, null, 2));
 });
+
+// ---- 多目的地展开稳定性（20261031-1130-home-destination-stability） ----
+
+const destinationStabilityEvidence = '../output/polish/20261031-1130-home-destination-stability';
+
+type StabilityRect = { x: number; y: number; width: number; height: number; bottom: number; right: number };
+
+type StabilityGeometry = {
+  viewport: { width: number; height: number };
+  card: StabilityRect;
+  action: StabilityRect;
+  date: StabilityRect | null;
+  party: StabilityRect | null;
+  budget: StabilityRect | null;
+  route: StabilityRect;
+  panel: StabilityRect;
+  form: StabilityRect;
+  prefs: StabilityRect;
+  search: StabilityRect | null;
+  tokenRows: StabilityRect[];
+  fieldState: string | null;
+  searchInputs: number;
+  scroll: { window: number; hero: number; main: number };
+  overflowX: number;
+};
+
+async function enterStructuredWithOrigin(page: Page) {
+  await page.getByRole('tab', { name: '按条件规划' }).click();
+  const skip = page.getByRole('button', { name: '暂时不用默认值', exact: true });
+  const origin = page.getByRole('textbox', { name: '从哪里出发' });
+  await expect(origin.or(skip).first()).toBeVisible();
+  if (await skip.isVisible().catch(() => false)) await skip.click();
+  await expect(origin).toBeVisible();
+}
+
+async function chooseDestinations(page: Page, names: readonly string[]) {
+  const add = page.getByTestId('add-destination');
+  for (const name of names) {
+    if (await page.locator('.destination-search input').count() === 0) await add.click();
+    const search = page.locator('.destination-search input');
+    await expect(search).toHaveCount(1);
+    await search.fill(name);
+    await page.getByTestId('destination-candidates').getByRole('button').filter({ hasText: name }).first().click();
+    await expect(page.locator('.destination-token-name').filter({ hasText: name })).toHaveCount(1);
+  }
+}
+
+async function closeDestinationsAdd(page: Page) {
+  const add = page.getByTestId('add-destination');
+  if (await add.getAttribute('data-state') === 'open') await add.click();
+  await expect(page.getByTestId('destination-token-field')).toHaveAttribute('data-state', 'closed');
+  await page.waitForTimeout(320);
+}
+
+async function settlePlannerScroll(page: Page) {
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    window.scrollTo(0, 0);
+    for (const selector of ['.new-trip-hero', '.new-trip-main']) {
+      const node = document.querySelector<HTMLElement>(selector);
+      if (node) node.scrollTop = 0;
+    }
+  });
+  await page.waitForTimeout(120);
+}
+
+async function stabilityGeometry(page: Page): Promise<StabilityGeometry> {
+  return page.evaluate(() => {
+    const rect = (element: Element | null): StabilityRect | null => {
+      if (!element) return null;
+      const box = element.getBoundingClientRect();
+      const round = (value: number) => Math.round(value * 100) / 100;
+      return {
+        x: round(box.x + scrollX),
+        y: round(box.y + scrollY),
+        width: round(box.width),
+        height: round(box.height),
+        bottom: round(box.bottom + scrollY),
+        right: round(box.right + scrollX),
+      };
+    };
+    const pick = (selector: string) => rect(document.querySelector(selector));
+    const card = pick('.new-trip-content > .planner-card');
+    const action = pick('.planner-action-area .planner-main-action');
+    const route = pick('.planner-route-fields');
+    const panel = pick('.planner-panel-structured');
+    const form = pick('.planner-form-grid');
+    const prefs = pick('.planner-preference-block');
+    if (!card || !action || !route || !panel || !form || !prefs) throw new Error('planner geometry missing');
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      card,
+      action,
+      date: pick('[data-testid="date-range-trigger"]'),
+      party: pick('.planner-party'),
+      budget: pick('.planner-budget-input'),
+      route,
+      panel,
+      form,
+      prefs,
+      search: pick('.destination-add-panel'),
+      tokenRows: Array.from(document.querySelectorAll('.destination-token')).map((element) => rect(element)!),
+      fieldState: document.querySelector('[data-testid="destination-token-field"]')?.getAttribute('data-state') ?? null,
+      searchInputs: document.querySelectorAll('.destination-search input').length,
+      scroll: {
+        window: window.scrollY,
+        hero: (document.querySelector('.new-trip-hero') as HTMLElement | null)?.scrollTop ?? 0,
+        main: (document.querySelector('.new-trip-main') as HTMLElement | null)?.scrollTop ?? 0,
+      },
+      overflowX: document.documentElement.scrollWidth - innerWidth,
+    };
+  });
+}
+
+function expectSameRect(before: StabilityRect, after: StabilityRect, label: string) {
+  for (const key of ['x', 'y', 'width', 'height', 'bottom', 'right'] as const) {
+    expect(Math.abs(before[key] - after[key]), `${label}.${key}`).toBeLessThan(2);
+  }
+}
+
+function expectStablePlannerFrame(before: StabilityGeometry, after: StabilityGeometry, label: string) {
+  expectSameRect(before.card, after.card, `${label} card`);
+  expectSameRect(before.action, after.action, `${label} action`);
+  expect(after.scroll.window).toBe(0);
+  expect(after.scroll.hero).toBe(0);
+  expect(after.scroll.main).toBe(0);
+  expect(after.overflowX).toBeLessThanOrEqual(0);
+}
+
+async function readTransitionDurations(page: Page) {
+  return page.evaluate(() => {
+    const duration = (selector: string) => {
+      const element = document.querySelector(selector);
+      return element ? getComputedStyle(element).transitionDuration : null;
+    };
+    return {
+      search: duration('.destination-add-panel'),
+      form: duration('.planner-form-grid'),
+      panel: duration('.planner-panel-structured'),
+    };
+  });
+}
+
+async function recordTransitionFrames(page: Page, actionSelector: string) {
+  return page.evaluate(async (selector) => {
+    type Frame = {
+      t: number;
+      card: { top: number; height: number } | null;
+      action: { top: number; height: number } | null;
+      form: { top: number } | null;
+      prefs: { top: number } | null;
+      search: { top: number; height: number } | null;
+    };
+    const win = window as unknown as { __stabilityFrames?: Frame[]; __stabilityStop?: boolean };
+    win.__stabilityFrames = [];
+    win.__stabilityStop = false;
+    const box = (query: string) => document.querySelector(query)?.getBoundingClientRect() ?? null;
+    const started = performance.now();
+    const sample = () => {
+      if (win.__stabilityStop) return;
+      const card = box('.new-trip-content > .planner-card');
+      const action = box('.planner-action-area .planner-main-action');
+      const form = box('.planner-form-grid');
+      const prefs = box('.planner-preference-block');
+      const search = box('.destination-add-panel');
+      win.__stabilityFrames!.push({
+        t: Math.round(performance.now() - started),
+        card: card ? { top: card.top, height: card.height } : null,
+        action: action ? { top: action.top, height: action.height } : null,
+        form: form ? { top: form.top } : null,
+        prefs: prefs ? { top: prefs.top } : null,
+        search: search ? { top: search.top, height: search.height } : null,
+      });
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+    (document.querySelector(selector) as HTMLElement | null)?.click();
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    win.__stabilityStop = true;
+    return win.__stabilityFrames!;
+  }, actionSelector);
+}
+
+function summarizeFrames(frames: Array<{ card: { top: number; height: number } | null; action: { top: number; height: number } | null; form: { top: number } | null; prefs: { top: number } | null; search: { top: number; height: number } | null }>) {
+  const values = (pick: (frame: (typeof frames)[number]) => number | undefined) => frames.map(pick).filter((value): value is number => typeof value === 'number');
+  const range = (list: number[]) => [Math.min(...list), Math.max(...list)];
+  const cardTops = values((frame) => frame.card?.top);
+  const cardHeights = values((frame) => frame.card?.height);
+  const actionTops = values((frame) => frame.action?.top);
+  const actionHeights = values((frame) => frame.action?.height);
+  const overlapSearchForm = frames.filter((frame) => frame.search && frame.form && frame.search.height > 1 && frame.form.top < frame.search.top + frame.search.height - 0.5).length;
+  const prefsAboveForm = frames.filter((frame) => frame.prefs && frame.form && frame.prefs.top < frame.form.top - 0.5).length;
+  const movingForms = values((frame) => frame.form?.top);
+  return {
+    frames: frames.length,
+    cardTopRange: range(cardTops),
+    cardHeightRange: range(cardHeights),
+    actionTopRange: range(actionTops),
+    actionHeightRange: range(actionHeights),
+    formTopRange: range(movingForms),
+    overlapSearchForm,
+    prefsAboveForm,
+  };
+}
+
+test('多目的地展开保持规划卡稳定', async ({ browser }) => {
+  test.setTimeout(240_000);
+  mkdirSync(destinationStabilityEvidence, { recursive: true });
+  const report: Record<string, unknown> = {
+    fixture: 'home-inspiration local /api fixture; no real API, place service or model calls',
+    viewports: {} as Record<string, unknown>,
+    wrap: {} as Record<string, unknown>,
+    fiveAndZero: {} as Record<string, unknown>,
+    contentGrowth: {} as Record<string, unknown>,
+    animation: {} as Record<string, unknown>,
+    reducedMotion: {} as Record<string, unknown>,
+  };
+  const viewports = [
+    { width: 2000, height: 880 },
+    { width: 1440, height: 900 },
+    { width: 390, height: 844 },
+  ] as const;
+  const counts = [1, 3, 4] as const;
+
+  for (const viewport of viewports) {
+    for (const count of counts) {
+      const context = await browser.newContext({ viewport });
+      const page = await context.newPage();
+      const fixture = await openHome(page, viewport);
+      await enterStructuredWithOrigin(page);
+      const names = ['北京', '上海', '长春', '南京'].slice(0, count);
+      await chooseDestinations(page, names);
+      await closeDestinationsAdd(page);
+      await settlePlannerScroll(page);
+      const closed = await stabilityGeometry(page);
+      expect(closed.fieldState).toBe('closed');
+      expect(closed.searchInputs).toBe(0);
+
+      if (count === 3 && (viewport.width === 2000 || viewport.width === 390)) {
+        await page.screenshot({ path: `${destinationStabilityEvidence}/home-${viewport.width}-three-collapsed.png`, fullPage: true });
+        await page.locator('.new-trip-content > .planner-card').screenshot({ path: `${destinationStabilityEvidence}/home-${viewport.width}-three-collapsed-card.png` });
+      }
+
+      const add = page.getByTestId('add-destination');
+      await add.click();
+      await expect(page.locator('.destination-search input')).toBeVisible();
+      await page.waitForTimeout(320);
+      await settlePlannerScroll(page);
+      const open = await stabilityGeometry(page);
+      expect(open.fieldState).toBe('open');
+      expect(open.searchInputs).toBe(1);
+      expectStablePlannerFrame(closed, open, `${viewport.width}x${viewport.height} ${count} station`);
+      expect(open.form.y - closed.form.y).toBeGreaterThan(8);
+      expect(open.prefs.y - closed.prefs.y).toBeGreaterThan(8);
+      expect(Math.abs((open.form.y - closed.form.y) - (open.prefs.y - closed.prefs.y))).toBeLessThan(1);
+      expect(open.search).not.toBeNull();
+      expect(open.search!.height).toBeGreaterThan(40);
+      expect(open.search!.y).toBeGreaterThanOrEqual(Math.max(...open.tokenRows.map((row) => row.bottom)) - 1);
+      expect(open.form.y).toBeGreaterThanOrEqual(open.search!.bottom - 1);
+      expect(open.prefs.y).toBeGreaterThanOrEqual(open.form.bottom - 1);
+      expect(open.action.y).toBeGreaterThanOrEqual(open.prefs.bottom - 1);
+      expect(closed.search?.height ?? 0).toBeLessThan(1);
+      expect(closed.form.y).toBeGreaterThanOrEqual(closed.route.bottom);
+      expect(closed.action.y - closed.prefs.bottom).toBeLessThanOrEqual(56);
+      expect(closed.form.y - closed.route.bottom).toBeLessThanOrEqual(56);
+
+      const rows = new Set(open.tokenRows.map((row) => Math.round(row.y)));
+      if (viewport.width === 390 && count >= 3) {
+        expect(rows.size).toBeGreaterThanOrEqual(2);
+        (report.wrap as Record<string, unknown>)[`${viewport.width}x${viewport.height}-${count}`] = {
+          rows: open.tokenRows,
+          rowTops: Array.from(rows),
+          tokenColumnWidth: open.route.width,
+        };
+      }
+      if (count === 3 && (viewport.width === 2000 || viewport.width === 390)) {
+        await page.screenshot({ path: `${destinationStabilityEvidence}/home-${viewport.width}-three-expanded.png`, fullPage: true });
+        await page.locator('.new-trip-content > .planner-card').screenshot({ path: `${destinationStabilityEvidence}/home-${viewport.width}-three-expanded-card.png` });
+      }
+
+      await add.click();
+      await expect(page.getByTestId('destination-token-field')).toHaveAttribute('data-state', 'closed');
+      await page.waitForTimeout(320);
+      await settlePlannerScroll(page);
+      const closedAgain = await stabilityGeometry(page);
+      expectStablePlannerFrame(closed, closedAgain, `${viewport.width}x${viewport.height} ${count} station close`);
+      expect(closedAgain.searchInputs).toBe(0);
+
+      const naturalInput = page.getByTestId('natural-trip-input');
+      await page.getByRole('tab', { name: '一句话规划' }).click();
+      await expect(naturalInput).toBeVisible();
+      await naturalInput.fill('想从北京去上海，轻松玩五天。');
+      await page.waitForTimeout(320);
+      await settlePlannerScroll(page);
+      const natural = await stabilityGeometry(page);
+      expectStablePlannerFrame(closed, natural, `${viewport.width}x${viewport.height} ${count} station natural mode`);
+      await page.getByRole('tab', { name: '按条件规划' }).click();
+      await expect(naturalInput).toHaveValue('想从北京去上海，轻松玩五天。');
+      await expect(page.locator('.destination-token')).toHaveCount(count);
+
+      (report.viewports as Record<string, unknown>)[`${viewport.width}x${viewport.height}-${count}`] = {
+        closed,
+        open,
+        closedAgain,
+        natural,
+        movements: {
+          form: Math.round((open.form.y - closed.form.y) * 100) / 100,
+          prefs: Math.round((open.prefs.y - closed.prefs.y) * 100) / 100,
+          closedTopGap: Math.round((closed.form.y - closed.route.bottom) * 100) / 100,
+          closedBottomGap: Math.round((closed.action.y - closed.prefs.bottom) * 100) / 100,
+        },
+      };
+      expectCleanFixture(fixture);
+      await context.close();
+    }
+  }
+
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    const fixture = await openHome(page, { width: 390, height: 844 });
+    await enterStructuredWithOrigin(page);
+    const add = page.getByTestId('add-destination');
+    await chooseDestinations(page, ['北京', '上海', '长春', '南京', '杭州']);
+    await expect(page.locator('.destination-token')).toHaveCount(5);
+    await expect(add).toHaveText('目的地到达上限');
+    await expect(add).toBeDisabled();
+    const five = await stabilityGeometry(page);
+    await page.getByTestId('destination-token-0').focus();
+    await page.getByTestId('destination-token-0').press('ArrowDown');
+    await expect(page.getByTestId('destination-token-0')).toContainText('上海');
+    const sortedNames = await page.locator('.destination-token-name').allTextContents();
+    expect(sortedNames).toEqual(['上海', '北京', '长春', '南京', '杭州']);
+    await page.getByTestId('destination-token-4').locator('.destination-token-remove').click();
+    await expect(page.locator('.destination-token')).toHaveCount(4);
+    await expect(page.getByTestId('destination-token-field')).toHaveAttribute('data-state', 'closed');
+    await page.waitForTimeout(320);
+    await settlePlannerScroll(page);
+    const four = await stabilityGeometry(page);
+    await add.click();
+    await expect(page.locator('.destination-search input')).toBeVisible();
+    await page.waitForTimeout(320);
+    await settlePlannerScroll(page);
+    const fourOpen = await stabilityGeometry(page);
+    expectStablePlannerFrame(four, fourOpen, '390x844 five-to-four toggle');
+    for (let index = 0; index < 4; index += 1) {
+      await page.getByTestId('destination-token-0').locator('.destination-token-remove').click();
+      await expect(page.locator('.destination-token')).toHaveCount(3 - index);
+    }
+    await expect(page.getByTestId('destination-token-field')).toHaveAttribute('data-state', 'base');
+    await expect(page.locator('.destination-search input')).toBeVisible();
+    await expect(add).toHaveText('新增目的地');
+    await expect(add).toHaveAttribute('aria-expanded', 'true');
+    const zero = await stabilityGeometry(page);
+    await page.locator('.destination-search input').fill('苏州');
+    await page.getByTestId('destination-candidates').getByRole('button').filter({ hasText: '苏州' }).first().click();
+    await expect(page.locator('.destination-token')).toHaveCount(1);
+    (report.fiveAndZero as Record<string, unknown>)['390x844'] = {
+      five,
+      sortedNames,
+      four,
+      fourOpen,
+      zero,
+      restoredToken: await page.locator('.destination-token-name').allTextContents(),
+      addState: await add.getAttribute('data-state'),
+    };
+    expectCleanFixture(fixture);
+    await context.close();
+  }
+
+  {
+    const context = await browser.newContext({ viewport: { width: 2000, height: 880 } });
+    const page = await context.newPage();
+    const fixture = await openHome(page, { width: 2000, height: 880 });
+    await enterStructuredWithOrigin(page);
+    await chooseDestinations(page, ['北京', '上海', '长春']);
+    await closeDestinationsAdd(page);
+    await page.getByRole('button', { name: '更多偏好' }).click();
+    await expect(page.getByRole('button', { name: '户外自然', exact: true })).toBeVisible();
+    await settlePlannerScroll(page);
+    const closedMore = await stabilityGeometry(page);
+    const add = page.getByTestId('add-destination');
+    await add.click();
+    await page.waitForTimeout(320);
+    await settlePlannerScroll(page);
+    const openMore = await stabilityGeometry(page);
+    expectStablePlannerFrame(closedMore, openMore, '2000x880 more preferences');
+    await page.locator('.planner-action-area .planner-main-action').click();
+    await expect(page.getByText('请从地点候选中确认出发地和所有目的地。', { exact: true })).toBeVisible();
+    await settlePlannerScroll(page);
+    const errorOpen = await stabilityGeometry(page);
+    await add.click();
+    await page.waitForTimeout(320);
+    await settlePlannerScroll(page);
+    const errorClosed = await stabilityGeometry(page);
+    expectStablePlannerFrame(errorOpen, errorClosed, '2000x880 error toggle');
+    expect(errorClosed.card.height).toBeGreaterThan(closedMore.card.height);
+    await expect(page.getByText('请从地点候选中确认出发地和所有目的地。', { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `${destinationStabilityEvidence}/home-2000-more-preferences-error.png`, fullPage: true });
+    (report.contentGrowth as Record<string, unknown>)['more-preferences-error'] = {
+      closedMore,
+      openMore,
+      errorOpen,
+      errorClosed,
+    };
+    expectCleanFixture(fixture);
+    await context.close();
+  }
+
+  {
+    const context = await browser.newContext({ viewport: { width: 2000, height: 880 }, recordVideo: { dir: destinationStabilityEvidence } });
+    const page = await context.newPage();
+    const video = page.video();
+    const fixture = await openHome(page, { width: 2000, height: 880 });
+    await enterStructuredWithOrigin(page);
+    await chooseDestinations(page, ['北京', '上海', '长春']);
+    await closeDestinationsAdd(page);
+    await settlePlannerScroll(page);
+    const before = await stabilityGeometry(page);
+    const openFrames = await recordTransitionFrames(page, '[data-testid="add-destination"]');
+    await page.waitForTimeout(150);
+    await settlePlannerScroll(page);
+    const opened = await stabilityGeometry(page);
+    await page.evaluate(() => {
+      (document.activeElement as HTMLElement | null)?.blur();
+      window.scrollTo(0, 0);
+      for (const selector of ['.new-trip-hero', '.new-trip-main']) {
+        const node = document.querySelector<HTMLElement>(selector);
+        if (node) node.scrollTop = 0;
+      }
+    });
+    await page.waitForTimeout(120);
+    const closeFrames = await recordTransitionFrames(page, '[data-testid="add-destination"]');
+    await page.waitForTimeout(150);
+    await settlePlannerScroll(page);
+    const closed = await stabilityGeometry(page);
+    const openSummary = summarizeFrames(openFrames);
+    const closeSummary = summarizeFrames(closeFrames);
+    for (const summary of [openSummary, closeSummary]) {
+      expect(summary.cardTopRange[1] - summary.cardTopRange[0]).toBeLessThan(2);
+      expect(summary.cardHeightRange[1] - summary.cardHeightRange[0]).toBeLessThan(2);
+      expect(summary.actionTopRange[1] - summary.actionTopRange[0]).toBeLessThan(2);
+      expect(summary.actionHeightRange[1] - summary.actionHeightRange[0]).toBeLessThan(2);
+      expect(summary.overlapSearchForm).toBe(0);
+      expect(summary.prefsAboveForm).toBe(0);
+    }
+    expect(openSummary.formTopRange[1] - openSummary.formTopRange[0]).toBeGreaterThan(8);
+    expectStablePlannerFrame(before, opened, 'animation open final');
+    expectStablePlannerFrame(before, closed, 'animation close final');
+    await context.close();
+    let videoPath: string | null = null;
+    try {
+      const recorded = await video?.path();
+      if (recorded) {
+        const target = `${destinationStabilityEvidence}/desktop-toggle.webm`;
+        const { renameSync } = await import('node:fs');
+        renameSync(recorded, target);
+        videoPath = target;
+      }
+    } catch {
+      videoPath = null;
+    }
+    (report.animation as Record<string, unknown>)['desktop'] = {
+      before,
+      opened,
+      closed,
+      openSummary,
+      closeSummary,
+      openFrames,
+      closeFrames,
+      videoPath,
+    };
+    expectCleanFixture(fixture);
+  }
+
+  {
+    const context = await browser.newContext({ viewport: { width: 2000, height: 880 }, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    const fixture = await openHome(page, { width: 2000, height: 880 });
+    await enterStructuredWithOrigin(page);
+    await chooseDestinations(page, ['北京', '上海', '长春']);
+    await closeDestinationsAdd(page);
+    await settlePlannerScroll(page);
+    const closed = await stabilityGeometry(page);
+    const durations = await readTransitionDurations(page);
+    for (const value of Object.values(durations)) {
+      const seconds = Number.parseFloat(String(value).split(',')[0]);
+      expect(seconds).toBeLessThan(0.01);
+    }
+    const add = page.getByTestId('add-destination');
+    await add.click();
+    await page.waitForTimeout(120);
+    await settlePlannerScroll(page);
+    const open = await stabilityGeometry(page);
+    expectStablePlannerFrame(closed, open, 'reduced motion open');
+    expect(open.form.y - closed.form.y).toBeGreaterThan(8);
+    await add.click();
+    await page.waitForTimeout(120);
+    await settlePlannerScroll(page);
+    const closedAgain = await stabilityGeometry(page);
+    expectStablePlannerFrame(closed, closedAgain, 'reduced motion close');
+    await page.screenshot({ path: `${destinationStabilityEvidence}/reduced-motion-closed.png`, fullPage: true });
+    (report.reducedMotion as Record<string, unknown>)['2000x880'] = { durations, closed, open, closedAgain };
+    expectCleanFixture(fixture);
+    await context.close();
+  }
+
+  writeFileSync(`${destinationStabilityEvidence}/geometry.json`, JSON.stringify(report, null, 2));
+});
+
+test('多目的地展开保持规划卡稳定：卡内需求确认共用目的地控件', async ({ page }) => {
+  test.setTimeout(90_000);
+  mkdirSync(destinationStabilityEvidence, { recursive: true });
+  const fixture = await openHome(page, { width: 2000, height: 880 });
+  const intakePlace = (name: string) => ({
+    place_id: `osm:relation:intake-${name}`,
+    provider: 'osm',
+    kind: 'city',
+    name,
+    display_name: `${name}，中国`,
+    country_code: 'CN',
+    latitude: 31.2,
+    longitude: 121.4,
+    admin_path: ['中国', name],
+  });
+  const intake = {
+    raw_input: '想从北京出发去上海，轻松一点',
+    route_decision: { route: 'trip_planning', confidence: 1, alternatives: [], signals: ['explicit_ui_action'], requires_trip_draft: true, requires_confirmation: false },
+    controlled_identity: null,
+    seed_destinations: [],
+    missing_fields: ['dates', 'place_confirmation'],
+    ready_to_create: false,
+    recognized_requirements: ['轻松一点'],
+    understanding_status: 'ready',
+    draft: {
+      origin_query: '',
+      destination_queries: ['北京'],
+      start_date: '2026-11-05',
+      end_date: '2026-11-08',
+      duration_days: 4,
+      party: { adults: 1, children: 0, elderly_companions: false, accessibility_required: false },
+      style: null,
+      budget_text: '',
+      destination_decided: false,
+      destination_suggestions: [],
+      confirmed_origin: null,
+      confirmed_destinations: [intakePlace('北京')],
+    },
+    questions: [],
+    answers: [],
+    additional_requirements: '',
+  };
+  await page.route('**/api/chat-stream', async (route) => {
+    const events = [
+      { type: 'guided_intake', session_id: 'home-e2e', guided_intake: intake },
+      { type: 'chat_complete' },
+    ];
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/event-stream',
+      body: events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''),
+    });
+  });
+  await page.route('**/api/sessions/home-e2e/intake', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: route.request().postData() || '{}',
+    });
+  });
+  await page.getByTestId('natural-trip-input').fill('想从北京出发去上海，轻松一点');
+  await page.getByRole('button', { name: '开始规划', exact: true }).click();
+  const inlineIntake = page.locator('.planner-inline-intake');
+  await expect(inlineIntake).toBeVisible();
+  await expect(inlineIntake.getByTestId('destination-token-0')).toContainText('北京');
+  const field = inlineIntake.getByTestId('destination-token-field');
+  const add = field.getByTestId('add-destination');
+  await expect(field).toHaveAttribute('data-state', 'closed');
+  await expect(field.locator('.destination-search')).toHaveCount(0);
+  await add.click();
+  const search = field.locator('.destination-search input');
+  await expect(search).toBeFocused();
+  await search.fill('上海');
+  await page.getByTestId('destination-candidates').getByRole('button').filter({ hasText: '上海' }).first().click();
+  await expect(field.getByTestId('destination-token-0')).toContainText('北京');
+  await expect(field.getByTestId('destination-token-1')).toContainText('上海');
+  await expect(field).toHaveAttribute('data-state', 'open');
+  await expect(field.locator('.destination-search input')).toHaveCount(1);
+  await add.click();
+  await expect(field).toHaveAttribute('data-state', 'closed');
+  await expect(field.locator('.destination-search')).toHaveCount(0);
+  await field.getByTestId('destination-token-0').focus();
+  await field.getByTestId('destination-token-0').press('ArrowDown');
+  await expect(field.getByTestId('destination-token-0')).toContainText('上海');
+  await expect(field.getByTestId('destination-token-1')).toContainText('北京');
+  await page.screenshot({ path: `${destinationStabilityEvidence}/inline-intake-shared-destination.png`, fullPage: true });
+  writeFileSync(`${destinationStabilityEvidence}/inline-intake-shared-destination.json`, JSON.stringify({
+    fixture: 'home local API fixture with synthetic guided intake; no real API or model',
+    fieldState: await field.getAttribute('data-state'),
+    order: await field.locator('.destination-token-name').allTextContents(),
+    searchInputs: await field.locator('.destination-search input').count(),
+  }, null, 2));
+  expectCleanFixture(fixture);
+});

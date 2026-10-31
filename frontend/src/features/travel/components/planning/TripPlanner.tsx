@@ -14,7 +14,7 @@ import { useApp } from '../../../../app/state/AppContext';
 import { useSendMessage } from '../../../../app/session/useSendMessage';
 import { DateRangePicker } from './DateRangePicker';
 import { PlaceField } from './PlaceField';
-import { DestinationTokenField, MAX_DESTINATIONS } from './DestinationTokenField';
+import { DestinationTokenField, MAX_DESTINATIONS, type DestinationAddState } from './DestinationTokenField';
 import { GuidedIntakeQuestions } from './GuidedIntakeQuestions';
 import { parseTripBudget, tripIdentityError } from '../../model/tripIdentityValidation';
 import type { AtlasScene } from './TravelAtlasScenes';
@@ -128,6 +128,14 @@ export const TripPlanner: React.FC<{
   const [originReady, setOriginReady] = React.useState<boolean | null>(null);
   const [originSetup, setOriginSetup] = React.useState<PlaceIdentity | null>(null);
   const [error, setError] = React.useState('');
+  const [destinationAddOpen, setDestinationAddOpen] = React.useState(false);
+  const confirmedDestinations = destinations.filter((place): place is PlaceIdentity => Boolean(place)).length;
+  const destinationCollapsed = confirmedDestinations > 0
+    && confirmedDestinations < MAX_DESTINATIONS
+    && !destinationAddOpen;
+  const handleDestinationAddState = React.useCallback((state: DestinationAddState) => {
+    setDestinationAddOpen(state === 'open');
+  }, []);
 
   const focusNaturalInput = React.useCallback(() => {
     const input = naturalInputRef.current;
@@ -429,7 +437,11 @@ export const TripPlanner: React.FC<{
             aria-labelledby={`${tabsId}-structured-tab`}
             ref={structuredPanelRef}
             aria-hidden={mode !== 'structured'}
-            className={cn('planner-panel planner-panel-structured', mode === 'structured' ? 'is-active' : 'is-inactive')}
+            className={cn(
+              'planner-panel planner-panel-structured',
+              mode === 'structured' ? 'is-active' : 'is-inactive',
+              destinationCollapsed && 'is-destination-collapsed',
+            )}
             initial={false}
             animate={{ opacity: mode === 'structured' ? 1 : 0, y: mode === 'structured' ? 0 : 4 }}
             transition={{ duration: reducedMotion ? 0 : duration.base, ease: easing.decelerate }}
@@ -470,6 +482,7 @@ export const TripPlanner: React.FC<{
                     <DestinationTokenField
                       values={destinations}
                       queries={destinationQueries}
+                      onAddStateChange={handleDestinationAddState}
                       onChange={(nextValues, nextQueries) => {
                         setDestinations(nextValues);
                         setDestinationQueries(nextQueries);

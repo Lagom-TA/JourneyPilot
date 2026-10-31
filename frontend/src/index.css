@@ -1271,12 +1271,13 @@ summary.research-query-summary { cursor: pointer; }
   min-width: 0;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  gap: 0;
 }
 
 .destination-token-flow {
   display: grid;
   min-width: 0;
+  min-height: 44px;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 6px;
@@ -1296,6 +1297,7 @@ summary.research-query-summary { cursor: pointer; }
   min-width: 0;
   flex-wrap: wrap;
   align-items: center;
+  align-self: center;
   gap: 6px;
   margin: 0;
   padding: 0;
@@ -1363,11 +1365,29 @@ summary.research-query-summary { cursor: pointer; }
 }
 
 .destination-add-panel {
-  display: flex;
+  display: grid;
   min-width: 0;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 2px;
+  grid-template-rows: 1fr;
+  /* 原来的 6px 行间隙 + 2px 内衬都放在外层：收起时一起收掉，展开时与搜索行一起出现。 */
+  padding-top: 8px;
+  transition:
+    grid-template-rows var(--dur-slow) var(--ease-standard),
+    padding-top var(--dur-slow) var(--ease-standard);
+}
+
+.destination-add-panel.is-closed {
+  grid-template-rows: 0fr;
+  padding-top: 0;
+}
+
+.destination-add-panel-inner {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.destination-add-panel-placeholder {
+  height: 44px;
 }
 
 .destination-search {
@@ -1482,8 +1502,10 @@ summary.research-query-summary { cursor: pointer; }
 
 .planner-add-destination {
   display: inline-flex;
+  min-width: 108px;
   min-height: 36px;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 0 12px;
   border: 1px solid color-mix(in srgb, var(--color-accent) 26%, var(--color-stroke));
@@ -1525,6 +1547,29 @@ summary.research-query-summary { cursor: pointer; }
   align-items: end;
   gap: 16px;
   margin-top: 20px;
+  transition: margin-top var(--dur-slow) var(--ease-standard);
+}
+
+/* 新增目的地收起时，把展开搜索行占用的高度均分到日期组上方和主按钮上方：
+   日期/同行/预算与旅行偏好保持原有行距，作为整体下移让位，卡片外框与主按钮不动。 */
+.planner-panel-structured {
+  transition: padding-bottom var(--dur-slow) var(--ease-standard);
+}
+
+.planner-panel-structured.is-destination-collapsed {
+  padding-bottom: 26px;
+}
+
+.planner-panel-structured.is-destination-collapsed .planner-form-grid {
+  margin-top: 46px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .destination-add-panel,
+  .planner-panel-structured,
+  .planner-form-grid {
+    transition: none;
+  }
 }
 
 .planner-form-grid .planner-party {

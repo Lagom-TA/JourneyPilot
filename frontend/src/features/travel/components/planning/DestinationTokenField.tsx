@@ -9,14 +9,20 @@ export const MAX_DESTINATIONS = 5;
 
 type Values = Array<PlaceIdentity | null>;
 
+export type DestinationAddState = 'base' | 'open' | 'closed' | 'limit';
+
 interface DestinationTokenFieldProps {
   values: Values;
   queries: string[];
   onChange: (values: Values, queries: string[]) => void;
   className?: string;
+  /** 首页规划卡用它把“新增搜索是否展开”同步到外层布局，其他入口可不传。 */
+  onAddStateChange?: (state: DestinationAddState) => void;
 }
 
 const DRAFT_SEPARATOR = '\u0001';
+// 收起后保留搜索节点到动画结束，避免收起瞬间整行消失导致外层布局先跳动再复位。
+const ADD_PANEL_UNMOUNT_DELAY_MS = 260;
 
 function confirmedPlaces(values: Values): PlaceIdentity[] {
   return values.filter((place): place is PlaceIdentity => Boolean(place));
@@ -255,13 +261,14 @@ const DestinationSearch: React.FC<{
   );
 };
 
-export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ values, queries, onChange, className }) => {
+export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ values, queries, onChange, className, onAddStateChange }) => {
   const confirmed = React.useMemo(() => confirmedPlaces(values), [values]);
   const confirmedKey = confirmed.map((place) => place.place_id).join(DRAFT_SEPARATOR);
   const [open, setOpen] = React.useState(() => {
     const drafts = restoredDrafts(values, queries);
     return drafts.length > 0 || confirmed.length === 0;
   });
+  const [searchMounted, setSearchMounted] = React.useState(open);
   const [draft, setDraft] = React.useState(() => restoredDrafts(values, queries)[0] ?? '');
   const [draftQueue, setDraftQueue] = React.useState<string[]>(() => restoredDrafts(values, queries).slice(1));
   const [dragFrom, setDragFrom] = React.useState<number | null>(null);
@@ -294,6 +301,31 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
     () => new Set(confirmed.map((place) => place.place_id)),
     [confirmed],
   );
+  const addState: DestinationAddState = full
+    ? 'limit'
+    : confirmed.length === 0
+      ? 'base'
+      : open
+        ? 'open'
+        : 'closed';
+  const addPanelRef = React.useRef<HTMLDivElement>(null);
+
+  React.useLayoutEffect(() => {
+    onAddStateChange?.(addState);
+  }, [addState, onAddStateChange]);
+
+  React.useLayoutEffect(() => {
+    addPanelRef.current?.toggleAttribute('inert', !open);
+  }, [open]);
+
+  React.useEffect(() => {
+    if (open) {
+      setSearchMounted(true);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setSearchMounted(false), ADD_PANEL_UNMOUNT_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   React.useEffect(() => {
     const externalPlaces = previousConfirmedRef.current !== confirmedKey;
@@ -345,9 +377,13 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
   const emit = (places: PlaceIdentity[], draftText: string, nextOpen: boolean, queue: string[] = draftQueue) => {
     const key = places.map((place) => place.place_id).join(DRAFT_SEPARATOR);
     const nextQueries = queriesFor(places, [draftText, ...queue], nextOpen);
-    emittedConfirmedRef.current = key;
+    const queriesKey = nextQueries.join(DRAFT_SEPARATOR);
+    const unchanged = key === emittedConfirmedRef.current && queriesKey === emittedQueriesRef.current;
     previousConfirmedRef.current = key;
-    emittedQueriesRef.current = nextQueries.join(DRAFT_SEPARATOR);
+    // 仅展开/收起且草稿为空时不要重复提交同一份值：上层无需清空校验错误或重复自动保存。
+    if (unchanged) return;
+    emittedConfirmedRef.current = key;
+    emittedQueriesRef.current = queriesKey;
     onChange(places, nextQueries);
   };
 
@@ -637,16 +673,29 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
           </button>
         </div>
       </div>
-      {confirmed.length > 0 && open && !full && (
-        <div id={searchId} className="destination-add-panel">
-          <DestinationSearch
-            query={draft}
-            selectedIds={selectedIds}
-            inputRef={(node) => { inputRef.current = node; }}
-            onQueryChange={updateDraft}
-            onSelect={selectPlace}
-            onBackspace={removeLastConfirmed}
-          />
+      {confirmed.length > 0 && !full && (
+        <div
+          ref={addPanelRef}
+          id={searchId}
+          data-testid="destination-add-panel"
+          className={cn('destination-add-panel', !open && 'is-closed')}
+          aria-hidden={!open}
+        >
+          <div className="destination-add-panel-inner">
+            {open ? (
+              <DestinationSearch
+                query={draft}
+                selectedIds={selectedIds}
+                inputRef={(node) => { inputRef.current = node; }}
+                onQueryChange={updateDraft}
+                onSelect={selectPlace}
+                onBackspace={removeLastConfirmed}
+              />
+            ) : searchMounted ? (
+              // 收起时用等高占位撑住过渡，搜索框本身立即移出无障碍树和测试查询。
+              <div className="destination-add-panel-placeholder" aria-hidden />
+            ) : null}
+          </div>
         </div>
       )}
     </div>
