@@ -2349,6 +2349,30 @@ summary.research-query-summary { cursor: pointer; }
   overflow: hidden;
 }
 
+/* 恢复提示是覆盖在工作区上方的非模态状态层：脱离文档流，不影响工作区尺寸与滚动。
+   提示本体只做状态展示，指针事件穿透到下方工作区；仅“重试”按钮恢复交互。 */
+.recovery-notice {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 1050;
+  width: min(46rem, calc(100% - 48px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.recovery-notice > button {
+  pointer-events: auto;
+}
+
+@media (min-width: 1024px) {
+  .recovery-notice {
+    top: 16px;
+    /* 桌面端盖住地图顶栏与行程浮面板，但仍低于 Sheet、移动抽屉与模态框。 */
+    z-index: 1150;
+  }
+}
+
 .mobile-nav-opener {
   display: none;
   width: 44px;
@@ -3592,20 +3616,101 @@ summary.research-query-summary { cursor: pointer; }
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
-  padding: clamp(24px, 3.2vw, 44px) clamp(22px, 3.4vw, 56px) 40px;
+  padding: 0;
   background:
     radial-gradient(circle at 100% 0, color-mix(in srgb, var(--color-chart) 5%, transparent), transparent 34%),
     var(--color-bg);
 }
 
+/* 过程独立滚动，底部 composer 固定在同一列下方，长工具链不会把它推走。 */
 .generation-activity-body {
   display: flex;
-  min-height: 100%;
-  flex: 1 0 auto;
+  min-height: 0;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 14px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: clamp(24px, 3.2vw, 44px) clamp(22px, 3.4vw, 56px) clamp(18px, 2.2vw, 30px);
+}
+
+/* 整理卡与确认门共用同一块局部尺寸容器，动画不触达整页或 composer。 */
+.generation-handoff {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  align-content: start;
+}
+
+.generation-handoff-pane {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition:
+    grid-template-rows .32s cubic-bezier(.2, 0, .38, .9),
+    opacity .2s cubic-bezier(.2, 0, .38, .9),
+    visibility 0s;
+}
+
+.generation-handoff-pane-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.generation-handoff.is-gate .generation-handoff-process,
+.generation-handoff:not(.is-gate) .generation-handoff-gate {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.generation-handoff.is-gate .generation-handoff-process,
+.generation-handoff:not(.is-gate) .generation-handoff-gate {
+  transition:
+    grid-template-rows .32s cubic-bezier(.2, 0, .38, .9),
+    opacity .2s cubic-bezier(.2, 0, .38, .9),
+    visibility 0s .32s;
+}
+
+.generation-handoff.is-instant .generation-handoff-pane,
+.generation-handoff.is-instant .generation-handoff-pane-inner {
+  transition: none !important;
+}
+
+.generation-handoff .research-panel-workspace {
+  flex: 0 0 auto;
+}
+
+.generation-followup {
+  flex: 0 0 auto;
+  padding: 12px clamp(22px, 3.4vw, 56px) clamp(14px, 2vw, 22px);
+  border-top: 1px solid color-mix(in srgb, var(--color-stroke) 70%, transparent);
+  background: color-mix(in srgb, var(--color-bg) 94%, var(--color-panel));
+}
+
+.generation-followup-inner {
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.generation-followup-hint {
+  margin-bottom: 8px;
+  padding: 0 2px;
+  color: var(--color-ink-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.generation-readonly-note {
+  margin-top: 18px;
+  color: var(--color-ink-muted);
+  font-size: 12px;
+  line-height: 1.7;
 }
 
 .generation-activity-heading {
@@ -3816,8 +3921,6 @@ summary.research-query-summary { cursor: pointer; }
 .generation-progress {
   position: relative;
   margin-top: 28px;
-  padding-top: 24px;
-  border-top: 1px solid var(--color-stroke);
 }
 
 .generation-progress[data-active='true'] li.is-active::before {
@@ -4032,42 +4135,52 @@ summary.research-query-summary { cursor: pointer; }
   color: var(--color-error, #c0392b);
 }
 
-.generation-trip-card-sub {
-  margin-top: 6px;
-  color: var(--color-ink-secondary);
-  font-size: 12px;
-  line-height: 1.7;
+.generation-trip-card-meta {
+  display: grid;
+  gap: 7px;
+  margin-top: 13px;
 }
 
-.generation-trip-card-facts {
+.generation-trip-card-meta > div {
   display: grid;
-  gap: 12px;
-  margin-top: 20px;
-  padding-top: 18px;
-  border-top: 1px solid var(--color-stroke);
-}
-
-.generation-trip-card-facts > div {
-  display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
+  grid-template-columns: 48px minmax(0, 1fr);
   align-items: start;
-  gap: 10px;
+  gap: 9px;
   font-size: 12px;
   line-height: 1.7;
 }
 
-.generation-trip-card-facts dt {
+.generation-trip-card-meta dt {
   display: flex;
   align-items: center;
   gap: 4px;
+  padding-top: 1px;
   color: var(--color-ink-muted);
 }
 
-.generation-trip-card-facts dd {
+.generation-trip-card-meta dd {
+  min-width: 0;
   color: var(--color-ink);
+  overflow-wrap: anywhere;
 }
 
-.generation-trip-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.generation-trip-card-route dd {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 6px;
+  color: var(--color-ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.generation-trip-card-date {
+  white-space: nowrap;
+}
+
+.generation-trip-card-party dt {
+  color: var(--color-ink-secondary);
+}
+
+.generation-trip-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 0; }
 .generation-trip-tags span { padding: 4px 8px; border-radius: var(--radius-label); background: var(--color-surface); color: var(--color-ink-secondary); font-size: 10px; }
 
 /* 计划确认操作区 */
@@ -4084,6 +4197,17 @@ summary.research-query-summary { cursor: pointer; }
   box-shadow: 0 16px 48px rgb(31 45 51 / 5%);
   container-type: inline-size;
 }
+
+.plan-gate-card.is-workspace {
+  width: 100%;
+  max-width: none;
+  padding: clamp(20px, 2.2vw, 28px);
+  box-shadow: none;
+}
+
+.plan-gate-card.is-workspace .plan-gate-header h2 { margin-top: 0; }
+.plan-gate-card.is-workspace .plan-gate-plan { margin-top: 17px; padding-top: 16px; }
+.plan-gate-card.is-workspace .plan-gate-actions { margin-top: 20px; padding-top: 16px; }
 
 .plan-gate-header > p { color: var(--color-accent); font-size: 10px; font-weight: 600; letter-spacing: .08em; }
 .plan-gate-header h2 { margin-top: 6px; outline: none; font-family: theme('fontFamily.display'); font-size: clamp(23px, 2vw, 29px); font-weight: 600; line-height: 1.35; }
@@ -4220,12 +4344,20 @@ summary.research-query-summary { cursor: pointer; }
   .generation-journey-panel { padding: 0; }
   .generation-planning-layout { display: block; height: auto; }
   .generation-planning-sidebar { overflow: visible; padding: 24px 20px 28px; border-right: 0; border-bottom: 1px solid var(--color-stroke); }
-  .generation-activity { overflow: visible; padding: 28px 16px 36px; }
+  .generation-activity { overflow: visible; padding: 0; }
+  .generation-activity-body { overflow: visible; padding: 28px 16px 12px; }
+  .generation-followup {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+    background: var(--color-bg);
+    box-shadow: 0 -8px 20px color-mix(in srgb, var(--color-ink) 6%, transparent);
+  }
+  .generation-followup-hint { font-size: 11px; }
   .generation-activity-heading { margin-bottom: 20px; padding: 0 4px; }
   .generation-activity-heading h2 { font-size: 25px; }
-  .generation-trip-card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .generation-trip-card-facts > div { display: block; }
-  .generation-trip-card-facts dd { margin-top: 4px; }
+  .generation-trip-card-meta > div { grid-template-columns: 44px minmax(0, 1fr); gap: 8px; }
   .research-panel-workspace { max-width: none; }
   .research-panel-workspace .research-panel-heading { padding: 0 0 10px; }
   .research-panel-workspace .research-agent-heading { min-height: 36px; padding: 0 0 8px; }

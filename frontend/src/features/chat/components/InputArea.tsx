@@ -15,7 +15,9 @@ import React, { useState, useRef, useCallback } from 'react';
 export const InputArea: React.FC<{
     showCompaction?: boolean;
     minimal?: boolean;
-}> = ({ showCompaction = true, minimal = false }) => {
+    autoFocus?: boolean;
+    placeholder?: string;
+}> = ({ showCompaction = true, minimal = false, autoFocus = true, placeholder }) => {
     const { state, dispatch, activeStreamAbortRef } = useApp();
     const { sendMessage } = useSendMessage();
     const { setLastSession } = useSessionManager();
@@ -159,6 +161,8 @@ export const InputArea: React.FC<{
     }, [state.currentSessionId, isCompacting]);
     const runInFlight = Boolean(state.currentTripRunId && isTripRunCancellable(state.currentTripRunStatus));
     const showStop = runInFlight && (state.isStreaming || !input.trim());
+    const normalPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改……' : '描述这趟旅行：目的地、日期、同行人、预算、偏好…');
+    const stoppedPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改……' : '告诉 JourneyPilot 这趟行程想怎么调整…');
     return (<div className="w-full">
 
       <div className="rounded-card shadow-sm">
@@ -167,7 +171,7 @@ export const InputArea: React.FC<{
           <div className="input-normal-row">
             <div className="input-normal-inner flex items-center gap-2 px-4 py-3">
               {mode === 'stopped' ? (<>
-                  <textarea value={stoppedInput} onChange={(e) => setStoppedInput(e.target.value)} onKeyDown={handleStoppedKeyDown} placeholder={minimal ? '告诉我想怎么改……' : '告诉 JourneyPilot 这趟行程想怎么调整…'} rows={1} autoFocus className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[120px] leading-relaxed')}/>
+                  <textarea value={stoppedInput} onChange={(e) => setStoppedInput(e.target.value)} onKeyDown={handleStoppedKeyDown} placeholder={stoppedPlaceholder} rows={1} autoFocus={autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[120px] leading-relaxed')}/>
                   <Button variant="primary" size="sm" onClick={handleStoppedSend} disabled={!stoppedInput.trim()} className="flex-shrink-0 !rounded-card !h-8 !w-8 !p-0">
                     <Send size={14}/>
                   </Button>
@@ -179,7 +183,7 @@ export const InputArea: React.FC<{
                   <textarea ref={textareaRef} data-testid="brief-input" value={input} onChange={(e) => {
                 setInput(e.target.value);
                 adjustHeight();
-            }} onKeyDown={handleKeyDown} placeholder={minimal ? '告诉我想怎么改……' : '描述这趟旅行：目的地、日期、同行人、预算、偏好…'} rows={1} name="chat-message" autoComplete="off" autoFocus={minimal} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[200px] leading-relaxed')}/>
+            }} onKeyDown={handleKeyDown} placeholder={normalPlaceholder} rows={1} name="chat-message" autoComplete="off" autoFocus={minimal && autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[200px] leading-relaxed')}/>
                   <Button variant="primary" size="sm" data-testid="send-button" aria-label={showStop ? '停止本次运行' : '发送'} data-streaming={showStop ? 'true' : 'false'} onClick={showStop ? handleStop : handleSend} disabled={!showStop && !input.trim()} className={cn('flex-shrink-0 !rounded-card !h-8 !w-8 !p-0', showStop &&
                 '!bg-ink/75 hover:!bg-ink !shadow-none')}>
                     {showStop ? <Square size={13}/> : <Send size={14}/>}

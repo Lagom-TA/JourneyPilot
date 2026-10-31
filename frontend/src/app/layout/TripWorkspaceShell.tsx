@@ -58,24 +58,11 @@ export const TripWorkspaceShell: React.FC = () => {
 
   if (!state.sessionInitialized) return <PageSkeleton />;
 
-  return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-bg">
-      {(state.deliveryBundleLoadState.status === 'error' || state.deliveryBundleLoadState.status === 'loading') && (
-        <div className="flex-none px-3 pt-3 sm:px-4">
-          <div role="alert" className="mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-card border border-stroke bg-panel px-4 py-3 text-sm text-ink shadow-sm">
-            <span className="min-w-0 break-words">
-              {state.deliveryBundleLoadState.status === 'loading' ? '正在重新加载这趟旅行…' : state.deliveryBundleLoadState.message}
-            </span>
-            <button
-              type="button"
-              onClick={() => void retryCurrentBundle()}
-              disabled={state.deliveryBundleLoadState.status === 'loading'}
-              className="min-h-9 shrink-0 rounded-label border border-stroke bg-surface px-3 text-xs font-semibold text-ink hover:bg-accent-soft disabled:opacity-60"
-            >重试</button>
-          </div>
-        </div>
-      )}
+  const deliveryBundleLoadState = state.deliveryBundleLoadState;
+  const showRecoveryNotice = deliveryBundleLoadState.status === 'error' || deliveryBundleLoadState.status === 'loading';
 
+  return (
+    <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-bg">
       <div className="relative min-h-0 flex-1" data-testid="trip-workspace-layout">
         <AnimatePresence mode="popLayout" initial={false}>
           {hasJourneyWorkspace ? (
@@ -98,6 +85,26 @@ export const TripWorkspaceShell: React.FC = () => {
           )}
         </AnimatePresence>
       </div>
+
+      {/* 恢复提示只做状态提示：脱离文档流覆盖在工作区上方，不占高度、不抢焦点、不拦框外操作。 */}
+      {showRecoveryNotice && (
+        <div
+          data-testid="delivery-recovery-notice"
+          role="alert"
+          aria-atomic="true"
+          className="recovery-notice flex items-center justify-between gap-3 rounded-card border border-stroke bg-panel/95 px-4 py-2.5 text-sm text-ink shadow-lg backdrop-blur"
+        >
+          <span data-testid="delivery-recovery-notice-message" className="min-w-0 break-words">
+            {deliveryBundleLoadState.status === 'loading' ? '正在重新加载这趟旅行…' : deliveryBundleLoadState.message}
+          </span>
+          <button
+            type="button"
+            onClick={() => void retryCurrentBundle()}
+            disabled={deliveryBundleLoadState.status === 'loading'}
+            className="min-h-9 shrink-0 rounded-label border border-stroke bg-surface px-3 text-xs font-semibold text-ink hover:bg-accent-soft disabled:opacity-60"
+          >重试</button>
+        </div>
+      )}
     </div>
   );
 };

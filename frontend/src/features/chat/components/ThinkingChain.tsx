@@ -20,6 +20,9 @@ interface ThinkingChainProps {
     runStatus?: string | null;
     gatePending?: boolean;
     runKey?: string;
+    initiallyExpanded?: boolean;
+    forcedCollapsed?: boolean;
+    collapseKey?: string;
 }
 const ICONS = { planning: Compass, destination: MapPin, transport: TrainFront, stay: BedDouble, itinerary: Map, delivery: FileCheck2 };
 // dispatcher 的 thinking 事件只宣告并行调研开始，没有 progress_status；它不是完成里程碑。
@@ -197,10 +200,11 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
     </div>}
   </section>;
 }
-export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGenerating, displayContent, isSynthesizing, pendingStatusText, variant = 'default', serverTotalMs, startedAt, regionId, layout = 'default', runStatus, gatePending = false, runKey }) => {
+export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGenerating, displayContent, isSynthesizing, pendingStatusText, variant = 'default', serverTotalMs, startedAt, regionId, layout = 'default', runStatus, gatePending = false, runKey, initiallyExpanded, forcedCollapsed = false, collapseKey }) => {
     const interrupted = variant === 'interrupted';
     const live = isGenerating && !interrupted;
-    const [expanded, setExpanded] = useState(live || layout === 'workspace');
+    const defaultExpanded = initiallyExpanded ?? (live || layout === 'workspace');
+    const [expanded, setExpanded] = useState(defaultExpanded);
     const [openToolIds, setOpenToolIds] = useState<Set<string>>(() => new Set());
     const [now, setNow] = useState(Date.now());
     const runScope = runKey || regionId;
@@ -211,8 +215,12 @@ export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGeneratin
             return;
         previousRunScope.current = runScope;
         setOpenToolIds(new Set());
-        setExpanded(isGenerating && !interrupted);
-    }, [interrupted, isGenerating, runScope]);
+        setExpanded(initiallyExpanded ?? (isGenerating && !interrupted));
+    }, [initiallyExpanded, interrupted, isGenerating, runScope]);
+    React.useEffect(() => {
+        if (forcedCollapsed || collapseKey)
+            setExpanded(false);
+    }, [forcedCollapsed, collapseKey]);
     React.useEffect(() => {
         if (terminalStatus)
             setOpenToolIds(new Set());
