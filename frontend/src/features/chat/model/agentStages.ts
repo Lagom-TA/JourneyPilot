@@ -104,6 +104,48 @@ export const ACTIVITY_STAGE_TITLES: Record<ActivityStageId, string> = {
     route: '安排每天路线',
     delivery: '生成完整计划',
 };
+const ACTIVITY_STAGE_RANK: Record<ActivityStageId, number> = { requirements: 0, research: 1, route: 2, delivery: 3 };
+function latestPopulatedActivityStage(steps: ThinkingStep[]): ActivityStageId | null {
+    let current: ActivityStageId | null = null;
+    for (const step of steps) {
+        const stage = getActivityStageIdForAgent(step.agentName || '');
+        if (!stage)
+            continue;
+        // 新补充轮次会重新整理需求；并行研究较晚到达的工具事件不应把已进入的路线/生成阶段拉回。
+        if (stage === 'requirements') {
+            current = stage;
+            continue;
+        }
+        if (!current || ACTIVITY_STAGE_RANK[stage] > ACTIVITY_STAGE_RANK[current])
+            current = stage;
+    }
+    return current;
+}
+/** 最新一次真正留下行动事件的阶段；不看 Run 状态，用于按阶段过滤过程。 */
+export function latestActivityStageWithSteps(steps: ThinkingStep[]): ActivityStageId | null {
+    return latestPopulatedActivityStage(steps);
+}
+/**
+ * 当前最新活动阶段。门与等待确认归到需求整理，完成、合成与开始输出归到交付；
+ * 其余情况按事件顺序取最近进入的阶段。
+ */
+export function latestActivityStageId(args: {
+    steps: ThinkingStep[];
+    isStreaming: boolean;
+    isSynthesizing: boolean;
+    answerStarted: boolean;
+    runStatus?: string | null;
+    gatePending?: boolean;
+}): ActivityStageId | null {
+    if (args.gatePending || args.runStatus === 'awaiting_input')
+        return 'requirements';
+    if (args.runStatus === 'completed' || args.isSynthesizing || args.answerStarted)
+        return 'delivery';
+    return latestPopulatedActivityStage(args.steps) ?? (args.isStreaming ? 'requirements' : null);
+}
+export function filterStepsForActivityStage(steps: ThinkingStep[], stage: ActivityStageId): ThinkingStep[] {
+    return steps.filter(step => getActivityStageIdForAgent(step.agentName || '') === stage);
+}
 export function deriveActivityTitle(args: {
     steps: ThinkingStep[];
     isStreaming: boolean;
@@ -127,20 +169,7 @@ export function deriveActivityTitle(args: {
         return '旅行规划已中断';
     if (args.isSynthesizing || (args.isStreaming && args.answerStarted))
         return ACTIVITY_STAGE_TITLES.delivery;
-    const rank: Record<ActivityStageId, number> = { requirements: 0, research: 1, route: 2, delivery: 3 };
-    let current: ActivityStageId | null = null;
-    for (const step of args.steps) {
-        const stage = getActivityStageIdForAgent(step.agentName || '');
-        if (!stage)
-            continue;
-        // 新补充轮次会重新整理需求；并行研究较晚到达的工具事件不应把已进入的路线/生成阶段拉回。
-        if (stage === 'requirements') {
-            current = stage;
-            continue;
-        }
-        if (!current || rank[stage] > rank[current])
-            current = stage;
-    }
+    const current = latestPopulatedActivityStage(args.steps);
     if (current)
         return ACTIVITY_STAGE_TITLES[current];
     return args.isStreaming ? ACTIVITY_STAGE_TITLES.requirements : '旅行规划记录';

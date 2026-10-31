@@ -1,11 +1,17 @@
-import { Check, Loader2, Play, Square, Users } from 'lucide-react';
+import { CalendarDays, Check, Loader2, Play, Sparkles, Square, Users } from 'lucide-react';
 import { useReducedMotion } from 'motion/react';
 import { useApp } from '../../../../app/state/AppContext';
 import { useSendMessage } from '../../../../app/session/useSendMessage';
 import { useStopRun } from '../../../../app/session/useStopRun';
 import { derivePlanningStageSnapshot } from '../../model/travelProgress';
 import { followupComposerState } from '../../model/followupComposer';
-import { getActivityStageIdForAgent } from '../../../chat/model/agentStages';
+import {
+  filterStepsForActivityStage,
+  getActivityStageIdForAgent,
+  latestActivityStageId,
+  latestActivityStageWithSteps,
+  type ActivityStageId,
+} from '../../../chat/model/agentStages';
 import { TripBriefPlanGate } from '../planning/TripBriefPlanGate';
 import { type PlanApprovalGate } from '../../types/planning';
 import { ThinkingChain } from '../../../chat/components/ThinkingChain';
@@ -15,6 +21,12 @@ import React from 'react';
 
 const RESUME_TEXT = '继续上次被中断的规划';
 type StageStatus = 'pending' | 'active' | 'done';
+const STAGE_ACTIVITY_TITLES: Record<ActivityStageId, string> = {
+  requirements: '整理旅行需求',
+  research: '查找交通与住宿',
+  route: '安排每天路线',
+  delivery: '生成完整计划',
+};
 
 function tripDays(start: string, end: string): number {
   if (!start || !end) return 0;
@@ -26,6 +38,7 @@ export const GenerationJourneyPanel: React.FC = () => {
   const { sendMessage } = useSendMessage();
   const { stopRun } = useStopRun();
   const [resuming, setResuming] = React.useState(false);
+  const [selectedStage, setSelectedStage] = React.useState<ActivityStageId | null>(null);
   const reducedMotion = Boolean(useReducedMotion());
   const identity = state.controlledTripIdentity;
   const runId = state.currentTripRunId;
@@ -49,6 +62,10 @@ export const GenerationJourneyPanel: React.FC = () => {
   const handoffRef = React.useRef<HTMLDivElement>(null);
   const processPaneRef = React.useRef<HTMLDivElement>(null);
   const gatePaneRef = React.useRef<HTMLDivElement>(null);
+  // 阶段选择只属于当前 Run；换 Run 或开启新会话轮次时回到“只跟随最新阶段”。
+  React.useEffect(() => {
+    setSelectedStage(null);
+  }, [runId, state.conversationEpoch]);
   const followup = followupComposerState({
     runStatus,
     isStreaming: state.isStreaming,
@@ -111,13 +128,33 @@ export const GenerationJourneyPanel: React.FC = () => {
   const synthesisStarted = synthesis.status === 'active' || completed;
   const routeStatus: StageStatus = completed || (state.isStreaming && synthesisStarted) ? 'done' : itineraryTouched ? research.status : 'pending';
   const researchStatus: StageStatus = completed || (state.isStreaming && (routeStatus !== 'pending' || synthesisStarted)) ? 'done' : research.status;
-  const stages: Array<{ title: string; description: string; status: StageStatus }> = [
-    { title: '整理旅行需求', description: '目的地、时间、同行人与旅行偏好', status: gatePending ? 'active' : planning.status },
-    { title: '查找交通与住宿', description: '把城际衔接、市内交通和住宿放在一起考虑', status: researchStatus },
-    { title: '安排每天路线', description: '让景点、美食与休息节奏顺路衔接', status: routeStatus },
-    { title: '生成完整计划', description: '整理日程、地图、阅读版与费用参考', status: synthesis.status },
+  const stages: Array<{ id: ActivityStageId; title: string; description: string; status: StageStatus }> = [
+    { id: 'requirements', title: STAGE_ACTIVITY_TITLES.requirements, description: '目的地、时间、同行人与旅行偏好', status: gatePending ? 'active' : planning.status },
+    { id: 'research', title: STAGE_ACTIVITY_TITLES.research, description: '把城际衔接、市内交通和住宿放在一起考虑', status: researchStatus },
+    { id: 'route', title: STAGE_ACTIVITY_TITLES.route, description: '让景点、美食与休息节奏顺路衔接', status: routeStatus },
+    { id: 'delivery', title: STAGE_ACTIVITY_TITLES.delivery, description: '整理日程、地图、阅读版与费用参考', status: synthesis.status },
   ];
   const days = tripDays(identity.start_date, identity.end_date);
+  const styleTags = [identity.style.primary, ...identity.style.secondary_interests].filter(Boolean);
+  const partyText = `${identity.party.adults} 位成人${identity.party.children ? ` · ${identity.party.children} 位儿童` : ''}${identity.party.elderly_companions ? ' · 有长辈同行' : ''}${identity.party.accessibility_required ? ' · 需要无障碍安排' : ''}`;
+  const latestStage = latestActivityStageId({
+    steps: state.thinkingSteps,
+    isStreaming: state.isStreaming,
+    isSynthesizing: state.isSynthesizing,
+    answerStarted,
+    runStatus,
+    gatePending,
+  });
+  const latestPopulatedStage = latestActivityStageWithSteps(state.thinkingSteps);
+  const latestStageHasSteps = latestStage ? filterStepsForActivityStage(state.thinkingSteps, latestStage).length > 0 : false;
+  // 完成或开始输出时最新阶段是交付，但历史 Run 可能只有研究记录；此时退到最近一个有内容的阶段。
+  const activityStage = selectedStage ?? (latestStage && latestStageHasSteps ? latestStage : latestPopulatedStage);
+  const activitySteps = activityStage ? filterStepsForActivityStage(state.thinkingSteps, activityStage) : state.thinkingSteps;
+  const activityTitle = selectedStage ? STAGE_ACTIVITY_TITLES[selectedStage] : undefined;
+  const emptyActivityText = selectedStage ? `「${STAGE_ACTIVITY_TITLES[selectedStage]}」阶段暂无行动记录。` : undefined;
+  const hideEmptyProcess = state.thinkingSteps.length === 0
+    && !state.isStreaming
+    && (runStatus === 'failed' || runStatus === 'cancelled' || runStatus === 'interrupted');
   const statusMessage = runStatus === 'failed'
     ? '这次规划没有完成，你可以回到新旅行重新尝试。'
     : runStatus === 'cancelled'
@@ -181,7 +218,6 @@ export const GenerationJourneyPanel: React.FC = () => {
             <section className="generation-trip-card" aria-label="旅行信息">
               <div className="generation-trip-card-header">
                 <div>
-                  <p className="generation-trip-eyebrow">你的旅行</p>
                   <h1 tabIndex={-1} data-workspace-handoff-focus>
                     <span className="generation-trip-title-destinations" aria-label={`目的地顺序：${identity.destinations.map((place) => place.name).join('、')}`}>
                       {identity.destinations.map((place, index) => (
@@ -200,40 +236,61 @@ export const GenerationJourneyPanel: React.FC = () => {
                   </button>
                 )}
               </div>
-              <dl className="generation-trip-card-meta">
-                <div className="generation-trip-card-route">
-                  <dt>行程</dt>
-                  <dd><span>{identity.origin.name}出发</span><span className="generation-trip-card-date">{identity.start_date} — {identity.end_date}</span></dd>
+              <div className="generation-trip-card-meta">
+                <div
+                  className="generation-trip-fact"
+                  role="group"
+                  aria-label={`出发地 ${identity.origin.name}，${identity.start_date} 至 ${identity.end_date}${days > 0 ? `，共 ${days} 天` : ''}`}
+                >
+                  <CalendarDays size={14} aria-hidden />
+                  <span className="generation-trip-fact-value">
+                    <span>{identity.origin.name}出发</span>
+                    <span className="generation-trip-card-date">{identity.start_date} — {identity.end_date}</span>
+                  </span>
                 </div>
-                <div className="generation-trip-card-party">
-                  <dt><Users size={14} aria-hidden />同行</dt>
-                  <dd>{identity.party.adults} 位成人{identity.party.children ? ` · ${identity.party.children} 位儿童` : ''}{identity.party.elderly_companions ? ' · 有长辈同行' : ''}{identity.party.accessibility_required ? ' · 需要无障碍安排' : ''}</dd>
+                <div className="generation-trip-fact" role="group" aria-label={`同行 ${partyText}`}>
+                  <Users size={14} aria-hidden />
+                  <span className="generation-trip-fact-value">{partyText}</span>
                 </div>
-                <div className="generation-trip-card-style">
-                  <dt>风格</dt>
-                  <dd className="generation-trip-tags">
-                    {[identity.style.primary, ...identity.style.secondary_interests].map((item) => <span key={item}>{item}</span>)}
-                  </dd>
-                </div>
-              </dl>
+                {styleTags.length > 0 && (
+                  <div className="generation-trip-fact generation-trip-fact-style" role="group" aria-label={`旅行风格 ${styleTags.join('、')}`}>
+                    <Sparkles size={14} aria-hidden />
+                    <span className="generation-trip-tags">
+                      {styleTags.map((item) => <span key={item}>{item}</span>)}
+                    </span>
+                  </div>
+                )}
+              </div>
             </section>
 
             <section className="generation-progress" data-active={showActiveSweep ? 'true' : 'false'} aria-label="旅行生成进度">
               <h2>{progressTitle}</h2>
               {statusMessage && <p role="alert" aria-live="polite">{statusMessage}</p>}
               <ol>
-                {stages.map((stage, index) => (
-                  <li key={stage.title} className={cn(`is-${stage.status}`)}>
-                    <span className="generation-stage-mark" aria-hidden>
-                      {stage.status === 'done' ? <Check size={14} /> : stage.status === 'active' ? <Loader2 size={14} className="generation-stage-spinner" /> : index + 1}
-                    </span>
-                    <div>
-                      <h3>{stage.title}</h3>
-                      <p>{stage.description}</p>
-                      {index > 0 && stage.status === 'active' && state.tripSummaryCard?.currentFocus && <span>{state.tripSummaryCard.currentFocus}</span>}
-                    </div>
-                  </li>
-                ))}
+                {stages.map((stage, index) => {
+                  const selected = selectedStage === stage.id;
+                  return (
+                    <li key={stage.id} className={cn(`is-${stage.status}`, selected && 'is-selected')}>
+                      <h3 className="generation-stage-heading">
+                        <button
+                          type="button"
+                          className="generation-stage-button"
+                          aria-pressed={selected}
+                          onClick={() => setSelectedStage((current) => current === stage.id ? null : stage.id)}
+                        >
+                          <span className="generation-stage-mark" aria-hidden>
+                            {stage.status === 'done' ? <Check size={14} /> : stage.status === 'active' ? <Loader2 size={14} className="generation-stage-spinner" /> : index + 1}
+                          </span>
+                          <span className="generation-stage-copy">
+                            <span className="generation-stage-title">{stage.title}</span>
+                            <span className="generation-stage-description">{stage.description}</span>
+                            {index > 0 && stage.status === 'active' && state.tripSummaryCard?.currentFocus && <span className="generation-stage-focus">{state.tripSummaryCard.currentFocus}</span>}
+                          </span>
+                        </button>
+                      </h3>
+                    </li>
+                  );
+                })}
               </ol>
             </section>
 
@@ -265,23 +322,27 @@ export const GenerationJourneyPanel: React.FC = () => {
                   aria-hidden={gatePending}
                 >
                   <div className="generation-handoff-pane-inner">
-                    <ThinkingChain
-                      steps={state.thinkingSteps}
-                      isGenerating={state.isStreaming}
-                      displayContent={lastAssistant?.displayContent}
-                      isSynthesizing={state.isSynthesizing}
-                      pendingStatusText={lastAssistant?.pendingStatusText}
-                      variant={runStopped ? 'interrupted' : 'default'}
-                      startedAt={lastAssistant?.timestamp}
-                      regionId={`generation-thinking-${runId}`}
-                      layout="workspace"
-                      runStatus={runStatus}
-                      gatePending={gatePending}
-                      runKey={runId}
-                      initiallyExpanded={hadGateOnMount.current ? false : undefined}
-                      forcedCollapsed={forceCompactProcess}
-                      collapseKey={gatePending ? `${state.planApprovalGate?.runId}:${state.planApprovalGate?.revision}` : undefined}
-                    />
+                    {!hideEmptyProcess && (
+                      <ThinkingChain
+                        steps={activitySteps}
+                        isGenerating={state.isStreaming}
+                        displayContent={lastAssistant?.displayContent}
+                        isSynthesizing={state.isSynthesizing}
+                        pendingStatusText={lastAssistant?.pendingStatusText}
+                        variant={runStopped ? 'interrupted' : 'default'}
+                        startedAt={lastAssistant?.timestamp}
+                        regionId={`generation-thinking-${runId}`}
+                        layout="workspace"
+                        runStatus={runStatus}
+                        gatePending={gatePending}
+                        runKey={runId}
+                        activityTitle={activityTitle}
+                        emptyText={emptyActivityText}
+                        initiallyExpanded={hadGateOnMount.current ? false : undefined}
+                        forcedCollapsed={forceCompactProcess}
+                        collapseKey={gatePending ? `${state.planApprovalGate?.runId}:${state.planApprovalGate?.revision}` : undefined}
+                      />
+                    )}
                   </div>
                 </div>
                 <div

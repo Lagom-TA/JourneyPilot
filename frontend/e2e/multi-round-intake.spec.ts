@@ -7,8 +7,8 @@ const origin = place('上海', 'offline:上海');
 const destination = place('杭州', 'offline:杭州');
 const party = { adults: 2, children: 0, elderly_companions: true, accessibility_required: false };
 const style = { primary: '轻松慢游', secondary_interests: [], source: 'current' };
-const budgetQuestion = { id: 'budget_scope', question: '预算包含往返交通吗？', kind: 'single', options: [{ id: 'yes', label: '包含交通' }, { id: 'no', label: '不包含交通' }] };
-const mobilityQuestion = { id: 'mobility', question: '长辈爬楼是否受限？', kind: 'single', options: [{ id: 'avoid', label: '需要避免爬楼' }, { id: 'some', label: '可以少量爬楼' }] };
+const budgetQuestion = { id: 'budget_scope', question: '预算包含往返交通吗？', kind: 'single', options: [{ id: 'yes', label: '包含交通' }, { id: 'no', label: '不包含交通' }, { id: 'sensible_default', label: '按合理默认安排，不再补充' }] };
+const mobilityQuestion = { id: 'mobility', question: '长辈爬楼是否受限？', kind: 'single', options: [{ id: 'avoid', label: '需要避免爬楼' }, { id: 'some', label: '可以少量爬楼' }, { id: 'sensible_default', label: '按合理默认安排，不再补充' }] };
 const initial = {
   intake_id: "it_" + "a".repeat(32), intake_revision: 0, raw_input: '带长辈去杭州，预算一万元', route_decision: decision, controlled_identity: null,
   seed_destinations: [], missing_fields: [], ready_to_create: false,
@@ -74,14 +74,17 @@ for (const archived of [false, true]) {
   await page.getByRole('button', { name: '包含交通', exact: true }).click();
   await page.getByRole('button', { name: '确认信息并开始规划', exact: true }).click();
   await expect(page.getByText('长辈爬楼是否受限？', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '出发前，还有几个问题', exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: '出发地', exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('date-range-trigger')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '确认信息并开始规划', exact: true })).toHaveCount(0);
   await expect(page.getByTestId('guided-intake-collapsed')).toHaveCount(0);
   await expect(page.getByTestId('trip-brief-plan-gate')).toHaveCount(0);
-  if (archived) await expect(page.locator('.travel-intake-answer').filter({ hasText: '预算包含往返交通吗？' })).toContainText('包含交通');
   expect(requests).toHaveLength(1);
   mkdirSync('../output/polish/20261030-1416-clarify-before-plan', { recursive: true });
   await page.screenshot({ path: '../output/polish/20261030-1416-clarify-before-plan/second-question.png', fullPage: true });
   await page.getByRole('button', { name: '需要避免爬楼', exact: true }).click();
-  await page.getByRole('button', { name: '确认信息并开始规划', exact: true }).click();
+  await page.getByTestId('guided-intake').getByRole('button', { name: '开始规划', exact: true }).click();
   await expect(page.getByTestId('trip-brief-plan-gate')).toBeVisible();
   expect(requests).toHaveLength(2);
   expect(requests[1].guided_intake.answers.map((answer: { question_id: string }) => answer.question_id)).toEqual(archived ? ['mobility'] : ['budget_scope', 'mobility']);

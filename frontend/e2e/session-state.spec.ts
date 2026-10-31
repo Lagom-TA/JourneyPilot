@@ -1112,7 +1112,7 @@ test('handoff expands from compact requirements to the plan gate and collapses o
     { type: 'agent_progress', agent_name: 'request_contract_normalizer', content: '正在整理旅行需求', progress_status: 'running' },
   ]);
   await expect(workspace.locator('.research-panel-title')).toHaveText('整理旅行需求');
-  await expect(workspace.locator('.generation-progress li.is-active h3')).toHaveText('整理旅行需求');
+  await expect(workspace.locator('.generation-progress li.is-active .generation-stage-title')).toHaveText('整理旅行需求');
   await expect(handoff).toHaveAttribute('data-phase', 'process');
   await page.screenshot({ path: `${evidence}/desktop-2000-handoff-compact.png`, fullPage: true });
   const compactHeight = await handoff.evaluate((element) => element.getBoundingClientRect().height);
@@ -1208,7 +1208,9 @@ test('handoff reaches restored and reduced-motion targets without a residual siz
   expect(after).toBeLessThan(before - 80);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(handoff).toHaveAttribute('data-phase', 'process');
-  await expect(page.getByTestId('thinking-chain').getByRole('button').first()).toBeFocused();
+  // 空过程终态不再渲染重复标题的 ThinkingChain，只保留左侧状态与后续输入。
+  await expect(page.getByTestId('thinking-chain')).toHaveCount(0);
+  await expect(page.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: `${evidence}/phone-390-handoff-cancelled-reduced.png`, fullPage: true });
   await assertOffline(page, fixture);
@@ -2324,7 +2326,7 @@ test('review currentFocus remains visible in actual research stage', async ({ pa
     { type: 'thinking', message_id: 'review-live', agent_name: '交通查询', step_name: '核对衔接', content: '核对可执行的到站衔接', ts_ms: Date.now(), progress_status: 'running' },
     { type: 'trip_summary_card', summary_card: { headline: '离线测试', summary: '调研进行中', current_focus: '正在核对末班接驳车与无障碍换乘', compact_line: '离线样例', facts: [], priorities: [] } },
   ]);
-  await expect(page.locator('.generation-progress li.is-active h3')).toHaveText('查找交通与住宿');
+  await expect(page.locator('.generation-progress li.is-active .generation-stage-title')).toHaveText('查找交通与住宿');
   await assertOffline(page, fixture);
   await expect(page.locator('.generation-progress li.is-active')).toContainText('正在核对末班接驳车与无障碍换乘', { timeout: 1000 });
 });

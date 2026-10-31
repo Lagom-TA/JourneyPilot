@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import unicodedata
+from types import SimpleNamespace
 from typing import Optional
 
 import pytest
 from pydantic import ValidationError
 
+from travel_agent.conversation.intake import merge_intake_answers
+from travel_agent.conversation.intake_contracts import GuidedIntakeState
 from travel_agent.planning.requirements.confirmation_contracts import (
     MAX_CONTEXT_CHARS,
     AssertionCandidate,
@@ -24,6 +28,29 @@ from travel_agent.planning.requirements.confirmation_contracts import (
     build_assertion_candidate,
     build_confirmation_challenge,
     build_confirmation_receipt,
+)
+from travel_agent.planning.requirements.intent_contracts import (
+    IntentItem,
+    IntentKind,
+    IntentStrength,
+    IntentTarget,
+    ScalarIntentValue,
+    VerificationMode,
+)
+from travel_agent.planning.requirements.normalization.contracts import (
+    NormalizedClauseDraft,
+    RequestContractNormalizationResult,
+    SourceClause,
+)
+from travel_agent.planning.requirements.request_contracts import (
+    ClauseDisposition,
+)
+from travel_agent.planning.requirements.revision import (
+    build_request_contract_revision,
+)
+from travel_agent.planning.requirements.semantic_confirmation import (
+    _intent_assertion,
+    build_semantic_challenge,
 )
 
 
@@ -1687,3 +1714,267 @@ def test_no_default_or_yes_all_decisions():
     challenge = _challenge([source], [candidate])
     with pytest.raises(ConfirmationRejected, match="explicit decision"):
         _receipt(challenge, [source], [candidate], [])
+
+
+SOURCE_MAPPING_IDENTITY = {
+    "origin": {"name": "北京"},
+    "destinations": [{"name": "大阪"}],
+    "start_date": "2026-11-10",
+    "end_date": "2026-11-15",
+    "party": {
+        "adults": 2,
+        "children": 0,
+        "elderly_companions": False,
+        "accessibility_required": False,
+    },
+}
+
+
+def _contract_with_budget(user_query: str, value: str):
+    constraint = {
+        "constraint_id": "constraint_budget",
+        "category": "budget_cap",
+        "value": value,
+        "params": {"amount": 12000, "currency": "CNY", "per": "total"},
+        "type": "hard",
+        "priority": 90,
+        "source_refs": [
+            {
+                "source": "current_query",
+                "origin_ref": "query_main",
+                "confidence": "high",
+                "updated_at": "2026-10-31T00:00:00+00:00",
+            }
+        ],
+        "confidence": "high",
+        "updated_at": "2026-10-31T00:00:00+00:00",
+        "public_summary": "总预算 12000 元",
+        "visibility": "user_visible",
+        "status": "active",
+    }
+    clause = SourceClause(
+        clause_id="clause_0",
+        source_ref_id="query_main",
+        source_kind="current_request",
+        source_text=user_query,
+        span_start=0,
+        span_end=len(user_query),
+    )
+    normalized = RequestContractNormalizationResult(
+        clauses=[
+            NormalizedClauseDraft(
+                clause_id="clause_0",
+                disposition=ClauseDisposition.BACKGROUND_CONTEXT,
+            )
+        ]
+    )
+    contract, _generation = build_request_contract_revision(
+        run_id="run_confirmation_source_mapping",
+        identity=SOURCE_MAPPING_IDENTITY,
+        identity_revision=1,
+        constraint_pack={
+            "constraints": [constraint],
+            "hard_constraints": [constraint],
+            "soft_preferences": [],
+            "pack_meta": {},
+        },
+        constraint_pack_revision=1,
+        clauses=[clause],
+        normalized=normalized,
+    )
+    return contract
+
+
+def _semantic_state(user_query: str, contract):
+    return SimpleNamespace(
+        run_id="run_confirmation_source_mapping",
+        session_id="session_confirmation_source_mapping",
+        user_query=user_query,
+        controlled_trip_identity=SOURCE_MAPPING_IDENTITY,
+        intent_spec_revision=1,
+        intake_evidence_sources=[],
+        session_anchor=None,
+        plan_gate_amendment=None,
+        pending_intent_amendments=[],
+        unresolved_intent_amendments=[],
+        request_contract=contract,
+    )
+
+
+def _is_safe_label(label: str) -> bool:
+    return (
+        bool(label)
+        and label == label.strip()
+        and not any(
+            unicodedata.category(character).startswith("C")
+            for character in label
+        )
+    )
+
+
+def _multiline_intake_query() -> str:
+    intake = GuidedIntakeState.model_validate({
+        "raw_input": "从北京出发，去大阪玩五天，总预算约 12,000 元",
+        "route_decision": {
+            "route": "trip_planning",
+            "confidence": 1,
+            "requires_trip_draft": True,
+        },
+        "questions": [
+            {
+                "id": "budget_scope",
+                "question": "12,000 元预算是否包含往返大交通及当地全部费用？",
+                "kind": "single",
+                "options": [
+                    {"id": "all_in", "label": "包含全部费用"},
+                    {"id": "transport_only", "label": "只含交通"},
+                ],
+            }
+        ],
+        "answers": [
+            {
+                "question_id": "budget_scope",
+                "selected_option_ids": [],
+                "supplement": "包含往返大交通及当地全部费用",
+            }
+        ],
+    })
+    return merge_intake_answers(intake)
+
+
+def test_multiline_intake_query_maps_budget_value_back_to_its_original_line():
+    user_query = _multiline_intake_query()
+    assert "\n" in user_query
+    assert "总预算约 12,000 元" in user_query
+
+    contract = _contract_with_budget(user_query, "总预算约12,000元")
+    bundle = build_semantic_challenge(
+        _semantic_state(user_query, contract), contract,
+    )
+
+    assert bundle.issues == ()
+    [budget] = [
+        assertion
+        for assertion in bundle.assertions
+        if assertion.domain is RequirementDomain.BUDGET
+    ]
+    assert budget.quote == "总预算约 12,000 元"
+    assert "\n" not in budget.quote
+    assert user_query[budget.span_start:budget.span_end] == budget.quote
+    assert budget.object_label in budget.quote
+    assert _is_safe_label(budget.object_label)
+    assert bundle.challenge is not None
+
+
+@pytest.mark.parametrize(
+    ("user_query", "value"),
+    [
+        (
+            "从北京出发，去大阪。\n"
+            "总预算约\u200b12,000 元\n"
+            "用户补充确认：包含往返大交通",
+            "总预算约\u200b12,000元",
+        ),
+        (
+            "从北京出发，去大阪。\n"
+            "总预算约 12,000 元\n"
+            "用户补充确认：包含往返大交通",
+            "总预算约\n12,000元",
+        ),
+        (
+            "总预算约 12,000 元（包含往返大交通及当地全部费用）\n"
+            "用户补充确认：包含往返交通",
+            "总预算约\u200b12,000元",
+        ),
+    ],
+)
+def test_forbidden_label_characters_fall_back_to_a_safe_fragment(
+    user_query: str,
+    value: str,
+) -> None:
+    contract = _contract_with_budget(user_query, value)
+    bundle = build_semantic_challenge(
+        _semantic_state(user_query, contract), contract,
+    )
+
+    assert bundle.issues == ()
+    [budget] = [
+        assertion
+        for assertion in bundle.assertions
+        if assertion.domain is RequirementDomain.BUDGET
+    ]
+    assert budget.object_label in budget.quote
+    assert _is_safe_label(budget.object_label)
+    assert user_query[budget.span_start:budget.span_end] == budget.quote
+    assert bundle.challenge is not None
+
+
+def test_a_quote_without_any_safe_label_becomes_a_question_not_a_contract_error():
+    user_query = "\u200b\n\u200b"
+    contract = _contract_with_budget(user_query, "总预算约12,000元")
+
+    bundle = build_semantic_challenge(
+        _semantic_state(user_query, contract), contract,
+    )
+
+    assert bundle.assertions == ()
+    assert bundle.challenge is None
+    assert bundle.issues
+
+
+def test_intent_object_label_falls_back_to_a_safe_single_line_fragment():
+    quote = "偏好\n" + "甲" * 260
+    source = _source("前文" + quote)
+    item = IntentItem(
+        intent_id="intent_preference",
+        kind=IntentKind.ATTRIBUTE_PREFERENCE,
+        target=IntentTarget.VISIT,
+        strength=IntentStrength.SOFT,
+        priority=50,
+        value=ScalarIntentValue(value=quote),
+        source_kind="current_request",
+        source_ref_id=source.source_id,
+        source_text=quote,
+        source_span_start=2,
+        source_span_end=2 + len(quote),
+        verification_mode=VerificationMode.MIXED,
+        impact_stages=["research"],
+        public_summary="偏好",
+    )
+
+    assertion, issue = _intent_assertion(
+        item, {source.source_id: source}, SOURCE_MAPPING_IDENTITY,
+    )
+
+    assert issue is None
+    assert assertion is not None
+    assert assertion.object_label in assertion.quote
+    assert _is_safe_label(assertion.object_label)
+    assert "\n" not in assertion.object_label
+
+
+def test_intent_without_any_safe_label_returns_a_question_instead_of_raising():
+    source = _source("\u200b")
+    item = IntentItem(
+        intent_id="intent_unprintable",
+        kind=IntentKind.OBJECTIVE,
+        target=IntentTarget.TRIP,
+        strength=IntentStrength.HARD,
+        priority=50,
+        value=ScalarIntentValue(value="\u200b"),
+        source_kind="current_request",
+        source_ref_id=source.source_id,
+        source_text=source.text,
+        source_span_start=0,
+        source_span_end=1,
+        verification_mode=VerificationMode.MIXED,
+        impact_stages=["research"],
+        public_summary="测试意图",
+    )
+
+    assertion, issue = _intent_assertion(
+        item, {source.source_id: source}, SOURCE_MAPPING_IDENTITY,
+    )
+
+    assert assertion is None
+    assert issue

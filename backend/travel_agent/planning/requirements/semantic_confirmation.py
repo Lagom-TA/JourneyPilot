@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from travel_agent.planning.requirements.confirmation_contracts import (
+    MAX_OBJECT_LABEL_CHARS,
     AssertionCandidate,
     AssertionDecision,
     AssertionDecisionInput,
@@ -200,6 +202,150 @@ def _locate(source: SourceEvidence, quote: str, preferred_start: Optional[int] =
     return source.text.find(quote)
 
 
+def _without_whitespace(value: str) -> str:
+    return "".join(character for character in value if not character.isspace())
+
+
+def _span_ignoring_whitespace(text: str, value: str) -> Optional[Tuple[int, int]]:
+    """把 value 映射回 text 中忽略空白差异的原始连续区间。
+
+    约束的规范化 value 可能去掉了 ``source.text`` 里的空格（例如
+    ``总预算约12,000元`` 与 ``总预算约 12,000 元``）。这里只在匹配时忽略
+    空白，返回区间仍指向原文，quote 必须是原文的逐字切片。
+    """
+
+    needle = _without_whitespace(value)
+    if not needle:
+        return None
+    positions: List[int] = []
+    characters: List[str] = []
+    for index, character in enumerate(text):
+        if character.isspace():
+            continue
+        positions.append(index)
+        characters.append(character)
+    start = "".join(characters).find(needle)
+    if start < 0:
+        return None
+    return positions[start], positions[start + len(needle) - 1] + 1
+
+
+def _has_forbidden_label_character(value: str) -> bool:
+    return any(
+        unicodedata.category(character).startswith("C")
+        for character in value
+    )
+
+
+def _safe_label(value: str) -> Optional[str]:
+    """去首尾空白后不带控制/格式字符的标签；不合格返回 None。"""
+
+    stripped = value.strip()
+    if not stripped or _has_forbidden_label_character(stripped):
+        return None
+    return stripped
+
+
+def _safe_label_segments(quote: str) -> List[str]:
+    """按控制/格式字符切分 quote，保留每段自身的连续原文。"""
+
+    segments: List[str] = []
+    segment_start: Optional[int] = None
+    for index, character in enumerate(quote):
+        if unicodedata.category(character).startswith("C"):
+            if segment_start is not None:
+                segments.append(quote[segment_start:index])
+                segment_start = None
+        elif segment_start is None:
+            segment_start = index
+    if segment_start is not None:
+        segments.append(quote[segment_start:])
+    labels = (_safe_label(segment) for segment in segments)
+    return [label for label in labels if label is not None]
+
+
+def _label_contains_preference(label: str, preferred: str) -> bool:
+    if not preferred:
+        return False
+    if preferred in label:
+        return True
+    compact = _without_whitespace(preferred)
+    return bool(compact) and compact in _without_whitespace(label)
+
+
+def _label_windows(segment: str, preferred: str) -> List[str]:
+    """把安全片段裁成不超过标签上限的逐字子串，尽量保住 preferred。"""
+
+    trimmed = segment.strip()
+    if not trimmed:
+        return []
+    if len(trimmed) <= MAX_OBJECT_LABEL_CHARS:
+        return [trimmed]
+    limit = len(trimmed) - MAX_OBJECT_LABEL_CHARS
+    starts = {0, limit}
+    spans: List[Tuple[int, int]] = []
+    if preferred:
+        exact = trimmed.find(preferred)
+        if exact >= 0:
+            spans.append((exact, exact + len(preferred)))
+        mapped = _span_ignoring_whitespace(trimmed, preferred)
+        if mapped is not None:
+            spans.append(mapped)
+    for span_start, span_end in spans:
+        starts.add(max(0, min(span_start, limit)))
+        starts.add(max(0, min(span_end - MAX_OBJECT_LABEL_CHARS, limit)))
+    windows: List[str] = []
+    for start in sorted(starts):
+        window = trimmed[start:start + MAX_OBJECT_LABEL_CHARS].strip()
+        if window and window not in windows:
+            windows.append(window)
+    return windows
+
+
+def _safe_object_label(quote: str, preferred: Optional[str] = None) -> Optional[str]:
+    """从 quote 中选一个逐字、连续、无控制字符且无首尾空白的标签。
+
+    优先使用调用方给的 preferred 在 quote 中的原始连续片段（约束的 value、
+    intent 的 evidence 文本）；没有可用 preferred 时退回整个 quote；quote 含
+    控制/格式字符（例如多行原文）时，改用最长的安全连续片段或单行，并优先
+    包含 value 的紧凑形式。找不到安全标签时返回 None，由调用方转成让用户
+    重新说明的 issue。
+    """
+
+    preference = (preferred or "").strip()
+    if preference and len(preference) <= MAX_OBJECT_LABEL_CHARS:
+        start = quote.find(preference)
+        if start >= 0:
+            candidate = _safe_label(quote[start:start + len(preference)])
+            if candidate is not None:
+                return candidate
+        mapped = _span_ignoring_whitespace(quote, preference)
+        if mapped is not None:
+            start, end = mapped
+            candidate = _safe_label(quote[start:end])
+            if candidate is not None and len(candidate) <= MAX_OBJECT_LABEL_CHARS:
+                return candidate
+    whole = _safe_label(quote)
+    if whole is not None and len(whole) <= MAX_OBJECT_LABEL_CHARS:
+        return whole
+    ranked: List[Tuple[Tuple[int, int, int], str]] = []
+    for order, segment in enumerate(_safe_label_segments(quote)):
+        for window in _label_windows(segment, preference):
+            ranked.append(
+                (
+                    (
+                        1 if _label_contains_preference(window, preference) else 0,
+                        len(window),
+                        -order,
+                    ),
+                    window,
+                )
+            )
+    if not ranked:
+        return None
+    return max(ranked, key=lambda item: item[0])[1]
+
+
 def _execution_for_intent(item: IntentItem, identity: Mapping[str, Any]) -> RequirementExecution:
     return RequirementExecution(
         requirement_id=item.intent_id,
@@ -232,9 +378,11 @@ def _intent_assertion(
     evidence_texts = _intent_evidence_texts(item)
     if any(text not in quote for text in evidence_texts):
         return None, f"「{item.public_summary}」包含无法在本次原文中定位的内容，请纠正或补充。"
-    object_label = evidence_texts[0] if evidence_texts else quote
-    if len(object_label) > 200:
-        object_label = object_label[:200]
+    object_label = _safe_object_label(
+        quote, evidence_texts[0] if evidence_texts else None,
+    )
+    if object_label is None:
+        return None, f"「{item.public_summary}」的原文包含无法安全展示的字符，请重新说明。"
     meaning = (
         AssertionMeaning.EXCLUDE
         if item.kind is IntentKind.MUST_EXCLUDE
@@ -274,12 +422,26 @@ def _constraint_assertion(
     if source is None:
         return None, f"「{summary}」来自历史或无法核实的来源，请在本次补充中重新明确。"
     value = str(item.get("value") or "").strip()
-    quote = value if value and value in source.text else source.text
-    start = _locate(source, quote)
+    quote = ""
+    start = -1
+    if value:
+        start = _locate(source, value)
+        if start >= 0:
+            quote = value
+        else:
+            mapped = _span_ignoring_whitespace(source.text, value)
+            if mapped is not None:
+                start, span_end = mapped
+                quote = source.text[start:span_end]
+    if not quote:
+        quote = source.text
+        start = 0
     if not quote or len(quote) > 500 or start < 0:
         return None, f"「{summary}」的来源范围无法安全核对，请重新说明。"
     category = str(item.get("category") or "other")
-    object_label = value if value and value in quote and len(value) <= 200 else quote[:200]
+    object_label = _safe_object_label(quote, value)
+    if object_label is None:
+        return None, f"「{summary}」的原文包含无法安全展示的字符，请重新说明。"
     strength = str(item.get("type") or "informational")
     if strength not in {"hard", "soft", "informational"}:
         strength = "informational"

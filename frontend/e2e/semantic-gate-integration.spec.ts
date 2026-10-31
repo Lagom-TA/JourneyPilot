@@ -78,7 +78,10 @@ test('必要问答只提交回答，不展示参数确认页', async ({ page }) 
   });
   await page.goto('/');
   await expect(page.getByTestId('guided-intake')).toBeVisible();
-  await page.getByRole('button', { name: '确认信息并开始规划', exact: true }).click();
+  await expect(page.getByText('信息已齐，可以直接开始', { exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: '出发地', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '确认信息并开始规划', exact: true })).toHaveCount(0);
+  await page.getByTestId('guided-intake').getByRole('button', { name: '开始规划', exact: true }).click();
   await expect(page.getByTestId('semantic-requirement-gate')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '补充必要信息', exact: true })).toBeVisible();
   await expect(page.getByText('全部执行参数', { exact: true })).toHaveCount(0);

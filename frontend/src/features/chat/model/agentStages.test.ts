@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveActivityTitle, deriveStages, getStageIdForAgent, parseAgentRound } from "./agentStages";
+import { deriveActivityTitle, deriveStages, filterStepsForActivityStage, getStageIdForAgent, latestActivityStageId, latestActivityStageWithSteps, parseAgentRound } from "./agentStages";
 import { type ThinkingStep } from "../types/messages";
 function step(agentName: string): ThinkingStep {
     return {
@@ -57,5 +57,34 @@ describe('agent stage projection', () => {
         expect(getStageIdForAgent('旅行顾问')).toBeNull();
         expect(hasDeepWorkflow).toBe(false);
         expect(stages.every((stage) => stage.status === 'pending')).toBe(true);
+    });
+});
+describe('activity stage filtering', () => {
+    const base = { isStreaming: false, isSynthesizing: false, answerStarted: false };
+    it('从事件顺序推导最新阶段，路线不会因迟到研究回退', () => {
+        expect(latestActivityStageId({ ...base, steps: [] })).toBeNull();
+        expect(latestActivityStageId({ ...base, isStreaming: true, steps: [] })).toBe('requirements');
+        expect(latestActivityStageId({ ...base, steps: [step('request_contract_normalizer')] })).toBe('requirements');
+        expect(latestActivityStageId({ ...base, steps: [step('目的地调研')] })).toBe('research');
+        expect(latestActivityStageId({ ...base, steps: [step('目的地调研'), step('行程规划')] })).toBe('route');
+        expect(latestActivityStageId({ ...base, steps: [step('行程规划'), step('目的地调研')] })).toBe('route');
+        expect(latestActivityStageId({ ...base, steps: [step('行程规划'), step('整理需求（第2轮补充）')] })).toBe('requirements');
+        expect(latestActivityStageId({ ...base, steps: [step('delivery_projector')] })).toBe('delivery');
+    });
+    it('门、等待确认与完成/合成/开始输出优先落到固定阶段', () => {
+        const routeSteps = [step('行程规划')];
+        expect(latestActivityStageId({ ...base, steps: routeSteps, gatePending: true })).toBe('requirements');
+        expect(latestActivityStageId({ ...base, steps: routeSteps, runStatus: 'awaiting_input' })).toBe('requirements');
+        expect(latestActivityStageId({ ...base, steps: routeSteps, runStatus: 'completed' })).toBe('delivery');
+        expect(latestActivityStageId({ ...base, steps: routeSteps, isSynthesizing: true })).toBe('delivery');
+        expect(latestActivityStageId({ ...base, steps: routeSteps, answerStarted: true })).toBe('delivery');
+    });
+    it('按阶段过滤时保留顺序，并单独给出最近有内容的阶段', () => {
+        const steps = [step('request_contract_normalizer'), step('目的地调研'), step('交通查询'), step('行程规划')];
+        expect(filterStepsForActivityStage(steps, 'research').map(item => item.agentName)).toEqual(['目的地调研', '交通查询']);
+        expect(filterStepsForActivityStage(steps, 'delivery')).toEqual([]);
+        expect(latestActivityStageWithSteps(steps)).toBe('route');
+        expect(latestActivityStageWithSteps(steps.slice(0, 3))).toBe('research');
+        expect(latestActivityStageWithSteps([step('fast_answer_agent')])).toBeNull();
     });
 });

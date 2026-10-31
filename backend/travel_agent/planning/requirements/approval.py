@@ -265,22 +265,28 @@ def _plan_gaps(state: TravelAgentState) -> List[str]:
 
 
 def _baseline_intake_preferences(state: TravelAgentState) -> List[Dict[str, str]]:
-    """把条件表单基线问题的明确选择投影到确认门的已识别要求。
+    """把条件表单基线问题的明确回答投影到确认门的已识别要求。
 
     归一化模型是 Intent/Constraint 的唯一来源；这里只在模型漏抽取时补一个
-    用户可见的保守投影，避免用户明确选过的研究方向在确认前消失。默认项
-    不在 evidence 里，因此不会伪造具体偏好。
+    用户可见的保守投影，避免用户明确选过或写下的研究方向在确认前消失。
+    选项与自由文本都属于用户回答；默认项（含 ``sensible_default`` 字段或
+    默认文案）不投影，不能变成正向要求。
     """
+
+    from travel_agent.conversation.intake import DEFAULT_ANSWER_LABEL
 
     rows: List[Dict[str, str]] = []
     for source in getattr(state, "intake_evidence_sources", []) or []:
-        if not isinstance(source, dict) or source.get("kind") != "explicit_selection":
+        if not isinstance(source, dict) or source.get("kind") not in {
+            "explicit_selection",
+            "explicit_supplement",
+        }:
             continue
         field = str(source.get("field") or "")
-        if not field.startswith("answer:baseline_"):
+        if not field.startswith("answer:baseline_") or "sensible_default" in field:
             continue
         summary = " ".join(str(source.get("text") or "").split())
-        if not summary:
+        if not summary or summary == DEFAULT_ANSWER_LABEL:
             continue
         rows.append(
             {

@@ -166,7 +166,6 @@ export const TripBriefPlanGate: React.FC<{
   return (
     <m.section data-testid="trip-brief-plan-gate" aria-labelledby="trip-brief-plan-gate-title" className={cn('plan-gate-card', workspace && 'is-workspace')} variants={emphasisEnter} initial={workspace ? false : 'hidden'} animate="visible">
       <header className="plan-gate-header">
-        {!workspace && <p>开始规划前</p>}
         <h2 id="trip-brief-plan-gate-title" tabIndex={-1}>{clarifying ? '补充必要信息' : '确认旅行需求'}</h2>
         {!workspace && <span>{clarifying ? '回答后会重新分析，再为你整理研究计划。' : identity ? '已整理这趟旅行的信息。确认下面的要求后开始，或补充调整。' : '请确认本次旅行的需求与安排。'}</span>}
       </header>

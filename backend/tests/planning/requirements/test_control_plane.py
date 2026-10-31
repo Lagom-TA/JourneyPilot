@@ -7,6 +7,8 @@ import pytest
 from openai import OpenAIError
 
 import travel_agent.planning.requirements.normalization.model as _owner_planning_requirements_normalization_model
+from travel_agent.conversation.intake_contracts import GuidedIntakeState, RouteDecision
+from travel_agent.conversation.intake_evidence import intake_evidence_sources
 from travel_agent.planning.requirements.amendments import apply_runtime_amendments
 from travel_agent.planning.requirements.approval import _build_plan_gate_payload
 from travel_agent.planning.requirements.conflicts import detect_intent_conflicts
@@ -630,6 +632,58 @@ def test_explicit_baseline_intake_selection_survives_a_normalizer_miss():
     assert "当地美食" in summaries
     assert "按合理默认安排，不再补充" not in summaries
     assert "包含往返交通和住宿" not in summaries
+
+
+def _baseline_intake(answer: dict) -> GuidedIntakeState:
+    return GuidedIntakeState.model_validate({
+        "intake_id": "it_" + "a" * 32,
+        "intake_revision": 4,
+        "raw_input": "从上海去杭州玩三天",
+        "route_decision": RouteDecision(
+            route="trip_planning", confidence=1, requires_trip_draft=True
+        ).model_dump(mode="json"),
+        "controlled_identity": _identity(),
+        "questions": [{
+            "id": "baseline_priorities",
+            "question": "这次去杭州，最想优先安排什么？",
+            "kind": "multiple",
+            "options": [
+                {"id": "landmarks", "label": "经典地标"},
+                {"id": "local_food", "label": "当地美食"},
+                {"id": "sensible_default", "label": "按合理默认安排，不再补充"},
+            ],
+        }],
+        "answers": [{"question_id": "baseline_priorities", **answer}],
+    })
+
+
+def _baseline_gate_summaries(intake: GuidedIntakeState) -> list[str]:
+    contract, _generation = _contract()
+    brief = build_research_brief(contract, _identity())
+    state = _model_plan_payload_state(contract, brief)
+    state.intake_evidence_sources = intake_evidence_sources(intake)
+    payload = _build_plan_gate_payload(state)
+    return [
+        item["summary"] for item in payload["recognized_requirements"]["preferences"]
+    ]
+
+
+def test_baseline_free_text_answer_survives_a_normalizer_miss():
+    summaries = _baseline_gate_summaries(_baseline_intake({
+        "selected_option_ids": [],
+        "supplement": "想去人少的公园和旧城散步",
+    }))
+    assert "想去人少的公园和旧城散步" in summaries
+
+
+def test_baseline_default_answer_never_becomes_a_positive_requirement():
+    summaries = _baseline_gate_summaries(_baseline_intake({
+        "selected_option_ids": ["sensible_default"],
+        "supplement": "按合理默认安排，不再补充",
+    }))
+    assert "按合理默认安排，不再补充" not in summaries
+    assert "经典地标" not in summaries
+    assert "当地美食" not in summaries
 
 
 def _contract_with_extra_intents(*items):

@@ -195,6 +195,130 @@ for (const mobile of [false, true]) {
   });
 }
 
+test('条件表单已填后只回答剩余问题，开始规划进入工作台', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const origin = place('深圳市', '71');
+  const destinations = [place('北京市', '72'), place('上海市', '73')];
+  const party = { adults: 2, children: 0, elderly_companions: false, accessibility_required: false };
+  const style = { primary: '经典均衡', secondary_interests: [], source: 'current' as const };
+  const identity = { origin, destinations, start_date: '2026-11-10', end_date: '2026-11-14', party, style };
+  const priorityQuestion = {
+    id: 'baseline_priorities',
+    question: '这次去北京市、上海市，最想优先安排什么？',
+    kind: 'multiple' as const,
+    options: [
+      { id: 'landmark', label: '经典地标' },
+      { id: 'food', label: '当地美食' },
+      { id: 'museums', label: '博物馆/人文' },
+      { id: 'sensible_default', label: '按合理默认安排，不再补充' },
+    ],
+  };
+  const transportQuestion = {
+    id: 'baseline_transport',
+    question: '城际交通更希望怎么安排？',
+    kind: 'single' as const,
+    options: [
+      { id: 'rail', label: '高铁/动车优先' },
+      { id: 'flight', label: '飞机优先' },
+      { id: 'sensible_default', label: '按合理默认安排，不再补充' },
+    ],
+  };
+  const pendingIntake = {
+    intake_id: 'it_' + 'e'.repeat(32), intake_revision: 1,
+    raw_input: '深圳市 → 北京市、上海市，2026-11-10 至 2026-11-14，2 位成人，经典均衡',
+    route_decision: routeDecision, controlled_identity: identity,
+    seed_destinations: [], missing_fields: [], ready_to_create: false, recognized_requirements: [], understanding_status: 'ready',
+    draft: {
+      origin_query: '深圳市', destination_queries: ['北京市', '上海市'], start_date: identity.start_date, end_date: identity.end_date,
+      duration_days: 5, party, style, budget_text: '', destination_decided: true, destination_suggestions: [],
+      confirmed_origin: origin, confirmed_destinations: destinations,
+    },
+    questions: [priorityQuestion, transportQuestion], answers: [], archived_answers: [], additional_requirements: '',
+  };
+  const saves: Record<string, any>[] = [];
+  const requests: Record<string, any>[] = [];
+  const escaped: string[] = [];
+  const pageErrors: string[] = [];
+  let pending: any = structuredClone(pendingIntake);
+  page.on('pageerror', (error) => pageErrors.push(error.message));
+  await page.addInitScript(() => localStorage.setItem('sta_last_session_id', 'intake-question-only'));
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (!['localhost', '127.0.0.1'].includes(url.hostname)) { escaped.push(url.href); return route.abort(); }
+    if (!url.pathname.startsWith('/api/')) return route.continue();
+    const path = url.pathname.slice(4);
+    const json = (body: unknown) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    if (path === '/sessions/intake-question-only/intake') {
+      const submitted = route.request().postDataJSON();
+      saves.push(submitted);
+      pending = { ...submitted, intake_revision: (pending?.intake_revision ?? 0) + 1 };
+      return json(pending);
+    }
+    if (path === '/chat-stream') {
+      requests.push(route.request().postDataJSON());
+      const events = [
+        { type: 'chat_start', session_id: 'intake-question-only', run_id: 'question-run', message_id: 'assistant-question-run', route_decision: routeDecision },
+        { type: 'chat_complete', run_id: 'question-run', run_status: 'running' },
+      ];
+      return route.fulfill({ status: 200, contentType: 'text/event-stream', body: events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('') });
+    }
+    const summary = { session_id: 'intake-question-only', title: '深圳到北京上海', status: 'active', mode: 'deep', last_message_preview: '', created_at: '2026-10-30', updated_at: '2026-10-30' };
+    if (path === '/user/sessions') return json([summary]);
+    if (path === '/user/sessions/intake-question-only') return json({ ...summary, messages: [], pending_clarify: pending, next_before: null, has_more: false });
+    if (path === '/trip-runs') return json({ runs: [], total: 0 });
+    if (path === '/trip-runs/question-run') return json({ run: { run_id: 'question-run', session_id: summary.session_id, status: 'running', mode: 'deep', controlled_trip_identity: identity }, state: { pending_user_choice: null }, controlled_trip_identity: identity });
+    if (path === '/trip-runs/question-run/events') return json({ run_id: 'question-run', requested_after_sequence: 0, replay_floor_sequence: 0, latest_sequence: 0, next_after_sequence: 0, window_expired: false, current_bundle_id: null, run_status: 'running', events: [] });
+    if (path === '/product/trip-planner') return json({ primary_styles: [{ id: 'balanced', label: '经典均衡', is_default: true, inference_keywords: [] }], secondary_interests: [], default_adults: 1, default_children: 0, default_elderly_companions: false, default_accessibility_required: false, max_secondary_interests: 3, inspiration_rotation_ms: 5000, inspiration_prompts: [] });
+    if (path === '/user/default-origin') return json({ place: null });
+    if (path === '/presets' || path === '/user/preference-options') return json([]);
+    if (path === '/user/profile') return json({ preferences: {} });
+    if (path === '/user/memory/facts') return json({ facts: [] });
+    return json({});
+  });
+  await page.goto('/');
+  const intakeCard = page.getByTestId('guided-intake');
+  await expect(intakeCard).toBeVisible();
+  await expect(page.getByRole('heading', { name: '出发前，还有几个问题', exact: true })).toBeVisible();
+  await expect(page.getByText('确认旅行信息', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('开始规划前', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/\d+ \/ 4 项已确认/)).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: '出发地', exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('date-range-trigger')).toHaveCount(0);
+  await expect(page.getByText('什么时候，和谁一起', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('旅行偏好与其他补充', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/旅行草稿已保留/)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '确认信息并开始规划', exact: true })).toHaveCount(0);
+
+  const priorityCard = page.locator('[data-question-id="baseline_priorities"]');
+  const transportCard = page.locator('[data-question-id="baseline_transport"]');
+  await expect(priorityCard).toBeVisible();
+  await expect(transportCard).toBeVisible();
+  await expect(priorityCard.getByLabel('这次去北京市、上海市，最想优先安排什么？的补充回答')).toBeVisible();
+  await expect(transportCard.getByLabel('城际交通更希望怎么安排？的补充回答')).toBeVisible();
+  const startButton = intakeCard.getByRole('button', { name: '开始规划', exact: true });
+  await expect(startButton).toBeDisabled();
+
+  await priorityCard.getByRole('button', { name: '经典地标', exact: true }).click();
+  await priorityCard.getByLabel('这次去北京市、上海市，最想优先安排什么？的补充回答').fill('想安排一天博物馆');
+  await transportCard.getByRole('button', { name: '按合理默认安排，不再补充', exact: true }).click();
+  await expect(priorityCard.getByRole('button', { name: '经典地标', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(transportCard.getByRole('button', { name: '按合理默认安排，不再补充', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => saves.at(-1)?.answers?.find((answer: any) => answer.question_id === 'baseline_priorities')?.supplement).toBe('想安排一天博物馆');
+  await expect(startButton).toBeEnabled();
+  await startButton.click();
+
+  await expect.poll(() => requests.length).toBe(1);
+  expect(requests[0].controlled_trip_identity.origin.name).toBe('深圳市');
+  expect(requests[0].guided_intake.answers).toEqual(expect.arrayContaining([
+    { question_id: 'baseline_priorities', selected_option_ids: ['landmark'], supplement: '想安排一天博物馆' },
+    { question_id: 'baseline_transport', selected_option_ids: ['sensible_default'], supplement: '' },
+  ]));
+  await expect(page.getByTestId('journey-workspace')).toBeVisible();
+  await expect(page.getByTestId('new-trip-hero')).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
+  expect(escaped).toEqual([]);
+});
+
 test('确认开始失败时保留首页内表单与已确认地点，重试后进入正式规划', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   let controlledAttempts = 0;

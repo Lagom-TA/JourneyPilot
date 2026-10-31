@@ -79,7 +79,10 @@ test('归一化发现未决要求时先追问；刷新后仍须回答，再显�
   });
   await page.goto('/');
   await expect(page.getByTestId('guided-intake')).toBeVisible();
-  await page.getByRole('button', { name: '确认信息并开始规划', exact: true }).click();
+  await expect(page.getByText('信息已齐，可以直接开始', { exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: '出发地', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '确认信息并开始规划', exact: true })).toHaveCount(0);
+  await page.getByTestId('guided-intake').getByRole('button', { name: '开始规划', exact: true }).click();
   await expect(page.getByRole('heading', { name: '补充必要信息' })).toBeVisible();
   await expect(page.getByText('请说明「长辈行动限制」的具体要求。')).toBeVisible();
   await expect(page.getByRole('button', { name: '确认并开始生成' })).toHaveCount(0);

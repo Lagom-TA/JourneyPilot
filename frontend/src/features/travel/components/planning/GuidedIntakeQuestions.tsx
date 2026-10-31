@@ -26,6 +26,7 @@ import type {
   GuidedIntakeState,
   IntakeAnswer,
   IntakeDraft,
+  IntakeQuestion,
   PlaceIdentity,
   TripPlannerConfiguration,
 } from "../../types/planner";
@@ -55,6 +56,103 @@ function initialDraft(intake: GuidedIntakeState): IntakeDraft {
     ...intake.draft,
   };
 }
+
+const DEFAULT_ANSWER_OPTION_ID = "sensible_default";
+
+function isAnswered(answer: IntakeAnswer | undefined): boolean {
+  return Boolean(
+    answer
+    && (answer.selected_option_ids.length > 0 || answer.supplement.trim()),
+  );
+}
+
+const QuestionAnswerCard: React.FC<{
+  question: IntakeQuestion;
+  answer?: IntakeAnswer;
+  disabled?: boolean;
+  onChange: (selected: string[], supplement: string) => void;
+}> = ({ question, answer, disabled = false, onChange }) => {
+  const fieldId = React.useId();
+  const [supplement, setSupplement] = React.useState(answer?.supplement ?? "");
+  React.useEffect(() => {
+    setSupplement(answer?.supplement ?? "");
+  }, [question.id, answer?.supplement]);
+  const selected = answer?.selected_option_ids ?? [];
+  const defaultOption = question.options.find(
+    (option) => option.id === DEFAULT_ANSWER_OPTION_ID,
+  );
+  const options = question.options.filter(
+    (option) => option.id !== DEFAULT_ANSWER_OPTION_ID,
+  );
+  const toggle = (optionId: string) => {
+    if (question.kind === "single") {
+      onChange([optionId], supplement);
+      return;
+    }
+    const current = selected.filter((id) => id !== DEFAULT_ANSWER_OPTION_ID);
+    onChange(
+      current.includes(optionId)
+        ? current.filter((id) => id !== optionId)
+        : [...current, optionId],
+      supplement,
+    );
+  };
+  return (
+    <section
+      className="travel-intake-question-card"
+      data-question-id={question.id}
+      aria-labelledby={`${fieldId}-title`}
+    >
+      <h3 id={`${fieldId}-title`}>{question.question}</h3>
+      <div
+        className="travel-intake-question-options"
+        role="group"
+        aria-label={question.question}
+      >
+        {options.map((option) => (
+          <button
+            type="button"
+            key={option.id}
+            aria-pressed={selected.includes(option.id)}
+            disabled={disabled}
+            onClick={() => toggle(option.id)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <label className="travel-intake-supplement-label" htmlFor={`${fieldId}-supplement`}>
+        补充说明（可选）
+      </label>
+      <input
+        id={`${fieldId}-supplement`}
+        className="travel-intake-supplement-input"
+        aria-label={`${question.question}的补充回答`}
+        placeholder="也可以直接写下你的想法"
+        value={supplement}
+        maxLength={500}
+        disabled={disabled}
+        onChange={(event) => {
+          const value = event.target.value;
+          setSupplement(value);
+          onChange(selected, value);
+        }}
+      />
+      {defaultOption && (
+        <button
+          type="button"
+          className="travel-intake-default-option"
+          data-default-option="true"
+          aria-pressed={selected.includes(defaultOption.id)}
+          disabled={disabled}
+          onClick={() => onChange([defaultOption.id], supplement)}
+        >
+          {defaultOption.label}
+        </button>
+      )}
+    </section>
+  );
+};
 
 export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline?: boolean }> = ({
   intake,
@@ -191,6 +289,27 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
           source: "suggested" as const,
         }
       : null);
+  const questionsOnly = inline
+    && Boolean(intake.controlled_identity)
+    && (intake.missing_fields ?? []).length === 0
+    && Boolean(draft.start_date && draft.end_date && party && draft.style);
+  const allQuestionsAnswered = questions.every((item) =>
+    isAnswered(answers.find((answer) => answer.question_id === item.id)),
+  );
+  const updateQuestionAnswer = (
+    questionId: string,
+    selected_option_ids: string[],
+    supplement: string,
+  ) => {
+    setAnswers((items) => {
+      const rest = items.filter((item) => item.question_id !== questionId);
+      if (!selected_option_ids.length && !supplement.trim()) return rest;
+      return [
+        ...rest,
+        { question_id: questionId, selected_option_ids, supplement },
+      ];
+    });
+  };
   const snapshot = React.useMemo(
     () => ({
       ...intake,
@@ -422,7 +541,7 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
         <div className="travel-intake-collapsed-card" role="status" aria-live="polite">
           <Loader2 size={20} className="animate-spin" aria-hidden />
           <div>
-            <p className="travel-intake-eyebrow">确认旅行信息</p>
+            <p className="travel-intake-eyebrow">正在开始规划</p>
             <strong>正在准备正式规划…</strong>
             <span>
               {origin?.name ?? "出发地"} → {confirmedNames || "目的地"}
@@ -431,6 +550,63 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
             </span>
           </div>
         </div>
+      </m.section>
+    );
+  }
+  if (questionsOnly) {
+    const questionsReady = questions.length === 0;
+    return (
+      <m.section
+        className="travel-intake travel-intake-inline travel-intake-questions-only"
+        data-testid="guided-intake"
+        aria-labelledby="travel-intake-title"
+        variants={emphasisEnter}
+        initial="hidden"
+        animate="visible"
+        transition={reducedMotion ? { duration: 0 } : undefined}
+      >
+        <header className="travel-intake-inline-header">
+          <div>
+            <h2 id="travel-intake-title">
+              {questionsReady ? "信息已齐，可以直接开始" : "出发前，还有几个问题"}
+            </h2>
+            {!questionsReady && (
+              <p className="travel-intake-questions-hint">
+                回答完就可以开始规划；不想细想时，也可以直接按合理默认安排。
+              </p>
+            )}
+          </div>
+        </header>
+        {!questionsReady && (
+          <div className="travel-intake-questions">
+            {questions.map((item) => (
+              <QuestionAnswerCard
+                key={item.id}
+                question={item}
+                answer={answers.find((answer) => answer.question_id === item.id)}
+                disabled={submitting || state.isStreaming}
+                onChange={(selected, supplement) =>
+                  updateQuestionAnswer(item.id, selected, supplement)
+                }
+              />
+            ))}
+          </div>
+        )}
+        <footer className="travel-intake-footer">
+          {error && <p ref={errorRef} tabIndex={-1} role="alert">{error}</p>}
+          <Button
+            size="lg"
+            disabled={submitting || state.isStreaming || !allQuestionsAnswered}
+            onClick={() => void start()}
+          >
+            {submitting ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <ArrowRight size={16} />
+            )}
+            开始规划
+          </Button>
+        </footer>
       </m.section>
     );
   }
@@ -447,7 +623,6 @@ export const GuidedIntakeQuestions: React.FC<{ intake: GuidedIntakeState; inline
       {inline ? (
         <header className="travel-intake-inline-header">
           <div>
-            <p className="travel-intake-eyebrow">开始规划前</p>
             <h2 id="travel-intake-title">确认旅行信息</h2>
           </div>
           <span className="travel-intake-count">

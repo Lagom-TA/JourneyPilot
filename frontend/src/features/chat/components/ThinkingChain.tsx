@@ -23,6 +23,8 @@ interface ThinkingChainProps {
     initiallyExpanded?: boolean;
     forcedCollapsed?: boolean;
     collapseKey?: string;
+    activityTitle?: string;
+    emptyText?: string;
 }
 const ICONS = { planning: Compass, destination: MapPin, transport: TrainFront, stay: BedDouble, itinerary: Map, delivery: FileCheck2 };
 // dispatcher 的 thinking 事件只宣告并行调研开始，没有 progress_status；它不是完成里程碑。
@@ -66,6 +68,12 @@ function ToolActivity({ step, stopped, open, onOpenChange }: {
     const running = display.status === 'running';
     const headline = subject || (result ? result : running ? display.actionText : display.categoryLabel);
     const statusText = running && stopped ? '已停止' : toolStatusLabel(display.status);
+    // 结果只保留一行“返回 N 条结果 · 摘要”，避免展开后重复标题和分段。
+    const resultLine = running
+        ? ''
+        : resultCount != null
+            ? `${resultCount > 0 ? `返回 ${resultCount} 条结果` : '没有返回结果'}${result ? ` · ${result}` : ''}`
+            : result || (display.status === 'failed' ? '本次行动未完成，没有可公开的结果。' : '没有可公开的结果。');
     const summary = <>
     <span className={cn('research-query-dot', running && !stopped && 'is-active', display.status === 'failed' && 'is-warning')}/>
     <span className="research-query-main min-w-0 flex-1"><span className="research-query-kind">{display.categoryLabel}</span>{headline !== display.categoryLabel && <span className="research-query-title" title={headline}>{headline}</span>}</span>
@@ -81,12 +89,7 @@ function ToolActivity({ step, stopped, open, onOpenChange }: {
       <summary className="research-query-summary">{summary}</summary>
       <div className="research-query-detail">
         <div className="research-tool-detail">
-          <div className="research-tool-field" data-detail-section="tool">
-            <span className="research-tool-field-label">工具</span>
-            <p className="research-tool-field-value">{display.categoryLabel}</p>
-          </div>
           <div className="research-tool-field" data-detail-section="input">
-            <span className="research-tool-field-label">输入</span>
             {display.inputs.length > 0
             ? <dl className="research-tool-inputs">{display.inputs.map(field => <div key={`${field.label}-${field.value}`} className="research-tool-input-row">
                 <dt className="research-tool-input-label">{field.label}</dt>
@@ -95,12 +98,10 @@ function ToolActivity({ step, stopped, open, onOpenChange }: {
             : <p className="research-tool-empty">没有可公开的输入。</p>}
           </div>
           <div className="research-tool-field" data-detail-section="result">
-            <span className="research-tool-field-label">结果</span>
-            {running ? <p className="research-tool-empty">正在处理，结果返回后会显示在这里。</p> : <>
-              {resultCount != null && <p className="research-tool-count">{resultCount > 0 ? `返回 ${resultCount} 条结果` : '没有返回结果'}</p>}
-              {result
-                ? <p className="research-tool-summary">{result}</p>
-                : <p className="research-tool-empty">{display.status === 'failed' ? '本次行动未完成，没有可公开的结果。' : '没有可公开的结果。'}</p>}
+            {running
+            ? <p className="research-tool-empty">正在处理，结果返回后会显示在这里。</p>
+            : <>
+              {resultLine && <p className="research-tool-result-line">{resultLine}</p>}
               {previews.length > 0 && <div className="research-tool-sources">
                 {previews.map((row, index) => <div key={index} className="research-source">
                   <div className="research-source-title">{row.url ? <a href={row.url} target="_blank" rel="noreferrer">{row.title}<ArrowUpRight size={13}/></a> : row.title}</div>
@@ -200,7 +201,7 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
     </div>}
   </section>;
 }
-export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGenerating, displayContent, isSynthesizing, pendingStatusText, variant = 'default', serverTotalMs, startedAt, regionId, layout = 'default', runStatus, gatePending = false, runKey, initiallyExpanded, forcedCollapsed = false, collapseKey }) => {
+export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGenerating, displayContent, isSynthesizing, pendingStatusText, variant = 'default', serverTotalMs, startedAt, regionId, layout = 'default', runStatus, gatePending = false, runKey, initiallyExpanded, forcedCollapsed = false, collapseKey, activityTitle, emptyText }) => {
     const interrupted = variant === 'interrupted';
     const live = isGenerating && !interrupted;
     const defaultExpanded = initiallyExpanded ?? (live || layout === 'workspace');
@@ -260,9 +261,12 @@ export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGeneratin
     const start = startedAt ? new Date(startedAt).getTime() : visibleSteps[0]?.timestamp.getTime();
     const ms = serverTotalMs ?? (live && start ? now - start : undefined);
     const elapsed = ms != null && Number.isFinite(ms) ? `${Math.max(0, Math.floor(ms / 1000))} 秒` : '';
-    const title = layout === 'workspace'
+    const derivedTitle = layout === 'workspace'
         ? deriveActivityTitle({ steps: visibleSteps, isStreaming: live, isSynthesizing, answerStarted: Boolean(displayContent?.trim()), runStatus, gatePending, interrupted })
         : interrupted ? '调研已停止' : isSynthesizing || (live && displayContent?.trim()) ? '正在整理旅行方案' : live ? (visibleSteps.length ? '正在为你调研' : '正在准备规划') : visibleSteps.length ? '调研记录' : '准备旅行查询';
+    const title = activityTitle?.trim() || derivedTitle;
+    const emptyMessage = emptyText?.trim()
+        || (live ? publicProgressText(pendingStatusText) || '正在整理旅行需求，接下来会显示各阶段的查询和资料。' : '本次调研没有留下可查看的过程记录。');
     return <section className={cn('research-panel', layout === 'workspace' && 'research-panel-workspace')} data-testid="thinking-chain">
     <button type="button" className="research-panel-heading" aria-expanded={expanded} aria-controls={regionId} onClick={() => setExpanded(v => !v)}>
       {live ? <AgentOrb state={isSynthesizing ? 'composing' : 'searching'}/> : interrupted ? <Pause size={18}/> : <FileCheck2 size={18}/>}
@@ -272,7 +276,7 @@ export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGeneratin
     </button>
     {expanded && <div id={regionId} className="research-panel-body">
       {groups.length ? <div className="research-agent-list">{groups.map(group => <AgentCard key={`${runScope}-${group.id}`} group={group} interrupted={interrupted} layout={layout} openToolIds={openToolIds} onToolOpenChange={setToolOpen} onClearTools={clearTools} duplicateTitle={layout === 'workspace' && groups.length === 1 && group.title === title} runTerminal={terminalStatus}/>)}</div>
-                : <div className="research-empty"><Search size={18}/><p>{live ? publicProgressText(pendingStatusText) || '正在整理旅行需求，接下来会显示各阶段的查询和资料。' : '本次调研没有留下可查看的过程记录。'}</p></div>}
+                : <div className="research-empty"><Search size={18}/><p>{emptyMessage}</p></div>}
     </div>}
   </section>;
 };
