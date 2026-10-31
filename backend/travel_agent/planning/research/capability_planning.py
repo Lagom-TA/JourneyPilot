@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
 from travel_agent.planning.requirements.intent_contracts import IntentItem
 from travel_agent.planning.requirements.intent_contracts import IntentKind
 from travel_agent.planning.requirements.intent_contracts import IntentStrength
@@ -8,6 +9,7 @@ from travel_agent.planning.requirements.intent_contracts import canonical_json_h
 from travel_agent.planning.requirements.request_contracts import RequestContract
 from travel_agent.planning.research.brief_builder import _TARGET_DOMAIN
 from travel_agent.planning.research.brief_builder import _criterion
+from travel_agent.planning.research.brief_builder import identity_itinerary_scope
 from travel_agent.planning.research.brief_contracts import DomainResearchObjective
 from travel_agent.planning.research.brief_contracts import ResearchBriefV2
 from travel_agent.planning.research.capability_contracts import AgentAssignmentContract
@@ -20,7 +22,7 @@ from typing import Iterable
 from typing import List
 
 
-CAPABILITY_PLAN_POLICY_VERSION = "capability_plan.v3"
+CAPABILITY_PLAN_POLICY_VERSION = "capability_plan.v4"
 
 
 _DOMAIN_OWNER: Dict[ResearchDomain, AgentName] = {
@@ -129,7 +131,9 @@ def build_capability_plan(
             assignment_id=assignment_ids[agent],
             generation_id=brief.generation_id,
             agent_name=agent,
-            objective=_assignment_objective(agent, objectives, owned_intents),
+            objective=_assignment_objective(
+                agent, objectives, owned_intents, brief.controlled_trip_identity
+            ),
             must_cover_intent_ids=[
                 item.intent_id
                 for item in owned_intents
@@ -197,11 +201,12 @@ def _assignment_objective(
     agent: AgentName,
     objectives: List[DomainResearchObjective],
     intents: List[IntentItem],
+    identity: ControlledTripIdentity,
 ) -> str:
     if agent == "itinerary_planner":
         labels = [item.public_summary for item in intents]
         return (
-            "结合候选目录与用户要求组合可执行按天行程"
+            f"为{identity_itinerary_scope(identity)}组合可执行按天路线"
             + ("；" + "；".join(labels) if labels else "")
         )[:1000]
     parts = [item.summary for item in objectives]

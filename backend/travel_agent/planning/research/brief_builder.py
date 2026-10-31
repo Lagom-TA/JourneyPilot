@@ -13,6 +13,7 @@ from travel_agent.planning.requirements.product_policy import (
 from travel_agent.planning.requirements.request_contracts import RequestContract
 from travel_agent.planning.requirements.route_legs import (
     build_required_long_distance_legs,
+    required_route_names,
 )
 from travel_agent.planning.research.brief_contracts import DomainResearchObjective
 from travel_agent.planning.research.brief_contracts import ResearchBriefV2
@@ -25,7 +26,53 @@ from typing import List
 from typing import Mapping
 
 
-RESEARCH_BRIEF_POLICY_VERSION = "research_brief_projection.v4"
+RESEARCH_BRIEF_POLICY_VERSION = "research_brief_projection.v5"
+
+
+def _party_public_text(identity: ControlledTripIdentity) -> str:
+    party = f"{identity.party.adults} 位成人"
+    if identity.party.children:
+        party += f"、{identity.party.children} 位儿童"
+    if identity.party.elderly_companions:
+        party += "、长辈同行"
+    if identity.party.accessibility_required:
+        party += "、需要无障碍安排"
+    return party
+
+
+def _style_public_text(identity: ControlledTripIdentity) -> str:
+    style = identity.style.primary
+    if identity.style.secondary_interests:
+        style += f"（{'、'.join(identity.style.secondary_interests)}）"
+    return style
+
+
+def identity_route_text(identity: ControlledTripIdentity) -> str:
+    """实际长途链路，例如 深圳市 → 北京市 → 上海市 → 深圳市。"""
+
+    return " → ".join(required_route_names(identity.model_dump(mode="json")))
+
+
+def identity_domain_scope(identity: ControlledTripIdentity) -> str:
+    """可用于研究摘要的城市、日期、同行人与风格范围。"""
+
+    destinations = "、".join(place.name for place in identity.destinations)
+    return (
+        f"{destinations}（{identity.start_date.isoformat()} 至 "
+        f"{identity.end_date.isoformat()}，{_party_public_text(identity)}，"
+        f"{_style_public_text(identity)}）"
+    )
+
+
+def identity_itinerary_scope(identity: ControlledTripIdentity) -> str:
+    """行程规划任务里的城市顺序、日期、同行人与风格。"""
+
+    destinations = "、".join(place.name for place in identity.destinations)
+    return (
+        f"{destinations} {identity.start_date.isoformat()} 至 "
+        f"{identity.end_date.isoformat()}（{_party_public_text(identity)}，"
+        f"{_style_public_text(identity)}）"
+    )
 
 
 _DOMAIN_LABELS = {
@@ -168,7 +215,7 @@ def build_research_brief(
                 objective_id="objective_"
                 + canonical_json_hash(objective_material)[:24],
                 domain=domain,
-                summary=_domain_summary(domain, scoped, model_domain),
+                summary=_domain_summary(domain, scoped, model_domain, identity),
                 must_cover_intent_ids=must,
                 optional_intent_ids=optional,
                 excluded_categories=excluded,
@@ -271,15 +318,10 @@ def _domain_summary(
     domain: ResearchDomain,
     scoped: List[IntentItem],
     model_domain: object | None = None,
+    identity: ControlledTripIdentity | None = None,
 ) -> str:
     labels = [item.public_summary for item in scoped]
-    base = {
-        ResearchDomain.VISIT: "查找符合主题和要求的景点与体验",
-        ResearchDomain.DINING: "查找符合用餐要求的餐饮选择",
-        ResearchDomain.LODGING: "查找覆盖整个行程的住宿选择",
-        ResearchDomain.LOCAL_TRANSPORT: "查询每天行程中的市内交通与衔接方式",
-        ResearchDomain.LONG_DISTANCE_TRANSPORT: "查找合适的往返及跨城交通",
-    }[domain]
+    base = _domain_base_summary(domain, identity)
     atoms = [
         str(atom) for atom in (getattr(model_domain, "focus_atoms", None) or [])
     ]
@@ -289,3 +331,31 @@ def _domain_summary(
     if labels:
         parts.append("；".join(labels))
     return "；".join(parts)[:500]
+
+
+def _domain_base_summary(
+    domain: ResearchDomain, identity: ControlledTripIdentity | None
+) -> str:
+    if identity is None:
+        return {
+            ResearchDomain.VISIT: "查找符合主题和要求的景点与体验",
+            ResearchDomain.DINING: "查找符合用餐要求的餐饮选择",
+            ResearchDomain.LODGING: "查找覆盖整个行程的住宿选择",
+            ResearchDomain.LOCAL_TRANSPORT: "查询每天行程中的市内交通与衔接方式",
+            ResearchDomain.LONG_DISTANCE_TRANSPORT: "查找合适的往返及跨城交通",
+        }[domain]
+    destinations = "、".join(place.name for place in identity.destinations)
+    scope = identity_domain_scope(identity)
+    if domain is ResearchDomain.VISIT:
+        return f"在{scope}查找符合该风格的景点与体验"
+    if domain is ResearchDomain.DINING:
+        return f"在{scope}查找符合该风格的餐饮选择"
+    if domain is ResearchDomain.LODGING:
+        nights = max(identity.duration_days - 1, 1)
+        return f"在{scope}查找覆盖 {nights} 晚的住宿选择"
+    if domain is ResearchDomain.LOCAL_TRANSPORT:
+        return f"查询{destinations}每天行程中的市内交通与衔接方式"
+    route = identity_route_text(identity)
+    if route:
+        return f"查找{route} 的往返及跨城交通"
+    return f"查找{destinations}的往返及跨城交通"

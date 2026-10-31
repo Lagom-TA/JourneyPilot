@@ -555,8 +555,81 @@ def test_contract_and_capability_plan_are_deterministic_and_cover_hard_intents()
     } == set(query_plan.query_index())
     public_tasks = " ".join(assignment.objective for assignment in plan.assignments.values())
     assert "责任" not in public_tasks
-    assert "查找覆盖整个行程的住宿选择" in public_tasks
-    assert "查找合适的往返及跨城交通" in public_tasks
+    assert (
+        "在杭州（2026-09-01 至 2026-09-03，2 位成人，建筑与本地文化（咖啡））"
+        "查找覆盖 2 晚的住宿选择"
+    ) in public_tasks
+    assert "查找上海 → 杭州 → 上海 的往返及跨城交通" in public_tasks
+    assert (
+        "为杭州 2026-09-01 至 2026-09-03（2 位成人，建筑与本地文化（咖啡））"
+        "组合可执行按天路线"
+    ) in public_tasks
+    assert "查找覆盖整个行程的住宿选择" not in public_tasks
+
+
+def test_deterministic_fallback_plan_text_names_the_actual_trip():
+    contract, generation = _contract()
+    brief, _queries, plan = _research_plan(contract, _identity(), generation)
+    assert brief.research_plan_source == "deterministic_fallback"
+
+    payload = _build_plan_gate_payload(
+        SimpleNamespace(
+            execution_plan=plan.execution_plan,
+            agent_assignments={
+                key: value.model_dump(mode="json")
+                for key, value in plan.assignments.items()
+            },
+            controlled_trip_identity=_identity(),
+            intent_spec=contract.intent_spec,
+            constraint_pack={},
+            research_brief=brief,
+            research_query_plan=None,
+            plan_gate_revision_count=0,
+        )
+    )
+    text = payload["plan_text"]
+    assert "**本次旅行**" in text
+    assert "从上海出发，按杭州的顺序" in text
+    assert "2026-09-01 至 2026-09-03" in text and "2 位成人" in text
+    assert "建筑与本地文化（咖啡）" in text
+    assert "上海 → 杭州 → 上海" in text
+    assert "查找符合主题和要求的景点与体验" not in text
+    assert "查找覆盖整个行程的住宿选择" not in text
+    assert "结合候选目录与用户要求组合可执行按天行程" not in text
+
+
+def test_explicit_baseline_intake_selection_survives_a_normalizer_miss():
+    contract, _generation = _contract()
+    brief = build_research_brief(contract, _identity())
+    state = _model_plan_payload_state(contract, brief)
+    state.intake_evidence_sources = [
+        {
+            "source_id": "source_food",
+            "kind": "explicit_selection",
+            "field": "answer:baseline_priorities:local_food",
+            "text": "当地美食",
+        },
+        {
+            "source_id": "source_default",
+            "kind": "explicit_supplement",
+            "field": "answer:baseline_priorities:sensible_default",
+            "text": "按合理默认安排，不再补充",
+        },
+        {
+            "source_id": "source_budget",
+            "kind": "explicit_selection",
+            "field": "answer:budget_scope:all",
+            "text": "包含往返交通和住宿",
+        },
+    ]
+
+    payload = _build_plan_gate_payload(state)
+    summaries = [
+        item["summary"] for item in payload["recognized_requirements"]["preferences"]
+    ]
+    assert "当地美食" in summaries
+    assert "按合理默认安排，不再补充" not in summaries
+    assert "包含往返交通和住宿" not in summaries
 
 
 def _contract_with_extra_intents(*items):

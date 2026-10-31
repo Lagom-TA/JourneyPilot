@@ -264,6 +264,33 @@ def _plan_gaps(state: TravelAgentState) -> List[str]:
     return list(dict.fromkeys(gaps))
 
 
+def _baseline_intake_preferences(state: TravelAgentState) -> List[Dict[str, str]]:
+    """把条件表单基线问题的明确选择投影到确认门的已识别要求。
+
+    归一化模型是 Intent/Constraint 的唯一来源；这里只在模型漏抽取时补一个
+    用户可见的保守投影，避免用户明确选过的研究方向在确认前消失。默认项
+    不在 evidence 里，因此不会伪造具体偏好。
+    """
+
+    rows: List[Dict[str, str]] = []
+    for source in getattr(state, "intake_evidence_sources", []) or []:
+        if not isinstance(source, dict) or source.get("kind") != "explicit_selection":
+            continue
+        field = str(source.get("field") or "")
+        if not field.startswith("answer:baseline_"):
+            continue
+        summary = " ".join(str(source.get("text") or "").split())
+        if not summary:
+            continue
+        rows.append(
+            {
+                "requirement_id": str(source.get("source_id") or field),
+                "summary": summary,
+            }
+        )
+    return rows
+
+
 def _serialize_plan_text(state: TravelAgentState) -> str:
     """把结构化执行计划序列化为规范化的 markdown 全文（后端单一数据源）。"""
     assignments = state.agent_assignments or {}
@@ -366,6 +393,14 @@ def _build_plan_gate_payload(state: TravelAgentState) -> Dict[str, Any]:
                     existing_summaries.add(row["summary"])
             else:
                 preferences.append(row)
+    known_summaries = {
+        item["summary"] for item in [*hard_requirements, *preferences]
+    }
+    for row in _baseline_intake_preferences(state):
+        if row["summary"] in known_summaries:
+            continue
+        preferences.append(row)
+        known_summaries.add(row["summary"])
     payload: Dict[str, Any] = {
         "gate": "plan",
         "revision": revision,

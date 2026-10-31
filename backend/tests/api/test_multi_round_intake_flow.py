@@ -162,6 +162,9 @@ async def test_concurrent_answer_cannot_be_overwritten_by_stale_assessment(resou
             "route": "trip_planning", "confidence": 1, "requires_trip_draft": True,
         },
         "controlled_identity": IDENTITY, "questions": [], "answers": [],
+        "archived_answers": [{
+            "question_id": "prior", "question": "此前已确认的偏好？", "answer": "按已确认安排",
+        }],
     })
     await resources.chat_session_memory.save_guided_intake(session_id="race-intake", guided_intake=saved)
     saved = await resources.chat_session_memory.get_guided_intake(session_id="race-intake", user_id="local")
@@ -223,6 +226,9 @@ async def test_newer_question_rejects_older_concurrent_chat_before_run_creation(
             "route": "trip_planning", "confidence": 1, "requires_trip_draft": True,
         },
         "controlled_identity": IDENTITY, "questions": [], "answers": [],
+        "archived_answers": [{
+            "question_id": "prior", "question": "此前已确认的偏好？", "answer": "按已确认安排",
+        }],
     })
     await resources.chat_session_memory.save_guided_intake(session_id="two-chat-race", guided_intake=saved)
     saved = await resources.chat_session_memory.get_guided_intake(session_id="two-chat-race", user_id="local")
@@ -371,7 +377,25 @@ async def test_start_preserves_intake_until_a_checkpoint_exists(resources, monke
     monkeypatch.setattr(intake_module, "get_model_router", lambda: object())
     monkeypatch.setattr(intake_module, "llm_for_task", lambda *_args: model)
     resources.checkpointer = object()
-    body = _body("atomic-start", "first", identity=IDENTITY)
+    seed = GuidedIntakeState.model_validate({
+        "raw_input": "带长辈去杭州，预算一万元", "route_decision": {
+            "route": "trip_planning", "confidence": 1, "requires_trip_draft": True,
+        },
+        "controlled_identity": IDENTITY, "questions": [], "answers": [],
+        "archived_answers": [{
+            "question_id": "prior", "question": "此前已确认的偏好？", "answer": "按已确认安排",
+        }],
+    })
+    await resources.chat_session_memory.save_guided_intake(
+        session_id="atomic-start", guided_intake=seed
+    )
+    seed = await resources.chat_session_memory.get_guided_intake(
+        session_id="atomic-start", user_id="local"
+    )
+    body = _body(
+        "atomic-start", "first", identity=IDENTITY,
+        guided=seed.model_dump(mode="json"),
+    )
     prepared = await prepare(body, resources)
     assert isinstance(prepared, PreparedChat)
     store = resources.trip_run_store

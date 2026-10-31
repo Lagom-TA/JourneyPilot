@@ -126,6 +126,36 @@ def build_required_long_distance_legs(
     return legs
 
 
+def required_route_names(controlled_trip_identity: Mapping[str, Any]) -> list[str]:
+    """按实际需要的长途段拼接城市名链，例如 深圳市 → 北京市 → 上海市 → 深圳市。
+
+    只使用受控身份里的地点名称，不推测城市间停留天数；没有长途段时返回空列表。
+    """
+
+    legs = build_required_long_distance_legs(
+        controlled_trip_identity, cross_day_return_required=False
+    )
+    if not legs:
+        return []
+    names: dict[str, str] = {}
+    origin = controlled_trip_identity.get("origin")
+    if isinstance(origin, Mapping):
+        place_id = str(origin.get("place_id") or "").strip()
+        name = str(origin.get("name") or "").strip()
+        if place_id and name:
+            names[place_id] = name
+    for item in controlled_trip_identity.get("destinations") or ():
+        if not isinstance(item, Mapping):
+            continue
+        place_id = str(item.get("place_id") or "").strip()
+        name = str(item.get("name") or "").strip()
+        if place_id and name:
+            names[place_id] = name
+    chain = [names.get(legs[0].from_place_id, "")]
+    chain.extend(names.get(leg.to_place_id, "") for leg in legs)
+    return [name for name in chain if name]
+
+
 def missing_long_distance_leg_roles(
     required_legs: Sequence[ProviderRouteLegScope],
     *,

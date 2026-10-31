@@ -234,12 +234,36 @@ async def test_unavailable_assessment_is_reevaluated_when_answers_are_submitted(
         "controlled_trip_identity": identity.model_dump(mode="json"),
     }
     prepared = await prepare(body, resources)
-    assert isinstance(prepared, PreparedChat)
+    assert isinstance(prepared, ImmediateChat)
+    events = [event async for event in prepared.events]
+    guided = events[0]["guided_intake"]
     assert len(calls) == 1
     assert calls[0][0] == saved.raw_input
     assert calls[0][1] == identity
     assert calls[0][2].understanding_status == "unavailable"
+    # 首次成功评估后模型没有出题，条件表单入口补上可跳过的基线问题。
+    assert [item["id"] for item in guided["questions"]] == [
+        "baseline_intercity_transport",
+        "baseline_lodging",
+    ]
+    assert not resources.trip_run_store.runs
+
+    guided["answers"] = [
+        {"question_id": item["id"], "selected_option_ids": [DEFAULT_ANSWER_OPTION_ID]}
+        for item in guided["questions"]
+    ]
+    second = await prepare(
+        {
+            **body,
+            "messages": [{"role": "user", "content": "确认旅行", "message_id": "identity-unavailable-answer-2"}],
+            "guided_intake": guided,
+        },
+        resources,
+    )
+    assert isinstance(second, PreparedChat)
+    assert len(calls) == 2
     assert len(resources.trip_run_store.runs) == 1
+    await second.lease_keeper.release(reason="test_complete")
 
 
 async def test_reassessment_includes_submitted_additional_requirements(resources, monkeypatch):
@@ -274,11 +298,31 @@ async def test_reassessment_includes_submitted_additional_requirements(resources
         "controlled_trip_identity": identity.model_dump(mode="json"),
     }
     prepared = await prepare(body, resources)
-    assert isinstance(prepared, PreparedChat)
+    assert isinstance(prepared, ImmediateChat)
+    events = [event async for event in prepared.events]
+    guided = events[0]["guided_intake"]
     assert payloads[0]["additional_requirements"] == submitted.additional_requirements
-    assert "总预算12000元" in prepared.user_message
+    # 第一次成功评估前用户还没有回答过问题，模型没有出题时补一道住宿基线问题。
+    assert [item["id"] for item in guided["questions"]] == ["baseline_lodging"]
+    assert not resources.trip_run_store.runs
+
+    guided["answers"] = [{
+        "question_id": "baseline_lodging",
+        "selected_option_ids": [DEFAULT_ANSWER_OPTION_ID],
+    }]
+    second = await prepare(
+        {
+            **body,
+            "messages": [{"role": "user", "content": "确认旅行", "message_id": "identity-additional-requirements-2"}],
+            "guided_intake": guided,
+        },
+        resources,
+    )
+    assert isinstance(second, PreparedChat)
+    assert payloads[1]["additional_requirements"] == submitted.additional_requirements
+    assert "总预算12000元" in second.user_message
     assert len(resources.trip_run_store.runs) == 1
-    await prepared.lease_keeper.release(reason="test_complete")
+    await second.lease_keeper.release(reason="test_complete")
 
 
 async def test_reassessment_prompt_keeps_additional_requirements_without_answers():
@@ -422,6 +466,10 @@ async def test_complete_identity_with_material_gap_stops_for_clarification(resou
     payload = events[0]["guided_intake"]
     assert observed["identity"] == identity
     assert payload["questions"][0]["id"] == "budget_scope"
+    assert len(payload["questions"]) == 1
+    assert not any(
+        item["id"].startswith("baseline_") for item in payload["questions"]
+    )
     assert payload["questions"][0]["options"][-1] == {
         "id": DEFAULT_ANSWER_OPTION_ID,
         "label": DEFAULT_ANSWER_LABEL,
@@ -463,22 +511,21 @@ async def test_refresh_keeps_pending_questions_and_does_not_reassess(resources, 
     assert not resources.trip_run_store.runs
 
 
-async def test_complete_unambiguous_identity_creates_run_without_extra_questions(resources, monkeypatch):
+async def test_complete_identity_without_model_gaps_asks_baseline_questions(resources, monkeypatch):
     identity = _identity()
-    calls = []
+    payloads = []
 
-    async def assess(raw_input, route_decision, *, controlled_identity=None, previous=None, **_kwargs):
-        calls.append(controlled_identity)
-        return GuidedIntakeState.model_validate({
-            "raw_input": raw_input,
-            "route_decision": route_decision.model_dump(mode="json"),
-            "controlled_identity": identity.model_dump(mode="json"),
-            "draft": identity.model_dump(mode="json"),
-            "questions": [],
-            "missing_fields": [],
-        })
+    class LLM:
+        async def ainvoke(self, messages, **_kwargs):
+            payloads.append(json.loads(messages[-1]["content"]))
+            return SimpleNamespace(content=json.dumps({
+                "draft": {},
+                "recognized_requirements": [],
+                "questions": [],
+            }, ensure_ascii=False))
 
-    monkeypatch.setattr(preparation, "understand_trip_intake", assess)
+    monkeypatch.setattr(intake_module, "get_model_router", lambda: object())
+    monkeypatch.setattr(intake_module, "llm_for_task", lambda *_args, **_kwargs: LLM())
     resources.checkpointer = object()
     body = {
         "messages": [{"role": "user", "content": "从上海去青岛，11月5日至8日，一个人，轻松慢游", "message_id": "identity-clear"}],
@@ -487,11 +534,126 @@ async def test_complete_unambiguous_identity_creates_run_without_extra_questions
         "controlled_trip_identity": identity.model_dump(mode="json"),
     }
     prepared = await prepare(body, resources)
-    assert isinstance(prepared, PreparedChat)
-    assert calls == [identity]
-    assert "青岛" in prepared.user_message and "2026-11-05" in prepared.user_message
-    assert "用户补充确认" not in prepared.user_message
+    assert isinstance(prepared, ImmediateChat)
+    events = [event async for event in prepared.events]
+    guided = events[0]["guided_intake"]
+    assert payloads[0]["confirmed_trip_identity"]["destinations"][0]["name"] == "青岛"
+    # 风格里已有明确兴趣时不重复问优先体验；城际与住宿问题按本趟旅行生成。
+    assert [item["id"] for item in guided["questions"]] == [
+        "baseline_intercity_transport",
+        "baseline_lodging",
+    ]
+    assert "上海 → 青岛 → 上海" in guided["questions"][0]["question"]
+    assert "青岛" in guided["questions"][1]["question"]
+    assert all(
+        item["options"][-1]["id"] == DEFAULT_ANSWER_OPTION_ID
+        and item["options"][-1]["label"] == DEFAULT_ANSWER_LABEL
+        for item in guided["questions"]
+    )
+    assert not resources.trip_run_store.runs
+
+    guided["answers"] = [
+        {"question_id": item["id"], "selected_option_ids": [DEFAULT_ANSWER_OPTION_ID]}
+        for item in guided["questions"]
+    ]
+    second = await prepare(
+        {
+            **body,
+            "messages": [{"role": "user", "content": "确认旅行", "message_id": "identity-clear-2"}],
+            "guided_intake": guided,
+        },
+        resources,
+    )
+    assert isinstance(second, PreparedChat)
+    assert "青岛" in second.user_message and "2026-11-05" in second.user_message
+    assert "用户补充确认" in second.user_message
+    # 选择「按合理默认」不伪造具体偏好。
+    assert "高铁/动车优先" not in second.user_message
     assert len(resources.trip_run_store.runs) == 1
+    await second.lease_keeper.release(reason="test_complete")
+
+
+async def test_explicit_baseline_selections_enter_requirements_and_evidence(resources, monkeypatch):
+    identity = _identity()
+
+    class LLM:
+        async def ainvoke(self, *_args, **_kwargs):
+            return SimpleNamespace(content=json.dumps({
+                "draft": {},
+                "recognized_requirements": [],
+                "questions": [],
+            }, ensure_ascii=False))
+
+    monkeypatch.setattr(intake_module, "get_model_router", lambda: object())
+    monkeypatch.setattr(intake_module, "llm_for_task", lambda *_args, **_kwargs: LLM())
+    resources.checkpointer = object()
+    body = {
+        "messages": [{"role": "user", "content": "从上海去青岛，11月5日至8日，一个人，轻松慢游", "message_id": "identity-explicit"}],
+        "session_id": "identity-explicit",
+        "route": "trip_planning",
+        "controlled_trip_identity": identity.model_dump(mode="json"),
+    }
+    prepared = await prepare(body, resources)
+    events = [event async for event in prepared.events]
+    guided = events[0]["guided_intake"]
+    guided["answers"] = [
+        {
+            "question_id": "baseline_intercity_transport",
+            "selected_option_ids": ["rail_preferred"],
+        },
+        {
+            "question_id": "baseline_lodging",
+            "selected_option_ids": ["near_transit"],
+        },
+    ]
+    second = await prepare(
+        {
+            **body,
+            "messages": [{"role": "user", "content": "确认旅行", "message_id": "identity-explicit-2"}],
+            "guided_intake": guided,
+        },
+        resources,
+    )
+    assert isinstance(second, PreparedChat)
+    assert "高铁/动车优先" in second.user_message
+    assert "靠近地铁、减少换乘" in second.user_message
+    evidence_texts = [item["text"] for item in second.intake_evidence_sources]
+    assert "高铁/动车优先" in evidence_texts
+    assert "靠近地铁、减少换乘" in evidence_texts
+    assert "按合理默认安排，不再补充" not in evidence_texts
+    assert {
+        item["field"]
+        for item in second.intake_evidence_sources
+        if item["kind"] == "explicit_selection"
+    } >= {
+        "answer:baseline_intercity_transport:rail_preferred",
+        "answer:baseline_lodging:near_transit",
+    }
+    assert len(resources.trip_run_store.runs) == 1
+    await second.lease_keeper.release(reason="test_complete")
+
+
+async def test_natural_language_entry_does_not_add_baseline_questions(resources, monkeypatch):
+    class LLM:
+        async def ainvoke(self, *_args, **_kwargs):
+            return SimpleNamespace(content=json.dumps({
+                "draft": {},
+                "recognized_requirements": ["去杭州"],
+                "questions": [],
+            }, ensure_ascii=False))
+
+    monkeypatch.setattr(intake_module, "get_model_router", lambda: object())
+    monkeypatch.setattr(intake_module, "llm_for_task", lambda *_args, **_kwargs: LLM())
+    resources.checkpointer = object()
+    response = await request("POST", "/api/chat-stream", {
+        "messages": [{"role": "user", "content": "想去杭州玩三天", "message_id": "natural-baseline"}],
+        "session_id": "natural-baseline",
+        "route": "trip_planning",
+    })
+    assert response.status_code == 200
+    intake = decode(response)[0]["guided_intake"]
+    assert intake["questions"] == []
+    assert not resources.trip_run_store.runs
 
 
 async def test_answered_and_default_questions_are_not_reasked():

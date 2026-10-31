@@ -17,6 +17,7 @@ from travel_agent.conversation.intake import (
     validate_intake_answers,
 )
 from travel_agent.conversation.intake_contracts import RouteName
+from travel_agent.conversation.intake_baseline import append_baseline_intake_questions
 from travel_agent.conversation.intake_evidence import intake_evidence_sources
 from travel_agent.conversation.intake_lock import intake_fingerprint, intake_session_lock
 from travel_agent.planning.requirements.identity_amendments import (
@@ -431,6 +432,7 @@ async def _prepare_chat(
                 guided.understanding_status == "unavailable"
             ) or intake_answers_complete(guided)
             if needs_assessment:
+                previous_intake = guided
                 try:
                     guided = await understand_trip_intake(
                         guided.raw_input if guided is not None else user_message,
@@ -442,6 +444,11 @@ async def _prepare_chat(
                     raise PreparationRefused(
                         PreparationRejection.INTAKE_UNAVAILABLE, explanation=str(exc)
                     ) from exc
+                # 模型没有出题时，条件表单入口补上一轮与本趟旅行直接相关的
+                # 可跳过问题；已有问答历史或自然语言入口不会走到这里。
+                guided = append_baseline_intake_questions(
+                    guided, identity, previous=previous_intake
+                )
 
             guided = guided.model_copy(
                 update={
