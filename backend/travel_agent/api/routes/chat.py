@@ -75,6 +75,7 @@ async def chat_stream(
             run_execution_store=components.run_execution_store,
             travel_workflow=components.travel_workflow,
             checkpointer=getattr(components, "checkpointer", None),
+            delivery_bundle_store=components.delivery_bundle_store,
         )
     except Exception as error:
         raise_chat_preparation_error(error)

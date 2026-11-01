@@ -42,6 +42,7 @@ export type AppAction = ChatAction | TravelAction | {
         source?: AppState['tripRunSource'];
         status?: TripRunStatus | null;
         readOnly?: boolean;
+        preserveDelivery?: boolean;
     };
 } | {
     type: 'SET_TRIP_RUN_STATUS';

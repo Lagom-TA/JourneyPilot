@@ -407,7 +407,6 @@ export const GenerationJourneyPanel: React.FC = () => {
               <div className="generation-followup" data-testid="generation-followup-composer">
                 <div className="generation-followup-inner">
                   <p className="generation-followup-hint">{followup.hint}</p>
-                  {/* 沿用交付后调整的输入与发送链：不另带 run_id 或 route，交给现有会话分流。 */}
                   <InputArea minimal showCompaction={false} autoFocus={false} placeholder={followup.placeholder} />
                 </div>
               </div>

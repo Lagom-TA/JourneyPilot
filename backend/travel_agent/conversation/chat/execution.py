@@ -156,7 +156,12 @@ async def execute_chat(
                 "run_id": trip_run.run_id,
                 "route_decision": route_decision.model_dump(mode="json"),
             }
+            if prepared.refinement_action == "answer":
+                workflow_kwargs["refinement_context"] = prepared.refinement_context
             if use_deep_research:
+                if prepared.refinement_action:
+                    workflow_kwargs["refinement_action"] = prepared.refinement_action
+                    workflow_kwargs["refinement_bundle"] = prepared.refinement_bundle
                 workflow_kwargs["resume_from_checkpoint"] = checkpoint_resume
                 workflow_kwargs["resume_payload"] = resume_payload
                 workflow_kwargs["plan_gate_enabled"] = request.plan_gate

@@ -221,7 +221,11 @@ def build_travel_workflow() -> StateGraph:
     )
 
     graph.add_edge(START, NODE_CLARIFIER)
-    graph.add_edge(NODE_CLARIFIER, NODE_UNDERSTANDING_AGENT)
+    graph.add_conditional_edges(
+        NODE_CLARIFIER,
+        lambda state: NODE_ITINERARY if state.refinement_action == "revise" else NODE_UNDERSTANDING_AGENT,
+        {NODE_ITINERARY: NODE_ITINERARY, NODE_UNDERSTANDING_AGENT: NODE_UNDERSTANDING_AGENT},
+    )
     graph.add_conditional_edges(
         NODE_UNDERSTANDING_AGENT,
         _route_after_understanding,
@@ -311,6 +315,7 @@ def build_travel_workflow() -> StateGraph:
         route_after_plan_gate,
         {
             NODE_REQUIREMENTS_PREPARER: NODE_REQUIREMENTS_PREPARER,
+            NODE_UNDERSTANDING_AGENT: NODE_UNDERSTANDING_AGENT,
             NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
             NODE_RESEARCH_PLAN_GENERATOR: NODE_RESEARCH_PLAN_GENERATOR,
             # The gate seals authorization before any external weather request.

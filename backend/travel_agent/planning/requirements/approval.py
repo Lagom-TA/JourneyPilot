@@ -13,7 +13,7 @@ from langgraph.types import interrupt
 from travel_agent.config.loader import get_settings
 from travel_agent.planning.delivery.minimum_draft import seal_minimum_delivery_draft
 from travel_agent.planning.invalidation import invalidation_update
-from travel_agent.planning.nodes import NODE_DISPATCHER, NODE_INTENT_AMENDMENT_ROUTER, NODE_PLAN_GATE, NODE_REQUIREMENTS_PREPARER, NODE_RESEARCH_PLAN_GENERATOR
+from travel_agent.planning.nodes import NODE_DISPATCHER, NODE_INTENT_AMENDMENT_ROUTER, NODE_PLAN_GATE, NODE_RESEARCH_PLAN_GENERATOR
 from travel_agent.planning.presentation import get_agent_display_name
 from travel_agent.planning.requirements.amendment_contracts import IntentAmendment
 from travel_agent.planning.research.plan import RESEARCH_EXECUTION_PLAN
@@ -94,6 +94,8 @@ async def plan_gate_node(state: TravelAgentState, config: Optional[RunnableConfi
                 "plan_gate_amendment": IntentAmendment(command_id=f"plan_gate_{state.run_id}_{revision}", category=action, content=content, source_kind="plan_gate_amendment"),
                 "plan_gate_decision": {"action": "amendment", "revision": revision},
                 "plan_gate_revision_count": revision,
+                "understanding_messages": [],
+                "understanding_pending_questions": None,
             }
         return {
             "plan_gate_decision": {"action": "approve", "revision": state.plan_gate_revision_count, "approval_token": supplied},
@@ -110,7 +112,7 @@ def route_after_plan_gate(state: TravelAgentState) -> str:
         return NODE_INTENT_AMENDMENT_ROUTER
     action = (state.plan_gate_decision or {}).get("action")
     if action == "amendment":
-        return NODE_REQUIREMENTS_PREPARER
+        return "understanding_agent"
     if action == "retry":
         return NODE_RESEARCH_PLAN_GENERATOR
     return NODE_DISPATCHER

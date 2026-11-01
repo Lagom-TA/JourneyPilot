@@ -36,8 +36,7 @@ async def add_trip_run_supplement(
     要求先写入 `trip_run_commands` 再通知执行器，是否接受不取决于请求命中哪个进程。
     通知丢失或进程切换后，执行器下一次轮询仍能读到该命令。
 
-    该接口不能修改受控旅行身份；身份变更必须新建 TripRun，避免简报、行程与地图
-    出现不一致。
+    补充内容由规划流程结合当前旅行理解，并在适当的节点边界更新需求。
     """
     components = get_components()
     detail = await components.trip_run_store.get_detail(run_id, event_limit=0)

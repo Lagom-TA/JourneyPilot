@@ -66,6 +66,8 @@ async def fast_answer_node(
     constraint_text = format_constraint_pack_for_prompt(constraint_pack)
 
     base_system = SYSTEM_PROMPT.format(current_time=current_time)
+    if state.refinement_context:
+        base_system += "\n\n当前旅行的已保存安排，回答时以此为依据：\n" + state.refinement_context
     if preset_suffix:
         base_system += preset_suffix
     if constraint_text:

@@ -5,9 +5,6 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from travel_agent.planning.invalidation import invalidation_update
-from travel_agent.planning.requirements.identity_amendments import (
-    classify_locked_identity_intent,
-)
 from travel_agent.planning.requirements.amendment_contracts import (
     AmendmentImpact,
     IntentAmendment,
@@ -34,8 +31,6 @@ _UNSUPPORTED_CUES = (
 
 
 def classify_amendment(amendment: IntentAmendment) -> AmendmentImpact:
-    if classify_locked_identity_intent(amendment.content).classification == "change_requested":
-        return AmendmentImpact.IDENTITY_CHANGE
     lowered = amendment.content.lower()
     if any(cue in lowered for cue in _UNSUPPORTED_CUES):
         return AmendmentImpact.UNSUPPORTED
@@ -88,8 +83,10 @@ def apply_runtime_amendments(state: TravelAgentState) -> Dict[str, Any]:
     impact = AmendmentImpact.RESEARCH_AFFECTING
     update.update(
         {
-            "intent_amendment_route": "requirements_preparer",
+            "intent_amendment_route": "understanding_agent",
             "intent_amendment_resume_node": None,
+            "understanding_messages": [],
+            "understanding_pending_questions": None,
             "plan_gate_revision_count": state.plan_gate_revision_count + 1,
             "plan_gate_decision": {
                 "action": "runtime_amendment",

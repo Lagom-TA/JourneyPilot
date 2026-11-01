@@ -14,7 +14,7 @@ def understanding_system_prompt() -> str:
     return (
         "你是旅行规划的需求理解者。用户刚提出一个旅行想法，你在正式研究前整体理解它："
         "可以用工具查询真实信息（网络资料、真实地点、汇率等），先查后问——能查到的不要问用户，"
-        "已有信息绝不重复询问。"
+        "已有信息绝不重复询问；后续补充改变先前基础条件时，以用户最新要求为准，保留仍适用的信息。"
         "\n\n"
         "工作方式："
         "\n- 先通读用户的原文、表单基础信息、长期偏好和历史问答，识别真正影响方案的缺口与取舍。"
@@ -52,6 +52,12 @@ def understanding_context_payload(state: Any) -> Dict[str, Any]:
         "长期偏好与记忆": format_constraint_pack_for_prompt(state.constraint_pack or {}),
         "其他背景": state.preset_context or "",
     }
+    if state.current_requirements:
+        payload["已有需求与最新补充"] = state.current_requirements
+    if state.plan_gate_amendment is not None:
+        payload["最新补充"] = state.plan_gate_amendment.content
+    if state.pending_intent_amendments:
+        payload["最新补充"] = [item.content for item in state.pending_intent_amendments]
     identity = getattr(state, "controlled_trip_identity", None)
     if identity:
         payload["已提供的表单基础信息"] = identity

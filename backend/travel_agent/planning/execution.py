@@ -386,7 +386,7 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                         action = (result.get("plan_gate_decision") or {}).get("action")
                         continuation = {
                             "approve": _WEATHER_CONTEXT_BUILDER,
-                            "amendment": _REQUIREMENTS_PREPARER,
+                            "amendment": "understanding_agent",
                             "retry": _RESEARCH_PLAN_GENERATOR,
                         }.get(action)
                         if continuation is not None:

@@ -210,6 +210,8 @@ class TravelAgentState(BaseModel):
 
     controlled_trip_identity: Dict[str, Any] = Field(default_factory=dict)
     route_decision: Dict[str, Any] = Field(default_factory=dict)
+    refinement_action: str = ""
+    refinement_context: str = ""
 
     # 理解阶段的工作记录：代理消息历史（含工具结果）、已发生的问答与当前待答问题。
     understanding_messages: List[Dict[str, Any]] = Field(default_factory=list)

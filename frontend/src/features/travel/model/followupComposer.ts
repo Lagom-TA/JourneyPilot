@@ -37,8 +37,7 @@ function hintFor(runStatus: TripRunStatus, canResume: boolean): string {
 export function followupComposerState(input: FollowupComposerInput): FollowupComposerState {
   const terminal = input.runStatus !== null && FOLLOWUP_STATUSES.includes(input.runStatus);
   const visible = Boolean(
-    terminal
-    && !input.isStreaming
+    (terminal || input.isStreaming || input.runStatus === 'running')
     && !input.readOnly
     && !input.gatePending
     && !input.pendingUnderstanding

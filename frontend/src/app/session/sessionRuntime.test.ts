@@ -109,6 +109,17 @@ describe('session runtime behavior', () => {
     expect(next.runCostLive).toMatchObject({ runId: 'run-B', callCount: 1, totalTokens: 15, totalCostUsd: 0.03 });
   });
 
+  it('keeps the delivered trip visible while a new revision is running', () => {
+    const delivered = appReducer(stateFor('A'), { type: 'CONFIRM_DELIVERY_BUNDLE', payload: deliveryBundle() });
+    const pending = appReducer(delivered, { type: 'SET_CURRENT_TRIP_RUN', payload: { runId: 'revision-A', status: 'running', preserveDelivery: true } });
+    expect(pending.currentTripRunId).toBe('revision-A');
+    expect(pending.deliveryBundle).toBe(delivered.deliveryBundle);
+    const next = deliveryBundle();
+    next.manifest.run_id = 'revision-A';
+    next.workspace.run_id = 'revision-A';
+    expect(appReducer(pending, { type: 'CONFIRM_DELIVERY_BUNDLE', payload: next }).deliveryBundle).toBe(next);
+  });
+
   it('rejects backward/mixed bundle revision vectors without changing object identity', () => {
     const current = appReducer(stateFor('A'), { type: 'CONFIRM_DELIVERY_BUNDLE', payload: deliveryBundle(3) });
     expect(appReducer(current, { type: 'CONFIRM_DELIVERY_BUNDLE', payload: deliveryBundle(2) })).toBe(current);

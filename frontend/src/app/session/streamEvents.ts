@@ -99,6 +99,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                                     runId: event.run_id,
                                     source: 'live',
                                     status: 'running',
+                                    preserveDelivery: event.route_decision?.route === 'trip_refinement',
                                 },
                             });
                         }

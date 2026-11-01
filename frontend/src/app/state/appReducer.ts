@@ -28,8 +28,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                 currentTripRunReadOnly: action.payload.readOnly ?? (isDifferentRun ? false : state.currentTripRunReadOnly),
                 tripRunSource: action.payload.source ?? (action.payload.runId ? state.tripRunSource : 'none'),
                 tripSummaryCard: isDifferentRun ? null : state.tripSummaryCard,
-                deliveryBundle: isDifferentRun ? null : state.deliveryBundle,
-                deliveryBundleLoadState: isDifferentRun
+                deliveryBundle: isDifferentRun && !action.payload.preserveDelivery ? null : state.deliveryBundle,
+                deliveryBundleLoadState: isDifferentRun && !action.payload.preserveDelivery
                     ? { status: 'idle', message: null }
                     : state.deliveryBundleLoadState,
                 deliverableView: isDifferentRun ? 'interactive_itinerary' : state.deliverableView,

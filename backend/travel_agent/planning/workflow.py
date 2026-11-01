@@ -158,6 +158,8 @@ class TravelPlanningWorkflow:
         plan_gate_enabled: Optional[bool] = None,
         controlled_trip_identity: Optional[Dict[str, Any]] = None,
         route_decision: Optional[Dict[str, Any]] = None,
+        refinement_action: str = "",
+        refinement_bundle: Any = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """流式执行深度调研工作流。"""
         import datetime
@@ -185,8 +187,15 @@ class TravelPlanningWorkflow:
                 preset_pack_constraints=dict(preset_pack_constraints or {}),
                 controlled_trip_identity=controlled_trip_identity or {},
                 route_decision=route_decision or {},
+                refinement_action=refinement_action,
                 model_versions=_configured_model_versions(),
             )
+            if refinement_bundle is not None:
+                from travel_agent.planning.requirements.refinement import seed_refinement_state
+
+                graph_input = await seed_refinement_state(
+                    graph_input, refinement_bundle, refinement_action
+                )
 
         effective_plan_gate_enabled = (
             bool(plan_gate_enabled)

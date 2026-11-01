@@ -154,6 +154,7 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
       return json({ run_id: 'run-followup', requested_after_sequence: after, replay_floor_sequence: 1, latest_sequence: 0, next_after_sequence: after, window_expired: false, run_status: 'failed', current_bundle_id: null, events: [] });
     }
     if (path === '/trip-runs/run-A/control') { expect(request.postDataJSON()).toEqual({ action: 'cancel', session_id: 'A' }); status = 'cancelled'; return json({ accepted: true, run_status: 'cancelled', message: '已取消' }); }
+    if (path === '/trip-runs/run-A/supplements') return json({ accepted: true, status: 'pending', command_id: 'supplement-1', message: '已加入当前运行，将在下一个执行边界处理。' });
     if (path === '/trip-runs/run-A/bundle/current/weather/refresh') return json({ refresh_id: request.postDataJSON().refresh_id, attempted: false, committed: false, used_previous_values: true, refusal_reason: null, bundle });
     if (path === '/trip-runs/run-A/workspace/undo-head') return json({ can_undo: false, mutation_id: null });
     if (path === '/presets') return json([]);
@@ -489,11 +490,11 @@ test('completed planning without a bundle keeps a follow-up composer below the p
   const textarea = composer.getByTestId('brief-input');
   await textarea.fill('第二天少安排一个景点，多留休息时间');
   await textarea.press('Enter');
-  await expect(composer).toHaveCount(0);
+  await expect(composer).toBeVisible();
   await expect.poll(() => page.evaluate(() => ((window as FixtureWindow).__offlineChatBodies ?? []).length)).toBe(1);
   const request = await lastChatBody(page);
   expect(request?.session_id).toBe('A');
-  expect(request?.run_id).toBeNull();
+  expect(request?.run_id).toBe('run-A');
   expect(request?.route).toBeNull();
   expect(request?.gate_decision ?? null).toBeNull();
   expect(request?.messages?.[0]?.content).toBe('第二天少安排一个景点，多留休息时间');
@@ -504,7 +505,7 @@ test('completed planning without a bundle keeps a follow-up composer below the p
     { type: 'thinking', message_id: 'followup', agent_name: '行程规划', step_name: '安排路线', content: '正在按新的休息要求重新安排路线', ts_ms: Date.now() },
   ]);
   await expect(workspace).toContainText('正在按新的休息要求重新安排路线');
-  await expect(composer).toHaveCount(0);
+  await expect(composer).toBeVisible();
   await sendFrames(page, [{ type: 'chat_complete', session_id: 'A', run_id: 'run-followup', final_content: '已按补充要求重新安排。', run_status: 'failed' }], true);
   await expect(composer).toBeVisible();
   expect(await page.evaluate(() => (window as FixtureWindow).__offlineChatBodies?.length ?? 0)).toBe(1);
@@ -604,10 +605,17 @@ test('delivered trip adjustment keeps the single shared composer in the same wor
   await expect.poll(() => page.evaluate(() => ((window as FixtureWindow).__offlineChatBodies ?? []).length)).toBe(1);
   const request = await lastChatBody(page);
   expect(request?.session_id).toBe('A');
-  expect(request?.run_id).toBeNull();
+  expect(request?.run_id).toBe('run-A');
   expect(request?.route).toBeNull();
   expect(request?.messages?.[0]?.content).toBe('把第二天的晚餐换成清淡一点');
   await expect(page.getByTestId('generation-followup-composer')).toHaveCount(0);
+  await sendFrames(page, [{ type: 'chat_start', session_id: 'A', run_id: 'run-followup', message_id: 'revision', route_decision: { route: 'trip_refinement' } }, { type: 'thinking', message_id: 'revision', agent_name: '行程规划', step_name: '安排路线', content: '正在调整行程' }]);
+  await expect(conversation).toContainText('正在调整行程');
+  await expect(page.getByTestId('itinerary-map-region')).toBeVisible();
+  await page.screenshot({ path: test.info().outputPath('adjustment-in-progress.png'), fullPage: true });
+  await sendFrames(page, [{ type: 'run_failed', run_id: 'run-followup', message: '调整未完成，原行程仍可查看。' }], true);
+  await expect(conversation.getByRole('alert')).toBeVisible();
+  await expect(page.getByTestId('itinerary-map-region')).toBeVisible();
   await assertOffline(page, fixture);
 });
 

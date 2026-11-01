@@ -18,11 +18,10 @@ describe('followupComposerState', () => {
     expect(followupComposerState({ ...base, runStatus: 'interrupted', canResume: true }).hint).toContain('继续');
   });
 
-  it('keeps the composer out while the run is active or still streaming', () => {
-    for (const runStatus of [null, 'created', 'running', 'awaiting_input', 'cancel_requested'] as const) {
-      expect(followupComposerState({ ...base, runStatus }).visible, String(runStatus)).toBe(false);
-    }
-    expect(followupComposerState({ ...base, isStreaming: true }).visible).toBe(false);
+  it('allows supplements during a running trip', () => {
+    expect(followupComposerState({ ...base, runStatus: 'running', isStreaming: true }).visible).toBe(true);
+    expect(followupComposerState({ ...base, runStatus: 'running', isStreaming: false }).visible).toBe(true);
+    expect(followupComposerState({ ...base, runStatus: 'awaiting_input' }).visible).toBe(false);
   });
 
   it('does not stack a second input on a pending gate, intake or route confirmation', () => {

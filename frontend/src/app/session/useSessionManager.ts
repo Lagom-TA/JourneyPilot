@@ -125,7 +125,13 @@ export function useSessionManager() {
         const researchStarted = hasResearchStarted(messages);
         const restoredStepMessages = researchStarted ? projectVisibleMessages(messages) : messages;
         const restoredIdentity = selectedRunDetail?.controlled_trip_identity ?? null;
-        const deliveryBundle = currentBundleResult.bundle;
+        let deliveryBundle = currentBundleResult.bundle;
+        if (!deliveryBundle && selectedRun?.parent_run_id) {
+            deliveryBundle = await getCurrentDeliveryBundle(selectedRun.parent_run_id, sessionId)
+                .then((bundle) => isPublicDeliveryBundle(bundle) && bundle.manifest.run_id === selectedRun.parent_run_id ? bundle : null)
+                .catch(() => null);
+            if (seq !== openSessionSeqRef.current) return;
+        }
         const deliveryBundleLoadState: SessionRuntimeSnapshot['deliveryBundleLoadState'] = deliveryBundle
             ? { status: 'ready', message: null }
             : currentTripRunStatus === 'completed' && currentBundleResult.failed

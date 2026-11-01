@@ -6,11 +6,7 @@ from travel_agent.runtime.command_contracts import (
     RunCommandType,
 )
 from travel_agent.runtime.run_contracts import TripRunStatus
-from travel_agent.planning.requirements.identity_amendments import (
-    classify_locked_identity_intent,
-)
 from travel_agent.planning.run_errors import (
-    LockedIdentitySupplement,
     RunNotAcceptingSupplement,
 )
 
@@ -42,8 +38,6 @@ async def queue_supplement(
     notify,
 ) -> SupplementOutcome:
     content = content.strip()
-    if classify_locked_identity_intent(content).classification == "change_requested":
-        raise LockedIdentitySupplement()
     if run.status != TripRunStatus.RUNNING:
         raise RunNotAcceptingSupplement()
     impact_scope = _SUPPLEMENT_IMPACT[category]

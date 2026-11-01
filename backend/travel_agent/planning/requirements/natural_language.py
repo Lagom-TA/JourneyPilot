@@ -60,11 +60,11 @@ async def prepare_requirements_node(state: Any) -> dict[str, Any]:
     # 理解问答只在首次整理时并入；之后的重跑以已保存的需求文字为基底，
     # 不重复追加。
     qa_lines = []
-    if not state.current_requirements:
-        qa_lines = [
-            f"{item['question']}：{item['answer']}"
-            for item in (state.understanding_qa or [])
-        ]
+    qa_lines = [
+        f"{item['question']}：{item['answer']}"
+        for item in (state.understanding_qa or [])
+        if f"{item['question']}：{item['answer']}" not in base
+    ]
     amendments = [*state.pending_intent_amendments]
     if state.plan_gate_amendment is not None:
         amendments.append(state.plan_gate_amendment)

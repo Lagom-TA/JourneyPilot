@@ -185,7 +185,7 @@ async def test_rejected_queued_supplement_preserves_gate_continuation(action, mo
     builder = StateGraph(TravelAgentState)
     builder.add_node("plan_gate", with_run_control("plan_gate", plan_gate_node))
     builder.add_node("intent_amendment_router", with_run_control("intent_amendment_router", lambda current: apply_runtime_amendments(current)))
-    for name in ("requirements_preparer", "research_plan_generator", "weather_context_builder"):
+    for name in ("requirements_preparer", "understanding_agent", "research_plan_generator", "weather_context_builder"):
         builder.add_node(name, lambda _state, target=name: {"next_agent": target})
         builder.add_edge(name, END)
     builder.add_edge(START, "plan_gate")
@@ -197,6 +197,7 @@ async def test_rejected_queued_supplement_preserves_gate_continuation(action, mo
     })
     builder.add_conditional_edges("intent_amendment_router", route_after_intent_amendment, {
         "requirements_preparer": "requirements_preparer",
+        "understanding_agent": "understanding_agent",
         "research_plan_generator": "research_plan_generator",
         "weather_context_builder": "weather_context_builder",
     })
@@ -214,7 +215,7 @@ async def test_rejected_queued_supplement_preserves_gate_continuation(action, mo
         run_control_registry.clear()
     assert updated["rejected_intent_amendments"][0].reason_code == "unsupported_amendment"
     assert updated["next_agent"] == {
-        "approve": "weather_context_builder", "supplement": "requirements_preparer", "retry": "research_plan_generator",
+        "approve": "weather_context_builder", "supplement": "understanding_agent", "retry": "research_plan_generator",
     }[action]
     if action == "supplement":
         assert updated["plan_gate_amendment"].content == "改成园林"
@@ -227,7 +228,7 @@ async def test_supplement_updates_one_current_text_and_changes_generation():
     amendment = IntentAmendment(command_id="supplement-1", category="other", content="改成园林", source_kind="run_supplement")
     state = state.model_copy(update={"pending_intent_amendments": [amendment], "intent_amendment_resume_node": "dispatcher"})
     update = apply_runtime_amendments(state)
-    assert update["intent_amendment_route"] == "requirements_preparer"
+    assert update["intent_amendment_route"] == "understanding_agent"
     updated = state.model_copy(update=update)
     prepared = await prepare_requirements_node(updated)
     assert prepared["current_requirements"] == "喜欢园林\n后续补充：改成园林"

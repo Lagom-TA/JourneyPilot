@@ -21,9 +21,9 @@ from travel_agent.conversation.intake_contracts import RouteDecision, RouteName
 from travel_agent.conversation.intake_lock import intake_session_lock
 from travel_agent.conversation.session_history import load_session_history
 from travel_agent.conversation.input_safety import InputGuard
-from travel_agent.planning.requirements.identity_amendments import (
-    classify_locked_identity_intent,
-)
+from travel_agent.conversation.chat.refinement import answer_context, understand_followup
+from travel_agent.conversation.routing import explicit_route_decision
+from travel_agent.conversation.chat.errors import SessionAccessDenied
 from .preset import load_preset_context
 from dataclasses import dataclass
 from typing import AsyncIterator
@@ -60,6 +60,9 @@ class PreparedChat:
     history: list
     session_anchor_data: Any
     session_compressed: bool
+    refinement_action: Optional[str] = None
+    refinement_bundle: Any = None
+    refinement_context: str = ""
 
 
 def _pending_gate_payload(detail: Any) -> Dict[str, Any]:
@@ -132,6 +135,7 @@ async def prepare_chat(
     run_execution_store,
     travel_workflow,
     checkpointer,
+    delivery_bundle_store=None,
 ) -> PreparedChat | ImmediateChat:
     user_msg = next(
         (item for item in reversed(request.messages) if item.role == "user" and item.content.strip()),
@@ -149,8 +153,9 @@ async def prepare_chat(
         "run_execution_store": run_execution_store,
         "travel_workflow": travel_workflow,
         "checkpointer": checkpointer,
+        "delivery_bundle_store": delivery_bundle_store,
     }
-    if session_id and not request.run_id:
+    if session_id and not request.gate_decision:
         async with intake_session_lock(session_id):
             return await _prepare_chat(request, **kwargs)
     return await _prepare_chat(request, **kwargs)
@@ -164,6 +169,7 @@ async def _prepare_chat(
     run_execution_store,
     travel_workflow,
     checkpointer,
+    delivery_bundle_store=None,
 ) -> PreparedChat | ImmediateChat:
     user_msg = next(
         (
@@ -181,7 +187,53 @@ async def _prepare_chat(
     session_id = request.session_id or str(uuid.uuid5(uuid.NAMESPACE_URL, f"{LOCAL_USER_ID}:session:{user_message_id}"))
     new_run_id = "trip_" + uuid.uuid5(uuid.NAMESPACE_URL, f"{LOCAL_USER_ID}:{session_id}:{user_message_id}").hex
     message_id = str(uuid.uuid4())
-    if request.route_decision is not None:
+    parent_detail = None
+    refinement_bundle = None
+    refinement_action = None
+    refinement_context = ""
+    if request.run_id and request.gate_decision is None:
+        parent_detail = await trip_run_store.get_detail(request.run_id, event_limit=1)
+        if parent_detail is None:
+            raise PreparationRefused(PreparationRejection.RUN_NOT_FOUND)
+        if parent_detail.run.session_id != session_id:
+            raise SessionAccessDenied()
+        if parent_detail.run.status == TripRunStatus.COMPLETED:
+            refinement_bundle = (
+                await delivery_bundle_store.get_current(request.run_id)
+                if delivery_bundle_store is not None else None
+            )
+            if refinement_bundle is None:
+                raise PreparationRefused(PreparationRejection.CHECKPOINT_NOT_FOUND)
+            try:
+                decision = await understand_followup(
+                    user_message, parent_detail.run.controlled_trip_identity or {}, refinement_bundle
+                )
+            except Exception as exc:
+                logger.warning("当前旅行输入理解失败 run_id=%s error=%s", request.run_id, exc)
+                raise PreparationRefused(PreparationRejection.ROUTE_UNAVAILABLE) from exc
+            refinement_action = decision.action
+            refinement_context = answer_context(
+                parent_detail.run.controlled_trip_identity or {}, refinement_bundle
+            )
+            if decision.action == "clarify":
+                reply = decision.response.strip() or "请再说明一下希望如何调整这趟旅行。"
+                await chat_session_memory.save_turn(
+                    session_id=session_id, user_id=LOCAL_USER_ID, mode="fast",
+                    user_message=user_message, user_message_id=user_message_id,
+                    assistant_message_id=message_id, assistant_content=reply,
+                    assistant_display_content=reply, assistant_type="normal", task_type=None,
+                    agent_name="", step_name="", thinking_steps=[], run_id=request.run_id,
+                    controlled_trip_identity=None,
+                )
+                async def _clarification_sse():
+                    yield {"type": "chat_start", "message_id": message_id, "session_id": session_id}
+                    yield {"type": "chat_complete", "message_id": message_id, "final_content": reply}
+                return ImmediateChat(_clarification_sse())
+    if refinement_action:
+        route_decision = explicit_route_decision(
+            RouteName.FAST_ANSWER if refinement_action == "answer" else RouteName.TRIP_REFINEMENT
+        )
+    elif request.route_decision is not None:
         route_decision = request.route_decision
     else:
         try:
@@ -302,7 +354,7 @@ async def _prepare_chat(
         return ImmediateChat(_route_confirmation_sse())
 
     existing_run = None
-    if request.run_id is None:
+    if request.run_id is None or refinement_action:
         # 重复提交同一 message_id 时重放已存在的 Run，而不是再开一次规划；
         # 等待中的门（理解问题或方案确认）一并回放给前端。
         existing_run = await trip_run_store.get_run(new_run_id)
@@ -330,7 +382,7 @@ async def _prepare_chat(
         )
         if not effective_gate:
             raise PreparationRefused(PreparationRejection.PLAN_GATE_DISABLED)
-        if request.run_id is None and checkpointer is None:
+        if (request.run_id is None or refinement_action) and checkpointer is None:
             raise PreparationRefused(
                 PreparationRejection.GATE_REQUIRES_CHECKPOINT
             )
@@ -348,24 +400,15 @@ async def _prepare_chat(
 
     if gate_resume and not request.run_id:
         raise PreparationRefused(PreparationRejection.GATE_REQUIRES_RUN)
-    if request.run_id:
-        detail = await trip_run_store.get_detail(request.run_id, event_limit=1)
+    if request.run_id and not refinement_action:
+        detail = parent_detail or await trip_run_store.get_detail(request.run_id, event_limit=1)
         if detail is None:
             raise PreparationRefused(PreparationRejection.RUN_NOT_FOUND)
+        if detail.run.session_id != session_id:
+            raise SessionAccessDenied()
         authoritative_controlled_trip_identity = dict(
             detail.run.controlled_trip_identity or {}
         )
-        identity_guard_text = (
-            request.gate_decision.content
-            if request.gate_decision is not None
-            and request.gate_decision.action == "supplement"
-            else ("" if request.gate_decision is not None else user_message)
-        )
-        if (
-            classify_locked_identity_intent(identity_guard_text).classification
-            == "change_requested"
-        ):
-            raise PreparationRefused(PreparationRejection.IDENTITY_LOCKED)
         if detail.run.status not in {
             TripRunStatus.CREATED,
             TripRunStatus.AWAITING_INPUT,
@@ -469,7 +512,9 @@ async def _prepare_chat(
             raise PreparationRefused(PreparationRejection.GATE_STATUS_NOT_CONTINUABLE)
     else:
         authoritative_controlled_trip_identity = (
-            request.controlled_trip_identity.model_dump(mode="json")
+            dict(parent_detail.run.controlled_trip_identity or {})
+            if refinement_action and parent_detail is not None
+            else request.controlled_trip_identity.model_dump(mode="json")
             if request.controlled_trip_identity
             else {}
         )
@@ -479,6 +524,7 @@ async def _prepare_chat(
             mode=mode,
             request_message_id=user_message_id,
             assistant_message_id=message_id,
+            parent_run_id=request.run_id if refinement_action else None,
             resume_policy=(
                 TripRunResumePolicy.CHECKPOINT
                 if use_deep_research and checkpointer is not None
@@ -529,6 +575,9 @@ async def _prepare_chat(
         history=history,
         session_anchor_data=session_anchor_data,
         session_compressed=session_compressed,
+        refinement_action=refinement_action,
+        refinement_bundle=refinement_bundle,
+        refinement_context=refinement_context,
     )
 
 

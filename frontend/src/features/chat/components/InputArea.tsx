@@ -30,6 +30,7 @@ export const InputArea: React.FC<{
     const [optimizeCopied, setOptimizeCopied] = useState(false);
     const [isCompacting, setIsCompacting] = useState(false);
     const [compactError, setCompactError] = useState<string | null>(null);
+    const [supplementStatus, setSupplementStatus] = useState<string | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const mode = state.inputMode;
     const adjustHeight = () => {
@@ -41,14 +42,27 @@ export const InputArea: React.FC<{
     };
     const handleSend = useCallback(async () => {
         const text = input.trim();
-        if (!text || state.isStreaming)
+        if (!text)
             return;
+        if (state.isStreaming && state.currentTripRunId) {
+            try {
+                const { addTripRunSupplement } = await import('../../travel/api/runs');
+                const receipt = await addTripRunSupplement(state.currentTripRunId, text, state.currentSessionId);
+                setInput('');
+                setSupplementStatus(receipt.message);
+            } catch {
+                setSupplementStatus('补充未发送，请稍后重试。');
+            }
+            return;
+        }
+        if (state.isStreaming) return;
         setInput('');
         if (textareaRef.current)
             textareaRef.current.style.height = 'auto';
         dispatch({ type: 'SET_THINKING_STEPS', payload: [] });
-        await sendMessage(text);
-    }, [input, state.isStreaming, dispatch, sendMessage]);
+        const sent = await sendMessage(text, undefined, state.currentTripRunId ? { resumeRunId: state.currentTripRunId } : undefined);
+        if (!sent) setInput(text);
+    }, [input, state.isStreaming, state.currentTripRunId, state.currentSessionId, dispatch, sendMessage]);
     const handleStop = stopRun;
     const handleStoppedSend = useCallback(async () => {
         const text = stoppedInput.trim();
@@ -160,7 +174,7 @@ export const InputArea: React.FC<{
         }
     }, [state.currentSessionId, isCompacting]);
     const runInFlight = Boolean(state.currentTripRunId && isTripRunCancellable(state.currentTripRunStatus));
-    const showStop = runInFlight && (state.isStreaming || !input.trim());
+    const showStop = runInFlight && !input.trim();
     const normalPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改……' : '描述这趟旅行：目的地、日期、同行人、预算、偏好…');
     const stoppedPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改……' : '告诉 JourneyPilot 这趟行程想怎么调整…');
     return (<div className="w-full">
@@ -268,6 +282,7 @@ export const InputArea: React.FC<{
             </div>)}
         </div>
       </div>
+      {supplementStatus && <p role="status" className="mt-2 px-1 text-xs text-ink-secondary">{supplementStatus}</p>}
       {compactError && (<p role="status" className="mt-2 px-1 text-xs text-error">
           {compactError}
         </p>)}

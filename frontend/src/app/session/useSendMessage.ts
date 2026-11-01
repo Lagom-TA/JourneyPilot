@@ -68,7 +68,7 @@ export function useSendMessage() {
                 }],
             session_id: state.currentSessionId,
             run_id: initialRunId,
-            route: options?.route ?? (initialRunId ? 'trip_refinement' : null),
+            route: options?.route ?? null,
             route_decision: options?.routeDecision ?? null,
             ...(options?.controlledTripIdentity
                 ? { controlled_trip_identity: options.controlledTripIdentity }

@@ -33,6 +33,7 @@ class FastAnswerWorkflow:
         preset_pack_constraints: Optional[Dict[str, str]] = None,
         route_decision: Optional[Dict[str, Any]] = None,
         run_id: Optional[str] = None,
+        refinement_context: str = "",
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """流式执行快速模式工作流。"""
         import datetime
@@ -53,6 +54,7 @@ class FastAnswerWorkflow:
             preset_context=preset_context,
             preset_pack_constraints=dict(preset_pack_constraints or {}),
             route_decision=route_decision or {},
+            refinement_context=refinement_context,
         )
 
         config = {"configurable": {"thread_id": initial_state.run_id}}

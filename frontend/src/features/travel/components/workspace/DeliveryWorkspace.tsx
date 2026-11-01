@@ -289,7 +289,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
     setHiddenLayers([]);
     overviewScrollTop.current = 0;
     returnFocusDayId.current = null;
-  }, [state.currentTripRunId]);
+  }, [state.currentSessionId]);
 
   React.useEffect(() => {
     const outsideDisplayedDay = (id: string | null) => (
@@ -475,7 +475,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
         <h2>调整这趟旅行</h2>
         <p>告诉我你的想法，日程和地图会一起更新。</p>
       </header>
-      <ConversationThread embedded />
+      {(state.planApprovalGate || state.understandingQuestions) ? <GenerationJourneyPanel /> : <ConversationThread embedded />}
     </div>
   ) : !reportDocument ? (
     <div className="journey-report-pending" role={bundle?.report_projection.status === 'failed' ? 'alert' : 'status'}>
