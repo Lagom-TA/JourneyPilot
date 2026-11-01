@@ -29,7 +29,8 @@ class SelectionOption(StrictModel):
     selection_slot_id: str = Field(min_length=1)
     candidate_id: str = Field(min_length=1)
     candidate_entity_ref: EntityRef
-    rank: int = Field(ge=1, le=3)
+    # 排名从 1 起按备选顺序连续编号，不设上限。
+    rank: int = Field(ge=1)
     constraint_result: Literal["passed"] = "passed"
     selection_reasons: List[str] = Field(default_factory=list)
     tradeoff: Optional[str] = None
@@ -57,7 +58,8 @@ class SelectionSlot(StrictModel):
     slot_type: SelectionSlotType
     target_entity_id: str = Field(min_length=1)
     context: Dict[str, Any]
-    options: List[SelectionOption] = Field(default_factory=list, max_length=3)
+    # 备选数量不设上限：同域的未入选候选全部保留，供后续修改选用。
+    options: List[SelectionOption] = Field(default_factory=list)
     recommended_option_id: Optional[str] = None
     selected_option_id: Optional[str] = None
     status: Literal["researching", "ready", "refreshing", "needs_user_decision"]

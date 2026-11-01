@@ -108,7 +108,6 @@ async def transport_researcher_node(
         run_id=run_id,
         generation_id=generation_id,
         destination_ids=[item.get("place_id", "") for item in state.controlled_trip_identity.get("destinations", [])],
-        assignment=assignment,
     )
 
     active_constraint_ids = active_hard_constraint_ids(
@@ -124,6 +123,7 @@ async def transport_researcher_node(
         task_context=task_context,
         candidate_limit=packet_candidate_limit(
             _NODE_NAME,
+            trip_identity=state.controlled_trip_identity,
             required_route_scopes=required_route_scopes,
         ),
         upstream_packet_context=upstream_packet_context,

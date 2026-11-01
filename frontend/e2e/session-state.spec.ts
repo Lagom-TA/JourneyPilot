@@ -2326,7 +2326,7 @@ test('review currentFocus remains visible in actual research stage', async ({ pa
     { type: 'thinking', message_id: 'review-live', agent_name: '交通查询', step_name: '核对衔接', content: '核对可执行的到站衔接', ts_ms: Date.now(), progress_status: 'running' },
     { type: 'trip_summary_card', summary_card: { headline: '离线测试', summary: '调研进行中', current_focus: '正在核对末班接驳车与无障碍换乘', compact_line: '离线样例', facts: [], priorities: [] } },
   ]);
-  await expect(page.locator('.generation-progress li.is-active .generation-stage-title')).toHaveText('查找交通与住宿');
+  await expect(page.locator('.generation-progress li.is-active .generation-stage-title')).toHaveText('查找旅行资料');
   await assertOffline(page, fixture);
   await expect(page.locator('.generation-progress li.is-active')).toContainText('正在核对末班接驳车与无障碍换乘', { timeout: 1000 });
 });

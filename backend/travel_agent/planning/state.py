@@ -53,7 +53,7 @@ from typing import Optional
 def _merge_dicts(a: Dict, b: Dict) -> Dict:
     """字典字段的 fan-in 归并器，按 ``{**a, **b}`` 后写覆盖同键。
 
-    fan-in 顺序不表示业务上的完成先后，因此并行分支不得写同一个 key。
+    fan-in 顺序不表示业务上的完成先后，因此并发归并的分支不得写同一个 key。
     `research_packets`、`agent_status` 等由 Worker 独占的映射中，每个分支只写
     自己的 agent key 或带该分支轮次后缀的 key。
     """

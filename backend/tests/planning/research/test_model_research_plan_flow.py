@@ -203,9 +203,14 @@ async def test_latest_user_words_and_confirmed_tasks_reach_research_and_delivery
     assert len(model.plan_requests) == 2
     assert "步行少一些" in model.plan_requests[-1]["用户需求与回答"]
     assert "园林" in gate["plan_text"] and "博物馆" not in gate["plan_text"]
-    for worker in ("destination_researcher", "transport_researcher", "accommodation_researcher"):
+    serial_workers = (
+        "destination_researcher",
+        "transport_researcher",
+        "accommodation_researcher",
+    )
+    for step_index, worker in enumerate(serial_workers):
         assert "改成园林" in model.worker_requests[worker]
-        assert gate["plan"]["steps"][0]["tasks"][worker] in model.worker_requests[worker]
+        assert gate["plan"]["steps"][step_index]["tasks"][worker] in model.worker_requests[worker]
     assert calls == ["杭州园林实际检索"]
     assert "返程不要跨日" in model.worker_requests["transport_researcher"]
     flight_tool = next(tool for tool in model.worker_tools["transport_researcher"] if tool["function"]["name"] == "search_flights")
@@ -214,7 +219,7 @@ async def test_latest_user_words_and_confirmed_tasks_reach_research_and_delivery
     assert "require_cross_day" not in flight_parameters.get("required", [])
     assert budget.peek_ledger("offline-flow").tool_calls == 1
     assert "改成园林" in model.composition_request
-    assert gate["plan"]["steps"][1]["tasks"]["itinerary_planner"] in model.composition_request
+    assert gate["plan"]["steps"][3]["tasks"]["itinerary_planner"] in model.composition_request
     assert result["recommendation_catalog"].generation_id == result["planning_generation"].generation_id
     candidate = result["recommendation_catalog"].candidate_index()["garden_candidate"]
     assert candidate.place_id == "garden_place" and candidate.fact_assertion_ids

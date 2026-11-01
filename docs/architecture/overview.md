@@ -9,7 +9,7 @@ JourneyPilot 是一个**单机、单进程、单用户**的自托管旅行规划
   │  SSE + REST
   ▼
 FastAPI 进程
-  ├─ LangGraph 工作流（确认需求 → 并行调研 → 组合行程 → 交付）
+  ├─ LangGraph 工作流（确认需求 → 串行研究 → 组合行程 → 交付）
   ├─ 进程内 asyncio worker（durable command / background job 的消费者）
   ├─ 受限线程与子进程（PDF 渲染、文档解析、本地推理）
   └─ MCP stdio 子进程（外部数据源）
@@ -123,8 +123,9 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
    `run_control.plan_gate_enabled` 必须开启，否则 Run 直接失败。确认时封存 Draft、
    `RunDeadlineSnapshot` 与 `RunBudgetSnapshot`，时间与费用上限从这一刻起固定。
    修改转成 `IntentAmendment`，进入当前需求文字并失效旧方案和旧研究结果。
-6. **研究**：批准并封存预算后，`weather_context_builder` 获取规划天气；`dispatcher` 扇出
-   `destination_researcher`、`transport_researcher` 与 `accommodation_researcher`。
+6. **研究**：批准并封存预算后，`weather_context_builder` 获取规划天气；研究按
+   `destination_researcher` → `transport_researcher` → `accommodation_researcher` 串行推进，
+   `dispatcher` 逐个派发，后一位角色通过上游研究视图读取前序成果。
    Worker 接收相关基础信息、当前需求和自己的任务，在自身工具范围内决定查询，并按运行租约、
    取消与预算控制调用工具，返回带字段和来源的 `ResearchPacket`。
 7. **候选目录**：Worker 完成后，`dispatcher` 收齐 packet，调用 `assembly.py` 的

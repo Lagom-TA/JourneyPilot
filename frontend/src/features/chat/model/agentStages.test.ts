@@ -42,7 +42,7 @@ describe('agent stage projection', () => {
         expect(deriveActivityTitle({ ...base, steps: [step('requirements_preparer')] })).toBe('整理旅行需求');
         expect(deriveActivityTitle({ ...base, steps: [step('目的地调研（第2轮补充）')] })).toBe('查找旅行资料');
         expect(deriveActivityTitle({ ...base, steps: [step('安排查询'), step('行程规划')] })).toBe('安排每天路线');
-        // 路线开始后迟到的并行研究事件不回退阶段。
+        // 路线开始后迟到的研究事件不回退阶段。
         expect(deriveActivityTitle({ ...base, steps: [step('行程规划'), step('目的地调研')] })).toBe('安排每天路线');
         // 真正重新整理需求的补充轮次可以回退。
         expect(deriveActivityTitle({ ...base, steps: [step('行程规划'), step('整理需求（第2轮补充）')] })).toBe('整理旅行需求');

@@ -24,7 +24,7 @@ const RESUME_TEXT = '继续上次被中断的规划';
 type StageStatus = 'pending' | 'active' | 'done';
 const STAGE_ACTIVITY_TITLES: Record<ActivityStageId, string> = {
   requirements: '整理旅行需求',
-  research: '查找交通与住宿',
+  research: '查找旅行资料',
   route: '安排每天路线',
   delivery: '生成完整计划',
 };
@@ -134,7 +134,7 @@ export const GenerationJourneyPanel: React.FC = () => {
   const researchStatus: StageStatus = completed || (state.isStreaming && (routeStatus !== 'pending' || synthesisStarted)) ? 'done' : research.status;
   const stages: Array<{ id: ActivityStageId; title: string; description: string; status: StageStatus }> = [
     { id: 'requirements', title: STAGE_ACTIVITY_TITLES.requirements, description: '目的地、时间、同行人与旅行偏好', status: gatePending || understandingPending ? 'active' : planning.status },
-    { id: 'research', title: STAGE_ACTIVITY_TITLES.research, description: '把城际衔接、市内交通和住宿放在一起考虑', status: researchStatus },
+    { id: 'research', title: STAGE_ACTIVITY_TITLES.research, description: '按目的地、交通、住宿的顺序调研并保留充分备选', status: researchStatus },
     { id: 'route', title: STAGE_ACTIVITY_TITLES.route, description: '让景点、美食与休息节奏顺路衔接', status: routeStatus },
     { id: 'delivery', title: STAGE_ACTIVITY_TITLES.delivery, description: '整理日程、地图、阅读版与费用参考', status: synthesis.status },
   ];

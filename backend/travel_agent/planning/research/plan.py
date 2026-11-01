@@ -14,6 +14,16 @@ from travel_agent.planning.research.provider_assignments import (
 from travel_agent.planning.state import TravelAgentState
 
 
+# 研究执行计划的唯一真值：目的地 → 交通 → 住宿 → 组合，串行推进，
+# 后一位角色读取前序成果。计划门禁展示与批准落章都使用同一份定义。
+RESEARCH_EXECUTION_PLAN: list[list[str]] = [
+    ["destination_researcher"],
+    ["transport_researcher"],
+    ["accommodation_researcher"],
+    ["itinerary_planner"],
+]
+
+
 async def planner_node(state: TravelAgentState) -> Dict[str, Any]:
     plan = state.research_plan
     if plan is None or state.planning_generation is None:
@@ -35,7 +45,7 @@ async def planner_node(state: TravelAgentState) -> Dict[str, Any]:
             )
         )
     return {
-        "execution_plan": [["destination_researcher", "transport_researcher", "accommodation_researcher"], ["itinerary_planner"]],
+        "execution_plan": RESEARCH_EXECUTION_PLAN,
         "current_plan_step": 0,
         "agent_assignments": assignments,
         "task_type": TaskType.TRAVEL_PLANNING,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Any
 
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.memory.agent_context import render_agent_context
@@ -51,22 +52,50 @@ def _composition_schema_json(
 
 
 def _composition_catalog_json(state: TravelAgentState, *, skeleton_only: bool) -> str:
-    """候选事实；按每个领域的提示词容量截取。"""
+    """候选的完整字段与证据投影；范围与 JSON Schema 的可引用枚举一致。
+
+    每个候选附带它可达的事实摘要与来源标题：坐标、无障碍、营业与
+    冲突资料不只存于证据层，组合模型能直接读到。
+    """
     if state.recommendation_catalog is None:
         raise ValueError("itinerary composition requires the candidate catalog")
-    candidate_index = state.recommendation_catalog.candidate_index()
-    ids_by_kind = prompt_candidate_ids(
-        state.recommendation_catalog,
-        skeleton_only=skeleton_only,
-    )
+    catalog = state.recommendation_catalog
+    candidate_index = catalog.candidate_index()
+    ids_by_kind = prompt_candidate_ids(catalog, skeleton_only=skeleton_only)
+    facts_by_candidate: dict[str, list[dict[str, Any]]] = {}
+    for packet in catalog.research_packets:
+        for fact in packet.fact_assertions:
+            facts_by_candidate.setdefault(fact.entity_ref.entity_id, []).append(
+                {
+                    "field_path": fact.field_path,
+                    "value": fact.asserted_value,
+                    "status": fact.status,
+                }
+            )
+    source_titles = {
+        source.source_record_id: source.title
+        for packet in catalog.research_packets
+        for source in packet.source_records
+    }
+    entries = []
+    for ids in ids_by_kind.values():
+        for candidate_id in ids:
+            candidate = candidate_index[candidate_id]
+            entries.append(
+                {
+                    "candidate": candidate.model_dump(mode="json", exclude_none=True),
+                    "facts": facts_by_candidate.get(candidate_id, []),
+                    "sources": [
+                        title
+                        for source_id in candidate.source_record_ids
+                        if (title := source_titles.get(source_id)) is not None
+                    ],
+                }
+            )
     return json.dumps(
         {
-            "generation_id": state.recommendation_catalog.generation_id,
-            "candidates": [
-                candidate_index[candidate_id].model_dump(mode="json", exclude_none=True)
-                for ids in ids_by_kind.values()
-                for candidate_id in ids
-            ],
+            "generation_id": catalog.generation_id,
+            "candidates": entries,
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -76,7 +105,7 @@ def _composition_catalog_json(state: TravelAgentState, *, skeleton_only: bool) -
 def _composition_capabilities_json(
     state: TravelAgentState, *, skeleton_only: bool
 ) -> str:
-    """候选的排程事实，按提示词容量截取。"""
+    """候选的排程事实投影；范围与候选事实保持一致。"""
     return json.dumps(
         placement_capabilities(
             state.recommendation_catalog,
@@ -295,6 +324,8 @@ def _build_composition_prompt(
 <output_contract>
 - 只输出一个可直接 json.loads 的 ItineraryCompositionDraft JSON 对象；不要 Markdown、解释、通用信封或 activities[]。
 - 引用候选时只使用候选目录中、且由 JSON Schema 对当前 placement_kind 开放的 candidate_id：visit 对应 VisitCandidate，dining 对应 DiningCandidate，transport 对应 TransportCandidate，lodging_candidate_ids 对应 LodgingCandidate；不要跨类型引用，也不要复制或改写 candidate 的名称、价格、来源、交通 segments、营业事实或天气事实。
+- 候选目录是三段研究的完整供给，包含此前轮次保留的未入选候选：它们与本次新研究的候选一样可用于安排、替换或留作后备。每个候选附有事实摘要（facts）与来源标题（sources）：坐标、无障碍、营业与冲突等资料从这里读取，正文不要求复述来源。候选里的推荐理由与取舍说明是研究阶段的建议，结合当天实际排期取舍后采纳，不要求照抄。
+- 价格、详细介绍等辅助字段可能缺失，这不影响候选可引用；正文与说明里不要因此编造，也不必专门解释缺失。
 - 按用户需求规划行程，后续补充改变先前想法时以最新表达为准。Placement Capabilities 给出候选的排程事实，请据此安排当天区域、节奏与天气。
 - 主方案直接适应【规划前天气事实】里的逐日 data_kind、降水概率与风力：预报日的恶劣条件反映在排序、时间或交通选择上。
 - 每个 Dining placement 选择具体门店并填写餐次；每个需要住宿的入住区间在 lodging_candidate_ids 选择具体 property。

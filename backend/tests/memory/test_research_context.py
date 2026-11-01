@@ -17,7 +17,6 @@ def _scope(**overrides):
         "run_id": "run_test",
         "generation_id": "generation_test",
         "destination_ids": ["tokyo"],
-        "assignment": {},
         **overrides,
     }
 
@@ -63,6 +62,10 @@ def test_coordination_preserves_values_units_validity_and_source_links_without_s
     assert candidate["name"] == packet.candidates[0].name
     assert candidate["address"] == packet.candidates[0].address
     assert "fact_assertion_ids" not in candidate
+    # 研究结论字段保留给下游角色：推荐理由、取舍与天气敏感度不随投影丢失。
+    assert candidate["selection_reasons"] == ["identity verified", "fits visit"]
+    assert candidate["tradeoff"] == "fixture"
+    assert candidate["weather_sensitivity"]["exposure"] == "indoor"
     facts = {fact["field_path"]: fact for fact in coordination.facts}
     price = facts["estimated_cost_cny"]
     assert (price["asserted_value"], price["unit"], price["currency"]) == (
@@ -80,6 +83,7 @@ def test_coordination_preserves_values_units_validity_and_source_links_without_s
         source["source_record_id"]: source for source in coordination.source_references
     }
     assert set(sources) == {"source_visit_a", "contradictory_visit_a"}
+    assert sources["source_visit_a"]["title"] == "visit_a"
     assert (
         sources["source_visit_a"]["content_hash"]
         == packet.source_records[0].content_hash

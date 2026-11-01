@@ -89,7 +89,8 @@ class ReportSelectionOption(StrictModel):
     option_id: str = Field(min_length=1)
     candidate_id: str = Field(min_length=1)
     name: str = Field(min_length=1)
-    rank: int = Field(ge=1, le=3)
+    # 与工作台选择槽同一备选顺序，不设数量上限。
+    rank: int = Field(ge=1)
     selected: bool
     recommended: bool
     selection_reasons: List[str] = Field(default_factory=list)
@@ -104,7 +105,7 @@ class ReportSelectionSection(StrictModel):
     slot_type: SelectionSlotType
     context: Dict[str, Any]
     status: Literal["ready", "needs_user_decision"]
-    options: List[ReportSelectionOption] = Field(min_length=1, max_length=3)
+    options: List[ReportSelectionOption] = Field(min_length=1)
 
 
 class ReportWeatherDay(StrictModel):

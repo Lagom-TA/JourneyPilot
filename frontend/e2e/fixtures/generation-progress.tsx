@@ -31,6 +31,11 @@ function Fixture() {
     });
     (window as unknown as { __generationFixture?: unknown }).__generationFixture = {
       addResearch() {
+        // 串行链上研究开始前，需求理解已留下完成记录。
+        dispatch({
+          type: 'ADD_THINKING_STEP',
+          payload: { id: 'planning-completed', agentName: 'understanding_agent', content: '', stepName: '整理旅行需求', timestamp: new Date(), progressStatus: 'completed', endTime: new Date() },
+        });
         dispatch({
           type: 'ADD_THINKING_STEP',
           payload: { id: 'destination', agentName: 'destination_researcher', content: '正在查找杭州与苏州的景点、美食和步行路线', stepName: '查询目的地体验', timestamp: new Date(), progressStatus: 'running' },

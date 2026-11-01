@@ -63,10 +63,19 @@ def _slot(
     slot_type: SelectionSlotType,
     context: dict[str, object],
 ) -> SelectionSlot:
+    # 已选主方案排第一，其余同域候选全部保留为备选：未入选的有效
+    # 候选也能被后续修改直接选用，不按数量截断。不可用候选仍留在
+    # 目录与提示词中，但不进入可操作选项——SelectionOption 契约
+    # 只接受 confirmed/needs_confirmation。
     ordered = [
         selected,
-        *[item for item in eligible if item.candidate_id != selected.candidate_id],
-    ][:3]
+        *[
+            item
+            for item in eligible
+            if item.candidate_id != selected.candidate_id
+            and candidate_option_availability(item) != "unavailable"
+        ],
+    ]
     options = [
         _option(item, slot_id=slot_id, target_entity_id=target_entity_id, rank=index)
         for index, item in enumerate(ordered, 1)

@@ -89,7 +89,7 @@ def _blocked_research_worker_update(
 
     边界只在 Worker 自己的通道上报：路由由 Dispatcher 根据终态
     ``agent_status`` 与同一个 deadline 写入，Worker 侧再写 ``next_agent``
-    会让并行的 Send 组在同一步里产生两个值。
+    会让 fan-in 在同一步里对同一个 key 产生两个值。
     """
 
     if observation.phase == "expired":

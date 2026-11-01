@@ -45,9 +45,8 @@ def matrix():
     for cache, run_mode, complexity, tool_mode in product(("cold", "warm"), ("new", "supplement", "resume"), ("simple", "complex"), ("full", "deferred")):
         case = dict(cache=cache, run_mode=run_mode, complexity=complexity, tool_mode=tool_mode)
         trial_id = hashlib.sha256(json.dumps(case, sort_keys=True).encode()).hexdigest()[:16]
-        assignment = {"excluded_candidate_ids": ["visit_a"]} if run_mode == "supplement" else {}
         projection = format_worker_research_context({packet.research_packet_id: packet}, worker_kind="accommodation_researcher",
-            run_id="run_test", generation_id="generation_test", destination_ids=["tokyo"], assignment=assignment)
+            run_id="run_test", generation_id="generation_test", destination_ids=["tokyo"])
         prompt = build_research_packet_prompt(worker_kind="accommodation_researcher", run_id="run_test", task_id="task",
             current_time="2026-10-08 12:00", fact_data_revision=1,
             candidate_limit=6,

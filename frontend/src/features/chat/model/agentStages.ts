@@ -113,7 +113,7 @@ function latestPopulatedActivityStage(steps: ThinkingStep[]): ActivityStageId | 
         const stage = getActivityStageIdForAgent(step.agentName || '');
         if (!stage)
             continue;
-        // 新补充轮次会重新整理需求；并行研究较晚到达的工具事件不应把已进入的路线/生成阶段拉回。
+        // 新补充轮次会重新整理需求；研究按串行推进，较晚到达的工具事件不应把已进入的路线/生成阶段拉回。
         if (stage === 'requirements') {
             current = stage;
             continue;

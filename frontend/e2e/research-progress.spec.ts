@@ -18,8 +18,20 @@ async function expectPlanningCardWithoutDuplicateCopy(page: Page, status: string
   await expect(card.locator('button')).toHaveCount(0);
 }
 
+// 尚无研究行动时过程区保持紧凑：不渲染角色卡片，也不出现旧版过程文案。
+async function expectCompactProcessWithoutCards(page: Page) {
+  await expect(page.locator('.research-agent')).toHaveCount(0);
+  await expect(page.getByText(/理解偏好|旅行需求已整理|正在准备相关查询/)).toHaveCount(0);
+  await expect(page.locator('.research-agent-description')).toHaveCount(0);
+}
+
+// 过程区默认收起，用户点开标题后才显示各阶段卡片。
+async function expandProcessPanel(page: Page) {
+  await page.locator('[data-testid="thinking-chain"] button.research-panel-heading').click();
+}
+
 for (const width of [320, 390, 1440]) {
-  test(`研究面板：并行归因、有效详情、停止状态 ${width}px`, async ({ page }) => {
+  test(`研究面板：串行阶段、有效详情、停止状态 ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const errors: string[] = [];
@@ -27,11 +39,12 @@ for (const width of [320, 390, 1440]) {
     await page.goto('/e2e/fixtures/research-progress.html');
     const panel = page.getByTestId('thinking-chain');
     await expect(panel).toContainText('查找旅行资料');
-    await expect(panel.getByTestId('research-agent-destination')).toBeVisible();
-    await expect(panel.getByTestId('research-agent-transport')).toBeVisible();
-    await expect(panel.getByTestId('research-agent-stay')).toBeVisible();
-    await expect(panel).not.toContainText('contract_version');
     const destination = page.getByTestId('research-agent-destination');
+    await expect(destination).toBeVisible();
+    // 串行研究：目的地进行中时，交通与住宿还没有开始。
+    await expect(page.getByTestId('research-agent-transport')).toHaveCount(0);
+    await expect(page.getByTestId('research-agent-stay')).toHaveCount(0);
+    await expect(panel).not.toContainText('contract_version');
     await expect(destination.getByRole('button')).toHaveCount(1);
     await expect(destination.getByRole('button')).toHaveAttribute('aria-expanded', 'true');
     const query = destination.getByTestId('research-query');
@@ -41,26 +54,29 @@ for (const width of [320, 390, 1440]) {
     await expect(query).toContainText('长春市宽城区光复北路');
     await expect(query.getByRole('link', { name: '伪满皇宫博物院' })).toHaveAttribute('href', 'https://example.org/museum');
     await expect(destination.getByTestId('research-query')).toHaveCount(1);
+    await page.getByRole('button', { name: '目的地完成', exact: true }).click();
+    await expect(destination.locator('.research-agent-state')).toHaveText('已结束');
+    await expect(destination.getByTestId('research-query')).toHaveCount(0);
+    const transport = page.getByTestId('research-agent-transport');
+    await expect(transport.locator('.research-agent-state')).toHaveText('进行中');
+    await page.getByRole('button', { name: '交通完成', exact: true }).click();
+    await expect(transport.locator('.research-agent-state')).toHaveText('已结束');
     const stay = page.getByTestId('research-agent-stay');
     await expect(stay.getByRole('button')).toHaveCount(1);
     await expect(stay.getByTestId('research-query').first().locator('summary')).toHaveCount(1);
     await expect(stay).toContainText('参考资料');
+    await page.getByRole('button', { name: '停止', exact: true }).click();
+    await expect(panel).toContainText('旅行规划已中断');
+    await expect(stay.locator('.research-agent-state')).toHaveText('已停止');
+    await destination.getByRole('button').click();
+    await destination.getByTestId('research-query').locator('summary').click();
+    await expect(destination.getByRole('link', { name: '伪满皇宫博物院' })).toBeVisible();
+    await expect(destination.getByTestId('research-query')).toContainText('伪满皇宫博物院');
     await page.getByRole('button', { name: '住宿直接返回', exact: true }).click();
     await expect(stay.locator('.research-agent-state')).toHaveText('已结束');
     await expect(stay.getByTestId('research-query')).toHaveCount(0);
     await stay.getByRole('button').click();
     await expect(stay).toContainText('已整理 1 个住宿候选');
-    await page.getByRole('button', { name: '目的地完成', exact: true }).click();
-    await expect(destination.locator('.research-agent-state')).toHaveText('已结束');
-    await expect(destination.getByTestId('research-query')).toHaveCount(0);
-    await expect(page.getByTestId('research-agent-transport').locator('.research-agent-state')).toHaveText('进行中');
-    await page.getByRole('button', { name: '停止', exact: true }).click();
-    await expect(panel).toContainText('旅行规划已中断');
-    await expect(page.getByTestId('research-agent-transport').locator('.research-agent-state')).toHaveText('已停止');
-    await destination.getByRole('button').click();
-    await destination.getByTestId('research-query').locator('summary').click();
-    await expect(destination.getByRole('link', { name: '伪满皇宫博物院' })).toBeVisible();
-    await expect(destination.getByTestId('research-query')).toContainText('伪满皇宫博物院');
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
     expect(errors).toEqual([]);
   });
@@ -72,12 +88,18 @@ test('workspace 工具行密度、展开长查询与真实阶段标题', async (
   await page.goto('/e2e/fixtures/research-progress.html');
   const panel = page.getByTestId('thinking-chain');
   await expect(panel.locator('.research-panel-title')).toHaveText('查找旅行资料');
+  // 串行推进到住宿阶段，三个角色卡片都已出现。
+  await page.getByRole('button', { name: '目的地完成', exact: true }).click();
+  await page.getByRole('button', { name: '交通完成', exact: true }).click();
   await expect(panel.locator('button.research-agent-heading[aria-expanded]')).toHaveCount(3);
   const transport = page.getByTestId('research-agent-transport');
   const stageHeight = await transport.locator('.research-agent-heading').evaluate(element => element.getBoundingClientRect().height);
   expect(stageHeight).toBeGreaterThanOrEqual(30);
   expect(stageHeight).toBeLessThanOrEqual(38);
+  // 交通完成态会自动收起卡片，重新展开后再量查询行高。
+  await transport.locator('button.research-agent-heading').click();
   const row = transport.getByTestId('research-query').locator('.research-query-summary').first();
+  await expect(row).toBeVisible();
   const rowHeight = await row.evaluate(element => element.getBoundingClientRect().height);
   expect(rowHeight).toBeGreaterThanOrEqual(40);
   expect(rowHeight).toBeLessThanOrEqual(48);
@@ -106,6 +128,8 @@ test('workspace 工具行密度、展开长查询与真实阶段标题', async (
   await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-compact-list.png` });
 
   await page.getByRole('button', { name: '长查询', exact: true }).click();
+  // 目的地完成态自动收起，重新展开后再核对新追加的查询行。
+  await page.getByTestId('research-agent-destination').locator('button.research-agent-heading').click();
   const longRow = page.getByTestId('research-query').filter({ hasText: '杭州西湖周边适合雨天慢慢散步' });
   await expect(longRow).toContainText('杭州西湖周边适合雨天慢慢散步、喝咖啡并避开人群的路线与街区');
   await longRow.locator('summary').focus();
@@ -153,7 +177,7 @@ test('workspace 激活摘要、真实计数、安全详情与后续事件保持�
   await expect(activationPlace).not.toContainText('global_place_search');
   await expect(activationPlace).not.toContainText('knowledge_search');
   await activationPlace.locator('summary').click();
-  await expect(activationPlace.locator('[data-detail-section="tool"]')).toContainText('整理规划');
+  await expect(activationPlace).toContainText('整理规划');
   await expect(activationPlace.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
   await expect(activationPlace).not.toContainText('global_place_search');
   await expect(activationPlace).not.toContainText('knowledge_search');
@@ -173,7 +197,7 @@ test('workspace 激活摘要、真实计数、安全详情与后续事件保持�
 
   const fourResults = page.getByTestId('research-query').filter({ hasText: '深圳湾公园 周边' });
   await fourResults.locator('summary').click();
-  await expect(fourResults.locator('.research-tool-count')).toHaveText('返回 4 条结果');
+  await expect(fourResults).toContainText('返回 4 条结果');
   await expect(fourResults).not.toContainText('返回 2 条结果');
   await expect(fourResults).toContainText('找到 4 个结果：深圳湾公园、红树林、人才公园、海上世界');
   await expect(fourResults.locator('.research-source')).toHaveCount(2);
@@ -183,7 +207,7 @@ test('workspace 激活摘要、真实计数、安全详情与后续事件保持�
   const onlySummary = page.getByTestId('research-query').filter({ hasText: '当地雨天备选活动' });
   await onlySummary.locator('summary').click();
   await expect(onlySummary).toContainText('已整理 3 条适合雨天的室内活动摘要');
-  await expect(onlySummary.locator('.research-tool-count')).toHaveCount(0);
+  await expect(onlySummary).not.toContainText('返回 ');
   await expect(onlySummary.locator('.research-source')).toHaveCount(0);
 
   const noInputResult = page.getByTestId('research-query').filter({ hasText: '查询旅行信息' }).filter({ hasNotText: '已启用' }).filter({ hasNotText: '仅提供' });
@@ -242,7 +266,7 @@ test('workspace 激活摘要、真实计数、安全详情与后续事件保持�
   const reopened = destination.getByTestId('research-query').filter({ hasText: '深圳湾公园 周边' });
   await reopened.locator('summary').click();
   await expect(reopened.locator('.research-tool-detail')).toBeVisible();
-  await expect(reopened.locator('.research-tool-count')).toHaveText('返回 4 条结果');
+  await expect(reopened).toContainText('返回 4 条结果');
   await page.getByRole('button', { name: '无关事件', exact: true }).click();
   await expect(reopened.locator('.research-tool-detail')).toBeVisible();
   expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
@@ -335,28 +359,34 @@ test('真实 thinking 事件缺少 progress_status 时，终态展开记录不�
   }]);
   await expect(page.getByTestId('generation-journey-panel')).toBeVisible();
   await fixture.push([
-    { type: 'thinking', message_id: 'assistant-generation-sse', agent_name: '制定计划', content: '制定调研计划：目的地调研/交通查询/住宿查询', step_name: '制定规划安排', ts_ms: ts + 1 },
-    { type: 'thinking', message_id: 'assistant-generation-sse', agent_name: '安排查询', content: '正在分派并行调研任务', step_name: '安排旅行查询', ts_ms: ts + 2 },
+    { type: 'thinking', message_id: 'assistant-generation-sse', agent_name: '制定计划', content: '制定调研计划：目的地调研 → 交通查询 → 住宿查询 → 行程规划', step_name: '制定规划安排', ts_ms: ts + 1 },
+    { type: 'thinking', message_id: 'assistant-generation-sse', agent_name: '安排查询', content: '正在按顺序安排调研任务', step_name: '安排旅行查询', ts_ms: ts + 2 },
     { type: 'agent_progress', message_id: 'assistant-generation-sse', agent_name: '整理需求', content: '已整理旅行偏好与同行信息', step_name: '整理旅行需求', progress_status: 'completed', ts_ms: ts + 3 },
     { type: 'tool_start', message_id: 'assistant-generation-sse', agent_name: '目的地调研', tool_name: 'global_place_search', tool_call_id: 'sse-place', args_summary: '{"query":"青岛 海岸线"}', category: 'search', ts_ms: ts + 4 },
     { type: 'tool_result', message_id: 'assistant-generation-sse', agent_name: '目的地调研', tool_name: 'global_place_search', tool_call_id: 'sse-place', status: 'success', summary: '找到 1 个结果', result_preview: [{ title: '小麦岛公园', detail: '适合傍晚看海与散步', url: 'https://example.org/qingdao-coast' }], category: 'search', ts_ms: ts + 5 },
   ]);
   const planning = page.getByTestId('research-agent-planning');
   const destinationPanel = page.getByTestId('research-agent-destination');
+  await expandProcessPanel(page);
+  // 研究阶段视图里，已完成的目的地卡片保持收起，点开后工具结果可见。
   await expect(destinationPanel.locator('.research-agent-body')).toHaveCount(0);
   await destinationPanel.getByRole('button').click();
   await expect(destinationPanel).toContainText('找到 1 个结果');
   await fixture.push([{ type: 'run_failed', run_id: 'run-generation-sse', message: '离线合成：真实 thinking 事件形状后规划失败。', run_status: 'failed', ts_ms: ts + 6 }]);
   await expect(page.locator('.generation-progress > h2')).toHaveText('旅行规划未完成');
   await expect(page.locator('.research-panel-title')).toHaveText('旅行规划未完成');
+  // 制定计划文本属于需求整理阶段：选择该阶段后再核对规划卡。
+  await page.locator('.generation-progress li').first().getByRole('button').click();
   await expect(planning.locator('.research-agent-state')).toHaveText('已结束');
   await expect(planning.getByTestId('research-agent-update')).toHaveCount(0);
-  await expect(planning).not.toContainText('正在分派并行调研任务');
+  await expect(planning).not.toContainText('正在按顺序安排调研任务');
   await expect(planning).not.toContainText('正在准备相关查询');
   await expect(planning.locator('.research-agent-body')).toHaveCount(0);
   await planning.getByRole('button').click();
-  await expect(planning.locator('.research-agent-body')).toContainText('制定调研计划：目的地调研/交通查询/住宿查询');
-  await expect(planning.locator('.research-agent-body')).not.toContainText('正在分派并行调研任务');
+  await expect(planning.locator('.research-agent-body')).toContainText('制定调研计划：目的地调研 → 交通查询 → 住宿查询 → 行程规划');
+  await expect(planning.locator('.research-agent-body')).not.toContainText('正在按顺序安排调研任务');
+  // 回到研究阶段核对目的地记录。
+  await page.locator('.generation-progress li').nth(1).getByRole('button').click();
   await expect(destinationPanel.locator('.research-agent-body')).toHaveCount(0);
   await destinationPanel.getByRole('button').click();
   await expect(destinationPanel).toContainText('青岛 海岸线');
@@ -381,19 +411,23 @@ test('真实 thinking 事件后取消也不在终态展开记录保留运行中�
   const ts = 1761743100000;
   await fixture.push([{ type: 'chat_start', session_id: 'generation-sse-cancel', run_id: 'run-generation-sse-cancel', message_id: 'assistant-generation-sse-cancel', route_decision: { route: 'trip_planning', confidence: 1, alternatives: [], signals: ['explicit_ui_action'], requires_trip_draft: true, requires_confirmation: false }, ts_ms: ts }]);
   await fixture.push([
-    { type: 'thinking', message_id: 'assistant-generation-sse-cancel', agent_name: '制定计划', content: '制定调研计划：目的地调研/交通查询/住宿查询', step_name: '制定规划安排', ts_ms: ts + 1 },
-    { type: 'thinking', message_id: 'assistant-generation-sse-cancel', agent_name: '安排查询', content: '正在分派并行调研任务', step_name: '安排旅行查询', ts_ms: ts + 2 },
+    { type: 'thinking', message_id: 'assistant-generation-sse-cancel', agent_name: '制定计划', content: '制定调研计划：目的地调研 → 交通查询 → 住宿查询 → 行程规划', step_name: '制定规划安排', ts_ms: ts + 1 },
+    { type: 'thinking', message_id: 'assistant-generation-sse-cancel', agent_name: '安排查询', content: '正在按顺序安排调研任务', step_name: '安排旅行查询', ts_ms: ts + 2 },
   ]);
   await fixture.push([{ type: 'run_cancelled', run_id: 'run-generation-sse-cancel', final_content: '离线合成：真实 thinking 事件形状后取消。', ts_ms: ts + 3 }]);
   await expect(page.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
   await expect(page.locator('.research-panel-title')).toHaveText('旅行规划已取消');
+  await expandProcessPanel(page);
+  // 制定计划文本属于需求整理阶段：选择该阶段后再核对规划卡。
+  // 取消终态下该阶段没有已完成的步骤，卡片如实显示已停止。
+  await page.locator('.generation-progress li').first().getByRole('button').click();
   const planning = page.getByTestId('research-agent-planning');
-  await expect(planning.locator('.research-agent-state')).toHaveText('已结束');
-  await expect(planning).not.toContainText('正在分派并行调研任务');
+  await expect(planning.locator('.research-agent-state')).toHaveText('已停止');
+  await expect(planning).not.toContainText('正在按顺序安排调研任务');
   await expect(planning.locator('.research-agent-body')).toHaveCount(0);
   await planning.getByRole('button').click();
-  await expect(planning.locator('.research-agent-body')).toContainText('制定调研计划：目的地调研/交通查询/住宿查询');
-  await expect(planning.locator('.research-agent-body')).not.toContainText('正在分派并行调研任务');
+  await expect(planning.locator('.research-agent-body')).toContainText('制定调研计划：目的地调研 → 交通查询 → 住宿查询 → 行程规划');
+  await expect(planning.locator('.research-agent-body')).not.toContainText('正在按顺序安排调研任务');
   await fixture.close();
   expect(fixture.pageErrors).toEqual([]);
 });
@@ -412,8 +446,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await expect(page.getByText('查看不同阶段的思考摘要、查询内容和已找到的旅行资料。', { exact: true })).toHaveCount(0);
     await expect(page.getByText('规划进度', { exact: true })).toHaveCount(0);
     await expect(page.getByText('正在整理这趟旅行的基本信息。', { exact: true })).toHaveCount(0);
-    await expectPlanningCardWithoutDuplicateCopy(page, '进行中');
-    await expect(page.locator('.research-agent-description')).toHaveCount(0);
+    await expectCompactProcessWithoutCards(page);
     const cardStyle = await page.locator('.generation-trip-card').evaluate((element) => {
       const style = getComputedStyle(element);
       return { border: style.borderTopWidth, radius: style.borderTopLeftRadius, background: style.backgroundColor };
@@ -439,7 +472,11 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     expect(Number.parseFloat(motion.duration)).toBeGreaterThanOrEqual(3);
     await page.screenshot({ path: '../output/polish/20261029-1252-generation-layout/generation-2000-waiting.png' });
     await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.addResearch());
+    await expandProcessPanel(page);
+    // 规划卡记录属于需求整理阶段：先选该阶段核对，再回到研究阶段看角色卡片。
+    await page.locator('.generation-progress li').first().getByRole('button').click();
     await expectPlanningCardWithoutDuplicateCopy(page, '已结束');
+    await page.locator('.generation-progress li').nth(1).getByRole('button').click();
     const destination = page.getByTestId('research-agent-destination');
     const transport = page.getByTestId('research-agent-transport');
     await expect(destination.getByTestId('research-agent-update')).toHaveCount(0);
@@ -493,7 +530,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await expect(page.locator('.generation-progress li.is-active')).toHaveCount(0);
     await expect(page.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
     await expect(page.locator('.research-panel-title')).toHaveText('旅行规划已取消');
-    await expectPlanningCardWithoutDuplicateCopy(page, '已停止');
+    await expectCompactProcessWithoutCards(page);
     expect(await page.locator('.generation-progress li').first().evaluate((element) => getComputedStyle(element, '::before').animationName)).toBe('none');
 
     await page.reload();
@@ -508,6 +545,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await page.goto('/e2e/fixtures/generation-progress.html');
     await expect(page.getByTestId('generation-journey-panel')).toBeVisible();
     await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.addResearch());
+    await expandProcessPanel(page);
     await expect(page.getByTestId('research-agent-destination')).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     const order = await page.evaluate(() => {
@@ -530,9 +568,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await expect(page.getByText('这次规划没有完成，你可以回到新旅行重新尝试。', { exact: true })).toBeVisible();
     await expect(page.getByText('旅行方案暂时无法生成，请稍后重试。', { exact: true })).toBeVisible();
     await expect(page.locator('.research-panel-title')).toHaveText('旅行规划未完成');
-    await expectPlanningCardWithoutDuplicateCopy(page, '已结束');
-    await expect(page.getByText(/理解偏好|旅行需求已整理|正在准备相关查询/)).toHaveCount(0);
-    await expect(page.locator('.research-agent-description')).toHaveCount(0);
+    await expectCompactProcessWithoutCards(page);
     await page.screenshot({ path: '../output/polish/20261029-1252-generation-layout/generation-2000-failed-r3.png' });
     expect(errors).toEqual([]);
   });
@@ -545,7 +581,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await expect(page.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
     await expect(page.locator('.research-panel-title')).toHaveText('旅行规划已取消');
     await expect(page.getByText('这次规划已取消。', { exact: true })).toBeVisible();
-    await expectPlanningCardWithoutDuplicateCopy(page, '已结束');
+    await expectCompactProcessWithoutCards(page);
     await expect(page.getByText(/正在规划你的旅行|正在准备相关查询/)).toHaveCount(0);
   });
 
@@ -557,7 +593,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await expect(page.locator('.generation-progress > h2')).toHaveText('正在停止规划');
     await expect(page.locator('.research-panel-title')).toHaveText('正在停止规划');
     await expect(page.getByText('正在停止这次规划。', { exact: true })).toBeVisible();
-    await expectPlanningCardWithoutDuplicateCopy(page, '已结束');
+    await expectCompactProcessWithoutCards(page);
     await expect(page.getByText(/正在规划你的旅行|正在准备相关查询/)).toHaveCount(0);
   });
 
@@ -566,10 +602,10 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/e2e/fixtures/generation-progress.html');
     await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.failAfterPlanning());
-    await expectPlanningCardWithoutDuplicateCopy(page, '已结束');
+    await expectCompactProcessWithoutCards(page);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.locator('.generation-activity').scrollIntoViewIfNeeded();
-    await expect(page.getByTestId('research-agent-planning')).toBeInViewport();
+    await expect(page.getByTestId('thinking-chain')).toBeInViewport();
     await page.screenshot({ path: '../output/polish/20261029-1252-generation-layout/generation-390-failed-r3.png' });
   });
 });
@@ -686,22 +722,22 @@ test('侧栏多城站序、无重复信息与特殊同行 2000px/390px', async (
   const title = card.locator('.generation-trip-card-header h1');
   await expect(title.locator('.generation-trip-title-place')).toHaveText(['北京', '上海', '长春']);
   await expect(title).toContainText('11 日');
-  await expect(card.locator('.generation-trip-card-sub')).toContainText('深圳出发');
-  const facts = card.locator('.generation-trip-card-facts');
-  await expect(facts).toContainText('同行');
-  await expect(facts).not.toContainText('目的地');
-  await expect(facts).not.toContainText('行程');
+  const facts = card.locator('.generation-trip-card-meta');
+  await expect(facts).toContainText('深圳出发');
+  await expect(facts).toContainText('2 位成人');
+  await expect(card).not.toContainText('目的地');
+  await expect(card).not.toContainText('行程');
   await expect(card.locator('.generation-trip-tags')).toContainText('经典均衡');
   await page.screenshot({ path: `${evidence}/generation-2000-three-cities.png`, fullPage: true });
 
   await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.specialParty());
-  await expect(card.locator('.generation-trip-card-facts')).toContainText('2 位成人 · 1 位儿童 · 有长辈同行 · 需要无障碍安排');
+  await expect(facts).toContainText('2 位成人 · 1 位儿童 · 有长辈同行 · 需要无障碍安排');
   await expect(card.locator('.generation-trip-tags')).toContainText('轻松慢游');
   await page.screenshot({ path: `${evidence}/generation-2000-special-party.png`, fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await expect(card.locator('.generation-trip-card-facts')).toContainText('1 位儿童');
+  await expect(facts).toContainText('1 位儿童');
   const order = await page.evaluate(() => {
     const trip = document.querySelector('.generation-trip-card')!.getBoundingClientRect();
     const activity = document.querySelector('.generation-activity')!.getBoundingClientRect();
@@ -718,7 +754,7 @@ test('侧栏多城站序、无重复信息与特殊同行 2000px/390px', async (
   mkdirSync(evidence, { recursive: true });
   writeFileSync(`${evidence}/sidebar-geometry.json`, JSON.stringify({
     stationOrder: await title.locator('.generation-trip-title-place').allTextContents(),
-    factsText: await card.locator('.generation-trip-card-facts').innerText(),
+    factsText: await card.locator('.generation-trip-card-meta').innerText(),
     overflow: await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
   }, null, 2));
 });

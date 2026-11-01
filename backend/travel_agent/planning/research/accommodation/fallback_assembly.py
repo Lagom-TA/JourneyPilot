@@ -184,7 +184,9 @@ def deterministic_lodging_candidates(
     grouped: List[List[Dict[str, Any]]] = [[] for _ in destinations]
     for place in places:
         grouped[_destination_index(place, destinations)].append(place)
-    limit = packet_candidate_limit(_NODE_NAME)
+    limit = packet_candidate_limit(
+        _NODE_NAME, trip_identity=state.controlled_trip_identity
+    )
     candidates: List[Dict[str, Any]] = []
     for offset in range(max(len(group) for group in grouped)):
         for index, group in enumerate(grouped):

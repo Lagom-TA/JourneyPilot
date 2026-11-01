@@ -397,11 +397,11 @@ def test_notification_is_only_a_wake_up(run_id) -> None:
         run_control_registry.clear()
 
 
-def test_parallel_workers_do_not_store_the_same_amendment_twice():
-    """并行 Send 扇出里三个 worker 拿到同一份入参 state，都会判定这条要求还没并入。
+def test_repeated_amendment_reports_collapse_to_one():
+    """同一份入参 state 被多个节点判定这条要求还没并入时只保留一份。
 
-    纯 append 的 reducer 会把它存下三份，此后每个下游提示里那句「本次运行追加要求」
-    就出现三遍。
+    纯 append 的 reducer 会把它存下多份，此后每个下游提示里那句「本次运行追加要求」
+    就重复出现。
     """
 
     from travel_agent.planning.requirements.amendment_contracts import IntentAmendment

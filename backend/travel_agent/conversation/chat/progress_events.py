@@ -33,7 +33,7 @@ _PROGRESS_STEP_NODES = {
     "weather_context_builder",
     "dispatcher",
 }
-_DISPATCHER_PROGRESS_TEXT = "正在分派并行调研任务"
+_DISPATCHER_PROGRESS_TEXT = "正在按顺序安排调研任务"
 
 
 async def _handle_agent_activity(

@@ -16,6 +16,7 @@ from travel_agent.planning.invalidation import invalidation_update
 from travel_agent.planning.nodes import NODE_DISPATCHER, NODE_INTENT_AMENDMENT_ROUTER, NODE_PLAN_GATE, NODE_REQUIREMENTS_PREPARER, NODE_RESEARCH_PLAN_GENERATOR
 from travel_agent.planning.presentation import get_agent_display_name
 from travel_agent.planning.requirements.amendment_contracts import IntentAmendment
+from travel_agent.planning.research.plan import RESEARCH_EXECUTION_PLAN
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.cancellation import RunCancelled
 
@@ -30,10 +31,8 @@ def _build_plan_gate_payload(state: TravelAgentState) -> Dict[str, Any]:
     plan = state.research_plan
     failed = plan is None or state.research_plan_error is not None
     tasks = plan.tasks() if plan else {}
-    groups = [
-        ["destination_researcher", "transport_researcher", "accommodation_researcher"],
-        ["itinerary_planner"],
-    ]
+    # 门禁展示与批准后的实际执行使用同一份串行计划定义。
+    groups = RESEARCH_EXECUTION_PLAN
     steps = [
         {"step": index, "agents": group, "tasks": {worker: tasks[worker] for worker in group}}
         for index, group in enumerate(groups, 1)
@@ -98,6 +97,10 @@ async def plan_gate_node(state: TravelAgentState, config: Optional[RunnableConfi
             }
         return {
             "plan_gate_decision": {"action": "approve", "revision": state.plan_gate_revision_count, "approval_token": supplied},
+            # 批准时落章当前串行执行计划：用户确认的分组与实际执行保持一致，
+            # 旧检查点携带的历史计划不继续生效。
+            "execution_plan": RESEARCH_EXECUTION_PLAN,
+            "current_plan_step": 0,
             **seal_minimum_delivery_draft(state),
         }
 

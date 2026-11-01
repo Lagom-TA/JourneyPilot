@@ -15,11 +15,15 @@ from pydantic import Field
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.schema import StrictModel
 
+# 串行研究链中各角色能读到的上游候选种类：交通读目的地成果，
+# 住宿读目的地与交通成果；目的地是第一位，没有上游。
 _COORDINATION_KINDS = {
     "destination_researcher": frozenset(),
+    "transport_researcher": frozenset({"visit", "dining"}),
     "accommodation_researcher": frozenset({"visit", "dining", "transport"}),
-    "transport_researcher": frozenset({"visit", "dining", "lodging"}),
 }
+# 只剥离跨系统对账用的证据与约束 ID；推荐理由、取舍说明和天气敏感度
+# 属于上游研究结论，保留给下游角色参考。
 _CANDIDATE_BOOKKEEPING = {
     "research_packet_id",
     "fact_assertion_ids",
@@ -30,9 +34,6 @@ _CANDIDATE_BOOKKEEPING = {
     "planning_decision_ids",
     "weather_impact_ids",
     "personalization_influence_ids",
-    "selection_reasons",
-    "tradeoff",
-    "weather_sensitivity",
 }
 
 
@@ -61,7 +62,6 @@ def project_research_context(
     run_id: str,
     generation_id: str,
     destination_ids: Sequence[str],
-    assignment: Mapping[str, Any],
 ) -> ResearchContextView:
     kinds = _COORDINATION_KINDS[worker_kind]
     destinations = {str(item) for item in destination_ids if str(item)}
@@ -96,7 +96,7 @@ def project_research_context(
         ]
         if not selected:
             continue
-        selected.sort(key=lambda candidate: candidate.candidate_id)
+        # 保留研究者的原始排序：候选顺序本身就是相关性的表达。
         ids = {candidate.candidate_id for candidate in selected}
         seen.update(ids)
         facts = sorted(
@@ -135,6 +135,7 @@ def project_research_context(
                             "source_record_id",
                             "source_kind",
                             "provider_name",
+                            "title",
                             "canonical_url",
                             "content_hash",
                             "published_at",

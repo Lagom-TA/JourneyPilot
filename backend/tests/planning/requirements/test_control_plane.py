@@ -58,6 +58,32 @@ async def test_plan_confirmation_rejects_stale_version_and_seals_current_draft()
     assert gate["plan"]["steps"][0]["tasks"]["destination_researcher"] == "研究园林"
 
 
+async def test_approval_restamps_serial_execution_plan_over_older_checkpoints():
+    """旧检查点携带的历史执行计划不继续生效：批准即落章当前串行计划。
+
+    门禁展示与实际执行使用同一份定义，确认的内容就是执行的内容。
+    """
+    from travel_agent.planning.research.plan import RESEARCH_EXECUTION_PLAN
+
+    legacy_parallel_plan = [
+        ["destination_researcher", "transport_researcher", "accommodation_researcher"],
+        ["itinerary_planner"],
+    ]
+    state = await ready_state()
+    state = state.model_copy(update={"execution_plan": legacy_parallel_plan, "current_plan_step": 0})
+    graph = gate_graph()
+    config = {"configurable": {"thread_id": "legacy-plan", "plan_gate_enabled": True}}
+    result = await graph.ainvoke(state, config)
+    gate = result["__interrupt__"][0].value
+    assert [step["agents"] for step in gate["plan"]["steps"]] == RESEARCH_EXECUTION_PLAN
+    approved = await graph.ainvoke(
+        Command(resume={"action": "approve", "approval_token": gate["approval_token"]}),
+        config,
+    )
+    assert approved["execution_plan"] == RESEARCH_EXECUTION_PLAN
+    assert approved["current_plan_step"] == 0
+
+
 async def test_cancel_works_without_plan_token():
     state, graph = await ready_state(), gate_graph()
     config = {"configurable": {"thread_id": "cancel", "plan_gate_enabled": True}}
