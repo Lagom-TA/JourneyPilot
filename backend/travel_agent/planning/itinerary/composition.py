@@ -6,11 +6,7 @@ from typing import Any, Union
 from travel_agent.conversation.history import append_recent_history
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary.draft import ItineraryCompositionDraft
-from travel_agent.planning.itinerary.locations import (
-    _reuse_located_places,
-    locate_authored_composition,
-    replace_unlocated_authored_places,
-)
+from travel_agent.planning.itinerary.locations import _reuse_located_places
 from travel_agent.planning.itinerary.parsing import _parse_exact_llm_composition
 from travel_agent.planning.itinerary.prompts import _build_composition_prompt
 from travel_agent.planning.nodes import NODE_ITINERARY
@@ -100,8 +96,5 @@ async def _compose_draft(
                 ]
             )
             continue
-        located = await locate_authored_composition(draft, state)
-        return replace_unlocated_authored_places(
-            located, state.recommendation_catalog
-        )
+        return draft
     raise AssertionError("composition attempt budget exhausted")

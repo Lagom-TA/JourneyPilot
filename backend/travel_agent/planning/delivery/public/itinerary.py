@@ -265,4 +265,5 @@ def _public_itinerary(
         "cost_summary": _public_cost_summary(itinerary.cost_summary),
         "highlights": list(itinerary.highlights),
         "important_notes": list(itinerary.important_notes),
+        "unresolved": list(itinerary.unresolved),
     }

@@ -46,7 +46,6 @@ BOOKING_LABELS: dict[str, str] = {
     "recommended": "建议提前预订",
     "required": "需要提前预订",
     "booked": "需自行确认",
-    "unknown": "暂无预订信息",
 }
 
 
@@ -222,10 +221,9 @@ def _segment_lines(leg: TransportLeg) -> list[str]:
 
 
 def _visit(entity: VisitStop) -> dict[str, Any]:
-    highlights = [item for item in entity.visit_highlights if item.strip()]
     return {
         "display_title": entity.name,
-        "node_summary": highlights[0] if highlights else None,
+        "node_summary": None,
         "node_role": "place",
         "transport_mode": None,
         "time_label": _time_range(
@@ -239,21 +237,17 @@ def _visit(entity: VisitStop) -> dict[str, Any]:
             _row("预约", _RESERVATION_LABELS.get(entity.reservation_required)),
             _row("地址", entity.address),
         ),
-        "notes": _rows(
-            f"重点体验：{'、'.join(highlights)}" if highlights else None,
-            *preparation_actions(entity),
-        ),
+        "notes": [],
         "segment_lines": [],
     }
 
 
 def _dining(entity: DiningStop) -> dict[str, Any]:
-    dishes = [item for item in entity.recommended_dishes if item.strip()]
     cuisines = [item for item in entity.cuisine_types if item.strip()]
     spend = _price(entity.average_spend_cny)
     return {
         "display_title": entity.name,
-        "node_summary": dishes[0] if dishes else None,
+        "node_summary": None,
         "node_role": "place",
         "transport_mode": None,
         "time_label": _time_range(
@@ -268,11 +262,7 @@ def _dining(entity: DiningStop) -> dict[str, Any]:
             _row("预约", _RESERVATION_LABELS.get(entity.reservation_required)),
             _row("地址", entity.address),
         ),
-        "notes": _rows(
-            f"推荐菜：{'、'.join(dishes)}" if dishes else None,
-            *[f"用餐提醒：{item}" for item in entity.dining_reminders if item.strip()],
-            *preparation_actions(entity),
-        ),
+        "notes": [],
         "segment_lines": [],
     }
 

@@ -238,7 +238,7 @@ class WeatherAdjustmentProposal(StrictModel):
     proposal_id: str = Field(min_length=1)
     date: Date
     base_workspace_revision: int = Field(ge=0)
-    base_weather_data_revision: int = Field(ge=1)
+    base_weather_data_revision: int = Field(ge=0)
     severity: Literal["medium", "high"]
     summary: str = Field(min_length=1)
     weather_impact_ids: List[str] = Field(min_length=1)

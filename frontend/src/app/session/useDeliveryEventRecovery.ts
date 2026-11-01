@@ -128,7 +128,7 @@ export function useDeliveryEventRecovery(): void {
                             if (latestAssistant
                                 && !latestAssistant.streamCompleted
                                 && latestAssistant.type !== 'error') {
-                                const readyMessage = '旅行方案已准备好，可在右侧查看完整报告与行程。';
+                                const readyMessage = '旅行方案已保存，可在右侧查看行程。';
                                 dispatch({
                                     type: 'UPDATE_MESSAGE_BY_ID',
                                     payload: {

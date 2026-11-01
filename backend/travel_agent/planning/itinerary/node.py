@@ -27,6 +27,7 @@ from travel_agent.planning.itinerary.connectors import (
     overtimed_connector_gaps,
     unfilled_connector_gaps,
 )
+from travel_agent.planning.itinerary.locations import locate_authored_composition
 from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
 from travel_agent.planning.itinerary.rail_paths import complete_rail_route_paths
 from travel_agent.planning.itinerary.requirements import _draft_user_input_anchors
@@ -220,7 +221,7 @@ async def itinerary_planner_node(
                 "local_connector_gaps": [],
                 "composition_failure_context": None,
             }
-        skeleton = state.placement_skeleton
+        skeleton = await locate_authored_composition(state.placement_skeleton, state)
         requests, required_pairs = connector_mode_requests_from_constraint_pack(
             skeleton,
             state.constraint_pack,

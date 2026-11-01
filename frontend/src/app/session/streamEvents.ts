@@ -32,7 +32,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
             payload: { endTime: new Date(), tsMs: terminal.ts_ms },
         });
         if (!assistantMessage.content.trim()) {
-            const readyMessage = '旅行方案已准备好，可在右侧查看完整报告与行程。';
+            const readyMessage = '旅行方案已保存，可在右侧查看行程。';
             assistantMessage.content = readyMessage;
             assistantMessage.displayContent = readyMessage;
         }

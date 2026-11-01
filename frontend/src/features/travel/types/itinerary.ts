@@ -124,6 +124,7 @@ export interface PublicStructuredItineraryV2 {
     cost_summary: CostCoverageSummary;
     highlights: string[];
     important_notes: string[];
+    unresolved: string[];
 }
 export interface SelectionOption {
     option_id: string;

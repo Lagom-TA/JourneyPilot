@@ -328,14 +328,11 @@ async def test_composition_supplementary_query_adjusts_arrangement(monkeypatch):
     assert "supply_transit_01" in model.composition_request
     assert '"duration_minutes":40' in model.composition_request
     # 组合完成后行程正常交付，目录与骨架一致；模型报告的未安排事项
-    # 保留为工作台重要说明，不随说明重建而丢失。
+    # 保留为未安排事项，不随说明重建而丢失。
     workspace = result["trip_workspace_v2"]
     assert workspace is not None
     assert result["agent_status"]["itinerary_planner"] == "completed"
-    assert any(
-        "未能安排：运河游船当日晚班次未能核实" in note
-        for note in workspace.itinerary.important_notes
-    )
+    assert workspace.itinerary.unresolved == ["运河游船当日晚班次未能核实，暂不安排"]
 
 
 async def test_research_redo_round_trip_replaces_erroneous_output(monkeypatch):
@@ -370,6 +367,10 @@ async def test_research_redo_round_trip_replaces_erroneous_output(monkeypatch):
     assert result["agent_status"]["itinerary_planner"] == "completed"
     assert (result["research_redo_requests"] or {}) == {}
     assert result["research_redo_rounds"] == {"destination_researcher": 1}
+    assert "day_design.unresolved" in model.composition_request
+    assert result["trip_workspace_v2"].itinerary.unresolved == [
+        "运河游船当日晚班次未能核实，暂不安排"
+    ]
     assert any(
         key.startswith("destination_researcher_r2@")
         for key in result["research_packets"]

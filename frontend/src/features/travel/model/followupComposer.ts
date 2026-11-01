@@ -14,6 +14,7 @@ export interface FollowupComposerInput {
   pendingUnderstanding: boolean;
   pendingRouteConfirmation: boolean;
   canResume?: boolean;
+  hasUnresolved?: boolean;
 }
 
 export interface FollowupComposerState {
@@ -45,7 +46,11 @@ export function followupComposerState(input: FollowupComposerInput): FollowupCom
   );
   return {
     visible,
-    hint: terminal ? hintFor(input.runStatus as TripRunStatus, input.canResume === true) : '',
+    hint: terminal
+      ? input.runStatus === 'completed' && input.hasUnresolved
+        ? '部分行程尚未安排，可以继续补充要求。'
+        : hintFor(input.runStatus as TripRunStatus, input.canResume === true)
+      : '',
     placeholder: PLACEHOLDER,
   };
 }

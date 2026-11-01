@@ -327,8 +327,10 @@ def _timeline_row(
     header_text = " · ".join(item for item in header if item)
     if header_text:
         body += f'<br/><font color="#626B75">{escape(header_text)}</font>'
-    if block.summary.strip() != block.title.strip():
+    if block.entity_kind in {"visit", "dining"}:
         body += f"<br/>{escape(block.summary)}"
+    elif _rendered_text(details, "node_summary"):
+        body += f"<br/>{escape(_rendered_text(details, 'node_summary'))}"
     detail_lines = [
         *_rendered_lines(details, "facts"),
         *_rendered_lines(details, "notes"),
@@ -405,7 +407,7 @@ def render_trip_report_pdf(
         subject=f"Bundle {bundle.manifest.bundle_id}",
     )
     story: list[Any] = [
-        Paragraph("JOURNEYPILOT · 完整旅行方案", styles["eyebrow"]),
+        Paragraph("JOURNEYPILOT · 旅行方案", styles["eyebrow"]),
         Paragraph(escape(document.title), styles["title"]),
         Paragraph(escape(document.overview), styles["body"]),
     ]
@@ -420,6 +422,11 @@ def render_trip_report_pdf(
         if item
     ]
     story.extend([Paragraph(" · ".join(summary), styles["small"]), Spacer(1, 5 * mm)])
+
+    if document.unresolved:
+        story.append(Paragraph("尚未安排", styles["h1"]))
+        for item in document.unresolved:
+            story.append(Paragraph(escape(item), styles["body"]))
 
     if document.highlights:
         story.append(Paragraph("全程亮点", styles["h1"]))

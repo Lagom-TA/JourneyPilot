@@ -336,12 +336,12 @@ def _entity_block(
     if isinstance(entity, VisitStop):
         ref = EntityRef(entity_type=EntityType.VISIT_STOP, entity_id=entity.item_id)
         kind = "visit"
-        summary = selection_reason(entity)
+        summary = entity.selection_reason.strip() or entity.name
         day_id = entity.day_id
     elif isinstance(entity, DiningStop):
         ref = EntityRef(entity_type=EntityType.DINING_STOP, entity_id=entity.item_id)
         kind = "dining"
-        summary = selection_reason(entity)
+        summary = entity.selection_reason.strip() or entity.name
         day_id = entity.day_id
     elif isinstance(entity, LodgingStay):
         ref = EntityRef(entity_type=EntityType.LODGING_STAY, entity_id=entity.stay_id)
@@ -365,17 +365,8 @@ def _entity_block(
             f"unsupported report entity: {type(entity).__name__}"
         )
     payload = entity.model_dump(mode="json", exclude={"lineage", "type"})
-    if "selection_reason" in payload:
-        payload["selection_reason"] = selection_reason(entity)
-    if "intent_explanations" in payload:
-        payload["intent_explanations"] = [
-            {
-                "label": item.label,
-                "explanation": item.explanation,
-                "evidence_basis": item.evidence_basis,
-            }
-            for item in getattr(entity, "intent_explanations", [])
-        ]
+    payload.pop("selection_reason", None)
+    payload.pop("intent_explanations", None)
     for field in ("item_id", "stay_id", "transport_leg_id", "day_id", "name"):
         payload.pop(field, None)
     if isinstance(entity, LodgingStay) and projection_role == "check_out":
@@ -429,33 +420,6 @@ def _preparation_notes(itinerary: StructuredItineraryV2) -> list[str]:
             else entity.name
         )
         notes.extend(f"{name}：{action}" for action in preparation_actions(entity))
-    missing = [
-        *(
-            stop.name
-            for stop in itinerary.visit_stops
-            if stop.estimated_cost_cny is None
-        ),
-        *(
-            stop.name
-            for stop in itinerary.dining_stops
-            if stop.estimated_cost_cny is None
-        ),
-        *(
-            stay.name
-            for stay in itinerary.lodging_stays
-            if stay.total_price_cny is None
-        ),
-        *(
-            f"{leg.from_endpoint.name} → {leg.to_endpoint.name}"
-            for leg in itinerary.transport_legs
-            if leg.total_cost_cny is None
-        ),
-    ]
-    if missing:
-        notes.append(
-            "以下费用暂未核实或纳入预算，请向相关商家核对确认："
-            f"{'、'.join(dict.fromkeys(missing))}。"
-        )
     if any(
         stay.price_kind == "reference_estimate" and stay.total_price_cny is not None
         for stay in itinerary.lodging_stays
@@ -618,6 +582,7 @@ def project_report(
         selections=selections,
         weather=weather_days,
         highlights=itinerary.highlights,
+        unresolved=itinerary.unresolved,
         important_notes=list(
             dict.fromkeys(
                 [

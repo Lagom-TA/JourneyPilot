@@ -31,6 +31,7 @@ def _bundle():
             )
         ],
         important_notes=["不应进入正文的提醒"],
+        unresolved=[],
     )
     itinerary = SimpleNamespace(
         visit_stops=[],

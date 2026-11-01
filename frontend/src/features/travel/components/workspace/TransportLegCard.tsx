@@ -2,7 +2,6 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "../../../../lib/utils";
 import { READOUT_LABEL } from "../../../../lib/typography";
 import { TransportProviderNote } from "./TransportProviderNote";
-import { IntentExplanationList } from "./IntentExplanationList";
 import { type PublicTransportLeg } from "../../types/itinerary";
 import { type TransportEndpoint, type TransportMode, type TransportSegment } from "../../types/entities";
 import { BOOKING_LABELS, TRANSPORT_MODE_LABELS } from "../../model/deliveryLabels";
@@ -317,7 +316,6 @@ function SupportingContent({ leg }: TransportLegCardProps) {
     return (<>
       <RouteState leg={leg}/>
       <SegmentDisclosure leg={leg}/>
-      <IntentExplanationList items={leg.intent_explanations}/>
          </>);
 }
 function ScheduledTicket({ leg, sandboxNote = null }: TransportLegCardProps) {
@@ -367,7 +365,6 @@ function TransitCard({ leg }: TransportLegCardProps) {
         </div>)}
       {ready && chain.expandable && <TransitRideList chain={chain} id={ridesId} open={ridesOpen}/>}
       <RouteState leg={leg}/>
-      <IntentExplanationList items={leg.intent_explanations}/>
     </article>);
 }
 function RoadCard({ leg }: TransportLegCardProps) {

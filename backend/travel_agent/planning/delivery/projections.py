@@ -150,6 +150,7 @@ class TripReportDocument(StrictModel):
     weather: List[ReportWeatherDay] = Field(default_factory=list)
     highlights: List[str] = Field(default_factory=list)
     important_notes: List[str] = Field(default_factory=list)
+    unresolved: List[str] = Field(default_factory=list)
 
 
 class TripReportProjection(StrictModel):

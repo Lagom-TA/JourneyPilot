@@ -31,10 +31,9 @@ class ChatDelivery:
             )
 
     async def completion_events(self, bundle_id):
-        durable_events = await self.trip_run_store.list_events(
+        durable_events = await self.trip_run_store.list_delivery_events(
             self.run_id,
-            after_sequence=0,
-            limit=500,
+            bundle_id,
         )
         ready_events = [
             event

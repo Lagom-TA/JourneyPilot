@@ -11,7 +11,7 @@ def format_cny(value: float) -> str:
     return f"¥{value:,.0f}"
 
 
-def cost_coverage_statement(summary: CostCoverageSummary) -> str:
+def cost_coverage_statement(summary: CostCoverageSummary) -> str | None:
     """用约数呈现费用，不混入预订或核查状态。"""
 
     estimated = (
@@ -23,4 +23,4 @@ def cost_coverage_statement(summary: CostCoverageSummary) -> str:
         return f"全程约 {format_cny(estimated)}"
     if summary.known_subtotal_cny is not None:
         return f"已列费用约 {format_cny(summary.known_subtotal_cny)}"
-    return "费用按行程逐项列出"
+    return None

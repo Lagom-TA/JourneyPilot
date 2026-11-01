@@ -16,6 +16,4 @@ def test_partial_cost_is_not_presented_as_trip_total():
 
 def test_empty_cost_has_no_booking_or_confirmation_copy():
     summary = build_cost_coverage_summary([])
-    assert cost_coverage_statement(summary) == "费用按行程逐项列出"
-    assert "确认" not in cost_coverage_statement(summary)
-    assert "预订" not in cost_coverage_statement(summary)
+    assert cost_coverage_statement(summary) is None

@@ -97,15 +97,29 @@ def assemble_delivery_bundle(state: TravelAgentState) -> DeliveryBundle:
         source_index=source_index,
     )
 
-    proposals = build_weather_adjustment_proposals(
-        bundle,
-        weather,
-        previous_impacts={},
+    proposals = build_weather_adjustment_proposals(bundle, weather, previous_impacts={})
+    weather = weather.model_copy(update={"adjustment_proposals": proposals})
+    hashes = bundle_content_hashes(
+        workspace=workspace,
+        fact_snapshot=facts,
+        weather_snapshot=weather,
+        report_projection=report,
+        map_projection=map_projection,
+        source_index=source_index,
     )
-    return bundle.model_copy(
+    identity = ":".join([workspace.run_id, *[hashes[key] for key in sorted(hashes)]])
+    manifest = bundle.manifest.model_copy(
         update={
-            "weather_snapshot": weather.model_copy(
-                update={"adjustment_proposals": proposals}
-            )
+            "bundle_id": f"bundle_{hashlib.sha256(identity.encode('utf-8')).hexdigest()[:24]}",
+            "content_hashes": hashes,
         }
+    )
+    return DeliveryBundle(
+        manifest=manifest,
+        workspace=workspace,
+        fact_snapshot=facts,
+        weather_snapshot=weather,
+        report_projection=report,
+        map_projection=map_projection,
+        source_index=source_index,
     )

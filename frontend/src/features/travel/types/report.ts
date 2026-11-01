@@ -112,6 +112,7 @@ export interface TripReportProjection {
         }>;
         highlights: string[];
         important_notes: string[];
+        unresolved: string[];
     } | null;
     citations: PublicCitationProjection[];
     generated_at: string | null;

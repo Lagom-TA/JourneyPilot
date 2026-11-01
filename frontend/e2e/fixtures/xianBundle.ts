@@ -1,5 +1,5 @@
-const DELIVERY_BUNDLE_CONTRACT_VERSION = 'journeypilot.delivery_bundle.v11';
-const TRIP_WORKSPACE_CONTRACT_VERSION = 'journeypilot.trip_workspace.v14';
+const DELIVERY_BUNDLE_CONTRACT_VERSION = 'journeypilot.delivery_bundle.v12';
+const TRIP_WORKSPACE_CONTRACT_VERSION = 'journeypilot.trip_workspace.v15';
 const EVIDENCE = 'public_reference' as const;
 const XI = 'amap:poi:xian';
 
@@ -267,6 +267,7 @@ export function xianDeliveryBundle(revision = 1) {
         cost_summary: cost,
         highlights: ['兵马俑与大雁塔串成第一天主线', '第二天集中在市区，减少折返'],
         important_notes: [],
+        unresolved: [],
       },
       selection_slots: [],
       weather_proposal_decisions: [],
@@ -292,6 +293,7 @@ export function xianDeliveryBundle(revision = 1) {
         weather: [],
         highlights: ['秦唐文化', '古城漫步'],
         important_notes: [],
+        unresolved: [],
       },
       citations: [],
       generated_at: '2026-10-25T08:00:00Z',

@@ -448,6 +448,12 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
           {state.currentTripRunReadOnly && <span>历史结果 · 只读</span>}
         </div>
         {metaLabel && <p>{metaLabel}</p>}
+        {reportDocument && reportDocument.unresolved.length > 0 && (
+          <div role="status" className="mt-2 text-xs leading-5 text-ink-secondary">
+            <strong>尚未安排</strong>
+            {reportDocument.unresolved.map((item) => <p key={item}>{item}</p>)}
+          </div>
+        )}
         <div className="journey-view-actions">
           <button type="button" className="journey-view-action" onClick={openReading}><BookOpen size={14} />阅读版</button>
           <PdfDownloadButton bundle={bundle} compact />

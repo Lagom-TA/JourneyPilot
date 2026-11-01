@@ -166,6 +166,7 @@ def _public_report_document(
         "weather": [_public_report_weather_day(day) for day in document.weather],
         "highlights": list(document.highlights),
         "important_notes": list(document.important_notes),
+        "unresolved": list(document.unresolved),
     }
 
 

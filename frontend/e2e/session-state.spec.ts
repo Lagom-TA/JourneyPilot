@@ -1417,6 +1417,66 @@ test('phone sheet closes with Escape and restores the canvas entry', async ({ pa
   await assertOffline(page, fixture);
 });
 
+test('concise delivery keeps unlocated stops, one reason and unresolved plans across views', async ({ page }) => {
+  const bundle = structuredClone(deliveryBundle());
+  const evidenceDir = '../output/polish/20261101-0035-generation-05-concise-delivery';
+  const reason = '适合慢步游览。';
+  const museum = bundle.workspace.itinerary.visit_stops.find((stop) => stop.item_id === 'visit-shaanxi-museum')!;
+  museum.latitude = null;
+  museum.longitude = null;
+  museum.selection_reason = reason;
+  bundle.map_projection.content.places = bundle.map_projection.content.places.map((place) => (
+    place.entity_ref.entity_id === museum.item_id ? { ...place, latitude: null, longitude: null } : place
+  ));
+  for (const route of bundle.map_projection.content.routes) {
+    for (const segment of route.segments) {
+      for (const endpoint of [segment.from_endpoint, segment.to_endpoint]) {
+        if (endpoint.place_id === museum.place_id) {
+          Object.assign(endpoint, { latitude: null, longitude: null });
+        }
+      }
+    }
+  }
+  const block = bundle.report_projection.document.days[1].blocks.find((item) => item.entity_ref.entity_id === museum.item_id)!;
+  block.summary = reason;
+  block.details.node_summary = null;
+  block.details.price_label = null;
+  bundle.report_projection.document.unresolved = ['晚间游船暂未安排'];
+  bundle.workspace.itinerary.unresolved = ['晚间游船暂未安排'];
+  const fixture = await offlineApp(page, { bundle: true, bundleData: bundle });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await expect(page.getByText('晚间游船暂未安排')).toBeVisible();
+  await page.getByTestId('day-summary-card-day-2').click();
+  const occurrence = page.locator('[data-itinerary-occurrence="d2-museum"]');
+  await expect(occurrence).toContainText(reason);
+  await expect(occurrence.getByRole('button', { name: '在地图查看' })).toHaveCount(0);
+  await expect(page.locator('[data-bundle-map-entity="visit-yongning-gate"]')).toBeVisible();
+  await occurrence.getByRole('button', { name: '查看详情' }).click();
+  await expect(occurrence.getByText(reason, { exact: true })).toHaveCount(1);
+  await page.waitForTimeout(500);
+  mkdirSync(evidenceDir, { recursive: true });
+  writeFileSync(`${evidenceDir}/fixture-bundle.json`, JSON.stringify(bundle, null, 2));
+  await page.screenshot({ path: `${evidenceDir}/concise-desktop-itinerary.png`, fullPage: true });
+  await page.getByRole('button', { name: '阅读版', exact: true }).click();
+  const report = page.getByTestId('full-report');
+  await expect(report.getByText(reason, { exact: true })).toHaveCount(1);
+  await expect(report).toContainText('晚间游船暂未安排');
+  await expect(report).not.toContainText('费用按行程逐项列出');
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${evidenceDir}/concise-desktop-report.png`, fullPage: true });
+  await page.reload();
+  await expect(page.getByText('晚间游船暂未安排')).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByTestId('bundle-leaflet-map')).toBeVisible();
+  await page.getByRole('button', { name: '第 2 天', exact: true }).click();
+  await expect(page.locator('[data-bundle-map-entity="visit-yongning-gate"]')).toBeVisible();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${evidenceDir}/concise-phone-map.png`, fullPage: true });
+  await assertOffline(page, fixture);
+});
+
 test('reading and map remain usable through an animated round trip', async ({ page }) => {
   const fixture = await offlineApp(page, { bundle: true });
   await page.emulateMedia({ reducedMotion: 'no-preference' });

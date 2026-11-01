@@ -515,6 +515,8 @@ async def test_structure_retry_keeps_new_reason_and_resolves_authored_place(
     result = await composition._compose_draft(
         current, "revise", model, available_tools=[], tool_context={}
     )
+    assert not calls
+    result = await locations.locate_authored_composition(result, current)
     place = authored_places(result)[0].place
     assert len(model.messages) == 2 and calls == ["English Museum"]
     assert place.resolved_place_id == "located_museum"
@@ -633,6 +635,8 @@ async def test_changed_authored_identity_resolves_again_and_internal_parse_keeps
     result = await composition._compose_draft(
         current, "revise", Model(), available_tools=[], tool_context={}
     )
+    assert not calls
+    result = await locations.locate_authored_composition(result, current)
     located = authored_places(result)[0].place
     assert calls == ["Museum B"]
     assert located.resolved_place_id == "trusted_b" and located.resolved_latitude == 35.7
@@ -676,6 +680,7 @@ async def test_unlocated_authored_entry_is_kept_without_coordinates(monkeypatch)
     draft = await composition._compose_draft(
         current, "compose", Model(), available_tools=[], tool_context={}
     )
+    draft = await locations.locate_authored_composition(draft, current)
     gaps, connected = connect(draft, catalog)
     result = workspace(connected, catalog)
     stop = result.itinerary.visit_stops[0]
@@ -686,7 +691,7 @@ async def test_unlocated_authored_entry_is_kept_without_coordinates(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_unlocated_authored_visit_uses_candidate_entity_and_keeps_schedule(
+async def test_unlocated_authored_visit_is_kept_even_when_candidate_has_coordinates(
     monkeypatch,
 ):
     selected = with_provider_coordinates(
@@ -721,146 +726,20 @@ async def test_unlocated_authored_visit_uses_candidate_entity_and_keeps_schedule
     result = await composition._compose_draft(
         current, "compose", Model(), available_tools=[], tool_context={}
     )
+    result = await locations.locate_authored_composition(result, current)
     placement = result.days[0].placements[0]
-    assert placement.candidate_id == "candidate_b"
-    assert placement.authored_place is None
+    assert placement.candidate_id is None
+    assert placement.authored_place.name == entry["authored_place"]["name"]
     assert placement.planned_start == datetime.fromisoformat(entry["planned_start"])
     assert placement.planned_end == datetime.fromisoformat(entry["planned_end"])
     assert placement.duration_minutes == entry["duration_minutes"]
-    assert placement.selection_reason is None
 
     stop = workspace(result, catalog).itinerary.visit_stops[0]
-    assert stop.name == "Tokyo National Museum"
-    assert stop.address == "13-9 Uenokoen"
-    assert stop.selection_reason == "候选自身的建筑价值"
-    assert stop.visit_highlights == ["候选馆藏"]
-
-
-def test_unlocated_authored_dining_keeps_meal_type_and_schedule():
-    catalog = make_catalog(
-        with_provider_coordinates(
-            restaurant_packet("candidate_a_breakfast"),
-            branch_name="Breakfast Cafe",
-            meal_types=["breakfast"],
-        ),
-        with_provider_coordinates(
-            restaurant_packet(),
-            branch_name="Sushi Tokyo",
-            selection_reasons=["候选自身的菜品理由"],
-            cuisine_types=["寿司"],
-            recommended_dishes=["海胆"],
-        ),
-    )
-    draft = parse_itinerary_composition(
-        json.dumps(itinerary_draft([authored_dining()]))
-    )
-    original = draft.days[0].placements[0]
-
-    result = locations.replace_unlocated_authored_places(draft, catalog)
-    placement = result.days[0].placements[0]
-    assert placement.candidate_id == "candidate_dining"
-    assert placement.authored_place is None
-    for field in ("planned_start", "planned_end", "duration_minutes", "meal_type"):
-        assert getattr(placement, field) == getattr(original, field)
-
-    stop = workspace(result, catalog).itinerary.dining_stops[0]
-    assert stop.name == "Sushi Tokyo"
-    assert stop.meal_type == "dinner"
-    assert stop.selection_reason == "候选自身的菜品理由"
-    assert stop.cuisine_types == ["寿司"]
-    assert stop.recommended_dishes == ["海胆"]
-
-
-def test_authored_fallback_does_not_cross_destination_or_kind():
-    catalog = make_catalog(
-        with_provider_coordinates(
-            visit_packet("candidate_other_destination"),
-            destination_id="destination_kyoto",
-        ),
-        with_provider_coordinates(restaurant_packet()),
-    )
-    draft = parse_itinerary_composition(
-        json.dumps(itinerary_draft([authored_visit()]))
-    )
-
-    result = locations.replace_unlocated_authored_places(draft, catalog)
-
-    assert result == draft
-
-
-def test_unlocated_authored_entry_is_kept_when_candidate_has_no_matching_coordinates():
-    packet = visit_packet("candidate_visit")
-    source = packet.source_records[0].model_copy(
-        update={
-            "snapshot": {
-                "results": [
-                    {
-                        "place_id": "another_place",
-                        "latitude": 35.6,
-                        "longitude": 139.7,
-                    }
-                ]
-            }
-        }
-    )
-    catalog = make_catalog(packet.model_copy(update={"source_records": [source]}))
-    draft = parse_itinerary_composition(
-        json.dumps(itinerary_draft([authored_visit()]))
-    )
-
-    result = locations.replace_unlocated_authored_places(draft, catalog)
-
-    assert result == draft
-    place = result.days[0].placements[0].authored_place
-    assert place.name == "Museum district"
-    assert place.resolved_place_id is None
-    assert place.resolved_latitude is None and place.resolved_longitude is None
-
-
-def test_located_authored_entry_is_not_replaced_by_candidate():
-    entry = authored_visit("Located Museum")
-    entry["authored_place"].update(
-        resolved_place_id="provider_located_museum",
-        resolved_address="Provider address",
-        resolved_latitude=35.7,
-        resolved_longitude=139.8,
-    )
-    draft = parse_itinerary_composition(json.dumps(itinerary_draft([entry])))
-    catalog = make_catalog(with_provider_coordinates(visit_packet("candidate_visit")))
-
-    result = locations.replace_unlocated_authored_places(draft, catalog)
-
-    assert result == draft
-    placement = result.days[0].placements[0]
-    assert placement.candidate_id is None
-    assert placement.authored_place.resolved_place_id == "provider_located_museum"
-
-
-def test_authored_fallback_uses_each_unused_candidate_once_in_stable_order():
-    already_used = visit_entry("08:00", "09:00")
-    already_used["candidate_id"] = "candidate_b"
-    draft = parse_itinerary_composition(
-        json.dumps(
-            itinerary_draft(
-                [
-                    already_used,
-                    authored_visit("Generic Museum One", "10:00", "11:00"),
-                    authored_visit("Generic Museum Two", "12:00", "13:00"),
-                ]
-            )
-        )
-    )
-    catalog = make_catalog(
-        with_provider_coordinates(visit_packet("candidate_c")),
-        with_provider_coordinates(visit_packet("candidate_b")),
-        with_provider_coordinates(visit_packet("candidate_a")),
-    )
-
-    result = locations.replace_unlocated_authored_places(draft, catalog)
-
-    assert [
-        placement.candidate_id for placement in result.days[0].placements
-    ] == ["candidate_b", "candidate_a", "candidate_c"]
+    assert stop.name == entry["authored_place"]["name"]
+    assert stop.address == entry["authored_place"]["address"]
+    assert stop.selection_reason == entry["authored_place"]["selection_reason"]
+    assert stop.visit_highlights == entry["authored_place"]["highlights"]
+    assert stop.latitude is None and stop.longitude is None
 
 
 def route_packet(candidate_id="candidate_slow", duration=60, **updates):

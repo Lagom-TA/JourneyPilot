@@ -7,11 +7,9 @@ import { splitLabelledFact } from '../../model/tripDomains';
 import { formatTripBudget, formatTripCostSummary } from '../../model/costPresentation';
 import { BrandMark } from '../../../../app/components/BrandMark';
 import { type PublicDeliveryBundle } from '../../types/delivery';
-import { type EntityIntentExplanation } from '../../types/itinerary';
 import { DayHeader } from './DayHeader';
 import { DayTimeline } from './DayTimeline';
 import { LabelledFactList, TripFactReadout } from './TripFactReadout';
-import { IntentExplanationList } from './IntentExplanationList';
 import { Neatline } from '../../../../components/ui/Neatline';
 import { Postmark } from '../../../../components/ui/Postmark';
 import { safeHref } from '../../../../lib/safeHref';
@@ -23,17 +21,11 @@ type ReportBlock = ReportDay['blocks'][number];
 
 function ReportEntryLines({ block }: { block: ReportBlock }) {
   const { facts, notes, segment_lines: segmentLines } = block.details;
-  const visibleFacts = facts.filter((fact) => {
-    const { label } = splitLabelledFact(fact);
-    if (label && ['状态', '可订状态', '价格时效', '数据状态'].includes(label)) return false;
-    return !/需要确认|需确认|不可订|需向.*核对|当前尚无|尚未取得|不代表整趟|具体门店现场确认/.test(fact);
-  });
-  const visibleNotes = notes.filter((note) => !/需要确认|需确认|不可订|核查|核对|尚未|不代表|提前预订|点餐前确认价格|具体门店现场确认/.test(note));
   return (
     <>
-      {visibleFacts.length > 0 && (
+      {facts.length > 0 && (
         <p className="mt-1.5 flex flex-wrap items-baseline gap-x-3 gap-y-1 break-words text-[11px] leading-5">
-          {visibleFacts.map((fact) => {
+          {facts.map((fact) => {
             const { label, value } = splitLabelledFact(fact);
             return (
               <span key={fact} className="inline-flex min-w-0 items-baseline gap-1">
@@ -44,7 +36,7 @@ function ReportEntryLines({ block }: { block: ReportBlock }) {
           })}
         </p>
       )}
-      {visibleNotes.map((note) => <p key={note} className="mt-1.5 max-w-[70ch] break-words text-xs leading-5 text-ink-secondary">{note}</p>)}
+      {notes.map((note) => <p key={note} className="mt-1.5 max-w-[70ch] break-words text-xs leading-5 text-ink-secondary">{note}</p>)}
       {segmentLines.length > 0 && (
         <ol className="mt-2 space-y-1 border-l border-stroke pl-3" aria-label="班次信息">
           {segmentLines.map((line) => <li key={line} className="break-words text-[11px] leading-5 text-ink-secondary">{line}</li>)}
@@ -165,19 +157,9 @@ function ReportCover({ bundle, document: report, allowPdf }: {
 }
 
 function ReportTimelineSupplement({ block, node }: { block: ReportBlock; node: DayTimelineNodeVM }) {
-  const reportSummary = block.summary.trim();
-  const nodeSummary = node.summary?.trim() ?? '';
-  const summaryIsAdditional = reportSummary && reportSummary !== block.title.trim() && reportSummary !== nodeSummary;
-  const intentExplanations = Array.isArray(block.details.intent_explanations)
-    ? block.details.intent_explanations.filter((item): item is EntityIntentExplanation => Boolean(
-      item && typeof item === 'object' && typeof (item as EntityIntentExplanation).label === 'string' && typeof (item as EntityIntentExplanation).explanation === 'string',
-    ))
-    : [];
   return (
     <div data-testid={`report-timeline-supplement-${node.key}`} className="min-w-0">
-      {summaryIsAdditional && <p className="mt-1 max-w-[68ch] break-words text-sm leading-6 text-ink-secondary">{reportSummary}</p>}
       <ReportEntryLines block={block} />
-      <IntentExplanationList items={intentExplanations} />
     </div>
   );
 }
@@ -218,6 +200,14 @@ export function FullReportView({ bundle, allowPdf = true }: {
   return (
     <article data-testid="full-report" className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-7 sm:py-8">
       <ReportCover bundle={bundle} document={document} allowPdf={allowPdf} />
+      {document.unresolved.length > 0 && (
+        <section className="border-b border-stroke py-5" aria-label="尚未安排">
+          <h2 className="font-semibold text-ink">尚未安排</h2>
+          <ul className="mt-2 space-y-1 text-sm text-ink-secondary">
+            {document.unresolved.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+        </section>
+      )}
 
       <nav className="report-toc" aria-label="阅读版目录">
         <span>目录</span>

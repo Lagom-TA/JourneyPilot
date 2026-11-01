@@ -109,7 +109,7 @@ function nodeFromBlock(block: PublicReportBlock): DayTimelineNodeVM {
         role: details.node_role,
         timeLabel: details.time_label,
         title: details.display_title,
-        summary: cleanText(details.node_summary),
+        summary: cleanText(block.entity_kind === 'visit' || block.entity_kind === 'dining' ? block.summary : details.node_summary),
         durationLabel: details.duration_label,
         priceLabel: details.price_label,
     };

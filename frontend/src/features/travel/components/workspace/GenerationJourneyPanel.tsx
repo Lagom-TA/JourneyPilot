@@ -53,6 +53,7 @@ export const GenerationJourneyPanel: React.FC = () => {
     completed: state.currentTripRunStatus === 'completed',
   });
   const runStatus = state.currentTripRunStatus;
+  const hasUnresolved = Boolean(state.deliveryBundle?.report_projection.document?.unresolved.length);
   const recovery = state.currentTripRunRecovery;
   const canResume = runStatus === 'interrupted' && recovery?.resumable === true;
   const gatePending = Boolean(state.planApprovalGate && state.planApprovalGate.status !== 'cancelled');
@@ -78,6 +79,7 @@ export const GenerationJourneyPanel: React.FC = () => {
     pendingUnderstanding: understandingPending,
     pendingRouteConfirmation: Boolean(state.pendingRouteConfirmation),
     canResume,
+    hasUnresolved,
   });
 
   React.useEffect(() => {
@@ -192,7 +194,7 @@ export const GenerationJourneyPanel: React.FC = () => {
             ? '等待你的回答'
             : '等待确认研究方案'
           : runStatus === 'completed'
-            ? '旅行规划已完成'
+            ? hasUnresolved ? '部分行程尚未安排' : '旅行规划已完成'
             : '正在规划你的旅行';
 
   const canStartOver = (runStatus === 'failed' || runStatus === 'cancelled' || (runStatus === 'interrupted' && !canResume));

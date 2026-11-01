@@ -101,7 +101,7 @@ def _workspace(*, dining_stops=(), lodging_stays=(), transport_legs=()):
     )
 
 
-def test_stops_without_coordinates_stay_off_the_map():
+def test_stops_without_coordinates_remain_in_map_projection():
     workspace = SimpleNamespace(
         workspace_revision=0,
         itinerary=SimpleNamespace(
@@ -117,8 +117,10 @@ def test_stops_without_coordinates_stay_off_the_map():
 
     projection = project_map(workspace, FactStoreSnapshot(fact_data_revision=0), [])
 
-    names = [place.name for place in projection.content.places]
-    assert names == ["有坐标地点"]
+    places = {place.name: place for place in projection.content.places}
+    assert set(places) == {"有坐标地点", "无坐标地点"}
+    assert places["无坐标地点"].latitude is None
+    assert places["无坐标地点"].longitude is None
 
 
 def test_all_place_kinds_use_direct_and_verified_fact_coordinates():

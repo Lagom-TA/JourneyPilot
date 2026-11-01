@@ -2,38 +2,11 @@
 
 from __future__ import annotations
 
-from travel_agent.planning.delivery.travel_content import public_selection_text
 from travel_agent.planning.itinerary.models import CustomBlock
 from travel_agent.planning.itinerary.models import TimelineEntryRef
 from travel_agent.planning.references import EntityType
 from travel_agent.planning.workspace import TripWorkspaceV2
 import hashlib
-
-
-def _final_day_note(day, stops, blocks):
-    """用已物化的停留点与休息时段生成当天安排说明。"""
-    parts = []
-    for ref in day.timeline:
-        stop = stops.get(ref.entity_id)
-        if stop is not None:
-            when = (
-                f"{stop.planned_start:%H:%M}–{stop.planned_end:%H:%M} "
-                if stop.planned_start and stop.planned_end
-                else ""
-            )
-            reason = public_selection_text(stop.selection_reason, fallback="")
-            parts.append(f"{when}{stop.name}。{reason}".rstrip("。.!！ "))
-        else:
-            block = next(
-                (item for item in blocks if item.item_id == ref.entity_id), None
-            )
-            if block is not None and block.planned_start and block.planned_end:
-                parts.append(
-                    f"{block.planned_start:%H:%M}–{block.planned_end:%H:%M} {block.note}".rstrip(
-                        "。.!！ "
-                    )
-                )
-    return f"第{day.day}天安排：" + "。".join(parts) + "。" if parts else None
 
 
 def apply_day_design(workspace, composition):
@@ -51,13 +24,12 @@ def apply_day_design(workspace, composition):
                 continue
             free_time_by_day.setdefault(target_day_id, []).append(planned)
     blocks = list(itinerary.custom_blocks)
-    notes = list(itinerary.important_notes)
-    # 模型明确报告的未安排事项保留为重要说明，不因重建说明而丢失。
-    for design in designs.values():
-        for item in design.unresolved:
-            note = f"未能安排：{item}"
-            if note not in notes:
-                notes.append(note)
+    unresolved = list(dict.fromkeys(
+        item.strip()
+        for design in designs.values()
+        for item in design.unresolved
+        if item.strip()
+    ))
     days = []
     stops = {
         stop.item_id: stop for stop in [*itinerary.visit_stops, *itinerary.dining_stops]
@@ -128,12 +100,8 @@ def apply_day_design(workspace, composition):
             )
             timeline.insert(insertion, ref)
         days.append(day.model_copy(update={"timeline": timeline}))
-    for day in days:
-        note = _final_day_note(day, stops, blocks)
-        if note:
-            notes.append(note)
     updated = itinerary.model_copy(
-        update={"day_plans": days, "custom_blocks": blocks, "important_notes": notes}
+        update={"day_plans": days, "custom_blocks": blocks, "unresolved": unresolved}
     )
     return TripWorkspaceV2.model_validate(
         workspace.model_copy(update={"itinerary": updated}).model_dump()

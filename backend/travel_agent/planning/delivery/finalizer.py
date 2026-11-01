@@ -156,7 +156,7 @@ async def delivery_finalizer_node(
                 "delivery_bundle": current,
                 "delivery_persisted": True,
                 "delivery_failure": None,
-                "is_completed": True,
+                "is_completed": not current.workspace.itinerary.unresolved,
             }
         except Exception as exc:
             last_error = exc
