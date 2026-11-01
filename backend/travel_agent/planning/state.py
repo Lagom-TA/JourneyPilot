@@ -273,6 +273,19 @@ class TravelAgentState(BaseModel):
 
     composition_failure_context: Optional[str] = None
 
+    # 组合对研究 Worker 的返研请求：worker 基础名 → 反馈载荷。
+    # 组合写入，目标 Worker 消费后从整体字典中移除自己的键。
+    research_redo_requests: Annotated[
+        Optional[Dict[str, Any]], _take_latest_value_allow_clear
+    ] = None
+    # 每个 Worker 已发生的返研轮数，用于限制返研次数与提示「已重做」。
+    # 单写者（组合）整体替换，需求变更时由 invalidation 清空。
+    research_redo_rounds: Annotated[
+        Dict[str, int], _take_latest_value_allow_clear
+    ] = Field(default_factory=dict)
+    # 实际路线超窗后组合回炉修正排程的已用次数，需求变更时清零。
+    composition_reschedule_rounds: int = Field(default=0, ge=0)
+
     placement_skeleton: Optional[ItineraryCompositionDraft] = None
     composition_mutations: Annotated[
         List[CompositionMutation], _merge_composition_mutations

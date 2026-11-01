@@ -280,7 +280,7 @@ test('workspace 激活摘要、真实计数、安全详情与后续事件保持�
   expect(errors).toEqual([]);
 });
 
-type GenerationFixtureWindow = Window & { __generationFixture?: { addResearch: () => void; longTitle: () => void; longPlaceName: () => void; specialParty: () => void; stop: () => void; finish: () => void; failAfterPlanning: () => void; cancelAfterPlanning: () => void; requestCancelAfterPlanning: () => void } };
+type GenerationFixtureWindow = Window & { __generationFixture?: { addResearch: () => void; compositionRedo: () => void; compositionContinue: () => void; longTitle: () => void; longPlaceName: () => void; specialParty: () => void; stop: () => void; finish: () => void; failAfterPlanning: () => void; cancelAfterPlanning: () => void; requestCancelAfterPlanning: () => void } };
 
 type GenerationSseStream = { push: (events: unknown[]) => void; close: () => void; requests: () => number };
 type GenerationSseWindow = Window & { __generationSse?: { start: () => void }; __generationSseStream?: GenerationSseStream };
@@ -689,6 +689,73 @@ test('同 Run 补充轮次重新展开阶段并隔离旧轮次工具详情', asy
     newRoundDetailVisible: await newRow.locator('.research-tool-detail').isVisible(),
   }, null, 2));
   await page.screenshot({ path: `${EVIDENCE_DIR}/process-2000-supplement-round.png`, fullPage: true });
+});
+
+// 组合补查 → 反馈目的地返研 → 返研后继续组合：三个环节在同一过程区可见。
+test('组合补查、反馈返研与返研后继续组合在同一工作台可见', async ({ page }) => {
+  const redoEvidenceDir = '../output/polish/20261101-0035-generation-04-composition-feedback/e2e';
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/e2e/fixtures/research-progress.html');
+  await page.getByRole('button', { name: '组合返研', exact: true }).click();
+  const composition = page.getByTestId('research-agent-itinerary');
+  const destination = page.getByTestId('research-agent-destination');
+  // 组合卡：先补查路线，再以返研结论作为里程碑，返研后回到进行中。
+  await expect(composition.locator('.research-agent-body')).toContainText('门到门 25 分钟');
+  await expect(composition.locator('.research-agent-body')).toContainText('已要求按反馈重做');
+  await expect(composition.locator('.research-agent-state')).toHaveText('进行中');
+  // 目的地卡回到进行中，返研轮的查询行可展开。
+  await expect(destination.locator('.research-agent-state')).toHaveText('进行中');
+  await expect(destination.locator('.research-agent-body')).toContainText('可直接安排的真实景点');
+  const redoRow = destination.getByTestId('research-query').filter({ hasText: '可直接安排的真实景点' });
+  await redoRow.locator('summary').click();
+  await expect(redoRow.getByRole('link', { name: '长影旧址博物馆' })).toBeVisible();
+  mkdirSync(redoEvidenceDir, { recursive: true });
+  writeFileSync(`${redoEvidenceDir}/composition-redo-progress.json`, JSON.stringify({
+    compositionState: await composition.locator('.research-agent-state').innerText(),
+    destinationState: await destination.locator('.research-agent-state').innerText(),
+    redoMilestoneVisible: await composition.getByText('已要求按反馈重做').count(),
+    redoToolRowVisible: await destination.getByText('可直接安排的真实景点').count(),
+  }, null, 2));
+  await page.screenshot({ path: `${redoEvidenceDir}/process-2000-composition-redo.png`, fullPage: true });
+});
+
+// 真实生成工作台面板上的返研：重做轮归并进同一张目的地卡，过程区焦点
+// 在重做期间回到研究，继续组合后回到路线并展示组合卡。
+test('生成工作台面板把返研重做过程留在当前活动区并归并轮次', async ({ page }) => {
+  const redoEvidenceDir = '../output/polish/20261101-0035-generation-04-composition-feedback/e2e';
+  await page.setViewportSize({ width: 2000, height: 880 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/e2e/fixtures/generation-progress.html');
+  await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.addResearch());
+  await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.compositionRedo());
+  await expandProcessPanel(page);
+  // 重做轮归并进目的地卡，不是一张新卡；返研工具行可见。
+  const destination = page.getByTestId('research-agent-destination');
+  await expect(destination).toBeVisible();
+  await expect(destination.locator('.research-agent-state')).toHaveText('进行中');
+  await expect(destination.locator('.research-agent-body')).toContainText('可直接安排的真实景点');
+  await expect(page.getByTestId('research-agent-destination（第2轮补充）')).toHaveCount(0);
+  // 重做期间过程区焦点回到研究：返研内容在当前活动区可见。
+  await expect(page.locator('.generation-activity')).toContainText('可直接安排的真实景点');
+  // 继续组合后焦点回到路线，组合卡带着补查行与返研结论出现。
+  await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.compositionContinue());
+  const composition = page.getByTestId('research-agent-itinerary');
+  await expect(composition).toBeVisible();
+  if (await composition.locator('.research-agent-body').count() === 0) {
+    await composition.locator('button.research-agent-heading').click();
+  }
+  await expect(composition.locator('.research-agent-body')).toContainText('门到门 25 分钟');
+  await expect(composition.locator('.research-agent-body')).toContainText('已要求按反馈重做');
+  await expect(composition.locator('.research-agent-state')).toHaveText('进行中');
+  await expect(page.locator('.generation-activity')).not.toContainText('可直接安排的真实景点');
+  // 焦点回到路线：研究阶段的卡片退出当前活动区（可从左侧阶段切回查看）。
+  await expect(page.getByTestId('research-agent-destination')).toHaveCount(0);
+  mkdirSync(redoEvidenceDir, { recursive: true });
+  await page.screenshot({ path: `${redoEvidenceDir}/generation-panel-composition-redo.png`, fullPage: true });
+  expect(errors).toEqual([]);
 });
 
 test('新 Run 不继承旧 Run 的工具详情展开状态', async ({ page }) => {

@@ -21,6 +21,7 @@ from travel_agent.planning.requirements.constraint_applicability import (
     active_hard_constraint_ids,
 )
 from travel_agent.planning.research.errors import format_worker_last_error
+from travel_agent.planning.research.feedback import append_research_redo_messages
 from travel_agent.planning.research.output.failures import (
     build_failure_only_research_packet,
     provider_round_answered_empty,
@@ -181,8 +182,16 @@ async def transport_researcher_node(
 
     reference_services: List[ProviderReferenceService] = []
 
+    redo_requests_update: Optional[Dict[str, Any]] = None
     finalize_started_at: Optional[float] = None
     try:
+        redo_requests_update = append_research_redo_messages(
+            state=state,
+            messages=messages,
+            worker_base=_NODE_NAME,
+            output_key=output_key,
+            task_desc=task_desc,
+        )
         await discover_domestic_rail_route(
             state=state,
             messages=messages,
@@ -198,7 +207,12 @@ async def transport_researcher_node(
             messages=messages,
             available_tools=available_tools,
             stream_queue=stream_queue,
-            node_name=_NODE_NAME,
+            # 返研轮的事件带轮次标识，工作台能区分重做与首轮研究。
+            node_name=(
+                output_key
+                if assignment_research_round(output_key) > 0
+                else _NODE_NAME
+            ),
             max_iterations=_MAX_TOOL_ITERATIONS,
             can_ask_user=False,
             tool_cache=tool_cache,
@@ -247,6 +261,11 @@ async def transport_researcher_node(
             "tool_cache": tool_cache,
             "provider_reference_services": reference_services,
             **({"provider_evidence_outcomes": outcomes} if outcomes else {}),
+            **(
+                {"research_redo_requests": redo_requests_update}
+                if redo_requests_update is not None
+                else {}
+            ),
         }
 
     except (RunCancelled, JournalConflict):
@@ -290,6 +309,8 @@ async def transport_researcher_node(
             "last_error": last_error,
             "agent_status": {output_key: "failed"},
         }
+        if redo_requests_update is not None:
+            result["research_redo_requests"] = redo_requests_update
         if failure_packet is not None:
             result["research_packets"] = {packet_state_key: failure_packet}
         if outcomes:

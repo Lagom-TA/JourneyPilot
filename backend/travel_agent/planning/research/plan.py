@@ -24,26 +24,45 @@ RESEARCH_EXECUTION_PLAN: list[list[str]] = [
 ]
 
 
-async def planner_node(state: TravelAgentState) -> Dict[str, Any]:
-    plan = state.research_plan
-    if plan is None or state.planning_generation is None:
-        raise ValueError("任务分派需要当前研究方案")
-    assignments = {worker: {"objective": task} for worker, task in plan.tasks().items()}
+def build_worker_assignment(
+    state: TravelAgentState, worker: str, objective: str
+) -> Dict[str, Any]:
+    """构造研究 Worker 的任务分配；provider 证据范围按已发生尝试续编。"""
     legs = build_required_long_distance_legs(
         state.controlled_trip_identity or {},
         cross_day_return_required=False,
     )
-    for worker in ("destination_researcher", "transport_researcher", "accommodation_researcher"):
-        assignments[worker]["provider_evidence_assignments"] = dump_provider_evidence_assignments(
+    return {
+        "objective": objective,
+        "provider_evidence_assignments": dump_provider_evidence_assignments(
             build_provider_evidence_assignments(
                 run_id=state.run_id,
                 worker_kind=worker,
                 controlled_trip_identity=state.controlled_trip_identity or {},
-                prior_scope_attempts=scope_attempt_numbers(state.provider_evidence_outcomes),
-                transport_classes=(["public_transit", "flexible"] if worker == "transport_researcher" and not legs else None),
+                prior_scope_attempts=scope_attempt_numbers(
+                    state.provider_evidence_outcomes
+                ),
+                transport_classes=(
+                    ["public_transit", "flexible"]
+                    if worker == "transport_researcher" and not legs
+                    else None
+                ),
                 long_distance_legs=legs if worker == "transport_researcher" else None,
             )
-        )
+        ),
+    }
+
+
+async def planner_node(state: TravelAgentState) -> Dict[str, Any]:
+    plan = state.research_plan
+    if plan is None or state.planning_generation is None:
+        raise ValueError("任务分派需要当前研究方案")
+    assignments = {
+        worker: build_worker_assignment(state, worker, task)
+        for worker, task in plan.tasks().items()
+        if worker != "itinerary_planner"
+    }
+    assignments["itinerary_planner"] = {"objective": plan.tasks()["itinerary_planner"]}
     return {
         "execution_plan": RESEARCH_EXECUTION_PLAN,
         "current_plan_step": 0,

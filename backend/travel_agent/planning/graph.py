@@ -104,6 +104,16 @@ def _route_after_dispatcher_with_amendments(state: TravelAgentState):
     return route_after_dispatcher(state)
 
 
+def _route_after_itinerary(state: TravelAgentState) -> str:
+    """组合后的出口：返研请求路由到对应 Worker，其余回 dispatcher。"""
+    if state.pending_intent_amendments:
+        return NODE_INTENT_AMENDMENT_ROUTER
+    target = state.next_agent
+    if target in (NODE_DESTINATION, NODE_TRANSPORT, NODE_ACCOMMODATION):
+        return target
+    return NODE_DISPATCHER
+
+
 def _route_after_understanding(state: TravelAgentState) -> str:
     if state.pending_intent_amendments:
         return NODE_INTENT_AMENDMENT_ROUTER
@@ -275,7 +285,7 @@ def build_travel_workflow() -> StateGraph:
         },
     )
 
-    for worker in (NODE_DESTINATION, NODE_TRANSPORT, NODE_ACCOMMODATION, NODE_ITINERARY):
+    for worker in (NODE_DESTINATION, NODE_TRANSPORT, NODE_ACCOMMODATION):
         graph.add_conditional_edges(
             worker,
             _route_after_boundary(NODE_DISPATCHER),
@@ -284,6 +294,17 @@ def build_travel_workflow() -> StateGraph:
                 NODE_DISPATCHER: NODE_DISPATCHER,
             },
         )
+    graph.add_conditional_edges(
+        NODE_ITINERARY,
+        _route_after_itinerary,
+        {
+            NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
+            NODE_DISPATCHER: NODE_DISPATCHER,
+            NODE_DESTINATION: NODE_DESTINATION,
+            NODE_TRANSPORT: NODE_TRANSPORT,
+            NODE_ACCOMMODATION: NODE_ACCOMMODATION,
+        },
+    )
 
     graph.add_conditional_edges(
         NODE_PLAN_GATE,

@@ -405,6 +405,55 @@ def unfilled_connector_gaps(
     return unfilled
 
 
+def _selected_connector_option(
+    candidates: Mapping[str, ResearchCandidate],
+    gap: LocalConnectorGap,
+) -> Optional[TransportCandidate]:
+    """按类别偏好、耗时与费用选出这段相邻关系采用的实测路线。"""
+    options = _connector_options(candidates, gap)
+    if not options:
+        return None
+    options.sort(
+        key=lambda candidate: (
+            candidate.transport_class != gap.preferred_transport_class,
+            candidate.duration_minutes,
+            candidate.total_cost_cny is None,
+            candidate.total_cost_cny or 0,
+            candidate.candidate_id,
+        )
+    )
+    return options[0]
+
+
+def overtimed_connector_gaps(
+    catalog: RecommendationCatalog,
+    gaps: list[LocalConnectorGap],
+    authored_routes: Mapping[str, AuthoredRoute],
+) -> list[tuple[LocalConnectorGap, int, int]]:
+    """已选市内路线超过相邻停留点可用时间窗口的相邻关系。
+
+    返回 ``(gap, 路线门到门分钟数, 可用窗口分钟数)``；既无实测路线也无
+    撰写估算的相邻关系不参与判定。
+    """
+    candidates = catalog.candidate_index()
+    overtimed: list[tuple[LocalConnectorGap, int, int]] = []
+    for gap in gaps:
+        option = _selected_connector_option(candidates, gap)
+        if option is not None:
+            duration = option.duration_minutes
+        else:
+            authored = authored_routes.get(gap.gap_id)
+            if authored is None:
+                continue
+            duration = authored.duration_minutes
+        window_minutes = round(
+            (gap.latest_arrival_time - gap.departure_time).total_seconds() / 60
+        )
+        if duration > window_minutes:
+            overtimed.append((gap, duration, window_minutes))
+    return overtimed
+
+
 def materialize_skeleton_connectors(
     skeleton: ItineraryCompositionDraft,
     catalog: RecommendationCatalog,
@@ -421,25 +470,16 @@ def materialize_skeleton_connectors(
         )
     selected: dict[str, TransportCandidate | AuthoredRoute] = {}
     for gap in gaps:
-        options = _connector_options(candidates, gap)
-        if not options:
-            authored = authored_routes.get(gap.gap_id)
-            if authored is None:
-                raise ItineraryCompositionError(
-                    f"connector gap {gap.gap_id} has neither a Provider route nor an authored route"
-                )
-            selected[gap.gap_id] = authored
+        option = _selected_connector_option(candidates, gap)
+        if option is not None:
+            selected[gap.gap_id] = option
             continue
-        options.sort(
-            key=lambda candidate: (
-                candidate.transport_class != gap.preferred_transport_class,
-                candidate.duration_minutes,
-                candidate.total_cost_cny is None,
-                candidate.total_cost_cny or 0,
-                candidate.candidate_id,
+        authored = authored_routes.get(gap.gap_id)
+        if authored is None:
+            raise ItineraryCompositionError(
+                f"connector gap {gap.gap_id} has neither a Provider route nor an authored route"
             )
-        )
-        selected[gap.gap_id] = options[0]
+        selected[gap.gap_id] = authored
 
     updated_days: list[DayComposition] = []
     consumed: set[str] = set()

@@ -7,13 +7,24 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import timezone
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, Dict, Literal, Mapping, Sequence
 
 from pydantic import Field
 
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.schema import StrictModel
+
+
+def _packet_base(packet: ResearchPacket) -> str:
+    match = re.fullmatch(r"(.+)_r(\d+)", packet.task_id)
+    return match.group(1) if match else packet.task_id
+
+
+def _packet_round(packet: ResearchPacket) -> int:
+    match = re.fullmatch(r"(.+)_r(\d+)", packet.task_id)
+    return int(match.group(2)) if match else 1
 
 # 串行研究链中各角色能读到的上游候选种类：交通读目的地成果，
 # 住宿读目的地与交通成果；目的地是第一位，没有上游。
@@ -55,6 +66,15 @@ class ResearchContextView(StrictModel):
     coordination: list[CoordinationPacket] = Field(default_factory=list)
 
 
+def _latest_round_by_base(packets: Sequence[ResearchPacket]) -> Dict[str, int]:
+    """每个 Worker 基础名的最高轮次；返研后旧轮次整体退出上游视图。"""
+    rounds: Dict[str, int] = {}
+    for packet in packets:
+        base = _packet_base(packet)
+        rounds[base] = max(rounds.get(base, 0), _packet_round(packet))
+    return rounds
+
+
 def project_research_context(
     packets: Mapping[str, ResearchPacket],
     *,
@@ -67,11 +87,17 @@ def project_research_context(
     destinations = {str(item) for item in destination_ids if str(item)}
     # 最新 packet 决定候选的可见版本。不混合不同 generation，也不为填充上下文
     # 引入无关目的地。
+    in_scope = [
+        packet
+        for packet in packets.values()
+        if packet.run_id == run_id and packet.generation_id == generation_id
+    ]
+    latest_rounds = _latest_round_by_base(in_scope)
     current = sorted(
         (
             packet
-            for packet in packets.values()
-            if packet.run_id == run_id and packet.generation_id == generation_id
+            for packet in in_scope
+            if _packet_round(packet) == latest_rounds.get(_packet_base(packet), 0)
         ),
         key=lambda packet: (
             packet.fact_data_revision,

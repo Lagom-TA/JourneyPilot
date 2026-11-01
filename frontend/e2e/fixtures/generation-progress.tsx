@@ -45,6 +45,40 @@ function Fixture() {
           payload: { id: 'transport', agentName: 'transport_researcher', content: '', stepName: '查询城际交通', timestamp: new Date(), isToolCall: true, toolName: 'train_search', toolArgs: '{"from_name":"上海虹桥","to_name":"杭州东"}', toolResult: '已整理上海到杭州的火车衔接', toolStatus: 'completed', resultPreview: [{ title: '上海虹桥 → 杭州东', detail: '上午出发，约 1 小时到达', url: 'https://example.org/train' }] },
         });
       },
+      compositionRedo() {
+        // 组合补查 → 反馈目的地返研（带轮次显示名）→ 返研后继续组合：
+        // 事件名与真实后端一致，用于验证真实工作台面板的焦点与归组。
+        dispatch({
+          type: 'ADD_THINKING_STEP',
+          payload: { id: 'destination-completed', agentName: 'destination_researcher', content: '已整理 4 个目的地候选', stepName: '查询目的地体验', timestamp: new Date(), progressStatus: 'completed', endTime: new Date() },
+        });
+        dispatch({
+          type: 'ADD_THINKING_STEP',
+          payload: { id: 'composition-start', agentName: 'itinerary_planner', content: '正在把景点和交通排进每天路线', stepName: '行程规划', timestamp: new Date(), progressStatus: 'running' },
+        });
+        dispatch({
+          type: 'ADD_THINKING_STEP',
+          payload: { id: 'composition-query', agentName: 'itinerary_planner', content: '', stepName: '行程规划', timestamp: new Date(), isToolCall: true, toolName: 'global_route_search', toolArgs: '{"from_name":"西湖","to_name":"酒店"}', toolResult: '找到 1 条路线，门到门 25 分钟', toolStatus: 'completed' },
+        });
+        dispatch({
+          type: 'ADD_THINKING_STEP',
+          payload: { id: 'composition-redo', agentName: 'itinerary_planner', content: '行程安排依赖的目的地调研成果无法直接使用，已要求按反馈重做', stepName: '行程规划', timestamp: new Date(), progressStatus: 'completed', endTime: new Date() },
+        });
+        dispatch({
+          type: 'ADD_THINKING_STEP',
+          payload: { id: 'destination-redo', agentName: '目的地调研（第2轮补充）', content: '正在按组合反馈重新调查', stepName: '目的地调研（第2轮补充）', timestamp: new Date(), progressStatus: 'running' },
+        });
+        dispatch({
+          type: 'ADD_THINKING_STEP',
+          payload: { id: 'destination-redo-query', agentName: '目的地调研（第2轮补充）', content: '', stepName: '目的地调研（第2轮补充）', timestamp: new Date(), isToolCall: true, toolName: 'global_place_search', toolArgs: '{"query":"可直接安排的真实景点"}', toolResult: '找到 2 个结果', toolStatus: 'completed', resultPreview: [{ title: '长影旧址博物馆', detail: '返研修正后的候选', url: 'https://example.org/changying' }] },
+        });
+      },
+      compositionContinue() {
+        dispatch({
+          type: 'ADD_THINKING_STEP',
+          payload: { id: 'composition-continue', agentName: 'itinerary_planner', content: '正在吸收返研成果继续安排每天路线', stepName: '行程规划', timestamp: new Date(), progressStatus: 'running' },
+        });
+      },
       specialParty() {
         dispatch({
           type: 'SET_CONTROLLED_TRIP_IDENTITY',

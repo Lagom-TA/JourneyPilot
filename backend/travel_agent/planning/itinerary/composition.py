@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Union
 
 from travel_agent.conversation.history import append_recent_history
 from travel_agent.planning.state import TravelAgentState
@@ -11,51 +11,74 @@ from travel_agent.planning.itinerary.locations import (
     locate_authored_composition,
     replace_unlocated_authored_places,
 )
-from travel_agent.planning.itinerary.model_schema import _composition_response_schema
 from travel_agent.planning.itinerary.parsing import _parse_exact_llm_composition
 from travel_agent.planning.itinerary.prompts import _build_composition_prompt
+from travel_agent.planning.nodes import NODE_ITINERARY
+from travel_agent.planning.research.feedback import (
+    ResearchRedoRequest,
+    parse_research_redo_request,
+)
+from travel_agent.tools.react import streaming_react_loop
+from travel_agent.tools.result import ReactOutcome
+
+# 组合补查的工具调用轮数上限；与 Worker 的迭代上限同一量级。
+_COMPOSITION_TOOL_ITERATIONS = 5
+
+_COMPOSITION_FINAL_ROUND_NOTICE = (
+    "工具调用轮数已用完，本轮必须直接输出完整的行程草稿 JSON 对象"
+    "或返研请求 JSON 对象，不要再调用任何工具。"
+)
 
 
 async def _compose_draft(
     state: TravelAgentState,
     task_desc: str,
     llm: Any,
-) -> ItineraryCompositionDraft:
-    """生成行程草稿；JSON 解析或结构校验失败时带上错误重试一次。"""
-    native_schema = bool(
-        getattr(getattr(llm, "capabilities", None), "supports_json_schema", False)
-    )
+    *,
+    available_tools: list[dict[str, Any]],
+    tool_context: dict[str, Any],
+    stream_queue: Any = None,
+    tool_cache: dict[str, Any] | None = None,
+) -> Union[ItineraryCompositionDraft, ResearchRedoRequest]:
+    """生成行程草稿；模型也可请求让某个研究 Worker 返研。
+
+    组合先经历带工具的反应式循环，可自主补查地点、衔接等局部信息；
+    JSON 解析或结构校验失败时带上错误重试一次。
+    """
     prompt = _build_composition_prompt(
         state,
         task_desc,
         skeleton_only=True,
-        strict_wire_schema=native_schema,
+        strict_wire_schema=False,
     )
-    messages = [{"role": "system", "content": prompt.system}]
+    messages: list[dict[str, Any]] = [{"role": "system", "content": prompt.system}]
     append_recent_history(messages, state, limit=4)
     messages.append({"role": "user", "content": prompt.runtime})
-    kwargs = {
-        "response_format": {
-            "type": "json_schema",
-            "json_schema": {
-                "name": "itinerary_composition_draft",
-                "strict": native_schema,
-                "schema": _composition_response_schema(
-                    state.recommendation_catalog,
-                    skeleton_only=True,
-                    strict_wire=native_schema,
-                ),
-            },
-        },
-        # 同一输入重复生成时保持排程稳定，便于定位结构错误。
-        "temperature": 0,
-    }
     previous = state.placement_skeleton
     for attempt in range(2):
-        response = await llm.ainvoke(messages, **kwargs)
-        content = response.content if hasattr(response, "content") else response
+        react = await streaming_react_loop(
+            llm=llm,
+            messages=messages,
+            available_tools=available_tools,
+            stream_queue=stream_queue,
+            node_name=NODE_ITINERARY,
+            max_iterations=_COMPOSITION_TOOL_ITERATIONS,
+            tool_cache=tool_cache,
+            tool_context=tool_context,
+            final_round_notice=_COMPOSITION_FINAL_ROUND_NOTICE,
+        )
+        if react.outcome is not ReactOutcome.FINAL_ANSWER:
+            raise ValueError(
+                f"composition tool loop ended without a final answer: "
+                f"{react.outcome.value}"
+            )
+        content = react.content
         if not isinstance(content, str):
             content = json.dumps(content, ensure_ascii=False)
+        redo = parse_research_redo_request(content)
+        if redo is not None:
+            request = ResearchRedoRequest.model_validate(redo)
+            return request
         try:
             draft = _reuse_located_places(
                 _parse_exact_llm_composition(content), previous

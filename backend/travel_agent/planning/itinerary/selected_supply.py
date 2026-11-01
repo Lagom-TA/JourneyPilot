@@ -77,6 +77,7 @@ def placement_capabilities(
                     transport_class=candidate.transport_class,
                     from_place_id=candidate.from_endpoint.place_id,
                     to_place_id=candidate.to_endpoint.place_id,
+                    duration_minutes=candidate.duration_minutes,
                     departure_date=(
                         candidate.departure_at.date().isoformat()
                         if candidate.departure_at is not None

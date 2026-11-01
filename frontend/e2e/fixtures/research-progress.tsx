@@ -38,6 +38,16 @@ const supplementRoundSteps: ThinkingStep[] = [
   base('destination-round-2-start', '目的地调研（第2轮补充）', { progressStatus: 'running', content: '正在补充查询雨天备选' }),
   base('destination-round-2-result', '目的地调研（第2轮补充）', { isToolCall: true, toolName: 'global_place_search', toolArgs: '{"query":"长春 雨天备选"}', toolResult: '找到 2 个结果', toolStatus: 'completed', resultPreview: [{ title: '吉林省博物院', detail: '适合雨天参观', url: 'https://example.org/jilin-museum' }] }),
 ];
+// 组合补查 → 反馈目的地返研 → 返研后继续组合的代表事件序列：
+// 事件名与真实后端一致（返研轮带轮次显示名），返研结论作为组合卡片的里程碑可见。
+const compositionRedoSteps: ThinkingStep[] = [
+  base('composition-start', '行程规划', { progressStatus: 'running', content: '正在把景点和交通排进每天路线' }),
+  base('composition-query', '行程规划', { isToolCall: true, toolName: 'global_route_search', toolArgs: '{"from_name":"伪满皇宫博物院","to_name":"当晚酒店"}', toolResult: '找到 1 条路线，门到门 25 分钟', toolStatus: 'completed' }),
+  base('composition-redo', '行程规划', { progressStatus: 'completed', content: '行程安排依赖的目的地调研成果无法直接使用，已要求按反馈重做' }),
+  base('destination-redo-start', '目的地调研（第2轮补充）', { progressStatus: 'running', content: '正在按组合反馈重新调查' }),
+  base('destination-redo-query', '目的地调研（第2轮补充）', { isToolCall: true, toolName: 'global_place_search', toolArgs: '{"query":"长春 可直接安排的真实景点"}', toolResult: '找到 2 个结果', toolStatus: 'completed', resultPreview: [{ title: '长影旧址博物馆', detail: '返研修正后的候选', url: 'https://example.org/changying' }] }),
+  base('composition-continue', '行程规划', { progressStatus: 'running', content: '正在吸收返研成果继续安排每天路线' }),
+];
 const edgeSteps: ThinkingStep[] = [
   base('four-results', '目的地调研', { isToolCall: true, toolName: 'global_place_search', toolArgs: '{"query":"深圳湾公园 周边"}', toolResult: '找到 4 个结果：深圳湾公园、红树林、人才公园、海上世界', toolStatus: 'completed', resultPreview: [
     { title: '深圳湾公园', detail: '适合傍晚看海与散步', url: 'https://example.org/shenzhen-bay' },
@@ -64,6 +74,7 @@ function Fixture() {
   const [failures, setFailures] = useState(false);
   const [failedAfterResult, setFailedAfterResult] = useState(false);
   const [supplementRound, setSupplementRound] = useState(false);
+  const [compositionRedo, setCompositionRedo] = useState(false);
   const [runKey, setRunKey] = useState('run-a');
   const longQueryStep = base('long-query', '目的地调研', { isToolCall: true, toolName: 'global_place_search', toolArgs: JSON.stringify({ query: '杭州西湖周边适合雨天慢慢散步、喝咖啡并避开人群的路线与街区，并给出上午、午后和傍晚三个时间段的具体安排' }), toolResult: '找到 1 个适合雨天散步的街区', toolStatus: 'completed', resultPreview: [{ title: '北山街雨天散步路线', detail: '沿途有树荫、咖啡馆和湖边休息点，适合放慢节奏。', url: 'https://example.org/hangzhou-rain' }] });
   const internalStep = base('internal-tools', '整理旅行需求', { isToolCall: true, toolName: 'search_tools', toolArgs: '{"query":"global_place_search 地点"}', toolResult: '已选择适合本次行程的地点与交通资料', toolStatus: 'completed' });
@@ -82,7 +93,10 @@ function Fixture() {
     ...(failedAfterResult ? [failedAfterResultStep] : []),
     ...extra,
   ];
-  const displayed = supplementRound ? [...sourceSteps, ...supplementRoundSteps] : sourceSteps;
+  const displayed = [
+    ...(compositionRedo ? compositionRedoSteps : []),
+    ...(supplementRound ? [...sourceSteps, ...supplementRoundSteps] : sourceSteps),
+  ];
   return <main style={{ maxWidth: 1100, margin: '32px auto', padding: '0 16px' }}>
     <p style={{ fontSize: 12 }}>交互验证样例 · 长春 4 日调研</p>
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
@@ -98,6 +112,7 @@ function Fixture() {
       <button onClick={() => setFailures(true)}>内部失败</button>
       <button onClick={() => setFailedAfterResult(true)}>结果后失败</button>
       <button onClick={() => setSupplementRound(true)}>补充轮次</button>
+      <button onClick={() => setCompositionRedo(true)}>组合返研</button>
       <button onClick={() => setRunKey('run-b')}>新 Run</button>
       <button onClick={() => setExtra(previous => [...previous, base('unrelated-transport', '交通查询', { progressStatus: 'completed', content: '补充了一条无关的交通状态' })])}>无关事件</button>
       <button onClick={() => setExtra(previous => [...previous, base('route-stage', '行程规划', { progressStatus: 'running', content: '正在把景点和交通排进每天路线' })])}>路线阶段</button>

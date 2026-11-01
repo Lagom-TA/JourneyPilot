@@ -63,7 +63,25 @@ _COMPOSITION_MODEL_WINDOW_NODES = _COMPOSITION_WORKER_NODES | {"budget_estimate"
 def _model_window_for_node(node_name: str, state: Any) -> ModelWindow:
     if node_name in _COMPOSITION_MODEL_WINDOW_NODES:
         return "composition"
+    # 组合阶段的返研 Worker 在组合窗口内运行：研究窗口此时可能已关闭，
+    # 但返研属于组合安排的一部分，受同一封存的期限与预算约束。
+    if node_name in _RESEARCH_WORKER_NODES and _is_research_redo_round(node_name, state):
+        return "composition"
     return "research"
+
+
+def _is_research_redo_round(node_name: str, state: Any) -> bool:
+    """判断该节点当前任务是否为返研轮（assignment 带轮次后缀）。"""
+    assignments = getattr(state, "agent_assignments", None)
+    if not isinstance(assignments, dict) or not assignments:
+        return False
+    try:
+        from .assignments import assignment_research_round, resolve_agent_assignment
+
+        output_key, _assignment = resolve_agent_assignment(assignments, node_name)
+        return assignment_research_round(output_key) > 0
+    except ValueError:
+        return False
 
 
 def _worker_window_closed(

@@ -181,8 +181,17 @@ _AGENT_TOOL_POLICY: Dict[str, AgentToolPolicy] = {
         },
     ),
     "itinerary_planner": AgentToolPolicy(
+        # 组合自主补查地点与衔接等局部信息；不提供 ask_user 与知识库。
         servers=set(),
-        deny_tools={"*"},
+        deny_tools={"ask_user", "knowledge_search"},
+        extra_tools={
+            "free_web_search",
+            "global_place_search",
+            "global_route_search",
+            "maps_text_search",
+            "maps_around_search",
+            "maps_search_detail",
+        },
     ),
 }
 

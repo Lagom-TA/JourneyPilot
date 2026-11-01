@@ -52,6 +52,12 @@ def apply_day_design(workspace, composition):
             free_time_by_day.setdefault(target_day_id, []).append(planned)
     blocks = list(itinerary.custom_blocks)
     notes = list(itinerary.important_notes)
+    # 模型明确报告的未安排事项保留为重要说明，不因重建说明而丢失。
+    for design in designs.values():
+        for item in design.unresolved:
+            note = f"未能安排：{item}"
+            if note not in notes:
+                notes.append(note)
     days = []
     stops = {
         stop.item_id: stop for stop in [*itinerary.visit_stops, *itinerary.dining_stops]

@@ -71,6 +71,12 @@ describe('activity stage filtering', () => {
         expect(latestActivityStageId({ ...base, steps: [step('行程规划'), step('整理需求（第2轮补充）')] })).toBe('requirements');
         expect(latestActivityStageId({ ...base, steps: [step('delivery_projector')] })).toBe('delivery');
     });
+    it('返研重做轮把过程区焦点拉回研究，继续组合后回到路线', () => {
+        expect(latestActivityStageId({ ...base, steps: [step('行程规划'), step('目的地调研（第2轮补充）')] })).toBe('research');
+        expect(latestActivityStageId({ ...base, steps: [step('行程规划'), step('目的地调研（第2轮补充）'), step('行程规划')] })).toBe('route');
+        // 首轮研究事件不触发回退，保持原有串行推进语义。
+        expect(latestActivityStageId({ ...base, steps: [step('行程规划'), step('目的地调研')] })).toBe('route');
+    });
     it('门、等待确认与完成/合成/开始输出优先落到固定阶段', () => {
         const routeSteps = [step('行程规划')];
         expect(latestActivityStageId({ ...base, steps: routeSteps, gatePending: true })).toBe('requirements');

@@ -31,6 +31,24 @@ def _latest_packets(
     return {base: item[1] for base, item in latest.items()}
 
 
+def _worker_rounds_by_base(
+    research_packets: Dict[str, ResearchPacket], generation_id: str
+) -> Dict[str, int]:
+    """当前规划版本内每个 Worker 基础名出现过的最高轮次。"""
+    rounds: Dict[str, int] = {}
+    for key, packet in research_packets.items():
+        if packet.generation_id != generation_id:
+            continue
+        task_key = key.split("@", 1)[0]
+        base = strip_round_suffix(task_key)
+        if base not in RESEARCH_WORKER_NODES:
+            continue
+        match = _ROUND_SUFFIX.search(task_key)
+        round_number = int(match.group(1)) if match else 1
+        rounds[base] = max(rounds.get(base, 0), round_number)
+    return rounds
+
+
 def _catalog_packets(state: TravelAgentState) -> list[ResearchPacket]:
     """汇总跨轮次仍然有效的候选：每个 worker 取最新 packet，并保留上一版目录中本轮未再出现的候选。"""
     if state.planning_generation is None:
@@ -42,6 +60,18 @@ def _catalog_packets(state: TravelAgentState) -> list[ResearchPacket]:
         state.research_packets,
         generation_id=generation_id,
     )
+    # 组合已请求返研但返研轮未产出 packet 时，该 Worker 的旧轮次成果属于
+    # 被判不可用的错误成果，整体退出目录，不再供给后续决策。
+    redo_rounds = state.research_redo_rounds or {}
+    if redo_rounds:
+        worker_rounds = _worker_rounds_by_base(state.research_packets, generation_id)
+        for base in [
+            base
+            for base in current
+            if redo_rounds.get(base, 0) >= 1
+            and worker_rounds.get(base, 0) <= redo_rounds[base]
+        ]:
+            del current[base]
     packets = [
         _packet_candidate_closure(packet, packet.candidates)
         for packet in current.values()
@@ -59,11 +89,22 @@ def _catalog_packets(state: TravelAgentState) -> list[ResearchPacket]:
         for worker, packet in current.items()
     }
     current_packet_ids = {packet.research_packet_id for packet in packets}
+    state_packet_ids = {
+        packet.research_packet_id for packet in state.research_packets.values()
+    }
     for packet in previous.research_packets:
         if (
             packet.worker_kind not in current
             or packet.generation_id != generation_id
             or packet.fact_data_revision != state.fact_data_revision
+        ):
+            continue
+        # 该 Worker 已产出新一轮 packet 时，其上一轮 packet 属于被替代的错误成果，
+        # 整体退出目录，不能作为「未入选备选」合并回来。只对真实 Worker 轮次生效；
+        # 组合接驳补全产生的 packet 只存在于目录，仍按原逻辑保留未入选候选。
+        if (
+            current[packet.worker_kind].research_packet_id != packet.research_packet_id
+            and packet.research_packet_id in state_packet_ids
         ):
             continue
         retained = [

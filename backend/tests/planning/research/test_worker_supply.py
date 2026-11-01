@@ -192,6 +192,11 @@ class SupplyModel:
         if "需求理解者" in system:
             yield {"type": "finish", "content": json.dumps({"action": "ready", "trip_identity": self._identity}, ensure_ascii=False), "tool_calls": []}
             return
+        if "旅行规划师" in system:
+            # 组合在工具循环内运行：替身直接返回行程草稿，不调用工具。
+            self.composition_request = "\n".join(str(m.get("content", "")) for m in messages)
+            yield {"type": "finish", "content": json.dumps(self._itinerary, ensure_ascii=False), "tool_calls": []}
+            return
         worker = next(
             name
             for name in (

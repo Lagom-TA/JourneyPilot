@@ -59,7 +59,7 @@ def _planning_state(*, stop_count=2, unlocated_stop=None, constraint_pack=None):
         )
         for index in range(stop_count)
     ]
-    times = (("08:00", "09:00"), ("09:10", "10:10"), ("10:20", "11:20"))
+    times = (("08:00", "09:00"), ("09:40", "10:40"), ("11:10", "12:10"))
     placements = []
     for index, (start, end) in enumerate(times[:stop_count]):
         placement = visit_entry(start, end)

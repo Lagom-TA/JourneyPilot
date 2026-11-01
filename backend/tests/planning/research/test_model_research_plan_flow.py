@@ -72,6 +72,17 @@ class OfflineModel:
             self.understanding_request = "\n".join(str(message.get("content", "")) for message in messages)
             yield {"type": "finish", "content": json.dumps({"action": "ready", "trip_identity": IDENTITY}, ensure_ascii=False), "tool_calls": []}
             return
+        if "旅行规划师" in system:
+            # 组合在工具循环内运行：替身不调用工具，直接返回行程草稿。
+            self.composition_request = "\n".join(str(message.get("content", "")) for message in messages)
+            yield {"type": "finish", "content": json.dumps({
+                "itinerary_id": "offline_itinerary", "title": "杭州慢游", "duration_days": 1,
+                "days": [{"day_id": "day_1", "day": 1, "date": "2026-11-05", "destination_id": "city_hangzhou", "placements": [{
+                    "placement_kind": "visit", "candidate_id": "garden_candidate",
+                    "planned_start": "2026-11-05T10:00:00+08:00", "planned_end": "2026-11-05T11:30:00+08:00", "duration_minutes": 90, "selection_reason": "园林慢游",
+                }]}], "lodging_candidate_ids": [],
+            }, ensure_ascii=False), "tool_calls": []}
+            return
         worker = next(name for name in ("destination_researcher", "transport_researcher", "accommodation_researcher") if f"JourneyPilot 的 {name}" in system)
         self.worker_requests[worker] = "\n".join(str(message.get("content", "")) for message in messages)
         self.worker_tools[worker] = tools

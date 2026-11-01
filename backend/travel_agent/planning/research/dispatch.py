@@ -78,6 +78,13 @@ async def dispatcher_node(
                 not observation.composition_closed
                 and state.trip_workspace_v2 is None
                 and composition_step is not None
+                # 组合已失败（预算耗尽、返研上限等）时不再重入，
+                # 直接收敛到预算与交付收口。
+                and "failed"
+                not in {
+                    state.agent_status.get(strip_round_suffix(agent))
+                    for agent in plan[composition_step]
+                }
             )
             if owes_composition:
                 logger.info(
@@ -107,7 +114,14 @@ async def dispatcher_node(
 
     if not group_complete:
         logger.info(f"Dispatcher: 分发当前组 step={step}, group={current_group}")
-        return {"next_agent": "dispatch_group"}
+        update: Dict[str, Any] = {"next_agent": "dispatch_group"}
+        # 组合重入前重建候选目录：返研轮的新 packet 需要进入组合可见的目录。
+        if any(
+            strip_round_suffix(agent) == "itinerary_planner"
+            for agent in current_group
+        ):
+            update.update(_catalog_update(state))
+        return update
 
     next_step = step + 1
     if next_step < len(plan):

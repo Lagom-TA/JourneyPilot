@@ -92,7 +92,14 @@ _EXPECTED_REAL_RESULTS: Dict[str, List[str]] = {
         "maps_text_search",
         "tavily_search",
     ],
-    "itinerary_planner": [],
+    "itinerary_planner": [
+        "free_web_search",
+        "global_place_search",
+        "global_route_search",
+        "maps_around_search",
+        "maps_search_detail",
+        "maps_text_search",
+    ],
 }
 
 

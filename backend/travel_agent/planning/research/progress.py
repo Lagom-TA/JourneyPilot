@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ...planning.presentation import get_agent_display_name
 from ...tools.display import result_preview
 
 
@@ -12,6 +13,13 @@ def worker_result(
     statuses = update.get("agent_status", {})
     if isinstance(statuses, dict) and "failed" in statuses.values():
         return "failed", "本轮调研未完成，暂未形成可用结果", []
+    redo_requests = update.get("research_redo_requests")
+    if isinstance(redo_requests, dict) and redo_requests and node == "itinerary_planner":
+        # 组合请求某个研究角色返研：作为组合卡片可见的结论展示。
+        workers = "、".join(
+            get_agent_display_name(worker) for worker in sorted(redo_requests)
+        )
+        return "completed", f"行程安排依赖的{workers}成果无法直接使用，已要求按反馈重做", []
     packets = update.get("research_packets", {})
     candidates: list[Any] = []
     if isinstance(packets, dict):

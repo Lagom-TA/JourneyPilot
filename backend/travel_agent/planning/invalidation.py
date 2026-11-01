@@ -35,6 +35,9 @@ def invalidation_update() -> Dict[str, Any]:
         "trip_workspace_v2": None,
         "composition_failure_context": None,
         "local_connector_gaps": [],
+        "research_redo_requests": None,
+        "research_redo_rounds": {},
+        "composition_reschedule_rounds": 0,
     }
 
 

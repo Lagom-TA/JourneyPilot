@@ -233,8 +233,11 @@ async def test_planner_preserves_useful_restaurant_reuse_through_checkpoint(
             assert "不要求全程地点唯一" in messages[0]["content"]
             return json.dumps(payload)
 
+        async def astream_with_tools(self, messages, tools, **kwargs):
+            yield {"type": "finish", "content": await self.ainvoke(messages), "tool_calls": []}
+
     monkeypatch.setattr(node, "get_model_router", lambda: None)
-    monkeypatch.setattr(node, "llm_for_task", lambda *args: Model())
+    monkeypatch.setattr(node, "llm_for_task", lambda *args, **kwargs: Model())
     current = restore_planning_state(original, recommendation_catalog=catalog)
     drafted = restore_planning_state(current, **await node.itinerary_planner_node(current, {}))
     assert drafted.composition_failure_context is None
@@ -427,6 +430,9 @@ async def test_revision_model_receives_distinct_actual_drafts(monkeypatch):
             seen.append(messages[-1]["content"])
             return json.dumps(itinerary_draft())
 
+        async def astream_with_tools(self, messages, tools, **kwargs):
+            yield {"type": "finish", "content": await self.ainvoke(messages), "tool_calls": []}
+
     for label in ("旧稿甲", "旧稿乙"):
         payload = itinerary_draft()
         payload["title"] = label
@@ -436,7 +442,9 @@ async def test_revision_model_receives_distinct_actual_drafts(monkeypatch):
             placement_skeleton=ItineraryCompositionDraft.model_validate(payload),
             composition_failure_context="rest conflict",
         )
-        await composition._compose_draft(current, "revise", Model())
+        await composition._compose_draft(
+            current, "revise", Model(), available_tools=[], tool_context={}
+        )
     assert seen[0] != seen[1]
     assert "旧稿甲" in seen[0] and "旧稿乙" in seen[1]
 
@@ -500,8 +508,13 @@ async def test_structure_retry_keeps_new_reason_and_resolves_authored_place(
                 ] = "新的推荐理由"
             return json.dumps(response)
 
+        async def astream_with_tools(self, messages, tools, **kwargs):
+            yield {"type": "finish", "content": await self.ainvoke(messages), "tool_calls": []}
+
     model = Model()
-    result = await composition._compose_draft(current, "revise", model)
+    result = await composition._compose_draft(
+        current, "revise", model, available_tools=[], tool_context={}
+    )
     place = authored_places(result)[0].place
     assert len(model.messages) == 2 and calls == ["English Museum"]
     assert place.resolved_place_id == "located_museum"
@@ -612,8 +625,14 @@ async def test_changed_authored_identity_resolves_again_and_internal_parse_keeps
     class Model:
         async def ainvoke(self, messages, **kwargs):
             return json.dumps(response)
+
+        async def astream_with_tools(self, messages, tools, **kwargs):
+            yield {"type": "finish", "content": await self.ainvoke(messages), "tool_calls": []}
+
     current = restore_planning_state(restored, recommendation_catalog=make_catalog())
-    result = await composition._compose_draft(current, "revise", Model())
+    result = await composition._compose_draft(
+        current, "revise", Model(), available_tools=[], tool_context={}
+    )
     located = authored_places(result)[0].place
     assert calls == ["Museum B"]
     assert located.resolved_place_id == "trusted_b" and located.resolved_latitude == 35.7
@@ -651,7 +670,12 @@ async def test_unlocated_authored_entry_is_kept_without_coordinates(monkeypatch)
                 itinerary_draft([entry, meal_placement("dinner", "18:00", "19:00")])
             )
 
-    draft = await composition._compose_draft(current, "compose", Model())
+        async def astream_with_tools(self, messages, tools, **kwargs):
+            yield {"type": "finish", "content": await self.ainvoke(messages), "tool_calls": []}
+
+    draft = await composition._compose_draft(
+        current, "compose", Model(), available_tools=[], tool_context={}
+    )
     gaps, connected = connect(draft, catalog)
     result = workspace(connected, catalog)
     stop = result.itinerary.visit_stops[0]
@@ -688,10 +712,15 @@ async def test_unlocated_authored_visit_uses_candidate_entity_and_keeps_schedule
         async def ainvoke(self, messages, **kwargs):
             return json.dumps(itinerary_draft([entry]))
 
+        async def astream_with_tools(self, messages, tools, **kwargs):
+            yield {"type": "finish", "content": await self.ainvoke(messages), "tool_calls": []}
+
     current = restore_planning_state(
         make_planning_state(), recommendation_catalog=catalog
     )
-    result = await composition._compose_draft(current, "compose", Model())
+    result = await composition._compose_draft(
+        current, "compose", Model(), available_tools=[], tool_context={}
+    )
     placement = result.days[0].placements[0]
     assert placement.candidate_id == "candidate_b"
     assert placement.authored_place is None
@@ -932,7 +961,7 @@ async def test_fastest_provider_alternative_is_selected(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_provider_route_beyond_the_remaining_window_is_still_used(monkeypatch):
+async def test_provider_route_beyond_the_remaining_window_reschedules_once(monkeypatch):
     from travel_agent.planning.itinerary import node
 
     catalog = make_catalog(restaurant_packet(), visit_packet(), route_packet())
@@ -951,8 +980,27 @@ async def test_provider_route_beyond_the_remaining_window_is_still_used(monkeypa
         pytest.fail("matching provider route must be used")
 
     monkeypatch.setattr(node, "_author_connector_routes", no_authoring)
-    completed = restore_planning_state(
+    monkeypatch.setattr(node, "get_model_router", lambda: None)
+    monkeypatch.setattr(node, "llm_for_task", lambda *args, **kwargs: object())
+    rescheduled = restore_planning_state(
         current, **await node.itinerary_planner_node(current, {})
+    )
+    # 实际路线超出相邻停留点可用窗口：回炉一次修正排程，不直接交付不可行转场。
+    assert rescheduled.agent_status["itinerary_planner"] == "pending"
+    assert rescheduled.placement_skeleton is None
+    assert rescheduled.trip_workspace_v2 is None
+    assert rescheduled.composition_reschedule_rounds == 1
+    assert "超出可用时间窗口" in rescheduled.composition_failure_context
+
+    # 回炉次数用尽后按真实耗时照常物化，不压缩分钟数。
+    corrected = parse_itinerary_composition(
+        json.dumps(itinerary_draft([meal_placement(), visit_entry("10:10", "11:10")]))
+    )
+    second = restore_planning_state(
+        rescheduled, placement_skeleton=corrected, recommendation_catalog=catalog
+    )
+    completed = restore_planning_state(
+        second, **await node.itinerary_planner_node(second, {})
     )
     assert completed.agent_status["itinerary_planner"] == "completed"
     legs = completed.trip_workspace_v2.itinerary.transport_legs
@@ -966,7 +1014,7 @@ async def test_materialize_failure_returns_failed_status_and_bounded_context(mon
 
     catalog = make_catalog(restaurant_packet(), visit_packet(), route_packet())
     skeleton = parse_itinerary_composition(
-        json.dumps(itinerary_draft([meal_placement(), visit_entry("09:10", "10:10")]))
+        json.dumps(itinerary_draft([meal_placement(), visit_entry("10:10", "11:10")]))
     )
     current = restore_planning_state(
         make_planning_state(),

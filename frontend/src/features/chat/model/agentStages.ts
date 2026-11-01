@@ -118,6 +118,12 @@ function latestPopulatedActivityStage(steps: ThinkingStep[]): ActivityStageId | 
             current = stage;
             continue;
         }
+        // 组合反馈的返研轮次确实回到了研究：过程区焦点跟着回到研究，
+        // 重做结束后继续组合的步骤会把焦点再次推进到路线。
+        if (stage === 'research' && parseAgentRound(step.agentName || '').round > 0) {
+            current = stage;
+            continue;
+        }
         if (!current || ACTIVITY_STAGE_RANK[stage] > ACTIVITY_STAGE_RANK[current])
             current = stage;
     }
