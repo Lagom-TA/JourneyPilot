@@ -11,6 +11,7 @@ class TaskKind(str, Enum):
     INTENT_NORMALIZE = "intent_normalize"
     SUMMARY = "summary"
     QUICK_ANSWER = "quick_answer"
+    PLANNING = "planning"
     COMPOSITION = "composition"
 
 
@@ -33,7 +34,7 @@ def select_task_route(task, primary, fast, *, has_tools=False,
                       primary_effort="medium", fast_effort="low",
                       primary_protocol="chat_completions", fast_protocol="chat_completions"):
     task = TaskKind(task)
-    tier = "primary" if task in {TaskKind.COMPOSITION} else "fast"
+    tier = "primary" if task in {TaskKind.PLANNING, TaskKind.COMPOSITION} else "fast"
     reason = "task_default"
     if has_tools and tier == "primary" and not chat_tool_protocol_supported(primary):
         tier, reason = "fast", "tool_protocol_requires_fast"

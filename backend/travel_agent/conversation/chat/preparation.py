@@ -93,13 +93,7 @@ def _pending_plan_gate_payload(detail: Any) -> Dict[str, Any]:
 def _validate_gate_decision_version(detail: Any, decision: Any) -> None:
     """非取消决定必须绑定当前持久化的 gate 版本。
 
-    这里先挡住旧页面提交的 A 版决定；checkpoint 消费处还会用当前 state 重建
-    的 payload 再校验一次，覆盖“校验后 gate 又被更新”的竞态。
-
-    没有 token 的旧 checkpoint（本次版本之前写入的 gate）不能静默升级为可批准
-    状态，也不能卡死：这里放它进入 checkpoint 恢复，由 ``plan_gate_node`` 用
-    确定性重投影重新弹出一版带 token 的 gate。那次重投影不调用模型、不写入
-    gate 决定，用户拿到新 token 后再确认；取消仍由 ``plan_gate_node`` 放行。
+    checkpoint 消费处还会重建当前 payload 再校验一次，覆盖版本变化的竞态。
     """
 
     if decision is None or decision.action == "cancel":
@@ -107,9 +101,6 @@ def _validate_gate_decision_version(detail: Any, decision: Any) -> None:
     payload = _pending_plan_gate_payload(detail)
     expected = str(payload.get("approval_token") or "").strip()
     supplied = str(decision.approval_token or "").strip()
-    if not expected:
-        # 旧 gate：没有版本凭据可对照，只有重新展示一条路。
-        return
     try:
         matches = bool(supplied) and hmac.compare_digest(
             supplied.encode("utf-8"), expected.encode("utf-8")
@@ -560,7 +551,7 @@ async def _prepare_chat(
         identity_guard_text = (
             request.gate_decision.content
             if request.gate_decision is not None
-            and request.gate_decision.action in {"edit", "supplement"}
+            and request.gate_decision.action == "supplement"
             else ("" if request.gate_decision is not None else user_message)
         )
         if (

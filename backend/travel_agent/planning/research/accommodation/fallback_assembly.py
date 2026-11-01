@@ -222,7 +222,6 @@ def assemble_lodging_fallback_packet(
         if base_packet is not None
         else {
             "candidates": [],
-            "candidate_discovery_records": [],
             "source_records": [],
             "fact_assertions": [],
             "field_provenance": [],

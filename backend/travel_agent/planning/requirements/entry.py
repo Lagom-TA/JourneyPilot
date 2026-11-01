@@ -52,5 +52,5 @@ async def clarifier_node(
         )
         raise ScopeIdentityError(state.run_id or "")
 
-    logger.info("Clarifier: 受控旅行身份已确认，进入请求合同归一化")
+    logger.info("Clarifier: 受控旅行身份已确认，进入需求整理与研究方案生成")
     return compaction_updates

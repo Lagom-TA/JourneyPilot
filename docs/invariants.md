@@ -136,12 +136,12 @@ Tests:
 - `backend/tests/db/test_run_commands.py::test_a_claim_left_by_a_dead_process_is_redelivered`
 
 ### INV-CMD-005：一条追加要求只进 state 一次
-约定：追加要求先成为带 `command_id` 的 `IntentAmendment`，reducer 按 id 去重；只有在 Request Contract 归一化成功后才标记 consumed。
+约定：追加要求先成为带 `command_id` 的 `IntentAmendment`，reducer 按 id 去重；只有在需求整理节点成功更新当前需求后才标记 consumed。
 Owner: `backend/travel_agent/planning/state.py` 的 `_replace_amendments`、`backend/travel_agent/planning/requirements/amendments.py`
 Tests:
 - `backend/tests/runtime/test_run_command_contract.py::test_parallel_workers_do_not_store_the_same_amendment_twice`
 - `backend/tests/runtime/test_run_command_contract.py::test_replacing_amendments_keeps_order_and_distinct_commands`
-- `backend/tests/runtime/test_run_command_contract.py::test_supplement_is_consumed_only_after_contract_normalization`
+- `backend/tests/runtime/test_run_command_contract.py::test_supplement_is_consumed_only_after_requirements_preparation`
 
 ### INV-JOB-002：丢失租约的 worker 不写结果
 约定：续不上租约就取消处理器；写结果时按 `lease_owner` 过滤，丢失租约的那个写不进去。
@@ -164,32 +164,18 @@ Tests:
 
 ## 意图与编排
 
-### INV-INTENT-001：每条实质性输入都有明确去向
-约定：每条 clause 只能映射到 Intent、Constraint、受控身份、background_context、non_actionable、unsupported 或 unresolved；实质性 clause 不得被静默丢弃；unsupported 与 unresolved 必须带 reason code。
-Owner: `backend/travel_agent/planning/requirements/normalization/clauses.py`、`backend/travel_agent/planning/requirements/normalization/model.py`、`backend/travel_agent/planning/requirements/normalization/contracts.py`、`backend/travel_agent/planning/requirements/revision.py`
+### INV-INTENT-004：supplement 追加到同一条当前需求
+约定：计划门修改与运行中 supplement 都先转为 `IntentAmendment`，追加到当前需求文字并推进规划版本；研究相关修改失效旧方案与旧产物并返回需求整理节点。
+Owner: `backend/travel_agent/planning/requirements/amendments.py`、`backend/travel_agent/planning/requirements/supplements.py`、`backend/travel_agent/planning/requirements/natural_language.py`、`backend/travel_agent/planning/graph.py`
 Tests:
-- `backend/tests/planning/requirements/test_control_plane.py::test_provider_failure_keeps_safe_parts_and_flags_compound_clause`
-- `backend/tests/planning/requirements/test_control_plane.py::test_provider_failure_maps_an_unnumbered_alternative_request`
+- `backend/tests/planning/requirements/test_control_plane.py::test_supplement_updates_one_current_text_and_changes_generation`
+- `backend/tests/runtime/test_run_command_contract.py::test_supplement_is_consumed_only_after_requirements_preparation`
 
-### INV-INTENT-004：supplement 不得绕过 Request Contract Normalizer
-约定：计划门修改与运行中 supplement 都先转为 `IntentAmendment`，经过同一个归一化边界；研究相关修改失效当前代产物并返回归一化节点。
-Owner: `backend/travel_agent/planning/requirements/amendments.py`、`backend/travel_agent/planning/requirements/supplements.py`、`backend/travel_agent/planning/requirements/normalization/node.py`、`backend/travel_agent/planning/graph.py`
+### INV-PLAN-001：方案与任务说明来自当前规划版本
+约定：`ResearchPlan`、`PlanningGeneration` 与 `execution_plan` 绑定同一次方案确认；Worker 与行程组合消费确认后的自然语言任务和当前需求文字。
+Owner: `backend/travel_agent/planning/requirements/natural_language.py`、`backend/travel_agent/planning/research/research_plan_node.py`、`backend/travel_agent/planning/research/plan.py`
 Tests:
-- `backend/tests/planning/requirements/test_control_plane.py::test_runtime_supplement_routes_through_contract_normalization`
-- `backend/tests/runtime/test_run_command_contract.py::test_supplement_is_consumed_only_after_contract_normalization`
-
-### INV-PLAN-001：相同 Request Contract 必须得到相同执行图
-约定：`ResearchBriefV2`、`ResearchQueryPlan`、`CapabilityPlan` 与 `execution_plan` 只由纯函数投影；planner 节点不调用模型。
-Owner: `backend/travel_agent/planning/research/brief_builder.py`、`backend/travel_agent/planning/research/query_planner.py`、`backend/travel_agent/planning/research/capability_planning.py`、`backend/travel_agent/planning/research/plan.py`
-Tests:
-- `backend/tests/planning/requirements/test_control_plane.py::test_contract_and_capability_plan_are_deterministic_and_cover_hard_intents`
-
-### INV-INTENT-005：Intent 与 Constraint 只归一化一次
-约定：同一批 clause 的一次结构化调用同时产生 Intent 与 Constraint draft；显式数值预算由确定性规则补齐；Brief、Planner 与 Worker 只消费结构化合同，不再解释原始要求。
-Owner: `backend/travel_agent/planning/requirements/normalization/`、`backend/travel_agent/planning/requirements/constraints/assembly.py`
-Tests:
-- `backend/tests/planning/requirements/test_control_plane.py::test_full_trip_sentence_does_not_treat_party_size_as_nightly_budget`
-- `backend/tests/planning/requirements/test_control_plane.py::test_provider_failure_keeps_safe_parts_and_flags_compound_clause`
+- `backend/tests/planning/research/test_model_research_plan_flow.py::test_latest_user_words_and_confirmed_tasks_reach_research_and_delivery`
 
 ### INV-NODE-001：运行图节点都有用户可见元数据
 约定：运行图的每个节点都出现在后端三张运行时表（trace phase、agent 显示名、step 显示名）中；前端阶段表覆盖同一组节点并接受 `_rN` 与「（第N轮补充）」后缀，进度摘要表为可展示的节点提供标签与说明。

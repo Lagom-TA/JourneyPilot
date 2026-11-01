@@ -63,7 +63,6 @@ def _catalog_packets(state: TravelAgentState) -> list[ResearchPacket]:
         if (
             packet.worker_kind not in current
             or packet.generation_id != generation_id
-            or packet.constraint_pack_revision != state.constraint_pack_revision
             or packet.fact_data_revision != state.fact_data_revision
         ):
             continue
@@ -123,11 +122,6 @@ def _packet_candidate_closure(
         {
             **packet.model_dump(mode="python"),
             "candidates": list(candidates),
-            "candidate_discovery_records": [
-                record
-                for record in packet.candidate_discovery_records
-                if record.candidate_id in candidate_ids
-            ],
             "source_records": sources,
             "fact_assertions": facts,
             "field_provenance": provenance,

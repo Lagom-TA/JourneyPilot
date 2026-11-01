@@ -126,23 +126,7 @@ def _public_comparison_facts(field_paths: Sequence[str]) -> list[str]:
 
 
 def _trip_level_requirements(workspace: TripWorkspaceV2) -> list[str]:
-    categories = {
-        "budget_cap",
-        "elderly_mobility",
-        "health_condition",
-        "pace_preference",
-    }
-    requirements: list[str] = []
-    for anchor in workspace.user_input_anchors:
-        if anchor.input_kind != "hard_constraint" or not isinstance(
-            anchor.value, Mapping
-        ):
-            continue
-        if str(anchor.value.get("category") or "") not in categories:
-            continue
-        if anchor.public_summary and anchor.public_summary not in requirements:
-            requirements.append(anchor.public_summary)
-    return requirements
+    return [workspace.requirements] if workspace.requirements.strip() else []
 
 
 _LONG_DISTANCE_GAP_NOTES = {

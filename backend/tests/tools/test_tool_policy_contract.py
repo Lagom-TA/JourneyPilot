@@ -62,7 +62,6 @@ def fake_policy(monkeypatch):
 
 _EXPECTED_REAL_RESULTS: Dict[str, List[str]] = {
     "destination_researcher": [
-        "ask_user",
         "brave_search",
         "duckduckgo_search",
         "fetch_web",

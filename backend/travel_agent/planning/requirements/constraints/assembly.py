@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional
 
 from travel_agent.planning.requirements.constraints.extraction import (
     _extract_free_text,
-    merge_precomputed_constraint_extraction,
 )
 from travel_agent.planning.requirements.constraints.items import (
     _get,
@@ -45,9 +44,8 @@ async def build_constraint_pack(
     context_status: str = "unknown",
     missing_source_layers: Optional[List[str]] = None,
     partial_reasons: Optional[List[str]] = None,
-    precomputed_free_text_constraints: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
-    """组装唯一的 PersonalConstraintPack，供规划和快答共同消费。"""
+    """组装完整的个人约束包，供快问快答消费；规划只映射长期记忆和 preset。"""
     run_id = _get(state, "run_id") or ""
     now = _now_iso()
     constraints: List[Dict[str, Any]] = []
@@ -74,13 +72,7 @@ async def build_constraint_pack(
         source_layers.append("preset")
 
     free_items = constraint_free_text_sources(state, memory_facts)
-    extraction = (
-        merge_precomputed_constraint_extraction(
-            free_items, precomputed_free_text_constraints
-        )
-        if precomputed_free_text_constraints is not None
-        else await _extract_free_text(fast_llm, free_items)
-    )
+    extraction = await _extract_free_text(fast_llm, free_items)
     seen_sources: set = set()
     for it in free_items:
         extracted = extraction.items_for(it["id"])
@@ -145,12 +137,8 @@ async def build_constraint_pack(
                 if source and source not in source_layers:
                     source_layers.append(source)
 
-    previous_contract = _get(state, "request_contract") or _get(state, "request_contract_candidate")
-    previous_spec = getattr(previous_contract, "intent_spec", None)
-    prior_command_ids = list(getattr(previous_spec, "generated_from_command_ids", None) or [])
     source_ids = list(dict.fromkeys([
         "query_main",
-        *prior_command_ids,
         *(str(item.get("id") or "") for item in free_items
           if item.get("source") in {"plan_gate_amendment", "run_supplement"}),
     ]))

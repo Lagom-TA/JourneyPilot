@@ -6,7 +6,6 @@ from typing import Mapping, Optional, Sequence
 from travel_agent.planning.itinerary.mutation_contracts import CompositionMutation
 from travel_agent.planning.requirements.place_names import CONTROLLED_DESTINATION_ANCHOR_PREFIX, controlled_public_place_name
 from travel_agent.planning.itinerary.day_themes import derive_day_theme
-from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
 from travel_agent.planning.research.reference_service_contracts import ProviderReferenceService
 from travel_agent.planning.delivery.reference_service_presentation import reference_service_note
 from travel_agent.planning.transport_semantics import count_service_transfers
@@ -69,28 +68,6 @@ from travel_agent.planning.transport import (
     TransportSegment,
 )
 from travel_agent.planning.workspace import TripWorkspaceV2
-
-
-def _total_budget_cap_cny(anchors: Optional[list[UserInputAnchor]]) -> Optional[float]:
-    for anchor in anchors or []:
-        if anchor.input_kind != "hard_constraint" or not isinstance(
-            anchor.value, Mapping
-        ):
-            continue
-        if str(anchor.value.get("category") or "") != "budget_cap":
-            continue
-        params = anchor.value.get("params")
-        if not isinstance(params, Mapping):
-            continue
-        if (
-            str(params.get("currency") or "CNY").upper() != "CNY"
-            or str(params.get("per") or "") != "total"
-        ):
-            continue
-        amount = params.get("amount")
-        if isinstance(amount, (int, float)) and amount >= 0:
-            return float(amount)
-    return None
 
 
 def _controlled_destination_names(
@@ -210,7 +187,7 @@ def materialize_trip_workspace(
     workspace_revision: int,
     composition: ItineraryCompositionDraft,
     catalog: RecommendationCatalog,
-    intent_contract_snapshot: IntentContractSnapshot,
+    requirements: str,
     composition_mutations: list[CompositionMutation],
     user_input_anchors: Optional[list[UserInputAnchor]] = None,
     reference_services: Optional[list[ProviderReferenceService]] = None,
@@ -749,7 +726,7 @@ def materialize_trip_workspace(
                 lodging_stays=lodging,
                 transport_legs=transport,
             ),
-            budget_cap_cny=_total_budget_cap_cny(user_input_anchors),
+            budget_cap_cny=None,
         ),
         highlights=derive_trip_highlights(
             visits=visits,
@@ -767,7 +744,7 @@ def materialize_trip_workspace(
         workspace_revision=workspace_revision,
         itinerary=itinerary,
         recommendation_catalog=catalog,
-        intent_contract_snapshot=intent_contract_snapshot,
+        requirements=requirements,
         composition_mutations=composition_mutations,
         user_input_anchors=user_input_anchors or [],
         selection_slots=slots,

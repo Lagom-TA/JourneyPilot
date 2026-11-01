@@ -3,13 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from travel_agent.planning.references import EntityRef, EntityType
-from travel_agent.planning.requirements.intent_contracts import canonical_json_hash
+from tests.fixtures.hashes import canonical_json_hash
 from travel_agent.planning.research.candidates import (
     LodgingCandidate,
     TransportCandidate,
     VisitCandidate,
 )
-from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryRecord
 from travel_agent.planning.research.evidence import (
     FactAssertion,
     FactSourceLink,
@@ -17,23 +16,9 @@ from travel_agent.planning.research.evidence import (
     SourceRecord,
 )
 from travel_agent.planning.research.packets import ResearchPacket
-from travel_agent.planning.research.query_contracts import ResearchQuery
 from travel_agent.planning.weather.models import WeatherSensitivity
 
 RESEARCH_TIME = datetime(2026, 10, 5, 10, tzinfo=timezone.utc)
-
-def make_research_query(destination="tokyo", generation="generation_test", query_id="query_test"):
-    return ResearchQuery(
-        query_id=query_id,
-        generation_id=generation,
-        domain="lodging",
-        destination_id=destination,
-        query_kind="structural",
-        query_text="research places",
-        desired_candidate_count=3,
-        provider_route="mixed",
-        priority=1,
-    )
 
 def make_packet(
     packet_id="packet_test",
@@ -46,7 +31,7 @@ def make_packet(
     worker="destination_researcher",
 ):
     """带身份事实与可选矛盾来源的已校验 fixture。"""
-    candidates, facts, sources, provenance, discovery = [], [], [], [], []
+    candidates, facts, sources, provenance = [], [], [], []
     for candidate_id, destination in entities:
         identity = {
             "name": f"Museum {candidate_id}",
@@ -247,27 +232,12 @@ def make_packet(
                 **domain_fields,
             )
         )
-        discovery.append(
-            CandidateDiscoveryRecord(
-                candidate_id=candidate_id,
-                generation_id=generation,
-                query_ids=["query_test"],
-                origins=["structural_query"],
-                provider_audit_ids=[f"audit_{candidate_id}"],
-                discovered_at_rounds=[0],
-            )
-        )
     return ResearchPacket(
         research_packet_id=packet_id,
         run_id=run_id,
         generation_id=generation,
-        intent_spec_revision=1,
-        research_query_plan_id="plan_test",
-        executed_query_ids=["query_test"],
-        candidate_discovery_records=discovery,
         task_id="task_test",
         worker_kind=worker,
-        constraint_pack_revision=1,
         fact_data_revision=revision,
         query_context={"large_query": "query prose " * 100},
         candidates=candidates,

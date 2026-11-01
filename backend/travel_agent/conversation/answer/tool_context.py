@@ -14,6 +14,7 @@ from travel_agent.conversation.answer.exchange_context import (
     _extract_requested_currency_date,
 )
 from travel_agent.planning.state import TravelAgentState
+from travel_agent.runtime.cancellation import RunCancelled
 
 if TYPE_CHECKING:
     from travel_agent.runtime.events import EventBuffer
@@ -123,6 +124,8 @@ async def _build_realtime_tool_context(
             [context["evidence"]] if isinstance(context.get("evidence"), dict) else []
         )
         return {"prompt": context["prompt"], "evidence_records": evidence_records}
+    except RunCancelled:
+        raise
     except Exception as exc:
         logger.warning("FastAnswer 实时汇率工具预检失败: %s", exc)
         context = _build_exchange_realtime_context(

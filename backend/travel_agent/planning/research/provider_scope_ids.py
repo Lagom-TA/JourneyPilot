@@ -9,7 +9,6 @@ import json
 def provider_evidence_scope_id(
     *,
     run_id: str,
-    constraint_pack_revision: int,
     worker_kind: ProviderEvidenceWorkerKind,
     research_domain: ResearchDomain,
     candidate_kind: Optional[ProviderEvidenceCandidateKind],
@@ -19,7 +18,6 @@ def provider_evidence_scope_id(
 ) -> str:
     material = {
         "run_id": run_id,
-        "constraint_pack_revision": constraint_pack_revision,
         "worker_kind": worker_kind,
         "research_domain": research_domain.value,
         "candidate_kind": candidate_kind,

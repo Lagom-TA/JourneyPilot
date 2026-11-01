@@ -27,8 +27,7 @@ _DEEP_WORKER_NODES = {
 }
 _FINAL_OUTPUT_NODES = {"fast_answer_agent"}
 _PROGRESS_STEP_NODES = {
-    "request_contract_normalizer",
-    "research_brief_builder",
+    "requirements_preparer",
     "intent_amendment_router",
     "destination_geo_resolver",
     "weather_context_builder",
@@ -133,23 +132,6 @@ async def _handle_state_update(
         return
     if isinstance(state_update, dict) and state_update.get("run_id"):
         ctx.trace_run_id = str(state_update.get("run_id"))
-    if node_name == "plan_gate" and isinstance(state_update, dict):
-        decision = state_update.get("plan_gate_decision")
-        if (
-            isinstance(decision, dict)
-            and decision.get("action") in {"semantic_confirmed", "semantic_correction"}
-            and decision.get("checkpoint_confirmed") is True
-        ):
-            challenge_id = str(decision.get("challenge_id") or "")
-            approval_token = str(decision.get("approval_token") or "")
-            if challenge_id and approval_token:
-                yield {
-                    "type": "semantic_confirmation_accepted", "message_id": ctx.message_id,
-                    "run_id": ctx.trace_run_id, "challenge_id": challenge_id,
-                    "approval_token": approval_token,
-                    "semantic_action": "confirm" if decision.get("action") == "semantic_confirmed" else "correction",
-                    "ts_ms": run_ts_ms(),
-                }
     delivery = (
         state_update.get("delivery_bundle") if isinstance(state_update, dict) else None
     )

@@ -12,7 +12,7 @@ describe('public research activity', () => {
         expect(publicProgressText('找到 1 个结果')).toBe('找到 1 个结果');
     });
     it('projects stage cards without a fixed role description', () => {
-        const [planning] = researchGroups([step('request_contract_normalizer', { progressStatus: 'running' })], true, false);
+        const [planning] = researchGroups([step('requirements_preparer', { progressStatus: 'running' })], true, false);
         expect(planning.title).toBe('整理旅行需求');
         expect('description' in planning).toBe(false);
     });

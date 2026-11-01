@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
-from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryRecord
 from travel_agent.planning.research.candidates import ResearchCandidate
 from travel_agent.planning.research.evidence import (
     FactAssertion,
@@ -14,7 +13,7 @@ from travel_agent.planning.research.evidence import (
 )
 from travel_agent.schema import StrictModel
 
-RESEARCH_PACKET_CONTRACT_VERSION = "journeypilot.research_packet.v6"
+RESEARCH_PACKET_CONTRACT_VERSION = "journeypilot.research_packet.v7"
 
 
 class ResearchPacket(StrictModel):
@@ -31,19 +30,12 @@ class ResearchPacket(StrictModel):
     research_packet_id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
     generation_id: str = Field(min_length=1)
-    intent_spec_revision: int = Field(ge=1)
-    research_query_plan_id: str = Field(min_length=1)
-    executed_query_ids: List[str] = Field(default_factory=list)
-    candidate_discovery_records: List[CandidateDiscoveryRecord] = Field(
-        default_factory=list
-    )
     task_id: str = Field(min_length=1)
     worker_kind: Literal[
         "destination_researcher",
         "accommodation_researcher",
         "transport_researcher",
     ]
-    constraint_pack_revision: int = Field(ge=0)
     fact_data_revision: int = Field(ge=0)
     query_context: Dict[str, Any]
     candidates: List[ResearchCandidate] = Field(default_factory=list)
@@ -58,23 +50,6 @@ class ResearchPacket(StrictModel):
         candidate_ids = [candidate.candidate_id for candidate in self.candidates]
         if len(candidate_ids) != len(set(candidate_ids)):
             raise ValueError("research packet candidate ids must be unique")
-        discovery_candidate_ids = [
-            record.candidate_id for record in self.candidate_discovery_records
-        ]
-        if len(discovery_candidate_ids) != len(set(discovery_candidate_ids)):
-            raise ValueError("candidate discovery records must be unique")
-        if set(discovery_candidate_ids) != set(candidate_ids):
-            raise ValueError("every research candidate requires one discovery record")
-        if any(
-            record.generation_id != self.generation_id
-            for record in self.candidate_discovery_records
-        ):
-            raise ValueError("candidate discovery record belongs to another generation")
-        if any(
-            not set(record.query_ids) <= set(self.executed_query_ids)
-            for record in self.candidate_discovery_records
-        ):
-            raise ValueError("candidate discovery record names an unexecuted query")
         allowed_kinds = {
             "destination_researcher": {"visit", "dining"},
             "accommodation_researcher": {"lodging"},

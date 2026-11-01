@@ -1,1 +1,1 @@
-export const TRIP_WORKSPACE_CONTRACT_VERSION = 'journeypilot.trip_workspace.v11' as const;
+export const TRIP_WORKSPACE_CONTRACT_VERSION = 'journeypilot.trip_workspace.v12' as const;

@@ -9,7 +9,6 @@ from travel_agent.planning.itinerary import rail_paths
 from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
 from travel_agent.planning.itinerary.parsing import parse_itinerary_composition
 from travel_agent.planning.research.packets import ResearchPacket
-from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
 from travel_agent.planning.transport import TransportEndpoint
 from travel_agent.tools.governance import build_tool_execution_envelope
 
@@ -107,9 +106,7 @@ def _rail_workspace(mode="train", *, provider_name="12306"):
         workspace_revision=0,
         composition=skeleton,
         catalog=catalog,
-        intent_contract_snapshot=IntentContractSnapshot.from_intent_spec(
-            state.intent_spec
-        ),
+        requirements="东京行程需求",
         composition_mutations=[],
     )
 
@@ -287,6 +284,24 @@ async def test_12306_rail_keeps_empty_path_when_provider_has_no_geometry(monkeyp
 
     assert completed is workspace
     assert completed.itinerary.transport_legs[0].segments[0].path == []
+
+
+@pytest.mark.asyncio
+async def test_cancelled_run_does_not_continue_after_rail_path_lookup(monkeypatch):
+    from travel_agent.runtime.cancellation import RunCancelled, run_control_registry
+    from travel_agent.runtime.context import current_run_id
+
+    workspace = _rail_workspace("train")
+    _allow_route_tool(monkeypatch)
+    handle = run_control_registry.register(workspace.run_id)
+    handle.request_stop("user_cancel")
+    token = current_run_id.set(workspace.run_id)
+    try:
+        with pytest.raises(RunCancelled):
+            await rail_paths.complete_rail_route_paths(workspace)
+    finally:
+        current_run_id.reset(token)
+        run_control_registry.clear()
 
 
 @pytest.mark.asyncio

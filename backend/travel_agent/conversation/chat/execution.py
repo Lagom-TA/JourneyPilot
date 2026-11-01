@@ -382,23 +382,6 @@ async def execute_chat(
                         node=node_name,
                         trace_event_count=len(ctx.trace_events),
                     )
-                if node_name == "plan_gate" and isinstance(state_update, dict):
-                    decision = state_update.get("plan_gate_decision")
-                    probe = getattr(travel_workflow, "probe_semantic_decision", None)
-                    if isinstance(decision, dict) and decision.get("action") in {"semantic_confirmed", "semantic_correction"} and probe is not None:
-                        try:
-                            confirmed = await probe(
-                                trip_run.run_id, action=decision["action"],
-                                challenge_id=str(decision.get("challenge_id") or ""),
-                                approval_token=str(decision.get("approval_token") or ""),
-                            )
-                        except Exception:
-                            confirmed = False
-                            logger.warning("无法验证语义确认 checkpoint run_id=%s", trip_run.run_id, exc_info=True)
-                        if confirmed:
-                            projected = dict(state_update)
-                            projected["plan_gate_decision"] = {**decision, "checkpoint_confirmed": True}
-                            item = (kind, node_name, projected)
             async for ev in handler(item, ctx):
                 if ev.get("type") == "trace_event":
                     await trip_run_store.append_event(

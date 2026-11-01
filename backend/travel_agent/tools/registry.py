@@ -9,6 +9,7 @@ import logging
 import re
 from typing import Any, Dict, Iterable, List, Optional, Set
 
+from travel_agent.runtime.cancellation import RunCancelled
 from travel_agent.tools.gateway_contracts import ToolManifest
 from travel_agent.tools.manifest_inference import infer_tool_manifest
 
@@ -235,6 +236,8 @@ class ToolRegistry:
             if not isinstance(result, dict):
                 result = {"success": True, "result": result}
             return result
+        except RunCancelled:
+            raise
         except Exception as e:
             logger.warning(f"工具 [{tool_name}] 执行异常: {e}")
             return {"success": False, "error": str(e)}

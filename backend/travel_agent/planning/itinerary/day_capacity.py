@@ -2,14 +2,8 @@
 
 from __future__ import annotations
 
-from travel_agent.planning.requirements.intent_contracts import IntentKind
-from travel_agent.planning.requirements.intent_contracts import IntentTarget
-from travel_agent.planning.requirements.intent_contracts import TimeWindowIntentValue
 from travel_agent.planning.requirements.route_legs import (
     build_required_long_distance_legs,
-)
-from travel_agent.planning.requirements.route_legs import (
-    explicit_cross_day_return_required,
 )
 from travel_agent.planning.research.candidates import TransportCandidate
 from travel_agent.planning.research.domains import ResearchDomain
@@ -21,37 +15,13 @@ def daily_planning_windows(state, catalog):
     if draft is None:
         return []
 
-    custom_activity_hours = any(
-        intent.target in {IntentTarget.TRIP, IntentTarget.ITINERARY, IntentTarget.VISIT}
-        and intent.kind != IntentKind.MUST_EXCLUDE
-        and (
-            intent.kind == IntentKind.TIME_WINDOW
-            or isinstance(intent.value, TimeWindowIntentValue)
-            or any(
-                word in intent.value.model_dump_json().casefold()
-                for word in (
-                    "夜游",
-                    "夜景",
-                    "夜间",
-                    "evening",
-                    "night",
-                    "日出",
-                    "sunrise",
-                )
-            )
-        )
-        for intent in (state.intent_spec.active_items if state.intent_spec else [])
-    )
     legs = build_required_long_distance_legs(
         state.controlled_trip_identity or {},
-        cross_day_return_required=explicit_cross_day_return_required(
-            state.user_query or ""
-        ),
+        cross_day_return_required=False,
     )
     scopes = {
         provider_evidence_scope_id(
             run_id=state.run_id,
-            constraint_pack_revision=state.constraint_pack_revision,
             worker_kind="transport_researcher",
             research_domain=ResearchDomain.LONG_DISTANCE_TRANSPORT,
             candidate_kind=None,
@@ -106,14 +76,9 @@ def daily_planning_windows(state, catalog):
                 "suggested_start": f"{min(start, 1440) // 60:02d}:{min(start, 1440) % 60:02d}",
                 "suggested_end": f"{max(end, 0) // 60:02d}:{max(end, 0) % 60:02d}",
                 "visit_minutes": visit_minutes,
-                "apply_capacity": not custom_activity_hours,
+                "apply_capacity": True,
                 "transport_anchors": applied,
-                "assumption": (
-                    "用户已指定活动时段，以下默认日间窗口不用于裁剪候选；排程须按用户时段重新计算。"
-                    if custom_activity_hours
-                    else ""
-                )
-                + "默认09:00–18:00活动；抵达后预留45分钟、离开前60分钟，另留用餐/休息/市内移动。按用户时段、实际路线和预约调整，不能当作已核验接驳时间。",
+                "assumption": "默认09:00–18:00活动；抵达后预留45分钟、离开前60分钟，另留用餐/休息/市内移动。按用户时段、实际路线和预约调整，不能当作已核验接驳时间。",
             }
         )
     return windows

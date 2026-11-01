@@ -4,10 +4,7 @@ from __future__ import annotations
 
 import json
 
-from tests.fixtures.research_packets import (
-    make_packet,
-    make_research_query,
-)
+from tests.fixtures.research_packets import make_packet
 from travel_agent.memory.research_context import (
     format_worker_research_context,
     project_research_context,
@@ -19,7 +16,7 @@ def _scope(**overrides):
         "worker_kind": "accommodation_researcher",
         "run_id": "run_test",
         "generation_id": "generation_test",
-        "planned_queries": [make_research_query()],
+        "destination_ids": ["tokyo"],
         "assignment": {},
         **overrides,
     }
@@ -39,7 +36,7 @@ def test_view_filters_runs_generations_destinations_and_keeps_latest_candidate()
         p.research_packet_id: p
         for p in (old, new, other_city, other_run, other_generation)
     }
-    scope = _scope(planned_queries=[make_research_query(), make_research_query("osaka", "generation_old")])
+    scope = _scope()
     first = format_worker_research_context(packets, **scope)
     second = format_worker_research_context(
         dict(reversed(list(packets.items()))), **scope

@@ -1,16 +1,11 @@
-"""A checkpoint may replace intake only when it contains the same input."""
+"""检查点只在输入一致且可由当前规划图恢复时继续。"""
 
+import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from travel_agent.planning.state import TravelAgentState
-from travel_agent.planning.workflow import TravelPlanningWorkflow
-from travel_agent.planning.requirements.intent_contracts import canonical_json_hash
-from travel_agent.planning.requirements.confirmation_contracts import (
-    AssertionDecision, AssertionDecisionInput, AssertionMeaning, RequirementDomain,
-    SourceEvidence, SourceKind, build_assertion_candidate, build_confirmation_challenge,
-    build_confirmation_receipt,
-)
+from travel_agent.planning.workflow import CheckpointContractError, TravelPlanningWorkflow
 
 
 async def test_checkpoint_input_probe_binds_run_session_identity_and_original_text():
@@ -48,41 +43,22 @@ async def test_checkpoint_input_probe_binds_run_session_identity_and_original_te
     assert not wrong_text and not wrong_session and not wrong_identity and not wrong_evidence
 
 
-async def test_semantic_ack_probe_requires_the_durable_matching_complete_receipt():
-    identity = {"destinations": [{"name": "杭州"}]}
-    source = SourceEvidence(source_id="s1", kind=SourceKind.CURRENT_REQUEST, text="不喝咖啡", revision=1)
-    assertion = build_assertion_candidate(
-        source=source, span_start=2, span_end=4, quote="咖啡",
-        domain=RequirementDomain.FOOD, meaning=AssertionMeaning.EXCLUDE,
-        allowed_decisions=[AssertionDecision.AVOID, AssertionDecision.UNKNOWN], object_label="咖啡",
-    )
-    challenge = build_confirmation_challenge(
-        run_id="semantic-run", session_id="semantic-session", revision=1,
-        identity_hash=canonical_json_hash(identity), policy_version="v1", candidate_contract_hash="b" * 64,
-        sources=[source], assertions=[assertion],
-    )
-    receipt = build_confirmation_receipt(
-        challenge=challenge, sources=[source], assertions=[assertion],
-        decisions=[AssertionDecisionInput(assertion_id=assertion.assertion_id, decision=AssertionDecision.AVOID)],
-        submitted_token=challenge.token, run_id="semantic-run", session_id="semantic-session",
-        identity_hash=canonical_json_hash(identity), policy_version="v1",
-    )
-    builder = StateGraph(TravelAgentState)
-    builder.add_node("offline_noop", lambda _state: {})
-    builder.add_edge(START, "offline_noop")
-    builder.add_edge("offline_noop", END)
+@pytest.mark.parametrize("pending", ["request_contract_normalizer", "plan_gate"])
+async def test_old_checkpoint_is_rejected_before_resumption(pending):
+    from langgraph.types import interrupt
+    from travel_agent.planning.graph import build_travel_workflow
+
+    builder = StateGraph(dict)
+    builder.add_node(pending, lambda state: interrupt({"old": "plan"}))
+    builder.add_edge(START, pending)
+    builder.add_edge(pending, END)
     saver = InMemorySaver()
-    graph = builder.compile(checkpointer=saver)
-    await graph.ainvoke(TravelAgentState(
-        run_id="semantic-run", session_id="semantic-session", user_id="local",
-        controlled_trip_identity=identity, semantic_receipt=receipt, semantic_candidate_hash="b" * 64,
-        plan_gate_decision={"action": "semantic_confirmed", "challenge_id": challenge.token, "approval_token": "gate-token"},
-    ), {"configurable": {"thread_id": "semantic-run"}})
+    await builder.compile(checkpointer=saver).ainvoke(
+        {"run_id": "offline-run", "user_query": "喜欢园林"},
+        {"configurable": {"thread_id": "offline-run"}},
+    )
     workflow = object.__new__(TravelPlanningWorkflow)
-    workflow._checkpointer, workflow._graph = saver, graph
-    assert await workflow.probe_semantic_decision(
-        "semantic-run", action="semantic_confirmed", challenge_id=challenge.token, approval_token="gate-token",
-    )
-    assert not await workflow.probe_semantic_decision(
-        "semantic-run", action="semantic_confirmed", challenge_id=challenge.token, approval_token="stale-token",
-    )
+    workflow._checkpointer = saver
+    workflow._graph = build_travel_workflow().compile(checkpointer=saver)
+    with pytest.raises(CheckpointContractError, match="重新规划"):
+        await workflow.probe_checkpoint("offline-run")

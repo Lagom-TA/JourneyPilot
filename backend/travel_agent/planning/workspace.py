@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Literal, Union
 from pydantic import Field, model_validator
 
 from travel_agent.planning.itinerary.mutation_contracts import CompositionMutation
-from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
 from travel_agent.planning.itinerary.models import (
     DiningStop,
     LodgingStay,
@@ -29,7 +28,7 @@ from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.weather.models import WeatherProposalDecision
 from travel_agent.schema import StrictModel
 
-TRIP_WORKSPACE_CONTRACT_VERSION = "journeypilot.trip_workspace.v11"
+TRIP_WORKSPACE_CONTRACT_VERSION = "journeypilot.trip_workspace.v12"
 
 
 class TripWorkspaceV2(StrictModel):
@@ -41,7 +40,7 @@ class TripWorkspaceV2(StrictModel):
     workspace_revision: int = Field(ge=0)
     itinerary: StructuredItineraryV2
     recommendation_catalog: RecommendationCatalog
-    intent_contract_snapshot: IntentContractSnapshot
+    requirements: str = ""
     composition_mutations: List[CompositionMutation] = Field(default_factory=list)
     user_input_anchors: List[UserInputAnchor] = Field(default_factory=list)
     selection_slots: List[SelectionSlot] = Field(default_factory=list)
@@ -57,8 +56,6 @@ class TripWorkspaceV2(StrictModel):
         catalog = self.recommendation_catalog
         if catalog.generation_id != self.generation_id:
             raise ValueError("workspace and recommendation catalog generations differ")
-        if self.intent_contract_snapshot.generation_id != self.generation_id:
-            raise ValueError("workspace and intent contract generations differ")
         mutation_ids = [item.mutation_id for item in self.composition_mutations]
         if len(mutation_ids) != len(set(mutation_ids)):
             raise ValueError("workspace composition mutations must be unique")

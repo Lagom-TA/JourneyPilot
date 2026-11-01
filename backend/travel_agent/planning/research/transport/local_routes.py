@@ -12,10 +12,6 @@ from travel_agent.planning.nodes import NODE_ITINERARY
 from travel_agent.planning.references import EntityRef, EntityType
 from travel_agent.planning.research.candidates import TransportCandidate
 from travel_agent.planning.research.catalog import RecommendationCatalog
-from travel_agent.planning.research.discovery_contracts import (
-    CandidateDiscoveryOrigin,
-    CandidateDiscoveryRecord,
-)
 from travel_agent.planning.research.evidence import (
     FactAssertion,
     FactSourceLink,
@@ -121,7 +117,6 @@ def _route_packet(
     sources: list[SourceRecord] = []
     facts: list[FactAssertion] = []
     provenance: list[FieldProvenance] = []
-    discoveries: list[CandidateDiscoveryRecord] = []
     added_candidate_ids: set[str] = set()
     packet_digest = hashlib.sha256(
         f"{state.run_id}\0{gap.gap_id}\0{envelope.get('audit_id', '')}".encode(
@@ -255,15 +250,6 @@ def _route_packet(
         sources.append(source)
         facts.extend(route_facts)
         provenance.extend(route_provenance)
-        discoveries.append(
-            CandidateDiscoveryRecord(
-                candidate_id=candidate_id,
-                generation_id=catalog.generation_id,
-                origins=[CandidateDiscoveryOrigin.TARGETED_REPAIR],
-                provider_audit_ids=[audit_id],
-                discovered_at_rounds=[0],
-            )
-        )
         added_candidate_ids.add(candidate_id)
 
     if not candidates:
@@ -272,12 +258,8 @@ def _route_packet(
         research_packet_id=packet_id,
         run_id=state.run_id,
         generation_id=catalog.generation_id,
-        intent_spec_revision=catalog.intent_spec_revision,
-        research_query_plan_id=catalog.research_query_plan_id,
-        candidate_discovery_records=discoveries,
         task_id=f"{NODE_ITINERARY}:{gap.gap_id}",
         worker_kind="transport_researcher",
-        constraint_pack_revision=state.constraint_pack_revision,
         fact_data_revision=catalog.fact_data_revision,
         query_context={
             "connector_gap_id": gap.gap_id,
@@ -354,12 +336,7 @@ async def complete_local_connector_routes(
     packets = [*catalog.research_packets, *additions]
     return RecommendationCatalog(
         generation_id=catalog.generation_id,
-        intent_spec_revision=catalog.intent_spec_revision,
-        research_query_plan_id=catalog.research_query_plan_id,
         fact_data_revision=catalog.fact_data_revision,
         weather_data_revision=catalog.weather_data_revision,
         research_packets=packets,
-        candidate_discovery_records=[
-            record for packet in packets for record in packet.candidate_discovery_records
-        ],
     )

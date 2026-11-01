@@ -70,7 +70,6 @@ class ProviderEvidenceScope(_StrictFrozenModel):
         pattern=r"^[a-f0-9]{64}$",
     )
     run_id: str = Field(min_length=1)
-    constraint_pack_revision: int = Field(ge=0)
     worker_kind: ProviderEvidenceWorkerKind
     research_domain: ResearchDomain
     candidate_kind: Optional[ProviderEvidenceCandidateKind] = None
@@ -122,7 +121,6 @@ class ProviderEvidenceScope(_StrictFrozenModel):
                 raise ValueError("place Provider scope requires only target_identity")
         expected_scope_id = provider_evidence_scope_id(
             run_id=self.run_id,
-            constraint_pack_revision=self.constraint_pack_revision,
             worker_kind=self.worker_kind,
             research_domain=self.research_domain,
             candidate_kind=self.candidate_kind,

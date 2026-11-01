@@ -1,14 +1,4 @@
-"""
-内置工具（精简版）
-
-保留受控本地边界工具：
-  - clarifier_node：对整体请求的初判澄清
-  - ask_user：destination_researcher 遇到目的地重大歧义时主动澄清（通过 ReAct 工具调用触发）
-  - destination_researcher：通过 Nominatim 查询全球稳定地点身份与国家边界
-其它 Worker（transport/accommodation/itinerary）保持禁用 ask_user。
-
-预算计算由 LLM 内置知识覆盖，汇率查询与旅行须知分别由 MCP 搜索与 RAG 知识库承担。
-"""
+"""注册用户交互、地点查询与路线查询的内置工具。"""
 
 from __future__ import annotations
 

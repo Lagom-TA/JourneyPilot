@@ -12,10 +12,11 @@ from travel_agent.planning.state import TravelAgentState
 
 
 def _brief_dict(state: TravelAgentState) -> Dict[str, Any]:
-    brief = state.research_brief
-    if brief is None:
+    from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
+
+    if not state.controlled_trip_identity:
         return {}
-    identity = brief.controlled_trip_identity
+    identity = ControlledTripIdentity.model_validate(state.controlled_trip_identity)
     return {
         "destination": " → ".join(
             item.name or item.display_name for item in identity.destinations
@@ -23,10 +24,7 @@ def _brief_dict(state: TravelAgentState) -> Dict[str, Any]:
         "duration_days": identity.duration_days,
         "departure_city": identity.origin.name or identity.origin.display_name,
         "departure_city_status": "provided",
-        "constraints": [
-            item.public_summary
-            for item in (state.intent_spec.active_items if state.intent_spec else [])
-        ],
+        "constraints": [],
         "travel_style": identity.style.primary,
     }
 
@@ -52,7 +50,7 @@ def _as_labels(value: Any, limit: int = 5) -> list[str]:
     return labels
 
 
-def build_trip_summary_card(brief: Dict[str, Any], boundary: str) -> Dict[str, Any]:
+def build_trip_summary_card(brief: Dict[str, Any]) -> Dict[str, Any]:
     """不调用模型，把结构化行程事实投影为面向用户的摘要卡。"""
     destination = _as_text(brief.get("destination"), 40) or "本次旅行"
     duration_days = brief.get("duration_days")
@@ -103,12 +101,8 @@ def build_trip_summary_card(brief: Dict[str, Any], boundary: str) -> Dict[str, A
         if departure_provided
         else f"目的地为{destination}；出发地稍后决定，先安排当地路线与住宿，再补充往返交通。"
     )
-    if boundary == "verified":
-        current_focus = "已核对主要旅行信息，正在整理完整行程。"
-        next_milestone = "生成完整旅行计划"
-    else:
-        current_focus = "正在根据旅行需求查询交通、住宿和沿途路线。"
-        next_milestone = "核对主要交通与开放信息"
+    current_focus = "正在根据旅行需求查询交通、住宿和沿途路线。"
+    next_milestone = "核对主要交通与开放信息"
 
     return TripSummaryCard(
         headline=headline,
@@ -123,4 +117,4 @@ def build_trip_summary_card(brief: Dict[str, Any], boundary: str) -> Dict[str, A
 
 
 async def trip_summary_card_after_brief_node(state: TravelAgentState) -> Dict[str, Any]:
-    return {"trip_summary_card": build_trip_summary_card(_brief_dict(state), "brief")}
+    return {"trip_summary_card": build_trip_summary_card(_brief_dict(state))}

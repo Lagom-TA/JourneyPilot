@@ -18,8 +18,7 @@ const NODE_STAGES: ReadonlyArray<readonly [
 ]> = [
     ['supervisor', '规划协调', 'planning'],
     ['scope_clarifier', '需求确认', 'planning'],
-    ['request_contract_normalizer', '整理需求', 'planning'],
-    ['research_brief_builder', '准备查询', 'planning'],
+    ['requirements_preparer', '整理需求', 'planning'],
     ['research_plan_generator', '研究生成', 'planning'],
     ['minimum_delivery_draft_builder', '行程框架', 'planning'],
     ['intent_amendment_router', '要求更新', 'planning'],
@@ -27,7 +26,7 @@ const NODE_STAGES: ReadonlyArray<readonly [
     ['weather_context_builder', '天气信息', 'planning'],
     ['trip_summary_card_brief', '旅行摘要', 'planning'],
     ['planner', '制定计划', 'planning'],
-    ['plan_gate', '确认计划', 'planning'],
+    ['plan_gate', '确认方案', 'planning'],
     ['dispatcher', '安排查询', 'planning'],
     ['destination_researcher', '目的地调研', 'research'],
     ['transport_researcher', '交通查询', 'research'],
@@ -67,8 +66,7 @@ export type ActivityStageId = 'requirements' | 'research' | 'route' | 'delivery'
 const ACTIVITY_STAGE_BY_NODE: Record<string, ActivityStageId> = {
     supervisor: 'requirements',
     scope_clarifier: 'requirements',
-    request_contract_normalizer: 'requirements',
-    research_brief_builder: 'requirements',
+    requirements_preparer: 'requirements',
     research_plan_generator: 'requirements',
     minimum_delivery_draft_builder: 'requirements',
     intent_amendment_router: 'requirements',
@@ -156,9 +154,9 @@ export function deriveActivityTitle(args: {
     interrupted?: boolean;
 }): string {
     if (args.gatePending)
-        return '等待确认旅行需求';
+        return '等待确认研究方案';
     switch (args.runStatus) {
-        case 'awaiting_input': return '等待确认旅行需求';
+        case 'awaiting_input': return '等待确认研究方案';
         case 'cancel_requested': return '正在停止规划';
         case 'cancelled': return '旅行规划已取消';
         case 'interrupted': return '旅行规划已中断';

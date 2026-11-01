@@ -8,10 +8,13 @@ import logging
 import time
 from typing import Any, Awaitable, Callable, Dict, Iterator, List, Optional, TypeVar
 from langgraph.errors import GraphInterrupt
-from travel_agent.planning.requirements.request_contracts import IntentAmendment, IntentAmendmentRejection
+from travel_agent.planning.requirements.amendment_contracts import IntentAmendment, IntentAmendmentRejection
 from .nodes import (
     NODE_INTENT_AMENDMENT_ROUTER as _INTENT_AMENDMENT_ROUTER,
-    NODE_REQUEST_CONTRACT_NORMALIZER as _REQUEST_CONTRACT_NORMALIZER,
+    NODE_PLAN_GATE as _PLAN_GATE,
+    NODE_REQUIREMENTS_PREPARER as _REQUIREMENTS_PREPARER,
+    NODE_RESEARCH_PLAN_GENERATOR as _RESEARCH_PLAN_GENERATOR,
+    NODE_WEATHER_CONTEXT_BUILDER as _WEATHER_CONTEXT_BUILDER,
     RESEARCH_WORKER_NODES as _RESEARCH_WORKER_NODES,
 )
 from ..runtime.context import (
@@ -175,8 +178,8 @@ def _should_divert_to_amendment_router(
 
     return bool(
         fresh_amendments
-        and getattr(state, "request_contract", None) is not None
-        and node_name not in {_REQUEST_CONTRACT_NORMALIZER, _INTENT_AMENDMENT_ROUTER}
+        and getattr(state, "planning_generation", None) is not None
+        and node_name not in {_REQUIREMENTS_PREPARER, _INTENT_AMENDMENT_ROUTER, _PLAN_GATE}
     )
 
 
@@ -186,7 +189,6 @@ async def _settle_amendments(
     node_name: str,
     run_id: str,
     claimed_applied_ids: List[str],
-    intent_spec_revision: Any,
     generation_id: Any,
     rejected_amendments: List[IntentAmendmentRejection],
     deferred_command_ids: List[str],
@@ -202,7 +204,6 @@ async def _settle_amendments(
                 node=node_name,
                 result={
                     "outcome": "applied",
-                    "intent_spec_revision": intent_spec_revision,
                     "generation_id": generation_id,
                 },
             )
@@ -226,7 +227,6 @@ async def _settle_amendments(
                             if rejection.reason_code
                             in {
                                 "research_window_closed",
-                                "composition_window_closed",
                                 "delivery_already_committed",
                             }
                             else "rejected"
@@ -305,20 +305,8 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                 existing_amendments = list(
                     getattr(state, "pending_intent_amendments", None) or []
                 )
-                existing_ids = {
-                    item.command_id
-                    for item in [
-                        *existing_amendments,
-                        *(getattr(state, "unresolved_intent_amendments", None) or []),
-                    ]
-                }
-                contract = getattr(state, "request_contract", None)
-                command_ids = set(getattr(getattr(contract, "intent_spec", None), "generated_from_command_ids", None) or [])
-                existing_ids.update(
-                    clause.source_ref_id for clause in (getattr(contract, "clause_ledger", None) or [])
-                    if getattr(clause.disposition, "value", "") in {"unresolved", "unsupported"}
-                    and clause.source_ref_id in command_ids
-                )
+                existing_ids = {item.command_id for item in existing_amendments}
+                existing_ids.update(getattr(state, "applied_intent_amendment_ids", None) or [])
                 fresh_amendments = _claim_fresh_amendments(
                     claimed_supplements, existing_ids=existing_ids
                 )
@@ -369,13 +357,22 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                     fresh_amendments
                     and isinstance(result, dict)
                     and node_name
-                    not in {_REQUEST_CONTRACT_NORMALIZER, _INTENT_AMENDMENT_ROUTER}
+                    not in {_REQUIREMENTS_PREPARER, _INTENT_AMENDMENT_ROUTER}
                 ):
                     result = dict(result)
                     result["pending_intent_amendments"] = [
                         *(result.get("pending_intent_amendments") or []),
                         *fresh_amendments,
                     ]
+                    if node_name == _PLAN_GATE:
+                        action = (result.get("plan_gate_decision") or {}).get("action")
+                        continuation = {
+                            "approve": _WEATHER_CONTEXT_BUILDER,
+                            "amendment": _REQUIREMENTS_PREPARER,
+                            "retry": _RESEARCH_PLAN_GENERATOR,
+                        }.get(action)
+                        if continuation is not None:
+                            result["intent_amendment_resume_node"] = continuation
                 if (
                     handle is not None
                     and node_name == "delivery_finalizer"
@@ -421,11 +418,6 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                     node_name=node_name,
                     run_id=run_id,
                     claimed_applied_ids=claimed_applied_ids,
-                    intent_spec_revision=(
-                        result.get("intent_spec_revision")
-                        if isinstance(result, dict)
-                        else None
-                    ),
                     generation_id=getattr(_generation, "generation_id", None),
                     rejected_amendments=rejected_amendments,
                     deferred_command_ids=deferred_command_ids,

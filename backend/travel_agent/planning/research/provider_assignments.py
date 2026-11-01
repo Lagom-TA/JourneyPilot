@@ -37,7 +37,6 @@ def scope_attempt_numbers(
 def build_provider_evidence_assignments(
     *,
     run_id: str,
-    constraint_pack_revision: int,
     worker_kind: ProviderEvidenceWorkerKind,
     controlled_trip_identity: Mapping[str, Any],
     prior_scope_attempts: Mapping[str, int],
@@ -145,7 +144,6 @@ def build_provider_evidence_assignments(
     ) in dimensions:
         scope_id = provider_evidence_scope_id(
             run_id=run_id,
-            constraint_pack_revision=constraint_pack_revision,
             worker_kind=worker_kind,
             research_domain=domain,
             candidate_kind=candidate_kind,
@@ -158,7 +156,6 @@ def build_provider_evidence_assignments(
                 scope=ProviderEvidenceScope(
                     scope_id=scope_id,
                     run_id=run_id,
-                    constraint_pack_revision=constraint_pack_revision,
                     worker_kind=worker_kind,
                     research_domain=domain,
                     candidate_kind=candidate_kind,
@@ -177,7 +174,6 @@ def parse_provider_evidence_assignments(
     *,
     expected_worker: ProviderEvidenceWorkerKind,
     expected_run_id: str,
-    expected_constraint_pack_revision: int,
 ) -> list[ProviderEvidenceAssignment]:
     raw = assignment.get("provider_evidence_assignments")
     if not isinstance(raw, list) or not raw:
@@ -189,7 +185,6 @@ def parse_provider_evidence_assignments(
     if any(
         item.scope.worker_kind != expected_worker
         or item.scope.run_id != expected_run_id
-        or item.scope.constraint_pack_revision != expected_constraint_pack_revision
         for item in parsed
     ):
         raise ValueError("Provider evidence assignment authority mismatch")

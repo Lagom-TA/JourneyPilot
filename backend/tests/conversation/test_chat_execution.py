@@ -25,6 +25,22 @@ from travel_agent.runtime.journal import current_execution_lease
 from travel_agent.runtime.run_contracts import TripRunStatus
 
 
+async def test_cancelled_realtime_exchange_preflight_does_not_continue(resources, monkeypatch):
+    from travel_agent.conversation.answer.tool_context import _build_realtime_tool_context
+    from travel_agent.planning.state import TravelAgentState
+    from travel_agent.runtime.cancellation import RunCancelled
+    from travel_agent.tools import execution, registry
+
+    monkeypatch.setattr(registry, "get_tool_registry", lambda: SimpleNamespace(has_tool=lambda _name: True))
+    async def cancelled(*_args, **_kwargs):
+        raise RunCancelled("run", "fast_answer_agent")
+    monkeypatch.setattr(execution, "execute_tool", cancelled)
+    with pytest.raises(RunCancelled):
+        await _build_realtime_tool_context(
+            state=TravelAgentState(run_id="run", user_query="美元兑人民币汇率是多少？"), stream_queue=None,
+        )
+
+
 @pytest.mark.parametrize("cancel_wins", [False, True])
 async def test_await_input_persists_then_marks_checkpoint_then_displays(
     resources, monkeypatch, cancel_wins
@@ -91,41 +107,6 @@ async def test_await_input_persists_then_marks_checkpoint_then_displays(
         assert run.status is TripRunStatus.AWAITING_INPUT
     assert len(resources.chat_session_memory.turns) == 1
     assert not await resources.run_execution_store.has_live_lease(run.run_id)
-
-
-@pytest.mark.parametrize("durable", [False, True])
-async def test_semantic_ack_is_sent_only_after_checkpoint_verification(resources, durable):
-    runs = resources.trip_run_store
-    run = await runs.create_run(session_id="semantic-ack", user_id="local", mode="deep", resume_policy="checkpoint")
-    challenge = "challenge_" + "a" * 64
-
-    class Workflow:
-        async def probe_checkpoint(self, _run_id):
-            return True, "checkpoint"
-
-        async def probe_semantic_decision(self, _run_id, **kwargs):
-            assert kwargs == {"action": "semantic_confirmed", "challenge_id": challenge, "approval_token": "token"}
-            return durable
-
-        async def astream(self, **_kwargs):
-            yield {"plan_gate": {"plan_gate_decision": {
-                "action": "semantic_confirmed", "challenge_id": challenge, "approval_token": "token",
-            }}}
-            yield {"__interrupt__": [{"gate": "plan", "type": "approval_gate", "payload": {}}]}
-
-    resources.travel_workflow = Workflow()
-    resources.checkpointer = object()
-    body = chat_body(
-        run_id=run.run_id, session_id="semantic-ack",
-        route_decision=decision(RouteName.TRIP_PLANNING).model_dump(mode="json"),
-    )
-    prepared = await prepare(body, resources)
-    events = [event async for event in execute(body, prepared, resources) if event is not None]
-    acknowledgments = [event for event in events if event.get("type") == "semantic_confirmation_accepted"]
-    assert len(acknowledgments) == int(durable)
-    if durable:
-        assert acknowledgments[0]["challenge_id"] == challenge
-        assert acknowledgments[0]["semantic_action"] == "confirm"
 
 
 async def test_pending_cancel_is_consumed_before_workflow_can_start(resources):

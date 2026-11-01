@@ -39,7 +39,7 @@ describe('agent stage projection', () => {
     it('按真实步骤投影当前过程标题，并允许补充轮次回退', () => {
         const base = { isStreaming: true, isSynthesizing: false, answerStarted: false };
         expect(deriveActivityTitle({ ...base, steps: [] })).toBe('整理旅行需求');
-        expect(deriveActivityTitle({ ...base, steps: [step('request_contract_normalizer')] })).toBe('整理旅行需求');
+        expect(deriveActivityTitle({ ...base, steps: [step('requirements_preparer')] })).toBe('整理旅行需求');
         expect(deriveActivityTitle({ ...base, steps: [step('目的地调研（第2轮补充）')] })).toBe('查找旅行资料');
         expect(deriveActivityTitle({ ...base, steps: [step('安排查询'), step('行程规划')] })).toBe('安排每天路线');
         // 路线开始后迟到的并行研究事件不回退阶段。
@@ -64,7 +64,7 @@ describe('activity stage filtering', () => {
     it('从事件顺序推导最新阶段，路线不会因迟到研究回退', () => {
         expect(latestActivityStageId({ ...base, steps: [] })).toBeNull();
         expect(latestActivityStageId({ ...base, isStreaming: true, steps: [] })).toBe('requirements');
-        expect(latestActivityStageId({ ...base, steps: [step('request_contract_normalizer')] })).toBe('requirements');
+        expect(latestActivityStageId({ ...base, steps: [step('requirements_preparer')] })).toBe('requirements');
         expect(latestActivityStageId({ ...base, steps: [step('目的地调研')] })).toBe('research');
         expect(latestActivityStageId({ ...base, steps: [step('目的地调研'), step('行程规划')] })).toBe('route');
         expect(latestActivityStageId({ ...base, steps: [step('行程规划'), step('目的地调研')] })).toBe('route');
@@ -80,7 +80,7 @@ describe('activity stage filtering', () => {
         expect(latestActivityStageId({ ...base, steps: routeSteps, answerStarted: true })).toBe('delivery');
     });
     it('按阶段过滤时保留顺序，并单独给出最近有内容的阶段', () => {
-        const steps = [step('request_contract_normalizer'), step('目的地调研'), step('交通查询'), step('行程规划')];
+        const steps = [step('requirements_preparer'), step('目的地调研'), step('交通查询'), step('行程规划')];
         expect(filterStepsForActivityStage(steps, 'research').map(item => item.agentName)).toEqual(['目的地调研', '交通查询']);
         expect(filterStepsForActivityStage(steps, 'delivery')).toEqual([]);
         expect(latestActivityStageWithSteps(steps)).toBe('route');

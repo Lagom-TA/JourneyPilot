@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from travel_agent.tools.gateway_contracts import ToolGatewayDecision
 from ..runtime.budget import RunBudgetExhausted, current_budget_ledger, guard_run_budget
+from ..runtime.cancellation import RunCancelled, check_cancel_requested
 from ..runtime.operations import (
     ModelWindowClosed,
     await_model_operation,
@@ -24,59 +25,14 @@ from .result import ToolResultOutcome, classify_tool_result
 logger = logging.getLogger(__name__)
 
 
-def _authorization_blocked_envelope(
-    tool_name: str, reason_code: str
-) -> Dict[str, Any]:
-    """Return a safe denial envelope without arguments, budget or Provider calls."""
-
-    from travel_agent.planning.research.authorization_context import (
-        ENFORCED_UNAUTHORIZED,
-    )
-
-    envelope = build_tool_execution_envelope(
-        tool_name=tool_name,
-        arguments={},
-        status=ToolExecutionStatus.BLOCKED.value,
-        error=ENFORCED_UNAUTHORIZED,
-        source="authorization",
-    )
-    envelope["metadata"]["enforced_authorization"] = "denied"
-    envelope["metadata"]["authorization_reason"] = reason_code
-    return envelope
-
-
 async def execute_tool(tool_name, arguments, *args, **kwargs):
     from copy import deepcopy
 
-    from travel_agent.planning.research.authorization_context import (
-        RESEARCH_WORKER_KINDS,
-        current_operation_decision,
-    )
-    from travel_agent.runtime.context import current_node
     from travel_agent.runtime.journal import current_worker_journal
 
     from ..tools.gateway import _manifest_from_metadata
 
-    # 授权必须先于 journal replay、缓存与任何 Provider 调用；拒绝时也不消耗预算。
-    authorization = current_operation_decision(tool_name, arguments)
-    if authorization is not None and not authorization.allowed:
-        logger.info(
-            "工具 [%s] 研究 operation 未获批准: reason=%s",
-            tool_name,
-            authorization.reason_code,
-        )
-        return _authorization_blocked_envelope(tool_name, authorization.reason_code)
-    if authorization is None and current_node.get() in RESEARCH_WORKER_KINDS:
-        # Worker 包装器缺失时也不能退回无授权执行。
-        logger.warning(
-            "研究 worker 缺少授权上下文 node=%s tool=%s",
-            current_node.get(),
-            tool_name,
-        )
-        return _authorization_blocked_envelope(
-            tool_name, "missing_research_authorization"
-        )
-
+    check_cancel_requested(kwargs.get("node_name"))
     journal = current_worker_journal.get()
     if tool_name == "knowledge_search":
         from ..config.loader import get_settings
@@ -269,6 +225,8 @@ async def _execute_tool_once(
                     run_id=run_id,
                     audit_store=tool_audit_store,
                 )
+    except RunCancelled:
+        raise
     except Exception as exc:
         logger.info(
             "provider snapshot cache unavailable; using live tool call: %s", exc
@@ -458,27 +416,6 @@ async def _execute_tool_once(
                 fallback_args = build_fallback_args(
                     tool_name, fallback_name, adapter_key, arguments
                 )
-                from travel_agent.planning.research.authorization_context import (
-                    current_operation_decision,
-                )
-
-                fallback_authorization = current_operation_decision(
-                    fallback_name, fallback_args
-                )
-                if (
-                    fallback_authorization is not None
-                    and not fallback_authorization.allowed
-                ):
-                    # 备用工具是独立的 Provider 调用，必须有自己的精确 operation。
-                    logger.warning(
-                        "工具 [%s] 降级被授权拒绝: fallback=%s reason=%s",
-                        tool_name,
-                        fallback_name,
-                        fallback_authorization.reason_code,
-                    )
-                    return _authorization_blocked_envelope(
-                        fallback_name, fallback_authorization.reason_code
-                    )
                 logger.info(
                     "工具 [%s] 降级到 [%s] | cause=%s args=%s",
                     tool_name,
@@ -552,6 +489,8 @@ async def _execute_tool_once(
                 except ModelWindowClosed as closed:
                     research_window_closed = True
                     last_error = str(closed)
+                except RunCancelled:
+                    raise
                 except Exception as fe:
                     fallback_error = str(fe)
                     logger.warning(
@@ -567,6 +506,8 @@ async def _execute_tool_once(
                 )
     except PermissionError:
         pass
+    except RunCancelled:
+        raise
     except Exception as e:
         logger.debug(f"降级策略查找失败: {e}")
 

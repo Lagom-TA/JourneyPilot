@@ -9,6 +9,7 @@ from travel_agent.planning.itinerary.place_resolution import (
     resolve_station_point,
 )
 from travel_agent.planning.research.transport.scope import _NODE_NAME
+from travel_agent.runtime.cancellation import RunCancelled
 from travel_agent.tools.execution import execute_tool
 from travel_agent.tools.registry import get_tool_registry
 
@@ -69,6 +70,8 @@ async def _locate_rail_station(
             scope=scope,
             tools=_rail_station_tool_access(tool_context),
         )
+    except RunCancelled:
+        raise
     except Exception:
         logger.warning(
             "[transport_researcher] station point lookup failed telecode=%s name=%s",

@@ -28,7 +28,6 @@ _AUDIT_RAW_KEYS = frozenset(
         "error_message",
         "headers",
         "gate_decision",
-        "semantic_confirmation",
         "approval_token",
         "input",
         "input_summary",

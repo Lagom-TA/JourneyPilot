@@ -7,7 +7,6 @@ export function planGateEntries(gate: Pick<PlanApprovalGate, 'decisionOptions' |
     const has = (action: PlanGateDecisionAction) => live && gate.decisionOptions.includes(action);
     return {
         approve: has('approve'),
-        edit: has('edit'),
         supplement: has('supplement'),
         retry: has('retry'),
         cancel: has('cancel'),

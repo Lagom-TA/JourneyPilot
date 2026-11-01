@@ -15,9 +15,8 @@ from langgraph.errors import GraphInterrupt
 from tests.fixtures.run_commands import FakeCommandStore
 from travel_agent.planning import execution
 from travel_agent.planning.execution import with_run_control
-from travel_agent.planning.requirements.request_contracts import (
+from travel_agent.planning.requirements.amendment_contracts import (
     AmendmentImpact,
-    IntentAmendment,
     IntentAmendmentRejection,
 )
 from travel_agent.planning.state import TravelAgentState
@@ -137,7 +136,7 @@ async def test_durable_cancel_reaches_the_boundary_without_any_notification(
         )
 
 
-async def test_supplement_is_consumed_only_after_contract_normalization(
+async def test_supplement_is_consumed_only_after_requirements_preparation(
     wired, run_id
 ) -> None:
     handle, store, runs, coordinator = wired
@@ -155,13 +154,12 @@ async def test_supplement_is_consumed_only_after_contract_normalization(
         return {
             "pending_intent_amendments": [],
             "applied_intent_amendment_ids": [command.command_id],
-            "intent_spec_revision": 2,
             "planning_generation": type(
                 "Generation", (), {"generation_id": "generation_2"}
             )(),
         }
 
-    update = await with_run_control("request_contract_normalizer", node)(
+    update = await with_run_control("requirements_preparer", node)(
         TravelAgentState(run_id=run_id, user_message="x")
     )
 
@@ -170,44 +168,13 @@ async def test_supplement_is_consumed_only_after_contract_normalization(
     assert store.commands[command.command_id].status is RunCommandStatus.CONSUMED
     assert store.commands[command.command_id].result == {
         "outcome": "applied",
-        "applied_at_node": "request_contract_normalizer",
-        "intent_spec_revision": 2,
+        "applied_at_node": "requirements_preparer",
         "generation_id": "generation_2",
     }
     assert [event_type for _run, event_type, _payload in runs.events] == [
         "run.supplement_applied"
     ]
     # 已经生效的要求不会在下一个节点边界再进一次 state。
-    assert handle.pending_supplements() == []
-
-
-async def test_unresolved_supplement_waits_for_clarification_before_consumption(wired, run_id) -> None:
-    handle, store, _runs, coordinator = wired
-    command, _ = await store.enqueue(
-        run_id, RunCommandType.SUPPLEMENT, {"category": "mobility", "content": "长辈行动限制待明确"},
-    )
-    await coordinator.poll_once()
-    amendment = IntentAmendment(
-        command_id=command.command_id, category="mobility", content="长辈行动限制待明确",
-        source_kind="run_supplement",
-    )
-    state = TravelAgentState(run_id=run_id, unresolved_intent_amendments=[amendment])
-
-    async def clarification_gate(current):
-        assert not current.pending_intent_amendments
-        assert current.unresolved_intent_amendments[0].command_id == command.command_id
-        return {"next_agent": "awaiting_clarification"}
-
-    update = await with_run_control("plan_gate", clarification_gate)(state)
-    assert update["next_agent"] == "awaiting_clarification"
-    assert store.commands[command.command_id].status is RunCommandStatus.CLAIMED
-    assert len(handle.pending_supplements()) == 1
-
-    async def resolved(_state):
-        return {"unresolved_intent_amendments": [], "applied_intent_amendment_ids": [command.command_id]}
-
-    await with_run_control("request_contract_normalizer", resolved)(state)
-    assert store.commands[command.command_id].status is RunCommandStatus.CONSUMED
     assert handle.pending_supplements() == []
 
 
@@ -243,7 +210,7 @@ async def test_a_failed_node_keeps_the_supplement_for_the_next_boundary(
     assert settled.result is None
 
     update = await with_run_control(
-        "request_contract_normalizer",
+        "requirements_preparer",
         lambda state: {
             "pending_intent_amendments": [],
             "applied_intent_amendment_ids": [command.command_id],
@@ -282,7 +249,7 @@ async def test_divert_boundary_defers_every_read_command_without_touching_the_st
 
     with caplog.at_level(logging.INFO, logger="travel_agent.planning.execution"):
         update = await with_run_control("planner", diverted)(
-            TravelAgentState.model_construct(request_contract=object(), run_id=run_id)
+            TravelAgentState.model_construct(planning_generation=object(), run_id=run_id)
         )
 
     # 节点体没跑：结果只有 resume_node 与搭车的 amendments（空内容那条进不来）。
@@ -437,7 +404,7 @@ def test_parallel_workers_do_not_store_the_same_amendment_twice():
     就出现三遍。
     """
 
-    from travel_agent.planning.requirements.request_contracts import IntentAmendment
+    from travel_agent.planning.requirements.amendment_contracts import IntentAmendment
     from travel_agent.planning.state import _replace_amendments
 
     amendment = IntentAmendment(
@@ -452,7 +419,7 @@ def test_parallel_workers_do_not_store_the_same_amendment_twice():
 
 
 def test_replacing_amendments_keeps_order_and_distinct_commands():
-    from travel_agent.planning.requirements.request_contracts import IntentAmendment
+    from travel_agent.planning.requirements.amendment_contracts import IntentAmendment
     from travel_agent.planning.state import _replace_amendments
 
     first = IntentAmendment(

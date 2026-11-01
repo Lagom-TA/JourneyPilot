@@ -57,9 +57,8 @@ def weather_research_authorized(state: TravelAgentState) -> bool:
     return bool(
         draft is not None
         and draft.planning_authorized
-        and state.request_contract is not None
-        and state.research_operation_manifest is not None
-        and state.research_operation_approval is not None
+        and state.research_plan is not None
+        and (state.plan_gate_decision or {}).get("action") == "approve"
         and state.run_budget is not None
         and state.run_deadline is not None
     )

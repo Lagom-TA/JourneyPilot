@@ -10,19 +10,6 @@ from typing import Any
 from typing import Mapping
 from typing import Optional
 from typing import Sequence
-import re
-
-
-_EXPLICIT_CROSS_DAY_RETURN = re.compile(
-    r"跨日|跨夜|次日|翌日|第二天到达|凌晨到达|overnight|red[- ]?eye",
-    re.IGNORECASE,
-)
-
-
-def explicit_cross_day_return_required(text: str) -> bool:
-    """判断是否明确要求跨日历日的返程。"""
-
-    return bool(_EXPLICIT_CROSS_DAY_RETURN.search(text or ""))
 
 
 def _identity_parts(

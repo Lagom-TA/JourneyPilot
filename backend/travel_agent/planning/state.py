@@ -18,31 +18,21 @@ from travel_agent.planning.itinerary.mutation_contracts import CompositionMutati
 from travel_agent.planning.outcomes import DeliveryFailureRecord
 from travel_agent.planning.requirements.generation_contracts import PlanningGeneration
 from travel_agent.planning.requirements.inputs import MinimumDeliveryDraft
-from travel_agent.planning.requirements.intent_contracts import IntentSpec, canonical_json_hash
-from travel_agent.planning.requirements.confirmation_contracts import ConfirmationReceipt
-from travel_agent.planning.requirements.request_contracts import IntentAmendment
-from travel_agent.planning.requirements.request_contracts import (
+from travel_agent.planning.requirements.natural_language import ResearchPlan
+from travel_agent.planning.requirements.amendment_contracts import IntentAmendment
+from travel_agent.planning.requirements.amendment_contracts import (
     IntentAmendmentRejection,
 )
-from travel_agent.planning.requirements.request_contracts import RequestContract
-from travel_agent.planning.research.brief_contracts import ResearchBriefV2
-from travel_agent.planning.research.capability_contracts import CapabilityPlan
 from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.research.evidence import FactAssertion
 from travel_agent.planning.research.evidence import FactStoreSnapshot
 from travel_agent.planning.research.evidence import FieldProvenance
 from travel_agent.planning.research.evidence import SourceRecord
 from travel_agent.planning.research.packets import ResearchPacket
-from travel_agent.planning.research.operation_authority import (
-    ApprovedOperationManifest,
-    OperationApproval,
-    research_approval_confirmation_hash,
-)
 from travel_agent.planning.research.provider_contracts import ProviderEvidenceOutcome
 from travel_agent.planning.research.provider_outcomes import (
     merge_provider_evidence_outcomes,
 )
-from travel_agent.planning.research.query_contracts import ResearchQueryPlan
 from travel_agent.planning.research.reference_service_contracts import (
     ProviderReferenceService,
 )
@@ -104,6 +94,8 @@ def _merge_unique_strings(a: List[str], b: List[str]) -> List[str]:
 def _merge_composition_mutations(
     a: List[CompositionMutation], b: List[CompositionMutation]
 ) -> List[CompositionMutation]:
+    if not b:
+        return []
     merged: Dict[str, CompositionMutation] = {}
     for item in [*(a or []), *(b or [])]:
         mutation = CompositionMutation.model_validate(item)
@@ -124,11 +116,9 @@ def _merge_amendment_rejections(
 def _merge_reference_services(
     a: List["ProviderReferenceService"], b: List["ProviderReferenceService"]
 ) -> List["ProviderReferenceService"]:
-    """每个责任只保留一个 reference service，后一轮覆盖前一轮。
-
-    key 取 leg_role 与 requested_date 的组合，而不是第二轮可能改写的 service
-    编号；直接追加会让同一程出现两条说明。
-    """
+    """按行程和请求日期合并参考班次；空列表清除当前结果。"""
+    if not b:
+        return []
     merged: Dict[Any, "ProviderReferenceService"] = {}
     for item in [*(a or []), *(b or [])]:
         merged[(item.leg_role, item.requested_date)] = item
@@ -203,7 +193,7 @@ class TravelAgentState(BaseModel):
     字段分组：
     - 基础会话：messages, session_id, user_id, user_query
     - 研究主键：run_id
-    - Scope 阶段：research_brief（澄清后生成的结构化简报）
+    - 需求阶段：current_requirements、planning_generation 与 research_plan
     - 基础设施：前置 destination_geo / weather_context
     - 编排：execution_plan, current_plan_step, agent_assignments, next_agent
     - Worker 输出：agent_status 与强类型 Research Packet / Workspace
@@ -220,31 +210,16 @@ class TravelAgentState(BaseModel):
     run_id: str = ""
 
     controlled_trip_identity: Dict[str, Any] = Field(default_factory=dict)
-    controlled_trip_identity_revision: int = Field(default=0, ge=0)
     route_decision: Dict[str, Any] = Field(default_factory=dict)
 
-    request_contract: Optional[RequestContract] = None
-    request_contract_candidate: Optional[RequestContract] = None
-    research_plan_error: Optional[Dict[str, str]] = None
-    research_plan_retry_count: int = Field(default=0, ge=0)
-    clarified_exclusion_keys: List[str] = Field(default_factory=list)
-    semantic_candidate_hash: Optional[str] = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    semantic_receipt: Optional[ConfirmationReceipt] = None
-    intent_spec: Optional[IntentSpec] = None
-    intent_spec_revision: int = Field(default=0, ge=0)
+    current_requirements: str = ""
     planning_generation: Optional[PlanningGeneration] = None
-    research_brief: Optional[ResearchBriefV2] = None
-    capability_plan: Optional[CapabilityPlan] = None
-    research_query_plan: Optional[ResearchQueryPlan] = None
-    research_operation_manifest: Optional[ApprovedOperationManifest] = None
-    research_operation_approval: Optional[OperationApproval] = None
-    research_operation_limitations: List[str] = Field(default_factory=list)
-    previous_selected_candidate_ids: List[str] = Field(default_factory=list)
+    research_plan: Optional[ResearchPlan] = None
+    research_plan_error: Optional[Dict[str, str]] = None
 
     trip_summary_card: Dict[str, Any] = Field(default_factory=dict)
 
     constraint_pack: Dict[str, Any] = Field(default_factory=dict)
-    constraint_pack_revision: int = Field(default=0, ge=0)
     fact_data_revision: int = Field(default=0, ge=0)
 
     minimum_delivery_draft: Annotated[
@@ -283,7 +258,7 @@ class TravelAgentState(BaseModel):
         merge_provider_evidence_outcomes,
     ] = Field(default_factory=dict)
     recommendation_catalog: Optional[RecommendationCatalog] = None
-    weather_impacts: Annotated[Dict[str, WeatherImpact], _merge_dicts] = Field(
+    weather_impacts: Annotated[Dict[str, WeatherImpact], _take_latest_value_allow_clear] = Field(
         default_factory=dict
     )
 
@@ -316,9 +291,6 @@ class TravelAgentState(BaseModel):
         Optional[IntentAmendment], _take_latest_value_allow_clear
     ] = None
     pending_intent_amendments: Annotated[List[IntentAmendment], _replace_amendments] = (
-        Field(default_factory=list)
-    )
-    unresolved_intent_amendments: Annotated[List[IntentAmendment], _replace_amendments] = (
         Field(default_factory=list)
     )
     intent_amendment_resume_node: Annotated[
@@ -371,116 +343,24 @@ class TravelAgentState(BaseModel):
         校验放在共享状态边界：格式不合法的 checkpoint 不应恢复出与 Draft
         不匹配的预算。
         """
-        if self.semantic_receipt is not None:
-            if (
-                self.semantic_receipt.run_id != self.run_id
-                or self.semantic_receipt.session_id != (self.session_id or self.run_id)
-                or self.semantic_receipt.identity_hash != canonical_json_hash(self.controlled_trip_identity)
-                or self.semantic_receipt.candidate_contract_hash != self.semantic_candidate_hash
-            ):
-                raise ValueError("semantic receipt does not match the current run, identity or candidate")
-        if self.request_contract is not None and self.request_contract_candidate is not None:
-            raise ValueError("tentative and authorized request contracts must not coexist")
-        contract = self.request_contract or self.request_contract_candidate
-        if contract is not None:
-            if self.intent_spec is None or self.planning_generation is None:
-                raise ValueError(
-                    "request contract requires intent and planning generation state"
-                )
-            if contract.intent_spec != self.intent_spec:
-                raise ValueError(
-                    "state intent specification differs from request contract"
-                )
-            if contract.generation_id != self.planning_generation.generation_id:
-                raise ValueError("request contract and planning generation differ")
-            if self.intent_spec_revision != self.intent_spec.revision:
-                raise ValueError(
-                    "state intent revision differs from intent specification"
-                )
-        if self.research_query_plan is not None:
-            if self.planning_generation is None or self.intent_spec is None:
-                raise ValueError(
-                    "research query plan requires intent and generation state"
-                )
-            if (
-                self.research_query_plan.generation_id
-                != self.planning_generation.generation_id
-                or self.research_query_plan.intent_spec_revision
-                != self.intent_spec_revision
-            ):
-                raise ValueError(
-                    "research query plan belongs to an obsolete intent generation"
-                )
-        if (self.research_operation_manifest is None) != (self.research_operation_approval is None):
-            raise ValueError("operation manifest and independent approval must coexist")
-        if self.research_operation_approval is not None:
-            manifest = self.research_operation_manifest
-            approval = self.research_operation_approval
-            if (
-                approval.approved_manifest_hash != manifest.manifest_hash
-                or approval.approval_token != manifest.approval_token
-                or approval.run_id != self.run_id
-                or manifest.run_id != self.run_id
-                or approval.identity_hash != canonical_json_hash(self.controlled_trip_identity)
-                or manifest.identity_hash != approval.identity_hash
-                or self.research_query_plan is None
-                or approval.query_plan_hash != self.research_query_plan.content_hash
-                or manifest.query_plan_hash != approval.query_plan_hash
-                or self.request_contract is None
-                or approval.confirmation_hash != research_approval_confirmation_hash(
-                    self.request_contract.content_hash, approval.approval_token,
-                )
-                or manifest.confirmation_hash != approval.confirmation_hash
-                or self.planning_generation is None
-                or approval.generation_id != self.planning_generation.generation_id
-                or manifest.generation_id != approval.generation_id
-            ):
-                raise ValueError("operation approval does not match the authorized run state")
-        if self.capability_plan is not None:
-            if self.research_query_plan is None:
-                raise ValueError("capability plan requires a research query plan")
-            known_query_ids = set(self.research_query_plan.query_index())
-            if any(
-                not set(assignment.research_query_ids) <= known_query_ids
-                for assignment in self.capability_plan.assignments.values()
-            ):
-                raise ValueError(
-                    "capability assignment references an unknown research query"
-                )
+        if self.research_plan is not None and self.planning_generation is None:
+            raise ValueError("研究方案需要规划版本")
         draft = self.minimum_delivery_draft
-        dependent_values = (
-            self.run_deadline,
-            self.run_budget,
-        )
+        if (self.run_budget is None) != (self.run_deadline is None):
+            raise ValueError("运行预算和期限必须同时存在")
         if draft is None:
-            if any(value is not None for value in dependent_values):
-                raise ValueError("completion state requires a minimum delivery draft")
             return self
         draft_generation_matches = (
             self.planning_generation is not None
             and draft.planning_generation_id == self.planning_generation.generation_id
-            and draft.controlled_trip_identity_revision
-            == self.controlled_trip_identity_revision
-            and draft.constraint_pack_revision == self.constraint_pack_revision
-            and draft.plan_revision == self.plan_gate_revision_count
-            and draft.intent_spec_revision == self.intent_spec_revision
-            and self.intent_spec is not None
-            and draft.intent_spec_hash == self.intent_spec.content_hash
+            and draft.run_id == self.run_id
         )
 
         if not draft_generation_matches:
-            if draft.planning_authorized or any(
-                value is not None for value in dependent_values
-            ):
-                raise ValueError(
-                    "completion state belongs to an obsolete minimum delivery draft"
-                )
+            if draft.planning_authorized:
+                raise ValueError("行程框架不属于当前规划版本")
             return self
-        if self.run_deadline is not None:
-            if not draft.planning_authorized:
-                raise ValueError(
-                    "run deadline requires a sealed minimum delivery draft"
-                )
+        if self.run_deadline is not None and draft.planning_authorized:
             if self.run_deadline.draft_id != draft.draft_id:
                 raise ValueError(
                     "run deadline belongs to another minimum delivery draft"
@@ -490,8 +370,6 @@ class TravelAgentState(BaseModel):
                     "run deadline authorization time differs from minimum delivery draft"
                 )
 
-        if (self.run_budget is None) != (self.run_deadline is None):
-            raise ValueError("run budget and run deadline must be sealed together")
         return self
 
     model_config = {"arbitrary_types_allowed": True}

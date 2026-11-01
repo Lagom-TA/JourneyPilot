@@ -1,25 +1,12 @@
 from datetime import datetime, timezone
 
 from travel_agent.planning.references import EntityRef, EntityType
-from travel_agent.planning.requirements.intent_contracts import (
-    CategoryIntentValue,
-    IntentItem,
-    IntentKind,
-    IntentSpec,
-    IntentStrength,
-    IntentTarget,
-    VerificationMode,
-    canonical_json_hash,
-)
+from tests.fixtures.hashes import canonical_json_hash
 from travel_agent.planning.research.candidates import (
     TransportCandidate,
     VisitCandidate,
 )
 from travel_agent.planning.research.catalog import RecommendationCatalog
-from travel_agent.planning.research.discovery_contracts import (
-    CandidateDiscoveryOrigin,
-    CandidateDiscoveryRecord,
-)
 from travel_agent.planning.research.evidence import (
     FactAssertion,
     FactSourceLink,
@@ -35,49 +22,10 @@ from travel_agent.planning.transport import (
 from travel_agent.planning.weather.models import WeatherSensitivity
 
 
-def make_research_intent(
-    intent_id: str,
-    summary: str,
-    *,
-    kind: IntentKind = IntentKind.THEME,
-    strength: IntentStrength = IntentStrength.SOFT,
-    priority: int = 90,
-    verification: VerificationMode = VerificationMode.SEMANTIC,
-) -> IntentItem:
-    return IntentItem(
-        intent_id=intent_id,
-        kind=kind,
-        target=IntentTarget.VISIT,
-        strength=strength,
-        priority=priority,
-        value=CategoryIntentValue(categories=[summary]),
-        source_kind="current_request",
-        source_ref_id=f"source_{intent_id}",
-        source_text=summary,
-        linked_constraint_ids=[],
-        verification_mode=verification,
-        impact_stages=["research", "composition"],
-        public_summary=summary,
-    )
-
-def make_intent_spec(*intents: IntentItem) -> IntentSpec:
-    material = [intent.model_dump(mode="json") for intent in intents]
-    return IntentSpec(
-        intent_spec_id="intent_spec_test",
-        revision=1,
-        generation_id="generation_test",
-        content_hash=canonical_json_hash(material),
-        active_items=list(intents),
-        objective_summary="Tokyo intent test",
-    )
-
 def make_visit_packet(
     candidate_id: str,
     name: str,
     *,
-    origin: CandidateDiscoveryOrigin,
-    query_id: str,
-    intent_id: str,
     opening_window: str | None = None,
 ) -> ResearchPacket:
     source_id = f"source_{candidate_id}"
@@ -162,26 +110,12 @@ def make_visit_packet(
         recommended_duration_minutes=90,
         opening_window=opening_window,
     )
-    record = CandidateDiscoveryRecord(
-        candidate_id=candidate_id,
-        generation_id="generation_test",
-        query_ids=[query_id],
-        intent_ids=[intent_id],
-        origins=[origin],
-        provider_audit_ids=[f"audit_{candidate_id}"],
-        discovered_at_rounds=[0],
-    )
     return ResearchPacket(
         research_packet_id=f"packet_{candidate_id}",
         run_id="run_test",
         generation_id="generation_test",
-        intent_spec_revision=1,
-        research_query_plan_id="query_plan_generation_test",
-        executed_query_ids=[query_id],
-        candidate_discovery_records=[record],
         task_id=f"task_{candidate_id}",
         worker_kind="destination_researcher",
-        constraint_pack_revision=1,
         fact_data_revision=1,
         query_context={},
         candidates=[candidate],
@@ -202,16 +136,9 @@ def make_visit_packet(
 def make_catalog(*packets: ResearchPacket) -> RecommendationCatalog:
     return RecommendationCatalog(
         generation_id="generation_test",
-        intent_spec_revision=1,
-        research_query_plan_id="query_plan_generation_test",
         fact_data_revision=1,
         weather_data_revision=0,
         research_packets=list(packets),
-        candidate_discovery_records=[
-            record
-            for packet in packets
-            for record in packet.candidate_discovery_records
-        ],
     )
 
 def make_local_transport_packet(
@@ -223,9 +150,6 @@ def make_local_transport_packet(
     packet = make_visit_packet(
         candidate_id,
         f"{origin_place_id} to {destination_place_id}",
-        origin=CandidateDiscoveryOrigin.STRUCTURAL_QUERY,
-        query_id=f"query_{candidate_id}",
-        intent_id="intent_transport",
     )
     from_endpoint = TransportEndpoint(
         name=origin_place_id,

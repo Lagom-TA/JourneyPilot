@@ -81,28 +81,7 @@ def _generation():
         PlanningGeneration,
     )
 
-    return PlanningGeneration(
-        generation_id="generation_budget",
-        controlled_trip_identity_revision=1,
-        intent_spec_revision=1,
-        constraint_pack_revision=0,
-        plan_revision=0,
-        identity_hash="2" * 64,
-        intent_hash="1" * 64,
-        constraint_hash="3" * 64,
-    )
-
-
-def _intent_spec():
-    from travel_agent.planning.requirements.intent_contracts import IntentSpec
-
-    return IntentSpec(
-        intent_spec_id="intent_spec_budget",
-        revision=1,
-        generation_id="generation_budget",
-        content_hash="1" * 64,
-        objective_summary="预算边界测试",
-    )
+    return PlanningGeneration(generation_id="generation_budget", revision=1)
 
 
 def test_budget_and_deadline_must_be_sealed_together():
@@ -117,13 +96,10 @@ def test_budget_and_deadline_must_be_sealed_together():
         run_budget = None
 
     sealed = seal_minimum_delivery_draft(_State())
-    with pytest.raises(ValueError, match="sealed together"):
+    with pytest.raises(ValueError, match="必须同时存在"):
         TravelAgentState(
             session_id="s",
             run_id="run_seal_budget",
-            controlled_trip_identity_revision=1,
-            intent_spec_revision=1,
-            intent_spec=_intent_spec(),
             planning_generation=_generation(),
             minimum_delivery_draft=sealed["minimum_delivery_draft"],
             run_deadline=sealed["run_deadline"],
@@ -164,17 +140,6 @@ def test_a_replay_of_a_sealed_draft_never_refills_the_budget():
     second = seal_minimum_delivery_draft(_Replayed())
     assert second["run_budget"] is first["run_budget"]
     assert second["run_deadline"] is first["run_deadline"]
-
-
-def test_clearing_a_draft_generation_clears_the_budget_too():
-    from travel_agent.planning.delivery.minimum_draft import (
-        _clear_completion_generation,
-    )
-
-    cleared = _clear_completion_generation()
-    assert cleared["run_deadline"] is None
-    assert cleared["run_budget"] is None
-    assert "run_budget" in cleared
 
 
 async def test_the_retry_loop_cannot_outspend_the_tool_call_budget(monkeypatch):

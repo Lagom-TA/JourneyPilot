@@ -15,5 +15,5 @@
 | [ADR-0007](ADR-0007-core-default-enhancements-optional.md) | 核心能力默认可用，增强能力显式安装 |
 | [ADR-0008](ADR-0008-config-single-source.md) | 配置只有一处定义，来源可查 |
 | [ADR-0009](ADR-0009-ci-never-spends-on-providers.md) | CI 不调用真实付费 Provider |
-| [ADR-0010](ADR-0010-request-contract-control-plane.md) | 用唯一请求合同与确定性编排控制研究工作流 |
+| [ADR-0010](ADR-0010-natural-language-requirements.md) | 自然语言需求与研究方案直传各角色 |
 | [ADR-0013](ADR-0013-generation-quality-owned-by-model.md) | 内容质量由模型负责，移除内容质量验证体系 |

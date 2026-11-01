@@ -25,12 +25,7 @@ export function useSendMessage() {
             action: PlanGateDecisionAction;
             content?: string;
             approval_token?: string;
-            semantic_confirmation?: {
-                challenge_id: string; revision: number;
-                decisions: Array<{ assertion_id: string; decision: 'include' | 'avoid' | 'historical' | 'unknown' }>;
-            };
         };
-        onSemanticAccepted?: (action: 'confirm' | 'correction', challengeId: string, approvalToken: string) => void;
         onRequestError?: (error: Error) => void;
     }) => {
         if (!text.trim() || state.isStreaming)
@@ -104,7 +99,7 @@ export function useSendMessage() {
         const { identity, scopedDispatch, isStreamVisible } = ownership;
         const frame = createStreamFrameBatch(scopedDispatch, assistantMessage);
         const { flushFrameNow } = frame;
-        const events = createStreamEvents(ownership, assistantMessage, text, state.currentTripRunId, options?.assistantPendingLabel, currentStateRef, setLastSession, frame, options?.gateDecision?.action, options?.onSemanticAccepted);
+        const events = createStreamEvents(ownership, assistantMessage, text, state.currentTripRunId, options?.assistantPendingLabel, currentStateRef, setLastSession, frame, options?.gateDecision?.action);
         const { protocol } = events;
         let requestFailed = false;
         let deliveryStreamInterrupted = false;

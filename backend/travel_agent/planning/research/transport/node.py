@@ -20,8 +20,6 @@ from travel_agent.planning.invalidation import generation_packet_key
 from travel_agent.planning.requirements.constraint_applicability import (
     active_hard_constraint_ids,
 )
-from travel_agent.planning.research.assignment_context import build_assignment_context
-from travel_agent.planning.research.domains import ResearchDomain
 from travel_agent.planning.research.errors import format_worker_last_error
 from travel_agent.planning.research.output.failures import (
     build_failure_only_research_packet,
@@ -38,8 +36,6 @@ from travel_agent.planning.research.output.options import provider_evidence_outc
 from travel_agent.planning.research.output.policy import packet_candidate_limit
 from travel_agent.planning.research.output.transcript import authoritative_tool_messages
 from travel_agent.planning.research.prompts import build_research_packet_prompt
-from travel_agent.planning.research.query_contracts import ResearchQueryKind
-from travel_agent.planning.research.query_planner import queries_by_ids
 from travel_agent.planning.research.reference_service_contracts import (
     ProviderReferenceService,
 )
@@ -49,9 +45,6 @@ from travel_agent.planning.research.transport.rail.binding import (
 )
 from travel_agent.planning.research.transport.scope import (
     _NODE_NAME,
-    constrain_cross_day_flight_tools,
-    scope_initial_transport_tools,
-    scope_long_distance_transport_tools,
     transport_provider_assignments,
 )
 from travel_agent.planning.state import TravelAgentState
@@ -91,37 +84,14 @@ async def transport_researcher_node(
     current_time = state.current_time or datetime.datetime.now().strftime(
         "%Y-%m-%d %H:%M"
     )
-    user_query = state.user_query or ""
+    user_query = state.current_requirements or ""
     run_id = state.run_id
 
     output_key, assignment = resolve_agent_assignment(
         state.agent_assignments or {}, _NODE_NAME
     )
-    research_brief_context = build_assignment_context(
-        assignment=assignment,
-        brief=state.research_brief,
-        intent_spec=state.intent_spec,
-        constraint_pack=state.constraint_pack,
-    )
     task_desc = assignment["objective"]
-    if state.research_query_plan is None:
-        raise ValueError("transport research requires a Research Query Plan")
-    planned_queries = [
-        query
-        for query in queries_by_ids(
-            state.research_query_plan,
-            assignment.get("research_query_ids") or [],
-        )
-        if query.domain
-        in {
-            ResearchDomain.LOCAL_TRANSPORT,
-            ResearchDomain.LONG_DISTANCE_TRANSPORT,
-        }
-    ]
-    task_desc = (
-        f"{task_desc}；研究查询："
-        + "；".join(query.query_text for query in planned_queries)
-    )[:1000]
+    task_context = task_desc
     recommended_tools = assignment.get("recommended_tools", [])
     excluded_tools = assignment.get("excluded_tools", [])
     provider_assignments = transport_provider_assignments(assignment, state)
@@ -137,7 +107,7 @@ async def transport_researcher_node(
         worker_kind=_NODE_NAME,
         run_id=run_id,
         generation_id=generation_id,
-        planned_queries=planned_queries,
+        destination_ids=[item.get("place_id", "") for item in state.controlled_trip_identity.get("destinations", [])],
         assignment=assignment,
     )
 
@@ -149,10 +119,9 @@ async def transport_researcher_node(
         worker_kind=_NODE_NAME,
         run_id=run_id,
         task_id=output_key,
-        constraint_pack_revision=state.constraint_pack_revision,
         fact_data_revision=state.fact_data_revision,
         current_time=current_time,
-        research_brief_context=research_brief_context,
+        task_context=task_context,
         candidate_limit=packet_candidate_limit(
             _NODE_NAME,
             required_route_scopes=required_route_scopes,
@@ -179,7 +148,6 @@ async def transport_researcher_node(
             "content": build_transport_task_prompt(
                 task_desc=task_desc,
                 user_query=user_query,
-                required_route_scopes=required_route_scopes,
             ),
         }
     )
@@ -187,42 +155,14 @@ async def transport_researcher_node(
     available_tools = await get_available_tools(state.selected_mcp_servers or [])
     available_tools = filter_tools_for_agent(available_tools, _NODE_NAME)
     available_tools = exclude_tools(available_tools, excluded_tools)
-    available_tools = scope_initial_transport_tools(available_tools)
-    available_tools = scope_long_distance_transport_tools(
-        available_tools,
-        controlled_trip_identity=state.controlled_trip_identity,
-    )
-    cross_day_required = bool(required_route_scopes) and all(
-        scope.route_leg is not None and scope.route_leg.cross_day_required
-        for scope in required_route_scopes
-    )
-    available_tools = constrain_cross_day_flight_tools(
-        available_tools,
-        required=cross_day_required,
-    )
-
     tool_cache = dict(state.tool_cache) if state.tool_cache else {}
     tool_context = build_tool_context_from_state(state)
-    executed_queries = [
-        query.model_dump(mode="json")
-        for query in planned_queries
-        if query.query_kind
-        in {
-            ResearchQueryKind.INTENT_PRIMARY,
-            ResearchQueryKind.STRUCTURAL,
-            ResearchQueryKind.TARGETED_REPAIR,
-        }
-    ]
     packet_state_key = generation_packet_key(output_key, generation_id)
     authoritative_packet_metadata = build_authoritative_research_packet_metadata(
         worker_kind=_NODE_NAME,
         run_id=run_id,
         generation_id=generation_id,
-        intent_spec_revision=state.intent_spec_revision,
-        research_query_plan_id=state.research_query_plan.query_plan_id,
-        executed_queries=executed_queries,
         task_id=output_key,
-        constraint_pack_revision=state.constraint_pack_revision,
         fact_data_revision=state.fact_data_revision,
         query_context={
             "objective": task_desc,
@@ -292,6 +232,12 @@ async def transport_researcher_node(
             (time.perf_counter() - finalize_started_at) * 1000.0,
         )
 
+        outcomes = provider_evidence_outcomes(
+            authoritative_tool_messages(authoritative_tool_results),
+            expected_worker=_NODE_NAME,
+            packet=packet,
+            assignments=provider_assignments,
+        )
         return {
             "messages": [
                 AIMessage(content=f"已整理 {len(packet.candidates)} 个交通候选")
@@ -299,13 +245,8 @@ async def transport_researcher_node(
             "research_packets": {packet_state_key: packet},
             "agent_status": {output_key: "completed"},
             "tool_cache": tool_cache,
-            "provider_evidence_outcomes": provider_evidence_outcomes(
-                authoritative_tool_messages(authoritative_tool_results),
-                expected_worker=_NODE_NAME,
-                packet=packet,
-                assignments=provider_assignments,
-            ),
             "provider_reference_services": reference_services,
+            **({"provider_evidence_outcomes": outcomes} if outcomes else {}),
         }
 
     except (RunCancelled, JournalConflict):
@@ -351,7 +292,8 @@ async def transport_researcher_node(
         }
         if failure_packet is not None:
             result["research_packets"] = {packet_state_key: failure_packet}
-        result["provider_evidence_outcomes"] = outcomes
+        if outcomes:
+            result["provider_evidence_outcomes"] = outcomes
 
         if reference_services:
             result["provider_reference_services"] = reference_services

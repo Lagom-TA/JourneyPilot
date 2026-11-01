@@ -134,6 +134,7 @@ def filter_tools_for_agent(
 
 _AGENT_TOOL_POLICY: Dict[str, AgentToolPolicy] = {
     "destination_researcher": AgentToolPolicy(
+        deny_tools={"ask_user"},
         servers={
             "tavily-search",
             "brave-search",

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class ConstraintSourceLoader:
-    """组装请求契约归一化只消费一次的来源数据。"""
+    """组装快问快答约束包需要的来源数据。"""
 
     def __init__(
         self,
@@ -36,9 +36,6 @@ class ConstraintSourceLoader:
         context_status: str,
         missing_source_layers: Optional[List[str]] = None,
         partial_reasons: Optional[List[str]] = None,
-        precomputed_free_text_constraints: Optional[
-            Dict[str, List[Dict[str, Any]]]
-        ] = None,
     ) -> None:
         self.state = state
         self.fast_llm = fast_llm
@@ -49,7 +46,6 @@ class ConstraintSourceLoader:
         self.context_status = context_status
         self.missing_source_layers = missing_source_layers or []
         self.partial_reasons = partial_reasons or []
-        self.precomputed_free_text_constraints = precomputed_free_text_constraints
 
     @classmethod
     def from_loaded(
@@ -63,9 +59,6 @@ class ConstraintSourceLoader:
         memory_facts: Optional[List[Dict[str, Any]]] = None,
         missing_source_layers: Optional[List[str]] = None,
         partial_reasons: Optional[List[str]] = None,
-        precomputed_free_text_constraints: Optional[
-            Dict[str, List[Dict[str, Any]]]
-        ] = None,
     ) -> "ConstraintSourceLoader":
         missing = list(missing_source_layers or [])
         if user_profile is None and "manual_profile" not in missing:
@@ -85,7 +78,6 @@ class ConstraintSourceLoader:
             context_status=status,
             missing_source_layers=missing,
             partial_reasons=partial_reasons or [],
-            precomputed_free_text_constraints=precomputed_free_text_constraints,
         )
 
     async def build_pack(self) -> Dict[str, Any]:
@@ -99,7 +91,6 @@ class ConstraintSourceLoader:
             context_status=self.context_status,
             missing_source_layers=self.missing_source_layers,
             partial_reasons=self.partial_reasons,
-            precomputed_free_text_constraints=self.precomputed_free_text_constraints,
         )
 
 
@@ -162,7 +153,7 @@ async def load_constraint_sources(state: TravelAgentState) -> LoadedConstraintSo
         if user_profile is None:
             missing_layers.extend(["manual_profile", "auto_portrait"])
     except Exception as exc:
-        logger.warning("ConstraintNormalizer: user profile unavailable: %s", exc)
+        logger.warning("ConstraintSources: user profile unavailable: %s", exc)
         missing_layers.extend(["manual_profile", "auto_portrait"])
         partial_reasons.append("user_profile_load_failed")
 
@@ -175,7 +166,7 @@ async def load_constraint_sources(state: TravelAgentState) -> LoadedConstraintSo
         manual_memory_truncated = len(probed) > manual_memory_cap
         manual_memory_facts = probed[:manual_memory_cap]
     except Exception as exc:
-        logger.warning("ConstraintNormalizer: manual memories unavailable: %s", exc)
+        logger.warning("ConstraintSources: manual memories unavailable: %s", exc)
         missing_layers.append("manual_memory")
         partial_reasons.append("manual_memory_list_failed")
 
@@ -187,7 +178,7 @@ async def load_constraint_sources(state: TravelAgentState) -> LoadedConstraintSo
                 top_k=8,
             )
         except Exception as exc:
-            logger.warning("ConstraintNormalizer: memory facts unavailable: %s", exc)
+            logger.warning("ConstraintSources: memory facts unavailable: %s", exc)
             missing_layers.append("memory_fact")
             partial_reasons.append("memory_fact_search_failed")
     else:
@@ -219,9 +210,8 @@ async def build_run_constraint_pack(
     state: TravelAgentState,
     *,
     loaded: Optional[LoadedConstraintSources] = None,
-    precomputed_free_text_constraints: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
-    """本轮 Constraint Pack 的唯一装配入口，深度调研与快问快答两条路径共用。"""
+    """组装包含自由文本抽取的完整个人约束包，供快问快答使用。"""
     loaded = loaded or await load_constraint_sources(state)
 
     loader = ConstraintSourceLoader.from_loaded(
@@ -233,6 +223,5 @@ async def build_run_constraint_pack(
         memory_facts=loaded.memory_facts,
         missing_source_layers=loaded.missing_layers,
         partial_reasons=loaded.partial_reasons,
-        precomputed_free_text_constraints=precomputed_free_text_constraints,
     )
     return await loader.build_pack()

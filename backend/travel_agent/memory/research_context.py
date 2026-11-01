@@ -15,8 +15,6 @@ from pydantic import Field
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.schema import StrictModel
 
-from travel_agent.planning.research.query_contracts import ResearchQuery
-
 _COORDINATION_KINDS = {
     "destination_researcher": frozenset(),
     "accommodation_researcher": frozenset({"visit", "dining", "transport"}),
@@ -62,15 +60,11 @@ def project_research_context(
     worker_kind: str,
     run_id: str,
     generation_id: str,
-    planned_queries: Sequence[ResearchQuery],
+    destination_ids: Sequence[str],
     assignment: Mapping[str, Any],
 ) -> ResearchContextView:
     kinds = _COORDINATION_KINDS[worker_kind]
-    destinations = {
-        query.destination_id
-        for query in planned_queries
-        if query.generation_id == generation_id
-    }
+    destinations = {str(item) for item in destination_ids if str(item)}
     # 最新 packet 决定候选的可见版本。不混合不同 generation，也不为填充上下文
     # 引入无关目的地。
     current = sorted(

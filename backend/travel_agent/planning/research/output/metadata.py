@@ -12,11 +12,7 @@ def build_authoritative_research_packet_metadata(
     worker_kind: ResearchWorkerKind,
     run_id: str,
     generation_id: str,
-    intent_spec_revision: int,
-    research_query_plan_id: str,
-    executed_queries: Sequence[Mapping[str, Any]],
     task_id: str,
-    constraint_pack_revision: int,
     fact_data_revision: int,
     query_context: Mapping[str, Any],
     generated_at: datetime,
@@ -31,19 +27,8 @@ def build_authoritative_research_packet_metadata(
         "generation_id": generation_id,
         "task_id": task_id,
         "worker_kind": worker_kind,
-        "intent_spec_revision": intent_spec_revision,
-        "research_query_plan_id": research_query_plan_id,
-        "executed_query_ids": [
-            str(query.get("query_id") or "")
-            for query in executed_queries
-            if query.get("query_id")
-        ],
-        "constraint_pack_revision": constraint_pack_revision,
         "fact_data_revision": fact_data_revision,
-        "query_context": {
-            **dict(query_context),
-            "query_lineage": [dict(query) for query in executed_queries],
-        },
+        "query_context": dict(query_context),
         "generated_at": generated_at.isoformat(),
     }
 

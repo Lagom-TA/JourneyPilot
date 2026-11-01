@@ -92,7 +92,7 @@ async def test_worker_result_replay_before_graph_checkpoint():
     second = await recovered(state, config)
     assert first == second and calls == [1]
     assert second["messages"][0].id == "stable"
-    changed = state.model_copy(update={"intent_spec_revision": 2})
+    changed = state.model_copy(update={"current_requirements": "更新后的需求"})
     await recovered(changed, config)
     assert len(calls) == 2
 
@@ -161,6 +161,109 @@ async def test_ask_user_pairs_all_tool_calls_before_exit(monkeypatch, tools):
     assert result.pending_choice["question"] == "destination?"
     assert [m["tool_call_id"] for m in messages if m["role"] == "tool"] == ["tc1", "tc2"]
     assert "awaiting_user_input" in messages[-1]["content"]
+
+
+async def test_cancellation_is_not_converted_to_a_failed_fallback(monkeypatch):
+    from travel_agent.runtime.cancellation import RunCancelled
+    from travel_agent.runtime.context import current_run_id
+    from travel_agent.runtime.budget import reset_ledgers
+    from travel_agent.tools import fallback
+    from travel_agent.tools.gateway_contracts import ToolManifest
+    from travel_agent.tools.registry import ToolRegistry
+
+    registry = ToolRegistry()
+    async def failing():
+        return {"success": False, "error": "offline fixture failure"}
+    async def cancelled():
+        raise RunCancelled("run", "worker")
+    registry.register("main_fixture", "主工具", {"type": "object"}, failing,
+                      manifest=ToolManifest(tool_name="main_fixture", allow_offline_fallback=True))
+    registry.register("fallback_fixture", "备用工具", {"type": "object"}, cancelled,
+                      manifest=ToolManifest(tool_name="fallback_fixture"))
+    monkeypatch.setattr(execution, "get_tool_registry", lambda: registry)
+    monkeypatch.setattr(fallback, "get_fallback_tool", lambda _name: ("fallback_fixture", "fixture"))
+    monkeypatch.setattr(fallback, "build_fallback_args", lambda *_args: {})
+    token = current_run_id.set("run")
+    reset_ledgers()
+    try:
+        with pytest.raises(RunCancelled):
+            await execution.execute_tool("main_fixture", {}, max_retries=0)
+    finally:
+        current_run_id.reset(token)
+
+
+async def test_cancelled_run_does_not_replay_a_cached_tool_result(monkeypatch):
+    from types import SimpleNamespace
+    from travel_agent.runtime.cancellation import RunCancelled, run_control_registry
+    from travel_agent.runtime.context import current_run_id
+
+    journal = WorkerJournal(InMemoryWorkerJournalStore(), "run", "scope", 0, {}, None)
+    key = journal.next_tool("read", {})
+    journal.tool_cursor = 0
+    journal.payload["tools"] = {key: {"result": {"status": "success"}}}
+    monkeypatch.setattr(execution, "get_tool_registry", lambda: SimpleNamespace(get_tool_metadata=lambda _name: {}))
+    handle = run_control_registry.register("run")
+    handle.request_stop("user_cancel")
+    run_token = current_run_id.set("run")
+    journal_token = current_worker_journal.set(journal)
+    try:
+        with pytest.raises(RunCancelled):
+            await execution.execute_tool("read", {})
+    finally:
+        current_worker_journal.reset(journal_token)
+        current_run_id.reset(run_token)
+        run_control_registry.clear()
+
+
+async def test_cancellation_stops_station_lookup_before_provider_fallback(monkeypatch):
+    from travel_agent.planning.itinerary import place_resolution
+    from travel_agent.planning.research.transport.rail import stations
+    from travel_agent.runtime.cancellation import RunCancelled
+
+    calls = []
+    async def cancelled(**_kwargs):
+        calls.append("amap")
+        raise RunCancelled("run", "transport_researcher")
+    async def forbidden(**_kwargs):
+        calls.append("nominatim")
+        pytest.fail("取消后不能发起另一个地点查询")
+
+    monkeypatch.setattr(place_resolution, "_resolve_via_amap", cancelled)
+    monkeypatch.setattr(place_resolution, "_resolve_via_nominatim", forbidden)
+    with pytest.raises(RunCancelled):
+        await stations._locate_rail_station(
+            telecode="SHH", station_name="上海", city="上海",
+            city_identity={"place_id": "shanghai", "country_code": "CN", "latitude": 31.2, "longitude": 121.4},
+            tool_context={}, point_cache={},
+        )
+    assert calls == ["amap"]
+
+
+@pytest.mark.parametrize("cancel_at", ["station_codes", "tickets"])
+async def test_cancellation_stops_rail_ticket_prefetch(monkeypatch, cancel_at):
+    from datetime import date
+    from types import SimpleNamespace
+    from travel_agent.planning.research.provider_contracts import ProviderRouteLegScope
+    from travel_agent.planning.research.transport.rail import binding
+    from travel_agent.runtime.cancellation import RunCancelled
+
+    async def cancelled(*_args, **_kwargs):
+        raise RunCancelled("run", "transport_researcher")
+
+    monkeypatch.setattr(binding, "get_tool_registry", lambda: SimpleNamespace(has_tool=lambda _name: True))
+    monkeypatch.setattr(binding, "execute_tool", cancelled)
+    if cancel_at == "tickets":
+        monkeypatch.setattr(binding, "_builtin_station_telecode", lambda city: {"上海": "SHH", "杭州": "HZH"}.get(city))
+        monkeypatch.setattr(binding, "get_tool_registry", lambda: SimpleNamespace(has_tool=lambda name: name == "get-tickets"))
+    origin = {"place_id": "shanghai", "name": "上海", "country_code": "CN"}
+    destination = {"place_id": "hangzhou", "name": "杭州", "country_code": "CN"}
+    leg = ProviderRouteLegScope(leg_role="outbound", from_place_id="shanghai", to_place_id="hangzhou", service_date=date(2026, 11, 5))
+    with pytest.raises(RunCancelled):
+        await binding._bind_one_rail_leg(
+            state=TravelAgentState(run_id="run"), messages=[], tool_context={}, authoritative_tool_results=[],
+            reference_services=[], scoped_leg=leg, identity_by_place_id={"shanghai": origin, "hangzhou": destination},
+            station_code_cache={}, station_point_cache={}, now=None,
+        )
 
 
 async def test_stream_without_finish_never_admits_partial_json(tools):

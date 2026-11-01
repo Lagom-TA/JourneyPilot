@@ -103,8 +103,7 @@ async def _awaiting_plan_gate_run(resources, *, revision=1, token="current-token
         "approval_token": token,
         "plan": {"steps": [{"step": 1, "agents": ["destination_researcher"], "tasks": {}}]},
         "plan_text": "当前计划",
-        "recognized_requirements": {"hard": [], "preferences": []},
-        "decision_options": ["approve", "edit", "supplement", "cancel"],
+        "decision_options": ["approve", "supplement", "cancel"],
     }
     await resources.trip_run_store.transition_status(
         run.run_id,
@@ -145,11 +144,6 @@ def _gate_resume_body(run, decision_payload):
         {
             "action": "supplement",
             "content": "住得安静一些",
-            "approval_token": "stale-token",
-        },
-        {
-            "action": "edit",
-            "content": "改成更慢的节奏",
             "approval_token": "stale-token",
         },
     ],
@@ -199,20 +193,37 @@ async def test_current_plan_gate_token_passes_version_check(resources):
     assert not resources.run_execution_store.rows
 
 
-async def test_legacy_gate_without_checkpoint_cannot_resume_or_cancel(resources):
-    run, _payload = await _awaiting_plan_gate_run(resources, token=None)
+async def test_old_checkpoint_reports_that_replanning_is_required(resources):
+    from travel_agent.planning.workflow import CheckpointContractError
 
-    stale = await request(
-        "POST", "/api/chat-stream", _gate_resume_body(run, {"action": "approve"})
-    )
-    assert stale.status_code == 409
-    assert stale.json()["detail"] == "当前服务未启用 checkpoint，无法断点续跑"
+    run, payload = await _awaiting_plan_gate_run(resources)
+    resources.checkpointer = object()
 
-    cancel = await request(
-        "POST", "/api/chat-stream", _gate_resume_body(run, {"action": "cancel"})
+    class OldCheckpointWorkflow:
+        async def probe_checkpoint(self, _run_id):
+            raise CheckpointContractError("当前版本无法继续这次旧规划，请重新规划这趟旅行。")
+
+    resources.travel_workflow = OldCheckpointWorkflow()
+    response = await request(
+        "POST", "/api/chat-stream",
+        _gate_resume_body(run, {"action": "approve", "approval_token": payload["approval_token"]}),
     )
-    assert cancel.status_code == 409
-    assert cancel.json()["detail"] == "当前服务未启用 checkpoint，无法断点续跑"
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "code": "checkpoint_contract_mismatch", "message": "当前版本无法继续这次旧规划，请重新规划这趟旅行。",
+    }
+    assert not resources.run_execution_store.rows
+
+
+async def test_approval_cannot_include_unsubmitted_changes(resources):
+    run, payload = await _awaiting_plan_gate_run(resources)
+    response = await request(
+        "POST", "/api/chat-stream",
+        _gate_resume_body(run, {
+            "action": "approve", "content": "每天少走一些", "approval_token": payload["approval_token"],
+        }),
+    )
+    assert response.status_code == 422
     assert resources.trip_run_store.runs[run.run_id].status is TripRunStatus.AWAITING_INPUT
     assert not resources.run_execution_store.rows
 

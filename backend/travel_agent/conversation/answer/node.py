@@ -191,7 +191,6 @@ async def fast_answer_node(
             await stream_queue.put(("token", _NODE_NAME, response))
         return {
             "constraint_pack": constraint_pack,
-            "constraint_pack_revision": state.constraint_pack_revision + 1,
             "messages": [AIMessage(content=response)],
             "is_completed": True,
             "synthesis_mode": "fast",

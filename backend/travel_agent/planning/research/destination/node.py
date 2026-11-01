@@ -23,23 +23,12 @@ from travel_agent.planning.invalidation import generation_packet_key
 from travel_agent.planning.requirements.constraint_applicability import (
     active_hard_constraint_ids,
 )
-from travel_agent.planning.research.assignment_context import build_assignment_context
 from travel_agent.planning.research.destination.diagnostics import _log_rag_place_funnel
-from travel_agent.planning.research.destination.discovery import (
-    discover_and_resolve_required_places,
-)
-from travel_agent.planning.research.destination.operating_information import (
-    collect_place_operating_information,
-)
 from travel_agent.planning.research.destination.scope import (
     _NODE_NAME,
-    _SCOPED_DISCOVERY_TOOLS,
     build_destination_boundaries,
     build_destination_task_prompt,
-    collect_offered_dining_place_ids,
-    resolve_discovery_candidate_kinds,
 )
-from travel_agent.planning.research.domains import ResearchDomain
 from travel_agent.planning.research.errors import format_worker_last_error
 from travel_agent.planning.research.output.failures import (
     build_failure_only_research_packet,
@@ -61,7 +50,6 @@ from travel_agent.planning.research.prompts import build_research_packet_prompt
 from travel_agent.planning.research.provider_assignments import (
     parse_provider_evidence_assignments,
 )
-from travel_agent.planning.research.query_planner import queries_by_ids
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.tool_context import build_tool_context_from_state
 from travel_agent.runtime.cancellation import RunCancelled
@@ -103,38 +91,20 @@ async def destination_researcher_node(
     current_time = state.current_time or datetime.datetime.now().strftime(
         "%Y-%m-%d %H:%M"
     )
-    user_query = state.user_query or ""
+    user_query = state.current_requirements or ""
     run_id = state.run_id
 
     output_key, assignment = resolve_agent_assignment(
         state.agent_assignments or {}, _NODE_NAME
     )
-    research_brief_context = build_assignment_context(
-        assignment=assignment,
-        brief=state.research_brief,
-        intent_spec=state.intent_spec,
-        constraint_pack=state.constraint_pack,
-    )
     task_desc = assignment["objective"]
-    if state.research_query_plan is None:
-        raise ValueError("destination research requires a Research Query Plan")
-    planned_queries = queries_by_ids(
-        state.research_query_plan,
-        assignment.get("research_query_ids") or [],
-    )
-    planned_queries = [
-        query
-        for query in planned_queries
-        if query.domain in {ResearchDomain.VISIT, ResearchDomain.DINING}
-    ]
+    task_context = task_desc
     recommended_tools = assignment.get("recommended_tools", [])
     excluded_tools = assignment.get("excluded_tools", [])
-    required_candidate_kinds = assignment.get("required_candidate_kinds")
     provider_assignments = parse_provider_evidence_assignments(
         assignment,
         expected_worker=_NODE_NAME,
         expected_run_id=run_id,
-        expected_constraint_pack_revision=state.constraint_pack_revision,
     )
 
     if state.planning_generation is None:
@@ -145,7 +115,7 @@ async def destination_researcher_node(
         worker_kind=_NODE_NAME,
         run_id=run_id,
         generation_id=generation_id,
-        planned_queries=planned_queries,
+        destination_ids=[item.get("place_id", "") for item in state.controlled_trip_identity.get("destinations", [])],
         assignment=assignment,
     )
 
@@ -157,10 +127,9 @@ async def destination_researcher_node(
         worker_kind=_NODE_NAME,
         run_id=run_id,
         task_id=output_key,
-        constraint_pack_revision=state.constraint_pack_revision,
         fact_data_revision=state.fact_data_revision,
         current_time=current_time,
-        research_brief_context=research_brief_context,
+        task_context=task_context,
         candidate_limit=packet_candidate_limit(_NODE_NAME),
         upstream_packet_context=upstream_packet_context,
         active_constraint_ids=active_constraint_ids,
@@ -189,22 +158,12 @@ async def destination_researcher_node(
 
     tool_cache = dict(state.tool_cache) if state.tool_cache else {}
     tool_context = build_tool_context_from_state(state)
-    executed_query_ids: List[str] = []
-    executed_queries = [
-        query.model_dump(mode="json")
-        for query in planned_queries
-        if query.query_id in set(executed_query_ids)
-    ]
     packet_state_key = generation_packet_key(output_key, generation_id)
     authoritative_packet_metadata = build_authoritative_research_packet_metadata(
         worker_kind=_NODE_NAME,
         run_id=run_id,
         generation_id=generation_id,
-        intent_spec_revision=state.intent_spec_revision,
-        research_query_plan_id=state.research_query_plan.query_plan_id,
-        executed_queries=executed_queries,
         task_id=output_key,
-        constraint_pack_revision=state.constraint_pack_revision,
         fact_data_revision=state.fact_data_revision,
         query_context={
             "objective": task_desc,
@@ -214,70 +173,26 @@ async def destination_researcher_node(
         generated_at=datetime.datetime.now(datetime.timezone.utc),
     )
 
-    discovery_candidate_kinds = resolve_discovery_candidate_kinds(
-        required_candidate_kinds,
-        task_desc=str(task_desc or ""),
-        user_query=user_query,
-        controlled_trip_identity=state.controlled_trip_identity or {},
-    )
-
     authoritative_tool_results: List[Dict[str, Any]] = []
 
     finalize_started_at: Optional[float] = None
     try:
-        preflight_messages: List[Dict[str, Any]] = []
-        if discovery_candidate_kinds:
-            await discover_and_resolve_required_places(
-                messages=preflight_messages,
-                available_tools=available_tools,
-                required_candidate_kinds=discovery_candidate_kinds,
-                destination_boundaries=destination_boundaries,
-                tool_context=tool_context,
-                authoritative_tool_results=authoritative_tool_results,
-                planned_queries=planned_queries,
-                executed_query_ids=executed_query_ids,
-            )
-        authoritative_packet_metadata["executed_query_ids"] = list(
-            dict.fromkeys(executed_query_ids)
-        )
-        authoritative_packet_metadata["query_context"]["query_lineage"] = [
-            query.model_dump(mode="json")
-            for query in planned_queries
-            if query.query_id in set(executed_query_ids)
-        ]
         messages.append(
             {
                 "role": "user",
                 "content": build_destination_task_prompt(
                     task_desc=task_desc,
                     user_query=user_query,
-                    rag_context_section="",
-                    offered_dining_place_ids=collect_offered_dining_place_ids(
-                        authoritative_tool_results
-                    ),
                     destination_boundaries=destination_boundaries,
                 ),
             }
         )
-        messages.extend(preflight_messages)
-        discovery_tools = [
-            name
-            for name in _SCOPED_DISCOVERY_TOOLS
-            if any(
-                tool.get("schema", {}).get("function", {}).get("name") == name
-                for tool in available_tools
-            )
-        ]
         messages.append(
             {
                 "role": "user",
                 "content": (
-                    "发现与身份解析分两步：先从本轮知识库或刚注入的探索结果中提名具体地点，再用原名调用 global_place_search，必要时只补城市名。"
-                    "不要把主题、区域体验、旅游线路或类别探索句送入名称解析。网页结果只支持名称提名及其实际内容，不支持place_id。"
-                    "先利用已有探索结果并核实具体地点，避免重复检索同一主题；按用户原意研究区域体验，不默认限定为博物馆。"
-                    f"本轮已注册的网页工具：{', '.join(discovery_tools) or '无'}。"
-                    "只能激活本轮目录中真实存在的工具，不反复查找search_web/tavily/brave等未注册名称。"
-                    "网页工具缺失时可用现有知识库提名；仅在目录有maps_text_search且目的地在中国时，可用其类别关键词能力发现地点。"
+                    "按任务和用户需求选择实际可用的检索或地点工具；以本轮提供的工具目录为准。"
+                    "需要地点身份时用可用工具核实，找不到合适工具或资料时保留未知，不编造。"
                 ),
             }
         )
@@ -289,13 +204,12 @@ async def destination_researcher_node(
             stream_queue=stream_queue,
             node_name=_NODE_NAME,
             max_iterations=_MAX_TOOL_ITERATIONS,
-            can_ask_user=True,
+            can_ask_user=False,
             tool_cache=tool_cache,
             tool_context=tool_context,
         )
         raw_response = react.content
-        pending_choice = react.pending_choice
-        if not raw_response.strip() and not pending_choice:
+        if not raw_response.strip():
             # 工具循环没有产出正文时，用同一上下文做一次不带工具的直接生成。
             raw_response = await llm.ainvoke(
                 plain_observation_messages(messages),
@@ -303,42 +217,7 @@ async def destination_researcher_node(
             )
         authoritative_tool_results.extend(react.tool_results)
 
-        if pending_choice:
-            logger.info(
-                "DestinationResearcher 触发 ask_user: %s",
-                (pending_choice.get("question") or "")[:60],
-            )
-            return {
-                "messages": [
-                    AIMessage(
-                        content=pending_choice.get("question")
-                        or "需要用户澄清目的地信息"
-                    )
-                ],
-                "pending_user_choice": {
-                    "questions": [
-                        {
-                            "question": pending_choice.get("question", ""),
-                            "options": pending_choice.get("options", []),
-                            "selection_type": pending_choice.get(
-                                "selection_type", "single"
-                            ),
-                        }
-                    ],
-                    "round": 1,
-                    "allow_free_input": pending_choice.get("allow_free_input", True),
-                },
-                "agent_status": {output_key: "partial"},
-                "next_agent": "HALT",
-            }
-
         finalize_started_at = time.perf_counter()
-        await collect_place_operating_information(
-            available_tools=available_tools,
-            tool_context=tool_context,
-            authoritative_tool_results=authoritative_tool_results,
-            messages=messages,
-        )
         packet = await parse_research_packet(
             raw_response or "",
             expected_worker=_NODE_NAME,
@@ -368,21 +247,21 @@ async def destination_researcher_node(
                 corpus=grounding_corpus(),
             )
 
-        result: Dict[str, Any] = {
+        outcomes = provider_evidence_outcomes(
+            authoritative_tool_messages(authoritative_tool_results),
+            expected_worker=_NODE_NAME,
+            packet=packet,
+            assignments=provider_assignments,
+        )
+        return {
             "messages": [
                 AIMessage(content=f"已整理 {len(packet.candidates)} 个目的地候选")
             ],
             "research_packets": {packet_state_key: packet},
             "agent_status": {output_key: "completed"},
             "tool_cache": tool_cache,
-            "provider_evidence_outcomes": provider_evidence_outcomes(
-                authoritative_tool_messages(authoritative_tool_results),
-                expected_worker=_NODE_NAME,
-                packet=packet,
-                assignments=provider_assignments,
-            ),
+            **({"provider_evidence_outcomes": outcomes} if outcomes else {}),
         }
-        return result
 
     except (RunCancelled, JournalConflict):
         raise
@@ -427,5 +306,6 @@ async def destination_researcher_node(
         }
         if failure_packet is not None:
             result["research_packets"] = {packet_state_key: failure_packet}
-        result["provider_evidence_outcomes"] = outcomes
+        if outcomes:
+            result["provider_evidence_outcomes"] = outcomes
         return result

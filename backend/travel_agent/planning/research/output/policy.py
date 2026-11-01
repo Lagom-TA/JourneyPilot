@@ -22,9 +22,9 @@ _WORKER_CANDIDATE_MODELS: dict[ResearchWorkerKind, tuple[tuple[str, str], ...]] 
 
 
 RESEARCH_PACKET_CANDIDATE_LIMITS: dict[ResearchWorkerKind, int] = {
-    "destination_researcher": 4,
-    "accommodation_researcher": 4,
-    "transport_researcher": 3,
+    "destination_researcher": 12,
+    "accommodation_researcher": 8,
+    "transport_researcher": 8,
 }
 
 

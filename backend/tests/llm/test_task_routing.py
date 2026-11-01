@@ -11,7 +11,7 @@ PRIMARY, FAST = "openai/gpt-6.1-sol", "deepseek/deepseek-v4.1-flash"
 @pytest.mark.parametrize("task,tier,effort", [
     (TaskKind.RESEARCH_TOOLS, "fast", "low"), (TaskKind.QUICK_ANSWER, "fast", "low"),
     (TaskKind.SUMMARY, "fast", "low"), (TaskKind.INTENT_NORMALIZE, "fast", "low"),
-    (TaskKind.COMPOSITION, "primary", "medium"),
+    (TaskKind.PLANNING, "primary", "medium"), (TaskKind.COMPOSITION, "primary", "medium"),
 ])
 def test_task_defaults_are_model_named_and_keep_reasoning_enabled(task, tier, effort):
     route = select_task_route(task, PRIMARY, FAST)

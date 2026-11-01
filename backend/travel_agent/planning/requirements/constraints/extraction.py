@@ -449,27 +449,3 @@ async def _extract_free_text(
     if result.fallback_extracted:
         result.partial_reasons.append("deterministic_fallback_used")
     return result
-
-
-def merge_precomputed_constraint_extraction(
-    free_items: List[Dict[str, Any]],
-    model_items: Dict[str, List[Dict[str, Any]]],
-) -> ConstraintExtractionResult:
-    """合并一次共享的请求归一化结果与确定性补充结果。"""
-    rule_items = _rule_fallback_extract(free_items).fallback_items
-    result = ConstraintExtractionResult(llm_items=model_items)
-    for item in free_items:
-        source_id = item["id"]
-        merged, supplemented = _merge_extracted_constraints(
-            list(model_items.get(source_id) or []),
-            list(rule_items.get(source_id) or []),
-        )
-        if merged:
-            result.items[source_id] = merged
-        if supplemented:
-            result.fallback_items[source_id] = supplemented
-        if not merged:
-            result.missing_sources.append(source_id)
-    if result.fallback_extracted:
-        result.partial_reasons.append("deterministic_fallback_used")
-    return result

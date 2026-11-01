@@ -8,8 +8,10 @@ def merge_provider_evidence_outcomes(
     a: Dict[str, ProviderEvidenceOutcome],
     b: Dict[str, ProviderEvidenceOutcome],
 ) -> Dict[str, ProviderEvidenceOutcome]:
-    """按显式尝试序号合并当前结果，合并结果与到达顺序无关。"""
+    """按尝试序号合并结果；空结果清除当前规划版本的记录。"""
 
+    if not b:
+        return {}
     merged = dict(a or {})
     for scope_id, incoming in (b or {}).items():
         if scope_id != incoming.scope.scope_id:

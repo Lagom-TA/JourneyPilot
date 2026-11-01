@@ -14,6 +14,7 @@ from travel_agent.planning.research.output.transcript import (
 )
 from travel_agent.planning.transport import RoutePathPoint, TransportMode
 from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.runtime.cancellation import RunCancelled
 from travel_agent.tools.execution import execute_tool
 from travel_agent.tools.registry import get_tool_registry
 
@@ -182,6 +183,8 @@ async def complete_rail_route_paths(
                 if isinstance(envelope, Mapping)
                 else []
             )
+        except RunCancelled:
+            raise
         except Exception:
             path_cache[key] = []
             logger.warning(

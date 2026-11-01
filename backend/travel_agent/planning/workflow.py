@@ -12,6 +12,7 @@ from travel_agent.config.loader import get_settings
 from travel_agent.conversation.messages import build_messages
 from travel_agent.llm.usage import get_usage_recorder
 from travel_agent.planning.graph import get_travel_graph
+from travel_agent.planning.nodes import NODE_CLARIFIER, NODE_PLAN_GATE, NODE_REQUIREMENTS_PREPARER
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.context import run_attribution
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
@@ -94,18 +95,29 @@ class TravelPlanningWorkflow:
                 run_id,
                 exc,
                 warning_template="Checkpoint rejected by current v2 contract run_id=%s error=%s",
-                contract_message="checkpoint does not satisfy the current JourneyPilot v2 contract",
+                contract_message="当前版本无法继续这次旧规划，请重新规划这趟旅行。",
             )
         if snapshot.values:
             try:
-                TravelAgentState.model_validate(snapshot.values)
+                state = TravelAgentState.model_validate(snapshot.values)
             except Exception as exc:
                 _reject_checkpoint_contract(
                     run_id,
                     exc,
                     warning_template="Checkpoint completion contract rejected run_id=%s error=%s",
-                    contract_message="checkpoint does not satisfy the current JourneyPilot completion contract",
+                    contract_message="当前版本无法继续这次旧规划，请重新规划这趟旅行。",
                 )
+            early_nodes = {NODE_CLARIFIER, NODE_REQUIREMENTS_PREPARER}
+            if state.planning_generation is None and not (set(snapshot.next) & early_nodes):
+                logger.warning("检查点缺少当前规划版本 run_id=%s", run_id)
+                raise CheckpointContractError("当前版本无法继续这次旧规划，请重新规划这趟旅行。")
+            if NODE_PLAN_GATE in snapshot.next and not (state.research_plan or state.research_plan_error):
+                logger.warning("计划门检查点缺少当前研究方案 run_id=%s", run_id)
+                raise CheckpointContractError("当前版本无法继续这次旧规划，请重新规划这趟旅行。")
+        unknown_nodes = set(snapshot.next) - set(self._graph.nodes)
+        if unknown_nodes:
+            logger.warning("检查点包含当前规划图不存在的节点 run_id=%s nodes=%s", run_id, sorted(unknown_nodes))
+            raise CheckpointContractError("当前版本无法继续这次旧规划，请重新规划这趟旅行。")
         available = bool(
             snapshot.values or snapshot.next or snapshot.tasks or snapshot.interrupts
         )
@@ -135,45 +147,6 @@ class TravelPlanningWorkflow:
             and state.intake_evidence_sources == intake_evidence_sources
         )
         return bool(matches and checkpoint_id), str(checkpoint_id) if checkpoint_id else None
-
-    async def probe_semantic_decision(
-        self, run_id: str, *, action: str, challenge_id: str, approval_token: str,
-    ) -> bool:
-        """Acknowledge a semantic action only after its checkpoint is durable."""
-        if self._checkpointer is None or action not in {"semantic_confirmed", "semantic_correction"}:
-            return False
-        snapshot = await self._graph.aget_state({"configurable": {"thread_id": run_id}})
-        if not isinstance(snapshot.values, dict) or not snapshot.values:
-            return False
-        checkpoint_id = ((snapshot.config or {}).get("configurable") or {}).get("checkpoint_id")
-        decision = snapshot.values.get("plan_gate_decision")
-        if not checkpoint_id or not isinstance(decision, dict) or (
-            snapshot.values.get("run_id") != run_id
-            or decision.get("action") != action
-            or decision.get("challenge_id") != challenge_id
-            or decision.get("approval_token") != approval_token
-        ):
-            return False
-        if action == "semantic_confirmed":
-            from travel_agent.planning.requirements.confirmation_contracts import ConfirmationReceipt
-            from travel_agent.planning.requirements.intent_contracts import canonical_json_hash
-
-            raw = snapshot.values.get("semantic_receipt")
-            if hasattr(raw, "model_dump"):
-                raw = raw.model_dump(mode="json")
-            try:
-                receipt = ConfirmationReceipt.model_validate(raw)
-            except (TypeError, ValueError):
-                return False
-            if (
-                receipt.incomplete or receipt.run_id != run_id
-                or receipt.session_id != (snapshot.values.get("session_id") or run_id)
-                or receipt.challenge_token != challenge_id
-                or receipt.candidate_contract_hash != snapshot.values.get("semantic_candidate_hash")
-                or receipt.identity_hash != canonical_json_hash(snapshot.values.get("controlled_trip_identity") or {})
-            ):
-                return False
-        return True
 
     async def astream(
         self,

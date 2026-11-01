@@ -4,10 +4,7 @@ from __future__ import annotations
 NODE_CLARIFIER = "scope_clarifier"
 
 
-NODE_REQUEST_CONTRACT_NORMALIZER = "request_contract_normalizer"
-
-
-NODE_RESEARCH_BRIEF_BUILDER = "research_brief_builder"
+NODE_REQUIREMENTS_PREPARER = "requirements_preparer"
 
 
 NODE_RESEARCH_PLAN_GENERATOR = "research_plan_generator"

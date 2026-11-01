@@ -36,10 +36,9 @@ def test_prompt_injects_the_packet_schema_and_matching_candidate_limit(
         worker_kind=worker_kind,
         run_id="run_prompt_test",
         task_id="task_prompt_test",
-        constraint_pack_revision=1,
         fact_data_revision=1,
         current_time="2026-01-02 09:30",
-        research_brief_context="",
+        task_context="",
         candidate_limit=candidate_limit,
         upstream_packet_context="[]",
         active_constraint_ids=(),
@@ -52,17 +51,15 @@ def test_prompt_injects_the_packet_schema_and_matching_candidate_limit(
 
     assert prompt.system.count(schema) == 1
     assert f'"candidate_limit":{candidate_limit}' in prompt.runtime
-    assert "本 Packet 最多输出本轮 candidate_limit 个" in prompt.system
 
 
 def test_new_research_run_preserves_the_complete_schema_prefix() -> None:
     options = dict(
         worker_kind="destination_researcher",
         task_id="task_a",
-        constraint_pack_revision=1,
         fact_data_revision=1,
         current_time="2026-10-05 10:00",
-        research_brief_context="北京",
+        task_context="北京",
         candidate_limit=3,
     )
     first = build_research_packet_prompt(run_id="run_a", **options)
@@ -72,7 +69,7 @@ def test_new_research_run_preserves_the_complete_schema_prefix() -> None:
             **options,
             "task_id": "task_b",
             "current_time": "2026-10-06 11:00",
-            "research_brief_context": "上海",
+            "task_context": "上海",
             "candidate_limit": 2,
         },
     )
@@ -94,10 +91,9 @@ def test_dynamic_inputs_change_only_runtime_and_preserve_message_boundaries(
         worker_kind=worker_kind,
         run_id="run_a",
         task_id="task_a",
-        constraint_pack_revision=1,
         fact_data_revision=1,
         current_time="2026-10-05 10:00",
-        research_brief_context="北京",
+        task_context="北京",
         candidate_limit=4,
         upstream_packet_context="upstream_a",
         active_constraint_ids=["constraint_a"],
@@ -111,10 +107,9 @@ def test_dynamic_inputs_change_only_runtime_and_preserve_message_boundaries(
             "run_id": "run_b",
             "task_id": "task_b",
             "candidate_limit": 12,
-            "constraint_pack_revision": 3,
             "fact_data_revision": 9,
             "current_time": "2026-10-06 11:00",
-            "research_brief_context": "上海",
+            "task_context": "上海",
             "upstream_packet_context": "upstream_b",
             "active_constraint_ids": ["constraint_b"],
             "recommended_tools": ["global_place_search"],
@@ -172,10 +167,9 @@ def test_context_sections_have_one_owner_and_are_injected_once(monkeypatch):
         worker_kind="destination_researcher",
         run_id="run",
         task_id="task",
-        constraint_pack_revision=1,
         fact_data_revision=1,
         current_time="now",
-        research_brief_context="brief",
+        task_context="brief",
         candidate_limit=4,
         state=state,
     )

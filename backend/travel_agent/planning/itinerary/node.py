@@ -6,7 +6,6 @@ from typing import Any, Dict
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
-from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.tool_context import build_tool_context_from_state
 from travel_agent.llm.router import get_model_router
@@ -155,9 +154,7 @@ async def itinerary_planner_node(
             workspace_revision=0,
             composition=composition,
             catalog=catalog,
-            intent_contract_snapshot=IntentContractSnapshot.from_intent_spec(
-                state.intent_spec
-            ),
+            requirements=state.current_requirements,
             composition_mutations=list(state.composition_mutations),
             user_input_anchors=_draft_user_input_anchors(state),
             reference_services=list(state.provider_reference_services),

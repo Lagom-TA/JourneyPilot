@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 import pytest
 
 from tests.fixtures.itinerary import itinerary_draft, visit_entry
-from tests.fixtures.planning_state import make_planning_state
 from tests.fixtures.research_catalog import make_catalog, make_visit_packet
 from travel_agent.planning.delivery.public.itinerary import _public_itinerary
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
@@ -14,8 +13,6 @@ from travel_agent.planning.itinerary.mutations.apply import apply_workspace_v2_m
 from travel_agent.planning.itinerary.mutations.contracts import UpdateStopScheduleMutation
 from travel_agent.planning.itinerary.parsing import parse_itinerary_composition
 from travel_agent.planning.itinerary.title_writing import write_itinerary_copy
-from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
-from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryOrigin
 from travel_agent.planning.requirements.inputs import UserInputAnchor
 from travel_agent.planning.requirements.place_names import (
     CONTROLLED_DESTINATION_ANCHOR_PREFIX,
@@ -53,12 +50,8 @@ def _workspace(days=1, *, with_identity=False):
     packet = make_visit_packet(
         "candidate_visit",
         "旧景点",
-        origin=CandidateDiscoveryOrigin.INTENT_QUERY,
-        query_id="query_visit",
-        intent_id="intent_test",
     )
     catalog = make_catalog(packet)
-    state = make_planning_state()
     anchors = []
     if with_identity:
         destination_id = composition.days[0].destination_id
@@ -75,9 +68,7 @@ def _workspace(days=1, *, with_identity=False):
         workspace_revision=0,
         composition=composition,
         catalog=catalog,
-        intent_contract_snapshot=IntentContractSnapshot.from_intent_spec(
-            state.intent_spec
-        ),
+        requirements="东京行程需求",
         composition_mutations=[],
         user_input_anchors=anchors,
     )

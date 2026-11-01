@@ -10,16 +10,10 @@ from travel_agent.planning.research.candidates import (
 )
 from travel_agent.planning.research.catalog import RecommendationCatalog
 
-# 组合提示词的容量上限：每个领域最多向模型展示这么多候选。这是提示词长度
-# 约束，不是质量筛选——完整候选集合仍由 JSON Schema 的 candidate_id 枚举
-# 允许引用，长距离交通候选优先展示以免锚点缺失。
-PROMPT_CANDIDATE_LIMIT_PER_DOMAIN = 8
-
-
 def prompt_candidate_ids(
     catalog: RecommendationCatalog, *, skeleton_only: bool = False
 ) -> Dict[str, list[str]]:
-    """返回按提示词展示顺序排列的各领域候选 id，数量受容量上限约束。"""
+    """返回按提示词展示顺序排列的全部候选 id。"""
     candidates = catalog.candidate_index()
     by_kind: Dict[str, list[str]] = {
         kind: [] for kind in ("visit", "dining", "transport", "lodging")
@@ -40,9 +34,7 @@ def prompt_candidate_ids(
         return (0, candidate_id)
 
     return {
-        kind: sorted(ids, key=lambda candidate_id: display_order(kind, candidate_id))[
-            :PROMPT_CANDIDATE_LIMIT_PER_DOMAIN
-        ]
+        kind: sorted(ids, key=lambda candidate_id: display_order(kind, candidate_id))
         for kind, ids in by_kind.items()
     }
 

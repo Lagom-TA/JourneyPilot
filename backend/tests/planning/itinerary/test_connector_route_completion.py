@@ -13,7 +13,6 @@ from travel_agent.planning.itinerary import node
 from travel_agent.planning.itinerary.draft import AuthoredRoute
 from travel_agent.planning.itinerary.parsing import parse_itinerary_composition
 from travel_agent.planning.research.candidates import TransportCandidate
-from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryOrigin
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
 from travel_agent.planning.delivery.public.itinerary import _public_itinerary
 from travel_agent.planning.itinerary.models import TransportLeg
@@ -34,9 +33,6 @@ def _located_visit(candidate_id, *, located=True):
     packet = make_visit_packet(
         candidate_id,
         candidate_id,
-        origin=CandidateDiscoveryOrigin.INTENT_QUERY,
-        query_id=f"query_{candidate_id}",
-        intent_id="intent_test",
     )
     if not located:
         return packet

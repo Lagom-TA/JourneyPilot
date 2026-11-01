@@ -4,12 +4,11 @@ from typing import Dict, List, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
-from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryRecord
 from travel_agent.planning.research.candidates import ResearchCandidate
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.schema import StrictModel
 
-RECOMMENDATION_CATALOG_CONTRACT_VERSION = "journeypilot.recommendation_catalog.v7"
+RECOMMENDATION_CATALOG_CONTRACT_VERSION = "journeypilot.recommendation_catalog.v8"
 
 
 class RecommendationCatalog(StrictModel):
@@ -24,14 +23,9 @@ class RecommendationCatalog(StrictModel):
         RECOMMENDATION_CATALOG_CONTRACT_VERSION
     )
     generation_id: str = Field(min_length=1)
-    intent_spec_revision: int = Field(ge=1)
-    research_query_plan_id: str = Field(min_length=1)
     fact_data_revision: int = Field(ge=0)
     weather_data_revision: int = Field(ge=0)
     research_packets: List[ResearchPacket] = Field(default_factory=list)
-    candidate_discovery_records: List[CandidateDiscoveryRecord] = Field(
-        default_factory=list
-    )
 
     @model_validator(mode="after")
     def validate_catalog(self) -> "RecommendationCatalog":
@@ -62,27 +56,6 @@ class RecommendationCatalog(StrictModel):
             raise ValueError(
                 "research packet generation does not match recommendation catalog"
             )
-        if any(
-            packet.intent_spec_revision != self.intent_spec_revision
-            for packet in self.research_packets
-        ):
-            raise ValueError("research packet intent revision does not match catalog")
-        if any(
-            packet.research_query_plan_id != self.research_query_plan_id
-            for packet in self.research_packets
-        ):
-            raise ValueError("research packet query plan does not match catalog")
-        discovery_by_candidate = {
-            record.candidate_id: record for record in self.candidate_discovery_records
-        }
-        if set(discovery_by_candidate) != set(candidate_ids):
-            raise ValueError("catalog discovery lineage must cover every candidate")
-        if any(
-            record != discovery_by_candidate.get(record.candidate_id)
-            for packet in self.research_packets
-            for record in packet.candidate_discovery_records
-        ):
-            raise ValueError("catalog discovery lineage differs from research packets")
         return self
 
     def candidate_index(self) -> Dict[str, ResearchCandidate]:

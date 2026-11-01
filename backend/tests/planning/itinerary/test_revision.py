@@ -30,9 +30,7 @@ from travel_agent.planning.itinerary.materialize import materialize_trip_workspa
 from travel_agent.planning.itinerary.node import _composition_phase
 from travel_agent.planning.itinerary.parsing import parse_itinerary_composition
 from travel_agent.planning.itinerary.prompts import _build_composition_prompt
-from travel_agent.planning.requirements.snapshot_contracts import IntentContractSnapshot
 from travel_agent.planning.research.candidates import DiningCandidate
-from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryOrigin
 from travel_agent.planning.research.packets import ResearchPacket
 
 
@@ -50,9 +48,6 @@ def visit_packet(candidate_id="candidate_visit"):
     return make_visit_packet(
         candidate_id,
         candidate_id,
-        origin=CandidateDiscoveryOrigin.INTENT_QUERY,
-        query_id=f"query_{candidate_id}",
-        intent_id="intent_test",
     )
 
 
@@ -130,14 +125,13 @@ def authored_dining(name="Restaurant area", start="18:00", end="19:00"):
     return entry
 
 
-def workspace(composition, catalog, *, intent_spec=None):
-    spec = intent_spec or make_planning_state().intent_spec
+def workspace(composition, catalog):
     return materialize_trip_workspace(
         run_id="run_test",
         workspace_revision=0,
         composition=composition,
         catalog=catalog,
-        intent_contract_snapshot=IntentContractSnapshot.from_intent_spec(spec),
+        requirements="东京行程需求",
         composition_mutations=[],
     )
 

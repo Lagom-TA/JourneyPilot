@@ -20,9 +20,6 @@ from travel_agent.planning.invalidation import generation_packet_key
 from travel_agent.planning.requirements.constraint_applicability import (
     active_hard_constraint_ids,
 )
-from travel_agent.planning.research.accommodation.discovery import (
-    discover_deterministic_hotels,
-)
 from travel_agent.planning.research.accommodation.fallback_assembly import (
     assemble_lodging_fallback_packet,
     deterministic_lodging_candidates,
@@ -31,8 +28,6 @@ from travel_agent.planning.research.accommodation.prompts import (
     build_accommodation_task_prompt,
 )
 from travel_agent.planning.research.accommodation.scope import _NODE_NAME
-from travel_agent.planning.research.assignment_context import build_assignment_context
-from travel_agent.planning.research.domains import ResearchDomain
 from travel_agent.planning.research.errors import format_worker_last_error
 from travel_agent.planning.research.output.failures import (
     build_failure_only_research_packet,
@@ -55,7 +50,6 @@ from travel_agent.planning.research.prompts import build_research_packet_prompt
 from travel_agent.planning.research.provider_assignments import (
     parse_provider_evidence_assignments,
 )
-from travel_agent.planning.research.query_planner import queries_by_ids
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.tool_context import build_tool_context_from_state
 from travel_agent.runtime.cancellation import RunCancelled
@@ -93,40 +87,20 @@ async def accommodation_researcher_node(
     current_time = state.current_time or datetime.datetime.now().strftime(
         "%Y-%m-%d %H:%M"
     )
-    user_query = state.user_query or ""
+    user_query = state.current_requirements or ""
     run_id = state.run_id
 
     output_key, assignment = resolve_agent_assignment(
         state.agent_assignments or {}, _NODE_NAME
     )
-    research_brief_context = build_assignment_context(
-        assignment=assignment,
-        brief=state.research_brief,
-        intent_spec=state.intent_spec,
-        constraint_pack=state.constraint_pack,
-    )
     task_desc = assignment["objective"]
-    if state.research_query_plan is None:
-        raise ValueError("accommodation research requires a Research Query Plan")
-    planned_queries = [
-        query
-        for query in queries_by_ids(
-            state.research_query_plan,
-            assignment.get("research_query_ids") or [],
-        )
-        if query.domain is ResearchDomain.LODGING
-    ]
-    task_desc = (
-        f"{task_desc}；研究查询："
-        + "；".join(query.query_text for query in planned_queries)
-    )[:1000]
+    task_context = task_desc
     recommended_tools = assignment.get("recommended_tools", [])
     excluded_tools = assignment.get("excluded_tools", [])
     provider_assignments = parse_provider_evidence_assignments(
         assignment,
         expected_worker=_NODE_NAME,
         expected_run_id=run_id,
-        expected_constraint_pack_revision=state.constraint_pack_revision,
     )
 
     if state.planning_generation is None:
@@ -137,7 +111,7 @@ async def accommodation_researcher_node(
         worker_kind=_NODE_NAME,
         run_id=run_id,
         generation_id=generation_id,
-        planned_queries=planned_queries,
+        destination_ids=[item.get("place_id", "") for item in state.controlled_trip_identity.get("destinations", [])],
         assignment=assignment,
     )
 
@@ -149,10 +123,9 @@ async def accommodation_researcher_node(
         worker_kind=_NODE_NAME,
         run_id=run_id,
         task_id=output_key,
-        constraint_pack_revision=state.constraint_pack_revision,
         fact_data_revision=state.fact_data_revision,
         current_time=current_time,
-        research_brief_context=research_brief_context,
+        task_context=task_context,
         candidate_limit=packet_candidate_limit(_NODE_NAME),
         upstream_packet_context=upstream_packet_context,
         active_constraint_ids=active_constraint_ids,
@@ -186,17 +159,12 @@ async def accommodation_researcher_node(
 
     tool_cache = dict(state.tool_cache) if state.tool_cache else {}
     tool_context = build_tool_context_from_state(state)
-    executed_query_ids: List[str] = []
     packet_state_key = generation_packet_key(output_key, generation_id)
     authoritative_packet_metadata = build_authoritative_research_packet_metadata(
         worker_kind=_NODE_NAME,
         run_id=run_id,
         generation_id=generation_id,
-        intent_spec_revision=state.intent_spec_revision,
-        research_query_plan_id=state.research_query_plan.query_plan_id,
-        executed_queries=[],
         task_id=output_key,
-        constraint_pack_revision=state.constraint_pack_revision,
         fact_data_revision=state.fact_data_revision,
         query_context={
             "objective": task_desc,
@@ -210,23 +178,6 @@ async def accommodation_researcher_node(
 
     finalize_started_at: Optional[float] = None
     try:
-        await discover_deterministic_hotels(
-            state=state,
-            messages=messages,
-            available_tools=available_tools,
-            tool_context=tool_context,
-            authoritative_tool_results=authoritative_tool_results,
-            planned_queries=planned_queries,
-            executed_query_ids=executed_query_ids,
-        )
-        authoritative_packet_metadata["executed_query_ids"] = list(
-            dict.fromkeys(executed_query_ids)
-        )
-        authoritative_packet_metadata["query_context"]["query_lineage"] = [
-            query.model_dump(mode="json")
-            for query in planned_queries
-            if query.query_id in set(executed_query_ids)
-        ]
         react = await streaming_react_loop(
             llm=llm,
             messages=messages,
@@ -293,6 +244,12 @@ async def accommodation_researcher_node(
             (time.perf_counter() - finalize_started_at) * 1000.0,
         )
 
+        outcomes = provider_evidence_outcomes(
+            authoritative_tool_messages(authoritative_tool_results),
+            expected_worker=_NODE_NAME,
+            packet=packet,
+            assignments=provider_assignments,
+        )
         return {
             "messages": [
                 AIMessage(content=f"已整理 {len(packet.candidates)} 个住宿候选")
@@ -300,12 +257,7 @@ async def accommodation_researcher_node(
             "research_packets": {packet_state_key: packet},
             "agent_status": {output_key: "completed"},
             "tool_cache": tool_cache,
-            "provider_evidence_outcomes": provider_evidence_outcomes(
-                authoritative_tool_messages(authoritative_tool_results),
-                expected_worker=_NODE_NAME,
-                packet=packet,
-                assignments=provider_assignments,
-            ),
+            **({"provider_evidence_outcomes": outcomes} if outcomes else {}),
         }
 
     except (RunCancelled, JournalConflict):
@@ -351,5 +303,6 @@ async def accommodation_researcher_node(
         }
         if failure_packet is not None:
             result["research_packets"] = {packet_state_key: failure_packet}
-        result["provider_evidence_outcomes"] = outcomes
+        if outcomes:
+            result["provider_evidence_outcomes"] = outcomes
         return result

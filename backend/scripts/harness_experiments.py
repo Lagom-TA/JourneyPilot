@@ -37,7 +37,7 @@ def write_rows(path, rows):
 
 
 def matrix():
-    from tests.fixtures.research_packets import make_packet, make_research_query
+    from tests.fixtures.research_packets import make_packet
     from travel_agent.memory.research_context import format_worker_research_context
     packet = make_packet(entities=(("visit_a", "tokyo"), ("visit_b", "tokyo")))
     tools = [{"schema": {"type": "function", "function": {"name": f"read_{i}", "description": "Read observed provider facts", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}}}}} for i in range(8)]
@@ -47,11 +47,11 @@ def matrix():
         trial_id = hashlib.sha256(json.dumps(case, sort_keys=True).encode()).hexdigest()[:16]
         assignment = {"excluded_candidate_ids": ["visit_a"]} if run_mode == "supplement" else {}
         projection = format_worker_research_context({packet.research_packet_id: packet}, worker_kind="accommodation_researcher",
-            run_id="run_test", generation_id="generation_test", planned_queries=[make_research_query()], assignment=assignment)
+            run_id="run_test", generation_id="generation_test", destination_ids=["tokyo"], assignment=assignment)
         prompt = build_research_packet_prompt(worker_kind="accommodation_researcher", run_id="run_test", task_id="task",
-            current_time="2026-10-08 12:00", constraint_pack_revision=1, fact_data_revision=1,
+            current_time="2026-10-08 12:00", fact_data_revision=1,
             candidate_limit=6,
-            research_brief_context="预算3000元、不能爬楼、每日一个景点" if complexity == "complex" else "两日旅行",
+            task_context="预算3000元、不能爬楼、每日一个景点" if complexity == "complex" else "两日旅行",
             upstream_packet_context=projection)
         exposure = apply_tool_exposure(tools, "accommodation_researcher", config=ToolExposureConfig(mode=tool_mode, min_tools_threshold=1))
         messages = attach_tool_catalog([{"role": "system", "content": prompt.system}, {"role": "user", "content": prompt.runtime}], exposure)

@@ -32,7 +32,7 @@ from travel_agent.planning.weather.models import (
 from travel_agent.planning.workspace import TripWorkspaceV2
 from travel_agent.schema import StrictModel
 
-DELIVERY_BUNDLE_CONTRACT_VERSION = "journeypilot.delivery_bundle.v10"
+DELIVERY_BUNDLE_CONTRACT_VERSION = "journeypilot.delivery_bundle.v11"
 
 
 class DeliveryRevisionManifest(StrictModel):

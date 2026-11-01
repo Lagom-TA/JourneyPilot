@@ -12,8 +12,7 @@ TRACE_SCHEMA_VERSION = "workflow_trace_event.v1"
 
 NODE_PHASES: Dict[str, str] = {
     "scope_clarifier": "scope",
-    "request_contract_normalizer": "scope",
-    "research_brief_builder": "scope",
+    "requirements_preparer": "scope",
     "research_plan_generator": "scope",
     "intent_amendment_router": "planning",
     "minimum_delivery_draft_builder": "planning",

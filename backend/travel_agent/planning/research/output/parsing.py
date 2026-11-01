@@ -14,7 +14,6 @@ from travel_agent.planning.research.candidates import (
     TransportCandidate,
     VisitCandidate,
 )
-from travel_agent.planning.research.discovery_contracts import CandidateDiscoveryRecord
 from travel_agent.planning.research.evidence import FactAssertion, FieldProvenance, SourceRecord
 from travel_agent.planning.research.packets import RESEARCH_PACKET_CONTRACT_VERSION
 from travel_agent.planning.research.packets import ResearchPacket
@@ -22,7 +21,6 @@ from travel_agent.tools.knowledge_results import knowledge_tool_documents
 
 from .identity import _bind_successful_place_identity
 from .lineage import (
-    _bind_candidate_discovery_lineage,
     _drop_borrowed_compiled_source_links,
     _prune_payload_to_candidate_closure,
 )
@@ -75,16 +73,6 @@ def _sanitize_packet_nested_models(payload: dict[str, Any]) -> None:
         items = payload.get(key)
         if isinstance(items, list):
             payload[key] = [_filter_model_fields(item, fields) for item in items]
-    discoveries = payload.get("candidate_discovery_records")
-    if isinstance(discoveries, list):
-        allowed = set(CandidateDiscoveryRecord.model_fields)
-        payload["candidate_discovery_records"] = [
-            filtered
-            for item in discoveries
-            if isinstance(item, dict)
-            for filtered in [_filter_model_fields(item, allowed)]
-            if filtered.get("candidate_id")
-        ]
 
 
 def _isolate_json_object(text: str) -> Optional[dict]:
@@ -201,7 +189,6 @@ def parse_research_packet_output(
             source.model_dump(mode="python")
             for source in compiled_tool_sources.values()
         ]
-    _bind_candidate_discovery_lineage(payload)
     _drop_dangling_source_links(payload)
     try:
         packet = ResearchPacket.model_validate(payload)

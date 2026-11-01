@@ -5,9 +5,8 @@ const AGENT_LABELS: Record<string, {
     summary: string;
 }> = {
     scope_clarifier: { label: '确认旅行信息', summary: '检查目的地、日期、同行人和旅行要求是否明确' },
-    request_contract_normalizer: { label: '整理旅行需求', summary: '把本次要求和个人偏好整理成清晰的旅行信息' },
-    research_brief_builder: { label: '准备旅行查询', summary: '根据旅行需求整理景点、交通和住宿的查询方向' },
-    research_plan_generator: { label: '生成研究计划', summary: '从已确认需求允许的研究重点和检索词中生成计划' },
+    requirements_preparer: { label: '整理旅行需求', summary: '把本次要求和个人偏好整理成清晰的旅行信息' },
+    research_plan_generator: { label: '生成研究方案', summary: '根据当前旅行需求写出研究和安排设想' },
     intent_amendment_router: { label: '处理新增要求', summary: '判断新增要求的影响范围并更新当前计划' },
     destination_geo_resolver: { label: '确认目的地', summary: '解析目的地位置、时区和旅行范围' },
     weather_context_builder: { label: '准备天气信息', summary: '在安排前准备预报或季节参考' },

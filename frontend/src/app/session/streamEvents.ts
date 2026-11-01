@@ -10,7 +10,7 @@ import { type StreamOwnership } from "./streamOwnership";
 import { createStreamPresentation } from "../../features/chat/model/streamPresentation";
 import { createDeliveryProtocol } from "../../features/travel/model/deliveryProtocol";
 import { type StreamFrameBatch } from "../../features/chat/model/streamFrameBatch";
-export function createStreamEvents(ownership: StreamOwnership, assistantMessage: Message, text: string, initialCurrentTripRunId: string | null, pendingLabel: string | undefined, currentStateRef: MutableRefObject<AppState>, setLastSession: (id: string | null) => void, frame: StreamFrameBatch, gateAction?: PlanGateDecisionAction, onSemanticAccepted?: (action: 'confirm' | 'correction', challengeId: string, approvalToken: string) => void) {
+export function createStreamEvents(ownership: StreamOwnership, assistantMessage: Message, text: string, initialCurrentTripRunId: string | null, pendingLabel: string | undefined, currentStateRef: MutableRefObject<AppState>, setLastSession: (id: string | null) => void, frame: StreamFrameBatch, gateAction?: PlanGateDecisionAction) {
     const { identity, scopedDispatch, isStreamVisible, updateActiveStreamHandle } = ownership;
     const { flushFrameNow } = frame;
     let intakeOnly = false;
@@ -131,14 +131,6 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     const card = normalizeTripSummaryCard(event);
                     if (card)
                         scopedDispatch({ type: 'SET_TRIP_SUMMARY_CARD', payload: card });
-                    break;
-                }
-                case 'semantic_confirmation_accepted': {
-                    if (isStreamVisible() && event.run_id === identity.runId
-                        && (event.semantic_action === 'confirm' || event.semantic_action === 'correction')
-                        && typeof event.challenge_id === 'string' && typeof event.approval_token === 'string') {
-                        onSemanticAccepted?.(event.semantic_action, event.challenge_id, event.approval_token);
-                    }
                     break;
                 }
                 case 'approval_gate_raised': {

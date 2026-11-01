@@ -8,7 +8,6 @@ from travel_agent.memory.agent_context import render_agent_context
 from travel_agent.planning.assignments import resolve_agent_assignment
 from travel_agent.planning.itinerary.model_schema import _composition_response_schema
 from travel_agent.planning.itinerary.requirements import (
-    controlled_day_dates,
     itinerary_day_count,
 )
 from travel_agent.planning.itinerary.supply import (
@@ -20,11 +19,7 @@ from travel_agent.planning.itinerary.selected_supply import (
     prompt_candidate_ids,
 )
 from travel_agent.planning.itinerary.day_capacity import daily_planning_windows
-from travel_agent.planning.requirements.route_legs import (
-    build_required_long_distance_legs,
-    explicit_cross_day_return_required,
-)
-from travel_agent.planning.research.assignment_context import build_assignment_context
+from travel_agent.planning.requirements.route_legs import build_required_long_distance_legs
 
 
 def _previous_attempt_failure_section(state: TravelAgentState) -> str:
@@ -67,7 +62,6 @@ def _composition_catalog_json(state: TravelAgentState, *, skeleton_only: bool) -
     return json.dumps(
         {
             "generation_id": state.recommendation_catalog.generation_id,
-            "intent_spec_revision": state.recommendation_catalog.intent_spec_revision,
             "candidates": [
                 candidate_index[candidate_id].model_dump(mode="json", exclude_none=True)
                 for ids in ids_by_kind.values()
@@ -93,46 +87,10 @@ def _composition_capabilities_json(
     )
 
 
-def _intent_item_payload(item) -> dict:
-    """一条用户要求：可读摘要、作用对象与具体约束参数。"""
-    payload = {
-        "summary": item.public_summary,
-        "target": item.target.value,
-        "parameters": item.value.model_dump(mode="json", exclude={"value_type"}),
-    }
-    if item.source_text:
-        payload["user_words"] = item.source_text
-    return payload
-
-
 def _user_requirements_json(state: TravelAgentState) -> str:
-    """把 IntentSpec 中的用户要求按硬性、偏好与提醒分组交给模型。"""
-    if state.intent_spec is None:
-        raise ValueError("itinerary composition requires an IntentSpec")
-    spec = state.intent_spec
-
-    def items_for(strength: str) -> list[dict]:
-        return [
-            _intent_item_payload(item)
-            for item in spec.active_items
-            if item.strength.value == strength
-        ]
-
-    dates = controlled_day_dates(state)
     return json.dumps(
-        {
-            "objective": spec.objective_summary,
-            "trip_window": {
-                "start": dates[0].isoformat() if dates else None,
-                "end": dates[-1].isoformat() if dates else None,
-                "days": len(dates),
-            },
-            "hard_requirements": items_for("hard"),
-            "preferences": items_for("soft"),
-            "attention": items_for("informational"),
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
+        {"基础信息": state.controlled_trip_identity, "用户需求": state.current_requirements},
+        ensure_ascii=False, default=str, separators=(",", ":"),
     )
 
 
@@ -140,9 +98,7 @@ def _required_long_distance_legs_json(state: TravelAgentState) -> str:
     """受控身份要求的跨城移动，作为排期参数提供给模型。"""
     legs = build_required_long_distance_legs(
         state.controlled_trip_identity or {},
-        cross_day_return_required=explicit_cross_day_return_required(
-            state.user_query or ""
-        ),
+        cross_day_return_required=False,
     )
     return json.dumps(
         [leg.model_dump(mode="json") for leg in legs],
@@ -158,10 +114,7 @@ def _minimum_delivery_json(state: TravelAgentState) -> str:
     return json.dumps(
         {
             "generation_id": draft.planning_generation_id,
-            "intent_spec_revision": draft.intent_spec_revision,
-            "constraint_pack_revision": draft.constraint_pack_revision,
             "day_shells": [item.model_dump(mode="json") for item in draft.day_shells],
-            "preserved_hard_intent_ids": draft.preserved_hard_intent_ids,
         },
         ensure_ascii=False,
         separators=(",", ":"),
@@ -285,12 +238,7 @@ def _build_composition_prompt(
     _, assignment = resolve_agent_assignment(
         state.agent_assignments or {}, NODE_ITINERARY
     )
-    brief = build_assignment_context(
-        assignment=assignment,
-        brief=state.research_brief,
-        intent_spec=state.intent_spec,
-        constraint_pack=state.constraint_pack,
-    )
+    brief = str(assignment.get("objective") or "")
     transport_contract = (
         "- 这是行程骨架阶段：只确定 Visit/Dining 的日期、顺序、当地时间与停留时长，"
         "以及日期匹配的 long_distance 主方案；相邻实体之间暂时不写市内交通，"
@@ -347,7 +295,7 @@ def _build_composition_prompt(
 <output_contract>
 - 只输出一个可直接 json.loads 的 ItineraryCompositionDraft JSON 对象；不要 Markdown、解释、通用信封或 activities[]。
 - 引用候选时只使用候选目录中、且由 JSON Schema 对当前 placement_kind 开放的 candidate_id：visit 对应 VisitCandidate，dining 对应 DiningCandidate，transport 对应 TransportCandidate，lodging_candidate_ids 对应 LodgingCandidate；不要跨类型引用，也不要复制或改写 candidate 的名称、价格、来源、交通 segments、营业事实或天气事实。
-- 请按用户的这些要求规划行程：硬性要求优先安排；偏好用于取舍与排序，提醒类信息作为背景参考。Placement Capabilities 给出每个候选的排程事实（时长、营业窗口、交通端点与日期），请据此安排当天区域、节奏与天气。
+- 按用户需求规划行程，后续补充改变先前想法时以最新表达为准。Placement Capabilities 给出候选的排程事实，请据此安排当天区域、节奏与天气。
 - 主方案直接适应【规划前天气事实】里的逐日 data_kind、降水概率与风力：预报日的恶劣条件反映在排序、时间或交通选择上。
 - 每个 Dining placement 选择具体门店并填写餐次；每个需要住宿的入住区间在 lodging_candidate_ids 选择具体 property。
 - 每次游览或用餐是独立安排，不等于地点本身；不要重复同一次安排，已排期活动也不要时间重叠。同一地点可用于不同餐次或互不重叠的游览，包括跨日复用；同一个入住区间在 lodging_candidate_ids 只选一家 property。

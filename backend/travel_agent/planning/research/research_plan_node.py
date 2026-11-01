@@ -1,68 +1,69 @@
+"""根据旅行基础信息和自然语言需求生成研究方案。"""
+
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 from typing import Any, Dict
+
+from openai import OpenAIError
+from pydantic import ValidationError
 
 from travel_agent.llm.router import get_model_router
 from travel_agent.llm.task_routing import TaskKind, llm_for_task
-from travel_agent.planning.requirements.clarification_questions import (
-    necessary_requirement_questions,
-)
-from travel_agent.planning.requirements.revision import request_contract_with_research_plan
-from travel_agent.planning.research.authorized_candidates import (
-    build_authorized_candidate_selection,
-)
-from travel_agent.planning.research.plan_from_selection import plan_from_authorized_selection
-from travel_agent.planning.research.selection import (
-    CandidateSelectionStatus,
-    select_research_candidates,
-)
+from travel_agent.planning.requirements.natural_language import ResearchPlan
 from travel_agent.planning.state import TravelAgentState
+from travel_agent.utils.json_helpers import safe_parse_json
 
-
-RESEARCH_PLAN_NODE_POLICY_VERSION = "research_plan_candidate_selection.v1"
+logger = logging.getLogger(__name__)
 
 
 async def research_plan_generator_node(state: TravelAgentState) -> Dict[str, Any]:
-    contract = state.request_contract
-    if contract is None:
-        raise ValueError("model research planning requires a clarified request contract")
-    candidate_contract = request_contract_with_research_plan(contract, None)
-    if necessary_requirement_questions(state, candidate_contract):
-        raise ValueError("research planning must wait for the remaining requirement answers")
-    selection_input = build_authorized_candidate_selection(
-        candidate_contract,
-        state.controlled_trip_identity,
-        candidate_contract.content_hash,
-    )
-    result = await select_research_candidates(
-        selection_input,
-        llm_for_task(get_model_router(), TaskKind.INTENT_NORMALIZE),
-    )
-    if result.status is not CandidateSelectionStatus.SELECTED:
-        failure = result.failure
-        return {
-            "request_contract": candidate_contract,
-            "research_plan_error": {
-                "code": failure.code.value if failure else "model_output_invalid",
-                "detail": failure.detail if failure else "model selection failed",
-            },
-            "policy_versions": {"research_plan_generation": RESEARCH_PLAN_NODE_POLICY_VERSION},
-        }
+    if state.planning_generation is None:
+        raise ValueError("研究方案需要当前规划版本")
+    prompt = [
+        {
+            "role": "system",
+            "content": (
+                "你是旅行研究协调员。根据基础信息、用户原话与追问回答，为本次旅行写简短具体的研究和安排行动方案。"
+                "理解后续补充对先前想法的修改，以较新的表达为准；不要把用户原话拆成逐条合同，也不要要求用户确认原话。"
+                "为目的地、交通、住宿、行程组合分别写清有关任务，任务应可直接交给对应研究员。"
+                "用中文写简洁具体的方案。只返回 JSON 对象，字段为 summary、destination_task、transport_task、accommodation_task、itinerary_task。"
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "旅行基础信息": state.controlled_trip_identity,
+                    "用户需求与回答": state.current_requirements,
+                    "长期偏好与记忆": [
+                        {"类别": item.get("category"), "内容": item.get("value"), "强度": item.get("type")}
+                        for item in state.constraint_pack.get("constraints", [])
+                        if item.get("status") == "active"
+                        and item.get("visibility") != "internal_only"
+                    ],
+                    "其他背景": state.preset_context,
+                },
+                ensure_ascii=False, default=str,
+            ),
+        },
+    ]
     try:
-        plan = plan_from_authorized_selection(selection_input, result)
-    except (TypeError, ValueError):
-        return {
-            "request_contract": candidate_contract,
-            "research_plan_error": {
-                "code": "model_output_invalid",
-                "detail": "model selection could not be compiled into the authorized plan",
-            },
-            "policy_versions": {"research_plan_generation": RESEARCH_PLAN_NODE_POLICY_VERSION},
-        }
-    return {
-        "request_contract": request_contract_with_research_plan(candidate_contract, plan),
-        "request_contract_candidate": None,
-        "research_plan_error": None,
-        "research_plan_retry_count": 0,
-        "policy_versions": {"research_plan_generation": RESEARCH_PLAN_NODE_POLICY_VERSION},
-    }
+        llm = llm_for_task(get_model_router(), TaskKind.PLANNING)
+        response = await asyncio.wait_for(
+            llm.ainvoke(prompt, response_format={"type": "json_object"}, temperature=0),
+            timeout=120,
+        )
+        content = getattr(response, "content", response)
+        parsed = content if isinstance(content, dict) else safe_parse_json(content, strip_think_tags=True)
+        if isinstance(parsed, dict) and isinstance(parsed.get("plan"), dict):
+            parsed = parsed["plan"]
+        if isinstance(parsed, dict):
+            parsed = {key: parsed[key] for key in ResearchPlan.model_fields if key in parsed}
+        plan = ResearchPlan.model_validate(parsed)
+    except (TimeoutError, OpenAIError, TypeError, ValueError, ValidationError, RuntimeError) as exc:
+        logger.warning("研究方案生成失败: %s", exc)
+        return {"research_plan": None, "research_plan_error": {"code": "research_plan_unavailable", "detail": str(exc)[:300]}}
+    return {"research_plan": plan, "research_plan_error": None}

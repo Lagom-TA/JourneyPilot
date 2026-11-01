@@ -10,6 +10,7 @@ from travel_agent.integrations.places.normalization import normalize_country_cod
 from travel_agent.integrations.places.normalization import normalize_nominatim_place
 from travel_agent.integrations.places.overpass import search_overpass_place_ids
 from travel_agent.planning.requirements.destination_scope import is_within_destination
+from travel_agent.runtime.cancellation import RunCancelled
 from travel_agent.tools.governance import ToolExecutionStatus
 from travel_agent.tools.governance import is_tool_execution_envelope
 from travel_agent.utils.coordinates import amap_location_to_wgs84
@@ -419,6 +420,8 @@ async def resolve_authored_place(
                 scope=scope,
                 tools=tools,
             )
+        except RunCancelled:
+            raise
         except Exception:
             logger.warning(
                 "authored place amap lookup failed name=%s",
@@ -499,6 +502,8 @@ async def resolve_station_point(
                 scope=scope,
                 tools=tools,
             )
+        except RunCancelled:
+            raise
         except Exception:
             logger.warning(
                 "station point amap lookup failed station=%s", bare, exc_info=True

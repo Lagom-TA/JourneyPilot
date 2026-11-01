@@ -365,11 +365,6 @@ def _rebind_catalog_for_snapshot(
             "fact_data_revision": facts.fact_data_revision,
             "weather_data_revision": weather.weather_data_revision,
             "research_packets": refreshed_packets,
-            "candidate_discovery_records": [
-                record
-                for packet in refreshed_packets
-                for record in packet.candidate_discovery_records
-            ],
         }
     )
     workspace = bundle.workspace.model_copy(

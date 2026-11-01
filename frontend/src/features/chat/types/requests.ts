@@ -22,10 +22,5 @@ export interface ChatRequest {
         action: PlanGateDecisionAction;
         content?: string;
         approval_token?: string;
-        semantic_confirmation?: {
-            challenge_id: string;
-            revision: number;
-            decisions: Array<{ assertion_id: string; decision: 'include' | 'avoid' | 'historical' | 'unknown' }>;
-        };
     } | null;
 }

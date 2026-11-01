@@ -2,7 +2,7 @@
 
 These records are evidence candidates, not authorization. In particular, a
 model-authored question is context, not an affirmative user request; selected
-answers and free text are kept separately for later semantic confirmation.
+answers and free text are kept separately as the initial requirements text.
 """
 
 from __future__ import annotations

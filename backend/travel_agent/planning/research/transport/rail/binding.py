@@ -39,6 +39,7 @@ from travel_agent.planning.research.transport.rail.selection import (
 from travel_agent.planning.research.transport.rail.stations import _locate_rail_station
 from travel_agent.planning.research.transport.scope import _NODE_NAME
 from travel_agent.planning.state import TravelAgentState
+from travel_agent.runtime.cancellation import RunCancelled
 from travel_agent.tools.content import compact_tool_content_for_model
 from travel_agent.tools.execution import execute_tool
 from travel_agent.tools.registry import get_tool_registry
@@ -292,6 +293,8 @@ async def _bind_one_rail_leg(
                     allow_fallback=False,
                     **tool_context,
                 )
+            except RunCancelled:
+                raise
             except Exception:
                 logger.warning(
                     "[transport_researcher] 12306 station-code tool raised",
@@ -434,6 +437,8 @@ async def _bind_one_rail_leg(
                 break
             if ticket_env is not None:
                 break
+    except RunCancelled:
+        raise
     except Exception:
         logger.warning(
             "[transport_researcher] deterministic 12306 rail discovery failed",

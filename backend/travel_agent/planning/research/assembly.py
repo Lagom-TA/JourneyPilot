@@ -26,19 +26,6 @@ def build_candidate_catalog(
         raise ValueError(
             "missing_planning_generation: candidate catalog requires a planning generation"
         )
-    if state.intent_spec is None or state.research_query_plan is None:
-        raise ValueError(
-            "missing_intent_research_contract: candidate catalog requires "
-            "IntentSpec and ResearchQueryPlan"
-        )
-    if (
-        state.research_query_plan.generation_id
-        != state.planning_generation.generation_id
-        or state.research_query_plan.intent_spec_revision != state.intent_spec_revision
-    ):
-        raise ValueError(
-            "stale_research_query_plan: candidate catalog received a stale ResearchQueryPlan"
-        )
     generation_id = state.planning_generation.generation_id
     risk_profile = risk_profile_from_constraint_pack(state.constraint_pack)
     engine = WeatherImpactEngine()
@@ -51,10 +38,6 @@ def build_candidate_catalog(
             raise ValueError(
                 f"stale_planning_generation: {worker} packet belongs to another "
                 "planning generation"
-            )
-        if packet.constraint_pack_revision != state.constraint_pack_revision:
-            raise ValueError(
-                f"stale_constraint_revision: {worker} packet uses stale constraint revision"
             )
         if packet.fact_data_revision != state.fact_data_revision:
             raise ValueError(
@@ -88,18 +71,11 @@ def build_candidate_catalog(
 
     catalog = RecommendationCatalog(
         generation_id=generation_id,
-        intent_spec_revision=state.intent_spec_revision,
-        research_query_plan_id=state.research_query_plan.query_plan_id,
         fact_data_revision=state.fact_data_revision,
         weather_data_revision=(
             state.weather_context.weather_data_revision if state.weather_context else 0
         ),
         research_packets=updated_packets,
-        candidate_discovery_records=[
-            record
-            for packet in updated_packets
-            for record in packet.candidate_discovery_records
-        ],
     )
     logger.info(
         "Candidate catalog built | packets=%d candidates=%d",

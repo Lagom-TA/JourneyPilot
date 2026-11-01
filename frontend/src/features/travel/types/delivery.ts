@@ -2,7 +2,7 @@ import { TRIP_WORKSPACE_CONTRACT_VERSION } from "./workspace";
 import { type TripReportProjection, type MapProjection, type PublicCitationProjection } from "./report";
 import { type PublicStructuredItineraryV2, type SelectionSlot } from "./itinerary";
 import { type PublicWeatherAdjustment } from "./weather";
-export const DELIVERY_BUNDLE_CONTRACT_VERSION = 'journeypilot.delivery_bundle.v10' as const;
+export const DELIVERY_BUNDLE_CONTRACT_VERSION = 'journeypilot.delivery_bundle.v11' as const;
 export interface DeliveryRevisionManifest {
     contract_version: typeof DELIVERY_BUNDLE_CONTRACT_VERSION;
     run_id: string;

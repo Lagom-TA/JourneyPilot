@@ -113,7 +113,7 @@ export const GenerationJourneyPanel: React.FC = () => {
     gatePaneRef.current && ((gatePaneRef.current as HTMLElement & { inert: boolean }).inert = !gatePending);
     if (!gatePending) return;
     const timer = window.setTimeout(() => {
-      gatePaneRef.current?.querySelector<HTMLElement>('#trip-brief-plan-gate-title, [data-testid="semantic-requirement-gate"] h2')?.focus();
+      gatePaneRef.current?.querySelector<HTMLElement>('#trip-brief-plan-gate-title')?.focus();
     }, reducedMotion || state.planApprovalGate?.source === 'restored' ? 0 : 320);
     return () => window.clearTimeout(timer);
   }, [gatePending, gateSnapshot, reducedMotion, state.planApprovalGate?.revision, state.planApprovalGate?.source]);
@@ -173,7 +173,7 @@ export const GenerationJourneyPanel: React.FC = () => {
         : runStatus === 'cancel_requested'
           ? '正在停止规划'
           : runStatus === 'awaiting_input'
-          ? '等待确认旅行需求'
+          ? '等待确认研究方案'
           : runStatus === 'completed'
             ? '旅行规划已完成'
             : '正在规划你的旅行';

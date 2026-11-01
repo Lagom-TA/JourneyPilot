@@ -40,16 +40,14 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
 - `planning/state.py`：快答与规划共用的唯一图状态，保留全部 checkpoint 字段和 reducer。
 - `planning/graph.py`：规划图的节点、边、条件路由与按 checkpointer 身份区分的编译缓存。
   `planning/workflow.py` 负责流式运行、checkpoint 合同拒绝和运行上下文，不重复构图。
-- `planning/requirements/`：受控旅行身份、入口守卫、请求与意图合同、归一化、批准与追加要求。
-  `planning/requirements/constraints/` 分开规范参数、条目、来源、语义抽取、冲突处理、装配、加载和展示；
-  快答复用同一套约束。`planning/requirements/normalization/` 是唯一归一化边界，
+- `planning/requirements/`：受控旅行身份、入口守卫、当前需求文字、自然语言研究方案、批准与追加要求。
+  `planning/requirements/constraints/` 分开参数、记忆来源、抽取与展示；快答复用同一套约束。
   `planning/requirements/approval.py` 提供计划门交互。
-- `planning/research/`：调研计划、分派、供应商责任与结果、查询计划、packet 与 catalog 组装。
+- `planning/research/`：研究方案生成、任务分派、供应商责任与结果、packet 与 catalog 组装。
   `planning/research/destination/`、`planning/research/accommodation/`、`planning/research/transport/`
-  各自拥有范围、发现、身份绑定和工作节点；交通调研的 `planning/research/transport/rail/` 保留班次选择、
-  工具授权和证据绑定，原始铁路访问仍属于 integrations。
+  各自拥有身份绑定和工作节点；交通调研的 `planning/research/transport/rail/` 保留班次选择、
+  证据绑定与站点解析，原始铁路访问仍属于 integrations。
   `planning/research/dispatch.py` 在 worker 收齐后构建 `RecommendationCatalog`，模型直接读取 catalog 组合行程。
-  `planning/research/brief_builder.py` 计算简报，`planning/research/brief_node.py` 负责其图节点边界；
   `planning/research/prompts.py` 维护共享调研提示合同。
 - `planning/itinerary/`：行程草稿生成、地点解析、住宿基点、开放时间和已选供应的物化。
   `planning/itinerary/composition.py` 让模型基于 catalog 写出完整草稿，`planning/itinerary/materialize.py`
@@ -107,32 +105,26 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
 ## 一次请求走过什么
 
 1. **路由**：简单问题走快问快答；多日行程进入 planning 工作流。
-2. **入口与候选合同**：自然语言与表单都先评估必要信息；有问题时等待回答并重新评估。
-   `scope_clarifier` 确认受控旅行身份；`request_contract_normalizer` 把当前要求、会话上下文
-   与个人约束归一为 clause ledger、`IntentSpec` 与 Constraint Pack，但只形成 tentative
-   `request_contract_candidate`，不同时生成研究计划。
-3. **必要问答**：服务端检查候选合同是否还有缺失、来源不明、排除歧义或预算口径问题。
-   只在需要时通过普通补充问题等待用户回答，再经同一归一化边界重新分析；没有未决项时
-   直接进入计划生成，不展示单独的参数确认页。
-4. **独立计划与编排**：`research_plan_generator` 让模型仅从已澄清合同允许的候选 ID 中选择
-   研究重点和检索词，失败时显式重试、补充或取消，不使用模板冒充模型计划。随后
-   `research_brief_builder` 从同一合同投影 `ResearchBriefV2`；`minimum_delivery_draft_builder`
+2. **入口**：自然语言与表单都先评估必要信息；有问题时等待回答并重新评估。
+   `scope_clarifier` 确认受控旅行身份；`requirements_preparer` 节点收集用户原话、
+   回答和后续补充，保存为当前需求文字并推进规划版本。
+3. **必要问答**：理解阶段只在确有信息缺口时通过普通补充问题等待回答；用户原话不做
+   逐条语义审批，也不展示单独的参数确认页。
+4. **研究与安排方案**：`research_plan_generator` 让模型根据基础信息和当前需求写出简短方案，
+   并为目的地、交通、住宿和行程组合分别写下任务；`minimum_delivery_draft_builder`
    生成 `MinimumDeliveryDraft`；`destination_geo_resolver` 使用已确认地点坐标准备目的地边界；
-   `trip_summary_card_brief` 生成摘要；`planner` 由纯函数生成 `ResearchQueryPlan`、
-   `CapabilityPlan` 与 `execution_plan`。
-5. **计划确认**：`plan_gate` 强制暂停，等待用户 approve / edit / supplement / cancel；
+   `trip_summary_card_brief` 生成摘要；`planner` 把模型任务直接交给各角色。
+5. **方案确认**：`plan_gate` 强制暂停，等待用户 approve / supplement / retry / cancel；
    `run_control.plan_gate_enabled` 必须开启，否则 Run 直接失败。确认时封存 Draft、
    `RunDeadlineSnapshot` 与 `RunBudgetSnapshot`，时间与费用上限从这一刻起固定。
-   服务端同时保存精确 operation manifest 和独立的批准记录，批准记录绑定合同、计划 token、
-   manifest hash 与执行范围。修改转成 `IntentAmendment`，回到同一个合同边界并失效旧授权。
-6. **研究**：批准并封存预算后，`weather_context_builder` 获取规划天气；`dispatcher` 按
-   `execution_plan` 扇出 `destination_researcher`、
-   `transport_researcher` 与 `accommodation_researcher`。Worker 在模型、Provider、fallback、
-   cache 或 journal 重放前核对精确操作权限与当前租约，按 assignment 中的 Query ID
-   返回带字段和来源的 `ResearchPacket`。
+   修改转成 `IntentAmendment`，进入当前需求文字并失效旧方案和旧研究结果。
+6. **研究**：批准并封存预算后，`weather_context_builder` 获取规划天气；`dispatcher` 扇出
+   `destination_researcher`、`transport_researcher` 与 `accommodation_researcher`。
+   Worker 接收相关基础信息、当前需求和自己的任务，在自身工具范围内决定查询，并按运行租约、
+   取消与预算控制调用工具，返回带字段和来源的 `ResearchPacket`。
 7. **候选目录**：Worker 完成后，`dispatcher` 收齐 packet，调用 `assembly.py` 的
    `build_candidate_catalog` 构建 `RecommendationCatalog`；
-   catalog 保留 generation 与 revision 一致性检查，拦截过期产物。
+   catalog 保留 generation 一致性检查，拦截过期产物。
 8. **组合**：`itinerary_planner` 读取 catalog，由模型直接写出完整行程草稿，再物化为
    `TripWorkspaceV2`。服务端负责结构解析、身份绑定与时间线物化，不做内容质量裁决；
    接驳、用户编辑与撤销记录在 mutation history 中。
@@ -141,7 +133,7 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
    原子提交唯一的 `DeliveryBundle`。工作台、报告、PDF 与来源列表都来自这份记录。
 
 计划门修改和运行中追加要求不直接改 prompt。它们先变成 `IntentAmendment`，
-由控制节点 `intent_amendment_router` 路由，回到同一个 Request Contract 边界，
+由控制节点 `intent_amendment_router` 路由，追加到同一条当前需求并推进规划版本，
 再按影响范围失效旧产物。
 
 ## 从哪里继续读
