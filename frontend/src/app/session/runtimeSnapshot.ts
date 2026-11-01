@@ -1,5 +1,5 @@
 import { type AppState } from "../state/state";
-export type SessionRuntimeSnapshot = Pick<AppState, 'conversationEpoch' | 'currentSessionId' | 'currentTripRunId' | 'currentTripRunStatus' | 'currentTripRunRecovery' | 'currentTripRunReadOnly' | 'tripRunSource' | 'tripRunRefreshKey' | 'currentMessages' | 'historyPaging' | 'thinkingSteps' | 'deliveryBundle' | 'deliveryBundleLoadState' | 'tripSummaryCard' | 'planApprovalGate' | 'pendingGuidedIntake' | 'pendingRouteConfirmation' | 'lastRouteDecision' | 'controlledTripIdentity' | 'runCostLive' | 'runCostSummary' | 'isStreaming' | 'isSynthesizing' | 'canvasOpen' | 'mobileCanvasOpen' | 'inputMode'>;
+export type SessionRuntimeSnapshot = Pick<AppState, 'conversationEpoch' | 'currentSessionId' | 'currentTripRunId' | 'currentTripRunStatus' | 'currentTripRunRecovery' | 'currentTripRunReadOnly' | 'tripRunSource' | 'tripRunRefreshKey' | 'currentMessages' | 'historyPaging' | 'thinkingSteps' | 'deliveryBundle' | 'deliveryBundleLoadState' | 'tripSummaryCard' | 'planApprovalGate' | 'understandingQuestions' | 'workspaceActive' | 'pendingRouteConfirmation' | 'lastRouteDecision' | 'controlledTripIdentity' | 'runCostLive' | 'runCostSummary' | 'isStreaming' | 'isSynthesizing' | 'canvasOpen' | 'mobileCanvasOpen' | 'inputMode'>;
 export interface ActiveStreamHandle {
     token: string;
     sessionId: string | null;
@@ -23,7 +23,8 @@ export function createSessionRuntimeSnapshot(state: AppState): SessionRuntimeSna
         deliveryBundleLoadState: state.deliveryBundleLoadState,
         tripSummaryCard: state.tripSummaryCard,
         planApprovalGate: state.planApprovalGate,
-        pendingGuidedIntake: state.pendingGuidedIntake,
+        understandingQuestions: state.understandingQuestions,
+        workspaceActive: state.workspaceActive,
         pendingRouteConfirmation: state.pendingRouteConfirmation,
         lastRouteDecision: state.lastRouteDecision,
         controlledTripIdentity: state.controlledTripIdentity,

@@ -20,20 +20,6 @@ def raise_chat_preparation_error(error: Exception) -> None:
             raise HTTPException(
                 status_code=503, detail="暂时无法判断这句话要走哪条处理路径，请重试"
             ) from error
-        if error.reason is PreparationRejection.INTAKE_NOT_FOUND:
-            raise HTTPException(status_code=409, detail={"code": "intake_not_found", "message": "旅行需求草稿已变化，请刷新后继续。"}) from error
-        if error.reason is PreparationRejection.INTAKE_INVALID:
-            raise HTTPException(status_code=422, detail={"code": "intake_invalid", "message": error.explanation or "请完成必要的旅行信息。"}) from error
-        if error.reason is PreparationRejection.INTAKE_VERSION_STALE:
-            raise HTTPException(status_code=409, detail={"code": "intake_version_stale", "message": "旅行需求已更新，请刷新后重新核对。", "current_revision": error.current_revision}) from error
-        if error.reason is PreparationRejection.INTAKE_UNAVAILABLE:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "code": "intake_unavailable",
-                    "message": error.explanation or "暂时无法评估这项旅行需求，请稍后重试；尚未创建调研任务。",
-                },
-            ) from error
         if error.reason is PreparationRejection.REFINEMENT_REQUIRES_RUN:
             raise HTTPException(
                 status_code=422, detail="调整行程需要已有 TripRun"
@@ -118,7 +104,7 @@ def raise_chat_preparation_error(error: Exception) -> None:
         if error.reason is PreparationRejection.GATE_VERSION_STALE:
             detail: dict = {
                 "code": "plan_gate_version_stale",
-                "message": "计划版本已变化或缺少版本凭据，请刷新后查看最新计划再确认。",
+                "message": "待确认内容已变化或缺少版本凭据，请刷新后查看最新进展再回答。",
             }
             if error.current_revision is not None:
                 detail["current_revision"] = error.current_revision

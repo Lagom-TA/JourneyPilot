@@ -29,6 +29,7 @@ class ChatPresentation:
     trace_sequence: int = 0
     trace_events: List[Dict[str, Any]] = field(default_factory=list)
     approval_gate: Optional[Dict[str, Any]] = None
+    understanding_gate: Optional[Dict[str, Any]] = None
     context_report: Optional[Dict[str, Any]] = None
     trip_summary_card: Optional[Dict[str, Any]] = None
     delivery_bundle_id: Optional[str] = None

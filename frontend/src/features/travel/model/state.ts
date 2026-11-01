@@ -1,7 +1,7 @@
 import { type TripRunStatus, type TripRunRecovery } from "../types/runs";
 import { type PublicDeliveryBundle } from "../types/delivery";
 import { type TripSummaryCard, type PlanApprovalGate } from "../types/planning";
-import { type GuidedIntakeState, type RouteDecision, type ControlledTripIdentity } from "../types/planner";
+import { type RouteDecision, type ControlledTripIdentity, type UnderstandingQuestion } from "../types/planner";
 export interface TravelState {
     currentTripRunId: string | null;
     currentTripRunStatus: TripRunStatus | null;
@@ -17,7 +17,15 @@ export interface TravelState {
     deliverableView: 'interactive_itinerary' | 'full_report' | 'today';
     tripSummaryCard: TripSummaryCard | null;
     planApprovalGate: PlanApprovalGate | null;
-    pendingGuidedIntake: GuidedIntakeState | null;
+    /** 理解阶段当前等待回答的问题；runId 绑定所属 Run。 */
+    understandingQuestions: {
+        runId: string;
+        revision: number;
+        approvalToken: string;
+        questions: UnderstandingQuestion[];
+    } | null;
+    /** 提交旅行想法后即进入工作台；首页只服务尚未开始的新会话。 */
+    workspaceActive: boolean;
     pendingRouteConfirmation: {
         rawInput: string;
         decision: RouteDecision;
@@ -43,8 +51,10 @@ export type TravelAction = {
     type: 'SET_PLAN_APPROVAL_GATE';
     payload: PlanApprovalGate | null;
 } | {
-    type: 'SET_GUIDED_INTAKE';
-    payload: GuidedIntakeState | null;
+    type: 'SET_UNDERSTANDING_QUESTIONS';
+    payload: TravelState['understandingQuestions'];
+} | {
+    type: 'ENTER_WORKSPACE';
 } | {
     type: 'SET_ROUTE_CONFIRMATION';
     payload: {

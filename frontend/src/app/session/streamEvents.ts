@@ -13,7 +13,6 @@ import { type StreamFrameBatch } from "../../features/chat/model/streamFrameBatc
 export function createStreamEvents(ownership: StreamOwnership, assistantMessage: Message, text: string, initialCurrentTripRunId: string | null, pendingLabel: string | undefined, currentStateRef: MutableRefObject<AppState>, setLastSession: (id: string | null) => void, frame: StreamFrameBatch, gateAction?: PlanGateDecisionAction) {
     const { identity, scopedDispatch, isStreamVisible, updateActiveStreamHandle } = ownership;
     const { flushFrameNow } = frame;
-    let intakeOnly = false;
     let streamFailed = false;
     let waitingForGateAcceptance = Boolean(gateAction);
     const presentation = createStreamPresentation(scopedDispatch, assistantMessage, pendingLabel, frame);
@@ -59,28 +58,13 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
             if (waitingForGateAcceptance && ['thinking', 'agent_progress', 'tool_start', 'trip_summary_card', 'chat_chunk'].includes(event.type)) {
                 waitingForGateAcceptance = false;
                 scopedDispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: null });
+                scopedDispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: null });
                 scopedDispatch({ type: 'RESOLVE_WAITING_MESSAGES' });
             }
             if (presentation.handle(event))
                 return;
             switch (event.type) {
-                case 'guided_intake':
-                    if (event.guided_intake) {
-                        intakeOnly = true;
-                        scopedDispatch({ type: 'SET_LAST_ROUTE_DECISION', payload: event.guided_intake.route_decision });
-                        scopedDispatch({ type: 'SET_ROUTE_CONFIRMATION', payload: null });
-                        scopedDispatch({ type: 'SET_GUIDED_INTAKE', payload: event.guided_intake });
-                        if (event.session_id) {
-                            identity.sessionId = event.session_id;
-                            updateActiveStreamHandle({ sessionId: event.session_id });
-                            scopedDispatch({ type: 'SET_SESSION_ID', payload: event.session_id });
-                            if (isStreamVisible()) setLastSession(event.session_id);
-                        }
-                        scopedDispatch({ type: 'REMOVE_MESSAGE_BY_ID', payload: assistantMessage.id });
-                    }
-                    break;
                 case 'route_confirmation':
-                    intakeOnly = true;
                     if (event.route_decision) {
                         scopedDispatch({ type: 'SET_LAST_ROUTE_DECISION', payload: event.route_decision });
                         scopedDispatch({ type: 'SET_ROUTE_CONFIRMATION', payload: { rawInput: text, decision: event.route_decision } });
@@ -107,8 +91,8 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                             scopedDispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: null });
                             scopedDispatch({ type: 'RESOLVE_WAITING_MESSAGES' });
                         }
-                        scopedDispatch({ type: 'SET_GUIDED_INTAKE', payload: null });
                         if (event.route_decision?.route === 'trip_planning' || event.route_decision?.route === 'trip_refinement') {
+                            scopedDispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: null });
                             scopedDispatch({
                                 type: 'SET_CURRENT_TRIP_RUN',
                                 payload: {
@@ -133,10 +117,31 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                         scopedDispatch({ type: 'SET_TRIP_SUMMARY_CARD', payload: card });
                     break;
                 }
+                case 'understanding_questions': {
+                    waitingForGateAcceptance = false;
+                    flushFrameNow();
+                    scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: new Date() } });
+                    const questions = Array.isArray(event.payload?.questions) ? event.payload.questions : [];
+                    if (event.run_id && questions.length > 0) {
+                        scopedDispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: {
+                            runId: event.run_id,
+                            revision: typeof event.payload?.revision === 'number' ? event.payload.revision : 0,
+                            approvalToken: typeof event.payload?.approval_token === 'string' ? event.payload.approval_token : '',
+                            questions,
+                        } });
+                        scopedDispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: null });
+                    }
+                    if (isTripRunStatus(event.run_status)) {
+                        scopedDispatch({ type: 'SET_TRIP_RUN_STATUS', payload: event.run_status });
+                    }
+                    scopedDispatch({ type: 'SET_SYNTHESIZING', payload: false });
+                    break;
+                }
                 case 'approval_gate_raised': {
                     waitingForGateAcceptance = false;
                     flushFrameNow();
                     scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: new Date() } });
+                    scopedDispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: null });
                     const gate = normalizePlanApprovalGate(event);
                     if (gate) {
                         scopedDispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: gate });
@@ -160,8 +165,6 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     break;
                 }
                 case 'chat_complete': {
-                    if (intakeOnly)
-                        break;
                     flushFrameNow();
                     scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: new Date(), tsMs: event.ts_ms } });
                     if (event.final_content && typeof event.final_content === 'string') {
@@ -182,12 +185,14 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                             payload: { streamCompleted: true },
                         });
                     }
-                    if (event.run_id) {
+                    if (event.run_id && (currentStateRef.current.currentTripRunId === event.run_id
+                        || (!currentStateRef.current.currentTripRunId && !event.run_status && !initialCurrentTripRunId))) {
                         scopedDispatch({
                             type: 'SET_CURRENT_TRIP_RUN',
                             payload: {
-                                runId: event.run_id || initialCurrentTripRunId,
+                                runId: event.run_id,
                                 source: 'live',
+                                status: isTripRunStatus(event.run_status) ? event.run_status : undefined,
                             },
                         });
                     }
@@ -196,6 +201,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     }
                     if (event.run_status !== 'awaiting_input') {
                         scopedDispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: null });
+                        scopedDispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: null });
                         scopedDispatch({ type: 'RESOLVE_WAITING_MESSAGES' });
                     }
                     if (isTripRunStatus(event.run_status)) {

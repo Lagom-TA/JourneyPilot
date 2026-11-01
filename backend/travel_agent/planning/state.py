@@ -206,11 +206,16 @@ class TravelAgentState(BaseModel):
     session_id: str = ""
     user_id: str = LOCAL_USER_ID
     user_query: str = ""
-    intake_evidence_sources: List[Dict[str, Any]] = Field(default_factory=list, max_length=256)
     run_id: str = ""
 
     controlled_trip_identity: Dict[str, Any] = Field(default_factory=dict)
     route_decision: Dict[str, Any] = Field(default_factory=dict)
+
+    # 理解阶段的工作记录：代理消息历史（含工具结果）、已发生的问答与当前待答问题。
+    understanding_messages: List[Dict[str, Any]] = Field(default_factory=list)
+    understanding_qa: List[Dict[str, Any]] = Field(default_factory=list)
+    understanding_rounds: int = Field(default=0, ge=0)
+    understanding_pending_questions: Optional[List[Dict[str, Any]]] = None
 
     current_requirements: str = ""
     planning_generation: Optional[PlanningGeneration] = None

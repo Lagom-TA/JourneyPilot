@@ -40,8 +40,10 @@ export const TripWorkspaceShell: React.FC = () => {
     }
   }, [currentStateRef, dispatch, state.currentSessionId, state.currentTripRunId]);
 
-  const hasJourneyWorkspace = state.deliveryBundle !== null
-    || Boolean(state.currentTripRunId && state.controlledTripIdentity);
+  // 提交旅行想法即进入工作台；工作台内部自行区分等待、生成与交付形态。
+  const hasJourneyWorkspace = state.workspaceActive
+    || state.deliveryBundle !== null
+    || state.currentTripRunId !== null;
   const previousJourneyWorkspaceRef = React.useRef(hasJourneyWorkspace);
   const handoffFocusPendingRef = React.useRef(false);
   React.useEffect(() => {

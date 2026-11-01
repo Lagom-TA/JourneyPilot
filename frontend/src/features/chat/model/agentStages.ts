@@ -18,6 +18,8 @@ const NODE_STAGES: ReadonlyArray<readonly [
 ]> = [
     ['supervisor', '规划协调', 'planning'],
     ['scope_clarifier', '需求确认', 'planning'],
+    ['understanding_agent', '理解需求', 'planning'],
+    ['understanding_gate', '等待回答', 'planning'],
     ['requirements_preparer', '整理需求', 'planning'],
     ['research_plan_generator', '研究生成', 'planning'],
     ['minimum_delivery_draft_builder', '行程框架', 'planning'],
@@ -66,6 +68,8 @@ export type ActivityStageId = 'requirements' | 'research' | 'route' | 'delivery'
 const ACTIVITY_STAGE_BY_NODE: Record<string, ActivityStageId> = {
     supervisor: 'requirements',
     scope_clarifier: 'requirements',
+    understanding_agent: 'requirements',
+    understanding_gate: 'requirements',
     requirements_preparer: 'requirements',
     research_plan_generator: 'requirements',
     minimum_delivery_draft_builder: 'requirements',

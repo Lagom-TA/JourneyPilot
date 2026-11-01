@@ -4293,6 +4293,17 @@ summary.research-query-summary { cursor: pointer; }
   white-space: nowrap;
 }
 
+/* 理解阶段还没有身份：标题位置展示旅行设想原文，允许自然换行。 */
+.generation-trip-title-idea {
+  display: block;
+  margin: 0;
+  font-family: theme('fontFamily.display');
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 .generation-stop-btn {
   display: inline-flex;
   flex-shrink: 0;
@@ -4328,6 +4339,17 @@ summary.research-query-summary { cursor: pointer; }
   border: 1px solid color-mix(in srgb, var(--color-stroke) 76%, transparent);
   border-radius: 10px;
   background: color-mix(in srgb, var(--color-bg) 30%, transparent);
+}
+
+/* 理解待确认的说明行：没有图标列，占满卡片宽度自然换行。 */
+.generation-trip-fact-pending {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--color-stroke) 76%, transparent);
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-ink-secondary);
 }
 
 .generation-trip-fact > svg {

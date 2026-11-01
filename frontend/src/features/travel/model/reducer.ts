@@ -13,8 +13,10 @@ export function travelReducer<T extends TravelState>(state: T, action: TravelAct
             return { ...state, tripSummaryCard: action.payload };
         case 'SET_PLAN_APPROVAL_GATE':
             return { ...state, planApprovalGate: action.payload };
-        case 'SET_GUIDED_INTAKE':
-            return { ...state, pendingGuidedIntake: action.payload };
+        case 'SET_UNDERSTANDING_QUESTIONS':
+            return { ...state, understandingQuestions: action.payload };
+        case 'ENTER_WORKSPACE':
+            return { ...state, workspaceActive: true };
         case 'SET_ROUTE_CONFIRMATION':
             return { ...state, pendingRouteConfirmation: action.payload };
         case 'SET_LAST_ROUTE_DECISION':

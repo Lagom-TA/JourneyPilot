@@ -7,7 +7,7 @@ import { RequestFailureNotice } from '../../../../components/ui/RequestFailureNo
 import { SegmentedTabs, type SegmentedTab } from '../../../../components/ui/SegmentedTabs';
 import { cn } from '../../../../lib/utils';
 import { duration, easing } from '../../../../lib/motion';
-import { type ControlledTripIdentity, type GuidedIntakeState, type PlaceIdentity, type TripPlannerConfiguration } from '../../types/planner';
+import { type ControlledTripIdentity, type PlaceIdentity, type TripPlannerConfiguration } from '../../types/planner';
 import { Button } from '../../../../components/ui/Button';
 import { Skeleton } from '../../../../components/ui/Skeleton';
 import { useApp } from '../../../../app/state/AppContext';
@@ -15,8 +15,6 @@ import { useSendMessage } from '../../../../app/session/useSendMessage';
 import { DateRangePicker } from './DateRangePicker';
 import { PlaceField } from './PlaceField';
 import { DestinationTokenField, MAX_DESTINATIONS, type DestinationAddState } from './DestinationTokenField';
-import { GuidedIntakeQuestions } from './GuidedIntakeQuestions';
-import { parseTripBudget, tripIdentityError } from '../../model/tripIdentityValidation';
 import type { AtlasScene } from './TravelAtlasScenes';
 import React from 'react';
 
@@ -38,6 +36,16 @@ const CHIP_ON = 'border-accent/20 bg-accent-soft font-medium text-accent';
 const CHIP_OFF = 'bg-surface/70 text-ink-secondary hover:bg-accent-soft/60 hover:text-ink';
 const VISIBLE_PRIMARY_STYLES = 4;
 const NATURAL_DETAILS = ['轻松一点', '当地美食', '人文体验', '爸妈同行'] as const;
+
+function parseTripBudget(raw: string): { value: number | null; error: string | null } {
+  const normalized = raw.replace(/[,，\s]/g, '');
+  if (!normalized) return { value: null, error: null };
+  const value = Number(normalized);
+  if (!Number.isFinite(value) || value <= 0) {
+    return { value: null, error: '总预算请输入大于 0 的金额' };
+  }
+  return { value, error: null };
+}
 
 function factsFromNaturalText(text: string, config: TripPlannerConfiguration) {
   const origin = text.match(/从([^，,。\s]{2,12})(?:出发|走)/)?.[1] || '';
@@ -75,8 +83,7 @@ export const TripPlanner: React.FC<{
   compact?: boolean;
   initialDestinations?: PlaceIdentity[];
   inspiration?: PlannerInspiration | null;
-  guidedIntake?: GuidedIntakeState | null;
-  inlineIntake?: GuidedIntakeState | null;
+
   homeFlowActive?: boolean;
   homePendingLabel?: string;
   homeError?: string;
@@ -86,14 +93,12 @@ export const TripPlanner: React.FC<{
   compact = false,
   initialDestinations = [],
   inspiration = null,
-  guidedIntake = null,
-  inlineIntake = null,
   homeFlowActive = false,
   homePendingLabel = '',
   homeError = '',
   onHomePlanSubmitted,
 }) => {
-  const { state, dispatch } = useApp();
+  const { state } = useApp();
   const { sendMessage } = useSendMessage();
   const reducedMotion = useReducedMotion();
   const naturalInputRef = React.useRef<HTMLTextAreaElement>(null);
@@ -235,31 +240,39 @@ export const TripPlanner: React.FC<{
   const submitStructured = async () => {
     setError('');
     const selectedDestinations = destinations.filter((item): item is PlaceIdentity => Boolean(item));
-    const validation = tripIdentityError({ origin, destinations, start_date: startDate, end_date: endDate, party: { adults, children, elderly_companions: elderly, accessibility_required: false }, style: { primary, secondary_interests: interests, source: primaryTouched ? 'current' : 'suggested' } });
-    if (validation) { setError(validation); return; }
-    if (!origin) return;
+    if (!origin && selectedDestinations.length === 0 && !startDate && !guidedText.trim()) {
+      setError('先填一点想法或条件，再开始规划。');
+      return;
+    }
     const parsedBudget = parseTripBudget(budget);
     if (parsedBudget.error) {
       setError(parsedBudget.error);
       return;
     }
+    const identityComplete = Boolean(origin && selectedDestinations.length > 0 && startDate && endDate);
+    const identity: ControlledTripIdentity | null = identityComplete && origin
+      ? {
+        origin,
+        destinations: selectedDestinations,
+        start_date: startDate!,
+        end_date: endDate!,
+        party: { adults, children, elderly_companions: elderly, accessibility_required: false },
+        style: { primary, secondary_interests: interests, source: primaryTouched ? 'current' : 'suggested' },
+      }
+      : null;
     const numericBudget = parsedBudget.value;
-    const identity: ControlledTripIdentity = {
-      origin,
-      destinations: selectedDestinations,
-      start_date: startDate,
-      end_date: endDate,
-      party: { adults, children, elderly_companions: elderly, accessibility_required: false },
-      style: { primary, secondary_interests: interests, source: primaryTouched ? 'current' : 'suggested' },
-    };
-    dispatch({ type: 'SET_GUIDED_INTAKE', payload: null });
-    const budgetText = numericBudget !== null ? `，总预算约 ${numericBudget.toLocaleString('zh-CN')} 元` : '';
-    const summary = `${guidedText || `从${origin.name}出发，前往${selectedDestinations.map((item) => item.name).join('、')}，${startDate} 至 ${endDate}`}${budgetText}`;
+    const facts: string[] = [];
+    if (origin) facts.push(`出发地：${origin.name}`);
+    if (selectedDestinations.length > 0) facts.push(`目的地：${selectedDestinations.map((item) => item.name).join('、')}`);
+    if (startDate && endDate) facts.push(`日期：${startDate} 至 ${endDate}`);
+    facts.push(`同行：${adults} 位成人${children ? `、${children} 位儿童` : ''}${elderly ? '、长辈同行' : ''}`);
+    facts.push(`风格：${primary}${interests.length ? `（${interests.join('、')}）` : ''}`);
+    if (numericBudget !== null) facts.push(`总预算约 ${numericBudget.toLocaleString('zh-CN')} 元`);
+    const summary = [guidedText.trim(), `按条件规划——${facts.join('；')}`].filter(Boolean).join('\n');
     onHomePlanSubmitted?.();
     await sendMessage(summary, undefined, {
       route: 'trip_planning',
-      controlledTripIdentity: identity,
-      ...(guidedIntake ? { guidedIntake } : {}),
+      ...(identity ? { controlledTripIdentity: identity } : {}),
       assistantPendingLabel: '正在整理旅行信息',
     });
   };
@@ -269,8 +282,8 @@ export const TripPlanner: React.FC<{
     if (!text || state.isStreaming) return;
     setError('');
     onHomePlanSubmitted?.();
+    // 不指定路径：普通问题走轻量回答，规划想法由模型判断后进入工作台理解。
     await sendMessage(text, undefined, {
-      route: 'trip_planning',
       assistantPendingLabel: '正在理解你的旅行想法',
     });
   };
@@ -350,8 +363,6 @@ export const TripPlanner: React.FC<{
     );
   }
 
-  const showInlineIntake = Boolean(homeFlowActive && inlineIntake);
-
   return (
     <m.section
       ref={plannerRef}
@@ -359,7 +370,7 @@ export const TripPlanner: React.FC<{
       className={cn('planner-card', compact && 'planner-card-compact')}
       aria-label="旅行规划卡"
     >
-      <div className={cn('planner-standard-flow', showInlineIntake && 'is-concealed')}>
+      <div className="planner-standard-flow">
         {compact ? <p className="planner-compact-label">确认旅行信息</p> : tabs}
         <div className="planner-panels">
           <m.div
@@ -560,7 +571,7 @@ export const TripPlanner: React.FC<{
             </Button>
           </div>
         )}
-        {homeFlowActive && !showInlineIntake && (homeError || homePendingLabel) && (
+        {homeFlowActive && (homeError || homePendingLabel) && (
           <div className={cn('planner-home-flow-status', homeError && 'is-error')} role={homeError ? 'alert' : 'status'} aria-live="polite">
             {homeError ? (
               <>
@@ -577,15 +588,6 @@ export const TripPlanner: React.FC<{
           </div>
         )}
       </div>
-      {showInlineIntake && inlineIntake && (
-        <div className="planner-inline-intake">
-          <GuidedIntakeQuestions
-            key={`inline-intake-${state.conversationEpoch}-${inlineIntake.intake_id ?? "legacy"}`}
-            intake={inlineIntake}
-            inline
-          />
-        </div>
-      )}
     </m.section>
   );
 };

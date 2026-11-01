@@ -6,6 +6,8 @@
 
 计划门修改与运行中 supplement 统一转成 `IntentAmendment`，追加到同一条当前需求并产生新的 `PlanningGeneration`。Research Packet、Catalog、Workspace 与 Delivery Manifest 绑定同一 generation。运行取消、租约、预算、期限和工具结果记录继续保留。
 
+需求理解发生在 Run 内：`understanding_agent` 以强模型角色带真实工具协议工作，可按需联网与查询真实地点，先查后问；`understanding_gate` 暂停等待回答，回答进入同一份需求文字。基础身份由理解产出（地点来自工具查到的真实记录），入口不再要求身份齐全。
+
 ## 理由
 
 用户表达不需要被拆成逐条意图、约束、来源裁决和精确查询清单。把这些中间产物作为唯一权威会让每个调用点重复解释同一句话，也让模型无法根据真实资料调整研究。当前需求文字与模型任务说明保留原意，各角色在自身工具范围内工作，更接近真实的旅行研究和安排。

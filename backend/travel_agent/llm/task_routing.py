@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 import json
 
-from .request_policy import canonical_model_name, model_reasoning_effort
+from .request_policy import model_reasoning_effort
 
 
 class TaskKind(str, Enum):
@@ -13,6 +13,7 @@ class TaskKind(str, Enum):
     QUICK_ANSWER = "quick_answer"
     PLANNING = "planning"
     COMPOSITION = "composition"
+    UNDERSTANDING = "understanding"
 
 
 @dataclass(frozen=True)
@@ -26,24 +27,26 @@ class TaskRoute:
     action: str = "invoke"
 
 
-def chat_tool_protocol_supported(name):
-    return not canonical_model_name(name).startswith("gpt-6.1-sol")
-
-
 def select_task_route(task, primary, fast, *, has_tools=False,
                       primary_effort="medium", fast_effort="low",
                       primary_protocol="chat_completions", fast_protocol="chat_completions"):
+    """任务到模型档位的静态映射。
+
+    需求理解、方案生成与行程组合使用 primary 档；带工具的任务不会降档——
+    传输层同时支持 Chat Completions 与 Responses 两种工具协议，档位由任务
+    语义决定，协议适配缺失应在调用处显式失败，而不是换一个更弱的模型。
+    """
+
     task = TaskKind(task)
-    tier = "primary" if task in {TaskKind.PLANNING, TaskKind.COMPOSITION} else "fast"
-    reason = "task_default"
-    if has_tools and tier == "primary" and not chat_tool_protocol_supported(primary):
-        tier, reason = "fast", "tool_protocol_requires_fast"
+    tier = (
+        "primary"
+        if task in {TaskKind.PLANNING, TaskKind.COMPOSITION, TaskKind.UNDERSTANDING}
+        else "fast"
+    )
     name = primary if tier == "primary" else fast
-    if has_tools and not chat_tool_protocol_supported(name):
-        raise ValueError(f"{name} tool requests require a Responses adapter")
     effort = model_reasoning_effort(name, primary_effort if tier == "primary" else fast_effort)
     protocol = primary_protocol if tier == "primary" else fast_protocol
-    return TaskRoute(task, tier, name, effort, protocol, reason, "invoke")
+    return TaskRoute(task, tier, name, effort, protocol, "task_default", "invoke")
 
 
 def plain_observation_messages(messages):
@@ -61,27 +64,22 @@ def plain_observation_messages(messages):
 
 
 class TaskLLM:
+    """按任务路由包装客户端；工具与非工具调用使用同一份消息。"""
+
     def __init__(self, router, route, client):
         self.router, self.route, self.client = router, route, client
 
     def __getattr__(self, name):
         return getattr(self.client, name)
 
-    def _messages(self, messages):
-        if self.route.tier == "primary" and not chat_tool_protocol_supported(self.route.model_name):
-            return plain_observation_messages(messages)
-        return messages
-
     async def ainvoke(self, messages, **kwargs):
-        return await self.client.ainvoke(self._messages(messages), **kwargs)
+        return await self.client.ainvoke(messages, **kwargs)
 
     async def astream(self, messages, **kwargs):
-        async for item in self.client.astream(self._messages(messages), **kwargs):
+        async for item in self.client.astream(messages, **kwargs):
             yield item
 
     async def astream_with_tools(self, messages, tools, **kwargs):
-        if not chat_tool_protocol_supported(self.route.model_name):
-            raise ValueError("tool request requires a Responses adapter")
         async for item in self.client.astream_with_tools(messages, tools, **kwargs):
             yield item
 

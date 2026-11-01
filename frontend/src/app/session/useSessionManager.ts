@@ -9,6 +9,7 @@ import { useApp } from "../state/AppContext";
 import { normalizeTripSummaryCard } from "../../features/travel/model/tripSummaryCard";
 import { normalizePlanApprovalGate } from "../../features/travel/model/planApprovalGate";
 import { hasResearchStarted, projectVisibleMessages } from "../../features/chat/model/conversationFlow";
+import { type UnderstandingQuestion } from "../../features/travel/types/planner";
 import { type ChatSession } from "../../features/chat/types/messages";
 import { type ControlledTripIdentity } from "../../features/travel/types/planner";
 import { tripRunRecoveryFromDetail } from "../../features/travel/types/runs";
@@ -70,7 +71,7 @@ export function useSessionManager() {
             throw new Error('trip run does not belong to this session');
         const selectedRun = requestedRunId
             ? (requestedRunIsLatest ? latestRun : requestedRunDetail?.run ?? null)
-            : detail.pending_clarify ? null : latestRun;
+            : latestRun;
         const currentTripRunReadOnly = Boolean(requestedRunId && selectedRun && latestRun && selectedRun.run_id !== latestRun.run_id);
         const [selectedRunDetail, currentBundleResult] = selectedRun
             ? await Promise.all([
@@ -90,17 +91,31 @@ export function useSessionManager() {
             && pendingRunChoice?.terminal_status === 'cancelled';
         let messages = detail.messages.map(mapMessage);
         let restoredPlanGate = null;
+        let restoredUnderstandingQuestions: {
+            runId: string;
+            revision: number;
+            approvalToken: string;
+            questions: UnderstandingQuestion[];
+        } | null = null;
         if (pendingRunChoice && selectedRun && currentTripRunStatus === 'awaiting_input') {
             const choiceType = String(pendingRunChoice?.type || '');
+            const payload = pendingRunChoice.payload && typeof pendingRunChoice.payload === 'object'
+                ? pendingRunChoice.payload as Record<string, unknown>
+                : {};
             if (choiceType === 'approval_gate' && pendingRunChoice?.gate === 'plan') {
-                const payload = pendingRunChoice.payload && typeof pendingRunChoice.payload === 'object'
-                    ? pendingRunChoice.payload as Record<string, unknown>
-                    : {};
                 restoredPlanGate = normalizePlanApprovalGate({
                     run_id: selectedRun.run_id,
                     gate: 'plan',
                     payload,
                 }, hasCancelledChoice ? 'cancelled' : 'pending', 'restored');
+            }
+            else if (choiceType === 'understanding_questions' && Array.isArray(payload.questions) && !hasCancelledChoice) {
+                restoredUnderstandingQuestions = {
+                    runId: selectedRun.run_id,
+                    revision: typeof payload.revision === 'number' ? payload.revision : 0,
+                    approvalToken: typeof payload.approval_token === 'string' ? payload.approval_token : '',
+                    questions: payload.questions as UnderstandingQuestion[],
+                };
             }
         }
         const latestSummaryCard = [...detail.messages]
@@ -136,7 +151,8 @@ export function useSessionManager() {
             deliveryBundleLoadState,
             tripSummaryCard: latestSummaryCard,
             planApprovalGate: restoredPlanGate,
-            pendingGuidedIntake: selectedRun ? null : detail.pending_clarify ?? null,
+            understandingQuestions: restoredUnderstandingQuestions,
+            workspaceActive: Boolean(selectedRun) || messages.length > 0,
             pendingRouteConfirmation: null,
             lastRouteDecision: null,
             controlledTripIdentity: restoredIdentity as ControlledTripIdentity | null,
@@ -178,7 +194,7 @@ export function useSessionManager() {
             if (!targetId) {
                 return;
             }
-            if (currentStateRef.current.currentMessages.length || currentStateRef.current.pendingGuidedIntake || activeStreamRef.current) return;
+            if (currentStateRef.current.currentMessages.length || activeStreamRef.current) return;
             await openSession(targetId);
         }
         catch {

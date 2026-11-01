@@ -52,5 +52,11 @@ def test_intent_amendments_can_resume_at_every_runtime_node_that_accepts_them():
     )
     assert branch is not None and branch.ends
 
-    non_resumable = {"scope_clarifier", "intent_amendment_router"}
+    # scope_clarifier 是入口整理；understanding_gate 是提问暂停点，补充命令
+    # 只在 RUNNING 阶段入队，到不了这两个节点。
+    non_resumable = {
+        "scope_clarifier",
+        "understanding_gate",
+        "intent_amendment_router",
+    }
     assert set(branch.ends) == set(graph.nodes) - non_resumable

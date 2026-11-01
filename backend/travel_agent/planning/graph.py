@@ -33,6 +33,8 @@ from travel_agent.planning.nodes import (
     NODE_RESEARCH_PLAN_GENERATOR,
     NODE_SUMMARY_CARD_BRIEF,
     NODE_TRANSPORT,
+    NODE_UNDERSTANDING_AGENT,
+    NODE_UNDERSTANDING_GATE,
     NODE_WEATHER_CONTEXT_BUILDER,
 )
 from travel_agent.planning.requirements.amendments import intent_amendment_router_node
@@ -42,6 +44,10 @@ from travel_agent.planning.requirements.approval import (
 )
 from travel_agent.planning.requirements.entry import clarifier_node
 from travel_agent.planning.requirements.natural_language import prepare_requirements_node
+from travel_agent.planning.requirements.understanding import (
+    understanding_agent_node,
+    understanding_gate_node,
+)
 from travel_agent.planning.requirements.summary import (
     trip_summary_card_after_brief_node,
 )
@@ -98,6 +104,14 @@ def _route_after_dispatcher_with_amendments(state: TravelAgentState):
     return route_after_dispatcher(state)
 
 
+def _route_after_understanding(state: TravelAgentState) -> str:
+    if state.pending_intent_amendments:
+        return NODE_INTENT_AMENDMENT_ROUTER
+    if state.understanding_pending_questions:
+        return NODE_UNDERSTANDING_GATE
+    return NODE_REQUIREMENTS_PREPARER
+
+
 def route_after_intent_amendment(state: TravelAgentState) -> str:
     route = str(state.intent_amendment_route or "")
     if not route:
@@ -109,7 +123,20 @@ def build_travel_workflow() -> StateGraph:
     """构建深度调研工作流图（三层架构）。"""
     graph = StateGraph(TravelAgentState)
 
+    from travel_agent.planning.recovery import with_worker_recovery
+
     graph.add_node(NODE_CLARIFIER, with_run_control(NODE_CLARIFIER, clarifier_node))
+    graph.add_node(
+        NODE_UNDERSTANDING_AGENT,
+        with_run_control(
+            NODE_UNDERSTANDING_AGENT,
+            with_worker_recovery(NODE_UNDERSTANDING_AGENT, understanding_agent_node),
+        ),
+    )
+    graph.add_node(
+        NODE_UNDERSTANDING_GATE,
+        with_run_control(NODE_UNDERSTANDING_GATE, understanding_gate_node),
+    )
     graph.add_node(
         NODE_REQUIREMENTS_PREPARER,
         with_run_control(
@@ -146,8 +173,6 @@ def build_travel_workflow() -> StateGraph:
     graph.add_node(NODE_PLAN_GATE, with_run_control(NODE_PLAN_GATE, plan_gate_node))
 
     graph.add_node(NODE_DISPATCHER, with_run_control(NODE_DISPATCHER, dispatcher_node))
-    from travel_agent.planning.recovery import with_worker_recovery
-
     graph.add_node(
         NODE_DESTINATION,
         with_run_control(
@@ -186,6 +211,17 @@ def build_travel_workflow() -> StateGraph:
     )
 
     graph.add_edge(START, NODE_CLARIFIER)
+    graph.add_edge(NODE_CLARIFIER, NODE_UNDERSTANDING_AGENT)
+    graph.add_conditional_edges(
+        NODE_UNDERSTANDING_AGENT,
+        _route_after_understanding,
+        {
+            NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
+            NODE_UNDERSTANDING_GATE: NODE_UNDERSTANDING_GATE,
+            NODE_REQUIREMENTS_PREPARER: NODE_REQUIREMENTS_PREPARER,
+        },
+    )
+    graph.add_edge(NODE_UNDERSTANDING_GATE, NODE_UNDERSTANDING_AGENT)
     graph.add_conditional_edges(
         NODE_REQUIREMENTS_PREPARER,
         _route_after_boundary(NODE_RESEARCH_PLAN_GENERATOR),
@@ -249,8 +285,6 @@ def build_travel_workflow() -> StateGraph:
             },
         )
 
-    graph.add_edge(NODE_CLARIFIER, NODE_REQUIREMENTS_PREPARER)
-
     graph.add_conditional_edges(
         NODE_PLAN_GATE,
         route_after_plan_gate,
@@ -264,6 +298,7 @@ def build_travel_workflow() -> StateGraph:
     )
 
     amendment_continuations = {
+        NODE_UNDERSTANDING_AGENT,
         NODE_REQUIREMENTS_PREPARER,
         NODE_RESEARCH_PLAN_GENERATOR,
         NODE_MINIMUM_DELIVERY_DRAFT,

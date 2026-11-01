@@ -6,7 +6,7 @@ const base: FollowupComposerInput = {
   isStreaming: false,
   readOnly: false,
   gatePending: false,
-  pendingIntake: false,
+  pendingUnderstanding: false,
   pendingRouteConfirmation: false,
 };
 
@@ -27,7 +27,7 @@ describe('followupComposerState', () => {
 
   it('does not stack a second input on a pending gate, intake or route confirmation', () => {
     expect(followupComposerState({ ...base, gatePending: true }).visible).toBe(false);
-    expect(followupComposerState({ ...base, pendingIntake: true }).visible).toBe(false);
+    expect(followupComposerState({ ...base, pendingUnderstanding: true }).visible).toBe(false);
     expect(followupComposerState({ ...base, pendingRouteConfirmation: true }).visible).toBe(false);
   });
 

@@ -1,4 +1,3 @@
-import type { GuidedIntakeState } from '../../travel/types/planner';
 
 export type SessionStatus = 'active' | 'awaiting_clarify' | 'interrupted';
 export interface SessionSummary {
@@ -68,7 +67,6 @@ export interface SessionDetail extends SessionSummary {
         trip_summary_card?: Record<string, unknown>;
     }>;
     next_before: string | null;
-    pending_clarify?: GuidedIntakeState | null;
     has_more: boolean;
 }
 export interface SessionTurn {

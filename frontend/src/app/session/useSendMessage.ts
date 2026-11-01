@@ -8,7 +8,7 @@ import { generateId } from "../../lib/utils";
 import { useSessionManager } from "./useSessionManager";
 import { type Message } from "../../features/chat/types/messages";
 import { type ChatRequest } from "../../features/chat/types/requests";
-import { type ControlledTripIdentity, type GuidedIntakeState, type JourneyRoute, type PlaceIdentity, type PlanGateDecisionAction, type RouteDecision } from "../../features/travel/types/planner";
+import { type ControlledTripIdentity, type JourneyRoute, type PlanGateDecisionAction, type RouteDecision, type UnderstandingAnswer } from "../../features/travel/types/planner";
 export function useSendMessage() {
     const { state, dispatch, activeStreamAbortRef, activeStreamRef, currentStateRef, sessionRuntimeCacheRef } = useApp();
     const { refreshSessions, setLastSession } = useSessionManager();
@@ -19,11 +19,10 @@ export function useSendMessage() {
         route?: JourneyRoute;
         routeDecision?: RouteDecision;
         controlledTripIdentity?: ControlledTripIdentity;
-        guidedIntake?: GuidedIntakeState;
-        intakeDestination?: PlaceIdentity;
         gateDecision?: {
             action: PlanGateDecisionAction;
             content?: string;
+            answers?: UnderstandingAnswer[];
             approval_token?: string;
         };
         onRequestError?: (error: Error) => void;
@@ -52,6 +51,8 @@ export function useSendMessage() {
             timestamp: new Date(),
         };
         dispatch({ type: 'ADD_MESSAGE', payload: userMessage });
+        // 从首页提交即进入工作台；此标记只在新会话（CLEAR_CHAT）时复位。
+        dispatch({ type: 'ENTER_WORKSPACE' });
         if (options?.controlledTripIdentity) {
             dispatch({ type: 'SET_CONTROLLED_TRIP_IDENTITY', payload: options.controlledTripIdentity });
         }
@@ -69,14 +70,6 @@ export function useSendMessage() {
             run_id: initialRunId,
             route: options?.route ?? (initialRunId ? 'trip_refinement' : null),
             route_decision: options?.routeDecision ?? null,
-            ...(options?.guidedIntake ? { guided_intake: options.guidedIntake } : {}),
-            ...(!options?.guidedIntake && state.pendingGuidedIntake
-                ? {
-                    ...(state.pendingGuidedIntake.intake_id ? { intake_id: state.pendingGuidedIntake.intake_id } : {}),
-                    intake_revision: state.pendingGuidedIntake.intake_revision ?? 0,
-                }
-                : {}),
-            ...(options?.intakeDestination ? { intake_destination: options.intakeDestination } : {}),
             ...(options?.controlledTripIdentity
                 ? { controlled_trip_identity: options.controlledTripIdentity }
                 : {}),

@@ -12,7 +12,13 @@ from travel_agent.config.loader import get_settings
 from travel_agent.conversation.messages import build_messages
 from travel_agent.llm.usage import get_usage_recorder
 from travel_agent.planning.graph import get_travel_graph
-from travel_agent.planning.nodes import NODE_CLARIFIER, NODE_PLAN_GATE, NODE_REQUIREMENTS_PREPARER
+from travel_agent.planning.nodes import (
+    NODE_CLARIFIER,
+    NODE_PLAN_GATE,
+    NODE_REQUIREMENTS_PREPARER,
+    NODE_UNDERSTANDING_AGENT,
+    NODE_UNDERSTANDING_GATE,
+)
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.context import run_attribution
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
@@ -107,12 +113,20 @@ class TravelPlanningWorkflow:
                     warning_template="Checkpoint completion contract rejected run_id=%s error=%s",
                     contract_message="当前版本无法继续这次旧规划，请重新规划这趟旅行。",
                 )
-            early_nodes = {NODE_CLARIFIER, NODE_REQUIREMENTS_PREPARER}
+            early_nodes = {
+                NODE_CLARIFIER,
+                NODE_UNDERSTANDING_AGENT,
+                NODE_UNDERSTANDING_GATE,
+                NODE_REQUIREMENTS_PREPARER,
+            }
             if state.planning_generation is None and not (set(snapshot.next) & early_nodes):
                 logger.warning("检查点缺少当前规划版本 run_id=%s", run_id)
                 raise CheckpointContractError("当前版本无法继续这次旧规划，请重新规划这趟旅行。")
             if NODE_PLAN_GATE in snapshot.next and not (state.research_plan or state.research_plan_error):
                 logger.warning("计划门检查点缺少当前研究方案 run_id=%s", run_id)
+                raise CheckpointContractError("当前版本无法继续这次旧规划，请重新规划这趟旅行。")
+            if NODE_UNDERSTANDING_GATE in snapshot.next and not state.understanding_pending_questions:
+                logger.warning("理解门检查点缺少待答问题 run_id=%s", run_id)
                 raise CheckpointContractError("当前版本无法继续这次旧规划，请重新规划这趟旅行。")
         unknown_nodes = set(snapshot.next) - set(self._graph.nodes)
         if unknown_nodes:
@@ -124,29 +138,6 @@ class TravelPlanningWorkflow:
         configurable = (snapshot.config or {}).get("configurable") or {}
         checkpoint_id = configurable.get("checkpoint_id")
         return available, str(checkpoint_id) if checkpoint_id else None
-
-    async def probe_checkpoint_input(
-        self, run_id: str, *, session_id: str, user_message: str,
-        controlled_trip_identity: Dict[str, Any], intake_evidence_sources: List[Dict[str, Any]],
-    ) -> tuple[bool, Optional[str]]:
-        """Only a checkpoint containing this exact Run input may replace intake."""
-        if self._checkpointer is None:
-            return False, None
-        snapshot = await self._graph.aget_state({"configurable": {"thread_id": run_id}})
-        if not isinstance(snapshot.values, dict) or not snapshot.values:
-            return False, None
-        state = TravelAgentState.model_validate(snapshot.values)
-        configurable = (snapshot.config or {}).get("configurable") or {}
-        checkpoint_id = configurable.get("checkpoint_id")
-        matches = (
-            state.run_id == run_id
-            and state.session_id == session_id
-            and state.user_id == LOCAL_USER_ID
-            and state.user_query == user_message
-            and state.controlled_trip_identity == controlled_trip_identity
-            and state.intake_evidence_sources == intake_evidence_sources
-        )
-        return bool(matches and checkpoint_id), str(checkpoint_id) if checkpoint_id else None
 
     async def astream(
         self,
@@ -167,7 +158,6 @@ class TravelPlanningWorkflow:
         plan_gate_enabled: Optional[bool] = None,
         controlled_trip_identity: Optional[Dict[str, Any]] = None,
         route_decision: Optional[Dict[str, Any]] = None,
-        intake_evidence_sources: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """流式执行深度调研工作流。"""
         import datetime
@@ -186,7 +176,6 @@ class TravelPlanningWorkflow:
                 user_id=user_id,
                 selected_mcp_servers=selected_mcp_servers or [],
                 user_query=user_message,
-                intake_evidence_sources=intake_evidence_sources or [],
                 run_id=effective_run_id,
                 current_time=current_time
                 or datetime.datetime.now().strftime("%Y-%m-%d %A %H:%M:%S"),

@@ -36,20 +36,9 @@ class ResearchPlan(StrictModel):
         }
 
 
-def initial_requirements(user_query: str, sources: list[dict[str, Any]]) -> str:
-    """入口已将原文与全部回答拼成 user_query；保留原有换行和顺序。"""
-    text = user_query.strip()
-    if text:
-        return text
-    lines = []
-    for source in sources:
-        if source.get("kind") not in {"current_request", "explicit_selection", "explicit_supplement", "legacy_unverified"}:
-            continue
-        answer = str(source.get("text") or "").strip()
-        question = str(source.get("context") or "").strip()
-        if answer:
-            lines.append(f"{question}：{answer}" if question else answer)
-    return "\n".join(lines)
+def initial_requirements(user_query: str) -> str:
+    """入口原文就是需求文字的起点；保留原有换行和顺序。"""
+    return user_query.strip()
 
 
 def next_generation(state: Any, requirements: str) -> PlanningGeneration:
@@ -67,7 +56,15 @@ def next_generation(state: Any, requirements: str) -> PlanningGeneration:
 
 async def prepare_requirements_node(state: Any) -> dict[str, Any]:
     """收集新输入；较新的补充按时间顺序保留，交给模型整体理解。"""
-    base = state.current_requirements or initial_requirements(state.user_query, state.intake_evidence_sources)
+    base = state.current_requirements or initial_requirements(state.user_query)
+    # 理解问答只在首次整理时并入；之后的重跑以已保存的需求文字为基底，
+    # 不重复追加。
+    qa_lines = []
+    if not state.current_requirements:
+        qa_lines = [
+            f"{item['question']}：{item['answer']}"
+            for item in (state.understanding_qa or [])
+        ]
     amendments = [*state.pending_intent_amendments]
     if state.plan_gate_amendment is not None:
         amendments.append(state.plan_gate_amendment)
@@ -78,7 +75,7 @@ async def prepare_requirements_node(state: Any) -> dict[str, Any]:
             continue
         additions.append(amendment.content.strip())
         seen.add(amendment.command_id)
-    text = "\n".join([base, *(f"后续补充：{item}" for item in additions)]).strip()
+    text = "\n".join([base, *qa_lines, *(f"后续补充：{item}" for item in additions)]).strip()
     if not text:
         text = "根据已提供的旅行基础信息规划行程。"
     from travel_agent.planning.requirements.constraints.planning import (

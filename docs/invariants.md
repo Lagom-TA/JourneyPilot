@@ -165,11 +165,20 @@ Tests:
 ## 意图与编排
 
 ### INV-INTENT-004：supplement 追加到同一条当前需求
-约定：计划门修改与运行中 supplement 都先转为 `IntentAmendment`，追加到当前需求文字并推进规划版本；研究相关修改失效旧方案与旧产物并返回需求整理节点。
+约定：计划门修改、理解问答与运行中 supplement 都进入同一条当前需求文字并推进规划版本；理解问答由 `requirements_preparer` 首次整理时并入，研究相关修改失效旧方案与旧产物并返回需求整理节点。
 Owner: `backend/travel_agent/planning/requirements/amendments.py`、`backend/travel_agent/planning/requirements/supplements.py`、`backend/travel_agent/planning/requirements/natural_language.py`、`backend/travel_agent/planning/graph.py`
 Tests:
 - `backend/tests/planning/requirements/test_control_plane.py::test_supplement_updates_one_current_text_and_changes_generation`
 - `backend/tests/runtime/test_run_command_contract.py::test_supplement_is_consumed_only_after_requirements_preparation`
+- `backend/tests/api/test_multi_round_intake_flow.py::test_understanding_rounds_reach_the_plan_gate_with_answers_in_requirements`
+
+### INV-INTENT-007：理解问题绑定版本凭据，回答进入同一理解
+约定：`understanding_gate` 下发的每个问题轮次携带 `approval_token`；回答必须引用当前待答问题并回传同一凭据，凭据不匹配时原样重发问题，不消费状态、不重跑模型。回答以完整文字进入当前需求与理解消息历史，后续轮次不重复询问已答内容。
+Owner: `backend/travel_agent/planning/requirements/understanding/gate.py`、`backend/travel_agent/conversation/chat/contracts.py`、`backend/travel_agent/conversation/chat/preparation.py`
+Tests:
+- `backend/tests/api/test_multi_round_intake_flow.py::test_understanding_rounds_reach_the_plan_gate_with_answers_in_requirements`
+- `backend/tests/api/test_trip_intake.py::test_stale_answer_token_is_rejected_before_execution`
+- `backend/tests/api/test_trip_intake.py::test_answer_resumes_the_same_run_and_next_round_streams_back`
 
 ### INV-PLAN-001：方案与任务说明来自当前规划版本
 约定：`ResearchPlan`、`PlanningGeneration` 与 `execution_plan` 绑定同一次方案确认；Worker 与行程组合消费确认后的自然语言任务和当前需求文字。
@@ -184,8 +193,8 @@ Tests:
 - `backend/tests/planning/test_node_presentation.py::test_user_facing_node_metadata_matches_the_runtime_graph`
 - `frontend/src/features/chat/model/agentStages.test.ts`
 
-### INV-INTENT-006：意图变更能从每个节点续跑，除了明确不该的两个
-约定：`intent_amendment_router` 的 conditional edge 必须覆盖除 `scope_clarifier` 与路由节点自身之外的每个运行节点；守卫从构造好的图上读回落点，不扫描源码。
+### INV-INTENT-006：意图变更能从每个节点续跑，除了明确不该的三个
+约定：`intent_amendment_router` 的 conditional edge 必须覆盖除 `scope_clarifier`（入口整理）、`understanding_gate`（提问暂停点，补充命令只在 RUNNING 阶段入队）与路由节点自身之外的每个运行节点；守卫从构造好的图上读回落点，不扫描源码。
 Owner: `backend/travel_agent/planning/graph.py` 的 `amendment_continuations` 与 `route_after_intent_amendment`、`backend/travel_agent/planning/requirements/amendments.py`
 Tests:
 - `backend/tests/planning/test_node_presentation.py::test_intent_amendments_can_resume_at_every_runtime_node_that_accepts_them`
@@ -301,7 +310,7 @@ Tests:
 - `backend/tests/knowledge/test_document_parse.py::test_parser_timeout_kills_the_subprocess`
 
 ### INV-BUDGET-001：预算在调用之前判，快照不受配置热更新影响
-约定：按最坏开销在调用前判；快照在 Draft 授权时封存，与 Deadline 同进同出。
+约定：按最坏开销在调用前判；快照在 Draft 授权时封存，与 Deadline 同进同出。授权前的理解阶段不封预算快照，但受提问轮数、每轮工具迭代与单轮超时的显式上限约束，每次模型与工具调用都记入 `run_llm_calls` 台账；封存时由台账读回已花量。
 Owner: `backend/travel_agent/runtime/budget.py`
 Storage: `RunBudgetSnapshot` 随 checkpoint；已花量的最终事实在 `run_llm_calls`。
 ADR: [ADR-0006](adr/ADR-0006-resource-budgets-and-isolation.md)

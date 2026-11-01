@@ -6,10 +6,6 @@ from enum import Enum
 class PreparationRejection(str, Enum):
     EMPTY_MESSAGE = "empty_message"
     ROUTE_UNAVAILABLE = "route_unavailable"
-    INTAKE_NOT_FOUND = "intake_not_found"
-    INTAKE_INVALID = "intake_invalid"
-    INTAKE_VERSION_STALE = "intake_version_stale"
-    INTAKE_UNAVAILABLE = "intake_unavailable"
     REFINEMENT_REQUIRES_RUN = "refinement_requires_run"
     GATE_REQUIRES_RUN = "gate_requires_run"
     GATE_REQUIRES_CHECKPOINT = "gate_requires_checkpoint"

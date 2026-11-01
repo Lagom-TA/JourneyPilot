@@ -4,25 +4,6 @@ import logging
 import uuid
 from typing import Any, Dict, Optional
 from travel_agent.config.loader import get_settings
-from travel_agent.conversation.intake import (
-    IntakeUnderstandingUnavailable,
-    IntakeRevisionStale,
-    advance_intake_revision,
-    apply_intake_answers,
-    controlled_identity_summary,
-    intake_answers_complete,
-    merge_intake_answers,
-    understand_trip_intake,
-    unavailable_intake,
-    validate_intake_answers,
-)
-from travel_agent.conversation.intake_contracts import RouteName
-from travel_agent.conversation.intake_baseline import append_baseline_intake_questions
-from travel_agent.conversation.intake_evidence import intake_evidence_sources
-from travel_agent.conversation.intake_lock import intake_fingerprint, intake_session_lock
-from travel_agent.planning.requirements.identity_amendments import (
-    classify_locked_identity_intent,
-)
 from travel_agent.runtime.run_contracts import (
     RunRecoveryStatus,
     TripRunResumePolicy,
@@ -36,12 +17,16 @@ from travel_agent.runtime.events import run_ts_ms
 from travel_agent.planning.workflow import CheckpointContractError
 
 from travel_agent.conversation.chat.contracts import ChatRequest
+from travel_agent.conversation.intake_contracts import RouteDecision, RouteName
+from travel_agent.conversation.intake_lock import intake_session_lock
 from travel_agent.conversation.session_history import load_session_history
 from travel_agent.conversation.input_safety import InputGuard
+from travel_agent.planning.requirements.identity_amendments import (
+    classify_locked_identity_intent,
+)
 from .preset import load_preset_context
 from dataclasses import dataclass
 from typing import AsyncIterator
-from travel_agent.conversation.intake_contracts import RouteDecision
 from travel_agent.runtime.run_contracts import TripRun
 from .errors import PreparationRefused, PreparationRejection
 from .lease import RequestExecutionLease
@@ -75,16 +60,14 @@ class PreparedChat:
     history: list
     session_anchor_data: Any
     session_compressed: bool
-    intake_fingerprint: Optional[str] = None
-    intake_evidence_sources: Optional[list[dict[str, Any]]] = None
 
 
-def _pending_plan_gate_payload(detail: Any) -> Dict[str, Any]:
-    """读取持久化 gate payload；没有 plan gate 时返回空对象。"""
+def _pending_gate_payload(detail: Any) -> Dict[str, Any]:
+    """读取持久化 gate payload；没有等待中的门时返回空对象。"""
 
     state = getattr(detail, "state", None)
     choice = getattr(state, "pending_user_choice", None)
-    if not isinstance(choice, dict) or choice.get("gate") != "plan":
+    if not isinstance(choice, dict) or choice.get("gate") not in {"plan", "understanding"}:
         return {}
     payload = choice.get("payload")
     return dict(payload) if isinstance(payload, dict) else {}
@@ -98,7 +81,7 @@ def _validate_gate_decision_version(detail: Any, decision: Any) -> None:
 
     if decision is None or decision.action == "cancel":
         return
-    payload = _pending_plan_gate_payload(detail)
+    payload = _pending_gate_payload(detail)
     expected = str(payload.get("approval_token") or "").strip()
     supplied = str(decision.approval_token or "").strip()
     try:
@@ -139,20 +122,6 @@ async def check_input_guard(user_message: str):
     """执行 InputGuard 检查，返回 guard result 对象。"""
     guard = InputGuard()
     return await guard.check(user_message)
-
-
-async def _save_intake_snapshot(memory: Any, previous: Any, **kwargs: Any) -> None:
-    try:
-        await memory.save_guided_intake(
-            **kwargs,
-            expected_revision=previous.intake_revision if previous is not None else None,
-            expected_intake_id=previous.intake_id if previous is not None else None,
-            expect_absent=previous is None,
-        )
-    except IntakeRevisionStale as exc:
-        raise PreparationRefused(
-            PreparationRejection.INTAKE_VERSION_STALE, current_revision=exc.current_revision,
-        ) from exc
 
 
 async def prepare_chat(
@@ -212,8 +181,6 @@ async def _prepare_chat(
     session_id = request.session_id or str(uuid.uuid5(uuid.NAMESPACE_URL, f"{LOCAL_USER_ID}:session:{user_message_id}"))
     new_run_id = "trip_" + uuid.uuid5(uuid.NAMESPACE_URL, f"{LOCAL_USER_ID}:{session_id}:{user_message_id}").hex
     message_id = str(uuid.uuid4())
-    accepted_intake_fingerprint: Optional[str] = None
-    accepted_intake_sources: Optional[list[dict[str, Any]]] = None
     if request.route_decision is not None:
         route_decision = request.route_decision
     else:
@@ -335,7 +302,9 @@ async def _prepare_chat(
         return ImmediateChat(_route_confirmation_sse())
 
     existing_run = None
-    if request.run_id is None and request.controlled_trip_identity is not None:
+    if request.run_id is None:
+        # 重复提交同一 message_id 时重放已存在的 Run，而不是再开一次规划；
+        # 等待中的门（理解问题或方案确认）一并回放给前端。
         existing_run = await trip_run_store.get_run(new_run_id)
         if existing_run is not None and (
             existing_run.status != TripRunStatus.CREATED
@@ -348,6 +317,8 @@ async def _prepare_chat(
                     choice = detail.state.pending_user_choice if detail else None
                     if isinstance(choice, dict) and choice.get("gate") == "plan":
                         yield {"type": "approval_gate_raised", "run_id": existing_run.run_id, "gate": "plan", "run_status": existing_run.status.value, "payload": choice.get("payload", {})}
+                    elif isinstance(choice, dict) and choice.get("gate") == "understanding":
+                        yield {"type": "understanding_questions", "run_id": existing_run.run_id, "gate": "understanding", "run_status": existing_run.status.value, "payload": choice.get("payload", {})}
                 yield {"type": "chat_complete", "message_id": existing_run.assistant_message_id, "run_id": existing_run.run_id, "run_status": existing_run.status.value}
             return ImmediateChat(_replayed_run_sse())
 
@@ -363,170 +334,6 @@ async def _prepare_chat(
             raise PreparationRefused(
                 PreparationRejection.GATE_REQUIRES_CHECKPOINT
             )
-
-    if request.run_id is None and route_decision.route == RouteName.TRIP_PLANNING:
-        try:
-            saved_intake = await chat_session_memory.get_guided_intake(
-                session_id=session_id, user_id=LOCAL_USER_ID,
-            )
-        except PermissionError as exc:
-            from .errors import SessionAccessDenied
-            raise SessionAccessDenied() from exc
-        answers_submitted = request.guided_intake is not None
-        if answers_submitted:
-            if saved_intake is None:
-                raise PreparationRefused(PreparationRejection.INTAKE_NOT_FOUND)
-            if (
-                not {"intake_id", "intake_revision"} <= request.guided_intake.model_fields_set
-                or request.guided_intake.intake_id != saved_intake.intake_id
-                or request.guided_intake.intake_revision != saved_intake.intake_revision
-            ):
-                raise PreparationRefused(
-                    PreparationRejection.INTAKE_VERSION_STALE,
-                    current_revision=saved_intake.intake_revision,
-                )
-            try:
-                guided = apply_intake_answers(saved_intake, request.guided_intake)
-            except IntakeRevisionStale as exc:
-                raise PreparationRefused(
-                    PreparationRejection.INTAKE_VERSION_STALE, current_revision=exc.current_revision,
-                ) from exc
-            except ValueError as exc:
-                raise PreparationRefused(PreparationRejection.INTAKE_INVALID, explanation=str(exc)) from exc
-        else:
-            guided = saved_intake
-            if saved_intake is not None:
-                readonly_replay = (
-                    not intake_answers_complete(saved_intake)
-                    and user_message == saved_intake.raw_input
-                    and request.intake_destination is None
-                    and (request.controlled_trip_identity is None or request.controlled_trip_identity == saved_intake.controlled_identity)
-                )
-                if readonly_replay:
-                    async def _existing_intake_sse():
-                        yield {"type": "guided_intake", "message_id": message_id, "session_id": session_id, "guided_intake": saved_intake.model_dump(mode="json")}
-                        yield {"type": "chat_complete", "message_id": message_id}
-                    return ImmediateChat(_existing_intake_sse())
-                if request.intake_id != saved_intake.intake_id or request.intake_revision != saved_intake.intake_revision:
-                    raise PreparationRefused(
-                        PreparationRejection.INTAKE_VERSION_STALE,
-                        current_revision=saved_intake.intake_revision,
-                    )
-
-        if request.controlled_trip_identity is not None:
-            # 条件表单入口也必须先经过与自然语言入口相同的实质缺口评估。
-            # 已答/已评估过的状态不会被重新出题；新身份才触发一次带身份的评估。
-            identity = request.controlled_trip_identity
-            # 一轮问题答完后必须重新评估：答案或补充可能引出新的实质缺口。
-            # 未答完时重展示服务端保存的问题，避免刷新或部分提交丢失问题。
-            needs_assessment = guided is None or (
-                guided.understanding_status == "unavailable"
-            ) or intake_answers_complete(guided)
-            if needs_assessment:
-                previous_intake = guided
-                try:
-                    guided = await understand_trip_intake(
-                        guided.raw_input if guided is not None else user_message,
-                        route_decision,
-                        controlled_identity=identity,
-                        previous=guided,
-                    )
-                except IntakeUnderstandingUnavailable as exc:
-                    raise PreparationRefused(
-                        PreparationRejection.INTAKE_UNAVAILABLE, explanation=str(exc)
-                    ) from exc
-                # 模型没有出题时，条件表单入口补上一轮与本趟旅行直接相关的
-                # 可跳过问题；已有问答历史或自然语言入口不会走到这里。
-                guided = append_baseline_intake_questions(
-                    guided, identity, previous=previous_intake
-                )
-
-            guided = guided.model_copy(
-                update={
-                    "controlled_identity": identity,
-                    "missing_fields": [],
-                }
-            )
-            if guided.questions and not intake_answers_complete(guided):
-                try:
-                    validate_intake_answers(guided, require_complete=False)
-                except ValueError as exc:
-                    raise PreparationRefused(
-                        PreparationRejection.INTAKE_INVALID,
-                        explanation=str(exc),
-                    ) from exc
-                guided = advance_intake_revision(saved_intake, guided)
-                await _save_intake_snapshot(
-                    chat_session_memory, saved_intake,
-                    session_id=session_id,
-                    user_id=LOCAL_USER_ID,
-                    title_seed=guided.raw_input,
-                    guided_intake=guided,
-                    user_message_id=user_message_id,
-                    assistant_message_id=message_id,
-                )
-
-                async def _controlled_intake_sse():
-                    yield {
-                        "type": "guided_intake",
-                        "message_id": message_id,
-                        "session_id": session_id,
-                        "guided_intake": guided.model_dump(mode="json"),
-                    }
-                    yield {"type": "chat_complete", "message_id": message_id}
-
-                return ImmediateChat(_controlled_intake_sse())
-            try:
-                validate_intake_answers(guided)
-            except ValueError as exc:
-                raise PreparationRefused(
-                    PreparationRejection.INTAKE_INVALID, explanation=str(exc)
-                ) from exc
-            guided = advance_intake_revision(saved_intake, guided)
-            try:
-                accepted_intake_sources = intake_evidence_sources(guided)
-            except ValueError as exc:
-                raise PreparationRefused(
-                    PreparationRejection.INTAKE_UNAVAILABLE,
-                    explanation="旅行需求过多或不完整，请重新核对后继续。",
-                ) from exc
-            user_message = merge_intake_answers(guided) + (
-                "\n已确认旅行信息：" + controlled_identity_summary(identity)
-            )
-            # The assessment snapshot is saved before Run creation. Execution
-            # verifies it again, so a newer answer cannot be silently cleared or run.
-            await _save_intake_snapshot(
-                chat_session_memory, saved_intake,
-                session_id=session_id, user_id=LOCAL_USER_ID,
-                title_seed=guided.raw_input, guided_intake=guided,
-            )
-            accepted_intake_fingerprint = intake_fingerprint(guided)
-        else:
-            if guided is None:
-                try:
-                    guided = await understand_trip_intake(user_message, route_decision)
-                except IntakeUnderstandingUnavailable:
-                    logger.warning("需求理解不可用，保留原文并显示待确认字段", exc_info=True)
-                    guided = unavailable_intake(user_message, route_decision)
-            elif request.guided_intake is None and user_message != guided.raw_input:
-                guided = guided.model_copy(update={"additional_requirements": "\n".join(filter(None, [guided.additional_requirements, user_message]))[:1000]})
-            if request.intake_destination is not None:
-                from travel_agent.planning.requirements.identity_contracts import DESTINATION_PLACE_KINDS
-                if request.intake_destination.kind not in DESTINATION_PLACE_KINDS:
-                    raise PreparationRefused(PreparationRejection.INTAKE_INVALID, explanation="请选择可用于规划的城市或区域")
-                guided = guided.model_copy(update={"seed_destinations": [request.intake_destination], "draft": guided.draft.model_copy(update={"destination_queries": [request.intake_destination.name], "destination_decided": True, "confirmed_destinations": [request.intake_destination]})})
-            guided = advance_intake_revision(saved_intake, guided)
-            await _save_intake_snapshot(
-                chat_session_memory, saved_intake,
-                session_id=session_id, user_id=LOCAL_USER_ID, title_seed=user_message,
-                guided_intake=guided, user_message_id=user_message_id, assistant_message_id=message_id,
-            )
-
-            async def _guided_intake_sse():
-                yield {"type": "guided_intake", "message_id": message_id, "session_id": session_id, "guided_intake": guided.model_dump(mode="json")}
-                yield {"type": "chat_complete", "message_id": message_id}
-
-            return ImmediateChat(_guided_intake_sse())
 
     preset_context, preset_pack_constraints = await load_preset_context(
         request.preset_id, LOCAL_USER_ID
@@ -722,8 +529,6 @@ async def _prepare_chat(
         history=history,
         session_anchor_data=session_anchor_data,
         session_compressed=session_compressed,
-        intake_fingerprint=accepted_intake_fingerprint,
-        intake_evidence_sources=accepted_intake_sources,
     )
 
 

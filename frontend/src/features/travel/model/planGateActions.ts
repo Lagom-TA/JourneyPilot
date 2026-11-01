@@ -10,5 +10,7 @@ export function planGateEntries(gate: Pick<PlanApprovalGate, 'decisionOptions' |
         supplement: has('supplement'),
         retry: has('retry'),
         cancel: has('cancel'),
+        // answer 只属于理解问题卡；计划门永远不会提供它。
+        answer: false,
     };
 }

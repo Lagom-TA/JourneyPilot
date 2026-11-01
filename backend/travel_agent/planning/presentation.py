@@ -10,6 +10,8 @@ import re
 AGENT_DISPLAY_NAMES: Final[Dict[str, str]] = {
     "supervisor": "规划协调",
     "scope_clarifier": "需求确认",
+    "understanding_agent": "理解旅行需求",
+    "understanding_gate": "等待你的回答",
     "requirements_preparer": "整理需求",
     "research_plan_generator": "研究生成",
     "minimum_delivery_draft_builder": "行程框架",
@@ -38,6 +40,8 @@ STEP_DISPLAY_NAMES: Final[Dict[str, str]] = {
     "synthesizing": "汇总旅行内容",
     "supervisor": "协调规划步骤",
     "scope_clarifier": "确认旅行需求",
+    "understanding_agent": "理解并核实旅行需求",
+    "understanding_gate": "等待你的回答",
     "requirements_preparer": "整理旅行需求",
     "research_plan_generator": "生成研究计划",
     "minimum_delivery_draft_builder": "整理行程框架",

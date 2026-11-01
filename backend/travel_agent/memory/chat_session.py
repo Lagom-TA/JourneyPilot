@@ -319,10 +319,10 @@ class ChatSessionMemory:
                 text("""
                     INSERT INTO chat_sessions
                     (session_id, user_id, title, status, mode, last_message_preview,
-                     pending_clarify, message_count, created_at, updated_at)
+                     message_count, created_at, updated_at)
                     VALUES
                     (:sid, :uid, :title, :status, :mode, :preview,
-                     NULL, 0, NOW(), NOW())
+                     0, NOW(), NOW())
                 """),
                 {
                     "sid": session_id,
@@ -341,7 +341,6 @@ class ChatSessionMemory:
                 "status": STATUS_ACTIVE,
                 "mode": mode,
                 "last_message_preview": _truncate_preview(title_seed),
-                "pending_clarify": None,
                 "created_at": _utc_now_iso(),
                 "updated_at": _utc_now_iso(),
             }
@@ -475,101 +474,6 @@ class ChatSessionMemory:
             )
             row = result.mappings().first()
         return str(row["content"]) if row and row["content"] is not None else None
-
-    async def get_guided_intake(
-        self, *, session_id: str, user_id: str, db_session: Any = None, for_update: bool = False
-    ):
-        from travel_agent.conversation.intake_contracts import normalize_stored_intake
-
-        async with _session_scope(db_session) as session:
-            result = await session.execute(
-                text("SELECT user_id, pending_clarify FROM chat_sessions WHERE session_id = :sid" + (" FOR UPDATE" if for_update else "")),
-                {"sid": session_id},
-            )
-            row = result.mappings().first()
-        if row is None:
-            return None
-        if row["user_id"] != user_id:
-            raise PermissionError("会话不属于当前用户")
-        payload = _to_jsonable(row["pending_clarify"], None)
-        return normalize_stored_intake(payload, session_id=session_id, user_id=user_id) if payload else None
-
-    async def clear_guided_intake(self, *, session_id: str, user_id: str, db_session: Any = None) -> None:
-        async with _session_scope(db_session) as session:
-            await session.execute(
-                text("UPDATE chat_sessions SET pending_clarify = NULL, updated_at = NOW() WHERE session_id = :sid AND user_id = :uid"),
-                {"sid": session_id, "uid": user_id},
-            )
-
-    async def save_guided_intake(
-        self, *, session_id: str, user_id: str, title_seed: str, guided_intake: Any,
-        user_message_id: str | None = None, assistant_message_id: str | None = None,
-        expected_revision: int | None = None, expected_intake_id: str | None = None,
-        expect_absent: bool = False,
-    ) -> None:
-        """草稿和首次需求消息一起保存，重复握手不重复插入消息。"""
-        await self.ensure_session(
-            session_id=session_id, user_id=user_id, mode="deep",
-            title_seed=title_seed, controlled_trip_identity=None,
-        )
-        async with get_db_session() as session:
-            result = await session.execute(
-                text("SELECT user_id, pending_clarify FROM chat_sessions WHERE session_id = :sid FOR UPDATE"),
-                {"sid": session_id},
-            )
-            row = result.mappings().first()
-            if row is None or row["user_id"] != user_id:
-                raise PermissionError("会话不属于当前用户")
-            current = _to_jsonable(row["pending_clarify"], None)
-            from travel_agent.conversation.intake_contracts import normalize_stored_intake
-
-            normalized = (
-                normalize_stored_intake(current, session_id=session_id, user_id=user_id)
-                if isinstance(current, dict) and current else None
-            )
-            actual_revision = normalized.intake_revision if normalized else None
-            actual_id = normalized.intake_id if normalized else None
-            if (expect_absent and current is not None) or (
-                expected_revision is not None and actual_revision != expected_revision
-            ) or (expected_intake_id is not None and actual_id != expected_intake_id):
-                from travel_agent.conversation.intake import IntakeRevisionStale
-
-                raise IntakeRevisionStale(actual_revision or 0)
-            increment = 0
-            if user_message_id and assistant_message_id:
-                existing = await session.execute(
-                    text("SELECT 1 FROM chat_session_events WHERE session_id = :sid AND payload->>'message_id' = :mid LIMIT 1"),
-                    {"sid": session_id, "mid": user_message_id},
-                )
-                if existing.first() is None:
-                    order_result = await session.execute(
-                        text("SELECT COALESCE(MAX(event_order), 0) FROM chat_session_events WHERE session_id = :sid"),
-                        {"sid": session_id},
-                    )
-                    order = int(order_result.scalar_one() or 0)
-                    turn_id = f"turn_{uuid.uuid4().hex[:16]}"
-                    reply = "请确认这趟旅行的出发地、目的地和时间，补充必要信息后开始规划。"
-                    for index, (role, mid, content) in enumerate([
-                        ("user", user_message_id, title_seed),
-                        ("assistant", assistant_message_id, reply),
-                    ], start=1):
-                        await session.execute(
-                            text("INSERT INTO chat_session_events (session_id, event_order, turn_id, event_type, payload, created_at) VALUES (:sid, :ord, :turn, :kind, CAST(:body AS jsonb), NOW())"),
-                            {"sid": session_id, "ord": order + index, "turn": turn_id, "kind": f"message.{role}", "body": json.dumps({"message_id": mid, "role": role, "content": content, "display_content": content, "timestamp": _utc_now_iso(), "type": "normal"}, ensure_ascii=False)},
-                        )
-                    increment = 2
-            await session.execute(
-                text("""
-                    UPDATE chat_sessions
-                    SET pending_clarify = CAST(:payload AS jsonb), updated_at = NOW(),
-                        message_count = message_count + :inc,
-                        last_message_preview = :preview
-                    WHERE session_id = :sid AND user_id = :uid
-                """),
-                {"sid": session_id, "uid": user_id, "inc": increment,
-                 "preview": _truncate_preview(title_seed),
-                 "payload": json.dumps(guided_intake.model_dump(mode="json"), ensure_ascii=False)},
-            )
 
     async def save_turn(
         self,
@@ -1162,26 +1066,12 @@ class ChatSessionMemory:
     def _row_to_summary(self, row: Dict[str, Any]) -> Dict[str, Any]:
         created_at = row.get("created_at")
         updated_at = row.get("updated_at")
-        pending = _to_jsonable(row.get("pending_clarify"), None)
-        if isinstance(pending, dict) and pending:
-            from travel_agent.conversation.intake_contracts import normalize_stored_intake
-
-            try:
-                pending = normalize_stored_intake(
-                    pending, session_id=str(row.get("session_id") or ""),
-                    user_id=str(row.get("user_id") or ""),
-                ).model_dump(mode="json")
-            except (TypeError, ValueError) as exc:
-                # Session summaries remain readable; invalid drafts stay intact
-                # and are rejected by the detail/intake validation boundary.
-                logger.warning("会话草稿无法投影为当前格式 error_type=%s", type(exc).__name__)
         return {
             "session_id": row.get("session_id", ""),
             "title": row.get("title", "新对话"),
             "status": row.get("status", STATUS_ACTIVE),
             "mode": row.get("mode", "fast"),
             "last_message_preview": row.get("last_message_preview", ""),
-            "pending_clarify": pending,
             "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at or ""),
             "updated_at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else str(updated_at or ""),
         }

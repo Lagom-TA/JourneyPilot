@@ -97,34 +97,6 @@ class ChatMemory:
     async def get_anchor(self, **kwargs):
         return None, 0
 
-    async def get_guided_intake(self, **kwargs):
-        from travel_agent.conversation.intake_contracts import normalize_stored_intake
-
-        saved = getattr(self, 'guided_intake', None)
-        if not saved or saved['session_id'] != kwargs['session_id']:
-            return None
-        intake = saved['guided_intake']
-        return normalize_stored_intake(
-            intake.model_dump(mode='json'), session_id=kwargs['session_id'], user_id=kwargs.get('user_id', 'local'),
-        )
-
-    async def save_guided_intake(self, **kwargs):
-        from travel_agent.conversation.intake import IntakeRevisionStale
-
-        current = await self.get_guided_intake(session_id=kwargs['session_id'])
-        if kwargs.get('expect_absent') and current is not None:
-            raise IntakeRevisionStale(current.intake_revision)
-        expected = kwargs.get('expected_revision')
-        if expected is not None and (current is None or current.intake_revision != expected):
-            raise IntakeRevisionStale(current.intake_revision if current else 0)
-        expected_id = kwargs.get('expected_intake_id')
-        if expected_id is not None and (current is None or current.intake_id != expected_id):
-            raise IntakeRevisionStale(current.intake_revision if current else 0)
-        self.guided_intake = kwargs
-
-    async def clear_guided_intake(self, **kwargs):
-        self.guided_intake = None
-
     async def save_turn(self, **kwargs):
         self.turns.append(kwargs)
 
@@ -138,22 +110,7 @@ class FastWorkflow:
     def __init__(self):
         self.calls = []
 
-    async def astream(
-        self,
-        *,
-        user_message,
-        session_id,
-        user_id,
-        selected_mcp_servers,
-        conversation_history,
-        stream_queue,
-        session_anchor,
-        session_compressed,
-        preset_context,
-        preset_pack_constraints,
-        run_id,
-        route_decision,
-    ):
+    async def astream(self, *, user_message, stream_queue, run_id, **_kwargs):
         assert current_execution_lease.get() == "request-lease"
         self.calls.append(user_message)
         await stream_queue.put(("token", "fast_answer_agent", "hello"))

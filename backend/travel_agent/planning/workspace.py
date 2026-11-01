@@ -28,7 +28,7 @@ from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.weather.models import WeatherProposalDecision
 from travel_agent.schema import StrictModel
 
-TRIP_WORKSPACE_CONTRACT_VERSION = "journeypilot.trip_workspace.v12"
+TRIP_WORKSPACE_CONTRACT_VERSION = "journeypilot.trip_workspace.v13"
 
 
 class TripWorkspaceV2(StrictModel):

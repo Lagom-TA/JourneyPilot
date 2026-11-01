@@ -13,15 +13,13 @@ import { TripBriefPlanGate } from "../../travel/components/planning/TripBriefPla
 import { DiscoveryToIntake } from "../../travel/components/planning/DiscoveryToIntake";
 import { TravelAtlas } from "../../travel/components/planning/TravelAtlas";
 import type { AtlasScene } from "../../travel/components/planning/TravelAtlasScenes";
-import type { GuidedIntakeState } from "../../travel/types/planner";
 import React from 'react';
 export const HeroEmptyState: React.FC<{
     homeFlowActive?: boolean;
     homePendingLabel?: string;
     homeError?: string;
-    inlineIntake?: GuidedIntakeState | null;
     onHomePlanSubmitted?: () => void;
-}> = ({ homeFlowActive = false, homePendingLabel = '', homeError = '', inlineIntake = null, onHomePlanSubmitted }) => {
+}> = ({ homeFlowActive = false, homePendingLabel = '', homeError = '', onHomePlanSubmitted }) => {
     const [inspiration, setInspiration] = React.useState<PlannerInspiration | null>(null);
     const useInspiration = (scene: AtlasScene) => {
         setInspiration((previous) => ({ id: (previous?.id ?? 0) + 1, text: scene.prompt, scene }));
@@ -34,7 +32,6 @@ export const HeroEmptyState: React.FC<{
           </header>
           <TripPlanner
             inspiration={inspiration}
-            inlineIntake={inlineIntake}
             homeFlowActive={homeFlowActive}
             homePendingLabel={homePendingLabel}
             homeError={homeError}
@@ -55,34 +52,33 @@ export const ConversationThread: React.FC<{
     const messages = state.currentMessages;
     const planGatePending = Boolean(state.planApprovalGate && state.planApprovalGate.status !== 'cancelled');
     const visibleMessages = React.useMemo(() => projectVisibleMessages(messages, { planGatePending }), [messages, planGatePending]);
-    const isEmpty = messages.length === 0 && !state.pendingGuidedIntake && !state.pendingRouteConfirmation;
-    const hasJourneyWorkspace = state.deliveryBundle !== null || Boolean(state.currentTripRunId && state.controlledTripIdentity);
+    const isEmpty = messages.length === 0 && !state.pendingRouteConfirmation;
+    const hasJourneyWorkspace = state.workspaceActive || state.deliveryBundle !== null || state.currentTripRunId !== null;
     const [homePlanning, setHomePlanning] = React.useState(false);
     React.useEffect(() => {
         setHomePlanning(false);
     }, [state.conversationEpoch]);
     React.useEffect(() => {
         if (!homePlanning) return;
-        if (state.pendingRouteConfirmation || (state.lastRouteDecision && state.lastRouteDecision.route !== 'trip_planning')) {
+        if (state.pendingRouteConfirmation || state.lastRouteDecision) {
             setHomePlanning(false);
             return;
         }
-        if (!state.isStreaming && !state.pendingGuidedIntake) {
+        if (!state.isStreaming) {
             const last = messages[messages.length - 1];
             if (last?.type !== 'error') setHomePlanning(false);
         }
-    }, [homePlanning, messages, state.isStreaming, state.lastRouteDecision, state.pendingGuidedIntake, state.pendingRouteConfirmation]);
+    }, [homePlanning, messages, state.isStreaming, state.lastRouteDecision, state.pendingRouteConfirmation]);
     const lastAssistant = React.useMemo(() => [...messages].reverse().find((message) => message.role === 'assistant'), [messages]);
     const homeView = React.useMemo(() => {
-        const homeFlowActive = !hasJourneyWorkspace && (homePlanning || Boolean(state.pendingGuidedIntake));
+        const homeFlowActive = !hasJourneyWorkspace && homePlanning;
         return {
             flowActive: homeFlowActive,
             show: !hasJourneyWorkspace && (isEmpty || homeFlowActive),
-            intake: state.pendingGuidedIntake,
             pendingLabel: state.isStreaming ? lastAssistant?.pendingStatusText || '正在理解你的旅行想法' : '',
             error: lastAssistant?.type === 'error' ? (lastAssistant.displayContent || lastAssistant.content) : '',
         };
-    }, [hasJourneyWorkspace, homePlanning, isEmpty, lastAssistant, state.isStreaming, state.pendingGuidedIntake]);
+    }, [hasJourneyWorkspace, homePlanning, isEmpty, lastAssistant, state.isStreaming]);
     // 图形离场期间状态仍会前进：保留离开前最后一次首页内容，避免旧帧在退场动画里变成聊天页。
     const homeViewRef = React.useRef(homeView);
     if (isPresent) homeViewRef.current = homeView;
@@ -99,11 +95,10 @@ export const ConversationThread: React.FC<{
     const retryLastUserMessage = React.useCallback(() => {
         if (!lastUserText || state.isStreaming)
             return;
-        if (state.pendingGuidedIntake) return;
         void sendMessage(lastUserText, undefined, state.currentTripRunId
             ? { resumeRunId: state.currentTripRunId, route: 'trip_refinement' }
             : state.lastRouteDecision ? { route: state.lastRouteDecision.route } : undefined);
-    }, [lastUserText, sendMessage, state.isStreaming, state.pendingGuidedIntake, state.currentTripRunId, state.lastRouteDecision]);
+    }, [lastUserText, sendMessage, state.isStreaming, state.currentTripRunId, state.lastRouteDecision]);
     const scrollRef = React.useRef<HTMLDivElement>(null);
     const stickRef = React.useRef(true);
     const restoreAnchorRef = React.useRef<{
@@ -151,7 +146,6 @@ export const ConversationThread: React.FC<{
         homeFlowActive={presentedHome.flowActive}
         homePendingLabel={presentedHome.pendingLabel}
         homeError={presentedHome.error}
-        inlineIntake={presentedHome.intake}
         onHomePlanSubmitted={() => setHomePlanning(true)}
       />
     </div>) : (<div className="flex h-full min-h-0 flex-col">
@@ -202,13 +196,13 @@ export const ConversationThread: React.FC<{
             })}
               </div>
             </section>)}
-          {state.lastRouteDecision?.route === 'destination_discovery' && !state.isStreaming && !state.currentTripRunId && !state.pendingGuidedIntake && (<DiscoveryToIntake rawInput={lastUserText || ''}/>)}
+          {state.lastRouteDecision?.route === 'destination_discovery' && !state.isStreaming && !state.currentTripRunId && (<DiscoveryToIntake rawInput={lastUserText || ''}/>)}
         </div>
       </div>
 
       {!planGatePending && (<div className={cn('px-4 py-3 sm:px-6', showCanvas && 'border-t border-stroke bg-surface/50')}>
           <div className="mx-auto max-w-3xl">
-            {!state.pendingGuidedIntake && !state.pendingRouteConfirmation && <InputArea minimal={embedded} showCompaction={!embedded}/>}
+            {!state.pendingRouteConfirmation && <InputArea minimal={embedded} showCompaction={!embedded}/>}
           </div>
         </div>)}
     </div>);

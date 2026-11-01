@@ -8,10 +8,10 @@ from pydantic import ConfigDict
 from pydantic import Field
 from pydantic import model_validator
 from pydantic import field_validator
-from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity, PlaceIdentity
-from travel_agent.conversation.intake_contracts import GuidedIntakeState
+from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
 from travel_agent.conversation.intake_contracts import RouteDecision
 from travel_agent.conversation.intake_contracts import RouteName
+from travel_agent.planning.requirements.understanding.contracts import UnderstandingAnswer
 
 
 class ChatMessage(BaseModel):
@@ -23,12 +23,13 @@ class ChatMessage(BaseModel):
 
 class GateDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    # plan_gate：approve / supplement / retry / cancel。
-    # content 保存补充要求。
+    # plan_gate：approve / supplement / retry / cancel；content 保存补充要求。
+    # understanding_gate：answer；answers 是对当前待答问题的逐题回答。
     # approval_token 是 gate payload 下发的版本凭据；除 cancel 外必须回传，
-    # 服务端用它确认用户看到并批准的是同一版计划。
-    action: Literal["approve", "supplement", "retry", "cancel"]
+    # 服务端用它确认用户看到并决定的是同一版内容。
+    action: Literal["approve", "supplement", "retry", "cancel", "answer"]
     content: str = ""
+    answers: List[UnderstandingAnswer] = Field(default_factory=list)
     approval_token: Optional[str] = Field(default=None, max_length=200)
 
     @field_validator("approval_token", mode="before")
@@ -42,11 +43,25 @@ class GateDecision(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _require_content_for_plan_revision(self) -> "GateDecision":
-        if self.action == "supplement" and not self.content.strip():
-            raise ValueError("补充要求不能为空")
-        if self.action != "supplement" and self.content.strip():
+    def _validate_decision_payload(self) -> "GateDecision":
+        if self.action == "supplement":
+            if not self.content.strip():
+                raise ValueError("补充要求不能为空")
+            if self.answers:
+                raise ValueError("补充要求不通过 answers 提交")
+            return self
+        if self.action == "answer":
+            if self.content.strip():
+                raise ValueError("回答不通过 content 提交")
+            if not self.answers:
+                raise ValueError("回答不能为空")
+            if len({answer.question_id for answer in self.answers}) != len(self.answers):
+                raise ValueError("回答包含重复的问题")
+            return self
+        if self.content.strip():
             raise ValueError("只有补充要求可以包含内容")
+        if self.answers:
+            raise ValueError("只有回答可以包含 answers")
         return self
 
 
@@ -61,10 +76,6 @@ class ChatRequest(BaseModel):
     route: Optional[RouteName] = None
     route_decision: Optional[RouteDecision] = None
     controlled_trip_identity: Optional[ControlledTripIdentity] = None
-    guided_intake: Optional[GuidedIntakeState] = None
-    intake_id: Optional[str] = Field(default=None, pattern=r"^(?:it|legacy)_[0-9a-f]{32}$")
-    intake_revision: Optional[int] = Field(default=None, ge=0, strict=True)
-    intake_destination: Optional[PlaceIdentity] = None
     selected_mcp_servers: List[str] = Field(default_factory=list)
     plan_gate: Optional[bool] = None
     gate_decision: Optional[GateDecision] = None

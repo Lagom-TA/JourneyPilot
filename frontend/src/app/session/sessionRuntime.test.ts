@@ -60,6 +60,38 @@ describe('session runtime behavior', () => {
     expect(appReducer(currentStateRef.current, { type: 'RESTORE_SESSION_RUNTIME', payload: cached }).currentMessages[0].content).toBe('A 的后台回答');
   });
 
+  it('understanding questions bind to the run, survive awaiting completion and clear on resume', () => {
+    const currentStateRef: { current: AppState } = { current: { ...stateFor('A'), isStreaming: false, currentTripRunStatus: null } };
+    const activeStreamRef = { current: { token: 'stream-A', sessionId: 'A', runId: null, controller: null } as ActiveStreamHandle | null };
+    const cache = { current: new Map<string, SessionRuntimeSnapshot>() };
+    const dispatches: AppAction[] = [];
+    const dispatch = vi.fn((action: AppAction) => dispatches.push(action));
+    const assistant = { ...message('assistant-understanding'), content: '', displayContent: '' };
+    const owner = createStreamOwnership('stream-A', 'A', 0, null, null, activeStreamRef, currentStateRef, cache, dispatch);
+    const frame = createStreamFrameBatch(owner.scopedDispatch, assistant as Message);
+    const events = createStreamEvents(owner, assistant as Message, '想去青岛放松几天', null, '正在理解你的旅行想法', currentStateRef, () => {}, frame);
+    events.handleEvent({ type: 'chat_start', message_id: 'assistant-understanding', session_id: 'A', run_id: 'run-A', route_decision: { route: 'trip_planning', confidence: 1, alternatives: [], signals: [], requires_trip_draft: true, requires_confirmation: false } });
+    events.handleEvent({
+      type: 'understanding_questions', run_id: 'run-A', gate: 'understanding', run_status: 'awaiting_input',
+      payload: {
+        gate: 'understanding', revision: 1, approval_token: 'token-1',
+        questions: [{ id: 'pace', question: '节奏？', kind: 'single', options: [{ id: 'slow', label: '慢慢逛' }] }],
+      },
+    });
+    events.handleEvent({ type: 'chat_complete', run_id: 'run-A', run_status: 'awaiting_input', ts_ms: 5 });
+    let state = currentStateRef.current;
+    for (const action of dispatches) state = appReducer(state, action);
+    expect(state.understandingQuestions).toMatchObject({ runId: 'run-A', revision: 1, approvalToken: 'token-1' });
+    expect(state.currentTripRunStatus).toBe('awaiting_input');
+    // 回答提交后的新一轮事件清空问题卡并恢复流式状态。
+    dispatches.length = 0;
+    const resume = createStreamEvents(owner, assistant as Message, '已回答理解问题', 'run-A', '正在继续理解', currentStateRef, () => {}, frame, 'answer');
+    resume.handleEvent({ type: 'thinking', message_id: 'assistant-understanding', run_id: 'run-A', agent_name: '理解旅行需求', step_name: '理解旅行需求', content: '继续理解', progress_status: 'running' });
+    let resumed = currentStateRef.current;
+    for (const action of dispatches) resumed = appReducer(resumed, action);
+    expect(resumed.understandingQuestions).toBeNull();
+  });
+
   it('does not publish stale-token frames into the visible session', () => {
     const current = stateFor('A');
     const dispatch = vi.fn();

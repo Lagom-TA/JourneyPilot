@@ -109,7 +109,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                 deliverableView: 'interactive_itinerary',
                 tripSummaryCard: null,
                 planApprovalGate: null,
-                pendingGuidedIntake: null,
+                understandingQuestions: null,
+                workspaceActive: false,
                 pendingRouteConfirmation: null,
                 lastRouteDecision: null,
                 controlledTripIdentity: null,
@@ -156,7 +157,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         case 'BUMP_TRIP_RUN_REFRESH':
         case 'SET_TRIP_SUMMARY_CARD':
         case 'SET_PLAN_APPROVAL_GATE':
-        case 'SET_GUIDED_INTAKE':
+        case 'SET_UNDERSTANDING_QUESTIONS':
+        case 'ENTER_WORKSPACE':
         case 'SET_ROUTE_CONFIRMATION':
         case 'SET_LAST_ROUTE_DECISION':
         case 'SET_CONTROLLED_TRIP_IDENTITY':

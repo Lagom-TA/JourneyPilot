@@ -68,6 +68,10 @@ class OfflineModel:
 
     async def astream_with_tools(self, messages, tools):
         system = str(messages[0].get("content", ""))
+        if "需求理解者" in system:
+            self.understanding_request = "\n".join(str(message.get("content", "")) for message in messages)
+            yield {"type": "finish", "content": json.dumps({"action": "ready", "trip_identity": IDENTITY}, ensure_ascii=False), "tool_calls": []}
+            return
         worker = next(name for name in ("destination_researcher", "transport_researcher", "accommodation_researcher") if f"JourneyPilot 的 {name}" in system)
         self.worker_requests[worker] = "\n".join(str(message.get("content", "")) for message in messages)
         self.worker_tools[worker] = tools
@@ -105,10 +109,10 @@ async def test_latest_user_words_and_confirmed_tasks_reach_research_and_delivery
     from travel_agent.runtime import budget
 
     model, calls = OfflineModel(), []
-    for module in (research_plan_node, destination, transport, accommodation, itinerary):
+    from travel_agent.planning.requirements.understanding import agent as understanding_agent
+    for module in (research_plan_node, destination, transport, accommodation, itinerary, understanding_agent):
         monkeypatch.setattr(module, "get_model_router", lambda: object())
         monkeypatch.setattr(module, "llm_for_task", lambda *args, **kwargs: model)
-
     registry = ToolRegistry()
     async def search(query):
         calls.append(query)
@@ -122,7 +126,7 @@ async def test_latest_user_words_and_confirmed_tasks_reach_research_and_delivery
     monkeypatch.setattr(execution, "get_tool_registry", lambda: registry)
     monkeypatch.setattr(react, "get_tool_registry", lambda: registry)
     monkeypatch.setattr(react, "apply_tool_exposure", lambda tools, name: ToolExposurePlan(False, name, tuple(item["schema"] for item in tools), "", 0, 0, len(tools), len(tools)))
-    for module in (destination, transport, accommodation):
+    for module in (destination, transport, accommodation, understanding_agent):
         async def available(_selected):
             schemas = registry.get_tools_as_schemas()
             for tool in schemas:
@@ -152,16 +156,12 @@ async def test_latest_user_words_and_confirmed_tasks_reach_research_and_delivery
     graph = build_travel_workflow().compile(checkpointer=InMemorySaver())
     lease_store = LeaseStore()
     config = {"configurable": {"thread_id": "offline-flow", "plan_gate_enabled": True, "run_execution_store": lease_store, "delivery_bundle_store": bundles, "trip_run_store": runs}}
-    from travel_agent.conversation.intake import merge_intake_answers
-    from travel_agent.conversation.intake_contracts import GuidedIntakeState
-
-    intake = GuidedIntakeState.model_validate({
-        "raw_input": "喜欢博物馆，不赶路，返程不要跨日。",
-        "route_decision": {"route": "trip_planning", "confidence": 1, "requires_trip_draft": True},
-        "questions": [{"id": "pace", "question": "步行节奏？", "kind": "single", "options": [{"id": "less", "label": "步行少一些"}, {"id": "normal", "label": "正常步行"}]}],
-        "answers": [{"question_id": "pace", "selected_option_ids": ["less"]}],
-    })
-    state = TravelAgentState(run_id="offline-flow", session_id="offline-flow", user_query=merge_intake_answers(intake), controlled_trip_identity=IDENTITY)
+    state = TravelAgentState(
+        run_id="offline-flow", session_id="offline-flow",
+        user_query="喜欢博物馆，不赶路，返程不要跨日。",
+        understanding_qa=[{"question_id": "pace", "question": "步行节奏？", "answer": "步行少一些"}],
+        controlled_trip_identity=IDENTITY,
+    )
     token = current_execution_lease.set("lease")
     reset_ledgers()
     try:

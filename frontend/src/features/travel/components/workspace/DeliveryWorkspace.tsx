@@ -631,7 +631,11 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
               style={{ '--journey-map-overlay': `${panelOffset}px` } as React.CSSProperties}
               aria-label="旅行地图工作区"
             >
-              {bundle ? mapRegion : <div className="generation-workspace"><GenerationJourneyPanel /></div>}
+              {bundle
+                ? mapRegion
+                : state.currentTripRunId
+                  ? <div className="generation-workspace"><GenerationJourneyPanel /></div>
+                  : <div className="generation-workspace generation-workspace-conversation"><ConversationThread embedded /></div>}
               {bundle && !isMobile && <PresenceFrame ref={floatingPanelRef} className="journey-floating-panel" initial={{ opacity: 0, x: reducedMotion ? 0 : -18 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reducedMotion ? 0 : duration.page, ease: easing.decelerate }}>{navigation}{content}</PresenceFrame>}
               {isMobile && bundle && (
                 <Sheet open={state.mobileCanvasOpen} onClose={() => dispatch({ type: 'SET_MOBILE_CANVAS_OPEN', payload: false })} testId="canvas-sheet">

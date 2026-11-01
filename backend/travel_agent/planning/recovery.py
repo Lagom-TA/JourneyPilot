@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 def invocation_scope(state, node, config=None):
     # 参与任务身份的全部语义输入，包含 amendment、历史与 generation；耗时与
-    # 累计计量在恢复时会变化，不属于任务身份。
+    # 累计计量在恢复时会变化，不属于任务身份。理解阶段的问答随轮次推进，
+    # 必须进入身份，否则同一节点的新一轮会错误命中上一轮的恢复日志。
     keys = {
         "run_id",
         "user_query",
@@ -39,6 +40,10 @@ def invocation_scope(state, node, config=None):
         "recommendation_catalog",
         "research_packets",
         "messages",
+        "understanding_messages",
+        "understanding_qa",
+        "understanding_rounds",
+        "understanding_pending_questions",
     }
     fields = state.model_dump(mode="json", include=keys)
     fields["assignment"] = resolve_agent_assignment(state.agent_assignments, node)
@@ -50,7 +55,7 @@ def invocation_scope(state, node, config=None):
     digest = hashlib.sha256(
         json.dumps(fields, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
-    return f"{node}:v2:{digest}"
+    return f"{node}:v3:{digest}"
 
 
 def with_worker_recovery(node, worker):

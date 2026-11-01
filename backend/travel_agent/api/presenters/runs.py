@@ -8,7 +8,10 @@ from travel_agent.api.schemas.runs import (
     TripRunStateResponse,
 )
 from travel_agent.api.audit_projection import audit_safe_value
-from travel_agent.api.sse_projection import public_plan_gate_payload
+from travel_agent.api.sse_projection import (
+    public_plan_gate_payload,
+    public_understanding_questions_payload,
+)
 from travel_agent.planning.delivery.public.bundle import public_event_manifest
 
 
@@ -43,19 +46,25 @@ def _run_response(
 def _public_pending_user_choice(choice: Any) -> Optional[Dict[str, Any]]:
     """投影待输入决策；无法恢复的决策返回 None。
 
-    持久列是 JSONB，当前只有计划审批门一个写入方。客户端无法恢复的决策不再下发，
+    持久列是 JSONB，写入方是方案审批门与理解问题门。客户端无法恢复的决策不再下发，
     避免恢复会话时只显示无法操作的等待状态。``read_only`` / ``terminal_status``
     保留，用于区分仍在等待与决策已取消。
     """
 
     if not isinstance(choice, Mapping):
         return None
-    if str(choice.get("type") or "") != "approval_gate":
+    choice_type = str(choice.get("type") or "")
+    if choice_type not in {"approval_gate", "understanding_questions"}:
         return None
+    gate = choice.get("gate")
     projected: Dict[str, Any] = {
-        "type": "approval_gate",
-        "gate": choice.get("gate"),
-        "payload": public_plan_gate_payload(choice.get("payload")),
+        "type": choice_type,
+        "gate": gate,
+        "payload": (
+            public_understanding_questions_payload(choice.get("payload"))
+            if gate == "understanding"
+            else public_plan_gate_payload(choice.get("payload"))
+        ),
     }
     if choice.get("read_only"):
         projected["read_only"] = True

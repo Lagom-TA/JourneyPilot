@@ -1,6 +1,7 @@
 import { getCurrentDeliveryBundle } from "../../features/travel/api/delivery";
 import { getTripRunEventWindow, getTripRunDetail } from "../../features/travel/api/runs";
 import { normalizePlanApprovalGate } from '../../features/travel/model/planApprovalGate';
+import { type UnderstandingQuestion } from "../../features/travel/types/planner";
 import { isTripRunStatus, tripRunRecoveryFromDetail } from '../../features/travel/types/runs';
 import { useApp } from "../state/AppContext";
 import { isPublicDeliveryBundle } from "../../features/travel/types/delivery";
@@ -157,9 +158,20 @@ export function useDeliveryEventRecovery(): void {
                             const detail = await getTripRunDetail(runId, { sessionId });
                             if (!active || currentStateRef.current.currentTripRunId !== runId) return;
                             const choice = detail.state.pending_user_choice;
-                            if (choice?.gate === 'plan' && choice.payload && typeof choice.payload === 'object' && !Array.isArray(choice.payload)) {
-                                const gate = normalizePlanApprovalGate({ run_id: runId, gate: 'plan', payload: choice.payload as Record<string, unknown> }, 'pending', 'restored');
+                            const payload = choice?.payload && typeof choice.payload === 'object' && !Array.isArray(choice.payload)
+                                ? choice.payload as Record<string, unknown>
+                                : null;
+                            if (choice?.gate === 'plan' && payload) {
+                                const gate = normalizePlanApprovalGate({ run_id: runId, gate: 'plan', payload }, 'pending', 'restored');
                                 if (gate) dispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: gate });
+                            }
+                            else if (choice?.gate === 'understanding' && payload && Array.isArray(payload.questions)) {
+                                dispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: {
+                                    runId,
+                                    revision: typeof payload.revision === 'number' ? payload.revision : 0,
+                                    approvalToken: typeof payload.approval_token === 'string' ? payload.approval_token : '',
+                                    questions: payload.questions as UnderstandingQuestion[],
+                                } });
                             }
                             dispatch({ type: 'SET_TRIP_RUN_RECOVERY', payload: tripRunRecoveryFromDetail(detail) });
                         }

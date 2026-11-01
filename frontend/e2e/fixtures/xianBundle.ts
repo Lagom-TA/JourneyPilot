@@ -1,5 +1,5 @@
 const DELIVERY_BUNDLE_CONTRACT_VERSION = 'journeypilot.delivery_bundle.v11';
-const TRIP_WORKSPACE_CONTRACT_VERSION = 'journeypilot.trip_workspace.v12';
+const TRIP_WORKSPACE_CONTRACT_VERSION = 'journeypilot.trip_workspace.v13';
 const EVIDENCE = 'public_reference' as const;
 const XI = 'amap:poi:xian';
 

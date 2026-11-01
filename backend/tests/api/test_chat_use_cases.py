@@ -22,7 +22,6 @@ from tests.fixtures.chat_execution import (
     resources as resources,
 )
 from travel_agent.api.routes import chat as chat_api
-from travel_agent.conversation import intake as intake_module
 from travel_agent.conversation.chat import completion, failures, lifecycle, preparation
 from travel_agent.conversation.chat.accounting import ChatAccounting
 from travel_agent.conversation.chat.lease import RequestExecutionLease
@@ -160,7 +159,7 @@ async def test_stale_plan_gate_decision_is_rejected_before_lease(
     assert response.status_code == 409
     assert response.json()["detail"] == {
         "code": "plan_gate_version_stale",
-        "message": "计划版本已变化或缺少版本凭据，请刷新后查看最新计划再确认。",
+        "message": "待确认内容已变化或缺少版本凭据，请刷新后查看最新进展再回答。",
         "current_revision": 1,
     }
     assert resources.trip_run_store.runs[run.run_id].status is TripRunStatus.AWAITING_INPUT
@@ -243,31 +242,33 @@ async def test_cancel_plan_gate_decision_does_not_require_a_token(resources):
     assert not resources.run_execution_store.rows
 
 
-@pytest.mark.parametrize(
-    "route,expected",
-    [
-        (RouteName.TRIP_PLANNING, "guided_intake"),
-        (RouteName.FAST_ANSWER, "route_confirmation"),
-    ],
-)
-async def test_intake_and_confirmation_short_circuit_before_lease(
-    resources, monkeypatch, route, expected
-):
+async def test_route_confirmation_short_circuits_before_a_run(resources, monkeypatch):
     async def classify(*args, **kwargs):
-        return decision(route, confirm=expected == "route_confirmation")
-
-    class OfflineIntakeModel:
-        async def ainvoke(self, *_args, **_kwargs):
-            return SimpleNamespace(content=json.dumps({"draft": {}, "recognized_requirements": [], "questions": []}))
+        return decision(RouteName.FAST_ANSWER, confirm=True)
 
     monkeypatch.setattr(preparation, "classify_route", classify)
-    monkeypatch.setattr(intake_module, "get_model_router", lambda: object())
-    monkeypatch.setattr(intake_module, "llm_for_task", lambda *_args: OfflineIntakeModel())
+    response = await request("POST", "/api/chat-stream", chat_body(route_decision=None))
+    assert response.status_code == 200
+    assert [event["type"] for event in decode(response)] == ["route_confirmation", "chat_complete"]
+    assert not resources.trip_run_store.runs and not resources.run_execution_store.rows
+
+
+async def test_trip_planning_creates_the_run_immediately(resources, monkeypatch):
+    """点击开始规划不再停留在首页问答：请求立刻建 Run 并进入执行。"""
+
+    async def classify(*args, **kwargs):
+        return decision(RouteName.TRIP_PLANNING)
+
+    monkeypatch.setattr(preparation, "classify_route", classify)
     resources.checkpointer = object()
     response = await request("POST", "/api/chat-stream", chat_body(route_decision=None))
     assert response.status_code == 200
-    assert [event["type"] for event in decode(response)] == [expected, "chat_complete"]
-    assert not resources.trip_run_store.runs and not resources.run_execution_store.rows
+    events = decode(response)
+    assert events[0]["type"] == "chat_start" and events[0]["run_id"]
+    run = next(iter(resources.trip_run_store.runs.values()))
+    assert run.run_id == events[0]["run_id"]
+    assert run.mode.value == "deep"
+    assert resources.run_execution_store.rows
 
 
 async def test_input_guard_persists_failed_turn_then_three_frames(resources):

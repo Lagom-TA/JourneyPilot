@@ -288,6 +288,36 @@ class TripRunStore:
             row = result.mappings().first()
             return _run_from_row(dict(row)) if row else None
 
+    async def update_controlled_trip_identity(
+        self, run_id: str, *, controlled_trip_identity: Dict[str, Any]
+    ) -> None:
+        """把理解阶段确认的旅行基础信息写回 Run 行。
+
+        Run 创建时身份可以缺席；理解阶段完成后由这里补齐，工作台展示与
+        刷新恢复读取的是同一份记录。
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                text("SELECT 1 FROM trip_runs WHERE run_id = :run_id"),
+                {"run_id": run_id},
+            )
+            if result.first() is None:
+                raise KeyError(f"TripRun not found: {run_id}")
+            await session.execute(
+                text(
+                    """
+                    UPDATE trip_runs
+                    SET controlled_trip_identity = CAST(:identity AS jsonb),
+                        updated_at = NOW()
+                    WHERE run_id = :run_id
+                    """
+                ),
+                {
+                    "run_id": run_id,
+                    "identity": _json_dumps(controlled_trip_identity),
+                },
+            )
+
     async def get_detail(self, run_id: str, *, event_limit: int = 50) -> Optional[TripRunDetail]:
         async with get_db_session() as session:
             run_result = await session.execute(
@@ -1436,6 +1466,16 @@ class InMemoryTripRunStore(TripRunStore):
 
     async def get_run(self, run_id: str) -> Optional[TripRun]:
         return self.runs.get(run_id)
+
+    async def update_controlled_trip_identity(
+        self, run_id: str, *, controlled_trip_identity: Dict[str, Any]
+    ) -> None:
+        run = self.runs.get(run_id)
+        if run is None:
+            raise KeyError(f"TripRun not found: {run_id}")
+        self.runs[run_id] = run.model_copy(
+            update={"controlled_trip_identity": controlled_trip_identity}
+        )
 
     async def get_detail(self, run_id: str, *, event_limit: int = 50) -> Optional[TripRunDetail]:
         run = self.runs.get(run_id)

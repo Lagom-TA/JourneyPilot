@@ -42,7 +42,7 @@ async def complete_chat(
             trip_run.run_id,
             ctx.final_step_name or ctx.final_agent_name or "workflow",
         )
-    if ctx.approval_gate:
+    if ctx.approval_gate or ctx.understanding_gate:
         assistant_content = await turns.save_partial("waiting_input")
         cost_summary = await accounting.finalize_cost_summary(terminal=False)
         yield {

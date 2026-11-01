@@ -249,3 +249,92 @@ async def test_incomplete_responses_fail_without_losing_reported_usage(gateway_s
     else:
         assert record.input_tokens is None and record.output_tokens is None
         assert record.usage_source == "missing"
+
+
+async def test_understanding_full_tool_round_on_the_strong_responses_model(
+    gateway_settings, monkeypatch,
+):
+    """理解角色的完整回合：强模型选中 → 返回工具调用 → 结果回传同一模型 → 得出结论。
+
+    primary 配置为 Responses 协议的 gpt-6.1-sol；这条链路过去会被静默降档或
+    直接拒绝，现在必须原档完成。
+    """
+
+    import travel_agent.llm.router as router_module
+
+    requests = []
+    first_response = {
+        "id": "resp_tool", "object": "response", "created_at": 0,
+        "status": "completed", "model": "gpt-6.1-sol", "error": None,
+        "output": [{
+            "type": "function_call", "id": "fc_1", "call_id": "call_lookup",
+            "name": "lookup", "arguments": '{"query":"青岛 11 月"}', "status": "completed",
+        }],
+        "usage": {
+            "input_tokens": 50, "output_tokens": 10, "total_tokens": 60,
+            "input_tokens_details": {"cached_tokens": 0},
+            "output_tokens_details": {"reasoning_tokens": 0},
+        },
+    }
+    final_response = {
+        "id": "resp_final", "object": "response", "created_at": 0,
+        "status": "completed", "model": "gpt-6.1-sol", "error": None,
+        "output": [{
+            "id": "msg_final", "type": "message", "status": "completed",
+            "role": "assistant", "content": [{
+                "type": "output_text",
+                "text": '{"action":"ask","questions":[{"id":"pace","question":"节奏？","kind":"single","options":[]}]}',
+                "annotations": [],
+            }],
+        }],
+        "usage": {
+            "input_tokens": 90, "output_tokens": 30, "total_tokens": 120,
+            "input_tokens_details": {"cached_tokens": 0},
+            "output_tokens_details": {"reasoning_tokens": 5},
+        },
+    }
+
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, json=first_response if len(requests) == 1 else final_response)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        monkeypatch.setattr(router_module, "ChatOpenAI", lambda **kwargs: ReasoningChatOpenAI(
+            **kwargs, http_async_client=client,
+        ))
+        llm = ModelRouter().get_for_task(TaskKind.UNDERSTANDING, has_tools=True)
+        # 没有静默降档：强模型与 Responses 协议原样保留。
+        assert llm.route.tier == "primary"
+        assert llm.route.model_name == "gpt-6.1-sol"
+        assert llm.route.protocol == "responses"
+
+        tools = [{"type": "function", "function": {"name": "lookup", "parameters": {
+            "type": "object", "properties": {"query": {"type": "string"}},
+        }}}]
+        messages = [{"role": "user", "content": "想去青岛放松几天"}]
+        first = await llm.ainvoke_with_tools(messages, tools)
+        assert first["tool_calls"][0]["name"] == "lookup"
+
+        # 离线工具执行完毕，把结果回传给同一个强模型。
+        messages.append({
+            "role": "assistant", "content": first["content"],
+            "tool_calls": first["tool_calls"],
+        })
+        messages.append({
+            "role": "tool", "tool_call_id": first["tool_calls"][0]["id"],
+            "content": '{"results":["青岛 11 月适合散步"]}',
+        })
+        final = await llm.ainvoke_with_tools(messages, tools)
+
+    assert final["tool_calls"] == []
+    assert '"action":"ask"' in final["content"]
+    assert [request.url.path for request in requests] == ["/v1/responses", "/v1/responses"]
+    first_wire = json.loads(requests[0].content)
+    assert first_wire["tools"][0]["type"] == "function"
+    assert first_wire["tools"][0]["name"] == "lookup"
+    second_wire = json.loads(requests[1].content)
+    input_items = second_wire["input"]
+    assert any(item.get("type") == "function_call" and item.get("call_id") == "call_lookup"
+               for item in input_items)
+    assert any(item.get("type") == "function_call_output" and "青岛 11 月适合散步" in str(item.get("output"))
+               for item in input_items)

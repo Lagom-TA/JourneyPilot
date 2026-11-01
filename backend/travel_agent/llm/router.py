@@ -770,9 +770,6 @@ class OpenAICompatibleLLM(BaseLLM):
         tools: List[Dict[str, Any]],
         **kwargs: Any,
     ) -> Dict[str, Any]:
-        from .task_routing import chat_tool_protocol_supported
-        if not chat_tool_protocol_supported(self.model_name):
-            raise ValueError("gpt-6.1-sol tool requests require a Responses adapter")
         kwargs, output_limit = self._apply_output_token_limit(kwargs)
         dropped_schema = _downgraded_json_schema(kwargs, capabilities=self.capabilities)
         kwargs = _normalize_response_format(kwargs, capabilities=self.capabilities)

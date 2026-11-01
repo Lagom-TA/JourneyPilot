@@ -1,68 +1,85 @@
-import { expect, test } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
+import { expect, test, type Page } from '@playwright/test';
 
-const decision = { route: 'trip_planning', confidence: 1, alternatives: [], signals: [], requires_trip_draft: true, requires_confirmation: false };
-const place = (name: string, id: string) => ({ place_id: id, provider: 'osm', kind: 'city', name, display_name: name, country_code: 'CN', latitude: 31.2, longitude: 121.4, admin_path: [] });
-const origin = place('上海', 'offline:上海');
-const destination = place('杭州', 'offline:杭州');
-const party = { adults: 2, children: 0, elderly_companions: true, accessibility_required: false };
-const style = { primary: '轻松慢游', secondary_interests: [], source: 'current' };
-const budgetQuestion = { id: 'budget_scope', question: '预算包含往返交通吗？', kind: 'single', options: [{ id: 'yes', label: '包含交通' }, { id: 'no', label: '不包含交通' }, { id: 'sensible_default', label: '按合理默认安排，不再补充' }] };
-const mobilityQuestion = { id: 'mobility', question: '长辈爬楼是否受限？', kind: 'single', options: [{ id: 'avoid', label: '需要避免爬楼' }, { id: 'some', label: '可以少量爬楼' }, { id: 'sensible_default', label: '按合理默认安排，不再补充' }] };
-const initial = {
-  intake_id: "it_" + "a".repeat(32), intake_revision: 0, raw_input: '带长辈去杭州，预算一万元', route_decision: decision, controlled_identity: null,
-  seed_destinations: [], missing_fields: [], ready_to_create: false,
-  recognized_requirements: ['带长辈', '预算一万元'], understanding_status: 'ready',
-  draft: { origin_query: '上海', destination_queries: ['杭州'], start_date: '2026-11-05', end_date: '2026-11-08', duration_days: 4, party, style, budget_text: '一万元', destination_decided: true, destination_suggestions: [], confirmed_origin: origin, confirmed_destinations: [destination] },
-  questions: [budgetQuestion], answers: [], additional_requirements: '',
+/**
+ * 多轮理解：回答进入后续理解，问题逐轮更新且凭据随版本变化；
+ * 已答问题不重复出现。全部 API 在浏览器内拦截，离线演示。
+ */
+
+const routeDecision = { route: 'trip_planning', confidence: 1, alternatives: [], signals: ['model_intent'], requires_trip_draft: true, requires_confirmation: false };
+const firstQuestion = {
+  id: 'pace',
+  question: '这次更想慢慢逛，还是把行程排满？',
+  kind: 'single',
+  options: [
+    { id: 'slow', label: '慢慢逛，留出休息时间' },
+    { id: 'full', label: '排满一些' },
+  ],
+};
+const secondQuestion = {
+  id: 'budget',
+  question: '大约多少预算比较合适？',
+  kind: 'single',
+  options: [
+    { id: 'low', label: '5000 元以内' },
+    { id: 'high', label: '8000 元左右' },
+  ],
+};
+const planGatePayload = {
+  gate: 'plan',
+  revision: 0,
+  decision_options: ['approve', 'supplement', 'cancel'],
+  plan: { steps: [{ step: 1, agents: ['destination_researcher'], tasks: { destination_researcher: '调查青岛慢节奏海边路线' } }] },
+  plan_text: '**研究和安排设想**\n从上海去青岛，节奏：慢慢逛；预算：5000 元以内。\n\n- **目的地调研**：调查青岛慢节奏海边路线',
 };
 
-for (const archived of [false, true]) {
- test(`回答后展示新缺口，直到分析完成才进入计划审批${archived ? '（归档历史）' : ''}`, async ({ page }) => {
+function sse(events: unknown[]) {
+  return { status: 200, contentType: 'text/event-stream', body: events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('') };
+}
+
+test('逐轮回答新问题，方案消费全部问答', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.addInitScript(() => localStorage.setItem('sta_last_session_id', 'multi-round'));
-  const pageErrors: string[] = [];
-  const escaped: string[] = [];
-  const requests: Record<string, any>[] = [];
-  page.on('pageerror', error => pageErrors.push(error.message));
-  let pending: any = structuredClone(initial);
+  const chatRequests: Record<string, any>[] = [];
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  let round = 0;
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());
-    if (!['localhost', '127.0.0.1'].includes(url.hostname)) { escaped.push(url.href); return route.abort(); }
+    if (!['localhost', '127.0.0.1'].includes(url.hostname)) return route.abort();
     if (!url.pathname.startsWith('/api/')) return route.continue();
     const path = url.pathname.slice(4);
     const json = (body: unknown) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-    if (path === '/sessions/multi-round/intake') {
-      const submitted = route.request().postDataJSON();
-      if (submitted.intake_id !== pending.intake_id || submitted.intake_revision !== pending.intake_revision) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: { code: 'intake_version_stale', message: '旅行需求已更新，请刷新后重新核对。' } }) });
-      pending = { ...submitted, intake_revision: pending.intake_revision + 1 };
-      return json(pending);
-    }
     if (path === '/chat-stream') {
       const body = route.request().postDataJSON();
-      requests.push(body);
-      let events: unknown[];
-      if (requests.length === 1) {
-        pending = archived
-          ? { ...body.guided_intake, intake_revision: body.guided_intake.intake_revision + 1, controlled_identity: body.controlled_trip_identity, questions: [mobilityQuestion], answers: [], archived_answers: [{ question_id: 'budget_scope', question: budgetQuestion.question, answer: '包含交通' }], ready_to_create: false }
-          : { ...body.guided_intake, intake_revision: body.guided_intake.intake_revision + 1, controlled_identity: body.controlled_trip_identity, questions: [budgetQuestion, mobilityQuestion], ready_to_create: false };
-        events = [{ type: 'guided_intake', session_id: 'multi-round', guided_intake: pending }, { type: 'chat_complete' }];
-      } else {
-        pending = null;
-        events = [
-          { type: 'chat_start', session_id: 'multi-round', run_id: 'multi-round-run', message_id: 'assistant-plan', route_decision: decision },
-          { type: 'approval_gate_raised', run_id: 'multi-round-run', gate: 'plan', run_status: 'awaiting_input', payload: { gate: 'plan', revision: 0, approval_token: 'offline-token', revision_limit: 2, decision_options: ['approve', 'supplement', 'cancel'], plan: { steps: [{ step: 1, agents: ['destination_researcher'], tasks: { destination_researcher: '研究无障碍出行和适合长辈的路线' } }] }, plan_text: '**研究计划**：研究无障碍出行和适合长辈的路线。', recognized_requirements: { hard: [], preferences: [], attention: [] }, unresolved_requirement_ids: [] } },
-          { type: 'chat_complete', run_id: 'multi-round-run', run_status: 'awaiting_input' },
-        ];
+      chatRequests.push(body);
+      if (round === 0) {
+        round = 1;
+        return route.fulfill(sse([
+          { type: 'chat_start', session_id: 'multi-understanding', run_id: 'trip-multi', message_id: 'assistant-1', route_decision: routeDecision },
+          { type: 'understanding_questions', run_id: 'trip-multi', gate: 'understanding', run_status: 'awaiting_input', payload: { gate: 'understanding', revision: 1, questions: [firstQuestion], decision_options: ['answer', 'cancel'], approval_token: 'token-round-1' } },
+          { type: 'chat_complete', run_id: 'trip-multi', run_status: 'awaiting_input' },
+        ]));
       }
-      return route.fulfill({ status: 200, contentType: 'text/event-stream', body: events.map(event => `data: ${JSON.stringify(event)}\n\n`).join('') });
+      if (round === 1) {
+        round = 2;
+        return route.fulfill(sse([
+          { type: 'chat_start', session_id: 'multi-understanding', run_id: 'trip-multi', message_id: 'assistant-2', route_decision: routeDecision },
+          { type: 'tool_start', run_id: 'trip-multi', message_id: 'assistant-2', agent_name: '理解旅行需求', tool_name: 'free_web_search', tool_call_id: 'tool-2', args_summary: '青岛 慢节奏 预算', category: 'web', ts_ms: 3 },
+          { type: 'tool_result', run_id: 'trip-multi', message_id: 'assistant-2', agent_name: '理解旅行需求', tool_name: 'free_web_search', tool_call_id: 'tool-2', summary: '青岛消费适中', status: 'success', result_preview: [], duration_ms: 400, ts_ms: 4 },
+          { type: 'understanding_questions', run_id: 'trip-multi', gate: 'understanding', run_status: 'awaiting_input', payload: { gate: 'understanding', revision: 2, questions: [secondQuestion], decision_options: ['answer', 'cancel'], approval_token: 'token-round-2' } },
+          { type: 'chat_complete', run_id: 'trip-multi', run_status: 'awaiting_input' },
+        ]));
+      }
+      return route.fulfill(sse([
+        { type: 'chat_start', session_id: 'multi-understanding', run_id: 'trip-multi', message_id: 'assistant-3', route_decision: routeDecision },
+        { type: 'approval_gate_raised', run_id: 'trip-multi', gate: 'plan', run_status: 'awaiting_input', payload: planGatePayload },
+        { type: 'chat_complete', run_id: 'trip-multi', run_status: 'awaiting_input' },
+      ]));
     }
-    const summary = { session_id: 'multi-round', title: '杭州旅行', status: 'active', mode: 'deep', last_message_preview: '', created_at: '2026-10-30', updated_at: '2026-10-30' };
+    const summary = { session_id: 'multi-understanding', title: '海边独旅', status: 'active', mode: 'deep', last_message_preview: '', created_at: '2026-11-01', updated_at: '2026-11-01' };
     if (path === '/user/sessions') return json([summary]);
-    if (path === '/user/sessions/multi-round') return json({ ...summary, messages: [], pending_clarify: pending, next_before: null, has_more: false });
     if (path === '/trip-runs') return json({ runs: [], total: 0 });
-    if (path === '/trip-runs/multi-round-run/events') return json({ run_id: 'multi-round-run', requested_after_sequence: 0, replay_floor_sequence: 0, latest_sequence: 0, next_after_sequence: 0, window_expired: false, current_bundle_id: null, run_status: 'awaiting_input', events: [] });
-    if (path === '/product/trip-planner') return json({ primary_styles: [{ id: 'slow', label: '轻松慢游', is_default: true, inference_keywords: [] }], secondary_interests: [], default_adults: 1, default_children: 0, default_elderly_companions: false, default_accessibility_required: false, max_secondary_interests: 3, inspiration_rotation_ms: 5000, inspiration_prompts: [] });
+    if (path === '/trip-runs/trip-multi/events') return json({ run_id: 'trip-multi', requested_after_sequence: 0, replay_floor_sequence: 0, latest_sequence: 0, next_after_sequence: 0, window_expired: false, current_bundle_id: null, run_status: 'awaiting_input', events: [] });
+    if (path === '/product/trip-planner') return json({ primary_styles: [{ id: 'balanced', label: '经典均衡', is_default: true, inference_keywords: [] }], secondary_interests: [], default_adults: 1, default_children: 0, default_elderly_companions: false, default_accessibility_required: false, max_secondary_interests: 3, inspiration_rotation_ms: 5000, inspiration_prompts: ['想去海边', '第一次独自旅行', '轻松一点'] });
     if (path === '/user/default-origin') return json({ place: null });
     if (path === '/presets' || path === '/user/preference-options') return json([]);
     if (path === '/user/profile') return json({ preferences: {} });
@@ -70,27 +87,29 @@ for (const archived of [false, true]) {
     return json({});
   });
   await page.goto('/');
-  await expect(page.getByTestId('guided-intake')).toBeVisible();
-  await page.getByRole('button', { name: '包含交通', exact: true }).click();
-  await page.getByRole('button', { name: '确认信息并开始规划', exact: true }).click();
-  await expect(page.getByText('长辈爬楼是否受限？', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '出发前，还有几个问题', exact: true })).toBeVisible();
-  await expect(page.getByRole('textbox', { name: '出发地', exact: true })).toHaveCount(0);
-  await expect(page.getByTestId('date-range-trigger')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '确认信息并开始规划', exact: true })).toHaveCount(0);
-  await expect(page.getByTestId('guided-intake-collapsed')).toHaveCount(0);
-  await expect(page.getByTestId('trip-brief-plan-gate')).toHaveCount(0);
-  expect(requests).toHaveLength(1);
-  mkdirSync('../output/polish/20261030-1416-clarify-before-plan', { recursive: true });
-  await page.screenshot({ path: '../output/polish/20261030-1416-clarify-before-plan/second-question.png', fullPage: true });
-  await page.getByRole('button', { name: '需要避免爬楼', exact: true }).click();
-  await page.getByTestId('guided-intake').getByRole('button', { name: '开始规划', exact: true }).click();
+  await page.getByRole('textbox', { name: '一句话描述旅行', exact: true }).fill('想去青岛海边放松几天');
+  await page.getByRole('button', { name: '开始规划', exact: true }).click();
+  await expect(page.getByTestId('journey-workspace')).toBeVisible();
+
+  // 第一轮：只问节奏。
+  await expect(page.getByTestId('understanding-questions-card')).toBeVisible();
+  await expect(page.getByTestId('understanding-question')).toContainText('慢慢逛');
+  await page.getByRole('button', { name: '慢慢逛，留出休息时间' }).click();
+  await page.getByTestId('understanding-questions-submit').click();
+  await expect.poll(() => chatRequests.at(-1)?.gate_decision?.approval_token).toBe('token-round-1');
+
+  // 第二轮：先查再问预算；已答的节奏问题不再出现。
+  await expect(page.getByTestId('understanding-questions-card')).toBeVisible();
+  await expect(page.getByTestId('understanding-question')).toContainText('预算');
+  await expect(page.getByTestId('understanding-question')).not.toContainText('慢慢逛');
+  await page.getByRole('button', { name: '5000 元以内' }).click();
+  await page.getByTestId('understanding-questions-submit').click();
+  await expect.poll(() => chatRequests.at(-1)?.gate_decision?.approval_token).toBe('token-round-2');
+
+  // 方案消费两轮问答，同一工作台内确认。
   await expect(page.getByTestId('trip-brief-plan-gate')).toBeVisible();
-  expect(requests).toHaveLength(2);
-  expect(requests[1].guided_intake.answers.map((answer: { question_id: string }) => answer.question_id)).toEqual(archived ? ['mobility'] : ['budget_scope', 'mobility']);
-  if (archived) expect(requests[1].guided_intake.archived_answers[0].answer).toBe('包含交通');
-  await page.screenshot({ path: '../output/polish/20261030-1416-clarify-before-plan/plan-gate.png', fullPage: true });
-  expect(pageErrors).toEqual([]);
-  expect(escaped).toEqual([]);
- });
-}
+  await expect(page.getByTestId('trip-brief-plan-gate')).toContainText('慢慢逛');
+  await expect(page.getByTestId('trip-brief-plan-gate')).toContainText('5000 元以内');
+  await expect(page.getByTestId('new-trip-hero')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

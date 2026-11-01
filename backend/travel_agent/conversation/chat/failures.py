@@ -14,7 +14,6 @@ from travel_agent.utils.json_helpers import strip_think_blocks
 from travel_agent.planning.delivery.completion import DeliveryFinalizationError
 from travel_agent.runtime.cancellation import RunCancelled, stop_verdict
 from travel_agent.runtime.events import run_ts_ms
-from travel_agent.conversation.intake_lock import IntakeChangedBeforeStart
 
 from travel_agent.conversation.stream_text import (
     strip_non_display_blocks,
@@ -293,22 +292,14 @@ async def fail_chat(
     else:
         yield {
             "type": "run_failed",
-            "message": (
-                "旅行信息已更新，请重新整理后继续。"
-                if isinstance(terminal_failure, IntakeChangedBeforeStart)
-                else "旅行方案暂时无法生成，请稍后重试。"
-            ),
+            "message": "旅行方案暂时无法生成，请稍后重试。",
             "message_id": message_id,
             "run_id": trip_run.run_id,
             "run_cost_summary": terminal_cost_summary,
         }
     yield {
         "type": "error",
-        "message": (
-            "旅行信息已更新，请重新整理后继续。"
-            if isinstance(terminal_failure, IntakeChangedBeforeStart)
-            else "旅行方案暂时无法生成，请稍后重试。"
-        ),
+        "message": "旅行方案暂时无法生成，请稍后重试。",
         "message_id": message_id,
         "run_id": trip_run.run_id,
     }

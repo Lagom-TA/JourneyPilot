@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Mapping, Optional
 
-from travel_agent.conversation.intake_contracts import GuidedIntakeState, RouteDecision
+from travel_agent.conversation.intake_contracts import RouteDecision
 from travel_agent.runtime.run_contracts import TripRunStatus
 from travel_agent.planning.delivery.summary_card_contracts import TripSummaryCard
 from travel_agent.planning.delivery.public.bundle import public_event_manifest
@@ -21,7 +21,7 @@ _NORMAL_SSE_EVENT_TYPES = frozenset(
         "chat_start",
         "chat_chunk",
         "route_confirmation",
-        "guided_intake",
+        "understanding_questions",
         "approval_gate_raised",
         "chat_complete",
         "delivery_ready",
@@ -61,9 +61,9 @@ _INSPECT_SSE_EVENT_TYPES = frozenset(
 # 产品载荷构造函数。
 #
 # 这些载荷不要经过递归键名黑名单：字段均由已校验模型或上游显式投影产生，
-# 递归过滤会误删合法字段（例如 ``GuidedIntakeState.raw_input`` 因含 ``raw_``
-# 被丢弃，而 ``ConversationThread.tsx`` 依赖该字段初始化旅行规划）。
-# 经所属模型重新校验可以明确字段形状，避免字段在投影中丢失。
+# 递归过滤会误删合法字段（例如模型载荷中的 ``raw_`` 前缀来源说明会被丢弃，
+# 而 ``ConversationThread.tsx`` 依赖其中的原文）。经所属模型重新校验可以明确
+# 字段形状，避免字段在投影中丢失。
 # ---------------------------------------------------------------------------
 
 
@@ -73,10 +73,36 @@ def _project_route_decision(value: Any) -> Dict[str, Any]:
     return RouteDecision.model_validate(value).model_dump(mode="json")
 
 
-def _project_guided_intake(value: Any) -> Dict[str, Any]:
-    if not isinstance(value, Mapping):
+def public_understanding_questions_payload(payload: Any) -> Dict[str, Any]:
+    """投影理解问题的客户端载荷。
+
+    实时 ``understanding_questions`` 帧与 ``pending_user_choice`` 回放共用此
+    字段集合。回答含义以文字为准，选项只是交互便利，原样下发。
+    """
+
+    if not isinstance(payload, Mapping):
         return {}
-    return GuidedIntakeState.model_validate(value).model_dump(mode="json")
+    questions = payload.get("questions") if isinstance(payload.get("questions"), list) else []
+    return {
+        "gate": payload.get("gate"),
+        "revision": payload.get("revision"),
+        "approval_token": payload.get("approval_token"),
+        "questions": [
+            {
+                "id": question.get("id"),
+                "question": question.get("question"),
+                "kind": question.get("kind"),
+                "options": [
+                    {"id": option.get("id"), "label": option.get("label")}
+                    for option in (question.get("options") or [])
+                    if isinstance(option, Mapping)
+                ],
+            }
+            for question in questions
+            if isinstance(question, Mapping)
+        ],
+        "decision_options": payload.get("decision_options"),
+    }
 
 
 def _project_summary_card(value: Any) -> Dict[str, Any]:
@@ -294,11 +320,13 @@ def _project_product_event(event_type: str, payload: Dict[str, Any]) -> Dict[str
             **common,
             "route_decision": _project_route_decision(payload.get("route_decision")),
         }
-    if event_type == "guided_intake":
-        # 不下发 ``task_status``：表单展示内容由 ``guided_intake`` 本身决定。
+    if event_type == "understanding_questions":
+        # 与审批门同构：run_status 由后端统一给出，payload 经公开投影下发。
         return {
             **common,
-            "guided_intake": _project_guided_intake(payload.get("guided_intake")),
+            "gate": payload.get("gate"),
+            "payload": public_understanding_questions_payload(payload.get("payload")),
+            "run_status": TripRunStatus.AWAITING_INPUT.value,
         }
     if event_type == "approval_gate_raised":
         # ``run_status`` 由后端统一给出并被客户端读取，前端不重复硬编码；

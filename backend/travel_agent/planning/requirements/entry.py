@@ -18,20 +18,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class ScopeIdentityError(RuntimeError):
-    """Scope 阶段拿不到受控旅行身份。"""
-
-    def __init__(self, run_id: str) -> None:
-        self.run_id = run_id
-        super().__init__(
-            f"run {run_id or '<unknown>'} reached scope without a controlled trip identity"
-        )
-
-
 async def clarifier_node(
     state: TravelAgentState, config: Optional[RunnableConfig] = None
 ) -> Dict[str, Any]:
-    """Scope 阶段 — 步骤 1：入口与前提守卫"""
+    """Scope 阶段 — 入口的会话压缩与运行前提检查。
+
+    旅行基础信息由理解阶段确认，这里不再断言身份是否齐全。
+    """
+
     stream_queue: Optional["EventBuffer"] = None
     if config is not None:
         stream_queue = config.get("configurable", {}).get("stream_queue")
@@ -46,11 +40,5 @@ async def clarifier_node(
         logger.warning("Clarifier: 会话大小测量失败，降级为当前请求与会话: %s", e)
         compaction_updates = {}
 
-    if not state.controlled_trip_identity:
-        logger.error(
-            "Clarifier: run %s 缺少受控旅行身份，拒绝继续", state.run_id or "<unknown>"
-        )
-        raise ScopeIdentityError(state.run_id or "")
-
-    logger.info("Clarifier: 受控旅行身份已确认，进入需求整理与研究方案生成")
+    logger.info("Clarifier: 会话整理完成，进入需求理解")
     return compaction_updates

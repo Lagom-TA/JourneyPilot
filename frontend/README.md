@@ -8,7 +8,7 @@ JourneyPilot Trip Workspace 的前端——React 18 + TypeScript + Vite + Tailwi
 - 聊天流：`src/features/chat/api/streamChat.ts` 消费 `POST /api/chat-stream`，`src/app/session/` 协调流归属、会话恢复和事件处理。
 - REST：各功能的 `api/` 持有对应端点，`src/lib/http.ts` 统一 JSON、文件下载、超时与错误处理，经 `VITE_API_BASE` 指向后端。
 - 会话状态：`src/app/state/` 保留唯一 reducer 和 provider；切换、恢复、清空会话与确认正式 Bundle 都通过同一状态更新边界。
-- 规划交互：正式 Run 的需求确认、补充修改、审批、调研与终态操作都在现有旅行工作台内完成，保留左侧旅行摘要和进度，在右侧原位切换操作内容；不另设整页确认或过场页面。首页需求澄清仍在原输入卡内完成，正式交付沿用工作台的日程、地图、阅读版、PDF 与调整能力。
+- 规划交互：从首页提交旅行想法即进入旅行工作台；需求理解、追问回答、方案确认、补充修改、审批、调研与终态操作都在同一工作台内完成，不另设整页确认或过场页面，也不回到首页补问。表单表达正式规划，自然语言由模型判断普通提问或正式规划；普通问答走轻量工具回答，展示在同一工作台。基础身份未确认前不伪造身份，理解完成后由模型补齐。正式交付沿用工作台的日程、地图、阅读版、PDF 与调整能力。
 - 过程展示：工作台工具调用使用紧凑行列表，点击查看经过过滤的返回结果与来源；过程区标题反映当前实际阶段与运行状态，不用固定的调研文案覆盖整个生命周期。
 - 主路径 contract：Trip Workspace 只确认完整 `DeliveryBundle`。报告、行程、地图、来源、天气和历史共享同一 manifest；聊天正文和乐观预览都不是正式事实源。
 - 正式 Deep SSE：过程事件可以流式，但交付只接受一次 `delivery_ready` 和一次匹配的 `run_terminal`；断线恢复按 durable event cursor 读取不可变 Bundle。

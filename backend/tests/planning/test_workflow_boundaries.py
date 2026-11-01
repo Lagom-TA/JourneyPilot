@@ -64,9 +64,11 @@ async def test_amendment_adapter_preserves_async_run_control_and_sync_policy(
 
 
 @pytest.mark.parametrize("compaction_fails", [False, True])
-async def test_entry_checks_identity_after_best_effort_compaction(
+async def test_entry_compresses_the_session_without_requiring_identity(
     monkeypatch, compaction_fails
 ):
+    """旅行基础信息由理解阶段确认；入口只做会话压缩，缺身份不再拒绝。"""
+
     calls = []
     queue = asyncio.Queue()
 
@@ -78,9 +80,9 @@ async def test_entry_checks_identity_after_best_effort_compaction(
 
     monkeypatch.setattr(entry, "_check_and_handle_compaction_deep", compact)
     state = TravelAgentState(run_id="run_missing_identity")
-    with pytest.raises(entry.ScopeIdentityError) as caught:
-        await entry.clarifier_node(state, {"configurable": {"stream_queue": queue}})
-    assert caught.value.run_id == state.run_id
+    result = await entry.clarifier_node(state, {"configurable": {"stream_queue": queue}})
+    expected = {} if compaction_fails else {"session_compressed": True}
+    assert result == expected
     assert calls == [(state.run_id, queue, entry.SCOPE_CONTEXT_SYSTEM_PROMPT)]
 
 

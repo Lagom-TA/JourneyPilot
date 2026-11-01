@@ -142,11 +142,11 @@ def test_extra_tools_admits_mcp_outside_servers(fake_policy):
 
 def test_policy_keys_equal_worker_nodes():
     policy_keys = set(access._AGENT_TOOL_POLICY)
-    worker_nodes = set(WORKER_NODES)
+    worker_nodes = set(WORKER_NODES) | {"understanding_agent"}
     only_in_graph = sorted(worker_nodes - policy_keys)
     only_in_table = sorted(policy_keys - worker_nodes)
-    assert not only_in_graph, f"WORKER_NODES 有、策略表没有: {only_in_graph}"
-    assert not only_in_table, f"策略表有、WORKER_NODES 没有: {only_in_table}"
+    assert not only_in_graph, f"图节点有、策略表没有: {only_in_graph}"
+    assert not only_in_table, f"策略表有、图节点没有: {only_in_table}"
 
 
 def test_policy_servers_are_configured_mcp_servers():

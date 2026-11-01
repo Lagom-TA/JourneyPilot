@@ -1,10 +1,6 @@
 import { type SessionSummary, type SessionDetail, type SessionTurnPage } from "../types/sessions";
 import { fetchJson, LLM_TIMEOUT_MS } from "../../../lib/http";
-import type { GuidedIntakeState } from '../../travel/types/planner';
 
-export async function saveIntakeDraft(sessionId: string, intake: GuidedIntakeState): Promise<GuidedIntakeState> {
-    return fetchJson<GuidedIntakeState>(`/sessions/${encodeURIComponent(sessionId)}/intake`, { method: 'PATCH', body: JSON.stringify(intake) });
-}
 export async function listSessions(): Promise<SessionSummary[]> {
     return fetchJson<SessionSummary[]>('/user/sessions');
 }

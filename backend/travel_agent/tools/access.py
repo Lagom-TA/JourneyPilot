@@ -133,6 +133,18 @@ def filter_tools_for_agent(
 
 
 _AGENT_TOOL_POLICY: Dict[str, AgentToolPolicy] = {
+    # 需求理解：联网资料与真实地点检索，先查后问；提问由理解门承担，不用 ask_user。
+    "understanding_agent": AgentToolPolicy(
+        deny_tools={"ask_user"},
+        servers={"tavily-search", "brave-search", "duckduckgo-search"},
+        extra_tools={
+            "free_web_search",
+            "knowledge_search",
+            "global_place_search",
+            "maps_text_search",
+            "maps_search_detail",
+        },
+    ),
     "destination_researcher": AgentToolPolicy(
         deny_tools={"ask_user"},
         servers={

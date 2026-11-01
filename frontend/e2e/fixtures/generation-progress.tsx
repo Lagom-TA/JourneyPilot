@@ -27,7 +27,7 @@ function Fixture() {
     dispatch({ type: 'SET_STREAMING', payload: true });
     dispatch({
       type: 'ADD_THINKING_STEP',
-      payload: { id: 'planning', agentName: 'request_contract_normalizer', content: '正在整理需求并查询相关资料', stepName: '整理旅行需求', timestamp, progressStatus: 'running' },
+      payload: { id: 'planning', agentName: 'understanding_agent', content: '正在整理需求并查询相关资料', stepName: '整理旅行需求', timestamp, progressStatus: 'running' },
     });
     (window as unknown as { __generationFixture?: unknown }).__generationFixture = {
       addResearch() {
@@ -87,7 +87,7 @@ function Fixture() {
       failAfterPlanning() {
         dispatch({
           type: 'SET_THINKING_STEPS',
-          payload: [{ id: 'planning-completed', agentName: 'request_contract_normalizer', content: '', stepName: '整理旅行需求', timestamp, endTime: new Date() }],
+          payload: [{ id: 'planning-completed', agentName: 'understanding_agent', content: '', stepName: '整理旅行需求', timestamp, endTime: new Date() }],
         });
         dispatch({ type: 'SET_STREAMING', payload: false });
         dispatch({ type: 'SET_TRIP_RUN_STATUS', payload: 'failed' });
@@ -107,7 +107,7 @@ function Fixture() {
       cancelAfterPlanning() {
         dispatch({
           type: 'SET_THINKING_STEPS',
-          payload: [{ id: 'planning-completed', agentName: 'request_contract_normalizer', content: '', stepName: '整理旅行需求', timestamp, endTime: new Date() }],
+          payload: [{ id: 'planning-completed', agentName: 'understanding_agent', content: '', stepName: '整理旅行需求', timestamp, endTime: new Date() }],
         });
         dispatch({ type: 'SET_STREAMING', payload: false });
         dispatch({ type: 'SET_TRIP_RUN_STATUS', payload: 'cancelled' });
@@ -116,7 +116,7 @@ function Fixture() {
       requestCancelAfterPlanning() {
         dispatch({
           type: 'SET_THINKING_STEPS',
-          payload: [{ id: 'planning-completed', agentName: 'request_contract_normalizer', content: '', stepName: '整理旅行需求', timestamp, endTime: new Date() }],
+          payload: [{ id: 'planning-completed', agentName: 'understanding_agent', content: '', stepName: '整理旅行需求', timestamp, endTime: new Date() }],
         });
         dispatch({ type: 'SET_STREAMING', payload: false });
         dispatch({ type: 'SET_TRIP_RUN_STATUS', payload: 'cancel_requested' });

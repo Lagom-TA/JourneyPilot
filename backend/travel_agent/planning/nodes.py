@@ -4,6 +4,12 @@ from __future__ import annotations
 NODE_CLARIFIER = "scope_clarifier"
 
 
+NODE_UNDERSTANDING_AGENT = "understanding_agent"
+
+
+NODE_UNDERSTANDING_GATE = "understanding_gate"
+
+
 NODE_REQUIREMENTS_PREPARER = "requirements_preparer"
 
 
@@ -72,4 +78,4 @@ RESEARCH_WORKER_NODES = frozenset(
 )
 
 
-CHECKPOINT_GATE_NODES = frozenset({"plan_gate"})
+CHECKPOINT_GATE_NODES = frozenset({NODE_PLAN_GATE, NODE_UNDERSTANDING_GATE})
