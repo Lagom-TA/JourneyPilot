@@ -1,4 +1,4 @@
-const LAST_SESSION_KEY = 'sta_last_session_id';
+const LAST_SESSION_KEY = 'journeypilot.last-session-id';
 export function getLastSession(): string | null {
     try {
         return localStorage.getItem(LAST_SESSION_KEY);

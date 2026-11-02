@@ -29,7 +29,7 @@ async function openHome(page: Page, viewport = { width: 1440, height: 900 }, con
   page.on('pageerror', (error) => pageErrors.push(error.message));
   await page.setViewportSize(viewport);
   await page.addInitScript(() => {
-    localStorage.setItem('sta_last_session_id', 'home-e2e');
+    localStorage.setItem('journeypilot.last-session-id', 'home-e2e');
   });
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());

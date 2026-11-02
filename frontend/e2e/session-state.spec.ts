@@ -48,8 +48,8 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
   const bundle = options.bundleData ?? deliveryBundle();
   page.on('pageerror', error => pageErrors.push(error.message));
   await page.addInitScript(() => {
-    if (localStorage.getItem('sta_last_session_id') === null) {
-      localStorage.setItem('sta_last_session_id', 'A');
+    if (localStorage.getItem('journeypilot.last-session-id') === null) {
+      localStorage.setItem('journeypilot.last-session-id', 'A');
     }
     const originalFetch = window.fetch.bind(window);
     const fixtureWindow = window as FixtureWindow;
@@ -403,7 +403,7 @@ test('rejects a stale history response after a newer session selection', async (
   await selectSession(page, 'B');
   await expect(page.getByText('B 的历史回答', { exact: true })).toBeVisible();
   fixture.releaseA();
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('sta_last_session_id'))).toBe('B');
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('journeypilot.last-session-id'))).toBe('B');
   await expect(page.getByText('A 的历史回答', { exact: true })).toHaveCount(0);
   await assertOffline(page, fixture);
 });

@@ -1,4 +1,4 @@
-const ACTIVE_PRESET_KEY = 'sta_active_preset';
+const ACTIVE_PRESET_KEY = 'journeypilot.active-preset';
 export interface StoredActivePreset {
     id: string;
     name: string;

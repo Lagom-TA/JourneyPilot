@@ -1,4 +1,4 @@
-const PREFIX = 'journeypilot.plan-gate-draft.v1';
+const PREFIX = 'journeypilot.plan-gate-draft';
 
 export function planGateDraftKey(sessionId: string | null, runId: string, token?: string): string | null {
     if (!sessionId || !runId || !token) return null;
