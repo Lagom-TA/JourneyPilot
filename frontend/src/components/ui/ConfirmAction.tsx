@@ -3,6 +3,7 @@ import { AnimatePresence, m } from 'motion/react';
 import { Loader2 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { duration, easing, transitions } from '../../lib/motion';
+import { confirmActionFocusTarget } from './confirmActionFocus';
 
 /* 显式宽度变体可在 domAnimation 下运行，无需加载 domMax。 */
 export interface ConfirmActionProps {
@@ -53,6 +54,9 @@ export const ConfirmAction: React.FC<ConfirmActionProps> = ({
   // 用状态触发下一次渲染，待 confirmPending 更新后再决定是否收起。
   const [fired, setFired] = useState(false);
   const timerRef = useRef<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
   const t = toneClasses[tone];
 
   const clearTimer = useCallback(() => {
@@ -95,8 +99,16 @@ export const ConfirmAction: React.FC<ConfirmActionProps> = ({
 
   useEffect(() => clearTimer, [clearTimer]);
 
+  useEffect(() => {
+    const focusWithin = Boolean(containerRef.current?.contains(document.activeElement));
+    const target = confirmActionFocusTarget({ armed, confirmPending, focusWithin });
+    if (target === 'confirm') confirmRef.current?.focus();
+    else if (target === 'trigger') triggerRef.current?.focus();
+  }, [armed, confirmPending]);
+
   return (
     <div
+      ref={containerRef}
       data-confirm-action=""
       className={cn(
         'inline-flex items-center gap-1 rounded-card border px-2 py-1 transition-colors duration-base ease-standard',
@@ -105,6 +117,7 @@ export const ConfirmAction: React.FC<ConfirmActionProps> = ({
       )}
     >
       <button
+        ref={triggerRef}
         type="button"
         data-testid={testId}
         aria-label={triggerLabel}
@@ -146,6 +159,7 @@ export const ConfirmAction: React.FC<ConfirmActionProps> = ({
             className="flex items-center gap-1 overflow-hidden"
           >
             <button
+              ref={confirmRef}
               type="button"
               data-testid={testId ? `${testId}-confirm` : undefined}
               onClick={confirm}

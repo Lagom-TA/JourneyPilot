@@ -191,7 +191,7 @@ export const InputArea: React.FC<{
           <div className="input-normal-row">
             <div className="input-normal-inner flex items-center gap-2 px-4 py-3">
               {mode === 'stopped' ? (<>
-                  <textarea value={stoppedInput} onChange={(e) => setStoppedInput(e.target.value)} onKeyDown={handleStoppedKeyDown} placeholder={stoppedPlaceholder} rows={1} autoFocus={autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[120px] leading-relaxed')}/>
+                  <textarea value={stoppedInput} onChange={(e) => setStoppedInput(e.target.value)} onKeyDown={handleStoppedKeyDown} aria-label="行程调整要求" placeholder={stoppedPlaceholder} rows={1} autoFocus={autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[120px] leading-relaxed')}/>
                   <Button variant="primary" size="sm" onClick={handleStoppedSend} disabled={!stoppedInput.trim()} className="flex-shrink-0 !rounded-card !h-8 !w-8 !p-0">
                     <Send size={14}/>
                   </Button>
@@ -200,7 +200,7 @@ export const InputArea: React.FC<{
                     新建行程
                   </button>}
                 </>) : (<>
-                  <textarea ref={textareaRef} data-testid="brief-input" value={input} onChange={(e) => {
+                  <textarea ref={textareaRef} data-testid="brief-input" aria-label="旅行需求" value={input} onChange={(e) => {
                 setInput(e.target.value);
                 adjustHeight();
             }} onKeyDown={handleKeyDown} placeholder={normalPlaceholder} rows={1} name="chat-message" autoComplete="off" autoFocus={minimal && autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[200px] leading-relaxed')}/>

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { focusableIn, nextTrapIndex } from '../lib/focus';
 
 
 /* 只有最后打开的浮层响应 Esc，避免嵌套浮层同时关闭。 */
@@ -9,9 +10,11 @@ interface OverlayDismissOptions {
   onDismiss: () => void;
   /* 传入面板 ref 时会移动焦点；面板需允许程序化聚焦。 */
   panelRef?: React.RefObject<HTMLElement>;
+  /* 模态浮层：Tab/Shift+Tab 在面板内循环。 */
+  trapFocus?: boolean;
 }
 
-export function useOverlayDismiss({ open, onDismiss, panelRef }: OverlayDismissOptions): void {
+export function useOverlayDismiss({ open, onDismiss, panelRef, trapFocus = false }: OverlayDismissOptions): void {
   // 回调使用 ref，避免渲染时重挂 effect 改变嵌套浮层栈序。
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
@@ -23,6 +26,16 @@ export function useOverlayDismiss({ open, onDismiss, panelRef }: OverlayDismissO
     openOverlays.push(id);
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Tab' && trapFocus) {
+        const panel = panelRef?.current;
+        if (!panel) return;
+        const focusables = focusableIn(panel);
+        if (focusables.length === 0) return;
+        event.preventDefault();
+        const current = focusables.indexOf(document.activeElement as HTMLElement);
+        focusables[nextTrapIndex(current, focusables.length, event.shiftKey)].focus();
+        return;
+      }
       if (event.key !== 'Escape') return;
       if (openOverlays[openOverlays.length - 1] !== id) return;
       event.preventDefault();
@@ -35,7 +48,7 @@ export function useOverlayDismiss({ open, onDismiss, panelRef }: OverlayDismissO
       const index = openOverlays.indexOf(id);
       if (index >= 0) openOverlays.splice(index, 1);
     };
-  }, [open]);
+  }, [open, panelRef, trapFocus]);
 
   useEffect(() => {
     if (!open) return undefined;
