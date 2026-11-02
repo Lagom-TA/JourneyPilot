@@ -160,8 +160,9 @@ async def verify_database_contract(engine: Any, *, embedding_dimensions: int) ->
 
     problems: list[str] = []
     schema_matches: bool | None = None
-    # `next_action` 按问题类型决定，不按分支顺序覆盖：未纳管/版本落后 migrate 能修，
-    # 版本已在 head 但结构漂移则不能（migrate 无事可做），只能导诊断后恢复或重建。
+    # `next_action` 按问题类型决定，不按分支顺序覆盖：版本落后 migrate 能修，
+    # 未版本化或版本已在 head 但结构漂移则不能（migrate 无事可做），只能导诊断后
+    # 恢复或重建。
     next_action = ""
 
     if missing:
@@ -172,7 +173,7 @@ async def verify_database_contract(engine: Any, *, embedding_dimensions: int) ->
             "这个数据库还没有被版本化迁移纳管（没有 alembic_version），"
             "无法确认它的结构与当前代码匹配"
         )
-        next_action = "journeypilot migrate  # 比对指纹后纳管，不会重复建表"
+        next_action = "journeypilot doctor --json  # 未版本化的库不再自动纳管，需重建或从备份恢复"
     else:
         expected = expected_fingerprint_for(revision, line=line)
         if expected is None:

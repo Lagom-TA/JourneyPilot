@@ -1,4 +1,4 @@
-"""baseline 迁移的硬约束：空库能迁出完整结构、既有库纳管而不重建、结构对不上就拒绝。
+"""baseline 迁移的硬约束：空库能迁出完整结构、未版本化的库被拒绝、结构对不上就拒绝。
 
 迁移是唯一能建出业务结构的东西（API 进程不建表），所以这几条约束必须成立。
 """
@@ -50,41 +50,39 @@ def test_empty_database_upgrades_to_head(temp_database, settings):
     assert not problems, "迁移建出来的结构与存档的 head 指纹不一致：\n" + "\n".join(problems)
 
 
-def test_unmanaged_database_is_adopted_not_rebuilt(unmanaged_database, settings):
-    """有核心表、无 alembic_version → `ADOPT_BASELINE`，stamp 后表一张不少。"""
+def test_unmanaged_database_is_refused_not_adopted(unmanaged_database, settings):
+    """有核心表、无 alembic_version → 拒绝。
+
+    这里曾经是「纳管」路径（证明结构等于 baseline 后 stamp）。开源预发布版本里
+    不存在 pre-alembic 的库，留着那条路径只是永久保留一个「把来历不明的结构标记
+    成最新版本」的入口，所以现在一律拒绝。
+    """
 
     with connect(unmanaged_database) as conn:
         plan = migrate.plan(
             conn, unmanaged_database, embedding_dimensions=settings.embedding.dimensions
         )
 
-    assert plan.decision is migrate.Decision.ADOPT_BASELINE, (
-        f"既有库应判定为纳管，实际是 {plan.decision.value}：{plan.problems}"
+    assert plan.decision is migrate.Decision.REFUSE_UNKNOWN_SCHEMA, (
+        f"未版本化的库必须被拒绝，实际是 {plan.decision.value}：{plan.problems}"
     )
+    assert plan.refused
     assert plan.current_revision is None
-    assert not plan.refused
-
-    migrate.stamp(unmanaged_database, BASELINE_REVISION)
-
-    with connect(unmanaged_database) as conn:
-        after = migrate.plan(
-            conn, unmanaged_database, embedding_dimensions=settings.embedding.dimensions
-        )
-    assert after.current_revision == BASELINE_REVISION
-    # 基线就是当前结构。纳管只写入版本号，不建表，也不删表。
-    assert after.census.present_managed_tables == plan.census.present_managed_tables
-    assert after.census.missing_managed_tables == ()
+    # 拒绝必须给出下一步，而且不能是「再跑一次 migrate」—— migrate 不会纳管它。
+    assert plan.next_action
+    assert "重建" in plan.next_action or "恢复" in plan.next_action, plan.next_action
 
 
-def test_unknown_schema_is_refused_not_stamped(unmanaged_database, settings):
-    """结构被改动过的未纳管库 → 拒绝纳管。"""
+def test_versioned_database_with_drift_is_refused(temp_database, settings):
+    """版本号已在 head，结构却多了一列 → 拒绝，并指出差在哪。"""
 
-    with connect(unmanaged_database) as conn:
+    migrate.upgrade(temp_database)
+    with connect(temp_database) as conn:
         with conn.cursor() as cur:
-            # 一个合同外的列，模拟「不知道从哪来的结构」。
+            # 一个合同外的列，模拟「版本号说 head，结构却不是 head」。
             cur.execute("ALTER TABLE trip_runs ADD COLUMN mystery_column TEXT")
         plan = migrate.plan(
-            conn, unmanaged_database, embedding_dimensions=settings.embedding.dimensions
+            conn, temp_database, embedding_dimensions=settings.embedding.dimensions
         )
 
     assert plan.decision is migrate.Decision.REFUSE_UNKNOWN_SCHEMA

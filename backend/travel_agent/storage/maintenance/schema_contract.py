@@ -19,8 +19,7 @@ import re
 # 旧摘要随即全部失效。表结构变化由 Alembic revision 表达，不动这里。
 SCHEMA_CONTRACT_ID = "journeypilot.db"
 
-# 基线 revision。`census.py` 判定「有核心表但没有 alembic_version」的既有库时，
-# 只允许 stamp 到这一个 revision，且必须先证明指纹与它一致。
+# 基线 revision：迁移历史的起点。空库从这里开始建，指纹存档也从这里开始。
 BASELINE_REVISION = "0001_baseline"
 
 # 迁移拥有的表。**只有出现在这里的表才受版本化迁移管辖**，也只有它们进指纹。
