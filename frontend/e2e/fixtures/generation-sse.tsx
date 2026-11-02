@@ -54,7 +54,7 @@ function Fixture() {
   useEffect(() => {
     (window as HarnessWindow).__generationSse = {
       start() {
-        void sendMessage('离线验证真实 thinking 事件形状', undefined, {
+        void sendMessage('离线验证真实 thinking 事件形状', {
           assistantPendingLabel: '正在规划你的旅行',
           routeDecision,
           controlledTripIdentity: identity,
