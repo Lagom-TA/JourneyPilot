@@ -233,7 +233,7 @@ async def test_planner_preserves_useful_restaurant_reuse_through_checkpoint(
             assert "不要求全程地点唯一" in messages[0]["content"]
             return json.dumps(payload)
 
-        async def astream_with_tools(self, messages, tools, **kwargs):
+        async def ainvoke_with_tools_events(self, messages, tools, **kwargs):
             yield {"type": "finish", "content": await self.ainvoke(messages), "tool_calls": []}
 
     monkeypatch.setattr(node, "get_model_router", lambda: None)
@@ -430,7 +430,7 @@ async def test_revision_model_receives_distinct_actual_drafts(monkeypatch):
             seen.append(messages[-1]["content"])
             return json.dumps(itinerary_draft())
 
-        async def astream_with_tools(self, messages, tools, **kwargs):
+        async def ainvoke_with_tools_events(self, messages, tools, **kwargs):
             yield {"type": "finish", "content": await self.ainvoke(messages), "tool_calls": []}
 
     for label in ("旧稿甲", "旧稿乙"):
@@ -508,7 +508,7 @@ async def test_structure_retry_keeps_new_reason_and_resolves_authored_place(
                 ] = "新的推荐理由"
             return json.dumps(response)
 
-        async def astream_with_tools(self, messages, tools, **kwargs):
+        async def ainvoke_with_tools_events(self, messages, tools, **kwargs):
             yield {"type": "finish", "content": await self.ainvoke(messages), "tool_calls": []}
 
     model = Model()
@@ -628,7 +628,7 @@ async def test_changed_authored_identity_resolves_again_and_internal_parse_keeps
         async def ainvoke(self, messages, **kwargs):
             return json.dumps(response)
 
-        async def astream_with_tools(self, messages, tools, **kwargs):
+        async def ainvoke_with_tools_events(self, messages, tools, **kwargs):
             yield {"type": "finish", "content": await self.ainvoke(messages), "tool_calls": []}
 
     current = restore_planning_state(restored, recommendation_catalog=make_catalog())
@@ -674,7 +674,7 @@ async def test_unlocated_authored_entry_is_kept_without_coordinates(monkeypatch)
                 itinerary_draft([entry, meal_placement("dinner", "18:00", "19:00")])
             )
 
-        async def astream_with_tools(self, messages, tools, **kwargs):
+        async def ainvoke_with_tools_events(self, messages, tools, **kwargs):
             yield {"type": "finish", "content": await self.ainvoke(messages), "tool_calls": []}
 
     draft = await composition._compose_draft(
@@ -717,7 +717,7 @@ async def test_unlocated_authored_visit_is_kept_even_when_candidate_has_coordina
         async def ainvoke(self, messages, **kwargs):
             return json.dumps(itinerary_draft([entry]))
 
-        async def astream_with_tools(self, messages, tools, **kwargs):
+        async def ainvoke_with_tools_events(self, messages, tools, **kwargs):
             yield {"type": "finish", "content": await self.ainvoke(messages), "tool_calls": []}
 
     current = restore_planning_state(

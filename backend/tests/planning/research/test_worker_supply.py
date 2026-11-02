@@ -187,7 +187,7 @@ class SupplyModel:
             ]}, ensure_ascii=False)
         return json.dumps({"title": "慢游行程", "days": [{"day_id": "day_1", "theme": "慢游"}]}, ensure_ascii=False)
 
-    async def astream_with_tools(self, messages, tools):
+    async def ainvoke_with_tools_events(self, messages, tools):
         system = str(messages[0].get("content", ""))
         if "需求理解者" in system:
             yield {"type": "finish", "content": json.dumps({"action": "ready", "trip_identity": self._identity}, ensure_ascii=False), "tool_calls": []}

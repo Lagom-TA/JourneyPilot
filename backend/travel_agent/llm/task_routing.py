@@ -79,8 +79,8 @@ class TaskLLM:
         async for item in self.client.astream(messages, **kwargs):
             yield item
 
-    async def astream_with_tools(self, messages, tools, **kwargs):
-        async for item in self.client.astream_with_tools(messages, tools, **kwargs):
+    async def ainvoke_with_tools_events(self, messages, tools, **kwargs):
+        async for item in self.client.ainvoke_with_tools_events(messages, tools, **kwargs):
             yield item
 
 

@@ -30,9 +30,11 @@ def update_runtime_model(
     temperature: float,
 ) -> dict[str, str]:
     try:
-        selected_tier = {"primary": ModelTier.PRIMARY, "fast": ModelTier.FAST}.get(
-            tier, ModelTier.PRIMARY
-        )
+        selected_tier = {"primary": ModelTier.PRIMARY, "fast": ModelTier.FAST}.get(tier)
+        if selected_tier is None:
+            raise RuntimeModelConfigInvalid(
+                f"未知的模型档位 {tier!r}；只能是 primary 或 fast"
+            )
         settings = get_settings()
         if not settings.server.allow_runtime_model_config:
             raise RuntimeModelConfigDisabled(

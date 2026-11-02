@@ -109,6 +109,7 @@ class EventBufferStats:
     max_pending_text_chars: int = 0
     coalesced_merges: int = 0
     dropped_text_chars: int = 0
+    dropped_critical_events: int = 0
     stalled_total: int = 0
 
 
@@ -154,7 +155,11 @@ class EventBuffer:
         self.stalled = False
 
     async def put(self, item: Tuple) -> None:
-        """入队一个 `(kind, ...)` 事件。慢消费者会让这里等待，但不会让它丢东西。"""
+        """入队一个 `(kind, ...)` 事件。
+
+        慢消费者会让生产者等待；消费者已 stall 时 critical 事件不再入队，
+        见 ``_put_critical``。
+        """
 
         kind = str(item[0])
         if kind in TERMINAL_KINDS:
@@ -168,8 +173,11 @@ class EventBuffer:
     async def _put_critical(self, kind: str, item: Tuple) -> None:
         if self._critical_count >= self._critical_queue_size:
             await self._await_space()
-        # 等不到位置也照样入队：一个被丢掉的 critical 事件会让客户端看不到状态边界。
-        # 上限在这里是背压，不是丢弃策略 —— 消费者已经收摊时由它结束传输来收敛。
+            if self.stalled and self._critical_count >= self._critical_queue_size:
+                # 消费者已经不再读取：继续入队等于让内存无界增长。结束传输由
+                # 消费者在下一轮 get 看到 stalled 后负责，之后以 durable 状态收敛。
+                self.stats.dropped_critical_events += 1
+                return
         self._critical_count += 1
         self._append(_Entry(kind=kind, node="", payload=item))
 
@@ -229,7 +237,7 @@ class EventBuffer:
             self._space.clear()
 
     async def _await_space(self) -> None:
-        """等消费者腾出位置。等不到就记一次 stall —— 但仍然让生产者继续走。
+        """等消费者腾出位置。等不到就记一次 stall。
 
         这里不抛：浏览器慢不该让 Run 变成 failed。消费者下一次 `get` 会看见
         `stalled`，由它结束传输，之后一切以 durable 状态为准。
@@ -274,6 +282,7 @@ class EventBuffer:
             "max_pending_text_chars": self.stats.max_pending_text_chars,
             "coalesced_merges": self.stats.coalesced_merges,
             "dropped_text_chars": self.stats.dropped_text_chars,
+            "dropped_critical_events": self.stats.dropped_critical_events,
             "stalled": self.stalled,
         }
 

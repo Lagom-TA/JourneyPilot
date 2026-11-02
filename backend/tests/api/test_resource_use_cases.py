@@ -70,7 +70,7 @@ async def test_runtime_config_disabled_has_no_side_effects(
     persist.assert_not_called()
 
 
-@pytest.mark.parametrize("tier", ["primary", "fast", "unknown"])
+@pytest.mark.parametrize("tier", ["primary", "fast"])
 async def test_runtime_config_reuses_key_falls_back_and_updates_router_before_persist(
     client, configured, monkeypatch, tier
 ):
@@ -94,6 +94,19 @@ async def test_runtime_config_reuses_key_falls_back_and_updates_router_before_pe
         "fixture-fast" if tier == "fast" else "fixture-primary"
     )
     assert events[1][1] == tier
+
+
+async def test_runtime_config_rejects_unknown_tier(client, configured, monkeypatch):
+    configured.server.allow_runtime_model_config = True
+    router = Mock()
+    persist = Mock()
+    monkeypatch.setattr(runtime_models, "get_model_router", router)
+    monkeypatch.setattr(runtime_models, "persist_model_config", persist)
+    async with client:
+        response = await client.post("/api/configure", json=model_payload(tier="unknown"))
+    assert response.status_code == 422
+    router.update_model.assert_not_called()
+    persist.assert_not_called()
 
 
 @pytest.mark.parametrize(

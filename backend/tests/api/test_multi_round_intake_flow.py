@@ -44,7 +44,7 @@ class UnderstandingModel:
         self.calls = 0
         self.messages_log = []
 
-    async def astream_with_tools(self, messages, tools):
+    async def ainvoke_with_tools_events(self, messages, tools):
         self.calls += 1
         self.messages_log.append([dict(message) for message in messages])
         has_tool_result = any(message.get("role") == "tool" for message in messages)
@@ -217,7 +217,7 @@ async def test_always_asking_model_fails_visibly_at_the_round_cap(offline_graph,
     from travel_agent.planning.requirements.understanding import agent as understanding_agent
 
     class EndlessQuestions(UnderstandingModel):
-        async def astream_with_tools(self, messages, tools):
+        async def ainvoke_with_tools_events(self, messages, tools):
             yield {"type": "finish", "content": json.dumps({
                 "action": "ask",
                 "questions": [{"id": f"q{self.calls}", "question": "还有吗？", "kind": "single",

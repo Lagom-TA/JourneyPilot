@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 from typing import Dict
+from typing import Literal
 from pydantic import BaseModel
 from pydantic import Field
 from travel_agent.config.models import MAX_COMPLETION_TOKENS
@@ -17,7 +18,7 @@ class ModelConfigRequest(BaseModel):
     # 设置并持久化，省略字段的 POST 不应降低运行中部署的上限。
     max_tokens: int = Field(default=MAX_COMPLETION_TOKENS, ge=1)
     temperature: float = 0.7
-    tier: str = "primary"
+    tier: Literal["primary", "fast"] = "primary"
 
 
 class SystemStatus(BaseModel):

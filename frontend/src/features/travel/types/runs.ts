@@ -73,7 +73,6 @@ export interface TripRunResponse {
     current_node: string | null;
     resume_policy: string;
     last_error_code: string | null;
-    last_error_message: string | null;
     attempt: number;
     created_at: string;
     updated_at: string;

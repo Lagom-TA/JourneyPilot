@@ -257,7 +257,7 @@ async def streaming_react_loop(
             await save_round(iteration, phase="request_started")
             finished = False
             try:
-                async for event in llm.astream_with_tools(
+                async for event in llm.ainvoke_with_tools_events(
                     messages, exposure.tool_schemas
                 ):
                     if event["type"] == "text_delta":
