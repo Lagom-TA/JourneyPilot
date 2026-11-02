@@ -15,6 +15,10 @@ inputs:
     description: 装 postgresql-client-18（备份/恢复测试要 pg_dump / pg_restore）。
     required: false
     default: "false"
+  cjk-font:
+    description: 装 fonts-wqy-microhei（TrueType 轮廓，PDF 导出测试要可嵌入的中文字体）。
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -27,6 +31,13 @@ runs:
       shell: bash
     - run: uv sync --project backend --locked ${{ inputs.groups }}
       shell: bash
+    # Noto CJK 是 CFF 轮廓，reportlab 的 TTFont 嵌不进去；WenQuanYi 是 TrueType，
+    # 与 infra/api.Dockerfile 的运行时字体一致。
+    - if: inputs.cjk-font == 'true'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends fonts-wqy-microhei
     # 客户端版本必须 >= 服务端，否则 create_backup 会拒绝产出备份。
     - if: inputs.postgres-client == 'true'
       shell: bash

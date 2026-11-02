@@ -1,5 +1,6 @@
 """PDF 与阅读版共用同一份安静、完整的正文结构。"""
 
+import os
 from datetime import datetime, timezone
 from io import BytesIO
 from types import SimpleNamespace
@@ -74,6 +75,8 @@ def test_pdf_contains_trip_content_without_noise_sections():
             exported_at=datetime(2026, 10, 26, tzinfo=timezone.utc),
         )
     except PdfFontUnavailable as exc:
+        if os.getenv("JOURNEY_PDF_FONT_REQUIRED") == "1":
+            pytest.fail(f"no embeddable CJK font for PDF export: {exc}")
         pytest.skip(f"no embeddable CJK font for PDF export: {exc}")
     reader = PdfReader(BytesIO(artifact.content))
     text = "\n".join(page.extract_text() or "" for page in reader.pages)

@@ -23,15 +23,17 @@ jobs:
     name: backend · lint + unit
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      # 字体缺失时 PDF 测试必须失败，而不是 skip：CI 装了字体，skip 就是门禁失效。
+      JOURNEY_PDF_FONT_REQUIRED: "1"
     steps:
       - uses: actions/checkout@v4
-      - name: Install CJK font for PDF export tests
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-cjk
       - uses: ./.github/actions/setup-backend
         with:
           uv-version: ${{ env.UV_VERSION }}
           python-version: ${{ env.PYTHON_VERSION }}
           groups: "--group local-embedding --group dev"
+          cjk-font: "true"
       - run: uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
       - name: Configuration
         run: |
@@ -111,6 +113,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           groups: "--group local-embedding --group dev"
           postgres-client: "true"
+          cjk-font: "true"
       - run: uv run --project backend python backend/journeypilot.py migrate --json
       - run: uv run --project backend python backend/journeypilot.py doctor --json
       - run: uv run --project backend pytest -c backend/pyproject.toml backend/tests/db -q
