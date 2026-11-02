@@ -211,7 +211,7 @@ export const GenerationJourneyPanel: React.FC = () => {
     if (resuming || state.isStreaming) return;
     setResuming(true);
     try {
-      await sendMessage(RESUME_TEXT, undefined, {
+      await sendMessage(RESUME_TEXT, {
         resumeRunId: runId,
         route: 'trip_refinement',
         assistantPendingLabel: '正在从最近的位置继续',

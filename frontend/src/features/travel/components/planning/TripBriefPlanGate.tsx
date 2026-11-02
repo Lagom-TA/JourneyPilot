@@ -125,7 +125,7 @@ export const TripBriefPlanGate: React.FC<{
         : action === 'supplement'
           ? '按这些修改重新整理旅行'
           : action === 'retry' ? '重试生成研究计划' : '取消本次规划';
-      const sent = await sendMessage(actionText, undefined, {
+      const sent = await sendMessage(actionText, {
         resumeRunId: gate.runId,
         route: 'trip_refinement',
         gateDecision: {
