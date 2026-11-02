@@ -249,28 +249,8 @@ def resolve_price(
     return resolve_price_in(table, model, provider)
 
 
-def persist_model_config(tier: str, model_data: Dict[str, Any]) -> None:
-    """把模型段写回 config.yaml。
-
-    写入方**只有 CLI 与这一个函数**。
-    """
-
-    path = find_config_yaml()
-    if not path:
-        raise FileNotFoundError("config.yaml 未找到，无法持久化配置")
-    data = load_yaml(path)
-    key = "primary_model" if tier == "primary" else "fast_model"
-    section = data.get(key)
-    if not isinstance(section, dict):
-        section = {}
-    section.update(model_data)
-    data[key] = section
-    with open(path, "w", encoding="utf-8") as handle:
-        yaml.dump(data, handle, allow_unicode=True, default_flow_style=False, sort_keys=False)
-
-
-def write_model_section(section: Dict[str, Any]) -> Path:
-    """把一份 provider preset 的模型段写回 config.yaml，返回被写的路径。"""
+def _write_yaml_section(section: Dict[str, Any]) -> Path:
+    """把一组配置段合并写回 config.yaml，返回被写的路径。"""
 
     path = find_config_yaml()
     if not path:
@@ -286,6 +266,19 @@ def write_model_section(section: Dict[str, Any]) -> Path:
     with open(path, "w", encoding="utf-8") as handle:
         yaml.dump(data, handle, allow_unicode=True, default_flow_style=False, sort_keys=False)
     return path
+
+
+def persist_model_config(tier: str, model_data: Dict[str, Any]) -> None:
+    """把一个档位的模型配置写回 config.yaml。"""
+
+    key = "primary_model" if tier == "primary" else "fast_model"
+    _write_yaml_section({key: model_data})
+
+
+def write_model_section(section: Dict[str, Any]) -> Path:
+    """把一份 provider preset 的模型段写回 config.yaml，返回被写的路径。"""
+
+    return _write_yaml_section(section)
 
 
 def env_variable_reference() -> Dict[str, str]:

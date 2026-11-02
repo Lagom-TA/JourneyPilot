@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
 汇率 MCP（stdio）— 使用 Frankfurter 公共 API，无需 API Key。
-替代 npm 包 currency-exchange-mcp（其 dist 在 Node 18+ 下因重复 shebang 无法作为 ESM 加载）。
+
+汇率来源与 `travel_agent.integrations.currency` 共用同一个地址常量，
+避免同一个仓库向两个服务问同一个问题。
 """
 
 from __future__ import annotations

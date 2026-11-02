@@ -89,16 +89,16 @@ async def fast_answer_node(
     ctx_builder = ContextBuilder(
         ContextBudget(response_reserve=get_settings().fast_model.max_tokens)
     )
-    built_ctx = await ctx_builder.build_context(
+    measured_ctx = await ctx_builder.build_context(
         session_id=state.session_id or "",
         system_prompt=base_system,
         recent_messages=raw_history,
         session_anchor=session_anchor_obj,
-        session_compressed=state.session_compressed,
     )
 
     context_compaction: Dict[str, Any] = {"triggered": False}
-    if built_ctx.needs_compaction and stream_queue is not None:
+    session_compressed = state.session_compressed
+    if measured_ctx.needs_compaction and stream_queue is not None:
         from travel_agent.memory.compaction import (
             CompactionBusy,
             get_compaction_service,
@@ -128,13 +128,7 @@ async def fast_answer_node(
                 + ("..." if len(anchor.summary) > 200 else ""),
             }
             await stream_queue.put(("context_compaction", _NODE_NAME, result.event))
-            built_ctx = await ctx_builder.build_context(
-                session_id=state.session_id or "",
-                system_prompt=base_system,
-                recent_messages=raw_history,
-                session_anchor=session_anchor_obj,
-                session_compressed=True,
-            )
+            session_compressed = True
 
     if stream_queue is not None:
         from travel_agent.memory.context_builder import build_context_report
@@ -162,7 +156,7 @@ async def fast_answer_node(
         system_prompt=base_system,
         recent_messages=raw_history,
         session_anchor=session_anchor_obj,
-        session_compressed=state.session_compressed,
+        session_compressed=session_compressed,
         runtime_messages=wire_tail,
     )
     messages = [

@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
-"""JourneyPilot-owned 12306 MCP server (replaces the dead ``12306-mcp`` package).
+"""JourneyPilot-owned 12306 MCP server.
 
-``12306-mcp@0.3.9`` is the newest published release and it hardcodes
-``/otn/leftTicket/query``, a path 12306 retired: every ``get-tickets`` call
-returns HTTP 404, so the pin cannot move and a domestic itinerary loses every
-intercity rail leg.  This server keeps the three tool names and argument shapes
-the repo already couples to, and reads the live query path out of
-``/otn/leftTicket/init`` on every call.
-
+The server keeps the three tool names and argument shapes the repo couples to,
+and reads the live query path out of ``/otn/leftTicket/init`` on every call.
 All decode logic lives in ``travel_agent.integrations.rail`` so it is unit
 testable without a subprocess.  ``get-tickets`` answers with a JSON payload
 (structured, code-consumed); ``get-interline-tickets`` and

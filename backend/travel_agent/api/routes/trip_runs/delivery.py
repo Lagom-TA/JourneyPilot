@@ -93,7 +93,6 @@ async def refresh_current_bundle_weather(
         await raise_bundle_revision_conflict(
             run_id, components.delivery_bundle_store
         )
-        raise AssertionError("unreachable")
     except BundleIdempotencyMismatch as exc:
         raise HTTPException(
             status_code=409,

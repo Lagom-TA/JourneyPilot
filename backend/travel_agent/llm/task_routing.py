@@ -23,8 +23,6 @@ class TaskRoute:
     model_name: str
     reasoning_effort: str
     protocol: str
-    reason: str
-    action: str = "invoke"
 
 
 def select_task_route(task, primary, fast, *, has_tools=False,
@@ -46,7 +44,7 @@ def select_task_route(task, primary, fast, *, has_tools=False,
     name = primary if tier == "primary" else fast
     effort = model_reasoning_effort(name, primary_effort if tier == "primary" else fast_effort)
     protocol = primary_protocol if tier == "primary" else fast_protocol
-    return TaskRoute(task, tier, name, effort, protocol, "task_default", "invoke")
+    return TaskRoute(task, tier, name, effort, protocol)
 
 
 def plain_observation_messages(messages):
@@ -64,13 +62,11 @@ def plain_observation_messages(messages):
 
 
 class TaskLLM:
-    """按任务路由包装客户端；工具与非工具调用使用同一份消息。"""
+    """按任务路由包装客户端；只暴露调用方实际使用的方法与路由元数据。"""
 
-    def __init__(self, router, route, client):
-        self.router, self.route, self.client = router, route, client
-
-    def __getattr__(self, name):
-        return getattr(self.client, name)
+    def __init__(self, client, route):
+        self.client = client
+        self.route = route
 
     async def ainvoke(self, messages, **kwargs):
         return await self.client.ainvoke(messages, **kwargs)
@@ -78,6 +74,9 @@ class TaskLLM:
     async def astream(self, messages, **kwargs):
         async for item in self.client.astream(messages, **kwargs):
             yield item
+
+    async def ainvoke_with_tools(self, messages, tools, **kwargs):
+        return await self.client.ainvoke_with_tools(messages, tools, **kwargs)
 
     async def ainvoke_with_tools_events(self, messages, tools, **kwargs):
         async for item in self.client.ainvoke_with_tools_events(messages, tools, **kwargs):

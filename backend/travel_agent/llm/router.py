@@ -750,7 +750,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 raise
             self._emit(record, started, message=response, output_text=estimate_output_text(response))
             return response
-        raise AssertionError("unreachable")
+        raise RuntimeError("model call retry loop exhausted without a result")
 
     async def ainvoke(self, messages: List[Dict[str, Any]], **kwargs: Any) -> str:
         kwargs, output_limit = self._apply_output_token_limit(kwargs)
@@ -961,10 +961,10 @@ class ModelRouter:
             primary_protocol="responses" if self._settings.primary_model.use_responses_api else "chat_completions",
             fast_protocol="responses" if self._settings.fast_model.use_responses_api else "chat_completions",
         )
-        logger.info("task_model_route task=%s tier=%s model=%s reasoning=%s protocol=%s reason=%s action=%s",
+        logger.info("task_model_route task=%s tier=%s model=%s reasoning=%s protocol=%s",
                     route.task.value, route.tier, route.model_name, route.reasoning_effort,
-                    route.protocol, route.reason, route.action)
-        return TaskLLM(self, route, self._get_or_create(ModelTier(route.tier)))
+                    route.protocol)
+        return TaskLLM(self._get_or_create(ModelTier(route.tier)), route)
 
     def update_model(
         self,

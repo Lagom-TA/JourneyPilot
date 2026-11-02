@@ -16,7 +16,7 @@ from travel_agent.planning.nodes import CHECKPOINT_GATE_NODES
 from travel_agent.runtime.events import run_ts_ms
 from travel_agent.planning.workflow import CheckpointContractError
 
-from travel_agent.conversation.chat.contracts import ChatRequest
+from travel_agent.conversation.chat.contracts import ChatMessage, ChatRequest
 from travel_agent.conversation.intake_contracts import RouteDecision, RouteName
 from travel_agent.conversation.intake_lock import intake_session_lock
 from travel_agent.conversation.session_history import load_session_history
@@ -63,6 +63,62 @@ class PreparedChat:
     refinement_action: Optional[str] = None
     refinement_bundle: Any = None
     refinement_context: str = ""
+
+
+def _last_user_message(request: ChatRequest) -> Optional[ChatMessage]:
+    """本轮最后一条非空用户消息。"""
+
+    return next(
+        (
+            item
+            for item in reversed(request.messages)
+            if item.role == "user" and item.content.strip()
+        ),
+        None,
+    )
+
+
+async def _replay_run_events(
+    *,
+    run,
+    trip_run_store,
+    session_id: str,
+    route_decision,
+):
+    """重放一个已存在 Run 的起始帧与等待中的门。"""
+
+    yield {
+        "type": "chat_start",
+        "message_id": run.assistant_message_id,
+        "session_id": session_id,
+        "run_id": run.run_id,
+        "route_decision": route_decision.model_dump(mode="json"),
+    }
+    if run.status == TripRunStatus.AWAITING_INPUT:
+        detail = await trip_run_store.get_detail(run.run_id, event_limit=1)
+        choice = detail.state.pending_user_choice if detail else None
+        if isinstance(choice, dict) and choice.get("gate") == "plan":
+            yield {
+                "type": "approval_gate_raised",
+                "run_id": run.run_id,
+                "gate": "plan",
+                "run_status": run.status.value,
+                "payload": choice.get("payload", {}),
+            }
+        elif isinstance(choice, dict) and choice.get("gate") == "understanding":
+            yield {
+                "type": "understanding_questions",
+                "run_id": run.run_id,
+                "gate": "understanding",
+                "run_status": run.status.value,
+                "payload": choice.get("payload", {}),
+            }
+    yield {
+        "type": "chat_complete",
+        "message_id": run.assistant_message_id,
+        "run_id": run.run_id,
+        "run_status": run.status.value,
+    }
 
 
 def _pending_gate_payload(detail: Any) -> Dict[str, Any]:
@@ -137,10 +193,7 @@ async def prepare_chat(
     checkpointer,
     delivery_bundle_store=None,
 ) -> PreparedChat | ImmediateChat:
-    user_msg = next(
-        (item for item in reversed(request.messages) if item.role == "user" and item.content.strip()),
-        None,
-    )
+    user_msg = _last_user_message(request)
     session_id = request.session_id
     if not session_id and user_msg is not None and user_msg.message_id:
         session_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{LOCAL_USER_ID}:session:{user_msg.message_id}"))
@@ -171,14 +224,7 @@ async def _prepare_chat(
     checkpointer,
     delivery_bundle_store=None,
 ) -> PreparedChat | ImmediateChat:
-    user_msg = next(
-        (
-            m
-            for m in reversed(request.messages)
-            if m.role == "user" and m.content.strip()
-        ),
-        None,
-    )
+    user_msg = _last_user_message(request)
     if not user_msg:
         raise PreparationRefused(PreparationRejection.EMPTY_MESSAGE)
 
@@ -362,17 +408,14 @@ async def _prepare_chat(
             existing_run.status != TripRunStatus.CREATED
             or await run_execution_store.has_live_lease(existing_run.run_id)
         ):
-            async def _replayed_run_sse():
-                yield {"type": "chat_start", "message_id": existing_run.assistant_message_id, "session_id": session_id, "run_id": existing_run.run_id, "route_decision": route_decision.model_dump(mode="json")}
-                if existing_run.status == TripRunStatus.AWAITING_INPUT:
-                    detail = await trip_run_store.get_detail(existing_run.run_id, event_limit=1)
-                    choice = detail.state.pending_user_choice if detail else None
-                    if isinstance(choice, dict) and choice.get("gate") == "plan":
-                        yield {"type": "approval_gate_raised", "run_id": existing_run.run_id, "gate": "plan", "run_status": existing_run.status.value, "payload": choice.get("payload", {})}
-                    elif isinstance(choice, dict) and choice.get("gate") == "understanding":
-                        yield {"type": "understanding_questions", "run_id": existing_run.run_id, "gate": "understanding", "run_status": existing_run.status.value, "payload": choice.get("payload", {})}
-                yield {"type": "chat_complete", "message_id": existing_run.assistant_message_id, "run_id": existing_run.run_id, "run_status": existing_run.status.value}
-            return ImmediateChat(_replayed_run_sse())
+            return ImmediateChat(
+                _replay_run_events(
+                    run=existing_run,
+                    trip_run_store=trip_run_store,
+                    session_id=session_id,
+                    route_decision=route_decision,
+                )
+            )
 
     if use_deep_research:
         effective_gate = (
@@ -540,10 +583,14 @@ async def _prepare_chat(
             run_id=new_run_id,
         )
         if trip_run.status != TripRunStatus.CREATED:
-            async def _existing_run_sse():
-                yield {"type": "chat_start", "message_id": trip_run.assistant_message_id, "session_id": session_id, "run_id": trip_run.run_id, "route_decision": route_decision.model_dump(mode="json")}
-                yield {"type": "chat_complete", "message_id": trip_run.assistant_message_id, "run_id": trip_run.run_id, "run_status": trip_run.status.value}
-            return ImmediateChat(_existing_run_sse())
+            return ImmediateChat(
+                _replay_run_events(
+                    run=trip_run,
+                    trip_run_store=trip_run_store,
+                    session_id=session_id,
+                    route_decision=route_decision,
+                )
+            )
         message_id = trip_run.assistant_message_id
     if lease_keeper is None:
         lease_keeper = await lease.claim(trip_run.run_id)

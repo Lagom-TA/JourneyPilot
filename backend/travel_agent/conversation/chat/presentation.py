@@ -9,7 +9,7 @@ from travel_agent.planning.trace import make_trace_event
 class ChatPresentation:
     """SSE 流处理器的可变状态容器。
 
-    由 generate_sse 创建并跨 handler 共享；所有 handler 只通过 ctx 读写状态，
+    由 execute_chat 创建并跨 handler 共享；所有 handler 只通过 ctx 读写状态，
     避免闭包变量分散。
     """
 
