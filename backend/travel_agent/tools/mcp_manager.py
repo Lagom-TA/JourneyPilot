@@ -36,6 +36,29 @@ _DUCKDUCKGO_RESULT_TITLE = re.compile(r"^\s*\d+\.\s+(.+?)\s*$")
 # 只在这样的轮次出现，因此标记缺失是正常情况，不能作为默认假设。
 PROVIDER_OUTPUT_SCHEMA_VIOLATION_KEY = "provider_output_schema_violation"
 
+# 子进程只继承运行时基础变量；API 进程自己的配置、DSN 与 provider key 不传。
+# 目录缓存、证书与代理属于进程运行条件，缺了会让 npx/python MCP server 起不来。
+_STDIO_ENV_ALLOWLIST = (
+    "PATH", "HOME", "USER", "LOGNAME", "SHELL", "LANG", "LC_ALL", "LC_CTYPE", "TZ",
+    "TMPDIR", "TMP", "TEMP",
+    "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT",
+    "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA",
+    "NODE_PATH", "NODE_OPTIONS", "NODE_EXTRA_CA_CERTS",
+    "PYTHONPATH", "PYTHONIOENCODING",
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY",
+    "http_proxy", "https_proxy", "no_proxy", "all_proxy",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE",
+)
+
+
+def _stdio_environment(explicit_env: Optional[Dict[str, str]]) -> Dict[str, str]:
+    """stdio MCP server 的环境：基础变量白名单 + server 显式声明的 env。"""
+
+    env = {name: os.environ[name] for name in _STDIO_ENV_ALLOWLIST if name in os.environ}
+    env.update(explicit_env or {})
+    return env
+
+
 
 class _OutputSchemaTolerantSession(ClientSession):
     """把 server 自相矛盾的 ``outputSchema`` 当作没有声明。
@@ -578,7 +601,7 @@ class MCPManager:
         server_params = StdioServerParameters(
             command=server_config.command,
             args=server_config.args or [],
-            env={**os.environ, **(server_config.env or {})},
+            env=_stdio_environment(server_config.env),
         )
         async with stdio_client(server_params) as (read, write):
             async with _OutputSchemaTolerantSession(

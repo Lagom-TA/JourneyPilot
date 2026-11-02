@@ -8,6 +8,8 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException
+
+from travel_agent.api.server_errors import internal_server_error
 from travel_agent.memory.preferences import PreferenceRejected, update_travel_preferences
 
 from travel_agent.bootstrap.registry import get_components
@@ -69,9 +71,8 @@ async def get_user_profile():
             display_name=profile.display_name,
             preferences=profile.preferences.model_dump(),
         )
-    except Exception as e:
-        logger.error(f"获取用户画像失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="获取用户画像失败") from exc
 
 
 
@@ -88,9 +89,10 @@ async def update_preferences(request: UpdatePreferencesRequest):
         raise
     except PreferenceRejected as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
-    except Exception as e:
-        logger.error(f"更新用户偏好失败: {e}")
-        raise HTTPException(status_code=500, detail="保存偏好失败，请稍后重试")
+    except Exception as exc:
+        raise internal_server_error(
+            exc, log_message="更新用户偏好失败", message="保存偏好失败，请稍后重试"
+        ) from exc
 
 
 @router.get("/sessions", response_model=list[ChatSessionSummary])
@@ -99,9 +101,8 @@ async def list_user_sessions():
     components = get_components()
     try:
         return await components.chat_session_memory.list_sessions(LOCAL_USER_ID)
-    except Exception as e:
-        logger.error(f"获取会话列表失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="获取会话列表失败") from exc
 
 
 @router.get("/sessions/{session_id}", response_model=ChatSessionDetail)
@@ -117,9 +118,8 @@ async def get_user_session_detail(session_id: str):
         raise HTTPException(status_code=403, detail="无权访问该会话")
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"获取会话详情失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="获取会话详情失败") from exc
 
 
 @router.patch("/sessions/{session_id}", response_model=ChatSessionSummary)
@@ -137,9 +137,8 @@ async def update_user_session(session_id: str, request: UpdateSessionRequest):
         raise HTTPException(status_code=403, detail="无权访问该会话")
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"重命名会话失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="重命名会话失败") from exc
 
 
 @router.delete("/sessions/{session_id}")
@@ -155,5 +154,5 @@ async def delete_user_session(session_id: str):
         raise HTTPException(status_code=403, detail="无权访问该会话")
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="删除会话失败") from exc

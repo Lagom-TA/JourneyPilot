@@ -10,6 +10,8 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException
 
+from travel_agent.api.server_errors import internal_server_error
+
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from travel_agent.storage.preset_store import PresetStore
 from travel_agent.conversation.preset_instructions import generate_preset_instructions
@@ -48,9 +50,8 @@ async def list_presets():
     try:
         presets = await _store.list_presets(LOCAL_USER_ID)
         return [_preset_to_response(p) for p in presets]
-    except Exception as e:
-        logger.error(f"获取预设列表失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="获取预设列表失败") from exc
 
 
 @router.get("/{preset_id}", response_model=PresetResponse)
@@ -71,9 +72,8 @@ async def create_preset(request: PresetCreateRequest):
             data=request.model_dump(),
         )
         return _preset_to_response(preset)
-    except Exception as e:
-        logger.error(f"创建预设失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="创建预设失败") from exc
 
 
 @router.put("/{preset_id}", response_model=PresetResponse)
@@ -91,9 +91,8 @@ async def update_preset(preset_id: str, request: PresetUpdateRequest):
         raise HTTPException(status_code=403, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"更新预设失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="更新预设失败") from exc
 
 
 @router.delete("/{preset_id}")
@@ -110,9 +109,8 @@ async def delete_preset(preset_id: str):
         raise HTTPException(status_code=403, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"删除预设失败: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="删除预设失败") from exc
 
 
 @router.post("/generate-instructions")

@@ -382,6 +382,48 @@ async def test_resume_claims_lease_before_status_and_releases_cas_loser(
     )
 
 
+async def test_preparation_releases_lease_when_history_load_fails(
+    monkeypatch, resources
+):
+    async def fail(*_args, **_kwargs):
+        raise RuntimeError("session history unavailable")
+
+    monkeypatch.setattr(preparation, "load_session_history", fail)
+    with pytest.raises(RuntimeError):
+        await prepare(chat_body(), resources)
+    assert ("lease.release", "preparation_failed") in resources.run_execution_store.log
+
+
+async def test_resume_preparation_releases_lease_when_status_claim_fails(
+    monkeypatch, resources
+):
+    run = await resources.trip_run_store.create_run(
+        session_id="resume", user_id="local", mode="deep", resume_policy="checkpoint"
+    )
+    await resources.trip_run_store.transition_status(run.run_id, TripRunStatus.RUNNING)
+    await resources.trip_run_store.transition_status(
+        run.run_id, TripRunStatus.INTERRUPTED
+    )
+
+    async def probe(run_id):
+        return True, "safe-checkpoint"
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("status store unavailable")
+
+    resources.travel_workflow.probe_checkpoint = probe
+    resources.checkpointer = object()
+    monkeypatch.setattr(resources.trip_run_store, "claim_checkpoint_resume", boom)
+    body = chat_body(
+        run_id=run.run_id,
+        session_id="resume",
+        route_decision=decision(RouteName.TRIP_PLANNING).model_dump(mode="json"),
+    )
+    with pytest.raises(RuntimeError):
+        await prepare(body, resources)
+    assert ("lease.release", "preparation_failed") in resources.run_execution_store.log
+
+
 async def test_lease_loss_never_cancels_replacement_handle(resources):
     lease = RequestExecutionLease(resources.run_execution_store)
     keeper = await lease.claim("ownership")
