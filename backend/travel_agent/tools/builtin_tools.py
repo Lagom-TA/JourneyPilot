@@ -221,7 +221,9 @@ async def knowledge_search(query: str, collection: str | None = None, limit: int
     from ..knowledge.collections import grounding_corpus, relabel_to_logical_collections
     from ..knowledge.retrieval_pipeline import retrieve_for_query
     from ..knowledge.retriever import HybridRetriever
-    from .governance import sanitize_tool_result, utc_now_iso
+    from travel_agent.runtime.time import utc_now_iso
+
+    from .governance import sanitize_tool_result
 
     settings = get_settings()
     if not settings.embedding.enabled:
