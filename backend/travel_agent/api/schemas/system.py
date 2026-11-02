@@ -23,7 +23,6 @@ class ModelConfigRequest(BaseModel):
 
 class SystemStatus(BaseModel):
     status: str
-    version: str = "2.0"
     tools_count: int = 0
     db_connected: bool = False
     redis_connected: bool = False

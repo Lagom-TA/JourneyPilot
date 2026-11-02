@@ -14,6 +14,8 @@ from typing import Dict, List, Literal, Optional, Set
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from travel_agent import USER_AGENT
+
 class StrictConfig(BaseModel):
     """所有配置段的基类：未知字段拒绝，不静默忽略。"""
 
@@ -396,7 +398,7 @@ class GeocodingConfig(StrictConfig):
     # Nominatim 实例。默认公共实例（零 Key）；自托管实例可经 NOMINATIM_BASE_URL 覆盖以摆脱 1 req/s 限。
     nominatim_base_url: str = "https://nominatim.openstreetmap.org"
     # Nominatim 合规要求明确标识应用的 User-Agent（禁用 http 库默认 UA）。
-    user_agent: str = "JourneyPilot/1.0 (travel itinerary geocoder; https://github.com/journeypilot)"
+    user_agent: str = USER_AGENT
     # /lookup（批量 osm_id，双语两轮）与 Overpass 的基准超时。这两个端点本来就慢：
     # /lookup 一次要 5 个对象的 addressdetails+namedetails，Overpass 另有
     # ``max(30.0, timeout_seconds)`` 作为下限。两者都只在身份 fallback 里跑，那条路径
@@ -429,7 +431,7 @@ class RoutingConfig(StrictConfig):
 
     transitous_base_url: str = "https://api.transitous.org"
     amap_base_url: str = "https://restapi.amap.com"
-    user_agent: str = "JourneyPilot/2.0 (https://github.com/journeypilot)"
+    user_agent: str = USER_AGENT
     timeout_seconds: float = 20.0
     min_interval_seconds: float = 1.0
 

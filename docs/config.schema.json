@@ -343,7 +343,7 @@
           "type": "number"
         },
         "user_agent": {
-          "default": "JourneyPilot/1.0 (travel itinerary geocoder; https://github.com/journeypilot)",
+          "default": "JourneyPilot (https://github.com/journeypilot)",
           "title": "User Agent",
           "type": "string"
         }
@@ -912,7 +912,7 @@
           "type": "string"
         },
         "user_agent": {
-          "default": "JourneyPilot/2.0 (https://github.com/journeypilot)",
+          "default": "JourneyPilot (https://github.com/journeypilot)",
           "title": "User Agent",
           "type": "string"
         }

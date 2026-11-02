@@ -112,12 +112,12 @@ class ContextBuilder:
             if not session_compressed:
                 needs_compaction = True
                 logger.info(
-                    f"ContextBuilder v3: 触发压缩信号 "
+                    f"触发压缩信号 "
                     f"估算 {estimated_total} tokens ≥ 阈值 {budget.compaction_trigger_tokens} tokens"
                 )
             else:
                 logger.warning(
-                    f"ContextBuilder v3: 再次超阈值警告 "
+                    f"再次超阈值警告 "
                     f"估算 {estimated_total} tokens, 已压缩过，建议开新会话"
                 )
 
@@ -144,7 +144,7 @@ class ContextBuilder:
         ) + runtime_tokens
 
         logger.debug(
-            f"ContextBuilder v3: anchor={anchor_tokens}t, "
+            f"anchor={anchor_tokens}t, "
             f"msgs={len(trimmed_messages)}条, "
             f"total≈{total_used}t / {budget.total_context_limit}t "
             f"(needs_compaction={needs_compaction})"
@@ -196,7 +196,7 @@ class ContextBuilder:
 
         if len(selected) < len(messages):
             logger.info(
-                f"ContextBuilder v3: 消息裁剪 {len(messages)} → {len(selected)} 条 "
+                f"消息裁剪 {len(messages)} → {len(selected)} 条 "
                 f"({used_tokens}/{max_tokens} tokens)"
             )
 

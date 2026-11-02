@@ -1,5 +1,5 @@
 """
-JourneyPilot v2.0 - 新后端入口
+JourneyPilot 后端入口
 运行方式：uv run --project backend python backend/main.py
 """
 
@@ -22,7 +22,7 @@ app = create_app()
 
 if __name__ == "__main__":
     logger.info("=" * 60)
-    logger.info("JourneyPilot v2.0 启动")
+    logger.info("JourneyPilot 启动")
     logger.info(f"地址: http://{settings.server.host}:{settings.server.port}")
     logger.info(f"文档: http://{settings.server.host}:{settings.server.port}/docs")
     logger.info(f"模型: {settings.primary_model.model_name}")

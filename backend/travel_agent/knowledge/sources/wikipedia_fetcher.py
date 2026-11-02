@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+from travel_agent import USER_AGENT
+
 import asyncio
 import logging
 from typing import Any, Dict, List, Optional
@@ -50,7 +52,7 @@ class WikipediaFetcher:
             timeout=timeout,
             follow_redirects=True,
             headers={
-                "User-Agent": "JourneyPilot/1.0 (research bot)",
+                "User-Agent": USER_AGENT,
                 "Accept": "application/json",
             },
         )
