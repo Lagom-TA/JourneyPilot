@@ -126,7 +126,6 @@ async def test_title_writing_maps_copy_by_day_id_and_keeps_facts():
         "transport_legs",
         "cost_summary",
         "highlights",
-        "important_notes",
     ):
         if key == "day_plans":
             assert [day["date"] for day in after[key]] == [

@@ -149,7 +149,6 @@ class TripReportDocument(StrictModel):
     selections: List[ReportSelectionSection] = Field(default_factory=list)
     weather: List[ReportWeatherDay] = Field(default_factory=list)
     highlights: List[str] = Field(default_factory=list)
-    important_notes: List[str] = Field(default_factory=list)
     unresolved: List[str] = Field(default_factory=list)
 
 

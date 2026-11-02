@@ -19,13 +19,11 @@ from travel_agent.planning.delivery.projections import ReportWeatherDay
 from travel_agent.planning.delivery.projections import TripReportDocument
 from travel_agent.planning.delivery.projections import TripReportProjection
 from travel_agent.planning.delivery.travel_content import candidate_reason_fallback
-from travel_agent.planning.delivery.travel_content import preparation_actions
 from travel_agent.planning.delivery.travel_content import public_selection_text
 from travel_agent.planning.delivery.travel_content import selection_reason
 from travel_agent.planning.itinerary.models import CustomBlock
 from travel_agent.planning.itinerary.models import DiningStop
 from travel_agent.planning.itinerary.models import LodgingStay
-from travel_agent.planning.itinerary.models import StructuredItinerary
 from travel_agent.planning.itinerary.models import TransportLeg
 from travel_agent.planning.itinerary.models import VisitStop
 from travel_agent.planning.itinerary.options import SelectionOption
@@ -36,18 +34,11 @@ from travel_agent.planning.requirements.place_names import (
     CONTROLLED_DESTINATION_ANCHOR_PREFIX,
 )
 from travel_agent.planning.requirements.place_names import controlled_public_place_name
-from travel_agent.planning.requirements.route_legs import (
-    build_required_long_distance_legs,
-)
-from travel_agent.planning.requirements.route_legs import (
-    missing_long_distance_leg_roles,
-)
 from travel_agent.planning.research.evidence import FactAssertion
 from travel_agent.planning.research.evidence import FactStoreSnapshot
 from travel_agent.planning.weather.models import WeatherContextSnapshot
 from travel_agent.planning.weather.models import WeatherDayContext
 from travel_agent.planning.workspace import TripWorkspace
-from travel_agent.tools.temporal import RAIL_LIVE_INVENTORY_DAYS
 from typing import Mapping
 from typing import Sequence
 
@@ -123,105 +114,6 @@ def _public_comparison_facts(field_paths: Sequence[str]) -> list[str]:
         if label and label not in labels:
             labels.append(label)
     return labels or ["实体与来源已核验"]
-
-
-def _trip_level_requirements(workspace: TripWorkspace) -> list[str]:
-    return [workspace.requirements] if workspace.requirements.strip() else []
-
-
-_LONG_DISTANCE_GAP_NOTES = {
-    ("outbound", "return"): "本方案不含往返出发地的长途交通。",
-    ("outbound",): "本方案不含前往目的地的长途交通。",
-    ("return",): "本方案不含返回出发地的长途交通。",
-}
-
-
-_UNBOUND_LONG_DISTANCE_NOTE = "长途交通路径未绑定具体班次，仅作可行性参考。"
-
-
-def _controlled_trip_identity(
-    workspace: TripWorkspace,
-) -> Mapping[str, object] | None:
-    """返回每个已组合 Workspace 携带的 Draft 行程身份。"""
-
-    for anchor in workspace.user_input_anchors:
-        if (
-            anchor.input_kind == "controlled_identity"
-            and anchor.field_path == "controlled_trip_identity"
-            and isinstance(anchor.value, Mapping)
-        ):
-            return anchor.value
-    return None
-
-
-def _long_distance_legs_by_date(
-    itinerary: StructuredItinerary,
-) -> dict[date, list[TransportLeg]]:
-    """按投影所在 Day 索引已交付的长途交通段。
-
-    ``StructuredItinerary.validate_references`` 已要求每个长途段落在承载其
-    服务日期的 Day 上，因此从 Day 时间线读取服务日期即可。
-    """
-
-    legs = {
-        leg.transport_leg_id: leg
-        for leg in itinerary.transport_legs
-        if leg.transport_class == "long_distance"
-    }
-    by_date: dict[date, list[TransportLeg]] = {}
-    for day in itinerary.day_plans:
-        for ref in day.timeline:
-            if ref.entity_type != EntityType.TRANSPORT_LEG:
-                continue
-            leg = legs.get(ref.entity_id)
-            if leg is not None:
-                by_date.setdefault(day.date, []).append(leg)
-    return by_date
-
-
-def _long_distance_path_notes(
-    workspace: TripWorkspace, generated_at: datetime
-) -> list[str]:
-    """在往返缺少可用路径或路径未绑定班次时给出提示。
-
-    必需的交通段由 ``build_required_long_distance_legs`` 判定，报告不会增加该
-    Run 未承担的责任；这里只读取每段的 ``leg_role``/``service_date``，不参考与
-    具体交通段无关的 ``cross_day_return_required``。哪些段未交付由
-    ``missing_long_distance_leg_roles`` 统一判定。
-    """
-
-    identity = _controlled_trip_identity(workspace)
-    if identity is None:
-        return []
-    required = build_required_long_distance_legs(
-        identity, cross_day_return_required=False
-    )
-    itinerary = workspace.itinerary
-    delivered = _long_distance_legs_by_date(itinerary)
-    missing = missing_long_distance_leg_roles(
-        required,
-        day_dates={day.date for day in itinerary.day_plans},
-        dates_with_long_distance=set(delivered),
-    )
-    if missing is None:
-        return []
-
-    unbound = False
-    for leg in required:
-        on_date = delivered.get(leg.service_date, [])
-        if on_date and all(
-            item.lineage.lineage_kind != "candidate_entity" for item in on_date
-        ):
-            unbound = True
-
-    notes: list[str] = []
-    gap_note = _LONG_DISTANCE_GAP_NOTES.get(tuple(missing))
-    if gap_note is not None:
-        notes.append(gap_note)
-    lead_days = (itinerary.day_plans[0].date - generated_at.date()).days
-    if unbound and lead_days >= RAIL_LIVE_INVENTORY_DAYS:
-        notes.append(_UNBOUND_LONG_DISTANCE_NOTE)
-    return notes
 
 
 def _report_destinations(workspace: TripWorkspace) -> list[ReportDestination]:
@@ -405,29 +297,6 @@ def _entity_block(
     )
 
 
-def _preparation_notes(itinerary: StructuredItinerary) -> list[str]:
-    """补充时间线与实体块没有呈现的行程级信息。"""
-    notes: list[str] = []
-    for entity in [
-        *itinerary.visit_stops,
-        *itinerary.dining_stops,
-        *itinerary.lodging_stays,
-        *itinerary.transport_legs,
-    ]:
-        name = (
-            f"{entity.from_endpoint.name} → {entity.to_endpoint.name}"
-            if isinstance(entity, TransportLeg)
-            else entity.name
-        )
-        notes.extend(f"{name}：{action}" for action in preparation_actions(entity))
-    if any(
-        stay.price_kind == "reference_estimate" and stay.total_price_cny is not None
-        for stay in itinerary.lodging_stays
-    ):
-        notes.append("费用小计中的住宿为参考估价。")
-    return notes
-
-
 def project_report(
     workspace: TripWorkspace,
     facts: FactStoreSnapshot,
@@ -581,16 +450,6 @@ def project_report(
         weather=weather_days,
         highlights=itinerary.highlights,
         unresolved=itinerary.unresolved,
-        important_notes=list(
-            dict.fromkeys(
-                [
-                    *_trip_level_requirements(workspace),
-                    *_long_distance_path_notes(workspace, generated_at),
-                    *_preparation_notes(itinerary),
-                    *itinerary.important_notes,
-                ]
-            )
-        ),
     )
     return TripReportProjection(
         source_workspace_revision=workspace.workspace_revision,
