@@ -150,6 +150,8 @@ class RedisConfig(StrictConfig):
 
 class ServerConfig(StrictConfig):
     """FastAPI 服务器配置"""
+    #: 监听地址。默认对局域网可见；公网或不可信网络部署请改成 127.0.0.1，
+    #: 或放在带认证的反向代理之后。
     host: str = "0.0.0.0"
     port: int = 8001
     reload: bool = True
@@ -524,7 +526,7 @@ class Settings(StrictConfig):
     """全局设置。优先级：环境变量 > config.yaml > 这里的默认值。
 
     默认值的原则：**安全、稳定、不产生意外费用**。api_key 默认为空，provider 必须由
-    用户选（`backend/travel_agent/resources/providers/*.yaml` 帮他填），监听 localhost，运行时改模型默认关，
+    用户选（`backend/travel_agent/resources/providers/*.yaml` 帮他填），监听地址默认 0.0.0.0（自托管请按需收紧），运行时改模型默认关，
     重型增强默认关，预算与 Deadline 都是明确的有限值。
     """
 

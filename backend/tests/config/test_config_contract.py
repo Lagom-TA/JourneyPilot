@@ -364,6 +364,22 @@ def test_the_example_config_is_valid_and_current():
     build_settings(raw)
 
 
+def test_the_json_schema_accepts_the_example_config():
+    """schema 是 config.yaml 的合同：示例配置必须能直接通过校验。"""
+
+    jsonschema = pytest.importorskip("jsonschema")
+
+    from travel_agent.config.loader import load_yaml
+    from travel_agent.config.schema_export import json_schema
+    from travel_agent.paths import BACKEND_DIR
+
+    raw = load_yaml(BACKEND_DIR / "config.example.yaml")
+    schema = json_schema()
+    assert "mcp" in schema["properties"]
+    assert "mcp_servers" not in schema["properties"]
+    jsonschema.validate(instance=raw, schema=schema)
+
+
 def test_the_example_config_ships_no_api_key():
     from travel_agent.config.loader import load_yaml
     from travel_agent.paths import BACKEND_DIR
