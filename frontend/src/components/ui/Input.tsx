@@ -49,7 +49,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(function Inp
   );
 });
 
-interface TextAreaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
+type TextAreaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
 
 export const TextArea: React.FC<TextAreaProps> = ({ className, ...props }) => {
   return (

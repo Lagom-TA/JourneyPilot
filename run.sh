@@ -14,7 +14,7 @@ BACKEND_PORT=""
 # Canonical runtime state for run.sh and E2E discovery. Exactly one
 # instance may be recorded here at a time; start refuses rather than overwrite it.
 PORTS_FILE="$ROOT_DIR/tmp/journeypilot.ports"
-LOG_DIR="/tmp/journeypilot_logs"
+LOG_DIR="$ROOT_DIR/tmp/logs"
 BACKEND_LOG="$LOG_DIR/backend.log"
 FRONTEND_LOG="$LOG_DIR/frontend.log"
 
@@ -187,8 +187,7 @@ refuse_running_instance() {
 # ─────────────────────────────────────────────────────────────────────────────
 #  Process-tree termination
 # ─────────────────────────────────────────────────────────────────────────────
-# 记录的是 ( … ) & 子 shell PID; 真正占端口的是 npm→vite / uv→python 孙进程。只 kill
-# 子 shell 会把孙进程 reparent 成孤儿、继续占端口。按整棵进程树级联收割。
+# 服务 PID 指向实际启动的后端或前端进程；退出时连同其子进程一起停止。
 
 # 深度优先展平 pid 及其所有后代 (趁进程树未断时抓全, 避免 kill 父后失去链路)。
 _collect_descendants() {
@@ -788,13 +787,15 @@ step_migrate() {
 
 step_start_backend() {
   print_section "Services"
-  mkdir -p "$LOG_DIR"
+  (umask 077 && mkdir -p "$LOG_DIR")
+  local python_bin
+  python_bin="$(run_in_env python -c 'import sys; print(sys.executable)')" || return 1
 
   (
     cd "$ROOT_DIR"
-    # reload 固定为 False: 直接透传配置默认值会让 ./run.sh start 起一个 reloader
-    # 进程并递归 watch 整个仓库。需要自动重载时直接运行 python backend/main.py。
-    JOURNEYPILOT_SERVER__PORT="$BACKEND_PORT" uv run --frozen --project "$BACKEND_DIR" python -c "
+    # run.sh 管理服务进程；需要自动重载时直接运行 python backend/main.py。
+    export JOURNEYPILOT_SERVER__PORT="$BACKEND_PORT"
+    exec "$python_bin" -c "
 import sys
 sys.path.insert(0, r'$BACKEND_DIR')
 import uvicorn
@@ -831,18 +832,15 @@ uvicorn.run(app, host=cfg.server.host, port=cfg.server.port, reload=False, log_l
 }
 
 step_start_frontend() {
-  mkdir -p "$LOG_DIR"
+  (umask 077 && mkdir -p "$LOG_DIR")
   (
     cd "$FRONTEND_DIR"
-    VITE_PROXY_TARGET="http://127.0.0.1:${BACKEND_PORT}" \
-      npm run dev -- --host "${FRONTEND_HOST:-127.0.0.1}" --port "$FRONTEND_PORT" --strictPort
+    export VITE_PROXY_TARGET="http://127.0.0.1:${BACKEND_PORT}"
+    exec "$FRONTEND_DIR/node_modules/.bin/vite" --host "${FRONTEND_HOST:-127.0.0.1}" --port "$FRONTEND_PORT" --strictPort
   ) >> "$FRONTEND_LOG" 2>&1 &
   FRONTEND_PID=$!
 
-  # 必须等 vite 真的在监听再往下走。否则 write_runtime_state 会把一个进程树尚未成形
-  # 的 PID 写进 runtime state, 紧随其后的 stop 只 TERM 到当时可见的那几个进程, 稍后
-  # 才 fork 出来的 vite 就变成 run.sh 再也管不到的孤儿 —— 而它才是真正占着端口的那
-  # 个, 端口于此被永久占死。
+  # 前端开始监听后再记录运行状态。
   local waited=0 max_wait=60
   start_spinner "starting frontend..."
   while (( waited < max_wait )); do
@@ -912,7 +910,23 @@ cmd_start() {
 
   printf "\n  ${GREEN}ready in %ds${RESET}  ${DIM}·  Ctrl+C to stop  ·  ./run.sh logs${RESET}\n\n" "$elapsed"
 
-  wait "$BACKEND_PID" "$FRONTEND_PID"
+  supervise_services
+}
+
+supervise_services() {
+  local service pid log status=0
+  while kill -0 "$BACKEND_PID" 2>/dev/null && kill -0 "$FRONTEND_PID" 2>/dev/null; do
+    sleep 1
+  done
+
+  if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+    service="backend" pid="$BACKEND_PID" log="$BACKEND_LOG"
+  else
+    service="frontend" pid="$FRONTEND_PID" log="$FRONTEND_LOG"
+  fi
+  wait "$pid" || status=$?
+  print_item "$service" fail "exited unexpectedly (status $status) — see $log"
+  return 1
 }
 
 cmd_stop() {
@@ -1163,6 +1177,23 @@ cmd_check() {
       [[ -z "$line" ]] && continue
       printf "  ${DIM}│${RESET}      ${DIM}%s${RESET}\n" "$line"
     done <<< "$cfg_out"
+    status=1
+  fi
+
+  start_spinner "config docs --check..."
+  local docs_out docs_status
+  docs_out=$( (cd "$ROOT_DIR" && uv run --frozen --project "$BACKEND_DIR" python "$BACKEND_DIR/journeypilot.py" config docs --check 2>&1) ) \
+    && docs_status=0 || docs_status=$?
+  stop_spinner
+
+  if (( docs_status == 0 )); then
+    print_item "config docs" ok "generated files match"
+  else
+    print_item "config docs" fail "generated files are out of date — see below"
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      printf "  ${DIM}│${RESET}      ${DIM}%s${RESET}\n" "$line"
+    done <<< "$docs_out"
     status=1
   fi
 

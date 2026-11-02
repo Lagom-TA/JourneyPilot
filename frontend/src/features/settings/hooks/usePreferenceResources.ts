@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getPreferenceOptions, getUserProfile } from "../api/profile";
 import { listMemoryFacts } from "../api/memory";
 import { getDefaultOrigin } from "../api/defaultOrigin";
@@ -15,7 +15,7 @@ export function usePreferenceResources(setStatusMessage: (message: string | null
     const [factsUnavailable, setFactsUnavailable] = useState(false);
     const [defaultOrigin, setDefaultOrigin] = useState<PlaceIdentity | null>(null);
     const [loadError, setLoadError] = useState<RequestFailure | null>(null);
-    const loadAll = async () => {
+    const loadAll = useCallback(async () => {
         setLoading(true);
         setLoadError(null);
         try {
@@ -62,7 +62,7 @@ export function usePreferenceResources(setStatusMessage: (message: string | null
         finally {
             setLoading(false);
         }
-    };
+    }, [setStatusMessage]);
     const refreshFacts = async () => {
         try {
             const factList = await listMemoryFacts();
@@ -76,6 +76,6 @@ export function usePreferenceResources(setStatusMessage: (message: string | null
     };
     useEffect(() => {
         void loadAll();
-    }, []);
+    }, [loadAll]);
     return { groups, selections, setSelections, facts, loading, factsUnavailable, defaultOrigin, setDefaultOrigin, loadError, loadAll, refreshFacts };
 }

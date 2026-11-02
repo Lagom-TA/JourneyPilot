@@ -19,6 +19,7 @@ from travel_agent.planning.delivery.persistence import (
     _commit_initial_delivery_atomically,
 )
 from travel_agent.planning.delivery.public.bundle import public_delivery_bundle
+from travel_agent.planning.nodes import NODE_ITINERARY
 from travel_agent.planning.outcomes import (
     DeliveryFailureRecord,
     InternalFailureClass,
@@ -85,10 +86,13 @@ async def delivery_finalizer_node(
     if not isinstance(trip_store, TripRunStore):
         raise ValueError("trip_run_store is required")
     if state.delivery_failure is not None:
-        # 截止窗口已由 dispatcher 收口：直接按记录失败，不再走组装/投影。
+        # dispatcher 已收口：直接按记录失败，不再走组装/投影。
         record = state.delivery_failure
         await _mark_failed(trip_store, state, record)
-        raise DeliveryFinalizationError(record, RuntimeError("deadline closeout"))
+        cause = record.operation
+        if record.operation == NODE_ITINERARY:
+            cause = state.composition_failure_context or state.last_error or cause
+        raise DeliveryFinalizationError(record, RuntimeError(cause))
     try:
         _require_sealed_completion_generation(state)
     except Exception as exc:

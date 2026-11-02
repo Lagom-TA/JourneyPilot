@@ -35,7 +35,7 @@ describe('followupComposerState', () => {
   });
 
   it('explains each terminal state without promising outside the current workspace', () => {
-    expect(followupComposerState({ ...base, runStatus: 'completed' }).hint).toContain('规划已完成');
+    expect(followupComposerState({ ...base, runStatus: 'completed' }).hint).toContain('规划已生成');
     expect(followupComposerState({ ...base, runStatus: 'failed' }).hint).toContain('没有完成');
     expect(followupComposerState({ ...base, runStatus: 'cancelled' }).hint).toContain('已取消');
     expect(followupComposerState({ ...base, runStatus: 'interrupted', canResume: false }).hint).toContain('返回新旅行');

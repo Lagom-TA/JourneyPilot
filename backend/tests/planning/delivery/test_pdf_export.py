@@ -51,7 +51,6 @@ def _bundle():
         ),
         workspace=SimpleNamespace(
             itinerary=itinerary,
-            weather_proposal_decisions=[],
         ),
         weather_snapshot=SimpleNamespace(
             coverage=[],

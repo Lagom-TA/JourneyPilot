@@ -6,7 +6,6 @@ export interface PublicWeatherAdjustment {
     summary: string;
     cost_delta_cny: number | null;
     time_delta_minutes: number | null;
-    status: 'pending' | 'applied' | 'dismissed';
 }
 export interface WeatherBundleRefreshRequest {
     session_id: string | null;

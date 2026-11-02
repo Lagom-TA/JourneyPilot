@@ -75,7 +75,7 @@ provider_snapshot_cache:
 server:
   host: "0.0.0.0"
   port: 8001
-  reload: true
+  reload: false
   log_level: "info"
   allow_runtime_model_config: false
   cors_origins:

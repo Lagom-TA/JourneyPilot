@@ -106,6 +106,8 @@ export const TripPlanner: React.FC<{
   const structuredPanelRef = React.useRef<HTMLDivElement>(null);
   const plannerRef = React.useRef<HTMLElement>(null);
   const [mode, setMode] = React.useState<PlannerMode>(compact ? 'structured' : 'natural');
+  const modeRef = React.useRef(mode);
+  modeRef.current = mode;
   const inspirationModeRef = React.useRef<PlannerMode>(mode);
   const appliedStructuredInspirationRef = React.useRef<number | null>(null);
   const tabsId = React.useId();
@@ -156,10 +158,10 @@ export const TripPlanner: React.FC<{
 
   React.useEffect(() => {
     if (!inspiration) return;
-    inspirationModeRef.current = mode;
+    inspirationModeRef.current = modeRef.current;
     setNaturalText(inspiration.text);
     setError('');
-    if (mode === 'structured') return;
+    if (modeRef.current === 'structured') return;
     setMode('natural');
     const frame = window.requestAnimationFrame(focusNaturalInput);
     return () => window.cancelAnimationFrame(frame);

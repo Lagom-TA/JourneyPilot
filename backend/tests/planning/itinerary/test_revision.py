@@ -511,10 +511,28 @@ async def test_structure_retry_keeps_new_reason_and_resolves_authored_place(
         async def ainvoke_with_tools_events(self, messages, tools, **kwargs):
             yield {"type": "finish", "content": await self.ainvoke(messages), "tool_calls": []}
 
+    from tests.support.memory_stores import InMemoryWorkerJournalStore
+    from travel_agent.runtime.journal import WorkerJournal, current_worker_journal
+
     model = Model()
-    result = await composition._compose_draft(
-        current, "revise", model, available_tools=[], tool_context={}
-    )
+    store = InMemoryWorkerJournalStore()
+    token = current_worker_journal.set(WorkerJournal(store, "run", "scope", 0, {}, None))
+    try:
+        result = await composition._compose_draft(
+            current, "revise", model, available_tools=[], tool_context={}
+        )
+    finally:
+        current_worker_journal.reset(token)
+    version, saved = await store.load("run", "scope")
+    assert {"composition_react_0", "composition_react_1"} <= saved.keys()
+    token = current_worker_journal.set(WorkerJournal(store, "run", "scope", version, saved, None))
+    try:
+        replayed = await composition._compose_draft(
+            current, "revise", model, available_tools=[], tool_context={}
+        )
+    finally:
+        current_worker_journal.reset(token)
+    assert replayed == result
     assert not calls
     result = await locations.locate_authored_composition(result, current)
     place = authored_places(result)[0].place
@@ -840,12 +858,13 @@ async def test_fastest_provider_alternative_is_selected(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_provider_route_beyond_the_remaining_window_reschedules_once(monkeypatch):
+@pytest.mark.parametrize("start,window", [("09:00", 0), ("09:10", 10)])
+async def test_provider_route_beyond_the_remaining_window_reschedules_once(monkeypatch, start, window):
     from travel_agent.planning.itinerary import node
 
     catalog = make_catalog(restaurant_packet(), visit_packet(), route_packet())
     skeleton = parse_itinerary_composition(
-        json.dumps(itinerary_draft([meal_placement(), visit_entry("09:10", "10:10")]))
+        json.dumps(itinerary_draft([meal_placement(), visit_entry(start, "10:10")]))
     )
     current = restore_planning_state(
         make_planning_state(),
@@ -858,26 +877,39 @@ async def test_provider_route_beyond_the_remaining_window_reschedules_once(monke
     async def no_authoring(*args, **kwargs):
         pytest.fail("matching provider route must be used")
 
+    async def no_tools(*args, **kwargs):
+        return []
+
+    corrected = parse_itinerary_composition(
+        json.dumps(itinerary_draft([meal_placement(), visit_entry("10:10", "11:10")]))
+    )
+
+    async def recompose(state, *args, **kwargs):
+        assert state.placement_skeleton == skeleton
+        assert f"可用窗口 {window} 分钟" in state.composition_failure_context
+        assert "Cafe" in state.composition_failure_context
+        assert "路线约 60 分钟" in state.composition_failure_context
+        return corrected
+
     monkeypatch.setattr(node, "_author_connector_routes", no_authoring)
+    monkeypatch.setattr(node, "get_available_tools", no_tools)
+    monkeypatch.setattr(node, "_compose_draft", recompose)
     monkeypatch.setattr(node, "get_model_router", lambda: None)
     monkeypatch.setattr(node, "llm_for_task", lambda *args, **kwargs: object())
     rescheduled = restore_planning_state(
         current, **await node.itinerary_planner_node(current, {})
     )
-    # 实际路线超出相邻停留点可用窗口：回炉一次修正排程，不直接交付不可行转场。
     assert rescheduled.agent_status["itinerary_planner"] == "pending"
-    assert rescheduled.placement_skeleton is None
+    assert rescheduled.placement_skeleton == skeleton
     assert rescheduled.trip_workspace is None
     assert rescheduled.composition_reschedule_rounds == 1
     assert "超出可用时间窗口" in rescheduled.composition_failure_context
 
-    # 回炉次数用尽后按真实耗时照常物化，不压缩分钟数。
-    corrected = parse_itinerary_composition(
-        json.dumps(itinerary_draft([meal_placement(), visit_entry("10:10", "11:10")]))
-    )
     second = restore_planning_state(
-        rescheduled, placement_skeleton=corrected, recommendation_catalog=catalog
+        rescheduled, **await node.itinerary_planner_node(rescheduled, {})
     )
+    assert second.placement_skeleton == corrected
+    assert second.composition_failure_context is None
     completed = restore_planning_state(
         second, **await node.itinerary_planner_node(second, {})
     )

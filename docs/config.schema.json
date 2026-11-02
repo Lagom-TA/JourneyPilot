@@ -1118,7 +1118,7 @@
           "type": "integer"
         },
         "reload": {
-          "default": true,
+          "default": false,
           "title": "Reload",
           "type": "boolean"
         }

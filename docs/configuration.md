@@ -53,7 +53,7 @@
 | `redis.db` | int | `0` | — | `JOURNEYPILOT_REDIS__DB` |
 | `server.host` | str | `0.0.0.0` | — | `JOURNEYPILOT_SERVER__HOST` |
 | `server.port` | int | `8001` | — | `JOURNEYPILOT_SERVER__PORT` |
-| `server.reload` | bool | `True` | — | `JOURNEYPILOT_SERVER__RELOAD` |
+| `server.reload` | bool | `False` | — | `JOURNEYPILOT_SERVER__RELOAD` |
 | `server.log_level` | str | `info` | — | `JOURNEYPILOT_SERVER__LOG_LEVEL` |
 | `server.cors_origins` | list[str] | （按段默认） | — | — |
 | `server.allow_runtime_model_config` | bool | `False` | — | `JOURNEYPILOT_SERVER__ALLOW_RUNTIME_MODEL_CONFIG` |

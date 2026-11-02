@@ -2,7 +2,7 @@ export function withinChinaCoordinateBox(lng: number, lat: number): boolean {
     return lng > 73.66 && lng < 135.05 && lat > 3.86 && lat < 53.55;
 }
 const GCJ_A = 6378245.0;
-const GCJ_EE = 0.00669342162296594323;
+const GCJ_EE = 0.006693421622965943;
 function transformLat(x: number, y: number): number {
     let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
     ret += ((20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0) / 3.0;

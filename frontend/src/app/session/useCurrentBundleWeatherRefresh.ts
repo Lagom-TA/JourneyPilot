@@ -68,6 +68,7 @@ export function useCurrentBundleWeatherRefresh(enabled: boolean) {
                                         dispatch({ type: 'CONFIRM_DELIVERY_BUNDLE', payload: current });
                                 }
                                 catch {
+                                    // 读取最新行程失败时保留当前结果。
                                 }
                             }
                             return;

@@ -69,7 +69,6 @@ export function useStopRun() {
         state.currentTripRunId,
         state.currentTripRunStatus,
         state.currentSessionId,
-        state.planApprovalGate,
         dispatch,
     ]);
     return { stopRun };

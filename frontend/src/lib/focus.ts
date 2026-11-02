@@ -9,5 +9,10 @@ export function focusableIn(container: HTMLElement): HTMLElement[] {
   const nodes = container.querySelectorAll<HTMLElement>(
     'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
   );
-  return [...nodes].filter((node) => node.offsetParent !== null);
+  return [...nodes].filter((node) => (
+    !node.matches(':disabled')
+    && !node.closest('[inert], [hidden], [aria-hidden="true"]')
+    && node.getClientRects().length > 0
+    && getComputedStyle(node).visibility === 'visible'
+  ));
 }

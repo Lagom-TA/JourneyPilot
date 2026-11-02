@@ -2,7 +2,7 @@ import { type ThinkingStep } from "../types/messages";
 import { parseAgentRound, getStageIdForAgent } from "./agentStages";
 export function publicProgressText(value: string | undefined): string {
     const text = value?.trim() || '';
-    if (/\{\s*(?:["}\[]|$)|```|<think|"[\w_]+"\s*:|research_packet_id/.test(text) || /^[{[]/.test(text))
+    if (/\{\s*(?:["}[]|$)|```|<think|"[\w_]+"\s*:|research_packet_id/.test(text) || /^[{[]/.test(text))
         return '';
     return text.slice(0, 300);
 }

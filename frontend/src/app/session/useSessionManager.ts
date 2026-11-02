@@ -97,7 +97,7 @@ export function useSessionManager() {
         const currentTripRunStatus = selectedRunDetail?.run.status ?? null;
         const hasCancelledChoice = pendingRunChoice?.read_only === true
             && pendingRunChoice?.terminal_status === 'cancelled';
-        let messages = detail.messages.map(mapMessage);
+        const messages = detail.messages.map(mapMessage);
         let restoredPlanGate = null;
         let restoredUnderstandingQuestions: {
             runId: string;
@@ -204,7 +204,7 @@ export function useSessionManager() {
                 },
             });
         }
-    }, [activeStreamRef, cacheCurrentRuntimeIfStreaming, currentStateRef, dispatch, sessionRuntimeCacheRef, setLastSession]);
+    }, [activeStreamRef, cacheCurrentRuntimeIfStreaming, currentStateRef, dispatch, sessionRuntimeCacheRef]);
     const initializeSessions = useCallback(async () => {
         try {
             const sessions = await refreshSessions();
@@ -220,15 +220,8 @@ export function useSessionManager() {
                 await openSession(deepLinkedSession, params.get('run_id') ?? undefined);
                 return;
             }
-            let targetId: string | null = null;
-            try {
-                const stored = getLastSession();
-                if (stored && sessions.some((s) => s.id === stored)) {
-                    targetId = stored;
-                }
-            }
-            catch {
-            }
+            const stored = getLastSession();
+            const targetId = stored && sessions.some((session) => session.id === stored) ? stored : null;
             if (!targetId) {
                 return;
             }
@@ -258,7 +251,7 @@ export function useSessionManager() {
                 setLastSession(null);
             }
         }
-    }, [dispatch, openSession, refreshSessions, setLastSession, state.currentSessionId]);
+    }, [dispatch, openSession, refreshSessions, state.currentSessionId]);
     const renameSession = useCallback(async (sessionId: string, nextTitle: string) => {
         const trimmed = nextTitle.trim();
         if (!trimmed)

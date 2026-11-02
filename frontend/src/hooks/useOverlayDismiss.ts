@@ -4,6 +4,7 @@ import { focusableIn, nextTrapIndex } from '../lib/focus';
 
 /* 只有最后打开的浮层响应 Esc，避免嵌套浮层同时关闭。 */
 const openOverlays: symbol[] = [];
+const focusTraps: symbol[] = [];
 
 interface OverlayDismissOptions {
   open: boolean;
@@ -24,9 +25,11 @@ export function useOverlayDismiss({ open, onDismiss, panelRef, trapFocus = false
 
     const id = Symbol('overlay');
     openOverlays.push(id);
+    if (trapFocus) focusTraps.push(id);
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Tab' && trapFocus) {
+        if (focusTraps[focusTraps.length - 1] !== id) return;
         const panel = panelRef?.current;
         if (!panel) return;
         const focusables = focusableIn(panel);
@@ -36,8 +39,7 @@ export function useOverlayDismiss({ open, onDismiss, panelRef, trapFocus = false
         focusables[nextTrapIndex(current, focusables.length, event.shiftKey)].focus();
         return;
       }
-      if (event.key !== 'Escape') return;
-      if (openOverlays[openOverlays.length - 1] !== id) return;
+      if (event.key !== 'Escape' || openOverlays[openOverlays.length - 1] !== id) return;
       event.preventDefault();
       onDismissRef.current();
     };
@@ -47,6 +49,8 @@ export function useOverlayDismiss({ open, onDismiss, panelRef, trapFocus = false
       document.removeEventListener('keydown', onKeyDown);
       const index = openOverlays.indexOf(id);
       if (index >= 0) openOverlays.splice(index, 1);
+      const trapIndex = focusTraps.indexOf(id);
+      if (trapIndex >= 0) focusTraps.splice(trapIndex, 1);
     };
   }, [open, panelRef, trapFocus]);
 
@@ -70,5 +74,5 @@ export function useOverlayDismiss({ open, onDismiss, panelRef, trapFocus = false
     return () => {
       if (opener && document.contains(opener)) opener.focus();
     };
-  }, [open]);
+  }, [open, panelRef]);
 }

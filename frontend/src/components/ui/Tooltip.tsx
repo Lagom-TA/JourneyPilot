@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useId, useState, useRef } from 'react';
 import { cn } from '../../lib/utils';
 
 /* 提示内容可能是补充说明，不能代替控件自身的可及名。 */
 interface TooltipProps {
   content: string;
-  children: React.ReactNode;
+  children: React.ReactElement<{ 'aria-describedby'?: string }>;
   position?: 'top' | 'bottom' | 'left' | 'right';
   delay?: number;
   disabled?: boolean;
@@ -21,10 +21,13 @@ export const Tooltip: React.FC<TooltipProps> = ({
   className,
 }) => {
   const [visible, setVisible] = useState(false);
+  const tooltipId = useId();
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const describedBy = [children.props['aria-describedby'], visible && !disabled ? tooltipId : ''].filter(Boolean).join(' ') || undefined;
 
   const show = () => {
     if (disabled) return;
+    clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => setVisible(true), delay);
   };
   const hide = () => {
@@ -49,9 +52,10 @@ export const Tooltip: React.FC<TooltipProps> = ({
       onFocus={show}
       onBlur={hide}
     >
-      {children}
+      {React.cloneElement(children, { 'aria-describedby': describedBy })}
       {visible && !disabled && (
         <div
+          id={tooltipId}
           role="tooltip"
           className={cn(
             'absolute z-50 px-2.5 py-1.5 text-xs font-medium',

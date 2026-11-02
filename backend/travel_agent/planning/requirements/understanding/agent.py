@@ -99,6 +99,7 @@ async def understanding_agent_node(state: Any, config: Optional[RunnableConfig] 
                     "工具调用轮数已用完，本轮必须直接输出完整的 JSON 结论"
                     "（ask 或 ready），不要再调用任何工具。"
                 ),
+                journal_key=f"understanding_react_{repair}",
             ),
             timeout=UNDERSTANDING_ROUND_TIMEOUT_SECONDS,
         )

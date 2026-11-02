@@ -29,5 +29,6 @@ export const writeStoredActivePreset = (preset: StoredActivePreset | null): void
         localStorage.setItem(ACTIVE_PRESET_KEY, JSON.stringify(preset));
     }
     catch {
+        // 本地存储不可用时仍可使用当前选择。
     }
 };

@@ -8,6 +8,7 @@ from travel_agent.schema import StrictModel
 
 
 class InternalFailureClass(str, Enum):
+    UNCLASSIFIED = "unclassified"
     TRANSIENT_DEPENDENCY = "transient_dependency"
     RESEARCH_GAP = "research_gap"
     CONTRACT_VIOLATION = "contract_violation"

@@ -80,6 +80,7 @@ async function openChatStream(request: ChatRequest, signal?: AbortSignal): Promi
                 message = parts.join(' ');
         }
         catch {
+            // 响应不是 JSON 时使用 HTTP 状态信息。
         }
         throw new Error(message);
     }

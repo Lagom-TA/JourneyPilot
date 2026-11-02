@@ -32,7 +32,6 @@ class PublicBundleWorkspaceResponse(BaseModel):
     workspace_revision: int
     itinerary: Dict[str, Any]
     selection_slots: List[Dict[str, Any]] = Field(default_factory=list)
-    weather_proposal_decisions: List[Dict[str, Any]] = Field(default_factory=list)
     weather_adjustments: List[Dict[str, Any]] = Field(default_factory=list)
 
 

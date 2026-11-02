@@ -58,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 
 class IncompleteModelResponse(RuntimeError):
-    """Responses 请求结束时没有返回 completed 响应信封。"""
+    """模型响应未正常结束，不能作为完整结果使用。"""
 
     def __init__(self, message: Any) -> None:
         self.message = message
@@ -541,6 +541,8 @@ class OpenAICompatibleLLM(BaseLLM):
             metadata = getattr(message, "response_metadata", {}) or {}
             if metadata.get("status") != "completed":
                 raise IncompleteModelResponse(message)
+        elif response_finish_reason(message) in {"error", "failed", "cancelled", "incomplete", "length", "content_filter"}:
+            raise IncompleteModelResponse(message)
 
     def _start_record(self, method: str, *, stream: bool) -> Optional[LLMCallRecord]:
         """无 run 上下文时返回 None，跳过记账。
@@ -696,6 +698,8 @@ class OpenAICompatibleLLM(BaseLLM):
         from openai import APIConnectionError, APIStatusError
         import httpx
 
+        if isinstance(error, IncompleteModelResponse):
+            return response_finish_reason(error.message) in {"error", "failed", "incomplete"}
         if isinstance(error, APIConnectionError) or (
             isinstance(error, APIStatusError)
             and (error.status_code in {408, 409, 429} or error.status_code >= 500)

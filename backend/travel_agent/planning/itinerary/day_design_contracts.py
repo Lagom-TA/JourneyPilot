@@ -26,6 +26,5 @@ class PlannedFreeTime(StrictModel):
 
 class DayDesign(StrictModel):
     free_time: list[PlannedFreeTime] = Field(default_factory=list, max_length=8)
-    # 当天确实无法安排的具体事项：研究或补查后仍缺支撑时如实写出，
-    # 服务器保留到工作台的重要说明，不把缺口伪装成完整安排。
+    # 只记录仍无法安排的核心行程，供后续调整使用。
     unresolved: list[str] = Field(default_factory=list, max_length=8)

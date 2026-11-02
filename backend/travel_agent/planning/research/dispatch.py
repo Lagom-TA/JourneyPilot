@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, Set
 from langchain_core.runnables import RunnableConfig
 
 from travel_agent.planning.assignments import strip_round_suffix
-from travel_agent.planning.nodes import NODE_DELIVERY_FINALIZER
+from travel_agent.planning.nodes import NODE_DELIVERY_FINALIZER, NODE_ITINERARY
 from travel_agent.planning.outcomes import (
     DeliveryFailureRecord,
     InternalFailureClass,
@@ -78,6 +78,27 @@ async def dispatcher_node(
     observed_deadline, observation = (
         observe_run_deadline(deadline) if deadline is not None else (None, None)
     )
+    if state.trip_workspace is None and state.agent_status.get(NODE_ITINERARY) == "failed":
+        logger.error(
+            "Dispatcher: 行程组合失败 run_id=%s context=%s last_error=%s",
+            state.run_id,
+            state.composition_failure_context,
+            state.last_error,
+        )
+        failure_update: Dict[str, Any] = {
+            "next_agent": "to_check",
+            "delivery_failure": state.delivery_failure or DeliveryFailureRecord(
+                failure_class=InternalFailureClass.UNCLASSIFIED,
+                operation=NODE_ITINERARY,
+                attempts=1,
+                retry_exhausted=True,
+                public_message="行程组合失败，请稍后重试。",
+            ),
+        }
+        if observation is not None:
+            failure_update["run_deadline"] = observed_deadline
+        return failure_update
+
     if observation is not None:
         deadline_update: Dict[str, Any] = {"run_deadline": observed_deadline}
         if observation.research_closed:
