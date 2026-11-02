@@ -1,6 +1,5 @@
 import { BedDouble, Clock3, MapPin, Sparkles, Utensils } from "lucide-react";
-import { type CustomBlock } from "../../types/entities";
-import { type PublicDiningStop, type PublicLodgingStay, type PublicVisitStop } from "../../types/itinerary";
+import { type PublicCustomBlock, type PublicDiningStop, type PublicLodgingStay, type PublicVisitStop } from "../../types/itinerary";
 const money = new Intl.NumberFormat('zh-CN', {
     style: 'currency',
     currency: 'CNY',
@@ -149,7 +148,7 @@ export function LodgingStayCard({ stay }: {
     </article>);
 }
 export function CustomBlockRow({ block }: {
-    block: CustomBlock;
+    block: PublicCustomBlock;
 }) {
     const start = timeLabel(block.planned_start);
     const end = timeLabel(block.planned_end);
