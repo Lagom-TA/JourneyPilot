@@ -69,7 +69,7 @@ export const UnderstandingQuestionsCard: React.FC<{
       .join('\n');
     setSubmitting(true);
     try {
-      await sendMessage(displayText, undefined, {
+      await sendMessage(displayText, {
         resumeRunId: runId,
         route: 'trip_refinement',
         displayText: '已回答理解问题',

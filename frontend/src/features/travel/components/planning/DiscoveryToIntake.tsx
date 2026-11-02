@@ -18,7 +18,7 @@ export const DiscoveryToIntake: React.FC<{ rawInput: string }> = ({ rawInput }) 
         <Button type="button" disabled={!place || state.isStreaming} onClick={() => {
           if (!place) return;
           const choice = `选择${place.name}，继续规划`;
-          void sendMessage([rawInput, choice].filter(Boolean).join('\n'), undefined, { route: 'trip_planning', displayText: choice, assistantPendingLabel: '正在整理这趟旅行的信息' });
+          void sendMessage([rawInput, choice].filter(Boolean).join('\n'), { route: 'trip_planning', displayText: choice, assistantPendingLabel: '正在整理这趟旅行的信息' });
         }}>继续规划 <ArrowRight size={14} /></Button>
       </div>
     </section>

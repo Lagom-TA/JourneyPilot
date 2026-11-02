@@ -12,7 +12,7 @@ import { type ControlledTripIdentity, type JourneyRoute, type PlanGateDecisionAc
 export function useSendMessage() {
     const { state, dispatch, activeStreamAbortRef, activeStreamRef, currentStateRef, sessionRuntimeCacheRef } = useApp();
     const { refreshSessions, setLastSession } = useSessionManager();
-    const sendMessage = useCallback(async (text: string, signal?: AbortSignal, options?: {
+    const sendMessage = useCallback(async (text: string, options?: {
         displayText?: string;
         assistantPendingLabel?: string;
         resumeRunId?: string | null;
@@ -29,10 +29,9 @@ export function useSendMessage() {
     }) => {
         if (!text.trim() || state.isStreaming)
             return false;
-        const ownedController = signal ? null : new AbortController();
-        const effectiveSignal = signal ?? ownedController!.signal;
-        if (ownedController)
-            activeStreamAbortRef.current = ownedController;
+        const ownedController = new AbortController();
+        const effectiveSignal = ownedController.signal;
+        activeStreamAbortRef.current = ownedController;
         const streamToken = generateId();
         const startSessionId = state.currentSessionId || null;
         const startEpoch = state.conversationEpoch;
@@ -128,7 +127,7 @@ export function useSendMessage() {
                 scopedDispatch({ type: 'SET_STREAMING', payload: false });
             }
             const completedWhileVisible = isStreamVisible();
-            if (ownedController && activeStreamAbortRef.current === ownedController) {
+            if (activeStreamAbortRef.current === ownedController) {
                 activeStreamAbortRef.current = null;
             }
             if (activeStreamRef.current?.token === streamToken) {

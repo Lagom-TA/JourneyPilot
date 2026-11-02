@@ -270,7 +270,7 @@ export const TripPlanner: React.FC<{
     if (numericBudget !== null) facts.push(`总预算约 ${numericBudget.toLocaleString('zh-CN')} 元`);
     const summary = [guidedText.trim(), `按条件规划——${facts.join('；')}`].filter(Boolean).join('\n');
     onHomePlanSubmitted?.();
-    await sendMessage(summary, undefined, {
+    await sendMessage(summary, {
       route: 'trip_planning',
       ...(identity ? { controlledTripIdentity: identity } : {}),
       assistantPendingLabel: '正在整理旅行信息',
@@ -283,7 +283,7 @@ export const TripPlanner: React.FC<{
     setError('');
     onHomePlanSubmitted?.();
     // 不指定路径：普通问题走轻量回答，规划想法由模型判断后进入工作台理解。
-    await sendMessage(text, undefined, {
+    await sendMessage(text, {
       assistantPendingLabel: '正在理解你的旅行想法',
     });
   };

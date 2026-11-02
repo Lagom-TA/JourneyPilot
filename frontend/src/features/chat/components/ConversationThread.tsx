@@ -95,7 +95,7 @@ export const ConversationThread: React.FC<{
     const retryLastUserMessage = React.useCallback(() => {
         if (!lastUserText || state.isStreaming)
             return;
-        void sendMessage(lastUserText, undefined, state.currentTripRunId
+        void sendMessage(lastUserText, state.currentTripRunId
             ? { resumeRunId: state.currentTripRunId, route: 'trip_refinement' }
             : state.lastRouteDecision ? { route: state.lastRouteDecision.route } : undefined);
     }, [lastUserText, sendMessage, state.isStreaming, state.currentTripRunId, state.lastRouteDecision]);
@@ -186,7 +186,7 @@ export const ConversationThread: React.FC<{
                         if (!pending)
                             return;
                         dispatch({ type: 'SET_ROUTE_CONFIRMATION', payload: null });
-                        void sendMessage(pending.rawInput, undefined, {
+                        void sendMessage(pending.rawInput, {
                             route,
                             routeDecision: { ...pending.decision, route, confidence: 1, requires_trip_draft: route === 'trip_planning', requires_confirmation: false, signals: [...pending.decision.signals, 'user_confirmed_route'] },
                             displayText: labels[route],

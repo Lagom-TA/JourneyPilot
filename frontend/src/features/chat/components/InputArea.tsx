@@ -60,7 +60,7 @@ export const InputArea: React.FC<{
         if (textareaRef.current)
             textareaRef.current.style.height = 'auto';
         dispatch({ type: 'SET_THINKING_STEPS', payload: [] });
-        const sent = await sendMessage(text, undefined, state.currentTripRunId ? { resumeRunId: state.currentTripRunId } : undefined);
+        const sent = await sendMessage(text, state.currentTripRunId ? { resumeRunId: state.currentTripRunId } : undefined);
         if (!sent) setInput(text);
     }, [input, state.isStreaming, state.currentTripRunId, state.currentSessionId, dispatch, sendMessage]);
     const handleStop = stopRun;

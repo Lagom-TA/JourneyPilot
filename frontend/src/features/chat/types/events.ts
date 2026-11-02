@@ -1,9 +1,9 @@
-import { type RouteDecision, type UnderstandingQuestion } from "../../travel/types/planner";
+import { type RouteDecision } from "../../travel/types/planner";
 import { type ResultPreview, type ToolExecutionStatus } from "./messages";
 import { type DeliveryRevisionManifest, type PublicDeliveryBundle } from "../../travel/types/delivery";
 import { type RunCostSummary } from "./cost";
 export interface SSEEvent {
-    type: 'chat_start' | 'thinking' | 'agent_progress' | 'agent_thinking' | 'tool_start' | 'tool_result' | 'chat_chunk' | 'chat_complete' | 'delivery_ready' | 'run_terminal' | 'run_cancelled' | 'run_failed' | 'approval_gate_raised' | 'understanding_questions' | 'error' | 'usage_update' | 'context_report' | 'context_compaction' | 'trip_summary_card' | 'route_confirmation';
+    type: 'chat_start' | 'thinking' | 'agent_progress' | 'tool_start' | 'tool_result' | 'chat_chunk' | 'chat_complete' | 'delivery_ready' | 'run_terminal' | 'run_cancelled' | 'run_failed' | 'approval_gate_raised' | 'understanding_questions' | 'error' | 'usage_update' | 'context_report' | 'context_compaction' | 'trip_summary_card' | 'route_confirmation';
     message_id?: string;
     session_id?: string;
     run_id?: string;
@@ -15,8 +15,6 @@ export interface SSEEvent {
     guard_blocked?: boolean;
     run_status?: string;
     gate?: string;
-    approval_token?: string;
-    questions?: UnderstandingQuestion[];
     route_decision?: RouteDecision;
     tool_name?: string;
     tool_call_id?: string;
@@ -50,13 +48,10 @@ export interface SSEEvent {
     bundle?: PublicDeliveryBundle;
     status?: 'completed' | ToolExecutionStatus;
     final_content?: string;
-    mode?: string;
     event_id?: string;
-    event_type?: string;
     occurred_at?: string;
     key_constraints?: string[];
     node?: string;
-    timestamp?: string;
     payload?: Record<string, unknown>;
     agent?: string | null;
     input_tokens?: number | null;

@@ -7,15 +7,7 @@ export interface Message {
     displayContent: string;
     timestamp: Date;
     type?: 'normal' | 'thinking' | 'error' | 'guard_blocked' | 'waiting_approval' | 'interrupted' | 'context_compaction';
-    agentType?: string;
     runId?: string;
-    duration?: number;
-    inputTokens?: number | null;
-    outputTokens?: number | null;
-    totalTokens?: number | null;
-    reasoningTokens?: number | null;
-    cachedTokens?: number | null;
-    hasUsage?: boolean;
     thinkingSteps?: ThinkingStep[];
     contextReport?: ContextReport;
     contextCompaction?: ContextCompactionEvent;

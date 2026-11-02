@@ -114,9 +114,7 @@ export async function streamChat(request: ChatRequest, onEvent: (event: SSEEvent
         }
         const decoder = new TextDecoder();
         let buffer = '';
-        let receivedAnyEvent = false;
         const wrappedOnEvent = (event: SSEEvent) => {
-            receivedAnyEvent = true;
             onEvent(event);
         };
         while (true) {
@@ -133,7 +131,6 @@ export async function streamChat(request: ChatRequest, onEvent: (event: SSEEvent
         buffer += decoder.decode();
         if (buffer.trim())
             dispatchSseFrame(buffer, wrappedOnEvent);
-        void receivedAnyEvent;
     }
     catch (e) {
         if (signal?.aborted)

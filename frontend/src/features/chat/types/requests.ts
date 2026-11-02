@@ -12,8 +12,6 @@ export interface ChatRequest {
     route_decision?: RouteDecision | null;
     controlled_trip_identity?: ControlledTripIdentity | null;
     preset_id?: string | null;
-    selected_mcp_servers?: string[];
-    plan_gate?: boolean | null;
     gate_decision?: {
         action: PlanGateDecisionAction;
         content?: string;

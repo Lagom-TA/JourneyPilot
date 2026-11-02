@@ -149,7 +149,6 @@ describe('session runtime behavior', () => {
     const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);
     const events = createStreamEvents(owner, assistant, '请求', 'run-A', '准备中', currentStateRef, vi.fn(), frame);
     events.handleEvent({ type: 'chat_start', session_id: 'A', message_id: 'persisted' });
-    events.handleEvent({ type: 'agent_thinking', content: 'private delta' });
     events.handleEvent(JSON.parse('{"type":"future_unknown","content":"ignored"}'));
     expect(state.currentMessages[0].id).toBe('persisted');
     expect(state.thinkingSteps).toHaveLength(0);
