@@ -56,13 +56,6 @@ def _reject_checkpoint_contract(
     raise CheckpointContractError(contract_message) from exc
 
 
-def _configured_model_versions() -> Dict[str, str]:
-    settings = get_settings()
-    primary = str(settings.primary_model.model_name or "").strip()
-    fast = str(settings.fast_model.model_name or "").strip() or primary
-    return {"primary": primary, "fast": fast}
-
-
 GRAPH_RECURSION_LIMIT = 250
 
 
@@ -188,7 +181,6 @@ class TravelPlanningWorkflow:
                 controlled_trip_identity=controlled_trip_identity or {},
                 route_decision=route_decision or {},
                 refinement_action=refinement_action,
-                model_versions=_configured_model_versions(),
             )
             if refinement_bundle is not None:
                 from travel_agent.planning.requirements.refinement import seed_refinement_state

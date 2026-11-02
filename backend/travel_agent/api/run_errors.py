@@ -1,6 +1,6 @@
 from __future__ import annotations
+
 from fastapi import HTTPException
-from travel_agent.storage.delivery_bundle_store import BundleContractSuperseded
 
 from travel_agent.planning.run_errors import (
     RunNotFound,
@@ -27,22 +27,6 @@ async def raise_workspace_mutation_conflict(run_id: str, bundle_store) -> None:
             "current_bundle_id": current_bundle_id,
         },
     )
-
-
-def raise_bundle_contract_superseded(exc: BundleContractSuperseded) -> None:
-    """拒绝当前契约无法描述的已存 Bundle。
-
-    这里直接拒绝，不做兼容读取：兼容旧结构会引入第二条代码路径，这类数据需要
-    一次性迁移处理。客户端收到明确结果后不会自动重试，因为重新读取结果相同。
-    """
-
-    raise HTTPException(
-        status_code=409,
-        detail={
-            "code": "bundle_contract_superseded",
-            "message": "这趟旅行的结果是用旧版本保存的，已经无法展示。请重新规划这趟旅行。",
-        },
-    ) from exc
 
 
 def raise_run_use_case_error(error: Exception) -> None:

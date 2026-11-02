@@ -55,7 +55,7 @@ def invocation_scope(state, node, config=None):
     digest = hashlib.sha256(
         json.dumps(fields, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
-    return f"{node}:v3:{digest}"
+    return f"{node}:{digest}"
 
 
 def with_worker_recovery(node, worker):

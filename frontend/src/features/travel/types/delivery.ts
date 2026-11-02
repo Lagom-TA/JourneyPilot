@@ -1,10 +1,7 @@
-import { TRIP_WORKSPACE_CONTRACT_VERSION } from "./workspace";
 import { type TripReportProjection, type MapProjection, type PublicCitationProjection } from "./report";
 import { type PublicStructuredItineraryV2, type SelectionSlot } from "./itinerary";
 import { type PublicWeatherAdjustment } from "./weather";
-export const DELIVERY_BUNDLE_CONTRACT_VERSION = 'journeypilot.delivery_bundle.v12' as const;
 export interface DeliveryRevisionManifest {
-    contract_version: typeof DELIVERY_BUNDLE_CONTRACT_VERSION;
     run_id: string;
     generation_id: string;
     bundle_id: string;
@@ -29,7 +26,6 @@ export interface PublicDeliveryBundle {
     };
 }
 export interface PublicTripWorkspace {
-    contract_version: typeof TRIP_WORKSPACE_CONTRACT_VERSION;
     run_id: string;
     generation_id: string;
     workspace_revision: number;
@@ -48,10 +44,9 @@ export function isPublicDeliveryBundle(value: unknown): value is PublicDeliveryB
     const manifest = bundle.manifest;
     const workspace = bundle.workspace;
     return Boolean(manifest
-        && manifest.contract_version === DELIVERY_BUNDLE_CONTRACT_VERSION
         && typeof manifest.run_id === 'string'
         && typeof manifest.bundle_id === 'string'
-        && workspace?.contract_version === TRIP_WORKSPACE_CONTRACT_VERSION
+        && workspace
         && workspace.run_id === manifest.run_id
         && workspace.generation_id === manifest.generation_id
         && workspace.workspace_revision === manifest.workspace_revision

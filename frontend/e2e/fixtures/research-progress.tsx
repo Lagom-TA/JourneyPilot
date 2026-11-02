@@ -9,7 +9,7 @@ import '../../src/index.css';
 const timestamp = new Date();
 const base = (id: string, agentName: string, extra: Partial<ThinkingStep>): ThinkingStep => ({ id, agentName, content: '', stepName: '', timestamp, ...extra });
 const destinationPhase: ThinkingStep[] = [
-  base('dispatch', '安排查询', { content: '正在按顺序安排调研任务{"contract_version":"journeypilot.research_packet.v5"}' }),
+  base('dispatch', '安排查询', { content: '正在按顺序安排调研任务{"research_packet_id":"packet-1"}' }),
   base('destination-start', '目的地调研', { progressStatus: 'running' }),
   base('museum', '目的地调研', { isToolCall: true, toolName: 'global_place_search', toolArgs: '{"query":"长春 历史博物馆"}', toolResult: '找到 1 个结果', toolStatus: 'completed', resultPreview: [{ title: '伪满皇宫博物院', detail: '长春市宽城区光复北路', url: 'https://example.org/museum' }] }),
 ];
@@ -56,8 +56,8 @@ const edgeSteps: ThinkingStep[] = [
   base('only-summary', '目的地调研', { isToolCall: true, toolName: 'knowledge_search', toolArgs: '{"query":"当地雨天备选活动"}', toolResult: '已整理 3 条适合雨天的室内活动摘要', toolStatus: 'completed' }),
   base('no-input-result', '目的地调研', { isToolCall: true, toolName: 'some_new_mcp_tool', toolStatus: 'completed' }),
   base('json-leak', '目的地调研', { isToolCall: true, toolName: 'tavily_search', toolArgs: JSON.stringify({ query: '海边天气' }), toolResult: '{"success":true,"provider":"tavily_search","result":{"secret":"内部载荷"}}', toolStatus: 'completed' }),
-  base('input-json', '目的地调研', { isToolCall: true, toolName: 'global_place_search', toolArgs: JSON.stringify({ query: '{"success":true,"provider":"tavily_search","contract_version":"v5"}' }), toolResult: '机器载荷输入已过滤', toolStatus: 'completed' }),
-  base('input-contract', '目的地调研', { isToolCall: true, toolName: 'global_place_search', toolArgs: JSON.stringify({ query: 'contract_version=journeypilot.research_packet.v5 research_packet_id=packet-1' }), toolResult: '合同字段输入已过滤', toolStatus: 'completed' }),
+  base('input-json', '目的地调研', { isToolCall: true, toolName: 'global_place_search', toolArgs: JSON.stringify({ query: '{"success":true,"provider":"tavily_search","sanitized_result":{}}' }), toolResult: '机器载荷输入已过滤', toolStatus: 'completed' }),
+  base('input-contract', '目的地调研', { isToolCall: true, toolName: 'global_place_search', toolArgs: JSON.stringify({ query: 'research_packet_id=packet-1 tool_call_id=call-1' }), toolResult: '合同字段输入已过滤', toolStatus: 'completed' }),
   base('input-internal', '目的地调研', { isToolCall: true, toolName: 'global_place_search', toolArgs: JSON.stringify({ query: 'global_place_search brave_web_search 附近景点' }), toolResult: '内部标识输入已转换', toolStatus: 'completed' }),
   base('input-error', '目的地调研', { isToolCall: true, toolName: 'global_place_search', toolArgs: JSON.stringify({ query: 'Traceback (most recent call last): File "agent.py", line 42, in run' }), toolResult: '异常文本输入已过滤', toolStatus: 'completed' }),
 ];

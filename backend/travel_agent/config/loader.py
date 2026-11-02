@@ -2,8 +2,7 @@
 
 加载顺序固定：
 
-    找到 config.yaml → 判 config_version（不匹配就拒绝）→ 严格校验 → 环境变量覆盖
-    → 生成 effective config（脱敏）
+    找到 config.yaml → 严格校验 → 环境变量覆盖 → 生成 effective config（脱敏）
 
 严格校验在环境变量之前：一个拼错的 YAML 字段要在它有机会被环境变量掩盖之前报出来。
 
@@ -23,7 +22,7 @@ import yaml
 from pydantic import ValidationError
 
 from .env import EnvOverrideError, apply_env_overrides, known_env_variables
-from .models import CONFIG_VERSION, MCPServerItem, ModelPricingItem, Settings
+from .models import MCPServerItem, ModelPricingItem, Settings
 from .pricing import resolve_price_in
 from .redaction import redact
 
@@ -72,39 +71,6 @@ def load_yaml(path: Path) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# 版本判定
-# --------------------------------------------------------------------------- #
-
-def check_config_version(data: Dict[str, Any]) -> Dict[str, Any]:
-    """判 ``config_version`` 并把它摘掉，返回其余字段。
-
-    **不迁移旧结构**：不认识的版本一律拒绝并说清楚要改什么。留一条静默改写的读路径，
-    换来的是「我明明改了配置」与「程序读到的不是我写的那份」并存。
-    """
-
-    payload = dict(data)
-    raw_version = payload.pop("config_version", None)
-    if raw_version is None:
-        # 空文件（全走默认值）不需要声明版本。
-        if not payload:
-            return payload
-        raise ConfigError(
-            f"config.yaml 缺少 config_version；当前版本是 {CONFIG_VERSION}，"
-            "照 backend/config.example.yaml 补上这一行。"
-        )
-    try:
-        version = int(raw_version)
-    except (TypeError, ValueError) as exc:
-        raise ConfigError(f"config_version 必须是整数，实际 {raw_version!r}") from exc
-    if version != CONFIG_VERSION:
-        raise ConfigError(
-            f"config_version={version}，这个版本的 JourneyPilot 只认 {CONFIG_VERSION}。"
-            "对照 backend/config.example.yaml 改这份文件，或者换回对应版本的程序。"
-        )
-    return payload
-
-
-# --------------------------------------------------------------------------- #
 # 构造
 # --------------------------------------------------------------------------- #
 
@@ -124,7 +90,7 @@ def _describe_validation_error(exc: ValidationError, path: Optional[Path]) -> st
 
 
 def build_settings(data: Dict[str, Any], *, path: Optional[Path] = None) -> Settings:
-    """严格校验一份已摘掉 config_version 的 YAML 数据。
+    """严格校验一份 YAML 数据。
 
     ``mcp.servers`` 与 `Settings` 其余部分不同：它是**合并**语义而不是替换 ——
     用户通常只在 YAML 里填 env，command/args/required_env 要保留内置默认，否则
@@ -226,8 +192,7 @@ def load_effective_config() -> EffectiveConfig:
     """完整走一遍加载顺序，带来源。"""
 
     path = find_config_yaml()
-    raw = load_yaml(path) if path else {}
-    payload = check_config_version(raw)
+    payload = load_yaml(path) if path else {}
     settings = build_settings(payload, path=path)
     sources = _yaml_sources(payload)
     try:
@@ -287,15 +252,13 @@ def resolve_price(
 def persist_model_config(tier: str, model_data: Dict[str, Any]) -> None:
     """把模型段写回 config.yaml。
 
-    写入方**只有 CLI 与这一个函数**。写回时补上 ``config_version``，否则下一次加载
-    会因为缺版本号被拒。
+    写入方**只有 CLI 与这一个函数**。
     """
 
     path = find_config_yaml()
     if not path:
         raise FileNotFoundError("config.yaml 未找到，无法持久化配置")
     data = load_yaml(path)
-    data["config_version"] = CONFIG_VERSION
     key = "primary_model" if tier == "primary" else "fast_model"
     section = data.get(key)
     if not isinstance(section, dict):
@@ -313,7 +276,6 @@ def write_model_section(section: Dict[str, Any]) -> Path:
     if not path:
         raise FileNotFoundError("config.yaml 未找到，先从 backend/config.example.yaml 复制一份")
     data = load_yaml(path)
-    data["config_version"] = CONFIG_VERSION
     for name, values in section.items():
         existing = data.get(name)
         if isinstance(existing, dict):

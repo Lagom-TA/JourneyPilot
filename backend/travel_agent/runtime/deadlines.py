@@ -12,7 +12,6 @@ from travel_agent.schema import StrictModel
 class RunDeadlineSnapshot(StrictModel):
     # 快照内嵌各段秒数，使校验不受之后的配置变更影响。
     draft_id: str = Field(min_length=1)
-    policy_version: str = Field(min_length=1)
     planning_authorized_at: datetime
     target_at: datetime
     closeout_at: datetime
@@ -77,9 +76,6 @@ class RunDeadlineSnapshot(StrictModel):
         if self.last_observed_at < self.planning_authorized_at:
             raise ValueError("deadline observation predates planning authorization")
         return self
-
-
-RUN_DEADLINE_POLICY_VERSION = "run_deadline.v2"
 
 
 def _windows():

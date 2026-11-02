@@ -8,9 +8,6 @@ from pydantic import Field, model_validator
 from travel_agent.planning.references import EntityRef
 from travel_agent.schema import StrictModel
 
-FACT_SNAPSHOT_CONTRACT_VERSION = "journeypilot.fact_store_snapshot.v4"
-
-
 class ProviderSnapshotProvenance(StrictModel):
     origin: Literal["live", "provider_snapshot_cache"]
 
@@ -25,7 +22,6 @@ class ProviderSnapshotProvenance(StrictModel):
     provider_valid_until: Optional[datetime] = None
     cache_valid_until: datetime
     provider_contract_version: str = Field(min_length=1)
-    payload_schema_version: str = Field(min_length=1)
 
     @model_validator(mode="after")
     def validate_cache_provenance(self) -> "ProviderSnapshotProvenance":
@@ -124,9 +120,6 @@ class FieldProvenance(StrictModel):
 
 
 class FactStoreSnapshot(StrictModel):
-    contract_version: Literal[FACT_SNAPSHOT_CONTRACT_VERSION] = (
-        FACT_SNAPSHOT_CONTRACT_VERSION
-    )
     fact_data_revision: int = Field(ge=0)
     source_records: List[SourceRecord] = Field(default_factory=list)
     fact_assertions: List[FactAssertion] = Field(default_factory=list)

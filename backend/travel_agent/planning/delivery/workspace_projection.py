@@ -48,7 +48,6 @@ def _mutation_bundle(
             workspace_revision=workspace.workspace_revision,
             fact_data_revision=fact_snapshot.fact_data_revision,
             weather_data_revision=weather_snapshot.weather_data_revision,
-            contract_versions=current.manifest.contract_versions,
             content_hashes=hashes,
             created_at=created_at,
         ),

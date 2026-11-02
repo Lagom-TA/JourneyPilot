@@ -9,9 +9,6 @@ from ..config.loader import get_settings
 from .context import current_run_budget, current_run_id
 
 
-RUN_BUDGET_POLICY_VERSION = "run_budget.v1"
-
-
 BudgetDimension = Literal[
     "llm_calls",
     "tool_calls",
@@ -27,8 +24,6 @@ BUDGET_DIMENSIONS: tuple[BudgetDimension, ...] = get_args(BudgetDimension)
 class RunBudgetSnapshot(StrictModel):
     """Run 授权时封存的上限。跨进程的最终事实，随 checkpoint 一起走。"""
 
-    policy_version: str = RUN_BUDGET_POLICY_VERSION
-    # 旧 checkpoint 缺少该字段时按只观察处理，恢复的 Run 也不会继承隐式配额。
     enforce_limits: bool = False
     max_llm_calls: Optional[int] = Field(default=None, ge=1)
     max_tool_calls: Optional[int] = Field(default=None, ge=1)
@@ -144,14 +139,11 @@ class RunBudgetExhausted(RuntimeError):
         return f"run_budget_exhausted.{self.dimension}"
 
 
-def build_run_budget_snapshot(
-    *, policy_version: str = RUN_BUDGET_POLICY_VERSION
-) -> RunBudgetSnapshot:
+def build_run_budget_snapshot() -> RunBudgetSnapshot:
     """按当前配置封存一份上限。只在 Run 被授权时调用一次。"""
 
     config = get_settings().run_budget
     return RunBudgetSnapshot(
-        policy_version=policy_version,
         enforce_limits=config.enforce_limits,
         max_llm_calls=config.max_llm_calls,
         max_tool_calls=config.max_tool_calls,
@@ -257,7 +249,6 @@ class RunBudgetLedger:
 
         usage = self.usage()
         return {
-            "policy_version": self.snapshot.policy_version,
             "enforce_limits": self.snapshot.enforce_limits,
             "limits": self.snapshot.model_dump(mode="json"),
             "usage": usage.model_dump(mode="json"),

@@ -5,7 +5,6 @@ from typing import Optional
 from .requirements.inputs import MinimumDeliveryDraft
 from ..runtime.deadlines import (
     RunDeadlineSnapshot,
-    RUN_DEADLINE_POLICY_VERSION,
     _as_utc,
     current_target_seconds,
     current_closeout_seconds,
@@ -18,7 +17,6 @@ def build_run_deadline_snapshot(
     draft: MinimumDeliveryDraft,
     *,
     authorized_at: Optional[datetime] = None,
-    policy_version: str = RUN_DEADLINE_POLICY_VERSION,
 ) -> RunDeadlineSnapshot:
     """把已封存的 Draft 绑定到不可变的 deadline 时间点。"""
     if not draft.planning_authorized or draft.planning_authorized_at is None:
@@ -32,7 +30,6 @@ def build_run_deadline_snapshot(
     delivery_deadline_seconds = current_delivery_deadline_seconds()
     return RunDeadlineSnapshot(
         draft_id=draft.draft_id,
-        policy_version=policy_version,
         planning_authorized_at=authorization,
         target_at=authorization + timedelta(seconds=target_seconds),
         closeout_at=authorization + timedelta(seconds=closeout_seconds),

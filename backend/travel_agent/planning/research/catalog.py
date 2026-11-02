@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-from typing import Dict, List, Literal
+from typing import Dict, List
 
 from pydantic import ConfigDict, Field, model_validator
 
 from travel_agent.planning.research.candidates import ResearchCandidate
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.schema import StrictModel
-
-RECOMMENDATION_CATALOG_CONTRACT_VERSION = "journeypilot.recommendation_catalog.v8"
-
 
 class RecommendationCatalog(StrictModel):
     # checkpoint 重建可能用 model_construct 绕过嵌套校验，因此始终重新校验实例。
@@ -19,9 +16,6 @@ class RecommendationCatalog(StrictModel):
         revalidate_instances="always",
     )
 
-    contract_version: Literal[RECOMMENDATION_CATALOG_CONTRACT_VERSION] = (
-        RECOMMENDATION_CATALOG_CONTRACT_VERSION
-    )
     generation_id: str = Field(min_length=1)
     fact_data_revision: int = Field(ge=0)
     weather_data_revision: int = Field(ge=0)

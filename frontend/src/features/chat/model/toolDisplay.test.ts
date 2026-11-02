@@ -49,8 +49,8 @@ describe('toolResultText', () => {
     it('输入与折叠主题都经过公开投影，保留正常和长查询', () => {
         const place = (query: string) => describeToolStep({ id: 'place', agentName: '目的地调研', content: '', stepName: '', timestamp: new Date(), isToolCall: true, toolName: 'global_place_search', toolArgs: JSON.stringify({ query }), toolStatus: 'completed' });
         for (const payload of [
-            '{"success":true,"provider":"tavily_search","contract_version":"v5"}',
-            'contract_version=journeypilot.research_packet.v5 research_packet_id=packet-1',
+            '{"success":true,"provider":"tavily_search","sanitized_result":{}}',
+            'research_packet_id=packet-1 tool_call_id=call-1',
             'Traceback (most recent call last): File "agent.py", line 42, in run',
             'HTTP 500: upstream provider failed',
         ]) {

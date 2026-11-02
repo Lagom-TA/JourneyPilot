@@ -236,7 +236,7 @@ def public_text(value: Any, limit: int = 300) -> str:
         return ""
     text = value.strip()
     if re.search(
-        r'\{\s*(?:["}\[]|$)|```|<think|"[\w_]+"\s*:|contract_version|research_packet_id',
+        r'\{\s*(?:["}\[]|$)|```|<think|"[\w_]+"\s*:|research_packet_id',
         text,
     ):
         return ""

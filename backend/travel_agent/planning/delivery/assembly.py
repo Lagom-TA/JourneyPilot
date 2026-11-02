@@ -81,11 +81,6 @@ def assemble_delivery_bundle(state: TravelAgentState) -> DeliveryBundle:
             workspace_revision=workspace.workspace_revision,
             fact_data_revision=facts.fact_data_revision,
             weather_data_revision=weather.weather_data_revision,
-            contract_versions={
-                "workspace": workspace.contract_version,
-                "facts": facts.contract_version,
-                "weather": weather.contract_version,
-            },
             content_hashes=hashes,
             created_at=created_at,
         ),

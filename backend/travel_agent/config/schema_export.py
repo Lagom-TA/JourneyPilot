@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Tuple, get_args, get_origin
 
 
 from .env import env_variable_name, leaf_fields
-from .models import CONFIG_VERSION, Settings
+from .models import Settings
 
 GENERATED_HEADER = (
     "<!-- 本文件由 `journeypilot config docs` 生成，不要手改。"
@@ -78,8 +78,6 @@ def field_reference_markdown() -> str:
         GENERATED_HEADER,
         "",
         "# 配置字段参考",
-        "",
-        f"当前 `config_version`: **{CONFIG_VERSION}**",
         "",
         "环境变量一栏为空表示这个字段只能在 `config.yaml` 里配：list / dict 字段",
         "（价格表、MCP server、CORS 来源）不提供环境变量入口 —— 用一个字符串表达",

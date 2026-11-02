@@ -324,9 +324,6 @@ def _provider_snapshot_source_fields(
             provider_valid_until=provider_valid_until,
             cache_valid_until=cache_valid_until,
             provider_contract_version=str(cache_metadata.get("contract_version") or ""),
-            payload_schema_version=str(
-                cache_metadata.get("payload_schema_version") or ""
-            ),
         )
     except (TypeError, ValueError):
         observed = _source_retrieved_at(envelope, fallback_observed_at)

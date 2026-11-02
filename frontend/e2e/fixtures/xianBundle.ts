@@ -1,5 +1,3 @@
-const DELIVERY_BUNDLE_CONTRACT_VERSION = 'journeypilot.delivery_bundle.v12';
-const TRIP_WORKSPACE_CONTRACT_VERSION = 'journeypilot.trip_workspace.v15';
 const EVIDENCE = 'public_reference' as const;
 const XI = 'amap:poi:xian';
 
@@ -226,7 +224,6 @@ export function xianDeliveryBundle(revision = 1) {
 
   return {
     manifest: {
-      contract_version: DELIVERY_BUNDLE_CONTRACT_VERSION,
       run_id: 'run-A',
       generation_id: 'generation-A',
       bundle_id: `bundle-${revision}`,
@@ -236,7 +233,6 @@ export function xianDeliveryBundle(revision = 1) {
       created_at: '2026-10-25T08:00:00Z',
     },
     workspace: {
-      contract_version: TRIP_WORKSPACE_CONTRACT_VERSION,
       run_id: 'run-A',
       generation_id: 'generation-A',
       workspace_revision: revision,

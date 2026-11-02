@@ -313,7 +313,7 @@
           "type": "string"
         },
         "search_cache_key_prefix": {
-          "default": "journeypilot:nominatim-search:v1",
+          "default": "journeypilot:nominatim-search",
           "minLength": 1,
           "title": "Search Cache Key Prefix",
           "type": "string"
@@ -755,7 +755,7 @@
           "type": "integer"
         },
         "redis_key_prefix": {
-          "default": "journeypilot:provider-snapshot:v1",
+          "default": "journeypilot:provider-snapshot",
           "minLength": 1,
           "title": "Redis Key Prefix",
           "type": "string"

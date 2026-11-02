@@ -10,12 +10,12 @@ describe('normalizePlanApprovalGate', () => {
                     steps: [{ step: 1, agents: ['destination_researcher'], tasks: {} }],
                 },
                 plan_text: 'Research Tokyo',
-                approval_token: 'plan_gate.approval.v1:abc',
+                approval_token: 'plan_gate.approval:abc',
                 decision_options: ['approve', 'cancel'],
             },
         });
         expect(gate?.planText).toBe('Research Tokyo');
-        expect(gate?.approvalToken).toBe('plan_gate.approval.v1:abc');
+        expect(gate?.approvalToken).toBe('plan_gate.approval:abc');
     });
 
     it('does not offer approval when no research plan exists', () => {

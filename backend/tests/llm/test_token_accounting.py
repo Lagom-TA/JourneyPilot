@@ -264,7 +264,7 @@ def test_all_text_estimates_use_one_offline_ruler_and_include_wire_fields():
     assert with_tools > plain and schemas > 0
 
 
-def test_unlimited_default_and_legacy_snapshot_keep_accounting_without_rejection():
+def test_unlimited_default_snapshot_keeps_accounting_without_rejection():
     assert RunBudgetConfig().enforce_limits is False
     assert RunBudgetConfig().max_input_tokens is None
     snapshot = RunBudgetSnapshot(max_llm_calls=1, max_input_tokens=1, max_cost_usd=0.01,

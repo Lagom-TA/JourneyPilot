@@ -57,9 +57,6 @@ class CoordinationPacket(StrictModel):
 
 
 class ResearchContextView(StrictModel):
-    contract_version: Literal["journeypilot.research_context.v1"] = (
-        "journeypilot.research_context.v1"
-    )
     purpose: Literal["coordination"] = "coordination"
     worker_kind: str
     destination_ids: list[str]

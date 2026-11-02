@@ -111,8 +111,6 @@ def _contains_sensitive_scope_key(value: Any) -> bool:
 
 def _contains_forbidden_snapshot_shape(value: Any) -> bool:
     if isinstance(value, dict):
-        if value.get("schema_version") == "tool_execution_envelope.v1":
-            return True
         for key, item in value.items():
             if str(key) in _FORBIDDEN_SNAPSHOT_KEYS:
                 return True
@@ -138,11 +136,10 @@ class ProviderSnapshotScope(BaseModel):
     party: Optional[int | str] = None
     currency: Optional[str] = None
     provider_contract_version: str = Field(min_length=1)
-    payload_schema_version: str = Field(min_length=1)
     arguments: dict[str, Any] = Field(default_factory=dict)
     auth_boundary: str = "none"
 
-    @field_validator("provider_name", "tool_name", "provider_contract_version", "payload_schema_version")
+    @field_validator("provider_name", "tool_name", "provider_contract_version")
     @classmethod
     def _required_text(cls, value: str) -> str:
         normalized = str(value or "").strip()
@@ -270,7 +267,6 @@ class ProviderSnapshotRecord(BaseModel):
             provider_valid_until=self.provider_valid_until,
             cache_valid_until=self.cache_valid_until,
             provider_contract_version=self.scope.provider_contract_version,
-            payload_schema_version=self.scope.payload_schema_version,
         )
 
     def trace_metadata(
@@ -294,7 +290,6 @@ class ProviderSnapshotRecord(BaseModel):
             ),
             "cache_valid_until": self.cache_valid_until.isoformat(),
             "contract_version": self.scope.provider_contract_version,
-            "payload_schema_version": self.scope.payload_schema_version,
         }
 
 
@@ -477,7 +472,6 @@ def provider_snapshot_scope_for_tool(
             party=None,
             currency=None,
             provider_contract_version="amap.v3",
-            payload_schema_version=f"{tool_name}.v1",
             arguments=copy.deepcopy(arguments),
             auth_boundary="server_managed",
         )
@@ -501,13 +495,6 @@ def provider_snapshot_scope_for_tool(
             party=arguments.get("party") or arguments.get("party_size"),
             currency=arguments.get("currency"),
             provider_contract_version="nominatim.jsonv2",
-            # v2：相同参数现在会产生不同的 Provider 请求——目的地坐标变成主搜索的
-            # ``viewbox``。范围摘要包含这个版本串，因此所有 v1 快照会同时失效。
-            #
-            # v3：每条结果新增 ``destination_distance_km``，判断 worker 可选地点的
-            # 层会读取它。v2 的响应没有该键，而「键缺失」表示「距离不可判定」，
-            # 重放低版本响应会让该问题重新出现。这里硬切换，不读取低版本。
-            payload_schema_version="global_place_search.v3",
             arguments=copy.deepcopy(arguments),
             auth_boundary="none",
         )
@@ -550,10 +537,6 @@ def provider_snapshot_scope_for_tool(
         party=arguments.get("party") or arguments.get("party_size"),
         currency=arguments.get("currency"),
         provider_contract_version="amap.direction-v3" if china_route else "transitous.motis-v6",
-        # v2：中国大陆路线改由 amap 回答并按不同的 Provider 结构归一化，因此在
-        # 相同参数下重放 v1 响应会得到 Transitous 对一条它已无法回答的查询的答案。
-        # 两个分支同时硬切换，不读取低版本。
-        payload_schema_version="global_route_search.v2",
         arguments=copy.deepcopy(arguments),
         auth_boundary="none",
     )

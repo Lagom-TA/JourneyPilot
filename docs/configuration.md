@@ -2,8 +2,6 @@
 
 # 配置字段参考
 
-当前 `config_version`: **2**
-
 环境变量一栏为空表示这个字段只能在 `config.yaml` 里配：list / dict 字段
 （价格表、MCP server、CORS 来源）不提供环境变量入口 —— 用一个字符串表达
 一张表，需要额外的解析器和错误信息。
@@ -130,7 +128,7 @@
 | `geocoding.search_timeout_seconds` | float | `3.4` | > 0 | `JOURNEYPILOT_GEOCODING__SEARCH_TIMEOUT_SECONDS` |
 | `geocoding.min_interval_seconds` | float | `1.1` | — | `JOURNEYPILOT_GEOCODING__MIN_INTERVAL_SECONDS` |
 | `geocoding.search_cache_ttl_seconds` | int | `604800` | > 0 | `JOURNEYPILOT_GEOCODING__SEARCH_CACHE_TTL_SECONDS` |
-| `geocoding.search_cache_key_prefix` | str | `journeypilot:nominatim-search:v1` | 长度 >= 1 | `JOURNEYPILOT_GEOCODING__SEARCH_CACHE_KEY_PREFIX` |
+| `geocoding.search_cache_key_prefix` | str | `journeypilot:nominatim-search` | 长度 >= 1 | `JOURNEYPILOT_GEOCODING__SEARCH_CACHE_KEY_PREFIX` |
 | `geocoding.search_cache_redis_timeout_seconds` | float | `0.25` | > 0 | `JOURNEYPILOT_GEOCODING__SEARCH_CACHE_REDIS_TIMEOUT_SECONDS` |
 | `routing.transitous_base_url` | str | `https://api.transitous.org` | — | `JOURNEYPILOT_ROUTING__TRANSITOUS_BASE_URL` |
 | `routing.amap_base_url` | str | `https://restapi.amap.com` | — | `JOURNEYPILOT_ROUTING__AMAP_BASE_URL` |
@@ -138,7 +136,7 @@
 | `routing.timeout_seconds` | float | `20.0` | — | `JOURNEYPILOT_ROUTING__TIMEOUT_SECONDS` |
 | `routing.min_interval_seconds` | float | `1.0` | — | `JOURNEYPILOT_ROUTING__MIN_INTERVAL_SECONDS` |
 | `provider_snapshot_cache.enabled` | bool | `True` | — | `JOURNEYPILOT_PROVIDER_SNAPSHOT_CACHE__ENABLED` |
-| `provider_snapshot_cache.redis_key_prefix` | str | `journeypilot:provider-snapshot:v1` | 长度 >= 1 | `JOURNEYPILOT_PROVIDER_SNAPSHOT_CACHE__REDIS_KEY_PREFIX` |
+| `provider_snapshot_cache.redis_key_prefix` | str | `journeypilot:provider-snapshot` | 长度 >= 1 | `JOURNEYPILOT_PROVIDER_SNAPSHOT_CACHE__REDIS_KEY_PREFIX` |
 | `provider_snapshot_cache.redis_timeout_seconds` | float | `0.25` | > 0 | `JOURNEYPILOT_PROVIDER_SNAPSHOT_CACHE__REDIS_TIMEOUT_SECONDS` |
 | `provider_snapshot_cache.place_identity_ttl_seconds` | int | `604800` | > 0 | `JOURNEYPILOT_PROVIDER_SNAPSHOT_CACHE__PLACE_IDENTITY_TTL_SECONDS` |
 | `provider_snapshot_cache.route_ttl_seconds` | int | `300` | > 0 | `JOURNEYPILOT_PROVIDER_SNAPSHOT_CACHE__ROUTE_TTL_SECONDS` |

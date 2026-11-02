@@ -74,7 +74,6 @@ class ChatPresentation:
 def _trace_event_payload(event: Dict[str, Any]) -> Dict[str, Any]:
     """筛选可安全写入持久运行事件的 trace 字段。"""
     allowed = {
-        "schema_version",
         "event_id",
         "run_id",
         "sequence",

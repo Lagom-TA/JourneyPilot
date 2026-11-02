@@ -157,7 +157,6 @@ async def test_deep_asgi_body_is_backed_by_persisted_bundle_and_ordered_terminal
         workspace_revision=0,
         fact_data_revision=0,
         weather_data_revision=0,
-        contract_versions={},
         content_hashes={},
         created_at=datetime.now(timezone.utc),
     )

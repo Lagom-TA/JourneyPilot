@@ -325,16 +325,6 @@ class TravelAgentState(BaseModel):
     rejected_intent_amendments: Annotated[
         List[IntentAmendmentRejection], _merge_amendment_rejections
     ] = Field(default_factory=list)
-    prompt_versions: Annotated[Dict[str, str], _merge_dicts] = Field(
-        default_factory=dict
-    )
-    policy_versions: Annotated[Dict[str, str], _merge_dicts] = Field(
-        default_factory=dict
-    )
-    model_versions: Annotated[Dict[str, str], _merge_dicts] = Field(
-        default_factory=dict
-    )
-
     selected_mcp_servers: List[str] = Field(default_factory=list)
 
     preset_context: str = ""

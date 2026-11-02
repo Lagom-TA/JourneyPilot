@@ -21,7 +21,9 @@ else:
     class ReasoningChatOpenAI(_ChatOpenAI):
         """保留 ChatOpenAI 未映射的 Chat Completions 推理字段。"""
 
-        use_legacy_max_tokens: bool = False
+        # 上游只接受 ``max_tokens`` 时，把 langchain-openai 改名的
+        # ``max_completion_tokens`` 换回该字段。
+        send_max_tokens: bool = False
 
         def _create_chat_result(self, response: Any, generation_info: Any = None) -> Any:
             result = super()._create_chat_result(response, generation_info)
@@ -33,7 +35,7 @@ else:
         def _get_request_payload(self, input_: Any, *, stop: Any = None, **kwargs: Any) -> dict[str, Any]:
             payload = super()._get_request_payload(input_, stop=stop, **kwargs)
             if "messages" in payload:
-                if self.use_legacy_max_tokens and "max_completion_tokens" in payload:
+                if self.send_max_tokens and "max_completion_tokens" in payload:
                     payload["max_tokens"] = payload.pop("max_completion_tokens")
                 messages = self._convert_input(input_).to_messages()
                 for wire, message in zip(payload["messages"], messages):

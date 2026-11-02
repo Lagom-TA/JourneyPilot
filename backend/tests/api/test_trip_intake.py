@@ -38,7 +38,7 @@ GATE_PAYLOAD = {
     "revision": 1,
     "questions": QUESTIONS,
     "decision_options": ["answer", "cancel"],
-    "approval_token": "understanding_gate.approval.v1:offline",
+    "approval_token": "understanding_gate.approval:offline",
 }
 SECOND_PAYLOAD = {
     "gate": "understanding",
@@ -52,7 +52,7 @@ SECOND_PAYLOAD = {
         }
     ],
     "decision_options": ["answer", "cancel"],
-    "approval_token": "understanding_gate.approval.v1:offline-2",
+    "approval_token": "understanding_gate.approval:offline-2",
 }
 
 
@@ -187,7 +187,7 @@ async def test_stale_answer_token_is_rejected_before_execution(
         "route": "trip_planning",
         "gate_decision": {
             "action": "answer",
-            "approval_token": "understanding_gate.approval.v1:not-current",
+            "approval_token": "understanding_gate.approval:not-current",
             "answers": [{"question_id": "pace", "text": "慢慢逛"}],
         },
     }

@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from travel_agent.config.models import CONFIG_VERSION, Settings
-from travel_agent.config.loader import ConfigError, check_config_version, env_variable_reference, load_effective_config
+from travel_agent.config.models import Settings
+from travel_agent.config.loader import ConfigError, env_variable_reference, load_effective_config
 from travel_agent.config.providers import available_presets, capabilities_for, get_preset, preset_model_section
 from travel_agent.config.redaction import redact
 from travel_agent.config.env import EnvOverrideError, apply_env_overrides
@@ -97,38 +97,15 @@ def test_top_level_mcp_servers_is_refused():
     assert "mcp.servers" in str(exc.value) or "servers" in str(exc.value)
 
 
-# --- 版本判定 ------------------------------------------------------------- #
+# --- 未知顶层键 ----------------------------------------------------------- #
 
 
-def test_a_version_that_is_not_the_current_one_is_refused():
-    """认不出的版本必须报错，不能当成当前版本读，也不能静默改写。"""
+def test_a_removed_config_version_key_is_rejected_as_unknown():
+    """配置里不再有版本字段；旧文件多带一个键时按未知字段拒绝。"""
 
-    for version in (CONFIG_VERSION - 1, CONFIG_VERSION + 5):
-        with pytest.raises(ConfigError) as exc:
-            check_config_version({"config_version": version, "database": {"host": "x"}})
-        assert str(CONFIG_VERSION) in str(exc.value)
-
-
-def test_a_non_empty_file_without_a_version_is_refused():
     with pytest.raises(ConfigError) as exc:
-        check_config_version({"database": {"host": "x"}})
+        build_settings({"config_version": 2, "database": {"host": "x"}})
     assert "config_version" in str(exc.value)
-
-
-def test_an_empty_file_needs_no_version():
-    """全走默认值的空文件不必声明版本。"""
-
-    assert check_config_version({}) == {}
-
-
-def test_the_version_key_does_not_reach_the_schema():
-    """``config_version`` 不是 Settings 的字段，留着它会撞上 extra=forbid。"""
-
-    payload = check_config_version(
-        {"config_version": CONFIG_VERSION, "primary_model": {"model_name": "m"}}
-    )
-    assert "config_version" not in payload
-    assert build_settings(payload).primary_model.model_name == "m"
 
 
 # --- 环境变量 ------------------------------------------------------------- #
@@ -188,7 +165,7 @@ def test_list_and_dict_fields_have_no_env_entry():
 def test_effective_config_states_where_each_value_came_from(monkeypatch, tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text(
-        "config_version: 2\ndatabase:\n  host: from-yaml\n", encoding="utf-8"
+        "database:\n  host: from-yaml\n", encoding="utf-8"
     )
     monkeypatch.setenv("CONFIG_PATH", str(path))
     monkeypatch.setenv("JOURNEYPILOT_DATABASE__PORT", "55433")
@@ -209,7 +186,7 @@ def test_a_missing_config_path_is_an_error_not_a_silent_default(monkeypatch, tmp
 def test_secrets_never_survive_the_effective_report(monkeypatch, tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text(
-        'config_version: 2\nprimary_model:\n  api_key: "sk-should-not-leak"\n',
+        'primary_model:\n  api_key: "sk-should-not-leak"\n',
         encoding="utf-8",
     )
     monkeypatch.setenv("CONFIG_PATH", str(path))
@@ -367,15 +344,15 @@ def test_generated_config_docs_are_committed():
 
 
 def test_the_example_config_is_valid_and_current():
-    """示例配置必须能被当前 schema 读进来，并且带着当前版本号。"""
+    """示例配置必须能被当前 schema 读进来。"""
 
     from travel_agent.config.loader import load_yaml
     from travel_agent.paths import BACKEND_DIR
 
     root = BACKEND_DIR
     raw = load_yaml(root / "config.example.yaml")
-    assert raw["config_version"] == CONFIG_VERSION
-    build_settings(check_config_version(raw))
+    assert "config_version" not in raw
+    build_settings(raw)
 
 
 def test_the_example_config_ships_no_api_key():

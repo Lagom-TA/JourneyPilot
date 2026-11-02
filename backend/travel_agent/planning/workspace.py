@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Union
+from typing import Any, Dict, List, Union
 
 from pydantic import Field, model_validator
 
@@ -28,13 +28,7 @@ from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.weather.models import WeatherProposalDecision
 from travel_agent.schema import StrictModel
 
-TRIP_WORKSPACE_CONTRACT_VERSION = "journeypilot.trip_workspace.v15"
-
-
 class TripWorkspaceV2(StrictModel):
-    contract_version: Literal[TRIP_WORKSPACE_CONTRACT_VERSION] = (
-        TRIP_WORKSPACE_CONTRACT_VERSION
-    )
     run_id: str = Field(min_length=1)
     generation_id: str = Field(min_length=1)
     workspace_revision: int = Field(ge=0)

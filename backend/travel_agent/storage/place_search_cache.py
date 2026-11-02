@@ -17,9 +17,6 @@ import hashlib
 import json
 
 
-_SEARCH_CACHE_SCHEMA_VERSION = "nominatim.search.raw.v1"
-
-
 def _search_cache_digest(base_url: str, params: Dict[str, Any]) -> str:
     """一次 provider 请求的完整身份：endpoint 加全部参数。
 
@@ -28,7 +25,6 @@ def _search_cache_digest(base_url: str, params: Dict[str, Any]) -> str:
     """
     payload = json.dumps(
         {
-            "schema_version": _SEARCH_CACHE_SCHEMA_VERSION,
             "base_url": base_url.rstrip("/"),
             "params": {str(key): params[key] for key in sorted(params)},
         },
@@ -75,8 +71,6 @@ class NominatimSearchCache:
             if isinstance(raw, bytes):
                 raw = raw.decode("utf-8")
             payload = json.loads(raw)
-            if payload.get("schema_version") != _SEARCH_CACHE_SCHEMA_VERSION:
-                return None
             items = payload["items"]
             observed_at = datetime.fromisoformat(payload["observed_at"])
         except Exception:
@@ -107,7 +101,6 @@ class NominatimSearchCache:
             return
         payload = json.dumps(
             {
-                "schema_version": _SEARCH_CACHE_SCHEMA_VERSION,
                 "observed_at": observation.observed_at.isoformat(),
                 "items": observation.items,
             },
