@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { cn } from '../../lib/utils';
 
 /* 提示内容可能是补充说明，不能代替控件自身的可及名。 */
@@ -32,6 +32,8 @@ export const Tooltip: React.FC<TooltipProps> = ({
     setVisible(false);
   };
 
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
   const positionClasses = {
     top: 'bottom-full left-1/2 -translate-x-1/2 mb-2',
     bottom: 'top-full left-1/2 -translate-x-1/2 mt-2',
@@ -44,10 +46,13 @@ export const Tooltip: React.FC<TooltipProps> = ({
       className={cn('relative inline-flex', className)}
       onMouseEnter={show}
       onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
     >
       {children}
       {visible && !disabled && (
         <div
+          role="tooltip"
           className={cn(
             'absolute z-50 px-2.5 py-1.5 text-xs font-medium',
             'bg-ink text-white rounded-card shadow-lg',

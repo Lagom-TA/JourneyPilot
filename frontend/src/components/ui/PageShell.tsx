@@ -78,6 +78,7 @@ export const PageShell: React.FC<PageShellProps> = ({
                 value={search.value}
                 onChange={(event) => search.onChange(event.target.value)}
                 placeholder={search.placeholder}
+                aria-label={search.placeholder}
                 icon={<Search size={15} />}
               />
             </m.div>

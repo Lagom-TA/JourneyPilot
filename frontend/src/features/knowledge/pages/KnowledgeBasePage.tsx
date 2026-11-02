@@ -69,7 +69,7 @@ export const KnowledgeBasePage: React.FC = () => {
         </StatusLine>)}
 
       <Modal open={showAddModal} onClose={() => setShowAddModal(false)} title="添加旅行资料" maxWidth="max-w-2xl">
-        <TextArea placeholder="粘贴你的攻略、酒店备选、目的地笔记或交通说明..." value={manualContent} onChange={(e) => setManualContent(e.target.value)} rows={8} className="mb-4"/>
+        <TextArea aria-label="旅行资料正文" placeholder="粘贴你的攻略、酒店备选、目的地笔记或交通说明..." value={manualContent} onChange={(e) => setManualContent(e.target.value)} rows={8} className="mb-4"/>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" size="sm" onClick={() => setShowAddModal(false)}>
             取消

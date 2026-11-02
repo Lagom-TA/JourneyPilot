@@ -55,7 +55,7 @@ export const Modal: React.FC<ModalProps> = ({
     };
   }, [open]);
 
-  useOverlayDismiss({ open, onDismiss: onClose, panelRef });
+  useOverlayDismiss({ open, onDismiss: onClose, panelRef, trapFocus: true });
 
   return (
     <AnimatePresence>
@@ -78,7 +78,6 @@ export const Modal: React.FC<ModalProps> = ({
             ref={panelRef}
             /* div 需要 tabIndex 才能接收打开时的程序化焦点。 */
             tabIndex={-1}
-            /* 这里只移动并归还焦点，未实现 Tab 焦点循环。 */
             role="dialog"
             aria-modal="true"
             aria-label={title}

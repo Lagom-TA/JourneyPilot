@@ -239,7 +239,7 @@ export const UserPreferencesPage: React.FC = () => {
                 e.preventDefault();
                 void handleAddMemory();
             }
-        }} placeholder="例如：我只坐直飞航班"/>
+        }} aria-label="新的记忆内容" placeholder="例如：我只坐直飞航班"/>
             </div>
             <Button variant="secondary" size="md" onClick={() => void handleAddMemory()} loading={adding} disabled={!newMemory.trim()} className="flex-shrink-0">
               <Plus size={14}/>

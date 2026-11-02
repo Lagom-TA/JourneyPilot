@@ -162,16 +162,16 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
         <div className="flex-1 overflow-y-auto overscroll-contain px-6 py-5 min-h-0">
           {step === 0 && (<div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-ink-secondary mb-1.5">名称</label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="如：日本温泉之旅" className="h-10"/>
+                <label htmlFor="preset-name" className="block text-xs font-medium text-ink-secondary mb-1.5">名称</label>
+                <Input id="preset-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="如：日本温泉之旅" className="h-10"/>
               </div>
               <div>
-                <label className="block text-xs font-medium text-ink-secondary mb-1.5">描述</label>
-                <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="如：带孩子的慢节奏文化游" className="h-10"/>
+                <label htmlFor="preset-description" className="block text-xs font-medium text-ink-secondary mb-1.5">描述</label>
+                <Input id="preset-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="如：带孩子的慢节奏文化游" className="h-10"/>
               </div>
               <div>
-                <label className="block text-xs font-medium text-ink-secondary mb-1.5">图标</label>
-                <div className="flex flex-wrap gap-2">
+                <p className="block text-xs font-medium text-ink-secondary mb-1.5">图标</p>
+                <div role="group" aria-label="选择图标" className="flex flex-wrap gap-2">
                   {ICON_OPTIONS.map((opt) => (<button key={opt.value} type="button" onClick={() => setIcon(opt.value)} className={cn('w-10 h-10 rounded-card flex items-center justify-center transition-[color,background-color,transform] duration-base', icon === opt.value
                     ? 'bg-accent/10 text-accent border-2 border-accent/30'
                     : 'bg-ink/5 text-ink-secondary hover:bg-ink/10 border-2 border-transparent')} aria-label={opt.label} title={opt.label}>
@@ -182,8 +182,8 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-ink-secondary mb-1.5">分类</label>
-                <div className="flex flex-wrap gap-2">
+                <p className="block text-xs font-medium text-ink-secondary mb-1.5">分类</p>
+                <div role="group" aria-label="选择分类" className="flex flex-wrap gap-2">
                   {CATEGORY_OPTIONS.map((opt) => (<button key={opt.value} type="button" onClick={() => setCategory(opt.value as PresetCategory)} className={cn('px-3 py-1.5 rounded-card text-xs font-medium transition-colors duration-base', category === opt.value
                     ? 'bg-accent/10 text-accent border border-accent/20'
                     : 'bg-ink/5 text-ink-secondary border border-transparent hover:bg-ink/10')}>
@@ -196,7 +196,7 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
           {step === 1 && (<div className="space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-medium text-ink-secondary">核心指令</label>
+                  <label htmlFor="preset-instructions" className="text-xs font-medium text-ink-secondary">核心指令</label>
                   <button type="button" onClick={() => setShowAiChat(!showAiChat)} className={cn('flex items-center gap-1 px-2 py-1 rounded-card text-xs font-medium transition-colors duration-base', showAiChat
                 ? 'bg-accent-soft text-accent'
                 : 'bg-accent-soft/70 text-accent hover:bg-accent-soft')}>
@@ -204,12 +204,12 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
                     AI 辅助
                   </button>
                 </div>
-                <textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={'你正在以「亲子慢游」模式为用户规划旅行。请遵循以下原则：\n1. 优先选择步行距离短、排队压力低、适合儿童休息的活动。\n2. 每天保留午休或机动时间，避免连续高强度移动。\n3. 对门票预约、年龄限制和安全注意事项给出可核验提醒。'} rows={12} className={cn('w-full rounded-card border border-stroke bg-surface px-3 py-2.5', 'text-sm text-ink placeholder:text-ink-muted leading-relaxed', 'resize-none transition-[color,background-color] duration-base')}/>
+                <textarea id="preset-instructions" value={instructions} onChange={(e) => setInstructions(e.target.value)} placeholder={'你正在以「亲子慢游」模式为用户规划旅行。请遵循以下原则：\n1. 优先选择步行距离短、排队压力低、适合儿童休息的活动。\n2. 每天保留午休或机动时间，避免连续高强度移动。\n3. 对门票预约、年龄限制和安全注意事项给出可核验提醒。'} rows={12} className={cn('w-full rounded-card border border-stroke bg-surface px-3 py-2.5', 'text-sm text-ink placeholder:text-ink-muted leading-relaxed', 'resize-none transition-[color,background-color] duration-base')}/>
               </div>
 
               {showAiChat && (<div className="rounded-card border border-accent/15 bg-panel p-4 shadow-sm">
                   <div className="flex gap-2">
-                    <textarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="例如：我想要一个帮我规划日本深度文化体验的风格，重点关注寺庙、茶道和传统手工艺" rows={3} className={cn('flex-1 rounded-card border border-accent/15 bg-surface px-3 py-2', 'text-sm text-ink placeholder:text-ink-muted leading-relaxed', 'resize-none')}/>
+                    <textarea aria-label="AI 辅助描述" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="例如：我想要一个帮我规划日本深度文化体验的风格，重点关注寺庙、茶道和传统手工艺" rows={3} className={cn('flex-1 rounded-card border border-accent/15 bg-surface px-3 py-2', 'text-sm text-ink placeholder:text-ink-muted leading-relaxed', 'resize-none')}/>
                   </div>
                   {aiError && (<p className="mt-2 text-xs leading-relaxed text-error">{aiError}</p>)}
                   <div className="flex justify-end mt-2">
@@ -226,25 +226,25 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
           {step === 2 && (<div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-ink-secondary mb-1.5">时长建议</label>
-                  <Input value={constraints.duration || ''} onChange={(e) => setConstraints({ ...constraints, duration: e.target.value || undefined })} placeholder="如 3-5天" className="h-9"/>
+                  <label htmlFor="preset-duration" className="block text-xs font-medium text-ink-secondary mb-1.5">时长建议</label>
+                  <Input id="preset-duration" value={constraints.duration || ''} onChange={(e) => setConstraints({ ...constraints, duration: e.target.value || undefined })} placeholder="如 3-5天" className="h-9"/>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-ink-secondary mb-1.5">预算档位</label>
-                  <SelectMenu testId="preset-budget" value={constraints.budget || ''} options={toSelectOptions(selectValuesIncludingStored(BUDGET_VALUES, constraints.budget))} onChange={(v) => setConstraints({ ...constraints, budget: v || undefined })} placeholder="不限" className="h-9"/>
+                  <div role="group" aria-label="预算档位"><p className="block text-xs font-medium text-ink-secondary mb-1.5">预算档位</p>
+                  <SelectMenu testId="preset-budget" value={constraints.budget || ''} options={toSelectOptions(selectValuesIncludingStored(BUDGET_VALUES, constraints.budget))} onChange={(v) => setConstraints({ ...constraints, budget: v || undefined })} placeholder="不限" className="h-9"/></div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-ink-secondary mb-1.5">行程节奏</label>
-                  <SelectMenu testId="preset-pace" value={constraints.pace || ''} options={toSelectOptions(selectValuesIncludingStored(PACE_VALUES, constraints.pace))} onChange={(v) => setConstraints({ ...constraints, pace: v || undefined })} placeholder="不限" className="h-9"/>
+                  <div role="group" aria-label="行程节奏"><p className="block text-xs font-medium text-ink-secondary mb-1.5">行程节奏</p>
+                  <SelectMenu testId="preset-pace" value={constraints.pace || ''} options={toSelectOptions(selectValuesIncludingStored(PACE_VALUES, constraints.pace))} onChange={(v) => setConstraints({ ...constraints, pace: v || undefined })} placeholder="不限" className="h-9"/></div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-ink-secondary mb-1.5">输出风格</label>
-                  <SelectMenu testId="preset-output-style" value={constraints.output_style || ''} options={toSelectOptions(selectValuesIncludingStored(OUTPUT_STYLE_VALUES, constraints.output_style))} onChange={(v) => setConstraints({ ...constraints, output_style: v || undefined })} placeholder="不限" className="h-9"/>
+                  <div role="group" aria-label="输出风格"><p className="block text-xs font-medium text-ink-secondary mb-1.5">输出风格</p>
+                  <SelectMenu testId="preset-output-style" value={constraints.output_style || ''} options={toSelectOptions(selectValuesIncludingStored(OUTPUT_STYLE_VALUES, constraints.output_style))} onChange={(v) => setConstraints({ ...constraints, output_style: v || undefined })} placeholder="不限" className="h-9"/></div>
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-ink-secondary mb-1.5">关注领域</label>
-                <div className="flex flex-wrap gap-1.5">
+                <p className="block text-xs font-medium text-ink-secondary mb-1.5">关注领域</p>
+                <div role="group" aria-label="关注领域" className="flex flex-wrap gap-1.5">
                   {focusAreaChips(FOCUS_AREA_SUGGESTIONS, Array.from(focusAreas)).map((area) => (<button key={area} type="button" onClick={() => toggleFocusArea(area)} className={cn('px-2.5 py-1 rounded-card text-xs font-medium transition-colors duration-base', focusAreas.has(area)
                     ? 'bg-accent/10 text-accent border border-accent/20'
                     : 'bg-ink/5 text-ink-secondary border border-transparent hover:bg-ink/10')}>
