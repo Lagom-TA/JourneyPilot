@@ -102,7 +102,7 @@ function expectCleanFixture(fixture: { pageErrors: string[]; unmocked: string[] 
 }
 
 function writeDestinationEvidence(name: string, data: unknown) {
-  const directory = '../output/polish/20261029-1252-destination-tokens';
+  const directory = '../test-results/e2e-evidence/destination-tokens';
   mkdirSync(directory, { recursive: true });
   writeFileSync(`${directory}/${name}`, JSON.stringify(data, null, 2));
 }
@@ -162,7 +162,6 @@ test('首页布局、四种示例与灵感回填', async ({ page }) => {
     await expect(example.locator('.atlas-example-title')).toHaveText(scene.title);
     await expect(page.locator('.atlas-scene')).toHaveCount(1);
   }
-  await expect(page.locator('.atlas-heading, .atlas-city, .atlas-day-stamp, .atlas-example-count, .atlas-motion-toggle')).toHaveCount(0);
 
   const input = page.getByTestId('natural-trip-input');
   await page.getByRole('button', { name: '用这个灵感填入规划：海口＋三亚 5 日', exact: true }).click();
@@ -196,7 +195,6 @@ test('自动轮播进度与场景键盘导航', async ({ page }) => {
   expect(new Set(panelIds).size).toBe(1);
   expect(panelIds[0]).toBeTruthy();
   await expect(page.locator('.atlas-panel')).toHaveAttribute('id', panelIds[0]!);
-  await expect(page.getByTestId('atlas-motion-toggle')).toHaveCount(0);
 
   const atlas = page.getByTestId('travel-atlas');
   await expect.poll(() => atlas.evaluate((element) => Number(element.style.getPropertyValue('--atlas-progress')))).toBeGreaterThan(0.2);
@@ -299,7 +297,6 @@ test('移动端保持完整示例与输入回填', async ({ page }) => {
 test('减少动态效果时停用环境动画与指针视差', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const fixture = await openHome(page);
-  await expect(page.getByTestId('atlas-motion-toggle')).toHaveCount(0);
   await expect(page.locator('.atlas-liquid-lens')).toHaveCSS('animation-name', 'none');
   await page.mouse.move(1100, 320);
   const nearX = await page.getByTestId('travel-atlas').evaluate((element) => element.style.getPropertyValue('--atlas-near-x'));
@@ -397,16 +394,16 @@ test('双模式共享稳定主按钮、紧凑偏好行与宽窄屏几何', async
     const budget = await page.locator('.planner-budget-input').boundingBox();
     if (viewport.width === 390) await planner.evaluate((element) => element.scrollIntoView({ block: 'nearest' }));
     const structured = await plannerGeometry(page);
-    await page.screenshot({ path: `../output/polish/20261029-1207-home-action-layout/home-${viewport.width}-structured.png`, fullPage: true });
-    await page.screenshot({ path: `../output/polish/20261029-1252-home-form-rhythm/home-${viewport.width}-structured.png`, fullPage: true });
+    await page.screenshot({ path: `../test-results/e2e-evidence/home-action-layout/home-${viewport.width}-structured.png`, fullPage: true });
+    await page.screenshot({ path: `../test-results/e2e-evidence/home-form-rhythm/home-${viewport.width}-structured.png`, fullPage: true });
 
     await naturalTab.click();
     await expect(naturalInput).toHaveValue('想从深圳去杭州，轻松玩几天。');
     await expect(page.locator('.planner-panel-structured')).toHaveAttribute('inert', '');
     if (viewport.width === 390) await planner.evaluate((element) => element.scrollIntoView({ block: 'nearest' }));
     const natural = await plannerGeometry(page);
-    await page.screenshot({ path: `../output/polish/20261029-1207-home-action-layout/home-${viewport.width}-natural.png`, fullPage: true });
-    await page.screenshot({ path: `../output/polish/20261029-1252-home-form-rhythm/home-${viewport.width}-natural.png`, fullPage: true });
+    await page.screenshot({ path: `../test-results/e2e-evidence/home-action-layout/home-${viewport.width}-natural.png`, fullPage: true });
+    await page.screenshot({ path: `../test-results/e2e-evidence/home-form-rhythm/home-${viewport.width}-natural.png`, fullPage: true });
 
     expectStablePlannerGeometry(natural, structured);
     expect(natural.card.bottom - natural.action!.bottom).toBeGreaterThan(10);
@@ -443,8 +440,8 @@ test('双模式共享稳定主按钮、紧凑偏好行与宽窄屏几何', async
       await page.getByRole('button', { name: '更多偏好' }).click();
       await expect(page.getByRole('button', { name: '户外自然', exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: '摄影', exact: true })).toBeVisible();
-      await page.screenshot({ path: '../output/polish/20261029-1207-home-action-layout/home-2000-more-preferences.png', fullPage: true });
-      await page.screenshot({ path: '../output/polish/20261029-1252-home-form-rhythm/home-2000-more-preferences.png', fullPage: true });
+      await page.screenshot({ path: '../test-results/e2e-evidence/home-action-layout/home-2000-more-preferences.png', fullPage: true });
+      await page.screenshot({ path: '../test-results/e2e-evidence/home-form-rhythm/home-2000-more-preferences.png', fullPage: true });
     }
 
     expectCleanFixture(fixture);
@@ -484,11 +481,11 @@ test('目的地首站全宽常驻、紧凑小块换行与二维排序', async ({
   expect(initialAdd.x).toBeGreaterThan(initialSearch.x + initialSearch.width - 1);
   expect(initialAdd.x + initialAdd.width - initialSearch.x).toBeGreaterThanOrEqual(initialField.width - 2);
   expect(Math.abs((initialAdd.y + initialAdd.height / 2) - (initialSearch.y + initialSearch.height / 2))).toBeLessThan(8);
-  await page.screenshot({ path: '../output/polish/20261029-1252-destination-tokens/destination-r9r10-2000-initial.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/destination-tokens/destination-r9r10-2000-initial.png', fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(250);
-  await page.screenshot({ path: '../output/polish/20261029-1252-destination-tokens/destination-r9r10-390-initial.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/destination-tokens/destination-r9r10-390-initial.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.setViewportSize({ width: 2000, height: 880 });
   await page.waitForTimeout(250);
@@ -550,14 +547,14 @@ test('目的地首站全宽常驻、紧凑小块换行与二维排序', async ({
   expect(Math.abs(desktopTwoExpanded.rows[0].top - desktopTwoExpanded.rows[1].top)).toBeLessThan(2);
   const desktopSearch = (await search().boundingBox())!;
   expect(desktopSearch.y).toBeGreaterThanOrEqual(desktopTwoExpanded.rows[0].bottom - 1);
-  await page.screenshot({ path: '../output/polish/20261029-1252-destination-tokens/destination-r9r10-2000-two-expanded.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/destination-tokens/destination-r9r10-2000-two-expanded.png', fullPage: true });
 
   await add.click();
   await expect(search()).toHaveCount(0);
   await expect(tokens).toHaveCount(2);
   await expect(add).toHaveText('新增目的地');
   await expect(add).toBeFocused();
-  await page.screenshot({ path: '../output/polish/20261029-1252-destination-tokens/destination-r9r10-2000-two-collapsed.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/destination-tokens/destination-r9r10-2000-two-collapsed.png', fullPage: true });
 
   await dragToken(1, 0);
   await expect(page.getByTestId('destination-token-0')).toContainText('杭州');
@@ -596,7 +593,7 @@ test('目的地首站全宽常驻、紧凑小块换行与二维排序', async ({
   expect(desktopFive.documentScrollWidth).toBeLessThanOrEqual(desktopFive.viewport.width);
   const fiveInitial = await page.locator('.destination-token-name').allTextContents();
   expect(fiveInitial).toEqual(['苏州', '杭州', '南京', '宁波', '绍兴']);
-  await page.screenshot({ path: '../output/polish/20261029-1252-destination-tokens/destination-r9r10-2000-five-limit.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/destination-tokens/destination-r9r10-2000-five-limit.png', fullPage: true });
 
   await dragToken(0, 1);
   const fullMouseOrder = await page.locator('.destination-token-name').allTextContents();
@@ -616,7 +613,7 @@ test('目的地首站全宽常驻、紧凑小块换行与二维排序', async ({
   expect(rowTops.size).toBeGreaterThanOrEqual(2);
   for (const row of mobileFive.rows) expect(row.width).toBeLessThan(mobileFive.viewport.width * 0.6);
   expect(mobileFive.documentScrollWidth).toBeLessThanOrEqual(mobileFive.viewport.width);
-  await page.screenshot({ path: '../output/polish/20261029-1252-destination-tokens/destination-r9r10-390-five-limit.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/destination-tokens/destination-r9r10-390-five-limit.png', fullPage: true });
 
   const sourceRow = mobileFive.rows[0];
   const targetRow = mobileFive.rows[3];
@@ -624,7 +621,7 @@ test('目的地首站全宽常驻、紧凑小块换行与二维排序', async ({
   await dragToken(0, 3);
   const crossRowMouse = await page.locator('.destination-token-name').allTextContents();
   expect(crossRowMouse).toEqual(['苏州', '南京', '宁波', '杭州', '绍兴']);
-  await page.screenshot({ path: '../output/polish/20261029-1252-destination-tokens/destination-r9r10-390-mouse-cross-row.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/destination-tokens/destination-r9r10-390-mouse-cross-row.png', fullPage: true });
 
   for (let index = 0; index < 5; index += 1) {
     await tokens.last().focus();
@@ -637,17 +634,17 @@ test('目的地首站全宽常驻、紧凑小块换行与二维排序', async ({
   await expect(add).toHaveText('新增目的地');
   await expect(add).toHaveAttribute('aria-expanded', 'true');
   await expect(search()).toBeFocused();
-  await page.screenshot({ path: '../output/polish/20261029-1252-destination-tokens/destination-r9r10-390-zero.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/destination-tokens/destination-r9r10-390-zero.png', fullPage: true });
 
   await choose('苏州', false);
   await add.click();
   await choose('杭州');
   await expect(tokens).toHaveCount(2);
   await expect(search()).toBeVisible();
-  await page.screenshot({ path: '../output/polish/20261029-1252-destination-tokens/destination-r9r10-390-two-expanded.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/destination-tokens/destination-r9r10-390-two-expanded.png', fullPage: true });
   await add.click();
   await expect(search()).toHaveCount(0);
-  await page.screenshot({ path: '../output/polish/20261029-1252-destination-tokens/destination-r9r10-390-two-collapsed.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/destination-tokens/destination-r9r10-390-two-collapsed.png', fullPage: true });
   await tokens.first().locator('.destination-token-remove').click();
   await tokens.first().locator('.destination-token-remove').click();
   await expect(tokens).toHaveCount(0);
@@ -758,7 +755,7 @@ test('日历标记今天、禁用过去并限制跨月 14 天边界', async ({ p
 
   await past.evaluate((element) => (element as HTMLButtonElement).click());
   await expect(trigger).toHaveAttribute('aria-label', '旅行日期：开始日期 → 结束日期');
-  await page.screenshot({ path: '../output/polish/20261029-1207-calendar-date-limits/calendar-desktop-today.png' });
+  await page.screenshot({ path: '../test-results/e2e-evidence/calendar-date-limits/calendar-desktop-today.png' });
 
   await today.click();
   await expect(today).toHaveAttribute('aria-pressed', 'true');
@@ -768,7 +765,7 @@ test('日历标记今天、禁用过去并限制跨月 14 天边界', async ({ p
   await calendarDay(page, '2026-11-12').evaluate((element) => (element as HTMLButtonElement).click());
   await expect(trigger).toHaveAttribute('aria-label', '旅行日期：2026-10-29 → 结束日期');
   await page.waitForTimeout(250);
-  await page.screenshot({ path: '../output/polish/20261029-1207-calendar-date-limits/calendar-desktop-14-day-boundary.png' });
+  await page.screenshot({ path: '../test-results/e2e-evidence/calendar-date-limits/calendar-desktop-14-day-boundary.png' });
 
   await calendarDay(page, '2026-11-11').click();
   await expect(trigger).toHaveAttribute('aria-label', '旅行日期：2026-10-29 → 2026-11-11 · 14 天 13 晚');
@@ -849,7 +846,7 @@ test('移动端单月显示今天与 14 天禁用边界', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '2026 年 11 月', exact: true })).toBeHidden();
   await expect(today).toHaveAttribute('aria-current', 'date');
   await expect(calendarDay(page, '2026-10-28')).toBeDisabled();
-  await page.screenshot({ path: '../output/polish/20261029-1207-calendar-date-limits/calendar-mobile-today.png' });
+  await page.screenshot({ path: '../test-results/e2e-evidence/calendar-date-limits/calendar-mobile-today.png' });
 
   await today.click();
   await dialog.getByRole('button', { name: '下个月', exact: true }).click();
@@ -858,7 +855,7 @@ test('移动端单月显示今天与 14 天禁用边界', async ({ page }) => {
   await expect(calendarDay(page, '2026-11-11')).toBeEnabled();
   await expect(calendarDay(page, '2026-11-12')).toBeDisabled();
   await page.waitForTimeout(250);
-  await page.screenshot({ path: '../output/polish/20261029-1207-calendar-date-limits/calendar-mobile-14-day-boundary.png' });
+  await page.screenshot({ path: '../test-results/e2e-evidence/calendar-date-limits/calendar-mobile-14-day-boundary.png' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   expectCleanFixture(fixture);
 });
@@ -927,7 +924,7 @@ test('390px 真实触摸可从非排序区滚动并按住目的地同排与跨�
   await expect(page.getByTestId('destination-token-1')).toContainText('苏州');
   const sameRowTouchOrder = await page.locator('.destination-token-name').allTextContents();
   expect(sameRowTouchOrder).toEqual(['杭州', '苏州']);
-  await page.screenshot({ path: '../output/polish/20261029-1252-destination-tokens/destination-r9r10-390-touch-two-reorder.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/destination-tokens/destination-r9r10-390-touch-two-reorder.png', fullPage: true });
 
   for (const name of ['南京', '宁波', '绍兴']) await choose(name, false);
   await expect(page.locator('.destination-token')).toHaveCount(5);
@@ -955,15 +952,15 @@ test('390px 真实触摸可从非排序区滚动并按住目的地同排与跨�
   await touch('touchEnd');
   const crossRowTouchOrder = await page.locator('.destination-token-name').allTextContents();
   expect(crossRowTouchOrder).toEqual(['苏州', '南京', '宁波', '杭州', '绍兴']);
-  mkdirSync('../output/polish/20261030-0108-home-form-compact', { recursive: true });
-  writeFileSync('../output/polish/20261030-0108-home-form-compact/touch-orders.json', JSON.stringify({ sameRow: sameRowTouchOrder, crossRow: crossRowTouchOrder }, null, 2));
+  mkdirSync('../test-results/e2e-evidence/home-form-compact', { recursive: true });
+  writeFileSync('../test-results/e2e-evidence/home-form-compact/touch-orders.json', JSON.stringify({ sameRow: sameRowTouchOrder, crossRow: crossRowTouchOrder }, null, 2));
   writeDestinationEvidence('destination-r9r10-touch-orders.json', {
     sameRow: sameRowTouchOrder,
     crossRow: crossRowTouchOrder,
     crossRowFrom: fullFirst,
     crossRowTarget: fullFourth,
   });
-  await page.screenshot({ path: '../output/polish/20261029-1252-destination-tokens/destination-r9r10-390-touch-five-cross-row.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/destination-tokens/destination-r9r10-390-touch-five-cross-row.png', fullPage: true });
 
   expectCleanFixture(fixture);
   await context.close();
@@ -1014,7 +1011,7 @@ test('目的地候选在 Escape、外部操作和切换模式后收起且旧搜�
 });
 
 test('首页紧凑条件表单、开关首排与控件同行 2000px/1440px/390px', async ({ browser }) => {
-  const evidence = '../output/polish/20261030-0108-home-form-compact';
+  const evidence = '../test-results/e2e-evidence/home-form-compact';
   mkdirSync(evidence, { recursive: true });
   const geometry: Record<string, unknown> = {};
   for (const viewport of [{ width: 2000, height: 880 }, { width: 1440, height: 900 }, { width: 390, height: 844 }]) {
@@ -1100,7 +1097,7 @@ test('首页紧凑条件表单、开关首排与控件同行 2000px/1440px/390px
 
 // ---- 多目的地展开稳定性（20261031-1130-home-destination-stability） ----
 
-const destinationStabilityEvidence = '../output/polish/20261031-1130-home-destination-stability';
+const destinationStabilityEvidence = '../test-results/e2e-evidence/home-destination-stability';
 
 type StabilityRect = { x: number; y: number; width: number; height: number; bottom: number; right: number };
 

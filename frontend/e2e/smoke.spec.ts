@@ -54,7 +54,7 @@ test('资料库上传拒绝一份伪装成 PDF 的文件', async ({ request, bas
         mimeType: 'application/pdf',
         buffer: Buffer.from('这其实是一段纯文本，不是 PDF', 'utf-8'),
       },
-      collection: 'default',
+      collection: 'travel_knowledge',
     },
   });
 

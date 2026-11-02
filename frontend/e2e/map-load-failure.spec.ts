@@ -11,7 +11,7 @@ if (process.env.JP_MAP_LOAD_FAILURE_E2E === '1' && !/^http:\/\/127\.0\.0\.1:\d+$
   throw new Error('Offline suite requires an explicit loopback Vite URL');
 }
 
-const EVIDENCE_DIR = '../output/polish/20261031-1156-map-load-failure';
+const EVIDENCE_DIR = '../test-results/e2e-evidence/map-load-failure';
 const EVIDENCE_SUFFIX = process.env.JP_MAP_EVIDENCE_SUFFIX || 'after-fix';
 const TILE_PATTERN = /^https:\/\/webrd0[1-4]\.is\.autonavi\.com\/appmaptile/;
 const DEP_PATTERN = /\/node_modules\/\.vite\/deps\/(?:react-leaflet|leaflet)\.js$/;

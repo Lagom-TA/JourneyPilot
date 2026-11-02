@@ -202,7 +202,7 @@ async function assertOffline(page: Page, fixture: Awaited<ReturnType<typeof offl
   await test.info().attach('offline-boundaries', { body: JSON.stringify(fixture, null, 2), contentType: 'application/json' });
 }
 
-const FOLLOWUP_EVIDENCE_DIR = '../output/polish/20261029-2325-workspace-followup-composer';
+const FOLLOWUP_EVIDENCE_DIR = '../test-results/e2e-evidence/workspace-followup-composer';
 
 type ChatRequestBody = {
   session_id?: string | null;
@@ -278,7 +278,7 @@ type WorkspaceGeometry = {
   viewportWidth: number;
   viewportHeight: number;
 };
-const RECOVERY_EVIDENCE_DIR = '../output/polish/20261029-2325-floating-recovery-notice';
+const RECOVERY_EVIDENCE_DIR = '../test-results/e2e-evidence/floating-recovery-notice';
 const recoveryBundleRequests = (fixture: Awaited<ReturnType<typeof offlineApp>>) =>
   fixture.requests.filter(request => request.startsWith('GET /api/trip-runs/run-A/bundle/current')).length;
 async function workspaceGeometry(page: Page): Promise<WorkspaceGeometry> {
@@ -932,12 +932,12 @@ test('plan gate stays inside the generation workspace through revise retry and a
   await expect(page.getByRole('heading', { name: '确认这趟旅行', exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: '接下来，我们会这样安排', exact: true })).toHaveCount(0);
   await sidebar.evaluate(node => node.setAttribute('data-mount-probe', 'kept'));
-  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/workspace-2000-pending-gate.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/unified-planning-workspace/workspace-2000-pending-gate.png', fullPage: true });
 
   await gate.getByRole('button', { name: '补充或调整旅行要求', exact: true }).click();
   const guide = gate.getByLabel('想改哪里？');
   await guide.fill('每天只安排一个主要景点，午后留出休息时间');
-  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/workspace-2000-gate-editing.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/unified-planning-workspace/workspace-2000-gate-editing.png', fullPage: true });
   await page.evaluate(() => { (window as FixtureWindow).__offlineFailChatAttempts = 3; });
   await gate.getByTestId('plan-gate-supplement').click();
   await expect(gate.getByRole('alert')).toContainText('旅行信息和修改已保留');
@@ -974,7 +974,7 @@ test('plan gate stays inside the generation workspace through revise retry and a
   await expect(workspace.locator('.research-panel-title')).toHaveText('安排每天路线');
   await expect(sidebar).toHaveAttribute('data-mount-probe', 'kept');
   await expect(sidebar.locator('.generation-trip-card')).toBeVisible();
-  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/workspace-2000-approved-research.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/unified-planning-workspace/workspace-2000-approved-research.png', fullPage: true });
   await assertOffline(page, fixture);
 });
 
@@ -988,7 +988,7 @@ test('cancel keeps the current run workspace and restores a pending gate on phon
   await expect(gate).toBeVisible();
   await expect(workspace.locator('.generation-trip-card')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/workspace-390-pending-gate.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/unified-planning-workspace/workspace-390-pending-gate.png', fullPage: true });
 
   await page.setViewportSize({ width: 2000, height: 880 });
   await page.reload();
@@ -1011,7 +1011,7 @@ test('cancel keeps the current run workspace and restores a pending gate on phon
   await expect(workspace.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
   await expect(page.getByText('这次规划已取消。', { exact: true })).toBeVisible();
   await expect(page.getByTestId('new-trip-hero')).toHaveCount(0);
-  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/workspace-2000-cancelled.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/unified-planning-workspace/workspace-2000-cancelled.png', fullPage: true });
   await assertOffline(page, fixture);
 });
 
@@ -1064,7 +1064,7 @@ test('narrow plan gate keeps actions visible and party conditions readable throu
     await expect(gate.getByRole('button', { name: '取消规划', exact: true })).toBeVisible();
     await expect(gate.getByRole('button', { name: '取消规划', exact: true })).toBeEnabled();
     await assertGateGeometry();
-    if (width === 640) await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/workspace-640-pending-gate-special.png', fullPage: true });
+    if (width === 640) await page.screenshot({ path: '../test-results/e2e-evidence/unified-planning-workspace/workspace-640-pending-gate-special.png', fullPage: true });
     await gate.getByRole('button', { name: '补充或调整旅行要求', exact: true }).click();
     const guide = gate.getByLabel('想改哪里？');
     await guide.fill('每天少走一些，预留无障碍休息点');
@@ -1098,7 +1098,7 @@ test('narrow plan gate keeps actions visible and party conditions readable throu
 test('handoff expands from compact requirements to the plan gate and collapses only after server state clears', async ({ page }) => {
   await page.setViewportSize({ width: 2000, height: 880 });
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  const evidence = '../output/polish/20261030-1012-gate-handoff-motion';
+  const evidence = '../test-results/e2e-evidence/gate-handoff-motion';
   mkdirSync(evidence, { recursive: true });
   const fixture = await offlineApp(page, { terminalStatus: 'failed', research: true });
   await page.goto('/');
@@ -1190,7 +1190,7 @@ test('handoff expands from compact requirements to the plan gate and collapses o
 test('handoff reaches restored and reduced-motion targets without a residual size transition', async ({ page }) => {
   await page.setViewportSize({ width: 2000, height: 880 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  const evidence = '../output/polish/20261030-1012-gate-handoff-motion';
+  const evidence = '../test-results/e2e-evidence/gate-handoff-motion';
   mkdirSync(evidence, { recursive: true });
   const fixture = await offlineApp(page, { planGate: true });
   await page.goto('/');
@@ -1227,7 +1227,7 @@ test('handoff reaches restored and reduced-motion targets without a residual siz
 test('trip card integrates companions and style with route facts across desktop and phone', async ({ page }) => {
   await page.setViewportSize({ width: 2000, height: 880 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  const evidence = '../output/polish/20261030-1012-trip-card-layout';
+  const evidence = '../test-results/e2e-evidence/trip-card-layout';
   mkdirSync(evidence, { recursive: true });
   const fixture = await offlineApp(page, { planGate: true, specialParty: true, longTrip: true });
   await page.goto('/');
@@ -1318,7 +1318,7 @@ test('delivered trip refinement gate keeps party context and actions inside the 
   const cancel = gate.getByRole('button', { name: '取消规划', exact: true });
   await expect(approve).toBeEnabled();
   await expect(cancel).toBeEnabled();
-  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/bundle-adjustment-gate-1280.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/unified-planning-workspace/bundle-adjustment-gate-1280.png', fullPage: true });
   await gate.locator('.plan-gate-actions').scrollIntoViewIfNeeded();
   await expect(approve).toBeVisible();
   await expect(cancel).toBeVisible();
@@ -1326,7 +1326,7 @@ test('delivered trip refinement gate keeps party context and actions inside the 
     const rect = element.getBoundingClientRect();
     return rect.top >= 0 && rect.bottom <= window.innerHeight;
   })).toBe(true);
-  await page.screenshot({ path: '../output/polish/20261029-1817-unified-planning-workspace/bundle-adjustment-gate-actions-1280.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/unified-planning-workspace/bundle-adjustment-gate-actions-1280.png', fullPage: true });
   await assertOffline(page, fixture);
 });
 
@@ -1427,7 +1427,7 @@ test('phone sheet closes with Escape and restores the canvas entry', async ({ pa
 
 test('concise delivery keeps unlocated stops, one reason and unresolved plans across views', async ({ page }) => {
   const bundle = structuredClone(deliveryBundle());
-  const evidenceDir = '../output/polish/20261101-0035-generation-05-concise-delivery';
+  const evidenceDir = '../test-results/e2e-evidence/generation-05-concise-delivery';
   const reason = '适合慢步游览。';
   const museum = bundle.workspace.itinerary.visit_stops.find((stop) => stop.item_id === 'visit-shaanxi-museum')!;
   museum.latitude = null;
@@ -1698,7 +1698,7 @@ test('map detail switches selections without overlapping detail panels', async (
 
 test('desktop itinerary layout evidence keeps the panel wide and weather on the date row', async ({ page }) => {
   const fixture = await offlineApp(page, { bundle: true, bundleData: xianLayoutBundle({ dayCount: 5, longTitle: true, weather: 'mixed' }) });
-  const evidenceDir = '../output/polish/20261029-1917-workspace-visual';
+  const evidenceDir = '../test-results/e2e-evidence/workspace-visual';
   mkdirSync(evidenceDir, { recursive: true });
   await page.setViewportSize({ width: 2000, height: 880 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -1731,7 +1731,7 @@ test('desktop itinerary layout evidence keeps the panel wide and weather on the 
 
 test('desktop itinerary layout evidence holds at 1440 and 1280', async ({ page }) => {
   const fixture = await offlineApp(page, { bundle: true, bundleData: xianLayoutBundle({ dayCount: 5, weather: 'mixed' }) });
-  const evidenceDir = '../output/polish/20261029-1917-workspace-visual';
+  const evidenceDir = '../test-results/e2e-evidence/workspace-visual';
   mkdirSync(evidenceDir, { recursive: true });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const viewport of [{ width: 1440, height: 960 }, { width: 1280, height: 900 }]) {
@@ -1757,7 +1757,7 @@ test('desktop itinerary layout evidence holds at 1440 and 1280', async ({ page }
 
 test('phone itinerary layout evidence handles 14 days, a long title and missing weather', async ({ page }) => {
   const fixture = await offlineApp(page, { bundle: true, bundleData: xianLayoutBundle({ dayCount: 14, longTitle: true }) });
-  const evidenceDir = '../output/polish/20261029-1917-workspace-visual';
+  const evidenceDir = '../test-results/e2e-evidence/workspace-visual';
   mkdirSync(evidenceDir, { recursive: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -1790,7 +1790,7 @@ test('phone itinerary layout evidence handles 14 days, a long title and missing 
 
 test('phone itinerary layout evidence handles a single day', async ({ page }) => {
   const fixture = await offlineApp(page, { bundle: true, bundleData: xianLayoutBundle({ dayCount: 1, weather: 'mixed' }) });
-  const evidenceDir = '../output/polish/20261029-1917-workspace-visual';
+  const evidenceDir = '../test-results/e2e-evidence/workspace-visual';
   mkdirSync(evidenceDir, { recursive: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -1858,7 +1858,7 @@ test('desktop today view keeps hover highlights still and selects only on explic
 
 test('hover intent evidence records camera state for hover and explicit selection', async ({ page }) => {
   const fixture = await offlineApp(page, { bundle: true });
-  const evidenceDir = '../output/polish/20261029-1917-hover-intent';
+  const evidenceDir = '../test-results/e2e-evidence/hover-intent';
   mkdirSync(evidenceDir, { recursive: true });
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -1969,7 +1969,7 @@ test('mixed transport map stays clean and usable on a phone', async ({ page }) =
 
 test('mixed transport display merges headings and keeps station truth', async ({ page }) => {
   const fixture = await offlineApp(page, { bundle: true, bundleData: xianTransportDisplayBundle() });
-  const evidenceDir = '../output/polish/20261031-1431-transit-card-redesign';
+  const evidenceDir = '../test-results/e2e-evidence/transit-card-redesign';
   mkdirSync(evidenceDir, { recursive: true });
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.emulateMedia({ reducedMotion: 'reduce' });

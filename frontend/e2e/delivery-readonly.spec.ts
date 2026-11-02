@@ -12,12 +12,10 @@ test('真实交付只读：地图、会话、阅读版、PDF 与旅中视图', a
   await page.addInitScript(sessionId => localStorage.setItem('sta_last_session_id', sessionId), detail.run.session_id);
   await page.goto('/');
   await expect(page.getByTestId('interactive-itinerary')).toBeVisible({ timeout: 30_000 });
-  // 只读交付的边界：不出现编辑入口，也不出现会话页的引导标题。
+  // 只读交付的边界：标记只读，且不出现调整入口与首页引导标题。
+  await expect(page.getByText('历史结果 · 只读')).toBeVisible();
   await expect(page.getByRole('heading', { name: '想去哪里，告诉我。' })).toHaveCount(0);
-  await expect(page.locator('[data-testid^="add-custom-"]')).toHaveCount(0);
-  await expect(page.getByTestId('delivery-undo')).toHaveCount(0);
-  // 只读 Run 不渲染「告诉我想怎么改……」入口；footer 提示只读状态。
-  await expect(page.getByRole('button', { name: '告诉我想怎么改……' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '调整', exact: true })).toHaveCount(0);
   await expect(page.getByText('这份生成记录仅供查看')).toBeVisible();
 
   await page.getByRole('button', { name: '阅读版', exact: true }).click();
