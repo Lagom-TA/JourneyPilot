@@ -1,8 +1,8 @@
 # 架构总览
 
-JourneyPilot 是一个**单机、单进程、单用户**的自托管旅行规划应用。这一句是全部架构决定
-的前提：没有账户系统（[ADR-0001](../adr/ADR-0001-local-single-profile.md)）、没有外部
-消息队列（[ADR-0004](../adr/ADR-0004-durable-local-jobs.md)）、没有多 API worker。
+JourneyPilot 是一个**单机、单进程、单用户**的自托管旅行规划应用。这一句是全部架构决定的
+前提：没有账户系统（[ADR-0001](../adr/ADR-0001-local-single-profile.md)）、没有外部消息队列
+（[ADR-0004](../adr/ADR-0004-durable-local-jobs.md)）、没有多 API worker。
 
 ```text
 浏览器 (React/Vite)
@@ -20,72 +20,54 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
 
 ## 仓库目录
 
-- `backend/travel_agent/`：后端源码，直接位于 backend 下。
-- `backend/tests/`、`backend/migrations/`、`backend/scripts/`：后端测试、迁移与维护脚本。
+- `backend/travel_agent/`：后端源码。
+- `backend/tests/`、`backend/migrations/`、`backend/scripts/`：测试、迁移与维护脚本。
 - `backend/mcp/`：仓内 MCP 服务及其独立 Node 依赖。
-- `backend/travel_agent/resources/providers/`：公开的模型连接模板。
+- `backend/travel_agent/resources/providers/`：模型连接模板（preset）。
 - `frontend/`：前端源码；构建产物默认写入 `backend/static/`，由 API 服务。
 - `infra/`：容器构建、Compose 与基础设施脚本。
-- `docs/`：文档与截图；根目录 `run.sh` 是唯一开发启动器。
+- `docs/`：文档；根目录 `run.sh` 是本地开发启动器。
 
-私有配置 `config.yaml`、`.env`、`.venv` 和运行时数据仍在仓库根目录，
-后端项目清单集中在 `backend/pyproject.toml`，两者不混放。
+私有配置 `config.yaml`、`.env`、`.venv` 和运行时数据在仓库根目录；后端项目清单集中在
+`backend/pyproject.toml`。
 
-## 后端职责归属
+## 代码按职责归属
 
-源码按实际职责归属组织，合同与实现放在各自领域内，不使用统一的 entities、services
-或 guardrails 导出层。调用方直接导入符号的定义模块，包的 `__init__.py` 不汇总这些符号。
-以下路径相对于 `backend/travel_agent/`。
+源码按实际职责归属组织，合同与实现放在各自领域内；调用方直接导入符号的定义模块，包的
+`__init__.py` 不汇总这些符号。以下路径相对于 `backend/travel_agent/`。
 
-- `planning/state.py`：快答与规划共用的唯一图状态，保留全部 checkpoint 字段和 reducer。
-- `planning/graph.py`：规划图的节点、边、条件路由与按 checkpointer 身份区分的编译缓存。
-  `planning/workflow.py` 负责流式运行、checkpoint 合同拒绝和运行上下文，不重复构图。
-- `planning/requirements/`：受控旅行身份、入口守卫、当前需求文字、自然语言研究方案、批准与追加要求。
-  `planning/requirements/constraints/` 分开参数、记忆来源、抽取与展示；快答复用同一套约束。
-  `planning/requirements/approval.py` 提供计划门交互。
-- `planning/research/`：研究方案生成、任务分派、供应商责任与结果、packet 与 catalog 组装。
-  `planning/research/destination/`、`planning/research/accommodation/`、`planning/research/transport/`
-  各自拥有身份绑定和工作节点；交通调研的 `planning/research/transport/rail/` 保留班次选择、
-  证据绑定与站点解析，原始铁路访问仍属于 integrations。
-  `planning/research/dispatch.py` 在 worker 收齐后构建 `RecommendationCatalog`，模型直接读取 catalog 组合行程。
-  `planning/research/prompts.py` 维护共享调研提示合同。
-- `planning/itinerary/`：行程草稿生成、地点解析、住宿基点、开放时间和已选供应的物化。
-  `planning/itinerary/composition.py` 让模型基于 catalog 写出完整草稿，`planning/itinerary/materialize.py`
-  物化为 `TripWorkspace`；接驳、地点与开放时间由各自模块补齐，服务端只做结构解析与身份绑定。
-- `planning/delivery/`：事实、来源、引用、报告与地图投影，公共序列化、天气刷新与交付持久化的原子服务。
-  `planning/delivery/projection_builder.py` 生成报告、地图与来源索引，`planning/delivery/assembly.py`
-  组装 Bundle，`planning/delivery/persistence.py` 在同一事务中提交 Bundle、读回确认、完成状态与终态事件，
-  `planning/delivery/finalizer.py` 负责重试及失败转换。checkpoint 是另一条持久化通道，不能替代已提交
-  Bundle。PDF 排版属于交付，渲染器就绪检查属于 integrations。
-- `conversation/`：路由、输入安全、回答展示及会话合同。
-  `conversation/compaction.py` 只测量和整理会话；`conversation/answer/` 分开汇率上下文、实时工具上下文
-  和快答节点。`conversation/graph.py` 拥有唯一快答图缓存，`conversation/workflow.py` 负责流式更新、
-  完整状态和生命周期回调。
-- `conversation/chat/`：请求准备、费用记录、消息保存、请求自身的租约、断连清理和已持久化交付读取。
-  `conversation/chat/execution.py` 协调这些职责，展示状态与工具、文本、进度事件分开维护。
-- `api/`：HTTP 参数、错误映射、公开投影和 SSE 编码；`api/schemas/`、`api/routes/trip_runs/` 按资源划分，
-  不承担工作流执行、运行取消或交付事务。聊天请求合同归 `conversation/chat/contracts.py`。
-- `bootstrap/`：组件构建、唯一组件注册、启动、关闭、后台任务装配与诊断。
-  `bootstrap/startup.py` 在数据库合同通过后启动写入任务，`bootstrap/shutdown.py` 先停止任务并释放租约，
-  再关闭连接池。
-- `runtime/`：运行与命令合同、状态转换、租约、恢复、后台任务、并发、预算、时限、事件缓冲和时间函数。
-  恢复只读取持久化的 Run 记录、checkpoint 与交付 Bundle，不依赖 planning；后台任务处理器在
-  `bootstrap/jobs.py` 装配。
-- `integrations/`：地点、路线、航班、铁路、汇率和天气供应商访问，以及低层供应商合同与就绪检查。
-  供应商适配器不导入规划状态；地点原始响应缓存由 `storage/place_search_cache.py` 维护。
-- `memory/`：偏好、生命周期合同和记忆提取任务；`storage/` 负责持久化与缓存。
-- 预设的合同归 `planning/requirements/`，种子归 `config/seeds/`，持久化归 `storage/`，
-  提示上下文归 `conversation/preset_context.py`，显式发布归 `config/publication.py`，没有聚合的 preset 包。
-- `config/models.py`、`config/loader.py`、`config/providers.py`、`config/redaction.py` 分别定义配置模型、
-  加载、供应商能力与脱敏，调用方直接导入定义模块；`config/loader.py` 保留唯一的延迟配置缓存。
-  `config/capabilities.py` 检查配置所需依赖；`utils/` 仅保留通用坐标、文本、JSON 和日志脱敏工具。
-
-图节点、约束和运行封装直接归属上述领域，不保留 agents、workflows 或 panels 转发目录。
-`planning/weather/node.py` 负责天气图节点，`planning/presentation.py` 负责节点显示名；
-`planning/costs/estimate.py` 保留预算节点，`planning/trace.py` 维护流式观测合同，
-`storage/checkpoint_pruning.py` 负责 checkpoint 保留清理。CLI 的参数解析、输出与各维护命令分别归属
-`cli/arguments.py`、`cli/output.py` 和对应命令模块，`cli/main.py` 只负责启动顺序与分派。
-公开 API、持久化版本与节点名称独立于模块路径；模块路径不提供兼容导出层。
+- `planning/state.py`：快答与规划共用的图状态与 reducer；`planning/graph.py` 定义节点、边、
+  条件路由与按 checkpointer 区分的编译缓存；`planning/workflow.py` 负责流式运行、checkpoint
+  合同拒绝与运行上下文。节点名与展示名分别在 `planning/nodes.py`、`planning/presentation.py`。
+  `planning/execution.py` 维护截止窗口分表，`planning/trace.py` 维护流式观测合同。
+- `planning/requirements/`：受控旅行身份、入口守卫、当前需求文字、自然语言研究方案、批准与
+  追加要求。`constraints/` 分开参数、记忆来源、抽取与展示；`understanding/` 承载需求理解与
+  追问门；`approval.py` 提供计划门交互；`amendments.py` / `supplements.py` 维护变更。
+- `planning/research/`：研究方案、任务分派、供应商责任与结果、packet 与候选目录组装。
+  `dispatch.py` 按执行计划逐个派发 worker，收齐后由 `assembly.py` 的 `build_candidate_catalog`
+  构建 `RecommendationCatalog`；`destination/`、`transport/`、`accommodation/` 各自拥有身份绑定
+  与工作节点；`failure_protocol.py` 固定失败前缀语义。
+- `planning/itinerary/`：行程草稿生成、地点解析、住宿基点、开放时间与已选供应的物化。
+  `composition.py` 让模型基于 catalog 写出完整草稿，`materialize.py` 物化为 `TripWorkspace`；
+  `connectors.py` / `adjacency.py` 补齐接驳，`day_design.py` / `day_capacity.py` 控制日程密度。
+- `planning/delivery/`：事实、来源、引用、报告与地图投影，以及交付持久化。`assembly.py` 组装
+  Bundle，`projection_builder.py` 生成报告/地图/来源索引，`persistence.py` 在同一事务里提交
+  Bundle、读回确认、完成状态与终态事件，`finalizer.py` 负责重试与失败转换。PDF 排版属于交付，
+  渲染器就绪检查属于 integrations。
+- `conversation/`：路由、输入安全、回答展示与会话合同。`graph.py` 拥有快答图缓存，`workflow.py`
+  负责流式更新与生命周期；`answer/` 分开汇率上下文、实时工具上下文和快答节点；`chat/` 负责
+  请求准备、费用记录、消息保存、租约、断连清理与已持久化交付读取。
+- `api/`：HTTP 参数、错误映射、公开投影与 SSE 编码。`api/schemas/` 与 `api/routes/trip_runs/`
+  按资源划分，不承担工作流执行、运行取消或交付事务；聊天请求合同归 `conversation/chat/contracts.py`。
+- `bootstrap/`：组件构建、唯一注册、启动/关闭、后台任务装配与诊断（`bootstrap/jobs.py`）。
+- `runtime/`：运行与命令合同、状态转换、租约、恢复、后台任务、并发、预算、时限、事件缓冲与
+  时间函数。恢复只读取持久化的 Run 记录、checkpoint 与交付 Bundle，不依赖 planning。
+- `integrations/`：地点、路线、航班、铁路、汇率和天气供应商访问，以及供应商就绪检查；
+  适配器不导入规划状态。`storage/` 负责持久化与缓存，`memory/` 负责偏好、生命周期合同与
+  记忆提取任务。
+- `config/`：`models.py`（唯一 schema）、`loader.py`（加载与来源）、`providers.py`（preset 能力）、
+  `redaction.py`（脱敏）、`capabilities.py`（依赖检查）。`utils/` 只放通用坐标、文本、JSON 与
+  日志脱敏工具；`cli/` 按命令拆分，`cli/main.py` 只负责启动顺序与分派。
 
 ## 三条边界
 
@@ -96,50 +78,46 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
 **二、Schema 只由迁移改。** API 进程不执行 DDL，只做一次只读的结构合同校验
 （[ADR-0002](../adr/ADR-0002-versioned-migrations.md)）。
 
-**三、每条高成本通道都有显式上限，而且上限可以被看见。**
-容量、并发、时间、费用四类边界各有配置项与读数
-（[ADR-0006](../adr/ADR-0006-resource-budgets-and-isolation.md)），
-运营者从 `GET /api/health/ready` 与 `journeypilot doctor` 读它们。
+**三、每条高成本通道都有显式上限，而且上限可以被看见。** 容量、并发、时间、费用四类边界
+各有配置项与读数（[ADR-0006](../adr/ADR-0006-resource-budgets-and-isolation.md)）；运营者从
+`GET /api/health/ready` 与 `journeypilot doctor` 读它们。
 
 ## 一次请求走过什么
 
-0. **入口与工作台**：表单表达正式规划；自然语言由模型判断普通提问还是正式规划。
-   点击开始规划立即建 TripRun 并进入旅行工作台；普通问答走快问快答的轻量工具回答，
-   展示在同一工作台，等待理解也不回到首页补问。
-1. **会话整理**：`scope_clarifier` 只做入口的会话压缩，不再断言旅行身份是否齐全。
-2. **需求理解**：`understanding_agent` 以明确的强模型角色（primary 档，带真实工具协议）
-   整体理解原文、表单基础信息与历史问答：能查到的用工具查（联网资料、真实地点），
-   只有值得用户决定的问题才通过 `understanding_gate` 暂停提问；回答回到同一模型继续理解，
-   已答内容不重复询问，也没有固定题库或强制提问轮次。信息充分后模型给出受控旅行身份
+0. **入口与工作台**：表单表达正式规划；自然语言由模型判断普通提问还是正式规划。点击开始
+   规划立即建 TripRun 并进入旅行工作台；普通问答走快问快答，展示在同一工作台。
+1. **会话整理**：`scope_clarifier` 做入口的会话压缩，不在这里断言旅行身份是否齐全。
+2. **需求理解**：`understanding_agent` 以 primary 档模型带真实工具协议理解原文、表单信息与
+   历史问答：能查到的用工具查（联网资料、真实地点），只有值得用户决定的问题才通过
+   `understanding_gate` 暂停提问；回答回到同一模型继续理解。信息充分后模型给出受控旅行身份
    （地点来自工具查到的真实记录）并写回 Run 行。
-3. **需求文字**：`requirements_preparer` 把用户原话、理解问答和后续补充按顺序保存为
-   当前需求文字并推进规划版本；用户原话不做逐条语义审批，也不展示单独的参数确认页。
+3. **需求文字**：`requirements_preparer` 把用户原话、理解问答和后续补充按顺序保存为当前需求
+   文字并推进规划代际；用户原话不做逐条语义审批，也不展示单独的参数确认页。
 4. **研究与安排方案**：`research_plan_generator` 让模型根据基础信息和当前需求写出简短方案，
-   并为目的地、交通、住宿和行程组合分别写下任务；`minimum_delivery_draft_builder`
-   生成 `MinimumDeliveryDraft`；`destination_geo_resolver` 使用已确认地点坐标准备目的地边界；
-   `trip_summary_card_brief` 生成摘要；`planner` 把模型任务直接交给各角色。
-5. **方案确认**：`plan_gate` 强制暂停，等待用户 approve / supplement / retry / cancel；
-   `run_control.plan_gate_enabled` 必须开启，否则 Run 直接失败。确认时封存 Draft、
-   `RunDeadlineSnapshot` 与 `RunBudgetSnapshot`，时间与费用上限从这一刻起固定。
-   修改转成 `IntentAmendment`，进入当前需求文字并失效旧方案和旧研究结果。
+   并为目的地、交通、住宿和行程组合写下任务；`minimum_delivery_draft_builder` 生成
+   `MinimumDeliveryDraft`；`destination_geo_resolver` 准备目的地边界；`trip_summary_card_brief`
+   生成摘要；`planner` 把任务交给各角色。
+5. **方案确认**：`plan_gate` 暂停等待用户 approve / supplement / retry / cancel。关闭
+   `run_control.plan_gate_enabled` 时，新的完整调研会在创建 Run 前被拒绝（409
+   `plan_gate_disabled`），快问快答不受影响。确认时封存 Draft、`RunDeadlineSnapshot` 与
+   `RunBudgetSnapshot`；修改转成 `IntentAmendment`，进入当前需求文字并失效旧方案与旧研究结果。
 6. **研究**：批准并封存预算后，`weather_context_builder` 获取规划天气；研究按
    `destination_researcher` → `transport_researcher` → `accommodation_researcher` 串行推进，
-   `dispatcher` 逐个派发，后一位角色通过上游研究视图读取前序成果。
-   Worker 接收相关基础信息、当前需求和自己的任务，在自身工具范围内决定查询，并按运行租约、
-   取消与预算控制调用工具，返回带字段和来源的 `ResearchPacket`。
-7. **候选目录**：Worker 完成后，`dispatcher` 收齐 packet，调用 `assembly.py` 的
-   `build_candidate_catalog` 构建 `RecommendationCatalog`；
+   `dispatcher` 逐个派发，后一位角色通过上游研究视图读取前序成果。Worker 接收基础信息、当前
+   需求和自己的任务，在自身工具范围内决定查询，并按运行租约、取消与预算控制调用工具，返回
+   带字段和来源的 `ResearchPacket`。
+7. **候选目录**：Worker 完成后，`dispatcher` 收齐 packet 并构建 `RecommendationCatalog`；
    catalog 保留 generation 一致性检查，拦截过期产物。
 8. **组合**：`itinerary_planner` 读取 catalog，由模型直接写出完整行程草稿，再物化为
-   `TripWorkspace`。服务端负责结构解析、身份绑定与时间线物化，不做内容质量裁决；
-   接驳缺口由服务端按真实路线补齐。
+   `TripWorkspace`。服务端负责结构解析、身份绑定与时间线物化，不做内容质量裁决；接驳缺口
+   由服务端按真实路线补齐。
 9. **交付**：`delivery_projector` 从同一 Workspace 生成报告、地图与来源索引；`delivery_finalizer`
    原子提交唯一的 `DeliveryBundle`。工作台、报告、PDF 与来源列表都来自这份记录。
 
-计划门修改和运行中追加要求先进入当前需求，由理解阶段结合已有基础信息与最新表达处理，随后生成新的研究设想。
-已交付旅行的后续输入先结合当前安排判断：问答读取现有结果，局部调整复用已保存的候选与组合能力，
-基础条件变化进入新的理解与方案确认。修改使用关联原旅行的新 Run；成功交付后切换到新结果，
-旧结果保留，失败时仍可读取。
+计划门修改和运行中追加要求先进入当前需求，由理解阶段结合已有基础信息与最新表达处理，随后
+生成新的研究设想。已交付旅行的后续输入先结合当前安排判断：问答读取现有结果，局部调整复用
+已保存的候选与组合能力，基础条件变化进入新的理解与方案确认。修改使用关联原旅行的新 Run；
+成功交付后切换到新结果，旧结果保留，失败时仍可读取。
 
 ## 从哪里继续读
 
