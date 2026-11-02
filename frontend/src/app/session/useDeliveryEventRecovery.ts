@@ -7,6 +7,7 @@ import { useApp } from "../state/AppContext";
 import { isPublicDeliveryBundle } from "../../features/travel/types/delivery";
 import { type TripRunEventResponse, type TripRunEventWindowResponse } from "../../features/travel/types/runs";
 import React from 'react';
+import { pruneRecoveryRegistries } from './recoveryRegistries';
 const POLL_INTERVAL_MS = 750;
 const MAX_RETRY_INTERVAL_MS = 5000;
 const TERMINAL_WITHOUT_DELIVERY = new Set(['failed', 'cancelled']);
@@ -46,6 +47,12 @@ export function useDeliveryEventRecovery(): void {
     React.useEffect(() => {
         if (!runId)
             return;
+        // 恢复通道只服务当前 Run；保留当前与最近少量 Run，避免注册表无限增长。
+        pruneRecoveryRegistries({
+            cursorByRun: cursorByRun.current,
+            readyRuns: readyRuns.current,
+            finalizedRuns: finalizedRuns.current,
+        }, runId);
         if (finalizedRuns.current.has(runId)) {
             const current = currentStateRef.current;
             if (current.currentTripRunId === runId && current.deliveryBundle?.manifest.run_id === runId) {
@@ -77,6 +84,7 @@ export function useDeliveryEventRecovery(): void {
             return true;
         };
         const monitor = async () => {
+            // SSE 可能断线，事件窗口轮询是交付恢复通道；paused/terminal 状态会退出循环。
             while (active) {
                 const requestedAfter = cursorByRun.current.get(runId) ?? 0;
                 try {
@@ -113,9 +121,6 @@ export function useDeliveryEventRecovery(): void {
                                 payload: { status: 'idle', message: null },
                             });
                         }
-                    }
-                    else {
-                        failures = 0;
                     }
                     if (window.run_status === 'completed') {
                         if (!window.current_bundle_id) {

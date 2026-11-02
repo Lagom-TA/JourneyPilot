@@ -3,10 +3,12 @@ import { useCallback } from "react";
 import { useApp } from "../state/AppContext";
 import { stopOutcomeFromError } from "../../features/travel/model/stopOutcome";
 import { isTripRunStatus } from "../../features/travel/types/runs";
+import { stopRunUiState } from "./stopRunUi";
 export function useStopRun() {
-    const { state, dispatch, activeStreamAbortRef } = useApp();
+    const { state, dispatch, activeStreamAbortRef, currentStateRef } = useApp();
     const stopRun = useCallback(async () => {
         const runId = state.currentTripRunId;
+        const sessionId = state.currentSessionId;
         const hadPendingDecision = state.currentTripRunStatus === 'awaiting_input';
         let cancelAccepted = !runId;
         let cancelMessage = '';
@@ -31,6 +33,9 @@ export function useStopRun() {
                 }
             }
         }
+        if (currentStateRef.current.currentTripRunId !== runId || currentStateRef.current.currentSessionId !== sessionId) {
+            return;
+        }
         if (activeStreamAbortRef.current) {
             activeStreamAbortRef.current.abort();
             activeStreamAbortRef.current = null;
@@ -39,13 +44,14 @@ export function useStopRun() {
         if (cancelAccepted && hadPendingDecision) {
             dispatch({ type: 'MARK_PENDING_DECISIONS_CANCELLED' });
         }
-        dispatch({ type: 'SET_INPUT_MODE', payload: cancelAccepted ? 'stopped' : 'normal' });
+        const uiState = stopRunUiState({ hasRun: Boolean(runId), accepted: cancelAccepted, hadPendingDecision });
+        dispatch({ type: 'SET_INPUT_MODE', payload: uiState.inputMode });
         const msgs = state.currentMessages;
         const lastMsg = msgs[msgs.length - 1];
         if (lastMsg?.role === 'assistant' && !hadPendingDecision) {
             dispatch({
                 type: 'UPDATE_MESSAGE_BY_ID',
-                payload: cancelAccepted
+                payload: uiState.markLastInterrupted
                     ? { id: lastMsg.id, type: 'interrupted', streamCompleted: true }
                     : {
                         id: lastMsg.id,
@@ -58,6 +64,7 @@ export function useStopRun() {
         }
     }, [
         activeStreamAbortRef,
+        currentStateRef,
         state.currentMessages,
         state.currentTripRunId,
         state.currentTripRunStatus,
