@@ -1,13 +1,10 @@
-import { type VisitStop, type DiningStop, type LodgingPriceKind, type LodgingAvailabilityStatus, type TransportLeg, type TransportMode, type TransportEndpoint, type TransportSegment, type DayPlan } from "./entities";
+import { type EntityType, type BookingStatus, type LodgingAvailabilityStatus, type LodgingPriceKind, type MealType, type RouteStatus, type TransportClass, type TransportEndpoint, type TransportMode, type TransportSegment, type VisitType } from "./entities";
 import { type CostCoverageSummary } from "./report";
 export type EvidenceBasis = 'cited_source' | 'public_reference' | 'reference_service';
 export interface EntityIntentExplanation {
     label: string;
     explanation: string;
     evidence_basis: 'verified_fact' | 'supported_description' | 'planning_judgment';
-}
-export interface IntentExplanationRecord extends EntityIntentExplanation {
-    intent_id: string;
 }
 export interface PublicVisitStop {
     type: 'visit_stop';
@@ -23,7 +20,7 @@ export interface PublicVisitStop {
     duration_minutes: number;
     estimated_cost_cny: number | null;
     selection_reason: string;
-    visit_type: VisitStop['visit_type'];
+    visit_type: VisitType;
     opening_window: string | null;
     reservation_required: boolean | null;
     visit_highlights: string[];
@@ -44,7 +41,7 @@ export interface PublicDiningStop {
     duration_minutes: number;
     estimated_cost_cny: number | null;
     selection_reason: string;
-    meal_type: DiningStop['meal_type'];
+    meal_type: MealType;
     cuisine_types: string[];
     average_spend_cny: number | null;
     recommended_dishes: string[];
@@ -77,7 +74,7 @@ export interface PublicLodgingStay {
 export interface PublicTransportLeg {
     type: 'transport_leg';
     transport_leg_id: string;
-    transport_class: TransportLeg['transport_class'];
+    transport_class: TransportClass;
     selected_mode: TransportMode;
     from_endpoint: TransportEndpoint;
     to_endpoint: TransportEndpoint;
@@ -90,8 +87,8 @@ export interface PublicTransportLeg {
     total_cost_cny: number | null;
     transfer_count: number;
     segments: TransportSegment[];
-    booking_status: TransportLeg['booking_status'];
-    route_status: TransportLeg['route_status'];
+    booking_status: BookingStatus;
+    route_status: RouteStatus;
     mode_preference: {
         locked_mode: TransportMode | null;
         excluded_modes: TransportMode[];
@@ -110,6 +107,21 @@ export interface PublicCustomBlock {
     planned_end: string | null;
     duration_minutes: number | null;
 }
+export interface DayPlan {
+    day_id: string;
+    day: number;
+    date: string | null;
+    destination_id: string | null;
+    theme: string;
+    timeline: Array<{
+        entry_id: string;
+        entity_type: EntityType;
+        entity_id: string;
+        projection_role: 'full' | 'departure' | 'arrival' | 'check_in' | 'check_out';
+    }>;
+    estimated_cost_cny: number | null;
+}
+
 export interface PublicStructuredItinerary {
     itinerary_id: string;
     title: string;

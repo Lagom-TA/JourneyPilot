@@ -1,4 +1,4 @@
-import { type EntityRef, type TransportMode, type TransportLeg, type TransportEndpoint, type TransportSegment } from "./entities";
+import { type EntityRef, type RouteStatus, type TransportClass, type TransportMode, type TransportEndpoint, type TransportSegment } from "./entities";
 import { type EvidenceBasis, type SelectionSlotType } from "./itinerary";
 export interface PublicCitationProjection {
     citation_id: string;
@@ -136,9 +136,9 @@ export interface MapProjection {
         }>;
         routes: Array<{
             entity_ref: EntityRef;
-            transport_class: TransportLeg['transport_class'];
+            transport_class: TransportClass;
             selected_mode: TransportMode;
-            route_status: TransportLeg['route_status'];
+            route_status: RouteStatus;
             from_endpoint: TransportEndpoint;
             to_endpoint: TransportEndpoint;
             segments: TransportSegment[];
