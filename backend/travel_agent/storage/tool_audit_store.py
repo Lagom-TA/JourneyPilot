@@ -300,31 +300,6 @@ class ToolAuditStore:
             return [_record_from_row(dict(row)) for row in result.mappings().all()]
 
 
-class InMemoryToolAuditStore(ToolAuditStore):
-    """内存工具审计仓储，保持 audit_id 幂等语义。"""
-
-    def __init__(self) -> None:
-        self.records: Dict[str, ToolAuditRecord] = {}
-
-    async def record_envelope(self, envelope: Dict[str, Any], **kwargs: Any) -> ToolAuditRecord:
-        # 调用方漏传必需的 manifest 时立即报错。
-        if "manifest" not in kwargs:
-            raise KeyError("manifest")
-        record = build_audit_record_from_envelope(envelope, **kwargs)
-        if record.audit_id in self.records:
-            existing = self.records[record.audit_id]
-            _assert_audit_idempotent(existing, record)
-            return existing
-        record.metadata = sanitize_audit_metadata(record.metadata)
-        self.records[record.audit_id] = record
-        return record
-
-    async def list_by_run(self, run_id: str, *, limit: int = 100) -> List[ToolAuditRecord]:
-        records = [record for record in self.records.values() if record.run_id == run_id]
-        records.sort(key=lambda record: record.created_at, reverse=True)
-        return records[: max(1, min(limit, 200))]
-
-
 _tool_audit_store_singleton: Optional[ToolAuditStore] = None
 
 

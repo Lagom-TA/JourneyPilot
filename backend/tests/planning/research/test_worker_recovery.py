@@ -11,9 +11,9 @@ from travel_agent.planning.recovery import with_worker_recovery
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.journal import WorkerJournal, current_worker_journal
 from travel_agent.storage.worker_journal_store import (
-    InMemoryWorkerJournalStore,
-    JournalConflict,
+    JournalConflict, 
 )
+from tests.support.memory_stores import InMemoryWorkerJournalStore
 from travel_agent.tools import execution, react
 from travel_agent.tools.exposure import ToolExposurePlan
 
@@ -383,7 +383,7 @@ async def test_new_langgraph_dispatch_does_not_replay_previous_failed_attempt():
 
 
 async def test_repeated_side_effecting_tool_calls_are_never_locally_cached(monkeypatch):
-    from travel_agent.storage.tool_audit_store import InMemoryToolAuditStore
+    from tests.support.memory_stores import InMemoryToolAuditStore
     from travel_agent.tools.gateway_contracts import ToolManifest
     from travel_agent.tools.registry import ToolRegistry
 

@@ -104,7 +104,7 @@ async def offline_graph(monkeypatch):
     from travel_agent.planning.requirements.understanding import agent as understanding_agent
     from travel_agent.planning.research import research_plan_node
     from travel_agent.tools import execution, react
-    from travel_agent.storage.trip_run_store import InMemoryTripRunStore
+    from tests.support.memory_stores import InMemoryTripRunStore
 
     model = UnderstandingModel()
     for module in (understanding_agent, research_plan_node):

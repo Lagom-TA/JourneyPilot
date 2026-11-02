@@ -157,8 +157,8 @@ async def test_latest_user_words_and_confirmed_tasks_reach_research_and_delivery
             return unavailable_weather_context(requests, trip_start_date=trip_start_date, trip_end_date=trip_end_date)
     monkeypatch.setattr(weather, "_configured_builder", lambda config: WeatherBuilder())
 
-    from travel_agent.storage.delivery_bundle_store import InMemoryDeliveryBundleStore
-    from travel_agent.storage.trip_run_store import InMemoryTripRunStore
+    from tests.support.memory_stores import InMemoryDeliveryBundleStore
+    from tests.support.memory_stores import InMemoryTripRunStore
     from travel_agent.runtime.run_contracts import TripRunStatus
 
     bundles, runs = InMemoryDeliveryBundleStore(), InMemoryTripRunStore()

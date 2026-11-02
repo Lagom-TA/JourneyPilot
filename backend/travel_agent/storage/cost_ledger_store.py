@@ -12,7 +12,7 @@
 - **互斥输入桶**：``(input-read-write)×p_in + read×p_read + write×p_write + output×p_out``；
   reasoning 已含在 output_tokens 里，不另算。
 - **聚合走查询期**：表小无需预聚合；``run_summary`` 拉全量行后用纯函数 ``summarize_calls``
-  聚合，SQL 与 InMemory 两实现共用同一聚合逻辑，保证形状一致、可单测。
+  聚合，SQL 与测试用内存实现共用同一聚合逻辑，保证形状一致、可单测。
 """
 
 from __future__ import annotations
@@ -232,7 +232,7 @@ def build_ledger_call(
 
 
 # --------------------------------------------------------------------------- #
-# run 级聚合（纯函数，SQL 与 InMemory 共用）
+# run 级聚合（纯函数，SQL 与测试用内存实现共用）
 # --------------------------------------------------------------------------- #
 
 def _call_total(call: LLMCostCall) -> Optional[int]:
@@ -424,7 +424,7 @@ def cost_event_summary(summary: Dict[str, Any]) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# 台账存储：SQL + InMemory 双实现
+# 台账存储（SQL 实现；测试用内存实现见 backend/tests/support）
 # --------------------------------------------------------------------------- #
 
 def _call_from_row(row: Dict[str, Any]) -> LLMCostCall:
@@ -628,51 +628,6 @@ class CostLedgerStore:
         summary = summarize_calls(run_id, calls)
         from ..llm.usage import get_usage_recorder
         return await asyncio.to_thread(get_usage_recorder().apply_integrity, summary)
-
-
-class InMemoryCostLedgerStore(CostLedgerStore):
-    """内存成本台账，提供相同的异步接口。"""
-
-    def __init__(self) -> None:
-        self.calls: List[LLMCostCall] = []
-        self._ids: set[str] = set()
-
-    async def record_calls(
-        self,
-        batch: List[LLMCallRecord],
-        *,
-        pricing: Optional[List[ModelPricingItem]] = None,
-    ) -> List[LLMCostCall]:
-        ledger = [build_ledger_call(rec, pricing=pricing) for rec in batch if rec and rec.run_id]
-        inserted: List[LLMCostCall] = []
-        for call in ledger:
-            if call.id in self._ids:
-                existing = next(c for c in self.calls if c.id == call.id)
-                _assert_ledger_idempotent(existing, call)
-                continue  # 幂等：同 id 同内容不重复落
-            self._ids.add(call.id)
-            self.calls.append(call)
-            inserted.append(call)
-        return inserted
-
-    def _run_calls(self, run_id: str) -> List[LLMCostCall]:
-        rows = [call for call in self.calls if call.run_id == run_id]
-        rows.sort(key=lambda c: (c.start_ts or "", c.id))
-        return rows
-
-    async def list_calls(
-        self,
-        run_id: str,
-        *,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> List[LLMCostCall]:
-        rows = self._run_calls(run_id)
-        start = max(0, offset)
-        return rows[start : start + max(1, min(limit, 500))]
-
-    async def run_summary(self, run_id: str) -> Dict[str, Any]:
-        return summarize_calls(run_id, self._run_calls(run_id))
 
 
 _cost_ledger_store_singleton: Optional[CostLedgerStore] = None

@@ -4,7 +4,6 @@
 租约约束，全部在一个业务数据库事务内完成。图 checkpoint 与该事务不视为同一次
 提交。
 """
-from copy import deepcopy
 from functools import wraps
 
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
@@ -75,17 +74,3 @@ class WorkerJournalStore:
         return updated
 
 
-class InMemoryWorkerJournalStore:
-    """故障注入用的内存实现；生产环境不会回退到它。"""
-    def __init__(self):
-        self.rows = {}
-
-    async def load(self, run_id, scope_id):
-        return deepcopy(self.rows.get((run_id, scope_id), (0, {})))
-
-    async def save(self, run_id, scope_id, version, payload, *, lease_token=None):
-        key = run_id, scope_id
-        if self.rows.get(key, (0, {}))[0] != version:
-            raise JournalConflict("concurrent worker journal write")
-        self.rows[key] = version + 1, deepcopy(payload)
-        return version + 1

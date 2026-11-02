@@ -135,7 +135,7 @@ async def test_disabled_tool_not_exposed_and_direct_call_denied(knowledge, monke
 async def test_checkpoint_replay_keeps_fragments_and_rechecks_authorization(knowledge, monkeypatch):
     from travel_agent.config import loader
     from travel_agent.runtime.journal import WorkerJournal, current_worker_journal
-    from travel_agent.storage.worker_journal_store import InMemoryWorkerJournalStore
+    from tests.support.memory_stores import InMemoryWorkerJournalStore
 
     search, tools = knowledge
     journal = WorkerJournal(InMemoryWorkerJournalStore(), "run", "scope", 0, {}, None)
