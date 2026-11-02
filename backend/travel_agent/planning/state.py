@@ -65,11 +65,6 @@ def _merge_dicts_allow_clear(a: Dict, b: Dict) -> Dict:
     return {**a, **b}
 
 
-def _merge_lists(a: List[Any], b: List[Any]) -> List[Any]:
-    """轻量 bridge 摘要的追加式列表归并器。"""
-    return list(a or []) + list(b or [])
-
-
 def _replace_amendments(
     _a: List[IntentAmendment], b: List[IntentAmendment]
 ) -> List[IntentAmendment]:
@@ -137,20 +132,6 @@ def _prefer_non_empty_str(a: Optional[str], b: Optional[str]) -> Optional[str]:
     return b or a
 
 
-def _prefer_pending_choice(
-    a: Optional[Dict[str, Any]],
-    b: Optional[Dict[str, Any]],
-) -> Optional[Dict[str, Any]]:
-    """
-    澄清选项聚合：
-    - 仅一侧有值：返回该值
-    - 双侧都有值：保留先到达的值（避免覆盖造成前端抖动）
-    """
-    if a and b:
-        return a
-    return b or a
-
-
 def _prefer_latest_dict(
     a: Optional[Dict[str, Any]], b: Optional[Dict[str, Any]]
 ) -> Optional[Dict[str, Any]]:
@@ -196,7 +177,6 @@ class TravelAgentState(BaseModel):
     - 基础设施：前置 destination_geo / weather_context
     - 编排：execution_plan, current_plan_step, agent_assignments, next_agent
     - Worker 输出：agent_status 与强类型 Research Packet / Workspace
-    - 用户交互：pending_user_choice
     - 系统：current_time, selected_mcp_servers, tool_cache 等
     """
 
@@ -301,9 +281,6 @@ class TravelAgentState(BaseModel):
     delivery_failure: Optional[DeliveryFailureRecord] = None
     delivery_persisted: bool = False
 
-    pending_user_choice: Annotated[Optional[Dict[str, Any]], _prefer_pending_choice] = (
-        None
-    )
     plan_gate_decision: Annotated[Optional[Dict[str, Any]], _prefer_latest_dict] = None
     plan_gate_revision_count: int = 0
     plan_gate_amendment: Annotated[

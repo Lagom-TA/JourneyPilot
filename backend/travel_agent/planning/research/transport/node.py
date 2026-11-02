@@ -195,8 +195,6 @@ async def transport_researcher_node(
         await discover_domestic_rail_route(
             state=state,
             messages=messages,
-            required_transport_classes=None,
-            connector_gaps=None,
             tool_context=tool_context,
             authoritative_tool_results=authoritative_tool_results,
             reference_services=reference_services,

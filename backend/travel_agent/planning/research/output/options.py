@@ -70,33 +70,6 @@ def _eligible_route_selection_options(
     return options
 
 
-def has_required_provider_route_selection_options(
-    context_messages: Sequence[Mapping[str, Any]],
-    *,
-    required_transport_classes: Sequence[str] | None,
-    excluded_candidate_ids: Sequence[str] | None = None,
-    required_route_scopes: Sequence[ProviderEvidenceScope] = (),
-) -> bool:
-    """要求每条已分配的精确路线腿都有可选的 Provider 方案。"""
-    options = _eligible_route_selection_options(
-        context_messages,
-        required_transport_classes=required_transport_classes,
-        excluded_candidate_ids=excluded_candidate_ids,
-        required_route_scopes=required_route_scopes,
-    )
-    expected_scope_ids = {
-        scope.scope_id
-        for scope in required_route_scopes
-        if scope.transport_class == "long_distance"
-    }
-    if not expected_scope_ids:
-        return bool(options)
-    option_scope_ids = {
-        str(option.get("provider_evidence_scope_id") or "") for option in options
-    }
-    return expected_scope_ids <= option_scope_ids
-
-
 def _eligible_place_selection_options(
     context_messages: Sequence[Mapping[str, Any]],
     expected_worker: ResearchWorkerKind,
@@ -157,7 +130,7 @@ def _eligible_place_selection_options(
 
 
 @dataclass(frozen=True)
-class ObservedPlaceNominations:
+class _ObservedPlaceNominations:
     """本轮观察到的 Provider 查询以及可选择的地点头。"""
 
     lookups: tuple[PlaceLookup, ...]
@@ -168,7 +141,7 @@ def observed_place_nominations(
     context_messages: Sequence[Mapping[str, Any]],
     *,
     expected_worker: ResearchWorkerKind,
-) -> ObservedPlaceNominations:
+) -> _ObservedPlaceNominations:
     """本轮向地点 Provider 发起的查询、返回结果与可选择的身份。"""
     lookups: list[PlaceLookup] = []
     for message in context_messages:
@@ -202,7 +175,7 @@ def observed_place_nominations(
                 )
         lookups.append(PlaceLookup(query=query, identities=tuple(identities)))
     options = _eligible_place_selection_options(context_messages, expected_worker)
-    return ObservedPlaceNominations(
+    return _ObservedPlaceNominations(
         lookups=tuple(lookups),
         selectable_place_ids=tuple(
             dict.fromkeys(
@@ -212,19 +185,6 @@ def observed_place_nominations(
                 if option.get("place_id")
             )
         ),
-    )
-
-
-def has_required_provider_place_selection(
-    context_messages: Sequence[Mapping[str, Any]],
-    *,
-    expected_worker: ResearchWorkerKind,
-    required_candidate_kinds: Sequence[str],
-) -> bool:
-    """判断每个要求的地点领域是否都已有 Provider 选项。"""
-    options = _eligible_place_selection_options(context_messages, expected_worker)
-    return all(
-        options.get(candidate_kind) for candidate_kind in required_candidate_kinds
     )
 
 

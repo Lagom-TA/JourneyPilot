@@ -289,9 +289,8 @@ async def test_router_rejection_settles_the_durable_supplement(wired, run_id) ->
             "rejected_intent_amendments": [
                 IntentAmendmentRejection(
                     command_id=command.command_id,
-                    impact=AmendmentImpact.IDENTITY_CHANGE,
-                    reason_code="identity_change_requires_new_run",
-                    requires_new_run=True,
+                    impact=AmendmentImpact.UNSUPPORTED,
+                    reason_code="unsupported_amendment",
                 )
             ],
             "intent_amendment_route": "dispatcher",
@@ -303,10 +302,10 @@ async def test_router_rejection_settles_the_durable_supplement(wired, run_id) ->
 
     settled = store.commands[command.command_id]
     assert settled.status is RunCommandStatus.REJECTED
-    assert settled.error_code == "identity_change_requires_new_run"
+    assert settled.error_code == "unsupported_amendment"
     assert settled.result["outcome"] == "rejected"
-    assert settled.result["impact"] == "identity_change"
-    assert settled.result["requires_new_run"] is True
+    assert settled.result["impact"] == "unsupported"
+    assert settled.result["requires_new_run"] is False
     assert handle.pending_supplements() == []
     assert [event_type for _run, event_type, _payload in runs.events] == [
         "run.supplement_rejected"

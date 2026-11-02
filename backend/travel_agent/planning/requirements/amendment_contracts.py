@@ -11,7 +11,6 @@ from travel_agent.schema import StrictModel
 
 
 class AmendmentImpact(str, Enum):
-    IDENTITY_CHANGE = "identity_change"
     RESEARCH_AFFECTING = "research_affecting"
     UNSUPPORTED = "unsupported"
 

@@ -105,13 +105,6 @@ def _rejection_for_stage(
     research_closed: bool,
     delivery_committed: bool,
 ) -> IntentAmendmentRejection | None:
-    if impact is AmendmentImpact.IDENTITY_CHANGE:
-        return IntentAmendmentRejection(
-            command_id=amendment.command_id,
-            impact=impact,
-            reason_code="identity_change_requires_new_run",
-            requires_new_run=True,
-        )
     if impact is AmendmentImpact.UNSUPPORTED:
         return IntentAmendmentRejection(
             command_id=amendment.command_id,
