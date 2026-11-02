@@ -100,10 +100,10 @@ async def test_empty_or_failed_search_does_not_end_agent_loop(knowledge, failure
     assert len(llm.requests) == 2
     assert "private database detail" not in str(llm.requests[-1])
     # 空结果与检索失败都以结果信封 + 断路提示到达模型，而非中断或清空上下文；
-    # 信封里的失败原因已脱敏，只说明断路，不带 provider 私密细节。
+    # 未分类的异常只暴露稳定错误码，原始异常文本留在服务端日志里。
     final_request = str(llm.requests[-1])
     if failure:
-        assert "知识查询所有集合均检索失败" in final_request
+        assert "tool_internal_error" in final_request
         assert "private database detail" not in final_request
     else:
         assert '"documents"' in final_request

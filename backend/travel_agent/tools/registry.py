@@ -238,9 +238,9 @@ class ToolRegistry:
             return result
         except RunCancelled:
             raise
-        except Exception as e:
-            logger.warning(f"工具 [{tool_name}] 执行异常: {e}")
-            return {"success": False, "error": str(e)}
+        except Exception:
+            logger.exception("工具 [%s] 执行异常", tool_name)
+            return {"success": False, "error": "tool_internal_error"}
 
     def list_tools(self) -> List[Dict[str, Any]]:
         """列出所有注册的工具（简要信息）"""
