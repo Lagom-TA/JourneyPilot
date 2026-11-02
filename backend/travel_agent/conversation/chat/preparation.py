@@ -11,6 +11,7 @@ from travel_agent.runtime.run_contracts import (
 )
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from travel_agent.conversation.routing import RouteIntentUnavailable, classify_route
+from travel_agent.runtime.context import run_attribution
 from travel_agent.runtime.run_lease import RunLeaseKeeper
 from travel_agent.planning.nodes import CHECKPOINT_GATE_NODES
 from travel_agent.runtime.events import run_ts_ms
@@ -214,6 +215,22 @@ async def prepare_chat(
     return await _prepare_chat(request, **kwargs)
 
 
+async def _understand_followup_attributed(
+    run_id: str,
+    text: str,
+    identity: Any,
+    bundle: Any,
+):
+    """已完成旅行的后续理解属于父 Run 的一次模型调用。
+
+    完成态 Run 的用量摘要已在交付时结算；这一行只用于归因与成本记录，
+    追加台账不回写已结算的摘要。
+    """
+
+    with run_attribution(run_id, node="chat_entry", agent="entry"):
+        return await understand_followup(text, identity, bundle)
+
+
 async def _prepare_chat(
     request: ChatRequest,
     *,
@@ -251,8 +268,11 @@ async def _prepare_chat(
             if refinement_bundle is None:
                 raise PreparationRefused(PreparationRejection.CHECKPOINT_NOT_FOUND)
             try:
-                decision = await understand_followup(
-                    user_message, parent_detail.run.controlled_trip_identity or {}, refinement_bundle
+                decision = await _understand_followup_attributed(
+                    request.run_id,
+                    user_message,
+                    parent_detail.run.controlled_trip_identity or {},
+                    refinement_bundle,
                 )
             except Exception as exc:
                 logger.warning("当前旅行输入理解失败 run_id=%s error=%s", request.run_id, exc)

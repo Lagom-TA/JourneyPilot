@@ -252,3 +252,26 @@ async def test_http_projection_failure_returns_to_original_execution_boundary(
         await resources.trip_run_store.get_run(events[0]["run_id"])
     ).status is TripRunStatus.FAILED
     assert not await resources.run_execution_store.has_live_lease(events[0]["run_id"])
+
+
+async def test_followup_understanding_is_attributed_to_the_parent_run(monkeypatch):
+    """已完成旅行的后续理解记在父 Run 上，调用结束即恢复上下文。"""
+
+    from travel_agent.conversation.chat import preparation
+    from travel_agent.conversation.chat.refinement import RefinementDecision
+    from travel_agent.runtime.context import current_run_id
+
+    seen: dict[str, object] = {}
+
+    async def fake_understand_followup(text, identity, bundle):
+        seen["run_id"] = current_run_id.get()
+        return RefinementDecision(action="answer", response="按当前行程回答")
+
+    monkeypatch.setattr(preparation, "understand_followup", fake_understand_followup)
+    decision = await preparation._understand_followup_attributed(
+        "run-parent", "第二天能换到湖边吗", {}, SimpleNamespace()
+    )
+
+    assert decision.action == "answer"
+    assert seen["run_id"] == "run-parent"
+    assert current_run_id.get() is None

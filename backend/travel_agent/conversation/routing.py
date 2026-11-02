@@ -150,7 +150,11 @@ async def classify_route(
     has_trip_run: bool = False,
     llm: Optional[BaseLLM] = None,
 ) -> RouteDecision:
-    """判断输入应走的处理路径；无法判断时抛出 `RouteIntentUnavailable`。"""
+    """判断输入应走的处理路径；无法判断时抛出 `RouteIntentUnavailable`。
+
+    分流发生在 Run 创建之前，因此这次调用不写 ``run_llm_calls``：该表 run_id
+    是外键。用量只在有 Run 归属的调用里记录。
+    """
     if explicit_route is not None:
         return explicit_route_decision(explicit_route)
 
