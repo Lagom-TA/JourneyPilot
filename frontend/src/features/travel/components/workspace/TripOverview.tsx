@@ -8,7 +8,6 @@ interface TripOverviewProps {
     itinerary: PublicStructuredItinerary;
     summaries: readonly DaySummaryVM[];
     costCoverageStatement: string | null;
-    importantNotes: readonly string[];
     onOpenDay: (day: DaySummaryVM) => void;
     registerDayCard: (dayId: string, node: HTMLButtonElement | null) => void;
     showHeader?: boolean;
@@ -21,7 +20,7 @@ function dateRangeLabel(summaries: readonly DaySummaryVM[]): string | null {
         return null;
     return dates.length === 1 ? dates[0] : `${dates[0]} – ${dates[dates.length - 1]}`;
 }
-export const TripOverview: React.FC<TripOverviewProps> = ({ itinerary, summaries, costCoverageStatement, importantNotes, onOpenDay, registerDayCard, showHeader = true, compact = false, activeDay = null, }) => {
+export const TripOverview: React.FC<TripOverviewProps> = ({ itinerary, summaries, costCoverageStatement, onOpenDay, registerDayCard, showHeader = true, compact = false, activeDay = null, }) => {
     const destinations = [...new Set(summaries.map((summary) => summary.destinationLabel).filter((value): value is string => Boolean(value)))];
     const readouts: Array<{
         label: string;
@@ -55,12 +54,5 @@ export const TripOverview: React.FC<TripOverviewProps> = ({ itinerary, summaries
           </li>))}
       </ol>
 
-
-      {importantNotes.length > 0 && (<section className="mt-6 border-t border-stroke pt-5" aria-labelledby="overview-notes-heading" data-testid="overview-important-notes">
-          <h3 id="overview-notes-heading" className="text-sm font-semibold text-ink">出发前事项</h3>
-          <ul className="mt-2 space-y-1.5 text-sm leading-6 text-ink-secondary">
-            {importantNotes.map((note) => <li key={note} className="break-words">{note}</li>)}
-          </ul>
-        </section>)}
     </section>);
 };
