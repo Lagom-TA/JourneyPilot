@@ -44,7 +44,6 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="JourneyPilot TripOps API",
         description="基于 LangGraph、RAG、Memory、Tools 和 TripRun 状态的可信旅行规划 API",
-        version="2.0.0",
         lifespan=lifespan,
     )
 

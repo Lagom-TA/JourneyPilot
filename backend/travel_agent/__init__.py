@@ -1,3 +1,7 @@
-"""JourneyPilot v2.0 - 基于 LangGraph + RAG 的智能旅行 AI 助手"""
+"""JourneyPilot 后端包。"""
 
-__version__ = "2.0.0"
+APP_NAME = "JourneyPilot"
+
+PROJECT_URL = "https://github.com/journeypilot"
+
+USER_AGENT = f"{APP_NAME} ({PROJECT_URL})"

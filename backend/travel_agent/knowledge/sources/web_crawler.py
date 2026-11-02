@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from travel_agent import USER_AGENT
+
 import logging
 import re
 from typing import Any, Dict, List, Optional
@@ -25,7 +27,7 @@ class WebCrawler:
             timeout=timeout,
             follow_redirects=True,
             headers={
-                "User-Agent": "JourneyPilot/1.0 (research bot)"
+                "User-Agent": USER_AGENT
             },
         )
 
