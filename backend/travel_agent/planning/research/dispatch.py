@@ -106,7 +106,7 @@ async def dispatcher_node(
             }
 
     if not plan or step >= len(plan):
-        logger.info("Dispatcher: 计划已完成，路由到预算节点")
+        logger.info("Dispatcher: 计划已完成，路由到交付投影")
         return {"next_agent": "to_check"}
 
     current_group = plan[step]
@@ -141,7 +141,7 @@ async def dispatcher_node(
             update["next_agent"] = "dispatch_group"
         return update
 
-    logger.info("Dispatcher: 计划已收尾，路由到预算节点")
+    logger.info("Dispatcher: 计划已收尾，路由到交付投影")
     return {"next_agent": "to_check"}
 
 
@@ -151,7 +151,7 @@ def route_after_dispatcher(state: TravelAgentState) -> str:
 
     if next_agent not in _KNOWN_NEXT_AGENTS:
         logger.error(
-            "Dispatcher: unknown next_agent=%r; converging on budget estimate",
+            "Dispatcher: unknown next_agent=%r; converging on delivery projection",
             next_agent,
         )
         return "to_check"
@@ -186,12 +186,12 @@ def route_after_dispatcher(state: TravelAgentState) -> str:
 
         logger.error(
             "Dispatcher: dispatch_group without a valid plan step; "
-            "converging on budget estimate"
+            "converging on delivery projection"
         )
         return "to_check"
 
     logger.error(
-        "Dispatcher: unhandled next_agent=%r; converging on budget estimate",
+        "Dispatcher: unhandled next_agent=%r; converging on delivery projection",
         next_agent,
     )
     return "to_check"

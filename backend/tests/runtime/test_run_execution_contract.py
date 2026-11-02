@@ -146,10 +146,7 @@ def test_the_node_window_table_covers_every_worker_the_plan_dispatches():
     composition = execution._COMPOSITION_WORKER_NODES
     assert research | composition == declared, "每个 worker 都要恰好属于一个窗口"
     assert not research & composition, "一个 worker 不能同时属于两个窗口"
-    assert execution._COMPOSITION_MODEL_WINDOW_NODES == {
-        "itinerary_planner",
-        "budget_estimate",
-    }
+    assert execution._COMPOSITION_MODEL_WINDOW_NODES == {"itinerary_planner"}
 
     # `mark_delivery_ready` 由这个名字触发；它一改，每一处 delivery_ready 判断同时失效。
     assert NODE_DELIVERY_FINALIZER == "delivery_finalizer"

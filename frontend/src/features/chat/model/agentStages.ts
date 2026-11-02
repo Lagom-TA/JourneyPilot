@@ -34,7 +34,6 @@ const NODE_STAGES: ReadonlyArray<readonly [
     ['transport_researcher', '交通查询', 'research'],
     ['accommodation_researcher', '住宿查询', 'research'],
     ['itinerary_planner', '行程规划', 'research'],
-    ['budget_estimate', '预算估算', 'synthesis'],
     ['delivery_projector', '整理行程', 'synthesis'],
     ['delivery_finalizer', '保存计划', 'synthesis'],
 ];
@@ -84,7 +83,6 @@ const ACTIVITY_STAGE_BY_NODE: Record<string, ActivityStageId> = {
     transport_researcher: 'research',
     accommodation_researcher: 'research',
     itinerary_planner: 'route',
-    budget_estimate: 'delivery',
     delivery_projector: 'delivery',
     delivery_finalizer: 'delivery',
 };

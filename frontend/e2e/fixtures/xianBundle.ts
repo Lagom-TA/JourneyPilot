@@ -208,9 +208,6 @@ export function xianDeliveryBundle(revision = 1) {
     priced_component_count: 0,
     budget_relevant_component_count: 0,
     coverage: 'none' as const,
-    budget_cap_cny: null,
-    budget_status: 'unknown' as const,
-    llm_estimated_total_cny: null,
   };
   const places = [
     { ref: ref('visit_stop', 'visit-terracotta'), point: points.terracotta },

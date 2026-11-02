@@ -133,8 +133,7 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
 8. **组合**：`itinerary_planner` 读取 catalog，由模型直接写出完整行程草稿，再物化为
    `TripWorkspace`。服务端负责结构解析、身份绑定与时间线物化，不做内容质量裁决；
    接驳缺口由服务端按真实路线补齐。
-9. **交付**：`budget_estimate` 清理不受支持的总额字段，不调用模型或 Provider；
-   `delivery_projector` 从同一 Workspace 生成报告、地图与来源索引；`delivery_finalizer`
+9. **交付**：`delivery_projector` 从同一 Workspace 生成报告、地图与来源索引；`delivery_finalizer`
    原子提交唯一的 `DeliveryBundle`。工作台、报告、PDF 与来源列表都来自这份记录。
 
 计划门修改和运行中追加要求先进入当前需求，由理解阶段结合已有基础信息与最新表达处理，随后生成新的研究设想。

@@ -52,9 +52,6 @@ NODE_ACCOMMODATION = "accommodation_researcher"
 NODE_ITINERARY = "itinerary_planner"
 
 
-NODE_BUDGET_ESTIMATE = "budget_estimate"
-
-
 NODE_DELIVERY_PROJECTOR = "delivery_projector"
 
 

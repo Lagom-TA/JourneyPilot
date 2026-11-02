@@ -7,7 +7,6 @@ from typing import Any, Dict, Optional
 
 from langgraph.graph import END, START, StateGraph
 
-from travel_agent.planning.costs.estimate import budget_estimate_node
 from travel_agent.planning.delivery.finalizer import delivery_finalizer_node
 from travel_agent.planning.delivery.minimum_draft import (
     minimum_delivery_draft_builder_node,
@@ -17,7 +16,6 @@ from travel_agent.planning.execution import with_run_control
 from travel_agent.planning.itinerary.node import itinerary_planner_node
 from travel_agent.planning.nodes import (
     NODE_ACCOMMODATION,
-    NODE_BUDGET_ESTIMATE,
     NODE_CLARIFIER,
     NODE_DELIVERY_FINALIZER,
     NODE_DELIVERY_PROJECTOR,
@@ -208,10 +206,6 @@ def build_travel_workflow() -> StateGraph:
         NODE_ITINERARY, with_run_control(NODE_ITINERARY, itinerary_planner_node)
     )
     graph.add_node(
-        NODE_BUDGET_ESTIMATE,
-        with_run_control(NODE_BUDGET_ESTIMATE, budget_estimate_node),
-    )
-    graph.add_node(
         NODE_DELIVERY_PROJECTOR,
         with_run_control(NODE_DELIVERY_PROJECTOR, delivery_projection_node),
     )
@@ -258,7 +252,6 @@ def build_travel_workflow() -> StateGraph:
         (NODE_DESTINATION_GEO_RESOLVER, NODE_SUMMARY_CARD_BRIEF),
         (NODE_SUMMARY_CARD_BRIEF, NODE_PLANNER),
         (NODE_PLANNER, NODE_PLAN_GATE),
-        (NODE_BUDGET_ESTIMATE, NODE_DELIVERY_PROJECTOR),
         (NODE_DELIVERY_PROJECTOR, NODE_DELIVERY_FINALIZER),
     ):
         graph.add_conditional_edges(
@@ -338,7 +331,6 @@ def build_travel_workflow() -> StateGraph:
         NODE_TRANSPORT,
         NODE_ACCOMMODATION,
         NODE_ITINERARY,
-        NODE_BUDGET_ESTIMATE,
         NODE_DELIVERY_PROJECTOR,
         NODE_DELIVERY_FINALIZER,
     }
@@ -353,7 +345,7 @@ def build_travel_workflow() -> StateGraph:
         _route_after_dispatcher_with_amendments,
         {
             NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
-            "to_check": NODE_BUDGET_ESTIMATE,
+            "to_check": NODE_DELIVERY_PROJECTOR,
             NODE_DESTINATION: NODE_DESTINATION,
             NODE_TRANSPORT: NODE_TRANSPORT,
             NODE_ACCOMMODATION: NODE_ACCOMMODATION,

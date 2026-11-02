@@ -123,9 +123,6 @@ export interface CostCoverageSummary {
     priced_component_count: number;
     budget_relevant_component_count: number;
     coverage: 'none' | 'partial' | 'complete';
-    budget_cap_cny: number | null;
-    budget_status: 'unknown' | 'within_cap' | 'over_cap';
-    llm_estimated_total_cny: number | null;
 }
 export interface MapProjection {
     source_workspace_revision: number;
