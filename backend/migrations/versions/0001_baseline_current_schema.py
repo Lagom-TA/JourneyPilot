@@ -11,8 +11,9 @@ Create Date: 2026-08-17
 ## 门禁
 
 - **影响面**：只有 DB。
-- **旧数据路径**：只在空库上执行。有核心表但无 `alembic_version` 的库走 adoption
-  （先比指纹，一致才 `stamp 0001`），指纹不一致则拒绝（`storage/maintenance/migrate.py::plan`）。
+- **数据路径**：只在空库上执行。有核心表但没有 `alembic_version` 的库一律拒绝
+  （`storage/maintenance/migrate.py::plan`）：它不是这份迁移建出来的，需要重建数据库
+  或从匹配的备份恢复，不会先比对指纹再 stamp。
 - **失败注入**：单条迁移一个事务，中途失败整体回滚，`alembic_version` 不前进。
 - **幂等**：全部 `IF NOT EXISTS`。
 - **观察信号**：CLI 非零退出；API 侧 `GET /api/health/ready` 的 `database_schema`。
@@ -22,7 +23,9 @@ Create Date: 2026-08-17
 
 - **向量维度**取自 `embedding.dimensions` 配置，三张表共用。
 - **`knowledge_chunks.tsv` 的 text search config**：有 `chinese` 就用，否则退到
-  `simple` 并告警。生成列表达式建好即固定，切换需要一条专门的重建迁移。
+  `simple` 并告警。生成列表达式建好即固定；`migrate --sql` 离线预览只能按 `chinese`
+  生成，执行前需确认目标库。默认 Compose 镜像不带 zhparser；已有库要切换分词需要
+  一条专门的重建迁移。
 """
 
 from __future__ import annotations
@@ -51,10 +54,10 @@ def _embedding_dimensions() -> int:
 def _resolve_text_search_config() -> str:
     """`chinese` 可用就用它，否则 `simple`，并把降级说出来。
 
-    **离线模式（`migrate --sql`）没有连接可问**，只能取 `chinese` —— 这个产品自带的
-    Compose 镜像装了 zhparser，上面那段 DO 块会在应用时把配置建好。这个假设会作为
-    一句 SQL 注释留在输出里：离线 SQL 是**给人看的预览**，不是拿去在一个没有 zhparser
-    的环境里手工执行的脚本。悄悄取一个值而不说，才是把预览变成陷阱的那一步。
+    **离线模式（`migrate --sql`）没有连接可问**，只能取 `chinese`。默认 Compose 镜像
+    不带 zhparser，所以这个假设会作为一句 SQL 注释留在输出里：离线 SQL 是**给人看的
+    预览**，不是拿去在一个没有 zhparser 的环境里手工执行的脚本。悄悄取一个值而不说，
+    才是把预览变成陷阱的那一步。
     """
 
     if context.is_offline_mode():
