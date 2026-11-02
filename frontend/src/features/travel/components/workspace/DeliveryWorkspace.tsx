@@ -500,7 +500,6 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
           itinerary={bundle.workspace.itinerary}
           summaries={daySummaries}
           costCoverageStatement={formatTripCostSummary(bundle.report_projection.document?.cost_summary)}
-          importantNotes={[]}
           onOpenDay={openDay}
           registerDayCard={registerDayCard}
           showHeader={false}
