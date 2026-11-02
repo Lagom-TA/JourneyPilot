@@ -26,7 +26,7 @@ npx playwright test --list
 | `research-progress.spec.ts` | `JP_COMPONENT_E2E=1` | 可打开页面 | 无；使用本地组件样例 |
 | `workspace.spec.ts` | `JP_WRITE_E2E=1` | 完整应用 | 真实资料库与风格写入；只删除本次唯一命名的测试数据 |
 | `live-planning.spec.ts` | `JP_LIVE_E2E=1` | 完整应用与可用模型 | 调用真实付费模型，并保留新建旅行 |
-| `delivery-readonly.spec.ts` | `JP_READ_RUN_ID=<run_id>`（兼容 `JP_EDIT_RUN_ID`） | 已完成的测试行程 | 只读；不写入、不撤销 |
+| `delivery-readonly.spec.ts` | `JP_READ_RUN_ID=<run_id>`（也接受 `JP_EDIT_RUN_ID`） | 已完成的测试行程 | 只读；不写入、不撤销 |
 
 ## 常用命令
 

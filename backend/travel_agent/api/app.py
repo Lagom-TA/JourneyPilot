@@ -42,8 +42,8 @@ def create_app() -> FastAPI:
     install_query_secret_redaction()
 
     app = FastAPI(
-        title="JourneyPilot TripOps API",
-        description="基于 LangGraph、RAG、Memory、Tools 和 TripRun 状态的可信旅行规划 API",
+        title="JourneyPilot API",
+        description="基于 LangGraph 的旅行规划 API：TripRun、交付结果与知识库通过显式边界暴露。",
         lifespan=lifespan,
     )
 
@@ -100,7 +100,7 @@ def create_app() -> FastAPI:
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>JourneyPilot TripOps API</title>
+    <title>JourneyPilot API</title>
     <style>
         body { font-family: system-ui; max-width: 600px; margin: 80px auto; padding: 20px; }
         h1 { color: #2563eb; }
@@ -109,8 +109,8 @@ def create_app() -> FastAPI:
     </style>
 </head>
 <body>
-    <h1>JourneyPilot TripOps API</h1>
-    <p>可信 TripOps 后端正在运行：TripRun、Living Itinerary、Evidence、Risk、Memory 与 Tools 均通过显式 API 边界暴露。</p>
+    <h1>JourneyPilot API</h1>
+    <p>JourneyPilot 后端正在运行：TripRun、交付结果、知识库、记忆与工具均通过显式 API 边界暴露。</p>
     <p><strong>没有找到前端构建产物</strong>，所以这里显示的是 API 说明页。
     要在这个端口上打开网页端，先构建前端：<code>cd frontend &amp;&amp; npm ci &amp;&amp; npm run build</code>。
     开发时也可以直接用 <code>./run.sh</code>，它会另起 Vite。</p>

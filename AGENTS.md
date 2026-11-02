@@ -19,7 +19,7 @@ JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
 ## 语言与注释
 
 - 产品界面用简体中文；代码标识符、配置键、API 字段与命令输出用英文。
-- 注释、docstring 与项目文档用中文，只描述**当前**行为：不写版本演进、兼容层、迁移史、事故复盘或"以前/后来"。
+- 注释、docstring 与项目文档用中文，只描述**当前**行为：不写版本演进、兼容层、迁移史或事故复盘。
 - 不新增 `TODO`/`FIXME`/被注释掉的代码；解释为什么和边界，不复述代码在做什么。
 - 不改生成物：`docs/configuration.md`、`docs/config.schema.json` 由 `journeypilot config docs` 生成；`backend/config.example.yaml` 由维护者维护。
 

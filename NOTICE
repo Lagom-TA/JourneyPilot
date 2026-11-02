@@ -1,0 +1,31 @@
+# NOTICE / 第三方声明
+
+JourneyPilot 以 MIT 许可证发布，见 [LICENSE](LICENSE)。本文件记录随仓库分发的第三方数据、字体与素材的来源；Python/Node 依赖由各自许可证约束，版本见 lockfile。
+
+## 12306 站名数据
+
+- 文件：`backend/mcp/rail/station_name.js`（逐字快照）与 `station_name.meta.json`
+- 来源：<https://kyfw.12306.cn/otn/resources/js/framework/station_name.js>
+- 抓取：2026-07-29，HTTP 200，167709 字节，3375 条记录
+- 用途：离线站点解析；运行时不会重新下载。
+- 许可：项目不对该快照声明额外授权；再分发或商用前请核对 12306 上游条款。数据按原样提供，可能过期。
+
+## 字体
+
+- `frontend/src/assets/fonts/noto-serif-sc-600-trip.woff2`：Noto Serif SC 子集，Copyright Google Inc.，SIL Open Font License 1.1。
+- npm 依赖 `@fontsource-variable/inter`、`@fontsource-variable/noto-sans-sc`、`@fontsource-variable/noto-serif-sc` 各自在包内附带字体与许可证；Inter 版权为 Copyright 2016 The Inter Project Authors（<https://github.com/rsms/inter>）。
+- SIL Open Font License 1.1 全文见 [`frontend/src/assets/fonts/OFL.txt`](frontend/src/assets/fonts/OFL.txt)。
+
+## 品牌与界面素材
+
+- `frontend/src/assets/brand/` 与 `frontend/src/assets/marks/` 为项目自有品牌素材，随仓库以 MIT 发布。
+- `docs/assets/logo-lockup-*.png` 为项目 logo。
+- 此前用于 README 的产品截图已从本仓库移除，不再随发布分发。
+
+## 地图瓦片
+
+运行时默认请求高德地图瓦片（`frontend/src/lib/mapConfig.ts`），署名显示在 Leaflet attribution 中。瓦片不随仓库分发，使用需遵守上游条款；部署方可用 `VITE_MAP_TILE_URL` / `VITE_MAP_TILE_ATTRIBUTION` 换成自有或其他瓦片服务。
+
+## 依赖
+
+Python/Node 依赖清单与版本见 `backend/uv.lock`、`frontend/package-lock.json`、`backend/mcp/package-lock.json`；各依赖的许可证随包分发。
