@@ -13,6 +13,7 @@ from travel_agent.conversation.chat.preparation import (
 from travel_agent.conversation.chat.execution import execute_chat
 from travel_agent.conversation.prompt_optimization import optimize_travel_prompt
 from travel_agent.api.chat_errors import raise_chat_preparation_error
+from travel_agent.api.schemas.chat import OptimizePromptRequest
 from travel_agent.api.sse import sse_event as encode_sse_event
 from travel_agent.api.sse_projection import project_sse_payload
 
@@ -104,14 +105,14 @@ async def chat_stream(
 
 
 @router.post("/optimize-prompt")
-async def optimize_prompt(request_body: dict):
+async def optimize_prompt(request: OptimizePromptRequest):
     """
     提示词优化 API：使用 Fast 模型对用户输入的旅行提示词进行扩充和结构化优化。
-    请求体：{ "prompt": string }
-    成功返回：{ "optimized_prompt": string, "success": boolean, "error_message"?: string }
-    依赖不可用时返回 503，不把服务故障当作业务失败返回。
+
+    请求体由 ``OptimizePromptRequest`` 约束：过长、非字符串或缺字段返回 422。
+    过短（<4）仍返回 200 + success=false 的内联提示；依赖不可用返回 503。
     """
-    prompt = (request_body.get("prompt") or "").strip()
+    prompt = request.prompt.strip()
 
     if len(prompt) < 4:
         return {

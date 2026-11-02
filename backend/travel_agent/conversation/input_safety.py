@@ -98,7 +98,8 @@ _COMPILED_PATTERNS = [
 _ZERO_WIDTH_RE = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
 
 
-_MAX_INPUT_LENGTH = 8000
+# 会话入口与提示词优化共用的输入长度上限。
+MAX_INPUT_LENGTH = 8000
 
 
 _BLOCKED_REPLY = (
@@ -111,8 +112,8 @@ def _detect_high_risk(text: str) -> Tuple[bool, str]:
     """返回 (是否高风险, 原因)。"""
     if _ZERO_WIDTH_RE.search(text):
         return True, "检测到零宽字符（可能包含隐藏指令）"
-    if len(text) > _MAX_INPUT_LENGTH:
-        return True, f"输入超过最大允许长度（{len(text)}/{_MAX_INPUT_LENGTH}）"
+    if len(text) > MAX_INPUT_LENGTH:
+        return True, f"输入超过最大允许长度（{len(text)}/{MAX_INPUT_LENGTH}）"
     for pattern, reason in _COMPILED_PATTERNS:
         if pattern.search(text):
             return True, reason
