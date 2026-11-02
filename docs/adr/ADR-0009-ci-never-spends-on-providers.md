@@ -5,11 +5,11 @@
 
 ## 决定
 
-PR 和 main 推送自动运行三项检查：后端 lint、配置与单元测试；前端类型检查、单元测试与构建；密钥扫描。依赖安装使用锁文件，不另设重复安装矩阵或源码字符串检查。
+PR 和 main 推送自动运行：后端 lint、配置、单元测试与离线迁移 SQL；前端类型检查、lint、单元测试与构建；MCP 依赖安装；shell 语法检查；Docker 镜像构建与 smoke；密钥扫描。依赖安装使用锁文件，不另设重复安装矩阵或源码字符串检查。
 
-数据库迁移和集成测试在 Actions 的 `PR` 工作流中手动触发，使用 PostgreSQL 与 Redis service container，不调用付费 Provider。完整应用、浏览器交互和部署构建由维护者在推送前按改动范围验证，不能用 CI 通过代替实际功能验证。
+数据库迁移和集成测试在 Actions 的 `PR` 工作流中手动触发，使用 PostgreSQL 与 Redis service container，不调用付费 Provider。完整应用、浏览器交互与真实 Provider 的验证不在自动门禁里：需要时在隔离环境手动运行，并使用显式提供的低额度 Key；不能用 CI 通过代替实际功能验证。
 
-项目不保留定时 nightly 或 release 工作流。真实 Provider 的验证只在需要时由维护者在隔离环境手动运行，并使用显式提供的低额度 Key。
+项目不保留定时 nightly 或 release 工作流。
 
 ## 为什么
 

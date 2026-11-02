@@ -1,14 +1,14 @@
 # ADR-0007：核心能力默认可用，增强能力显式安装
 
 状态：已采纳
-影响：`backend/pyproject.toml` 的 `[dependency-groups]`、`capabilities.py`、`infra/api.Dockerfile`、
+影响：`backend/pyproject.toml` 的 `[dependency-groups]`、`config/capabilities.py`、`infra/api.Dockerfile`、
 `infra/compose.yml`、`infra/postgres/Dockerfile`
 
 ## 决定
 
 - **core**：聊天、规划、PostgreSQL/pgvector、Redis、MCP、PDF 导出、基础文档导入。
 - **增强**（显式安装）：本地 Qwen Embedding（`local-embedding`）、
-  Cross Encoder 重排（`cross-encoder`）、zhparser 中文分词（compose profile）。
+  Cross Encoder 重排（`cross-encoder`）、zhparser 中文分词（`infra/postgres` 镜像，非默认档）。
 - 配置选了某个增强但依赖没装 → **拒绝启动**，并给出那一条安装命令。
 
 ## 为什么
@@ -21,12 +21,12 @@
 
 ## 替代方案与为什么没选
 
-- **全部装上**：镜像从 998 MB 涨到几个 GB，且构建面大得多。
+- **全部装上**：镜像体积与构建面显著变大，默认安装还要承担不使用的依赖。
 - **首次调用时懒加载并降级**：一次检索静默退化成低质量结果，没有一处读数解释为什么。
-- **十几个镜像变体**：过早的组合爆炸。只承诺少量官方组合并在 CI 建矩阵。
+- **维护很多镜像变体**：组合爆炸，超出单机自托管项目的维护范围。
 
 ## 后果
 
 - readiness 有 `optional_capabilities` 一项，**拦门禁**（与「空语料只报不拦」不同）。
-- 默认检索退到 `simple` 词法，中文分词质量下降 —— 这一点必须写进变更说明，不能用
-  「能运行」冒充「质量相同」。
+- 默认检索使用 `simple` 词法，中文分词质量下降；README 记录这一点，不能用「能运行」
+  冒充「质量相同」。

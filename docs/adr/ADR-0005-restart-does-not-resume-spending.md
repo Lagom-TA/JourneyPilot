@@ -6,8 +6,8 @@
 ## 决定
 
 进程重启后发现租约过期的 `running` Run：校验 checkpoint，然后转为
-`interrupted` / `resume_available`，UI 显示「上次运行被程序关闭中断」。
-**只有用户显式点继续**才重新调用模型。
+`interrupted` / `resume_available`；工作台提示规划已中断并给出继续入口。
+**只有用户显式继续**才重新调用模型。
 
 一个被恢复的 Run 还要把已花掉的量从 `run_llm_calls` 台账读回本进程的预算账本，
 所以它拿到的不是一份满额预算。

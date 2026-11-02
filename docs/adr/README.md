@@ -1,6 +1,10 @@
 # 架构决策记录（ADR）
 
-本目录记录已经做出的架构选择、背景与影响；部分记录包含当时的替代方案。每份 ADR 说明一个决定及其边界，不承担操作手册或设计规范职责。
+本目录记录已经做出的架构选择及其边界。每份 ADR 说明一个决定、理由与被否掉的替代方案，
+不承担操作手册或设计规范职责。
+
+模板：`状态` / `影响` / `决定` / `为什么` / `替代方案与为什么没选` / `后果`（可选 `对应不变量`）。
+新增记录沿用下一个连续编号。
 
 架构总览见 [`../architecture/overview.md`](../architecture/overview.md)，运行时约定见 [`../invariants.md`](../invariants.md)。
 
@@ -16,4 +20,4 @@
 | [ADR-0008](ADR-0008-config-single-source.md) | 配置只有一处定义，来源可查 |
 | [ADR-0009](ADR-0009-ci-never-spends-on-providers.md) | CI 不调用真实付费 Provider |
 | [ADR-0010](ADR-0010-natural-language-requirements.md) | 自然语言需求与研究方案直传各角色 |
-| [ADR-0013](ADR-0013-generation-quality-owned-by-model.md) | 内容质量由模型负责，移除内容质量验证体系 |
+| [ADR-0011](ADR-0011-generation-quality-owned-by-model.md) | 内容质量由模型负责，服务端只保证结构与资源边界 |
