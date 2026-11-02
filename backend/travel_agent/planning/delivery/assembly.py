@@ -14,7 +14,7 @@ from travel_agent.planning.weather.adjustments import build_weather_adjustment_p
 
 
 def assemble_delivery_bundle(state: TravelAgentState) -> DeliveryBundle:
-    workspace = state.trip_workspace_v2
+    workspace = state.trip_workspace
     facts = state.fact_store_snapshot
     weather = state.weather_context
     report = state.report_projection
@@ -24,7 +24,7 @@ def assemble_delivery_bundle(state: TravelAgentState) -> DeliveryBundle:
         value is None
         for value in (workspace, facts, weather, report, map_projection, source_index)
     ):
-        raise ValueError("delivery finalizer requires every v2 snapshot and projection")
+        raise ValueError("delivery finalizer requires every snapshot and projection")
     assert workspace is not None
     assert facts is not None
     assert weather is not None

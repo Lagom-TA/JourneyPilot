@@ -351,7 +351,7 @@ async def test_serial_workers_cover_both_cities_and_pass_upstream_results(monkey
     assert "苏州候选体验 03" in accommodation_request
     assert "第 01 条衔接的时间成本说明" in accommodation_request
 
-    workspace = result["trip_workspace_v2"]
+    workspace = result["trip_workspace"]
     # 双城各安排一站，目的地归属与天数一致。
     assert [day.destination_id for day in workspace.itinerary.day_plans] == [
         "city_hangzhou",
@@ -409,7 +409,7 @@ async def test_rich_candidate_supply_reaches_composition_and_workspace(monkeypat
     assert '"sources"' in model.composition_request
     assert "杭州候选体验 01" in model.composition_request
 
-    workspace = result["trip_workspace_v2"]
+    workspace = result["trip_workspace"]
     # 体验槽保留同域的全部未入选备选：两天各选 1 个，每槽 13 个选项
     # （已入选的候选不重复出现在别的槽里），两个槽合起来覆盖全部候选。
     visit_slots = [slot for slot in workspace.selection_slots if slot.slot_type == "visit"]

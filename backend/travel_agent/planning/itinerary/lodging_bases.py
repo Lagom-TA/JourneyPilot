@@ -5,13 +5,13 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from travel_agent.planning.itinerary.models import DayPlanV2
+    from travel_agent.planning.itinerary.models import DayPlan
     from travel_agent.planning.itinerary.models import LodgingStay
-    from travel_agent.planning.itinerary.models import StructuredItineraryV2
+    from travel_agent.planning.itinerary.models import StructuredItinerary
 
 
 def day_lodging_bases(
-    itinerary: StructuredItineraryV2, day: DayPlanV2
+    itinerary: StructuredItinerary, day: DayPlan
 ) -> tuple[LodgingStay | None, LodgingStay | None]:
     """返回当天出发时的住宿与当晚入住的住宿。
 

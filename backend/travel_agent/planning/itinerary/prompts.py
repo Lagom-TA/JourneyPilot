@@ -187,8 +187,8 @@ def _current_draft_context(state: TravelAgentState) -> str:
     context = {}
     if state.placement_skeleton is not None:
         context["placement_skeleton"] = state.placement_skeleton.model_dump(mode="json")
-    if state.trip_workspace_v2 is not None:
-        itinerary = state.trip_workspace_v2.itinerary
+    if state.trip_workspace is not None:
+        itinerary = state.trip_workspace.itinerary
         entries = {
             entity.item_id: entity.model_dump(
                 mode="json",

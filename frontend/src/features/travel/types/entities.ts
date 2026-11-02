@@ -126,7 +126,7 @@ export interface CustomBlock {
     planned_end: string | null;
     duration_minutes: number | null;
 }
-export interface DayPlanV2 {
+export interface DayPlan {
     day_id: string;
     day: number;
     date: string | null;

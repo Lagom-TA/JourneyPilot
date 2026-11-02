@@ -199,7 +199,7 @@ def classify_transport_projection_shape(
     return "outside_itinerary"
 
 
-class DayPlanV2(StrictModel):
+class DayPlan(StrictModel):
     day_id: str = Field(min_length=1)
     day: int = Field(ge=1)
     date: Date
@@ -214,18 +214,18 @@ class DayPlanV2(StrictModel):
     estimated_cost_cny: Optional[float] = Field(default=None, ge=0)
 
     @model_validator(mode="after")
-    def validate_time_structure(self) -> "DayPlanV2":
+    def validate_time_structure(self) -> "DayPlan":
         if self.time_structure != ["morning", "lunch", "afternoon", "evening"]:
             raise ValueError("day plan must retain the four canonical time blocks")
         return self
 
 
-class StructuredItineraryV2(StrictModel):
+class StructuredItinerary(StrictModel):
     itinerary_id: str = Field(min_length=1)
     title: str = Field(min_length=1)
     destination_ids: List[str] = Field(min_length=1)
     duration_days: int = Field(ge=1)
-    day_plans: List[DayPlanV2] = Field(min_length=1)
+    day_plans: List[DayPlan] = Field(min_length=1)
     visit_stops: List[VisitStop] = Field(default_factory=list)
     dining_stops: List[DiningStop] = Field(default_factory=list)
     lodging_stays: List[LodgingStay] = Field(default_factory=list)
@@ -237,7 +237,7 @@ class StructuredItineraryV2(StrictModel):
     unresolved: List[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def validate_references(self) -> "StructuredItineraryV2":
+    def validate_references(self) -> "StructuredItinerary":
         expected_cost_summary = build_cost_coverage_summary(
             itinerary_price_components(
                 visit_stops=self.visit_stops,

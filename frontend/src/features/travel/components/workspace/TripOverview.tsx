@@ -1,11 +1,11 @@
 import { type DaySummaryVM } from "../../model/itineraryPresentation";
-import { type PublicStructuredItineraryV2 } from "../../types/itinerary";
+import { type PublicStructuredItinerary } from "../../types/itinerary";
 import { DaySummaryCard } from "./DaySummaryCard";
 import { LabelledFactList, TripFactReadout } from "./TripFactReadout";
 import { cn } from "../../../../lib/utils";
 import React from 'react';
 interface TripOverviewProps {
-    itinerary: PublicStructuredItineraryV2;
+    itinerary: PublicStructuredItinerary;
     summaries: readonly DaySummaryVM[];
     costCoverageStatement: string | null;
     importantNotes: readonly string[];

@@ -25,7 +25,7 @@ from travel_agent.planning.delivery.travel_content import selection_reason
 from travel_agent.planning.itinerary.models import CustomBlock
 from travel_agent.planning.itinerary.models import DiningStop
 from travel_agent.planning.itinerary.models import LodgingStay
-from travel_agent.planning.itinerary.models import StructuredItineraryV2
+from travel_agent.planning.itinerary.models import StructuredItinerary
 from travel_agent.planning.itinerary.models import TransportLeg
 from travel_agent.planning.itinerary.models import VisitStop
 from travel_agent.planning.itinerary.options import SelectionOption
@@ -46,7 +46,7 @@ from travel_agent.planning.research.evidence import FactAssertion
 from travel_agent.planning.research.evidence import FactStoreSnapshot
 from travel_agent.planning.weather.models import WeatherContextSnapshot
 from travel_agent.planning.weather.models import WeatherDayContext
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 from travel_agent.tools.temporal import RAIL_LIVE_INVENTORY_DAYS
 from typing import Mapping
 from typing import Sequence
@@ -125,7 +125,7 @@ def _public_comparison_facts(field_paths: Sequence[str]) -> list[str]:
     return labels or ["实体与来源已核验"]
 
 
-def _trip_level_requirements(workspace: TripWorkspaceV2) -> list[str]:
+def _trip_level_requirements(workspace: TripWorkspace) -> list[str]:
     return [workspace.requirements] if workspace.requirements.strip() else []
 
 
@@ -140,7 +140,7 @@ _UNBOUND_LONG_DISTANCE_NOTE = "长途交通路径未绑定具体班次，仅作�
 
 
 def _controlled_trip_identity(
-    workspace: TripWorkspaceV2,
+    workspace: TripWorkspace,
 ) -> Mapping[str, object] | None:
     """返回每个已组合 Workspace 携带的 Draft 行程身份。"""
 
@@ -155,11 +155,11 @@ def _controlled_trip_identity(
 
 
 def _long_distance_legs_by_date(
-    itinerary: StructuredItineraryV2,
+    itinerary: StructuredItinerary,
 ) -> dict[date, list[TransportLeg]]:
     """按投影所在 Day 索引已交付的长途交通段。
 
-    ``StructuredItineraryV2.validate_references`` 已要求每个长途段落在承载其
+    ``StructuredItinerary.validate_references`` 已要求每个长途段落在承载其
     服务日期的 Day 上，因此从 Day 时间线读取服务日期即可。
     """
 
@@ -180,7 +180,7 @@ def _long_distance_legs_by_date(
 
 
 def _long_distance_path_notes(
-    workspace: TripWorkspaceV2, generated_at: datetime
+    workspace: TripWorkspace, generated_at: datetime
 ) -> list[str]:
     """在往返缺少可用路径或路径未绑定班次时给出提示。
 
@@ -224,7 +224,7 @@ def _long_distance_path_notes(
     return notes
 
 
-def _report_destinations(workspace: TripWorkspaceV2) -> list[ReportDestination]:
+def _report_destinations(workspace: TripWorkspace) -> list[ReportDestination]:
     """把每个内部目的地 id 解析为受控的公开地名。
 
     公开地名取 anchor 的 ``name`` 而非 provider 的 ``display_name``：后者是
@@ -405,7 +405,7 @@ def _entity_block(
     )
 
 
-def _preparation_notes(itinerary: StructuredItineraryV2) -> list[str]:
+def _preparation_notes(itinerary: StructuredItinerary) -> list[str]:
     """补充时间线与实体块没有呈现的行程级信息。"""
     notes: list[str] = []
     for entity in [
@@ -429,7 +429,7 @@ def _preparation_notes(itinerary: StructuredItineraryV2) -> list[str]:
 
 
 def project_report(
-    workspace: TripWorkspaceV2,
+    workspace: TripWorkspace,
     facts: FactStoreSnapshot,
     weather: WeatherContextSnapshot,
     *,

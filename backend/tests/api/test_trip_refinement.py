@@ -50,7 +50,7 @@ def delivered_bundle(run_id):
     weather = WeatherContextSnapshot(weather_data_revision=0, trip_start_date=draft.days[0].date, trip_end_date=draft.days[0].date, days=[], retrieved_at=now)
     facts = build_fact_snapshot(workspace)
     report, map_projection, source_index = build_delivery_projections(workspace, facts, weather, generated_at=now)
-    return assemble_delivery_bundle(TravelAgentState(run_id=run_id, trip_workspace_v2=workspace, fact_store_snapshot=facts, weather_context=weather, report_projection=report, map_projection=map_projection, source_index_projection=source_index))
+    return assemble_delivery_bundle(TravelAgentState(run_id=run_id, trip_workspace=workspace, fact_store_snapshot=facts, weather_context=weather, report_projection=report, map_projection=map_projection, source_index_projection=source_index))
 
 
 @pytest.fixture

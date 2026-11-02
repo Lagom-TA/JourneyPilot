@@ -24,7 +24,7 @@ def build_trip_run_state_summary(state: Any) -> Dict[str, Any]:
         task_type = task_type.value
 
     pending_choice = data.get("pending_user_choice")
-    workspace = data.get("trip_workspace_v2")
+    workspace = data.get("trip_workspace")
     packets = data.get("research_packets") or {}
     fact_store = data.get("fact_store_snapshot") or {}
     source_records = (
@@ -32,8 +32,7 @@ def build_trip_run_state_summary(state: Any) -> Dict[str, Any]:
     )
     summary = {
         "task_type": task_type,
-        "has_itinerary": bool(workspace),
-        "has_workspace_v2": bool(workspace),
+        "has_workspace": bool(workspace),
         "research_packet_count": len(packets),
         "source_record_count": len(source_records or []),
         "pending_user_choice": bool(pending_choice),

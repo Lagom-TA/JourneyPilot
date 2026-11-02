@@ -8,7 +8,7 @@ from travel_agent.planning.itinerary.mutation_contracts import CompositionMutati
 from travel_agent.planning.itinerary.models import (
     DiningStop,
     LodgingStay,
-    StructuredItineraryV2,
+    StructuredItinerary,
     TransportLeg,
     VisitStop,
 )
@@ -28,11 +28,11 @@ from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.weather.models import WeatherProposalDecision
 from travel_agent.schema import StrictModel
 
-class TripWorkspaceV2(StrictModel):
+class TripWorkspace(StrictModel):
     run_id: str = Field(min_length=1)
     generation_id: str = Field(min_length=1)
     workspace_revision: int = Field(ge=0)
-    itinerary: StructuredItineraryV2
+    itinerary: StructuredItinerary
     recommendation_catalog: RecommendationCatalog
     requirements: str = ""
     composition_mutations: List[CompositionMutation] = Field(default_factory=list)
@@ -46,7 +46,7 @@ class TripWorkspaceV2(StrictModel):
     )
 
     @model_validator(mode="after")
-    def validate_candidate_lineage(self) -> "TripWorkspaceV2":
+    def validate_candidate_lineage(self) -> "TripWorkspace":
         catalog = self.recommendation_catalog
         if catalog.generation_id != self.generation_id:
             raise ValueError("workspace and recommendation catalog generations differ")

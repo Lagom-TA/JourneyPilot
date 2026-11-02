@@ -15,7 +15,7 @@ from travel_agent.planning.weather.impacts import WeatherImpactEngine
 from travel_agent.planning.weather.models import WeatherContextSnapshot
 from travel_agent.planning.weather.models import WeatherCoverage
 from travel_agent.planning.weather.models import WeatherDayContext
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 from typing import Callable
 from typing import Iterable
 import json
@@ -347,7 +347,7 @@ def _rebind_catalog_for_snapshot(
     *,
     facts: FactStoreSnapshot,
     weather: WeatherContextSnapshot,
-) -> tuple[TripWorkspaceV2, WeatherContextSnapshot]:
+) -> tuple[TripWorkspace, WeatherContextSnapshot]:
     """把工作区与候选目录对齐到新的事实与天气数据版本。
 
     目录与 packet 的 fact_data_revision 提升到新快照的版本。候选与行程内容

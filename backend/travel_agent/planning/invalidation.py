@@ -32,7 +32,7 @@ def invalidation_update() -> Dict[str, Any]:
         "provider_reference_services": [],
         "placement_skeleton": None,
         "composition_mutations": [],
-        "trip_workspace_v2": None,
+        "trip_workspace": None,
         "composition_failure_context": None,
         "local_connector_gaps": [],
         "research_redo_requests": None,

@@ -9,7 +9,7 @@ from travel_agent.planning.delivery.public.itinerary import _public_itinerary
 from travel_agent.planning.delivery.travel_content import public_selection_text
 from travel_agent.planning.itinerary.options import SelectionSlot
 from travel_agent.planning.weather.models import WeatherProposalDecision
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 from typing import Any
 from typing import Dict
 from typing import List
@@ -74,7 +74,7 @@ def _public_weather_adjustments(bundle: DeliveryBundle) -> List[Dict[str, Any]]:
 
 
 def _public_workspace(
-    workspace: TripWorkspaceV2, bundle: DeliveryBundle, view: EvidenceBasisView
+    workspace: TripWorkspace, bundle: DeliveryBundle, view: EvidenceBasisView
 ) -> Dict[str, Any]:
     """投影 Workspace。
 

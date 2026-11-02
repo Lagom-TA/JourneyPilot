@@ -245,7 +245,7 @@ async def test_planner_preserves_useful_restaurant_reuse_through_checkpoint(
     assert len(calls) == 1
     completed = restore_planning_state(drafted, **await node.itinerary_planner_node(drafted, {}))
     assert completed.agent_status["itinerary_planner"] == "completed"
-    stops = completed.trip_workspace_v2.itinerary.dining_stops
+    stops = completed.trip_workspace.itinerary.dining_stops
     assert len({stop.item_id for stop in stops}) == 2
     assert [stop.lineage.candidate_id for stop in stops] == ["candidate_dining"] * 2
     assert [stop.day_id for stop in stops] == [
@@ -257,7 +257,7 @@ async def test_planner_preserves_useful_restaurant_reuse_through_checkpoint(
     ]
     assert [stop.selection_reason for stop in stops] == reasons
     repeated = restore_planning_state(drafted, **await node.itinerary_planner_node(drafted, {}))
-    assert [stop.item_id for stop in repeated.trip_workspace_v2.itinerary.dining_stops] == [stop.item_id for stop in stops]
+    assert [stop.item_id for stop in repeated.trip_workspace.itinerary.dining_stops] == [stop.item_id for stop in stops]
     assert len(calls) == 1
 
 
@@ -363,11 +363,11 @@ def test_occurrences_reach_connectors_workspace_and_checkpoint(provider):
         make_planning_state(),
         recommendation_catalog=result.recommendation_catalog,
         placement_skeleton=skeleton,
-        trip_workspace_v2=result,
+        trip_workspace=result,
     )
     assert (
         len(
-            {item.item_id for item in restored.trip_workspace_v2.itinerary.dining_stops}
+            {item.item_id for item in restored.trip_workspace.itinerary.dining_stops}
         )
         == 4
     )
@@ -547,7 +547,7 @@ def test_overnight_display_reuses_one_billed_transport_entity():
     assert [ref.projection_role for ref in refs] == ["departure", "arrival"]
     assert len({ref.entity_id for ref in refs}) == 1
     assert len(result.selection_slots) == 1
-    restore_planning_state(make_planning_state(), trip_workspace_v2=result)
+    restore_planning_state(make_planning_state(), trip_workspace=result)
 
 
 def test_lodging_morning_and_evening_are_distinct_occurrences():
@@ -596,7 +596,7 @@ def test_lodging_morning_and_evening_are_distinct_occurrences():
     result = workspace(composition, catalog)
     assert len(result.itinerary.transport_legs) == 4
     assert len(result.itinerary.lodging_stays) == 1
-    restore_planning_state(make_planning_state(), placement_skeleton=skeleton, trip_workspace_v2=result)
+    restore_planning_state(make_planning_state(), placement_skeleton=skeleton, trip_workspace=result)
 
 
 @pytest.mark.asyncio
@@ -823,7 +823,7 @@ async def test_fastest_provider_alternative_is_selected(monkeypatch):
     completed = restore_planning_state(current, **await node.itinerary_planner_node(current, {}))
     assert completed.agent_status["itinerary_planner"] == "completed"
     assert completed.composition_failure_context is None
-    result = completed.trip_workspace_v2
+    result = completed.trip_workspace
     itinerary = result.itinerary
     assert len(itinerary.transport_legs) == 1
     assert itinerary.transport_legs[0].lineage.candidate_id == "candidate_fast"
@@ -836,7 +836,7 @@ async def test_fastest_provider_alternative_is_selected(monkeypatch):
         assert stop.planned_start == placement.planned_start
         assert stop.planned_end == placement.planned_end
     assert len(result.selection_slots) == 3
-    restore_planning_state(completed, trip_workspace_v2=result)
+    restore_planning_state(completed, trip_workspace=result)
 
 
 @pytest.mark.asyncio
@@ -867,7 +867,7 @@ async def test_provider_route_beyond_the_remaining_window_reschedules_once(monke
     # 实际路线超出相邻停留点可用窗口：回炉一次修正排程，不直接交付不可行转场。
     assert rescheduled.agent_status["itinerary_planner"] == "pending"
     assert rescheduled.placement_skeleton is None
-    assert rescheduled.trip_workspace_v2 is None
+    assert rescheduled.trip_workspace is None
     assert rescheduled.composition_reschedule_rounds == 1
     assert "超出可用时间窗口" in rescheduled.composition_failure_context
 
@@ -882,7 +882,7 @@ async def test_provider_route_beyond_the_remaining_window_reschedules_once(monke
         second, **await node.itinerary_planner_node(second, {})
     )
     assert completed.agent_status["itinerary_planner"] == "completed"
-    legs = completed.trip_workspace_v2.itinerary.transport_legs
+    legs = completed.trip_workspace.itinerary.transport_legs
     assert len(legs) == 1
     assert legs[0].lineage.candidate_id == "candidate_slow"
 
@@ -916,7 +916,7 @@ async def test_materialize_failure_returns_failed_status_and_bounded_context(mon
         "materialize_connectors/workspace_materialization 阶段失败"
     )
     assert len(failed.composition_failure_context) <= 600
-    assert failed.trip_workspace_v2 is None
+    assert failed.trip_workspace is None
 
 
 @pytest.mark.asyncio
@@ -991,8 +991,8 @@ def test_multiple_same_meal_occurrences_have_distinct_targeted_slots_after_check
     skeleton = parse_itinerary_composition(json.dumps(itinerary_draft([first, second])))
     _, composition = connect(skeleton, catalog)
     result = workspace(composition, catalog)
-    restored = restore_planning_state(make_planning_state(), trip_workspace_v2=result, recommendation_catalog=result.recommendation_catalog)
-    result = restored.trip_workspace_v2
+    restored = restore_planning_state(make_planning_state(), trip_workspace=result, recommendation_catalog=result.recommendation_catalog)
+    result = restored.trip_workspace
     assert len(result.selection_slots) == len(result.itinerary.dining_stops) == 2
     assert len({slot.selection_slot_id for slot in result.selection_slots}) == 2
     for stop in result.itinerary.dining_stops:
@@ -1014,4 +1014,4 @@ def test_real_duplicate_occurrence_and_overlapping_repeat_still_fail():
     payload["itinerary"].pop("cost_summary")
     payload["itinerary"]["dining_stops"].append(payload["itinerary"]["dining_stops"][0])
     with pytest.raises(ValueError, match="dining stop ids must be unique"):
-        restore_planning_state(make_planning_state(), trip_workspace_v2=payload)
+        restore_planning_state(make_planning_state(), trip_workspace=payload)

@@ -13,7 +13,7 @@ from travel_agent.planning.references import EntityRef
 from travel_agent.planning.references import EntityType
 from travel_agent.planning.research.evidence import FactStoreSnapshot
 from travel_agent.planning.transport import TransportEndpoint
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 from typing import Sequence, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -42,7 +42,7 @@ def _hydrate_endpoint(
 
 
 def project_map(
-    workspace: TripWorkspaceV2,
+    workspace: TripWorkspace,
     facts: FactStoreSnapshot,
     citations: Sequence[PublicCitationProjection],
 ) -> MapProjection:

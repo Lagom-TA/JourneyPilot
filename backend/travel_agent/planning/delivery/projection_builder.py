@@ -13,7 +13,7 @@ from travel_agent.planning.delivery.projections import TripReportProjection
 from travel_agent.planning.delivery.report_projection import project_report
 from travel_agent.planning.research.evidence import FactStoreSnapshot
 from travel_agent.planning.weather.models import WeatherContextSnapshot
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 from typing import Sequence
 
 
@@ -28,7 +28,7 @@ def project_source_index(
 
 
 def build_delivery_projections(
-    workspace: TripWorkspaceV2,
+    workspace: TripWorkspace,
     facts: FactStoreSnapshot,
     weather: WeatherContextSnapshot,
     *,
