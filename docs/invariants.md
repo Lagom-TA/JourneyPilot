@@ -235,7 +235,7 @@ Tests:
 - `backend/tests/conversation/test_chat_execution.py::test_deep_asgi_body_is_backed_by_persisted_bundle_and_ordered_terminal`
 - `backend/tests/api/test_chat_use_cases.py::test_deep_post_commit_failure_keeps_sealed_truth_and_projection_flag`
 
-### INV-SSE-002：慢客户端不让内存无界增长，且不丢一个字符
+### INV-SSE-002：慢客户端不让内存无界增长；未 stall 时不丢事件
 约定：critical 队列有界；未 stall 时不丢，stall 后不再入队并计入 `dropped_critical_events`；token 合并成更大 chunk 而不是丢弃；待发正文超上限即强制 flush；消费者卡住则结束传输交给 durable 恢复。
 Owner: `backend/travel_agent/runtime/events.py`
 Storage: 进程内，上限在 `Settings.streaming`。
@@ -244,6 +244,7 @@ Tests:
 - `backend/tests/runtime/test_event_buffer.py::test_a_slow_client_keeps_every_character_and_every_critical_event`
 - `backend/tests/runtime/test_event_buffer.py::test_adjacent_tokens_merge_without_losing_characters`
 - `backend/tests/runtime/test_event_buffer.py::test_a_consumer_that_never_reads_is_reported_stalled`
+- `backend/tests/runtime/test_event_buffer.py::test_a_stalled_consumer_does_not_let_the_critical_queue_grow`
 
 ### INV-SESSION-001：一个 turn 永远整块返回
 约定：turn 分页以稳定的 first event order 为游标，不使用 offset。
