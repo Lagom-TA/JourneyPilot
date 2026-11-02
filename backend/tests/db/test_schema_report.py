@@ -79,7 +79,7 @@ async def test_report_refuses_an_unmanaged_database(unmanaged_database, settings
     # 拦它的理由必须是「没人纳管过」。基线结构缺的是后续 revision 新增的表，
     # 那不是这条路径要说的事。
     assert any("版本化迁移纳管" in problem for problem in report.problems), report.problems
-    assert "migrate" in report.next_action
+    assert "doctor" in report.next_action
     assert report.to_dict()["gates_readiness"] is True
 
 

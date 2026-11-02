@@ -39,7 +39,6 @@ def _plan_lines(plan: Any) -> list[str]:
 
     verdict = {
         Decision.MIGRATE_EMPTY: "空库：可以直接迁移（不需要备份）",
-        Decision.ADOPT_BASELINE: "结构等于 baseline：将纳管（stamp）而不重复建表",
         Decision.UP_TO_DATE: "已是最新，无需迁移",
         Decision.UPGRADE: "落后于 head：迁移前会自动备份",
         Decision.REFUSE_UNKNOWN_SCHEMA: "拒绝：结构来历不明",

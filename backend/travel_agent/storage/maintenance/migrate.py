@@ -20,17 +20,15 @@ from ...paths import BACKEND_DIR
 from .census import DatabaseCensus, take_census
 from .connection import DatabaseTarget
 from .fingerprint import diff_fingerprints, fingerprint_digest, fingerprint_sync
-from .schema_contract import BASELINE_REVISION
 
 logger = logging.getLogger(__name__)
 
 ALEMBIC_INI = BACKEND_DIR / "alembic.ini"
 MIGRATIONS_DIR = BACKEND_DIR / "migrations"
-#: 每个**改变了受管结构**的 revision 在这里存一份指纹。adoption 判定与 API 只读校验
+#: 每个**改变了受管结构**的 revision 在这里存一份指纹。API 只读校验与 drift 判定
 #: 都拿活库指纹与这里的存档逐字比对。不改结构的 revision（比如只删合同外的遗留表）
 #: 不需要新存档 —— 指纹只覆盖 `MANAGED_TABLES`，它们本来就不在里面。
 FINGERPRINTS_DIR = MIGRATIONS_DIR / "fingerprints"
-BASELINE_FINGERPRINT_PATH = FINGERPRINTS_DIR / f"{BASELINE_REVISION}.json"
 
 
 class Decision(str, Enum):
@@ -38,8 +36,6 @@ class Decision(str, Enum):
 
     #: 空库 → 直接 upgrade head，不需要备份
     MIGRATE_EMPTY = "migrate_empty"
-    #: 有核心表、无 alembic_version、指纹等于 baseline → stamp baseline
-    ADOPT_BASELINE = "adopt_baseline"
     #: 已在 head → 只做只读校验
     UP_TO_DATE = "up_to_date"
     #: 落后于 head → 备份后 upgrade
@@ -184,10 +180,6 @@ def load_fingerprint_archive(revision: str) -> dict[str, Any] | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def load_baseline_fingerprint() -> dict[str, Any] | None:
-    return load_fingerprint_archive(BASELINE_REVISION)
-
-
 def expected_fingerprint_for(revision: str, *, line: tuple[str, ...] | None = None) -> dict[str, Any] | None:
     """这个 revision 应该长什么样：从它往前找到最近的一份指纹存档。
 
@@ -313,69 +305,29 @@ def plan(
             next_action="journeypilot doctor --json  # 导出诊断后决定重建或恢复备份",
         )
 
-    # 有核心表、无版本号 → adoption：**必须先证明结构等于 baseline**。
-    baseline = load_baseline_fingerprint()
-    if baseline is None:
-        return build(
-            Decision.REFUSE_UNKNOWN_SCHEMA,
-            problems=(
-                f"缺少 baseline 指纹存档（{BASELINE_FINGERPRINT_PATH}），"
-                "无法证明现有结构等于 baseline。",
-            ),
-            next_action="journeypilot db write-baseline-fingerprint  # 仅开发者，用于生成存档",
-        )
-
-    problems = tuple(diff_fingerprints(baseline, actual))
-    if problems:
-        return build(
-            Decision.REFUSE_UNKNOWN_SCHEMA,
-            problems=problems,
-            next_action=(
-                "这个数据库的结构与 baseline 不一致，拒绝自动纳管（绝不 stamp 未知结构）。"
-                "先 `journeypilot backup` 留档，再重建数据库或从匹配的备份恢复。"
-            ),
-        )
-
-    # 纳管本身（写一行 `alembic_version`）不改变任何数据，因此不受破坏性迁移检查
-    # 约束。该检查针对纳管之后的待执行迁移：`cmd_migrate` 先 stamp、再重新判定，
-    # 于是「已纳管」与「后续迁移需要授权」互不影响。
-    pending = line[line.index(BASELINE_REVISION) + 1 :] if BASELINE_REVISION in line else ()
-    destructive = tuple(rev for rev in pending if is_destructive(target, rev))
-    notes = [
-        f"结构与 baseline 指纹一致（{digest[:12]}…），"
-        f"将 stamp 到 {BASELINE_REVISION} 而不重复建表。"
-    ]
-    if destructive and not allow_destructive:
-        notes.append(
-            "纳管之后还有破坏性迁移（" + "、".join(destructive) + "），"
-            "它们需要 --allow-destructive 才会执行。"
-        )
+    # 有核心表、无版本号 → 拒绝。
+    #
+    # 这里曾经有一条「纳管」路径：证明结构等于 baseline 之后 `alembic stamp`，
+    # 让 pre-alembic 时代建的库免于重建。开源预发布版本里不存在这样的库 ——
+    # 任何用户手里的库都是 `migrate` 建出来的，一定带 alembic_version。留着这条
+    # 路径等于永久保留一个「把来历不明的结构标记成最新版本」的入口，而它换来的
+    # 只是省掉一次重建。删掉它，判定就只剩「空库建、有版本号按版本号走、其余拒绝」。
     return build(
-        Decision.ADOPT_BASELINE,
-        pending_revisions=pending,
-        destructive_revisions=destructive,
-        backup_required=census.total_business_rows > 0,
-        notes=notes,
-        next_action="journeypilot migrate",
+        Decision.REFUSE_UNKNOWN_SCHEMA,
+        problems=(
+            "这个数据库有 JourneyPilot 的表，但没有 alembic_version："
+            "它不是这份代码的迁移建出来的，无法确认结构与当前代码匹配。",
+        ),
+        next_action=(
+            "先 `journeypilot backup` 留档，再重建数据库（`journeypilot migrate` 会建出完整结构）"
+            "或从匹配的备份恢复。本版本不再自动纳管未版本化的库。"
+        ),
     )
 
 
 # --------------------------------------------------------------------------- #
 # 执行
 # --------------------------------------------------------------------------- #
-
-
-def stamp(target: DatabaseTarget, revision: str) -> None:
-    """写 alembic_version，不执行任何 DDL。
-
-    只有 `plan()` 判定 ADOPT_BASELINE 时才允许调用，而那条路径以指纹逐字相同为
-    前提。任何其他调用点都会把未知结构的数据库标记成最新版本。
-    """
-
-    from alembic import command
-
-    command.stamp(alembic_config(target), revision)
-    logger.info("已将 %s 标记为 revision %s（未执行 DDL）", target.describe(), revision)
 
 
 def upgrade(target: DatabaseTarget, revision: str = "head") -> None:

@@ -87,7 +87,7 @@ def _run_migration(
     from ..storage.maintenance.backup import create_backup
     from ..storage.maintenance.connection import connect
     from ..storage.maintenance.lock import MigrationLockTimeout, migration_lock
-    from ..storage.maintenance.migrate import Decision, plan, stamp, upgrade
+    from ..storage.maintenance.migrate import Decision, plan, upgrade
 
     if migration_plan.backup_required and not args.skip_backup:
         print("")
@@ -134,29 +134,6 @@ def _run_migration(
                 if fresh.decision is Decision.UP_TO_DATE:
                     print("\n另一个进程已经把数据库迁到最新，无需重复执行。")
                     return EXIT_OK
-                if fresh.decision is Decision.ADOPT_BASELINE:
-                    stamp(target, _baseline_revision())
-                    print(
-                        f"\n已纳管：{target.database} → {_baseline_revision()}（未执行 DDL）"
-                    )
-                    after_adopt = plan(
-                        conn,
-                        target,
-                        embedding_dimensions=settings.embedding.dimensions,
-                        allow_destructive=args.allow_destructive,
-                    )
-                    if after_adopt.decision is Decision.UP_TO_DATE:
-                        print("数据库已是最新。")
-                        return EXIT_OK
-                    if after_adopt.refused:
-                        print("", file=sys.stderr)
-                        for problem in after_adopt.problems:
-                            print(f"问题            {problem}", file=sys.stderr)
-                        print(
-                            f"下一步          {after_adopt.next_action}",
-                            file=sys.stderr,
-                        )
-                        return EXIT_FAILED
                 upgrade(target)
     except MigrationLockTimeout as exc:
         print(f"\n{exc}", file=sys.stderr)
@@ -171,8 +148,3 @@ def _run_migration(
 
     return EXIT_OK
 
-
-def _baseline_revision() -> str:
-    from ..storage.maintenance.schema_contract import BASELINE_REVISION
-
-    return BASELINE_REVISION
