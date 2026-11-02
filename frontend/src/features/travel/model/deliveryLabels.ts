@@ -23,11 +23,6 @@ export const BOOKING_LABELS: Record<PublicTransportLeg['booking_status'], string
     booked: '需自行确认',
     unknown: '暂无预订信息',
 };
-export function bookingLabel(value: string | null): string | null {
-    if (!value)
-        return null;
-    return BOOKING_LABELS[value as PublicTransportLeg['booking_status']] ?? null;
-}
 export const WEATHER_OBSERVED_SUFFIX = '观测';
 export const WEATHER_HISTORICAL_LABEL = '历史天气数据';
 export function weatherFreshnessText(dataState: 'current' | 'historical', observedAt: string | null): string | null {

@@ -1,14 +1,4 @@
-import { type TripReportProjection } from "../types/report";
-export type PublicWeatherDay = NonNullable<TripReportProjection['document']>['weather'][number];
 export type WeatherIconKind = 'clear' | 'partly' | 'cloudy' | 'rain' | 'drizzle' | 'thunder' | 'snow' | 'fog' | 'wind' | 'unknown';
-export interface WeatherDayVM extends PublicWeatherDay {
-    icon: WeatherIconKind;
-}
-export interface WeatherDestinationGroup {
-    destinationId: string;
-    label: string;
-    days: WeatherDayVM[];
-}
 export function isRainy(icon: WeatherIconKind): boolean {
     return icon === 'rain' || icon === 'drizzle' || icon === 'thunder';
 }
@@ -35,38 +25,4 @@ export function weatherIconForLabel(label: string | null): WeatherIconKind {
     if (/晴|sun|clear/.test(normalized))
         return 'clear';
     return 'unknown';
-}
-function toViewModel(day: PublicWeatherDay): WeatherDayVM {
-    return { ...day, icon: weatherIconForLabel(day.condition_label) };
-}
-export function buildWeatherGroups(days: readonly PublicWeatherDay[]): WeatherDestinationGroup[] {
-    const grouped = new Map<string, {
-        label: string;
-        days: WeatherDayVM[];
-    }>();
-    for (const day of days) {
-        if (day.data_kind === 'unavailable')
-            continue;
-        const existing = grouped.get(day.destination_id);
-        if (existing && existing.label !== day.destination_name) {
-            throw new Error(`Conflicting destination name for ${day.destination_id}`);
-        }
-        const group = existing ?? { label: day.destination_name, days: [] };
-        group.days.push(toViewModel(day));
-        grouped.set(day.destination_id, group);
-    }
-    return [...grouped.entries()].map(([destinationId, group]) => ({
-        destinationId,
-        label: group.label,
-        days: group.days.sort((left, right) => left.date.localeCompare(right.date)),
-    }));
-}
-export function buildWeatherByDestinationDate(days: readonly PublicWeatherDay[]): Map<string, WeatherDayVM> {
-    const result = new Map<string, WeatherDayVM>();
-    for (const day of days) {
-        if (day.data_kind === 'unavailable')
-            continue;
-        result.set(`${day.destination_id}:${day.date}`, toViewModel(day));
-    }
-    return result;
 }
