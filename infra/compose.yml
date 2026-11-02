@@ -11,7 +11,8 @@ services:
   # 不编译任何东西。让每个用户第一次启动都编译 SCWS + zhparser，换来的是一个在
   # ARM 上、在网络不好的地方、在 apt 源变动那天就装不上的产品。
   #
-  # 中文分词增强（zhparser）是**换一个镜像**，不是第二个服务：
+  # 中文分词增强（zhparser）是**换一个镜像**，不是第二个服务，也没有单独的
+  # compose profile：同一个 postgres 服务用 POSTGRES_IMAGE 覆盖镜像即可。
   #
   #   docker build -t journeypilot-postgres:pg18-zhparser ./infra/postgres
   #   POSTGRES_IMAGE=journeypilot-postgres:pg18-zhparser docker compose -f infra/compose.yml up -d

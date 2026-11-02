@@ -1,7 +1,9 @@
-# PostgreSQL + pgvector + zhparser（**可选** profile，见 infra/compose.yml）。
+# PostgreSQL + pgvector + zhparser（**可选**增强，不是默认档）。
 #
 # 默认档用官方 pgvector 镜像，不编译任何东西。这一份只在用户显式选择中文分词增强时
-# 构建：`docker compose --profile zhparser up -d --build postgres-zhparser redis api`。
+# 构建：
+#   docker build -t journeypilot-postgres:pg18-zhparser ./infra/postgres
+#   POSTGRES_IMAGE=journeypilot-postgres:pg18-zhparser docker compose -f infra/compose.yml up -d
 #
 # 供应链要求：
 #   - 基础镜像固定 digest（多架构 index，含 amd64 与 arm64）；
@@ -9,7 +11,7 @@
 #   - 源码 tarball 固定 URL + SHA-256。
 #
 # 网络不通时**让它失败**：一个装不上 zhparser 的环境应当拿到一条构建错误，而不是
-# 一个悄悄降级验签的镜像。默认档不受影响 —— 那正是把它拆成 profile 的理由。
+# 一个悄悄降级验签的镜像。默认档不受影响 —— 那正是把它拆成独立镜像的理由。
 FROM pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
 
 # 编译工具 + PostgreSQL 18 开发头文件。走基础镜像自带的 HTTPS Debian/PGDG 源与
