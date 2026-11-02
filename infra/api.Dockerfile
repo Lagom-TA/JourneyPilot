@@ -10,7 +10,7 @@
 # ---------------------------------------------------------------------------
 # frontend：构建静态产物。镜像不依赖宿主机先跑 npm run build。
 # ---------------------------------------------------------------------------
-FROM node:22-bookworm-slim AS frontend
+FROM node:26-bookworm-slim AS frontend
 
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
@@ -22,7 +22,7 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 # builder：装依赖，带编译工具
 # ---------------------------------------------------------------------------
-FROM python:3.11-slim-bookworm AS builder
+FROM python:3.15-slim-bookworm AS builder
 
 # 固定 uv 版本：一个会自己升级的安装器让「同一个 commit 构出同一个镜像」不再成立。
 ARG UV_VERSION=0.9.7
@@ -49,7 +49,7 @@ RUN set -eu; \
 # ---------------------------------------------------------------------------
 # node-mcp：Node stdio MCP server 的包，装在自己的层
 # ---------------------------------------------------------------------------
-FROM node:22-bookworm-slim AS node-mcp
+FROM node:26-bookworm-slim AS node-mcp
 
 WORKDIR /mcp
 COPY backend/mcp/package.json backend/mcp/package-lock.json ./
@@ -60,7 +60,7 @@ RUN npm ci --omit=dev
 # ---------------------------------------------------------------------------
 # runtime：不带编译工具，不以 root 跑
 # ---------------------------------------------------------------------------
-FROM python:3.11-slim-bookworm AS runtime
+FROM python:3.15-slim-bookworm AS runtime
 
 # curl 供 healthcheck；libpq5 是 psycopg 的运行时（不是 libpq-dev）；
 # libstdc++6 供从 node:22 复制过来的 node 二进制。
