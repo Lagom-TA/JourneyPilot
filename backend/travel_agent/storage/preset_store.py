@@ -1,5 +1,5 @@
 """
-Preset 持久化存储层 (Infrastructure Layer)
+Preset 持久化存储层
 基于 PostgreSQL 存储系统 seed 与用户自定义旅行风格预设。
 """
 

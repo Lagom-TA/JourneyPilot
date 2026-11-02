@@ -479,7 +479,7 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
     try {
       state.element.releasePointerCapture(state.pointerId);
     } catch {
-      // The browser may already have released the pointer after a native gesture.
+      // 原生手势之后浏览器可能已经释放了指针捕获。
     }
     state.captured = false;
   };

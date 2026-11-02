@@ -1,5 +1,5 @@
 """
-会话历史存储与回放服务 (Infrastructure Layer)
+会话历史存储与回放服务
 基于 PostgreSQL 两张表：chat_sessions + chat_session_events。
 """
 

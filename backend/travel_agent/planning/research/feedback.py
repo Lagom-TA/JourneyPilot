@@ -43,7 +43,7 @@ def latest_worker_packet(
 ) -> tuple[str, ResearchPacket] | None:
     """返回该 Worker 在当前规划版本内最新轮次 packet 的存储键与 packet。
 
-    research_packets 跨规划版本保留，旧版本的同轮次 packet 不能作为
+    research_packets 跨规划代际保留；非当前代际的同轮次 packet 不能作为
     当前返研的对照成果。
     """
     from travel_agent.planning.assignments import strip_round_suffix

@@ -307,11 +307,9 @@ def plan(
 
     # 有核心表、无版本号 → 拒绝。
     #
-    # 这里曾经有一条「纳管」路径：证明结构等于 baseline 之后 `alembic stamp`，
-    # 让 pre-alembic 时代建的库免于重建。开源预发布版本里不存在这样的库 ——
-    # 任何用户手里的库都是 `migrate` 建出来的，一定带 alembic_version。留着这条
-    # 路径等于永久保留一个「把来历不明的结构标记成最新版本」的入口，而它换来的
-    # 只是省掉一次重建。删掉它，判定就只剩「空库建、有版本号按版本号走、其余拒绝」。
+    # 判定只有三种结果：空库建、有 alembic_version 按版本号走、其余拒绝。
+    # 不接受「证明结构等于 baseline 后 stamp」的纳管路径：那等于保留一个把来历
+    # 不明的结构标记成最新版本的入口，只省掉一次重建。
     return build(
         Decision.REFUSE_UNKNOWN_SCHEMA,
         problems=(

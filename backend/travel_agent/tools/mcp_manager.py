@@ -1,5 +1,5 @@
 """
-MCP 工具管理器 (Infrastructure Layer)
+MCP 工具管理器
 直接使用 mcp SDK 进行服务器探测、工具注册和调用。
 """
 

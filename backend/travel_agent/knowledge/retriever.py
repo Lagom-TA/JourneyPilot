@@ -1,5 +1,5 @@
 """
-语义检索器 + Hybrid Search (Application Layer)
+语义检索器 + Hybrid Search
 
 HybridRetriever：向量检索（pgvector 余弦相似度）+ lexical full-text 检索（PostgreSQL tsvector/ts_rank）
 融合策略：Reciprocal Rank Fusion (RRF)

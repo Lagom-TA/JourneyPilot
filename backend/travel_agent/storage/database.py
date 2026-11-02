@@ -1,5 +1,5 @@
 """
-PostgreSQL + pgvector 连接管理 (Infrastructure Layer)
+PostgreSQL + pgvector 连接管理
 使用 SQLAlchemy 异步引擎 + asyncpg 驱动。
 
 只建连接，不建结构：DDL 与数据收敛属于版本化迁移（`journeypilot migrate`），

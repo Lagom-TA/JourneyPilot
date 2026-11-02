@@ -1,5 +1,5 @@
 """
-文档分块策略 (Application Layer)
+文档分块策略
 将长文档分割为适合嵌入的文本块。
 
 支持三种策略（通过 config.rag.chunker_type 选择）：

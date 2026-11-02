@@ -101,7 +101,7 @@ def test_top_level_mcp_servers_is_refused():
 
 
 def test_a_removed_config_version_key_is_rejected_as_unknown():
-    """配置里不再有版本字段；旧文件多带一个键时按未知字段拒绝。"""
+    """配置里没有版本字段；文件多带一个未知键时按未知字段拒绝。"""
 
     with pytest.raises(ConfigError) as exc:
         build_settings({"config_version": 2, "database": {"host": "x"}})

@@ -1,5 +1,5 @@
 """
-Redis 客户端封装 (Infrastructure Layer)
+Redis 客户端封装
 用于短期会话缓存、工具结果缓存等。
 """
 

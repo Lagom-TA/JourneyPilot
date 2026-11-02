@@ -1,5 +1,5 @@
 """
-结构化文档导入 (Application Layer)
+结构化文档导入
 支持 Markdown / TXT / JSON / PDF / DOCX 格式的知识库数据导入。
 
 PDF/DOCX 走 `document_parse.py`：批量导入与上传共用同一组输入边界与同一个受限

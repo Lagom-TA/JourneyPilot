@@ -453,7 +453,7 @@ def test_redo_without_new_packet_exits_erroneous_results():
 
 
 def test_latest_worker_packet_is_scoped_to_current_generation():
-    """返研对照的错误成果只从当前规划版本中选取，旧版本轮次不参与。"""
+    """返研对照的错误成果只从当前规划代际中选取，其他代际轮次不参与。"""
     from travel_agent.planning.requirements.generation_contracts import PlanningGeneration
     from travel_agent.planning.research.feedback import latest_worker_packet
 

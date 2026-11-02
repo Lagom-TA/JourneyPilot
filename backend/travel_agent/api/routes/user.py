@@ -1,5 +1,5 @@
 """
-用户配置 API (Serving Layer)
+用户配置 API
 管理用户画像和偏好。
 """
 
