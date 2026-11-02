@@ -2829,8 +2829,6 @@ summary.research-query-summary { cursor: pointer; }
 .journey-mobile-panels .journey-content { min-height: 0; flex: 1; border-right: 0; }
 .journey-mobile-panels .journey-content-scroll { padding: 14px 14px 24px; }
 .journey-mobile-panels .journey-back-trips { display: none; }
-.journey-mobile-day-nav { flex: none; padding: 0 12px 10px; }
-.journey-mobile-day-nav .journey-day-nav { max-width: 100%; box-shadow: none; }
 
 @media (min-width: 1440px) {
   :root { --journey-panel-width: 560px; }

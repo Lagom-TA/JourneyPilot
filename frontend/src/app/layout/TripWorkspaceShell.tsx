@@ -9,6 +9,7 @@ import { isPublicDeliveryBundle } from '../../features/travel/types/delivery';
 import { ConversationThread } from '../../features/chat/components/ConversationThread';
 import { PageSkeleton } from '../components/PageSkeleton';
 import { DeliveryWorkspace } from '../../features/travel/components/workspace/DeliveryWorkspace';
+import { LazyViewBoundary } from '../../components/ui/LazyViewBoundary';
 import { emphasisEnter, slideUp } from '../../lib/motion';
 import React from 'react';
 
@@ -90,7 +91,22 @@ export const TripWorkspaceShell: React.FC = () => {
               exit="exit"
               onAnimationComplete={focusJourneyWorkspace}
             >
-              <DeliveryWorkspace bundle={state.deliveryBundle} />
+              <LazyViewBoundary
+                resetKey={state.currentTripRunId ?? state.conversationEpoch}
+                message="旅行工作台暂时无法显示。"
+                fallback={(
+                  <div data-testid="workspace-local-failure" role="alert" className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+                    <p className="text-sm leading-relaxed text-ink-secondary">旅行工作台暂时无法显示。</p>
+                    <button
+                      type="button"
+                      onClick={() => window.location.reload()}
+                      className="min-h-9 rounded-label border border-stroke bg-surface px-3 text-xs font-semibold text-ink hover:bg-accent-soft"
+                    >重新加载页面</button>
+                  </div>
+                )}
+              >
+                <DeliveryWorkspace bundle={state.deliveryBundle} />
+              </LazyViewBoundary>
             </PresenceFrame>
           ) : (
             <PresenceFrame key="workspace-conversation" className="h-full min-h-0 w-full" data-testid="workspace-conversation" variants={reducedMotion ? directHandoff : slideUp} initial="hidden" animate="visible" exit="exit">

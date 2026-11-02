@@ -289,7 +289,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
     setHiddenLayers([]);
     overviewScrollTop.current = 0;
     returnFocusDayId.current = null;
-  }, [state.currentSessionId]);
+  }, [state.currentSessionId, state.currentTripRunId]);
 
   React.useEffect(() => {
     const outsideDisplayedDay = (id: string | null) => (
@@ -463,7 +463,6 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
           )}
         </div>
       </header>
-      {isMobile && <div className="journey-mobile-day-nav"><MapDayNav days={bundle.workspace.itinerary.day_plans} activeDay={activeDay} onSelect={selectDay} /></div>}
       {state.currentTripRunReadOnly && <div className="journey-readonly-footer">这份生成记录仅供查看</div>}
     </aside>
   );

@@ -8,6 +8,8 @@ interface LazyViewBoundaryProps {
   /* 失败提示只描述当前可确认的状态，不对未知异常断言原因。 */
   message?: string;
   retryLabel?: string;
+  /* 局部边界用：失败时用调用方提供的界面替代默认整页提示。 */
+  fallback?: React.ReactNode;
 }
 
 interface LazyViewBoundaryState {
@@ -39,6 +41,9 @@ export class LazyViewBoundary extends React.Component<
 
   render() {
     if (this.state.failed) {
+      if (this.props.fallback !== undefined) {
+        return this.props.fallback;
+      }
       return (
         <div data-testid="lazy-view-failure" role="alert" className="flex h-full items-center justify-center bg-bg p-6">
           <div className="max-w-[52ch] rounded-card border border-stroke bg-panel p-6 text-center shadow-sm">
