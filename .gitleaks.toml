@@ -9,14 +9,12 @@ title = "JourneyPilot"
 useDefault = true
 
 [allowlist]
-description = "Local-only paths + known non-secret test fixtures"
+description = "Local-only paths. These files are gitignored and are not published."
 paths = [
-  # Local runtime secrets (already .gitignore'd; still hit by --no-git scans)
   '''(^|/)config\.yaml$''',
   '''(^|/)\.env(\..+)?$''',
   '''(^|/)cookies\.json$''',
   '''(^|/)secrets\..+$''',
-  '''tests/test_formal_''',
 ]
 regexes = [
   # Python 属性表达式会被通用规则误判成凭据。
