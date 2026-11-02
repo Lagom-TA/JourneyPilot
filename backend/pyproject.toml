@@ -14,7 +14,7 @@ dependencies = [
     "uvicorn[standard]>=0.34.3",
     "python-multipart>=0.0.31",
     "sse-starlette>=2.3.6",
-    "starlette>=0.47.2,<1",
+    "starlette>=0.47.2,<2",
     "langgraph>=0.2.0",
     "langgraph-checkpoint-postgres==3.0.5",
     "langchain>=0.3.0",
