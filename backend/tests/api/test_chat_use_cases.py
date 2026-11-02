@@ -37,7 +37,7 @@ from travel_agent.runtime.cancellation import RunCancelled, run_control_registry
 from travel_agent.runtime.run_contracts import (
     TripRunStatus,
 )
-from travel_agent.storage.cost_ledger_store import InMemoryCostLedgerStore
+from tests.support.memory_stores import InMemoryCostLedgerStore
 
 
 @pytest.mark.parametrize(

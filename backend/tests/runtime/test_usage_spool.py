@@ -9,7 +9,7 @@ import pytest
 from travel_agent.llm.usage import LLMCallRecord, UsageRecorder
 from travel_agent.llm.usage_spool import UsageSpoolConflict
 from travel_agent.runtime.usage_flush import UsageFlushService
-from travel_agent.storage.cost_ledger_store import InMemoryCostLedgerStore
+from tests.support.memory_stores import InMemoryCostLedgerStore
 
 
 def record(call_id="a", run="run"):
@@ -362,7 +362,7 @@ async def test_usage_flush_stops_volatile_recovery_after_first_io_failure(monkey
 
     from travel_agent.llm.usage import LLMCallRecord, UsageRecorder
     from travel_agent.runtime.usage_flush import UsageFlushService
-    from travel_agent.storage.cost_ledger_store import InMemoryCostLedgerStore
+    from tests.support.memory_stores import InMemoryCostLedgerStore
 
     recorder = UsageRecorder(maxlen=2)
     put = recorder._spool.put

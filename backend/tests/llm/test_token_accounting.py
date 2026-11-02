@@ -31,12 +31,12 @@ from travel_agent.runtime.budget import (
 )
 from travel_agent.runtime.context import current_run_id
 from travel_agent.storage.cost_ledger_store import (
-    CostLedgerConflict,
-    InMemoryCostLedgerStore,
-    build_ledger_call,
-    compute_cost_usd,
-    summarize_calls,
+    CostLedgerConflict, 
+    build_ledger_call, 
+    compute_cost_usd, 
+    summarize_calls, 
 )
+from tests.support.memory_stores import InMemoryCostLedgerStore
 
 
 @pytest.mark.parametrize("raw, expected", [

@@ -28,7 +28,7 @@ from travel_agent.runtime.run_contracts import (
     RunRecoveryStatus,
     TripRunStatus,
 )
-from travel_agent.storage.trip_run_store import InMemoryTripRunStore
+from tests.support.memory_stores import InMemoryTripRunStore
 
 
 class Commands(FakeCommandStore):

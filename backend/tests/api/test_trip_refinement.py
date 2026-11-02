@@ -22,7 +22,8 @@ from travel_agent.planning.itinerary.materialize import materialize_trip_workspa
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.weather.models import WeatherContextSnapshot
 from travel_agent.runtime.run_contracts import TripRunStatus
-from travel_agent.storage.delivery_bundle_store import InMemoryDeliveryBundleStore, BundleCommitKind
+from travel_agent.storage.delivery_bundle_store import BundleCommitKind
+from tests.support.memory_stores import InMemoryDeliveryBundleStore
 
 
 def identity():

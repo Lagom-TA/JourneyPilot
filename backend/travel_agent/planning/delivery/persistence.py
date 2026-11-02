@@ -12,9 +12,11 @@ from travel_agent.storage.database import get_db_session
 from travel_agent.storage.delivery_bundle_store import (
     BundleCommitKind,
     DeliveryBundleStore,
-    InMemoryDeliveryBundleStore,
 )
-from travel_agent.storage.trip_run_store import InMemoryTripRunStore, TripRunStore
+from travel_agent.storage.initial_delivery_snapshot import (
+    InitialDeliverySnapshotCapable,
+)
+from travel_agent.storage.trip_run_store import TripRunStore
 
 
 async def _commit_initial_delivery_atomically(
@@ -50,9 +52,11 @@ async def _commit_initial_delivery_atomically(
         if completed.status != TripRunStatus.COMPLETED:
             raise RuntimeError("TripRun completion was not durably recorded")
 
-    if isinstance(bundle_store, InMemoryDeliveryBundleStore) and isinstance(
-        trip_store, InMemoryTripRunStore
-    ):
+    bundle_snapshot_capable = isinstance(
+        bundle_store, InitialDeliverySnapshotCapable
+    )
+    trip_snapshot_capable = isinstance(trip_store, InitialDeliverySnapshotCapable)
+    if bundle_snapshot_capable and trip_snapshot_capable:
         bundle_snapshot = bundle_store.snapshot_for_initial_delivery()
         trip_snapshot = trip_store.snapshot_for_initial_delivery()
         try:
@@ -78,9 +82,7 @@ async def _commit_initial_delivery_atomically(
             trip_store.restore_initial_delivery(trip_snapshot)
             raise
 
-    if isinstance(bundle_store, InMemoryDeliveryBundleStore) or isinstance(
-        trip_store, InMemoryTripRunStore
-    ):
+    if bundle_snapshot_capable or trip_snapshot_capable:
         raise RuntimeError("delivery finalizer requires matched persistence stores")
 
     # checkpoint 使用另一个连接池；只有这个共享事务能证明交付完成。

@@ -17,8 +17,8 @@ from travel_agent.planning.requirements import amendments, entry
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.context import current_run_id, node_lifecycle_sink
 from travel_agent.runtime.run_contracts import TripRunStatus
-from travel_agent.storage.delivery_bundle_store import InMemoryDeliveryBundleStore
-from travel_agent.storage.trip_run_store import InMemoryTripRunStore
+from tests.support.memory_stores import InMemoryDeliveryBundleStore
+from tests.support.memory_stores import InMemoryTripRunStore
 
 
 def test_graph_caches_share_only_the_same_checkpointer(monkeypatch):

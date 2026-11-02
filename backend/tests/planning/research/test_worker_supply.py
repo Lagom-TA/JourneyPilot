@@ -278,8 +278,8 @@ async def _run_serial_research(monkeypatch, model: SupplyModel, identity: dict):
 
     monkeypatch.setattr(weather, "_configured_builder", lambda config: WeatherBuilder())
 
-    from travel_agent.storage.delivery_bundle_store import InMemoryDeliveryBundleStore
-    from travel_agent.storage.trip_run_store import InMemoryTripRunStore
+    from tests.support.memory_stores import InMemoryDeliveryBundleStore
+    from tests.support.memory_stores import InMemoryTripRunStore
     from travel_agent.runtime.run_contracts import TripRunStatus
 
     bundles, runs = InMemoryDeliveryBundleStore(), InMemoryTripRunStore()

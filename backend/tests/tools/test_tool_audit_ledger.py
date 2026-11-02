@@ -15,12 +15,12 @@ import pytest
 
 from travel_agent.storage import tool_audit_store as store_module
 from travel_agent.storage.tool_audit_store import (
-    InMemoryToolAuditStore,
-    ToolAuditConflict,
-    ToolAuditStore,
-    _audit_identity,
-    build_audit_record_from_envelope,
+    ToolAuditConflict, 
+    ToolAuditStore, 
+    _audit_identity, 
+    build_audit_record_from_envelope, 
 )
+from tests.support.memory_stores import InMemoryToolAuditStore
 from travel_agent.tools.gateway_contracts import ToolManifest
 
 _MANIFEST = ToolManifest(tool_name="amap_route", source="tool", server_name="amap")

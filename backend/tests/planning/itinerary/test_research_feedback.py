@@ -235,8 +235,8 @@ async def _run_research_feedback(monkeypatch, model: FeedbackModel):
     from langgraph.types import Command
 
     from travel_agent.planning.graph import build_travel_workflow
-    from travel_agent.storage.delivery_bundle_store import InMemoryDeliveryBundleStore
-    from travel_agent.storage.trip_run_store import InMemoryTripRunStore
+    from tests.support.memory_stores import InMemoryDeliveryBundleStore
+    from tests.support.memory_stores import InMemoryTripRunStore
     from travel_agent.runtime.run_contracts import TripRunStatus
 
     bundles, runs = InMemoryDeliveryBundleStore(), InMemoryTripRunStore()
