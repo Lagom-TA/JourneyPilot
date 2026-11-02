@@ -53,16 +53,27 @@ def test_lock_is_released_when_connection_closes(temp_database):
         release(other)
 
 
-def test_destructive_migration_is_refused_without_consent(temp_database, settings):
-    """非空库上的破坏性迁移必须被拒绝，直到显式授权。"""
+def test_destructive_migration_is_refused_without_consent(temp_database, settings, monkeypatch):
+    """非空库上，待执行的破坏性迁移必须被拒绝，直到显式授权。"""
 
-    migrate.upgrade(temp_database, "0001_baseline")
-    # 造一行数据，让它成为「非空库」——这条约束保护的正是这一行。
+    migrate.upgrade(temp_database)
     with connect(temp_database) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO user_profiles (user_id, display_name) VALUES ('local', '测试')"
             )
+
+    real_line = migrate.revision_line()
+
+    def line_with_pending(target=None):
+        return real_line + ("9000_example",)
+
+    monkeypatch.setattr(migrate, "revision_line", line_with_pending)
+    monkeypatch.setattr(
+        migrate,
+        "is_destructive",
+        lambda target, revision: revision == "9000_example",
+    )
 
     dimensions = settings.embedding.dimensions
     with connect(temp_database) as conn:
@@ -74,19 +85,17 @@ def test_destructive_migration_is_refused_without_consent(temp_database, setting
     assert refused.decision is migrate.Decision.REFUSE_NEEDS_DESTRUCTIVE_CONSENT
     assert refused.refused
     assert "--allow-destructive" in refused.next_action
-    assert refused.destructive_revisions, "拒绝时必须点名是哪几条迁移"
+    assert refused.destructive_revisions == ("9000_example",)
     assert refused.backup_required is True, "非空库执行迁移前必须先备份"
 
     assert allowed.decision is migrate.Decision.UPGRADE
     assert not allowed.refused
 
 
-def test_empty_database_skips_the_destructive_gate(temp_database, settings):
-    """空库不受破坏性校验约束——那里没有数据可丢。
+def test_empty_database_skips_the_destructive_gate(temp_database, settings, monkeypatch):
+    """空库不受破坏性校验约束。那里没有数据可丢，首次安装不要求额外授权。"""
 
-    否则每一次**首次安装**都要用户敲 `--allow-destructive`，
-    而那会把一个真正重要的确认动作变成例行操作。
-    """
+    monkeypatch.setattr(migrate, "is_destructive", lambda target, revision: True)
 
     with connect(temp_database) as conn:
         plan = migrate.plan(
@@ -95,12 +104,8 @@ def test_empty_database_skips_the_destructive_gate(temp_database, settings):
 
     assert plan.decision is migrate.Decision.MIGRATE_EMPTY
     assert not plan.refused
+    assert plan.destructive_revisions == ()
     assert plan.backup_required is False
-    # head 路径上确实有破坏性迁移，这条测试才有意义。
-    line = migrate.revision_line()
-    assert any(migrate.is_destructive(None, rev) for rev in line), (
-        "迁移历史里没有破坏性迁移，这条测试无法证明迁移锁检查被跳过"
-    )
 
 
 def test_unknown_revision_is_refused(temp_database, settings):

@@ -1,12 +1,12 @@
 # ADR-0001：固定单一本地身份，不建账户系统
 
 状态：已采纳
-影响：`runtime/local_identity.py`、迁移 `0003_local_identity`、所有带 `user_id` 的表
+影响：`runtime/local_identity.py`、迁移 `0001_baseline`、所有带 `user_id` 的表
 
 ## 决定
 
 这个产品的身份是一个**常量**：`LOCAL_USER_ID = "local"`。没有注册、没有登录、没有
-会话令牌。数据库里 `user_id` 列保留，但它的取值被迁移固定成这一个。
+会话令牌。数据库里 `user_id` 列保留，建表时的默认值就是这一个。
 
 ## 为什么
 
