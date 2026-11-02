@@ -8,6 +8,7 @@ import { ThinkingChain } from "./ThinkingChain";
 import { Hallmark } from "./hallmark/Hallmark";
 import { InspectHint, InspectSectionTitle } from "../../../components/ui/InspectHint";
 import { buildCostLedgerView } from "../model/costLedger";
+import { copyText } from "../../../lib/platform";
 import React from 'react';
 const SHELL_ANSWER = 'rounded-card rounded-bl-label px-4 py-3 max-w-full break-words bg-panel border border-stroke/60 shadow-sm';
 interface MessageBubbleProps {
@@ -20,6 +21,7 @@ interface MessageBubbleProps {
 export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerating, isLast, onRetry, retryDisabled }) => {
     const { state } = useApp();
     const [copied, setCopied] = React.useState(false);
+    const [copyFailed, setCopyFailed] = React.useState(false);
     const isUser = message.role === 'user';
     const isError = message.type === 'error';
     const isGuardBlocked = message.type === 'guard_blocked';
@@ -58,9 +60,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerat
     const costLedger = React.useMemo(() => buildCostLedgerView(runSummary, runCostLive), [runSummary, runCostLive]);
     const rawErrorText = (message.content || message.displayContent || '').trim();
     const handleCopy = async () => {
-        await navigator.clipboard.writeText(message.content);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        const ok = await copyText(message.content);
+        setCopied(ok);
+        setCopyFailed(!ok);
+        setTimeout(() => {
+            setCopied(false);
+            setCopyFailed(false);
+        }, 2000);
     };
     if (isWaitingApproval && state.planApprovalGate)
         return null;
@@ -133,7 +139,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerat
         {!isUser && !isAlertCard && !isWaiting && message.content && (<div className="mt-1.5 flex items-center gap-3 px-1">
             <button type="button" data-testid="copy-message" onClick={handleCopy} className="flex items-center gap-1 text-[11px] text-ink-muted transition-colors hover:text-ink-secondary">
               {copied ? <Check size={12} className="text-success"/> : <Copy size={12}/>}
-              <span>{copied ? '已复制' : '复制'}</span>
+              <span aria-live="polite">{copyFailed ? '复制失败' : copied ? '已复制' : '复制'}</span>
             </button>
           </div>)}
       </div>
