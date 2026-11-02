@@ -10,6 +10,7 @@ from typing import Any, Awaitable, Callable, Dict, Iterator, List, Optional, Typ
 from langgraph.errors import GraphInterrupt
 from travel_agent.planning.requirements.amendment_contracts import IntentAmendment, IntentAmendmentRejection
 from .nodes import (
+    AMENDMENT_CONTINUATION_NODES,
     NODE_INTENT_AMENDMENT_ROUTER as _INTENT_AMENDMENT_ROUTER,
     NODE_PLAN_GATE as _PLAN_GATE,
     NODE_REQUIREMENTS_PREPARER as _REQUIREMENTS_PREPARER,
@@ -192,11 +193,16 @@ def _should_divert_to_amendment_router(
     state: Any,
     node_name: str,
 ) -> bool:
-    """判断新的补充要求是否应把当前边界转入 amendment 路由。"""
+    """判断新的补充要求是否应把当前边界转入 amendment 路由。
+
+    只有续跑表内的节点边界可以 divert；需求整理、路由器自身与计划门在节点内部
+    处理（计划门还会按决策决定续跑位置），不在此列。
+    """
 
     return bool(
         fresh_amendments
         and getattr(state, "planning_generation", None) is not None
+        and node_name in AMENDMENT_CONTINUATION_NODES
         and node_name not in {_REQUIREMENTS_PREPARER, _INTENT_AMENDMENT_ROUTER, _PLAN_GATE}
     )
 

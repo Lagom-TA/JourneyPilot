@@ -15,6 +15,7 @@ from travel_agent.planning.delivery.projection_node import delivery_projection_n
 from travel_agent.planning.execution import with_run_control
 from travel_agent.planning.itinerary.node import itinerary_planner_node
 from travel_agent.planning.nodes import (
+    AMENDMENT_CONTINUATION_NODES,
     NODE_ACCOMMODATION,
     NODE_CLARIFIER,
     NODE_DELIVERY_FINALIZER,
@@ -311,28 +312,10 @@ def build_travel_workflow() -> StateGraph:
         },
     )
 
-    amendment_continuations = {
-        NODE_UNDERSTANDING_AGENT,
-        NODE_REQUIREMENTS_PREPARER,
-        NODE_RESEARCH_PLAN_GENERATOR,
-        NODE_MINIMUM_DELIVERY_DRAFT,
-        NODE_DESTINATION_GEO_RESOLVER,
-        NODE_WEATHER_CONTEXT_BUILDER,
-        NODE_SUMMARY_CARD_BRIEF,
-        NODE_PLANNER,
-        NODE_PLAN_GATE,
-        NODE_DISPATCHER,
-        NODE_DESTINATION,
-        NODE_TRANSPORT,
-        NODE_ACCOMMODATION,
-        NODE_ITINERARY,
-        NODE_DELIVERY_PROJECTOR,
-        NODE_DELIVERY_FINALIZER,
-    }
     graph.add_conditional_edges(
         NODE_INTENT_AMENDMENT_ROUTER,
         route_after_intent_amendment,
-        {node: node for node in amendment_continuations},
+        {node: node for node in AMENDMENT_CONTINUATION_NODES},
     )
 
     graph.add_conditional_edges(

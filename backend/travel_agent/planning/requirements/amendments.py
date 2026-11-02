@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from travel_agent.planning.invalidation import invalidation_update
+from travel_agent.planning.nodes import (
+    AMENDMENT_CONTINUATION_NODES,
+    NODE_UNDERSTANDING_AGENT,
+)
 from travel_agent.planning.requirements.amendment_contracts import (
     AmendmentImpact,
     IntentAmendment,
@@ -12,6 +16,16 @@ from travel_agent.planning.requirements.amendment_contracts import (
 )
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.deadlines import observe_run_deadline
+
+
+def _resumable_route(route: str | None) -> str | None:
+    """续跑目标必须在图的续跑表内；越界说明状态里带了图不认识的目标。"""
+
+    if route is None:
+        return None
+    if route not in AMENDMENT_CONTINUATION_NODES:
+        raise ValueError("amendment route outside continuation table")
+    return route
 
 
 async def intent_amendment_router_node(state: TravelAgentState) -> Dict[str, Any]:
@@ -41,7 +55,9 @@ def apply_runtime_amendments(state: TravelAgentState) -> Dict[str, Any]:
     amendments = list(state.pending_intent_amendments)
     if not amendments:
         return {
-            "intent_amendment_route": state.intent_amendment_resume_node,
+            "intent_amendment_route": _resumable_route(
+                state.intent_amendment_resume_node
+            ),
             "intent_amendment_resume_node": None,
         }
 
@@ -74,16 +90,17 @@ def apply_runtime_amendments(state: TravelAgentState) -> Dict[str, Any]:
     if not accepted:
         update.update(
             {
-                "intent_amendment_route": state.intent_amendment_resume_node,
+                "intent_amendment_route": _resumable_route(
+                    state.intent_amendment_resume_node
+                ),
                 "intent_amendment_resume_node": None,
             }
         )
         return update
 
-    impact = AmendmentImpact.RESEARCH_AFFECTING
     update.update(
         {
-            "intent_amendment_route": "understanding_agent",
+            "intent_amendment_route": NODE_UNDERSTANDING_AGENT,
             "intent_amendment_resume_node": None,
             "understanding_messages": [],
             "understanding_pending_questions": None,

@@ -76,3 +76,28 @@ RESEARCH_WORKER_NODES = frozenset(
 
 
 CHECKPOINT_GATE_NODES = frozenset({NODE_PLAN_GATE, NODE_UNDERSTANDING_GATE})
+
+
+# 补充要求可以续跑的节点边界。入口整理（scope_clarifier）、提问暂停点
+# （understanding_gate）与路由器自身不是可恢复的边界；图的条件边表与运行时
+# 的 divert 守卫都从这里取，避免两边各写一份。
+AMENDMENT_CONTINUATION_NODES = frozenset(
+    {
+        NODE_UNDERSTANDING_AGENT,
+        NODE_REQUIREMENTS_PREPARER,
+        NODE_RESEARCH_PLAN_GENERATOR,
+        NODE_MINIMUM_DELIVERY_DRAFT,
+        NODE_DESTINATION_GEO_RESOLVER,
+        NODE_WEATHER_CONTEXT_BUILDER,
+        NODE_SUMMARY_CARD_BRIEF,
+        NODE_PLANNER,
+        NODE_PLAN_GATE,
+        NODE_DISPATCHER,
+        NODE_DESTINATION,
+        NODE_TRANSPORT,
+        NODE_ACCOMMODATION,
+        NODE_ITINERARY,
+        NODE_DELIVERY_PROJECTOR,
+        NODE_DELIVERY_FINALIZER,
+    }
+)
