@@ -11,9 +11,10 @@ import json
 import re
 import uuid
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Optional
+
+from travel_agent.runtime.time import utc_now_iso
 
 
 _MAX_TEXT = 900
@@ -137,10 +138,6 @@ class ToolExecutionEnvelope:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
-
-
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def build_args_digest(arguments: Dict[str, Any]) -> str:

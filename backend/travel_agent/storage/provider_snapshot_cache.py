@@ -14,12 +14,13 @@ import json
 import logging
 import math
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Callable, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from travel_agent.planning.research.evidence import ProviderSnapshotProvenance
+from travel_agent.runtime.time import utc_now
 
 from ..config.loader import get_settings
 from travel_agent.integrations.provider_environment import snapshot_data_environment
@@ -58,10 +59,6 @@ _IDENTITY_TOOLS = frozenset(
     {"global_place_search", "maps_text_search", "maps_search_detail"}
 )
 _SUPPORTED_TOOLS = _IDENTITY_TOOLS | frozenset({"global_route_search"})
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def _ensure_aware(value: datetime, *, field_name: str) -> datetime:

@@ -8,8 +8,14 @@ from typing import Any
 from typing import Optional
 
 
+def utc_now() -> datetime:
+    """当前 UTC 时间（timezone-aware）。"""
+
+    return datetime.now(timezone.utc)
+
+
 def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return utc_now().isoformat()
 
 
 def iso_or_none(value: Any) -> Optional[str]:

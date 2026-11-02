@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, Literal, Optional, Tuple
 from pydantic import Field, model_validator
+from travel_agent.runtime.time import utc_now
 from travel_agent.schema import StrictModel
 
 
@@ -99,10 +100,6 @@ def current_composition_seconds() -> int:
 
 def current_delivery_deadline_seconds() -> int:
     return _windows().delivery_seconds
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def _as_utc(value: datetime) -> datetime:

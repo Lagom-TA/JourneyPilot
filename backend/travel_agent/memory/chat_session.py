@@ -9,11 +9,11 @@ import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import bindparam, text
 
+from travel_agent.runtime.time import utc_now_iso
 from travel_agent.tools.display import public_text, result_preview
 from travel_agent.conversation.titles import TITLE_MAX_LEN, derive_session_title
 from ..storage.database import get_db_session
@@ -41,10 +41,6 @@ async def _session_scope(db_session: Any = None):
     else:
         async with get_db_session() as session:
             yield session
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _to_jsonable(value: Any, default: Any) -> Any:
@@ -224,7 +220,7 @@ def _project_events_to_messages(rows: List[Dict[str, Any]]) -> List[Dict[str, An
                 "role": payload.get("role") or ("user" if event_type == "message.user" else "assistant"),
                 "content": payload.get("content", ""),
                 "display_content": payload.get("display_content", payload.get("content", "")),
-                "timestamp": payload.get("timestamp") or _utc_now_iso(),
+                "timestamp": payload.get("timestamp") or utc_now_iso(),
                 "type": payload.get("type", "normal"),
                 "task_type": payload.get("task_type"),
                 "agent_name": payload.get("agent_name"),
@@ -261,7 +257,7 @@ def _project_events_to_messages(rows: List[Dict[str, Any]]) -> List[Dict[str, An
             "progress_status": payload.get("progress_status"),
             "result_preview": result_preview(payload.get("result_preview", [])),
             "step_name": payload.get("step_name", ""),
-            "timestamp": payload.get("timestamp") or _utc_now_iso(),
+            "timestamp": payload.get("timestamp") or utc_now_iso(),
             "end_time": payload.get("end_time"),
         }
         # 工具调用字段，仅对工具调用步骤写入。
@@ -341,8 +337,8 @@ class ChatSessionMemory:
                 "status": STATUS_ACTIVE,
                 "mode": mode,
                 "last_message_preview": _truncate_preview(title_seed),
-                "created_at": _utc_now_iso(),
-                "updated_at": _utc_now_iso(),
+                "created_at": utc_now_iso(),
+                "updated_at": utc_now_iso(),
             }
             return self._row_to_summary(created)
 
@@ -529,7 +525,7 @@ class ChatSessionMemory:
                     "role": "user",
                     "content": user_message,
                     "display_content": user_message,
-                    "timestamp": _utc_now_iso(),
+                    "timestamp": utc_now_iso(),
                     "type": "normal",
                     "run_id": run_id,
                 },
@@ -546,8 +542,8 @@ class ChatSessionMemory:
                         "agent_name": step.get("agent_name", ""),
                         "step_name": step.get("step_name", ""),
                         "content": step.get("content", ""),
-                        "timestamp": step.get("timestamp") or _utc_now_iso(),
-                        "end_time": step.get("end_time") or step.get("timestamp") or _utc_now_iso(),
+                        "timestamp": step.get("timestamp") or utc_now_iso(),
+                        "end_time": step.get("end_time") or step.get("timestamp") or utc_now_iso(),
                         # 工具调用字段
                         "is_tool_call": step.get("is_tool_call", False),
                         "tool_name": step.get("tool_name", ""),
@@ -584,7 +580,7 @@ class ChatSessionMemory:
                     "role": "assistant",
                     "content": assistant_content,
                     "display_content": assistant_display_content,
-                    "timestamp": _utc_now_iso(),
+                    "timestamp": utc_now_iso(),
                     "type": assistant_type,
                     "task_type": task_type,
                     "agent_name": agent_name,
