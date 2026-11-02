@@ -19,6 +19,8 @@ import {
 import React from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { getMapTileConfig } from '../../../../lib/mapConfig';
+import { buildGroupPinHtml, buildPlacePinHtml } from '../../model/mapPinHtml';
 
 type ProjectedRoute = MapProjection['content']['routes'][number];
 interface BundleMapLeafletProps {
@@ -30,9 +32,7 @@ interface BundleMapLeafletProps {
     onLinkEntity?: (entityId: string | null) => void;
     overlayOffset?: number;
 }
-const TILE_URL = 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}';
-const TILE_SUBDOMAINS = ['1', '2', '3', '4'];
-const TILE_ATTRIBUTION = '&copy; <a href="https://amap.com/">高德地图</a>';
+const TILE = getMapTileConfig();
 const FALLBACK_COLOR = '#D65F3D';
 function placeColor(): string {
     if (typeof window === 'undefined') return FALLBACK_COLOR;
@@ -64,12 +64,6 @@ const PIN_STATE_STYLE: Record<PinState, (color: string) => {
     }),
     idle: () => ({ transform: 'scale(1)', boxShadow: '0 3px 10px rgba(0,0,0,.22)' }),
 };
-function escapeHtml(value: string): string {
-    const replacements: Record<string, string> = {
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;',
-    };
-    return value.replace(/[&<>"']/g, (character) => replacements[character]);
-}
 function placeIcon(place: BundleMapPlace, color: string, offset: [number, number] = [0, 0]): L.DivIcon {
     const idle = PIN_STATE_STYLE.idle(color);
     const endpoint = place.markerKind === 'transport_endpoint';
@@ -80,7 +74,18 @@ function placeIcon(place: BundleMapPlace, color: string, offset: [number, number
         : String(place.sequence > 0 ? place.sequence : '•');
     return L.divIcon({
         className: '',
-        html: `<span data-bundle-map-marker="${place.sequence}" data-bundle-map-entity="${escapeHtml(place.entity_ref.entity_id)}" data-bundle-map-kind="${place.markerKind}" data-transport-mode="${place.modes[0] ?? ''}" data-pin-color="${color}" style="width:${size}px;height:${size}px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${color};color:#fff;font:700 12px/1 -apple-system,BlinkMacSystemFont,sans-serif;border:${endpoint ? 2 : 3}px solid #fff;box-shadow:${idle.boxShadow};transform:${idle.transform};transition:transform var(--dur-fast,120ms) var(--ease-standard,ease)">${content}</span>`,
+        html: buildPlacePinHtml({
+            sequence: place.sequence,
+            entityId: place.entity_ref.entity_id,
+            markerKind: place.markerKind,
+            mode: place.modes[0] ?? '',
+            color,
+            endpoint,
+            size,
+            content,
+            boxShadow: idle.boxShadow,
+            transform: idle.transform,
+        }),
         iconSize: [size, size],
         iconAnchor: [center - offset[0], center - offset[1]],
         popupAnchor: [0, -center - 2],
@@ -89,7 +94,7 @@ function placeIcon(place: BundleMapPlace, color: string, offset: [number, number
 function groupIcon(group: BundleMapPlaceGroup, color: string): L.DivIcon {
     return L.divIcon({
         className: '',
-        html: `<span data-bundle-map-group="${escapeHtml(group.id)}" style="width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${color};color:#fff;font:700 13px/1 -apple-system,BlinkMacSystemFont,sans-serif;border:3px solid #fff;box-shadow:0 0 0 3px color-mix(in srgb, ${color} 18%, transparent),0 4px 12px rgba(0,0,0,.24)">${group.places.length}</span>`,
+        html: buildGroupPinHtml({ groupId: group.id, color, count: group.places.length }),
         iconSize: [34, 34],
         iconAnchor: [17, 17],
     });
@@ -330,6 +335,10 @@ export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, rout
     const pinRoot = React.useRef<HTMLDivElement>(null);
     const seenRoutes = React.useRef(new Set<string>()).current;
     const seenPins = React.useRef(new Set<string>()).current;
+    // MapContainer 可能在 zoom 动画未结束时卸载：Leaflet 的 transition end 回调会访问
+    // 已 teardown 的 map。这里在 remove 前清掉动画标记并 stop()，保留组件卸载路径可恢复。
+    // 移除条件：react-leaflet/leaflet 升级后 map-load-failure 用例不再经过该路径，且确认
+    // 无 zoom 中卸载报错时，可删除此补丁。
     const guardTeardown = React.useCallback((map: L.Map | null) => {
         if (!map) return;
         const instance = map as unknown as { _animatingZoom: boolean; _teardownGuarded?: true };
@@ -377,7 +386,7 @@ export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, rout
           {BASEMAP_NOTICE[basemap]}
         </p>)}
     <MapContainer ref={guardTeardown} center={anchor.current} zoom={12} zoomControl={false} attributionControl preferCanvas={false} className="h-full w-full">
-      <TileLayer url={TILE_URL} subdomains={TILE_SUBDOMAINS} attribution={TILE_ATTRIBUTION} maxZoom={18} eventHandlers={{
+      <TileLayer url={TILE.url} subdomains={TILE.subdomains} attribution={TILE.attribution} maxZoom={18} eventHandlers={{
             loading: () => { tileErrors.current = 0; },
             load: () => setBasemap(tileErrors.current > 0 ? 'degraded' : 'ready'),
             tileerror: () => { tileErrors.current += 1; setBasemap('degraded'); },
