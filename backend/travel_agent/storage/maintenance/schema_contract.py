@@ -41,7 +41,7 @@ MANAGED_TABLES: tuple[str, ...] = (
     # 预设与产品配置
     "travel_presets",
     "product_configurations",
-    # TripOps durable run
+    # TripRun 的 durable 记录
     "trip_runs",
     "trip_run_states",
     "trip_run_events",

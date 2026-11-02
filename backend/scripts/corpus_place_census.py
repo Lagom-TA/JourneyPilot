@@ -291,7 +291,7 @@ async def main() -> None:
         state = json.load(open(args.out, encoding="utf-8"))
         rows = state.get("chunks", [])
         # 使用本次普查运行时的语料总量，而不是当前表里的数量：
-        # 语料增长后重出旧报告会得到一个当时并不适用的分母。
+        # 语料增长后重出既有报告会得到一个当时并不适用的分母。
         report(rows, state.get("resolutions", {}), state.get("corpus_total", len(rows)))
         return
 

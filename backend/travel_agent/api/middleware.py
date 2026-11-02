@@ -1,5 +1,5 @@
 """
-FastAPI 中间件 (Serving Layer)
+FastAPI 中间件
 """
 
 from __future__ import annotations

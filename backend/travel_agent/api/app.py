@@ -1,5 +1,5 @@
 """
-FastAPI 应用工厂 (Serving Layer)
+FastAPI 应用工厂
 采用 lifespan 模式管理组件生命周期。
 """
 

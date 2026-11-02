@@ -53,8 +53,8 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
         scopedDispatch({ type: 'SET_SYNTHESIZING', payload: false });
     });
     return { protocol, get failed() { return streamFailed; }, handleEvent(event: SSEEvent) {
-            // chat_start only means the stream opened. A later workflow event proves
-            // that the interrupted gate has actually resumed.
+            // chat_start 只说明流已打开；必须再收到工作流事件，才能确认中断的
+            // 计划门真的恢复了。
             if (waitingForGateAcceptance && ['thinking', 'agent_progress', 'tool_start', 'trip_summary_card', 'chat_chunk'].includes(event.type)) {
                 waitingForGateAcceptance = false;
                 scopedDispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: null });

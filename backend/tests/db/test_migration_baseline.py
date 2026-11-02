@@ -53,9 +53,8 @@ def test_empty_database_upgrades_to_head(temp_database, settings):
 def test_unmanaged_database_is_refused_not_adopted(unmanaged_database, settings):
     """有核心表、无 alembic_version → 拒绝。
 
-    这里曾经是「纳管」路径（证明结构等于 baseline 后 stamp）。开源预发布版本里
-    不存在 pre-alembic 的库，留着那条路径只是永久保留一个「把来历不明的结构标记
-    成最新版本」的入口，所以现在一律拒绝。
+    未版本化的库无法证明结构与当前代码匹配；这里不做指纹比对后的 stamp，一律
+    要求重建数据库或从匹配的备份恢复。
     """
 
     with connect(unmanaged_database) as conn:

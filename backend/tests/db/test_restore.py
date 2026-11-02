@@ -77,7 +77,7 @@ def test_restore_replaces_database_and_retains_the_old_one(
     assert result.checks["row_counts_match"] is True
     assert result.checks["migration_revision"] == migrate.revision_line()[-1]
 
-    # 旧库还在，且保留着恢复前的那三行 —— 「保留旧数据库直到用户确认」。
+    # 恢复前的数据库还在，且保留着切换前的那三行 —— 「保留旧数据库直到用户确认」。
     retained = temp_database.with_database(result.retained_database)
     assert _profile_count(retained) == 3
     assert result.retained_database in list_retained(temp_database)

@@ -1,5 +1,5 @@
 """
-Preset API 路由 (Serving Layer)
+Preset API 路由
 用户自定义旅行风格预设的 CRUD 和 AI 辅助生成。
 """
 

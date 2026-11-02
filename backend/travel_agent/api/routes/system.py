@@ -1,5 +1,5 @@
 """
-系统状态与配置 API (Serving Layer)
+系统状态与配置 API
 """
 
 from __future__ import annotations

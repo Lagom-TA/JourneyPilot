@@ -124,8 +124,8 @@ async def build_constraint_pack(
         if s not in source_layers:
             source_layers.append(s)
 
-    # A later model response omitting a previously active constraint is not a
-    # user-authorized revocation. Retain it until an explicit lifecycle decision.
+    # 后续模型回复没有提到此前生效的约束，不等于用户撤回了它；
+    # 保留到有显式的生命周期决定为止。
     previous_pack = _get(state, "constraint_pack") or {}
     if isinstance(previous_pack, dict):
         for previous in previous_pack.get("constraints") or []:

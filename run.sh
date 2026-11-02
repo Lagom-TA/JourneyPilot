@@ -22,7 +22,7 @@ BACKEND_PID=""
 FRONTEND_PID=""
 SPINNER_PID=""
 
-# 这个脚本不定义任何策略（ADR-0008）。要临时改窗口就覆盖同一个 schema：
+# 这个脚本不定义任何策略：窗口、预算、端口都来自同一个配置 schema。
 #   JOURNEYPILOT_RUN_DEADLINE__DELIVERY_SECONDS=900 ./run.sh start
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -437,9 +437,8 @@ require_command() {
   fi
 }
 
-# --frozen: 与 CI 的 `uv sync --frozen` 对齐。没有它, `uv run` 在 pyproject 与
-# uv.lock 不一致时会静默重新解析并写回 lockfile —— 本地跑一次 run.sh 就能把
-# lockfile 改成 CI 不接受的样子, 正是 PR #34 那类漂移的复发通道。
+# --frozen: lockfile 是本仓库与 CI 的共同事实。没有它, `uv run` 在 pyproject 与
+# uv.lock 不一致时会重新解析并写回 lockfile, 本地跑一次 run.sh 就能让环境与 CI 漂移。
 run_in_env() {
   (cd "$ROOT_DIR" && uv run --frozen --project "$BACKEND_DIR" "$@")
 }
@@ -547,8 +546,7 @@ frontend_is_ready() {
 }
 
 # 端口发现: 只读、无副作用, 供 status 在 runtime state 缺失或过期时使用。
-# 刻意内联在 run.sh 里 —— 测试目录不是运行时依赖, 删掉 frontend/e2e/ 不该让
-# run.sh 失效 (PR #36 删掉 resolve_ports.py 后这里曾指向一个不存在的文件)。
+# 刻意内联在 run.sh 里 —— 测试目录不是运行时依赖, 删掉 frontend/e2e/ 不影响 run.sh。
 discover_ports() {
   local key value
   if [[ -f "$PORTS_FILE" ]]; then
@@ -746,8 +744,8 @@ step_frontend_deps() {
   local lock_stamp="$FRONTEND_DIR/node_modules/.package-lock.json"
 
   # npm ci 而不是 npm install: install 会按当前 npm 版本重写 package-lock.json,
-  # 本地跑一次就可能把 lockfile 改成 CI 的 `npm ci` 不接受的样子 (PR #34 的根因)。
-  # lockfile 比已安装的树新时也重装, 否则改了依赖却还在跑旧 node_modules。
+  # 本地跑一次就可能让 lockfile 与 CI 的 `npm ci` 不一致。lockfile 比已安装的树
+  # 新时也重装, 否则改了依赖却还在跑旧的 node_modules。
   if [[ ! -x "$vite_bin" ]] || { [[ -f "$lock_file" ]] && [[ "$lock_file" -nt "$lock_stamp" ]]; }; then
     start_spinner "npm ci..."
     local npm_out npm_ok=0
@@ -794,10 +792,8 @@ step_start_backend() {
 
   (
     cd "$ROOT_DIR"
-    # reload 刻意保持 False: 配置默认值是 True, 直接透传会让 ./run.sh start 默认
-    # 起一个 reloader 进程 (并递归 watch 整个仓库)。把默认值改成 False 需要重新
-    # 生成 docs/configuration.md 与 docs/config.schema.json, 那是文档 PR 的范围,
-    # 所以这里先保持现状, 见 PR 描述里的后续项。
+    # reload 固定为 False: 直接透传配置默认值会让 ./run.sh start 起一个 reloader
+    # 进程并递归 watch 整个仓库。需要自动重载时直接运行 python backend/main.py。
     JOURNEYPILOT_SERVER__PORT="$BACKEND_PORT" uv run --frozen --project "$BACKEND_DIR" python -c "
 import sys
 sys.path.insert(0, r'$BACKEND_DIR')
@@ -1228,8 +1224,8 @@ cmd_help() {
   printf "  ${CYAN}Environment:${RESET}\n"
   printf "    ${DIM}JOURNEYPILOT_*${RESET}          config overrides, e.g. ${DIM}JOURNEYPILOT_DATABASE__PORT=55433${RESET}\n"
   printf "    ${DIM}FRONTEND_HOST${RESET}           vite dev-server bind address  ${DIM}(default 127.0.0.1)${RESET}\n"
-  printf "    ${DIM}JOURNEYPILOT_SERVER__HOST${RESET}  API bind address  ${DIM}(default 127.0.0.1)${RESET}\n"
-  printf "    ${DIM}JOURNEYPILOT_SERVER__RELOAD${RESET}  backend auto-reload  ${DIM}(default false)${RESET}\n"
+  printf "    ${DIM}JOURNEYPILOT_SERVER__HOST${RESET}  API bind address  ${DIM}(config default 0.0.0.0; prefer 127.0.0.1 when untrusted)${RESET}\n"
+  printf "    ${DIM}JOURNEYPILOT_SERVER__RELOAD${RESET}  backend auto-reload  ${DIM}(run.sh forces false)${RESET}\n"
   echo
   printf "  ${DIM}Unknown JOURNEYPILOT_* names are rejected by 'config validate'.${RESET}\n"
   echo

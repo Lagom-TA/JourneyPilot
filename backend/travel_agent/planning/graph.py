@@ -307,7 +307,7 @@ def build_travel_workflow() -> StateGraph:
             NODE_UNDERSTANDING_AGENT: NODE_UNDERSTANDING_AGENT,
             NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
             NODE_RESEARCH_PLAN_GENERATOR: NODE_RESEARCH_PLAN_GENERATOR,
-            # The gate seals authorization before any external weather request.
+            # 计划门在任何外部天气请求之前封存授权。
             NODE_DISPATCHER: NODE_WEATHER_CONTEXT_BUILDER,
         },
     )
