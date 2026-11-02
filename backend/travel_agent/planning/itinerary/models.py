@@ -245,8 +245,6 @@ class StructuredItinerary(StrictModel):
                 lodging_stays=self.lodging_stays,
                 transport_legs=self.transport_legs,
             ),
-            budget_cap_cny=self.cost_summary.budget_cap_cny,
-            llm_estimated_total_cny=self.cost_summary.llm_estimated_total_cny,
         )
         if "cost_summary" not in self.model_fields_set:
             object.__setattr__(self, "cost_summary", expected_cost_summary)

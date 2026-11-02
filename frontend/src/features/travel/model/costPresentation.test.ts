@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatTripBudget, formatTripCostSummary } from './costPresentation';
+import { formatTripCostSummary } from './costPresentation';
 
 function cost(overrides: Record<string, unknown>) {
   return {
@@ -8,9 +8,6 @@ function cost(overrides: Record<string, unknown>) {
     priced_component_count: 0,
     budget_relevant_component_count: 0,
     coverage: 'none' as const,
-    budget_cap_cny: null,
-    budget_status: 'unknown' as const,
-    llm_estimated_total_cny: null,
     ...overrides,
   };
 }
@@ -24,12 +21,7 @@ describe('旅行费用展示', () => {
     expect(formatTripCostSummary(cost({ known_subtotal_cny: 1488 }))).toBe('已列费用约 ¥1,488');
   });
 
-  it('总预算与全程费用分开呈现', () => {
-    expect(formatTripBudget(cost({ budget_cap_cny: 12000 }))).toBe('总预算约 ¥12,000');
-  });
-
-  it('没有金额时不生成费用或预算文案', () => {
+  it('没有金额时不生成费用文案', () => {
     expect(formatTripCostSummary(cost({}))).toBeNull();
-    expect(formatTripBudget(cost({}))).toBeNull();
   });
 });

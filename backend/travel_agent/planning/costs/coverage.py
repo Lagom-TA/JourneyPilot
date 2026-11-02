@@ -52,11 +52,6 @@ class CostCoverageSummary(StrictModel):
     priced_component_count: int = Field(ge=0)
     budget_relevant_component_count: int = Field(ge=0)
     coverage: Literal["none", "partial", "complete"]
-    budget_cap_cny: Optional[float] = Field(default=None, ge=0)
-    budget_status: Literal["unknown", "within_cap", "over_cap"]
-
-    # 模型推断的行程估算不改变供应商总价，也不改变价格覆盖度。
-    llm_estimated_total_cny: Optional[float] = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def validate_coverage(self) -> "CostCoverageSummary":
@@ -83,17 +78,6 @@ class CostCoverageSummary(StrictModel):
             raise ValueError(
                 "incomplete cost coverage cannot publish an estimated total"
             )
-        expected_budget_status = "unknown"
-        if (
-            self.budget_cap_cny is not None
-            and self.known_subtotal_cny is not None
-            and self.known_subtotal_cny > self.budget_cap_cny
-        ):
-            expected_budget_status = "over_cap"
-        elif self.budget_cap_cny is not None and self.coverage == "complete":
-            expected_budget_status = "within_cap"
-        if self.budget_status != expected_budget_status:
-            raise ValueError("budget status does not match cost coverage and cap")
         return self
 
     @classmethod
@@ -102,17 +86,12 @@ class CostCoverageSummary(StrictModel):
             priced_component_count=0,
             budget_relevant_component_count=0,
             coverage="none",
-            budget_status="unknown",
         )
 
 
 def build_cost_coverage_summary(
     costs: Iterable[Optional[float]],
-    *,
-    budget_cap_cny: Optional[float] = None,
-    llm_estimated_total_cny: Optional[float] = None,
 ) -> CostCoverageSummary:
-    # 重建已定价合计时保留调用方传入的预算上限与推断估算。
     components = list(costs)
     known = [float(cost) for cost in components if cost is not None]
     coverage = coverage_from_component_counts(
@@ -120,22 +99,10 @@ def build_cost_coverage_summary(
         budget_relevant_component_count=len(components),
     )
     subtotal = sum(known) if known else None
-    budget_status = (
-        "over_cap"
-        if budget_cap_cny is not None
-        and subtotal is not None
-        and subtotal > budget_cap_cny
-        else "within_cap"
-        if budget_cap_cny is not None and coverage == "complete"
-        else "unknown"
-    )
     return CostCoverageSummary(
         known_subtotal_cny=subtotal,
         estimated_total_cny=subtotal if coverage == "complete" else None,
         priced_component_count=len(known),
         budget_relevant_component_count=len(components),
         coverage=coverage,
-        budget_cap_cny=budget_cap_cny,
-        budget_status=budget_status,
-        llm_estimated_total_cny=llm_estimated_total_cny,
     )

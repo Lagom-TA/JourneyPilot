@@ -15,7 +15,7 @@ const message = (id: string, content = id): Message => ({ id, role: 'assistant',
 const stateFor = (id: string): AppState => ({ ...initialState, currentSessionId: id, currentMessages: [message(id)], currentTripRunId: `run-${id}`, currentTripRunStatus: 'running', isStreaming: true });
 const usage: UsageUpdateEvent = { type: 'usage_update', run_id: 'run-A', call_id: 'call-1', node: null, agent: null, input_tokens: 10, output_tokens: 5, total_tokens: 15, cost_usd: 0.03, estimated: false };
 const deliveryBundle = (revision = 1): PublicDeliveryBundle => {
-  const cost = { known_subtotal_cny: null, estimated_total_cny: null, priced_component_count: 0, budget_relevant_component_count: 0, coverage: 'none' as const, budget_cap_cny: null, budget_status: 'unknown' as const, llm_estimated_total_cny: null };
+  const cost = { known_subtotal_cny: null, estimated_total_cny: null, priced_component_count: 0, budget_relevant_component_count: 0, coverage: 'none' as const };
   return {
     manifest: { run_id: 'run-A', generation_id: 'generation-A', bundle_id: `bundle-${revision}`, workspace_revision: revision, fact_data_revision: revision, weather_data_revision: revision, created_at: '2026-10-25T08:00:00Z' },
     workspace: { run_id: 'run-A', generation_id: 'generation-A', workspace_revision: revision,

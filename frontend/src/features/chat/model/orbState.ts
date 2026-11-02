@@ -21,7 +21,6 @@ const NODE_ORBS: ReadonlyArray<readonly [
     ['transport_researcher', '交通查询', 'connecting'],
     ['accommodation_researcher', '住宿查询', 'searching'],
     ['itinerary_planner', '行程规划', 'weaving'],
-    ['budget_estimate', '预算估算', 'solving'],
     ['delivery_projector', '整理行程', 'composing'],
     ['delivery_finalizer', '保存计划', 'shaping'],
     ['fast_answer_agent', '快速回答', 'composing'],

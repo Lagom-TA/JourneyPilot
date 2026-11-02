@@ -726,7 +726,6 @@ def materialize_trip_workspace(
                 lodging_stays=lodging,
                 transport_legs=transport,
             ),
-            budget_cap_cny=None,
         ),
         highlights=derive_trip_highlights(
             visits=visits,

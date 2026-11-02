@@ -4,7 +4,7 @@ import { useApp } from '../../../../app/state/AppContext';
 import { apiErrorDetail } from '../../../../lib/apiErrorDetail';
 import { formatLocalDate, selectDaySummaries, selectDayTimeline, type DaySummaryVM, type DayTimelineNodeVM } from '../../model/itineraryPresentation';
 import { splitLabelledFact } from '../../model/tripDomains';
-import { formatTripBudget, formatTripCostSummary } from '../../model/costPresentation';
+import { formatTripCostSummary } from '../../model/costPresentation';
 import { BrandMark } from '../../../../app/components/BrandMark';
 import { type PublicDeliveryBundle } from '../../types/delivery';
 import { DayHeader } from './DayHeader';
@@ -124,13 +124,11 @@ function ReportCover({ bundle, document: report, allowPdf }: {
   const lastDate = formatLocalDate(dates[dates.length - 1] ?? null);
   const dateRange = firstDate && lastDate ? (firstDate === lastDate ? firstDate : `${firstDate} – ${lastDate}`) : firstDate ?? lastDate;
   const costLabel = formatTripCostSummary(report.cost_summary);
-  const budgetLabel = formatTripBudget(report.cost_summary);
   const readouts: Array<{ label: string; value: string }> = [
     ...(destinations.length > 0 ? [{ label: '目的地', value: destinations.join(' · ') }] : []),
     ...(dateRange ? [{ label: '行程期间', value: dateRange }] : []),
     { label: '天数', value: `${report.duration_days} 天` },
     ...(costLabel ? [{ label: '费用', value: costLabel }] : []),
-    ...(budgetLabel ? [{ label: '预算', value: budgetLabel }] : []),
   ];
   return (
     <header data-testid="report-cover" className="report-cover relative px-5 py-7 sm:px-8 sm:py-9">

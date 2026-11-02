@@ -52,10 +52,7 @@ def _public_entity_ref(entity_ref: Any) -> Dict[str, Any]:
 
 
 def _public_cost_summary(summary: CostCoverageSummary) -> Dict[str, Any]:
-
-    return summary.model_copy(update={"llm_estimated_total_cny": None}).model_dump(
-        mode="json"
-    )
+    return summary.model_dump(mode="json")
 
 
 def _public_intent_explanations(items: Sequence[Any]) -> List[Dict[str, Any]]:

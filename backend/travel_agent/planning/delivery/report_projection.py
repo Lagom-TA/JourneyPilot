@@ -574,9 +574,7 @@ def project_report(
         overview=f"{date_text}，前往{destination_text}的旅行计划。",
         destinations=destinations,
         duration_days=itinerary.duration_days,
-        cost_summary=itinerary.cost_summary.model_copy(
-            update={"llm_estimated_total_cny": None}
-        ),
+        cost_summary=itinerary.cost_summary,
         cost_coverage_statement=cost_coverage_statement(itinerary.cost_summary),
         days=days,
         selections=selections,
