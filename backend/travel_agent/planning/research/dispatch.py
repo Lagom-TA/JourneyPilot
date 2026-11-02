@@ -76,7 +76,7 @@ async def dispatcher_node(
             composition_step = _composition_step(plan, step)
             owes_composition = (
                 not observation.composition_closed
-                and state.trip_workspace_v2 is None
+                and state.trip_workspace is None
                 and composition_step is not None
                 # 组合已失败（预算耗尽、返研上限等）时不再重入，
                 # 直接收敛到预算与交付收口。

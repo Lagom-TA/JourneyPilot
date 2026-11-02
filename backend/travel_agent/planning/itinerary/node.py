@@ -33,7 +33,7 @@ from travel_agent.planning.itinerary.rail_paths import complete_rail_route_paths
 from travel_agent.planning.itinerary.requirements import _draft_user_input_anchors
 from travel_agent.planning.itinerary.title_writing import write_itinerary_copy
 from travel_agent.planning.nodes import NODE_ITINERARY
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 from travel_agent.runtime.deadlines import observe_run_deadline
 from travel_agent.runtime.cancellation import RunCancelled
 from travel_agent.tools.access import filter_tools_for_agent, get_available_tools
@@ -53,7 +53,7 @@ _FAILURE_CONTEXT_CHAR_LIMIT = 600
 _COMPOSITION_RESCHEDULE_LIMIT = 1
 
 
-def _log_composition_dispersion(workspace: TripWorkspaceV2) -> None:
+def _log_composition_dispersion(workspace: TripWorkspace) -> None:
     """记录每天接驳分钟数与停留点跨度，便于排查排程异常。"""
     fact_index = {
         fact.fact_assertion_id: fact
@@ -106,7 +106,7 @@ def _connector_overtime_context(
 
 def _composition_phase(state: TravelAgentState) -> str:
     """本次调用生成草稿，还是把已有草稿物化为正式行程。"""
-    if state.placement_skeleton is None or state.trip_workspace_v2 is not None:
+    if state.placement_skeleton is None or state.trip_workspace is not None:
         return "placement_skeleton"
     return "materialize_connectors"
 
@@ -217,7 +217,7 @@ async def itinerary_planner_node(
                 "agent_status": {output_key: "pending"},
                 "next_agent": None,
                 "placement_skeleton": draft,
-                "trip_workspace_v2": None,
+                "trip_workspace": None,
                 "local_connector_gaps": [],
                 "composition_failure_context": None,
             }
@@ -267,7 +267,7 @@ async def itinerary_planner_node(
                 "agent_status": {output_key: "pending"},
                 "next_agent": None,
                 "placement_skeleton": None,
-                "trip_workspace_v2": None,
+                "trip_workspace": None,
                 "local_connector_gaps": [],
                 "composition_reschedule_rounds": (
                     state.composition_reschedule_rounds or 0
@@ -307,7 +307,7 @@ async def itinerary_planner_node(
             "messages": [AIMessage(content="精确相邻路线已物化为正式行程")],
             "agent_status": {output_key: "completed"},
             "next_agent": None,
-            "trip_workspace_v2": workspace,
+            "trip_workspace": workspace,
             "recommendation_catalog": workspace.recommendation_catalog,
             "local_connector_gaps": gaps,
             "composition_failure_context": None,
@@ -315,7 +315,7 @@ async def itinerary_planner_node(
     except RunCancelled:
         raise
     except Exception as exc:
-        logger.error("ItineraryPlanner v2 failed: %s", exc, exc_info=True)
+        logger.error("ItineraryPlanner failed: %s", exc, exc_info=True)
         return {
             **deadline_update,
             "messages": [AIMessage(content="行程组合失败")],

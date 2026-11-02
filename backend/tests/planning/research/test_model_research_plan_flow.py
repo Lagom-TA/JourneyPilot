@@ -234,7 +234,7 @@ async def test_latest_user_words_and_confirmed_tasks_reach_research_and_delivery
     assert result["recommendation_catalog"].generation_id == result["planning_generation"].generation_id
     candidate = result["recommendation_catalog"].candidate_index()["garden_candidate"]
     assert candidate.place_id == "garden_place" and candidate.fact_assertion_ids
-    assert result["trip_workspace_v2"].requirements.endswith("后续补充：改成园林")
+    assert result["trip_workspace"].requirements.endswith("后续补充：改成园林")
     assert result["report_projection"] is not None
     assert result["plan_gate_decision"]["action"] == "approve"
     assert result["delivery_persisted"] is True

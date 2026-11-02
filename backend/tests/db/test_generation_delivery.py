@@ -15,8 +15,8 @@ from travel_agent.planning.delivery.pdf_export import render_trip_report_pdf
 from travel_agent.planning.delivery.public.bundle import public_delivery_bundle
 from travel_agent.planning.delivery.projection_builder import build_delivery_projections
 from travel_agent.planning.itinerary.models import (
-    DayPlanV2,
-    StructuredItineraryV2,
+    DayPlan,
+    StructuredItinerary,
     TimelineEntryRef,
     VisitStop,
 )
@@ -27,7 +27,7 @@ from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.research.evidence import FactAssertion, FactStoreSnapshot
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.weather.models import WeatherContextSnapshot, WeatherImpact
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 from travel_agent.runtime.run_contracts import TripRunStatus
 from travel_agent.storage.database import get_db_session
 from travel_agent.storage.delivery_bundle_store import DeliveryBundleStore
@@ -52,19 +52,19 @@ def _delivery_state(run_id: str) -> TravelAgentState:
         visit_type="nature",
         lineage=EntityLineage(lineage_kind="authored_entity"),
     )
-    itinerary = StructuredItineraryV2(
+    itinerary = StructuredItinerary(
         itinerary_id="test-itinerary",
         title="城市漫步",
         destination_ids=["city-1"],
         duration_days=1,
-        day_plans=[DayPlanV2(
+        day_plans=[DayPlan(
             day_id="day-1", day=1, date=trip_date, destination_id="city-1",
             theme="城市漫步", timeline=[TimelineEntryRef(entry_id="entry-1", **ref.model_dump())],
         )],
         visit_stops=[stop],
         unresolved=["晚间游船未安排"],
     )
-    workspace = TripWorkspaceV2(
+    workspace = TripWorkspace(
         run_id=run_id,
         generation_id="generation-test",
         workspace_revision=0,
@@ -94,7 +94,7 @@ def _delivery_state(run_id: str) -> TravelAgentState:
         workspace, facts, weather, generated_at=now,
     )
     return TravelAgentState(
-        run_id=run_id, trip_workspace_v2=workspace, fact_store_snapshot=facts,
+        run_id=run_id, trip_workspace=workspace, fact_store_snapshot=facts,
         weather_context=weather, weather_impacts={impact.weather_impact_id: impact},
         report_projection=report, map_projection=map_projection, source_index_projection=source_index,
     )

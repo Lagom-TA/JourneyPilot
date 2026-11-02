@@ -39,7 +39,7 @@ from travel_agent.planning.research.reference_service_contracts import (
 from travel_agent.planning.weather.geography_contracts import DestinationGeoPoint
 from travel_agent.planning.weather.models import WeatherContextSnapshot
 from travel_agent.planning.weather.models import WeatherImpact
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 from travel_agent.runtime.budget import RunBudgetSnapshot
 from travel_agent.runtime.deadlines import RunDeadlineSnapshot
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
@@ -293,7 +293,7 @@ class TravelAgentState(BaseModel):
         List[CompositionMutation], _merge_composition_mutations
     ] = Field(default_factory=list)
     local_connector_gaps: List[LocalConnectorGap] = Field(default_factory=list)
-    trip_workspace_v2: Optional[TripWorkspaceV2] = None
+    trip_workspace: Optional[TripWorkspace] = None
     fact_store_snapshot: Optional[FactStoreSnapshot] = None
     report_projection: Optional[TripReportProjection] = None
     map_projection: Optional[MapProjection] = None

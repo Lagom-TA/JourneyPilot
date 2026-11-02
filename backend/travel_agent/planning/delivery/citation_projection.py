@@ -16,7 +16,7 @@ from travel_agent.planning.research.evidence import FactAssertion
 from travel_agent.planning.research.evidence import FactStoreSnapshot
 from travel_agent.planning.research.evidence import SourceRecord
 from travel_agent.planning.weather.models import WeatherContextSnapshot
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 from typing import Iterable
 from typing import Sequence
 import hashlib
@@ -51,7 +51,7 @@ def _citation_id(entity_ref: EntityRef, fact: FactAssertion) -> str:
 
 
 def _entity_lineage_targets(
-    workspace: TripWorkspaceV2,
+    workspace: TripWorkspace,
 ) -> list[tuple[EntityRef, Sequence[str]]]:
     itinerary = workspace.itinerary
     targets: list[tuple[EntityRef, Sequence[str]]] = []
@@ -100,7 +100,7 @@ def _entity_lineage_targets(
 
 
 def project_public_citations(
-    workspace: TripWorkspaceV2,
+    workspace: TripWorkspace,
     facts: FactStoreSnapshot,
     weather: WeatherContextSnapshot,
 ) -> list[PublicCitationProjection]:

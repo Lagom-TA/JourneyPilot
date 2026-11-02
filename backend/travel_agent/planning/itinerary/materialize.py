@@ -41,10 +41,10 @@ from travel_agent.planning.itinerary.draft import (
     placement_occurrence_key,
 )
 from travel_agent.planning.itinerary.models import (
-    DayPlanV2,
+    DayPlan,
     DiningStop,
     LodgingStay,
-    StructuredItineraryV2,
+    StructuredItinerary,
     TimelineEntryRef,
     TransportLeg,
     VisitStop,
@@ -67,7 +67,7 @@ from travel_agent.planning.transport import (
     TransportModePreference,
     TransportSegment,
 )
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 
 
 def _controlled_destination_names(
@@ -155,7 +155,7 @@ def _reference_service_notes(
     reference_services: list[ProviderReferenceService],
     *,
     transport_legs: list[TransportLeg],
-    day_plans: list[DayPlanV2],
+    day_plans: list[DayPlan],
 ) -> list[str]:
 
     if not reference_services:
@@ -192,7 +192,7 @@ def materialize_trip_workspace(
     user_input_anchors: Optional[list[UserInputAnchor]] = None,
     reference_services: Optional[list[ProviderReferenceService]] = None,
     connector_gaps: Optional[Sequence[LocalConnectorGap]] = None,
-) -> TripWorkspaceV2:
+) -> TripWorkspace:
     candidates = catalog.candidate_index()
     connector_gaps_by_id = {gap.gap_id: gap for gap in connector_gaps or ()}
     used_ids = {
@@ -211,7 +211,7 @@ def materialize_trip_workspace(
     dining: list[DiningStop] = []
     lodging: list[LodgingStay] = []
     transport: list[TransportLeg] = []
-    day_plans: list[DayPlanV2] = []
+    day_plans: list[DayPlan] = []
     composition_day_dates = {day.date for day in composition.days}
     deferred_transport_projections: dict[date, list[TimelineEntryRef]] = {}
     slots: list[SelectionSlot] = []
@@ -548,7 +548,7 @@ def materialize_trip_workspace(
                         )
                     )
         day_plans.append(
-            DayPlanV2(
+            DayPlan(
                 day_id=day.day_id,
                 day=day.day,
                 date=day.date,
@@ -707,7 +707,7 @@ def materialize_trip_workspace(
 
     transport_slots, transport = _transport_slots(transport, candidates)
     slots.extend(transport_slots)
-    itinerary = StructuredItineraryV2(
+    itinerary = StructuredItinerary(
         itinerary_id=composition.itinerary_id,
         title=composition.title,
         destination_ids=list(
@@ -738,7 +738,7 @@ def materialize_trip_workspace(
             reference_services or [], transport_legs=transport, day_plans=day_plans
         ),
     )
-    return TripWorkspaceV2(
+    return TripWorkspace(
         run_id=run_id,
         generation_id=catalog.generation_id,
         workspace_revision=workspace_revision,

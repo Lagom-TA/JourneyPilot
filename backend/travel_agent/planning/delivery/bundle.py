@@ -29,7 +29,7 @@ from travel_agent.planning.weather.models import (
     WeatherTransportModeOperation,
     WeatherVisitReplacementOperation,
 )
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 from travel_agent.schema import StrictModel
 
 class DeliveryRevisionManifest(StrictModel):
@@ -69,7 +69,7 @@ def _immutable_fact_payload(fact: Optional[FactAssertion]) -> Optional[Dict[str,
 
 class DeliveryBundle(StrictModel):
     manifest: DeliveryRevisionManifest
-    workspace: TripWorkspaceV2
+    workspace: TripWorkspace
     fact_snapshot: FactStoreSnapshot
     weather_snapshot: WeatherContextSnapshot
     report_projection: TripReportProjection
@@ -468,7 +468,7 @@ def _normalize_canonical_json_numbers(value: Any) -> Any:
 
 def bundle_content_hashes(
     *,
-    workspace: TripWorkspaceV2,
+    workspace: TripWorkspace,
     fact_snapshot: FactStoreSnapshot,
     weather_snapshot: WeatherContextSnapshot,
     report_projection: TripReportProjection,

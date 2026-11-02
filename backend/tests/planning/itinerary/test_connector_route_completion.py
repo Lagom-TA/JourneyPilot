@@ -227,7 +227,7 @@ async def test_routable_unfilled_gap_uses_provider_route_without_estimation(
 
     assert completed.agent_status["itinerary_planner"] == "completed"
     assert len(calls) == 1
-    leg = completed.trip_workspace_v2.itinerary.transport_legs[0]
+    leg = completed.trip_workspace.itinerary.transport_legs[0]
     candidate = completed.recommendation_catalog.candidate_index()[
         leg.lineage.candidate_id
     ]
@@ -277,7 +277,7 @@ async def test_provider_without_a_route_still_uses_estimation(monkeypatch):
     assert authored_gap_ids == [
         gap.gap_id for gap in completed.local_connector_gaps
     ]
-    leg = completed.trip_workspace_v2.itinerary.transport_legs[0]
+    leg = completed.trip_workspace.itinerary.transport_legs[0]
     assert leg.duration_minutes == 17
     assert leg.lineage.lineage_kind == "authored_entity"
     assert leg.segments[0].path == []
@@ -306,7 +306,7 @@ async def test_missing_coordinates_never_queries_provider(
 
     assert completed.agent_status["itinerary_planner"] == "completed"
     assert len(authored_gap_ids) == 1
-    assert completed.trip_workspace_v2.itinerary.transport_legs[0].duration_minutes == 17
+    assert completed.trip_workspace.itinerary.transport_legs[0].duration_minutes == 17
 
 
 @pytest.mark.asyncio
@@ -369,7 +369,7 @@ async def test_selected_provider_route_preserves_complete_path(monkeypatch):
 
     completed = await _complete(current)
 
-    leg = completed.trip_workspace_v2.itinerary.transport_legs[0]
+    leg = completed.trip_workspace.itinerary.transport_legs[0]
     actual_path = [point.model_dump() for point in leg.segments[0].path]
     expected_path = _route_result(
         {
@@ -423,7 +423,7 @@ async def test_road_service_modes_query_drive_and_keep_display_lock_and_path(
     assert completed.agent_status["itinerary_planner"] == "completed"
     assert len(calls) == 1
     assert calls[0][1]["mode"] == "drive"
-    leg = completed.trip_workspace_v2.itinerary.transport_legs[0]
+    leg = completed.trip_workspace.itinerary.transport_legs[0]
     assert leg.selected_mode.value == requested_mode
     assert leg.mode_preference.locked_mode.value == requested_mode
     assert leg.segments[0].mode.value == "drive"
@@ -472,7 +472,7 @@ async def test_provider_station_facts_survive_model_public_projection_and_readba
 
     completed = await _complete(current)
 
-    leg = completed.trip_workspace_v2.itinerary.transport_legs[0]
+    leg = completed.trip_workspace.itinerary.transport_legs[0]
     assert leg.from_endpoint.place_id == "place_candidate_0"
     assert leg.to_endpoint.place_id == "place_candidate_1"
     assert leg.boarding_stop is not None
@@ -481,8 +481,8 @@ async def test_provider_station_facts_survive_model_public_projection_and_readba
     assert leg.alighting_stop.name == "王府井站"
 
     public = _public_itinerary(
-        completed.trip_workspace_v2.itinerary,
-        EvidenceBasisView.from_itinerary(completed.trip_workspace_v2.itinerary),
+        completed.trip_workspace.itinerary,
+        EvidenceBasisView.from_itinerary(completed.trip_workspace.itinerary),
     )
     public_leg = public["transport_legs"][0]
     assert public_leg["from_endpoint"]["place_id"] == "place_candidate_0"

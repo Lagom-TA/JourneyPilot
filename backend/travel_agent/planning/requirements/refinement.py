@@ -66,7 +66,7 @@ async def seed_refinement_state(state: TravelAgentState, bundle, action: str) ->
         "weather_source_records": [item for item in bundle.fact_snapshot.source_records if item.source_record_id not in packet_source_ids],
         "weather_fact_assertions": [item for item in bundle.fact_snapshot.fact_assertions if item.fact_assertion_id not in packet_fact_ids],
         "weather_field_provenance": [item for item in bundle.fact_snapshot.field_provenance if (item.entity_ref.entity_id, item.field_path, item.origin) not in packet_provenance],
-        "trip_workspace_v2": old_workspace,
+        "trip_workspace": old_workspace,
     })
     draft = build_minimum_delivery_draft(state)
     state = state.model_copy(update={"minimum_delivery_draft": draft})

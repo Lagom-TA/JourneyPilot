@@ -13,7 +13,7 @@ from travel_agent.planning.itinerary.materialize import (
 from travel_agent.runtime.budget import RunBudgetExhausted
 from travel_agent.runtime.cancellation import RunCancelled
 from travel_agent.runtime.operations import ModelWindowClosed
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ _SYSTEM_PROMPT = """你是旅行行程的中文文案编辑。只输出一个 JS
 days 必须恰好覆盖输入中的每个 day_id，各一次，不得缺日、重复或串日。"""
 
 
-def _day_copy_inputs(workspace: TripWorkspaceV2) -> list[dict[str, Any]]:
+def _day_copy_inputs(workspace: TripWorkspace) -> list[dict[str, Any]]:
     itinerary = workspace.itinerary
     destination_names = _controlled_destination_names(workspace.user_input_anchors)
     visits_by_day: dict[str, list[str]] = {}
@@ -78,7 +78,7 @@ def _day_copy_inputs(workspace: TripWorkspaceV2) -> list[dict[str, Any]]:
     ]
 
 
-def _copy_payload(workspace: TripWorkspaceV2) -> dict[str, Any]:
+def _copy_payload(workspace: TripWorkspace) -> dict[str, Any]:
     itinerary = workspace.itinerary
     destination_names = _controlled_destination_names(workspace.user_input_anchors)
     return {
@@ -168,9 +168,9 @@ def _parse_copy_response(
 
 
 async def write_itinerary_copy(
-    workspace: TripWorkspaceV2,
+    workspace: TripWorkspace,
     llm: Any,
-) -> TripWorkspaceV2:
+) -> TripWorkspace:
     """一次批量写回正式标题与每日主题；失败时保留已有的可交付行程。"""
 
     day_ids = [day.day_id for day in workspace.itinerary.day_plans]

@@ -16,7 +16,7 @@ from travel_agent.planning.state import TravelAgentState
 
 def _workspace_with_dining_reminders(state: TravelAgentState):
     """仅向餐饮对象附加软性食物过敏提醒。"""
-    workspace = state.trip_workspace_v2
+    workspace = state.trip_workspace
     if workspace is None:
         return None
     reminders = dining_allergy_reminders(state.constraint_pack)
@@ -35,7 +35,7 @@ def _workspace_with_dining_reminders(state: TravelAgentState):
 
 
 async def delivery_projection_node(state: TravelAgentState) -> Dict[str, Any]:
-    if state.trip_workspace_v2 is None:
+    if state.trip_workspace is None:
         raise ValueError("delivery projections require the composed workspace")
     if state.weather_context is None:
         raise ValueError("delivery projections require the planning weather snapshot")
@@ -62,7 +62,7 @@ async def delivery_projection_node(state: TravelAgentState) -> Dict[str, Any]:
     )
     return {
         "messages": [AIMessage(content="正式旅行交付内容已构建，正在保存。")],
-        "trip_workspace_v2": workspace,
+        "trip_workspace": workspace,
         "fact_store_snapshot": facts,
         "report_projection": report,
         "map_projection": map_projection,

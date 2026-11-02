@@ -121,4 +121,4 @@ _PLACE_ENTITY_TYPE = {
 
 
 class ResearchPacketOutputError(ValueError):
-    """worker 未输出精确的 v2 Research Packet 契约。"""
+    """worker 未输出精确的 Research Packet 契约。"""

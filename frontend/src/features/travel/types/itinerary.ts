@@ -1,4 +1,4 @@
-import { type VisitStop, type DiningStop, type LodgingPriceKind, type LodgingAvailabilityStatus, type TransportLeg, type TransportMode, type TransportEndpoint, type TransportSegment, type DayPlanV2 } from "./entities";
+import { type VisitStop, type DiningStop, type LodgingPriceKind, type LodgingAvailabilityStatus, type TransportLeg, type TransportMode, type TransportEndpoint, type TransportSegment, type DayPlan } from "./entities";
 import { type CostCoverageSummary } from "./report";
 export type EvidenceBasis = 'cited_source' | 'public_reference' | 'reference_service';
 export interface EntityIntentExplanation {
@@ -110,12 +110,12 @@ export interface PublicCustomBlock {
     planned_end: string | null;
     duration_minutes: number | null;
 }
-export interface PublicStructuredItineraryV2 {
+export interface PublicStructuredItinerary {
     itinerary_id: string;
     title: string;
     destination_ids: string[];
     duration_days: number;
-    day_plans: DayPlanV2[];
+    day_plans: DayPlan[];
     visit_stops: PublicVisitStop[];
     dining_stops: PublicDiningStop[];
     lodging_stays: PublicLodgingStay[];

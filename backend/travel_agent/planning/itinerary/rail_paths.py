@@ -13,7 +13,7 @@ from travel_agent.planning.research.output.transcript import (
     authoritative_tool_messages,
 )
 from travel_agent.planning.transport import RoutePathPoint, TransportMode
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 from travel_agent.runtime.cancellation import RunCancelled
 from travel_agent.tools.execution import execute_tool
 from travel_agent.tools.registry import get_tool_registry
@@ -25,7 +25,7 @@ _RAIL_MODES = frozenset({TransportMode.TRAIN, TransportMode.HIGH_SPEED_RAIL})
 _12306_PROVIDER_NAMES = frozenset({"12306", "12306-train"})
 
 
-def _12306_rail_candidate_ids(workspace: TripWorkspaceV2) -> set[str]:
+def _12306_rail_candidate_ids(workspace: TripWorkspace) -> set[str]:
     """只返回具有 12306 来源的长途铁路候选，排除其他铁路路线来源。"""
     candidate_ids: set[str] = set()
     for packet in workspace.recommendation_catalog.research_packets:
@@ -124,10 +124,10 @@ def _request_cache_key(
 
 
 async def complete_rail_route_paths(
-    workspace: TripWorkspaceV2,
+    workspace: TripWorkspace,
     *,
     tool_context: Optional[Mapping[str, Any]] = None,
-) -> TripWorkspaceV2:
+) -> TripWorkspace:
     """为选中的 12306 铁路段补路径，任何几何失败都保留原行程段。"""
     candidate_ids = _12306_rail_candidate_ids(workspace)
     if not candidate_ids:

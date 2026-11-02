@@ -25,13 +25,13 @@ from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.research.evidence import FactStoreSnapshot
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.planning.weather.models import WeatherContextSnapshot
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 
 CONTRACT_MODELS = (
     ResearchPacket,
     RecommendationCatalog,
     FactStoreSnapshot,
-    TripWorkspaceV2,
+    TripWorkspace,
     WeatherContextSnapshot,
     ResearchContextView,
 )

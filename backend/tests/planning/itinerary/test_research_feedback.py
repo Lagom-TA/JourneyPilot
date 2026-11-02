@@ -329,7 +329,7 @@ async def test_composition_supplementary_query_adjusts_arrangement(monkeypatch):
     assert '"duration_minutes":40' in model.composition_request
     # 组合完成后行程正常交付，目录与骨架一致；模型报告的未安排事项
     # 保留为未安排事项，不随说明重建而丢失。
-    workspace = result["trip_workspace_v2"]
+    workspace = result["trip_workspace"]
     assert workspace is not None
     assert result["agent_status"]["itinerary_planner"] == "completed"
     assert workspace.itinerary.unresolved == ["运河游船当日晚班次未能核实，暂不安排"]
@@ -368,7 +368,7 @@ async def test_research_redo_round_trip_replaces_erroneous_output(monkeypatch):
     assert (result["research_redo_requests"] or {}) == {}
     assert result["research_redo_rounds"] == {"destination_researcher": 1}
     assert "day_design.unresolved" in model.composition_request
-    assert result["trip_workspace_v2"].itinerary.unresolved == [
+    assert result["trip_workspace"].itinerary.unresolved == [
         "运河游船当日晚班次未能核实，暂不安排"
     ]
     assert any(
@@ -382,7 +382,7 @@ async def test_research_redo_round_trip_replaces_erroneous_output(monkeypatch):
     assert "redo_visit_01" in catalog_ids
     assert "redo_visit_02" in catalog_ids
     assert "supply_transit_01" in catalog_ids
-    workspace = result["trip_workspace_v2"]
+    workspace = result["trip_workspace"]
     assert workspace is not None
     assert [stop.place_id for stop in workspace.itinerary.visit_stops] == [
         "redo_place_01",
@@ -523,7 +523,7 @@ async def test_failed_composition_is_not_re_entered_after_research_window_closes
             research_packets={"destination_researcher@generation_test": destination_packet},
             run_deadline=snapshot,
             run_budget=RunBudgetSnapshot(enforce_limits=True, max_tool_calls=20),
-            trip_workspace_v2=None,
+            trip_workspace=None,
             agent_status={
                 "destination_researcher": "completed",
                 "itinerary_planner": itinerary_status,

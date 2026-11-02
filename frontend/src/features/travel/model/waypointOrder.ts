@@ -1,9 +1,9 @@
-import { type PublicStructuredItineraryV2 } from "../types/itinerary";
+import { type PublicStructuredItinerary } from "../types/itinerary";
 export interface WaypointPlacement {
     sequence: number;
     days: number[];
 }
-export function buildWaypointOrder(itinerary: PublicStructuredItineraryV2, mapPlaceIds: readonly string[] = []): Map<string, WaypointPlacement> {
+export function buildWaypointOrder(itinerary: PublicStructuredItinerary, mapPlaceIds: readonly string[] = []): Map<string, WaypointPlacement> {
     const pinned = new Set(mapPlaceIds);
     const PHYSICAL_ENTITY_TYPES = ['visit_stop', 'dining_stop', 'lodging_stay'] as const;
     const isPhysical = (entityType: string): boolean =>

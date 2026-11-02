@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from travel_agent.planning.itinerary.models import StructuredItineraryV2
+from travel_agent.planning.itinerary.models import StructuredItinerary
 from travel_agent.planning.itinerary.models import TransportLeg
 from travel_agent.planning.references import EntityType
 from travel_agent.planning.transport import TransportMode
@@ -77,7 +77,7 @@ class EvidenceBasisView:
     micro_transport_leg_ids: frozenset[str]
 
     @classmethod
-    def from_itinerary(cls, itinerary: StructuredItineraryV2) -> "EvidenceBasisView":
+    def from_itinerary(cls, itinerary: StructuredItinerary) -> "EvidenceBasisView":
         basis: Dict[tuple[EntityType, str], str] = {}
         for collection, entity_type, id_field in LINEAGE_BEARING_COLLECTIONS:
             for entity in getattr(itinerary, collection):

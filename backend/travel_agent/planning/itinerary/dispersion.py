@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from travel_agent.planning.itinerary.models import StructuredItineraryV2
+from travel_agent.planning.itinerary.models import StructuredItinerary
 from travel_agent.planning.references import EntityType
 from travel_agent.planning.research.evidence import FactAssertion
 from travel_agent.utils.geography import haversine_km
@@ -98,7 +98,7 @@ def entity_coordinates(
 
 
 def itinerary_dispersion(
-    itinerary: StructuredItineraryV2, fact_index: Mapping[str, FactAssertion]
+    itinerary: StructuredItinerary, fact_index: Mapping[str, FactAssertion]
 ) -> list[tuple[str, DayDispersion]]:
     """按天顺序测量已物化行程的每一天。
 

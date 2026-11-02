@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class CheckpointContractError(RuntimeError):
-    """持久化的图状态不满足当前 v2 契约。"""
+    """持久化的图状态不满足当前契约。"""
 
 
 def _is_checkpoint_contract_failure(exc: BaseException) -> bool:
@@ -93,7 +93,7 @@ class TravelPlanningWorkflow:
             _reject_checkpoint_contract(
                 run_id,
                 exc,
-                warning_template="Checkpoint rejected by current v2 contract run_id=%s error=%s",
+                warning_template="Checkpoint rejected by current contract run_id=%s error=%s",
                 contract_message="当前版本无法继续这次旧规划，请重新规划这趟旅行。",
             )
         if snapshot.values:

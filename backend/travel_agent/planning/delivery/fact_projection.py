@@ -6,12 +6,12 @@ from travel_agent.planning.delivery.projection_errors import DeliveryProjectionE
 from travel_agent.planning.research.evidence import FactAssertion
 from travel_agent.planning.research.evidence import FactStoreSnapshot
 from travel_agent.planning.research.evidence import SourceRecord
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 from typing import Sequence
 
 
 def build_fact_snapshot(
-    workspace: TripWorkspaceV2,
+    workspace: TripWorkspace,
     *,
     weather_sources: Sequence[SourceRecord] = (),
     weather_facts: Sequence[FactAssertion] = (),

@@ -8,10 +8,10 @@ from travel_agent.planning.costs.coverage import CostCoverageSummary
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
 from travel_agent.planning.delivery.travel_content import selection_reason
 from travel_agent.planning.itinerary.models import CustomBlock
-from travel_agent.planning.itinerary.models import DayPlanV2
+from travel_agent.planning.itinerary.models import DayPlan
 from travel_agent.planning.itinerary.models import DiningStop
 from travel_agent.planning.itinerary.models import LodgingStay
-from travel_agent.planning.itinerary.models import StructuredItineraryV2
+from travel_agent.planning.itinerary.models import StructuredItinerary
 from travel_agent.planning.itinerary.models import TransportLeg
 from travel_agent.planning.itinerary.models import VisitStop
 from travel_agent.planning.references import EntityType
@@ -197,7 +197,7 @@ def _public_custom_block(block: CustomBlock) -> Dict[str, Any]:
     }
 
 
-def _public_day_plan(day: DayPlanV2) -> Dict[str, Any]:
+def _public_day_plan(day: DayPlan) -> Dict[str, Any]:
     return {
         "day_id": day.day_id,
         "day": day.day,
@@ -219,7 +219,7 @@ def _public_day_plan(day: DayPlanV2) -> Dict[str, Any]:
 
 
 def _public_itinerary(
-    itinerary: StructuredItineraryV2, view: EvidenceBasisView
+    itinerary: StructuredItinerary, view: EvidenceBasisView
 ) -> Dict[str, Any]:
     """投影 canonical 行程，并标明每个条目的证据基础。
 

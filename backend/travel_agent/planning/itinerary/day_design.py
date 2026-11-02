@@ -5,7 +5,7 @@ from __future__ import annotations
 from travel_agent.planning.itinerary.models import CustomBlock
 from travel_agent.planning.itinerary.models import TimelineEntryRef
 from travel_agent.planning.references import EntityType
-from travel_agent.planning.workspace import TripWorkspaceV2
+from travel_agent.planning.workspace import TripWorkspace
 import hashlib
 
 
@@ -103,6 +103,6 @@ def apply_day_design(workspace, composition):
     updated = itinerary.model_copy(
         update={"day_plans": days, "custom_blocks": blocks, "unresolved": unresolved}
     )
-    return TripWorkspaceV2.model_validate(
+    return TripWorkspace.model_validate(
         workspace.model_copy(update={"itinerary": updated}).model_dump()
     )

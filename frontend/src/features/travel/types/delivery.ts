@@ -1,5 +1,5 @@
 import { type TripReportProjection, type MapProjection, type PublicCitationProjection } from "./report";
-import { type PublicStructuredItineraryV2, type SelectionSlot } from "./itinerary";
+import { type PublicStructuredItinerary, type SelectionSlot } from "./itinerary";
 import { type PublicWeatherAdjustment } from "./weather";
 export interface DeliveryRevisionManifest {
     run_id: string;
@@ -29,7 +29,7 @@ export interface PublicTripWorkspace {
     run_id: string;
     generation_id: string;
     workspace_revision: number;
-    itinerary: PublicStructuredItineraryV2;
+    itinerary: PublicStructuredItinerary;
     selection_slots: SelectionSlot[];
     weather_proposal_decisions: Array<{
         proposal_id: string;
