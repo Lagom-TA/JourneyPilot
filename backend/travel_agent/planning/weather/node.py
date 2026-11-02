@@ -52,28 +52,11 @@ def _configured_builder(config: Optional[RunnableConfig]) -> WeatherContextBuild
     return WeatherContextBuilder(default_weather_providers())
 
 
-def weather_research_authorized(state: TravelAgentState) -> bool:
-    draft = state.minimum_delivery_draft
-    return bool(
-        draft is not None
-        and draft.planning_authorized
-        and state.research_plan is not None
-        and (state.plan_gate_decision or {}).get("action") == "approve"
-        and state.run_budget is not None
-        and state.run_deadline is not None
-    )
-
-
 async def weather_context_builder_node(
     state: TravelAgentState,
     config: Optional[RunnableConfig] = None,
 ) -> Dict[str, Any]:
     """用户批准后构建目的地/日期天气网格。"""
-    # 旧 checkpoint 可能仍停在审批前的天气节点。只做空更新并由图路由回
-    # 计划准备，不在未授权或预算/期限未封存的状态下调用 Provider。
-    if not weather_research_authorized(state):
-        return {}
-
     identity = ControlledTripIdentity.model_validate(state.controlled_trip_identity)
     if not state.destination_geo:
         raise ValueError("weather context requires resolved controlled destinations")

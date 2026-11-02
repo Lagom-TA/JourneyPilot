@@ -64,7 +64,6 @@ from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.weather.node import (
     destination_geo_resolver_node,
     weather_context_builder_node,
-    weather_research_authorized,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,9 +89,6 @@ def _route_after_boundary(next_node: str):
 def _route_after_weather(state: TravelAgentState) -> str:
     if state.pending_intent_amendments:
         return NODE_INTENT_AMENDMENT_ROUTER
-    # 旧 checkpoint 可能把未审批的天气节点作为下一步；回到计划准备。
-    if not weather_research_authorized(state):
-        return NODE_SUMMARY_CARD_BRIEF
     return NODE_DISPATCHER
 
 
@@ -268,7 +264,6 @@ def build_travel_workflow() -> StateGraph:
         _route_after_weather,
         {
             NODE_INTENT_AMENDMENT_ROUTER: NODE_INTENT_AMENDMENT_ROUTER,
-            NODE_SUMMARY_CARD_BRIEF: NODE_SUMMARY_CARD_BRIEF,
             NODE_DISPATCHER: NODE_DISPATCHER,
         },
     )
