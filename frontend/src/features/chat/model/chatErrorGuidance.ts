@@ -79,9 +79,6 @@ export function getChatErrorGuidance(raw: string, kind: ChatErrorKind): ChatErro
     if (/基础旅行身份已锁定|identity_locked/i.test(message)) {
         return { title: '需要重新确认旅行信息', description: '目的地、日期和同行人已用于当前计划。请取消本次规划，回到新旅行修改后重新开始。', action: null };
     }
-    if (/intake_not_found/i.test(message)) {
-        return { title: '旅行草稿已更新', description: '请刷新页面，载入已保存的旅行信息后继续。', action: 'reload', actionLabel: '重新加载草稿' };
-    }
     if (/\b409\b|conflict|revision[ _-]?conflict|out[ _-]?of[ _-]?date/i.test(message)) {
         return {
             title: '这次旅行结果刚刚更新过',
