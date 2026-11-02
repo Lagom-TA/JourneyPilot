@@ -275,8 +275,6 @@ def _itinerary_payload() -> dict:
                 "planned_start": "2026-11-05T09:30:00+08:00", "planned_end": "2026-11-05T11:00:00+08:00",
                 "duration_minutes": 90, "selection_reason": "慢游首选",
             }], "day_design": {
-                "focus": "街区与湖边慢游",
-                "rationale": "按核心体验就近安排，不赶路",
                 "free_time": [],
                 "unresolved": ["运河游船当日晚班次未能核实，暂不安排"],
             }},

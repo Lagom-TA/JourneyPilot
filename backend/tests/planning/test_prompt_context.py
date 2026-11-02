@@ -12,8 +12,8 @@ from travel_agent.planning.research.output.policy import (
     ResearchWorkerKind,
     packet_candidate_limit,
 )
-from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.planning.research.prompts import (
+    _packet_schema,
     build_research_packet_prompt,
 )
 
@@ -43,14 +43,23 @@ def test_prompt_injects_the_packet_schema_and_matching_candidate_limit(
         upstream_packet_context="[]",
         active_constraint_ids=(),
     )
-    schema = json.dumps(
-        ResearchPacket.model_json_schema(),
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
+    schema = _packet_schema()
 
     assert prompt.system.count(schema) == 1
     assert f'"candidate_limit":{candidate_limit}' in prompt.runtime
+
+
+def test_packet_schema_only_offers_the_fields_the_model_writes() -> None:
+    """服务端绑定的 packet 元数据不属于模型输出合同。"""
+
+    schema = json.loads(_packet_schema())
+    assert set(schema["properties"]) == {
+        "candidates",
+        "fact_assertions",
+        "field_provenance",
+        "source_records",
+    }
+    assert "metadata" not in json.dumps(schema["properties"]).lower()
 
 
 def test_new_research_run_preserves_the_complete_schema_prefix() -> None:

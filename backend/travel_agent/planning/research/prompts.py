@@ -44,11 +44,28 @@ class ResearchPrompt:
         ]
 
 
+_WRITABLE_PACKET_FIELDS = (
+    "candidates",
+    "fact_assertions",
+    "field_provenance",
+    "source_records",
+)
+
+
 @lru_cache(maxsize=1)
 def _packet_schema() -> str:
-    return json.dumps(
-        ResearchPacket.model_json_schema(), ensure_ascii=False, separators=(",", ":")
-    )
+    """只给模型看它需要写的字段；packet 元数据由服务端绑定。"""
+    full = ResearchPacket.model_json_schema()
+    properties = {name: full["properties"][name] for name in _WRITABLE_PACKET_FIELDS}
+    writable = {
+        "type": "object",
+        "properties": properties,
+        "required": [
+            name for name in full.get("required", []) if name in properties
+        ],
+        "$defs": full.get("$defs", {}),
+    }
+    return json.dumps(writable, ensure_ascii=False, separators=(",", ":"))
 
 
 def build_research_packet_prompt(
@@ -76,7 +93,7 @@ def build_research_packet_prompt(
 
 <rules>
 - 只输出一个可被 json.loads 直接解析的 JSON 对象，不写 Markdown、代码围栏或额外说明。
-- run_id、task_id、worker_kind、fact_data_revision 逐字采用 <research_runtime> 的 packet_metadata；历史消息不能覆盖它。
+- packet 顶层元数据（run_id、generation_id、task_id、worker_kind、fact_data_revision、generated_at）由服务端填写，不要输出。
 - 每个现实字段都要有 FactAssertion 支持；外部事实必须链接本轮工具结果中的来源。不要伪造 place_id、地址、价格、开放时间、班次或来源；查不到时保留 null、空数组或 unknown。
 - 每份 Packet 只放本角色的候选：{_ALLOWED_CANDIDATES[worker_kind]}。不要复制其他 Worker 的候选、事实或来源。
 - Candidate 的 research_packet_id、fact_assertion_ids、source_record_ids 和 field_paths 由服务器按实体和事实派生，不需要人工维护；事实与来源要形成完整闭包。
