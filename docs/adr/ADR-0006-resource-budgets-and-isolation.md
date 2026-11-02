@@ -15,8 +15,9 @@
 | 时间 | `RunDeadlineConfig`（四段窗口）、`IngestConfig.parse_timeout_seconds` |
 | 费用/调用 | `RunBudgetConfig` → `RunBudgetSnapshot`（Run 授权时封存） |
 
-事件分三类：critical 不可丢（队列满则生产者等待）、coalescible 可合并（token 合并成
-更大 chunk，**不丢字符**）、ephemeral 可覆盖。
+事件分三类：critical 队列有界（队列满则生产者等待，消费者已 stall 则停止入队并计入
+`dropped_critical_events`，传输由消费者收摊、以 durable 状态收敛）、coalescible 可合并
+（token 合并成更大 chunk，**不丢字符**）、ephemeral 可覆盖。
 
 ## 为什么
 
