@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from datetime import datetime
+from travel_agent.planning.delivery.fact_projection import workspace_for_public_projection
 from travel_agent.planning.delivery.map_projection import project_map
 from travel_agent.planning.delivery.projections import MapProjection
 from travel_agent.planning.delivery.projections import PublicCitationProjection
@@ -36,7 +37,7 @@ def build_delivery_projections(
     historical_weather_days: frozenset[tuple[str, date]] = frozenset(),
 ) -> tuple[TripReportProjection, MapProjection, SourceIndexProjection]:
     report = project_report(
-        workspace,
+        workspace_for_public_projection(workspace, facts),
         facts,
         weather,
         generated_at=generated_at,

@@ -19,13 +19,21 @@ export const InputArea: React.FC<{
     minimal?: boolean;
     autoFocus?: boolean;
     placeholder?: string;
-}> = ({ showCompaction = true, minimal = false, autoFocus = true, placeholder }) => {
+    initialInput?: string;
+    targetRunId?: string | null;
+    onInputSent?: () => void;
+}> = ({ showCompaction = true, minimal = false, autoFocus = true, placeholder, initialInput = '', targetRunId, onInputSent }) => {
     const { state, dispatch, activeStreamAbortRef } = useApp();
     const { sendMessage } = useSendMessage();
     const { setLastSession } = useSessionManager();
     const { stopRun } = useStopRun();
-    const [input, setInput] = useState('');
-    const [stoppedInput, setStoppedInput] = useState('');
+    const [input, setInput] = useState(initialInput);
+    const [stoppedInput, setStoppedInput] = useState(initialInput);
+    React.useEffect(() => {
+        if (!initialInput) return;
+        setInput(initialInput);
+        setStoppedInput(initialInput);
+    }, [initialInput]);
     const [isOptimizing, setIsOptimizing] = useState(false);
     const [optimizedPrompt, setOptimizedPrompt] = useState<string | null>(null);
     const [optimizeError, setOptimizeError] = useState<string | null>(null);
@@ -52,6 +60,7 @@ export const InputArea: React.FC<{
                 const { addTripRunSupplement } = await import('../../travel/api/runs');
                 const receipt = await addTripRunSupplement(state.currentTripRunId, text, state.currentSessionId);
                 setInput('');
+                onInputSent?.();
                 setSupplementStatus(receipt.message);
             } catch {
                 setSupplementStatus('补充未发送，请稍后重试。');
@@ -60,22 +69,26 @@ export const InputArea: React.FC<{
         }
         if (state.isStreaming) return;
         setInput('');
+        onInputSent?.();
         if (textareaRef.current)
             textareaRef.current.style.height = 'auto';
         dispatch({ type: 'SET_THINKING_STEPS', payload: [] });
-        const sent = await sendMessage(text, state.currentTripRunId ? { resumeRunId: state.currentTripRunId } : undefined);
+        const runId = targetRunId ?? state.currentTripRunId;
+        const sent = await sendMessage(text, runId ? { resumeRunId: runId } : undefined);
         if (!sent) setInput(text);
-    }, [input, state.isStreaming, state.currentTripRunId, state.currentSessionId, dispatch, sendMessage]);
+    }, [input, state.isStreaming, state.currentTripRunId, state.currentSessionId, dispatch, sendMessage, targetRunId, onInputSent]);
     const handleStop = stopRun;
     const handleStoppedSend = useCallback(async () => {
         const text = stoppedInput.trim();
         if (!text)
             return;
         setStoppedInput('');
+        onInputSent?.();
         dispatch({ type: 'SET_INPUT_MODE', payload: 'normal' });
         dispatch({ type: 'SET_THINKING_STEPS', payload: [] });
-        await sendMessage(text);
-    }, [stoppedInput, dispatch, sendMessage]);
+        const sent = await sendMessage(text, targetRunId ? { resumeRunId: targetRunId } : undefined);
+        if (!sent && targetRunId) setInput(text);
+    }, [stoppedInput, dispatch, sendMessage, targetRunId, onInputSent]);
     const handleNewChat = useCallback(() => {
         if (activeStreamAbortRef.current) {
             activeStreamAbortRef.current.abort();
@@ -179,7 +192,7 @@ export const InputArea: React.FC<{
         finally {
             setIsCompacting(false);
         }
-    }, [state.currentSessionId, isCompacting]);
+    }, [state.currentSessionId, isCompacting, dispatch]);
     const composer = composerState({
         isStreaming: state.isStreaming,
         hasInput: Boolean(input.trim()),

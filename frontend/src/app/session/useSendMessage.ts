@@ -120,6 +120,7 @@ export function useSendMessage() {
                     await protocol.recoverDeliveryTerminal();
                 }
                 catch {
+                    // 恢复失败时保留已经收到的交付结果。
                 }
             }
         }
@@ -140,6 +141,7 @@ export function useSendMessage() {
                 await refreshSessions();
             }
             catch {
+                // 会话列表刷新失败不影响本次对话结果。
             }
             if (identity.sessionId && completedWhileVisible) {
                 setLastSession(identity.sessionId);

@@ -13,7 +13,7 @@ from ..runtime.journal import (
     current_execution_lease,
 )
 from .assignments import resolve_agent_assignment
-from .nodes import RESEARCH_WORKER_NODES
+from .nodes import NODE_UNDERSTANDING_AGENT, RESEARCH_WORKER_NODES
 from .research.execution_lease import observe_execution_lease
 
 
@@ -46,7 +46,8 @@ def invocation_scope(state, node, config=None):
         "understanding_pending_questions",
     }
     fields = state.model_dump(mode="json", include=keys)
-    fields["assignment"] = resolve_agent_assignment(state.agent_assignments, node)
+    if node != NODE_UNDERSTANDING_AGENT:
+        fields["assignment"] = resolve_agent_assignment(state.agent_assignments, node)
     fields["plan_gate_decision"] = state.plan_gate_decision
     # 恢复同一个待处理任务时 Pregel 保留该身份，而下次调度即使语义输入相同
     # 也会分配新值；缓存的失败结果不能代替新调度的尝试。

@@ -44,7 +44,10 @@ export const HeroEmptyState: React.FC<{
 };
 export const ConversationThread: React.FC<{
     embedded?: boolean;
-}> = ({ embedded = false }) => {
+    initialInput?: string;
+    targetRunId?: string | null;
+    onInputSent?: () => void;
+}> = ({ embedded = false, initialInput = '', targetRunId, onInputSent }) => {
     const { state, dispatch } = useApp();
     const { sendMessage } = useSendMessage();
     const { loadEarlierHistory } = useSessionManager();
@@ -95,10 +98,11 @@ export const ConversationThread: React.FC<{
     const retryLastUserMessage = React.useCallback(() => {
         if (!lastUserText || state.isStreaming)
             return;
-        void sendMessage(lastUserText, state.currentTripRunId
-            ? { resumeRunId: state.currentTripRunId, route: 'trip_refinement' }
+        const runId = targetRunId ?? state.currentTripRunId;
+        void sendMessage(lastUserText, runId
+            ? { resumeRunId: runId, route: 'trip_refinement' }
             : state.lastRouteDecision ? { route: state.lastRouteDecision.route } : undefined);
-    }, [lastUserText, sendMessage, state.isStreaming, state.currentTripRunId, state.lastRouteDecision]);
+    }, [lastUserText, sendMessage, state.isStreaming, state.currentTripRunId, state.lastRouteDecision, targetRunId]);
     const scrollRef = React.useRef<HTMLDivElement>(null);
     const stickRef = React.useRef(true);
     const restoreAnchorRef = React.useRef<{
@@ -202,7 +206,7 @@ export const ConversationThread: React.FC<{
 
       {!planGatePending && (<div className={cn('px-4 py-3 sm:px-6', showCanvas && 'border-t border-stroke bg-surface/50')}>
           <div className="mx-auto max-w-3xl">
-            {!state.pendingRouteConfirmation && <InputArea minimal={embedded} showCompaction={!embedded}/>}
+            {!state.pendingRouteConfirmation && <InputArea minimal={embedded} showCompaction={!embedded} initialInput={initialInput} targetRunId={targetRunId} onInputSent={onInputSent}/>}
           </div>
         </div>)}
     </div>);

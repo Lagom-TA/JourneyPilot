@@ -99,6 +99,10 @@ def _entity_lineage_targets(
     return targets
 
 
+def _is_missing_fact(fact: FactAssertion) -> bool:
+    return fact.status == "missing" and fact.asserted_value is None
+
+
 def project_public_citations(
     workspace: TripWorkspace,
     facts: FactStoreSnapshot,
@@ -126,6 +130,8 @@ def project_public_citations(
                 raise DeliveryProjectionError(
                     f"projection fact is missing: {assertion_id}"
                 )
+            if _is_missing_fact(fact):
+                continue
             source_ids = [
                 link.source_record_id
                 for link in fact.source_links

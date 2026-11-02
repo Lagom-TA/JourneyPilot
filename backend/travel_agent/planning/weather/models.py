@@ -322,8 +322,3 @@ class WeatherContextSnapshot(StrictModel):
             if proposal.severity != expected_severity:
                 raise ValueError("weather proposal severity does not match its impacts")
         return self
-
-
-class WeatherProposalDecision(StrictModel):
-    proposal_id: str = Field(min_length=1)
-    decision: Literal["applied", "dismissed"]

@@ -31,10 +31,6 @@ export interface PublicTripWorkspace {
     workspace_revision: number;
     itinerary: PublicStructuredItinerary;
     selection_slots: SelectionSlot[];
-    weather_proposal_decisions: Array<{
-        proposal_id: string;
-        decision: 'applied' | 'dismissed';
-    }>;
     weather_adjustments: PublicWeatherAdjustment[];
 }
 export function isPublicDeliveryBundle(value: unknown): value is PublicDeliveryBundle {
@@ -52,7 +48,6 @@ export function isPublicDeliveryBundle(value: unknown): value is PublicDeliveryB
         && workspace.workspace_revision === manifest.workspace_revision
         && Array.isArray(workspace.itinerary?.day_plans)
         && Array.isArray(workspace.selection_slots)
-        && Array.isArray(workspace.weather_proposal_decisions)
         && Array.isArray(workspace.weather_adjustments)
         && bundle.report_projection
         && bundle.map_projection

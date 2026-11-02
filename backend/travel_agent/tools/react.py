@@ -115,6 +115,7 @@ async def streaming_react_loop(
     tool_cache: Optional[Dict[str, Any]] = None,
     tool_context: Optional[Dict[str, Any]] = None,
     final_round_notice: Optional[str] = _FINAL_ROUND_NOTICE,
+    journal_key: str = "react",
 ) -> ReactResult:
     "通用流式 ReAct 循环。"
     if stream_queue is not None:
@@ -148,7 +149,7 @@ async def streaming_react_loop(
     from travel_agent.runtime.journal import current_worker_journal
 
     journal = current_worker_journal.get()
-    saved = journal.payload.get("react", {}) if journal else {}
+    saved = journal.payload.get(journal_key, {}) if journal else {}
     if saved:
         if any(
             item.get("tool_name") == "knowledge_search"
@@ -187,7 +188,7 @@ async def streaming_react_loop(
 
     async def save_round(iteration, **phase):
         if journal:
-            journal.payload["react"] = {
+            journal.payload[journal_key] = {
                 "iteration": iteration,
                 "messages": deepcopy(messages),
                 "summaries": list(tool_results_summary),

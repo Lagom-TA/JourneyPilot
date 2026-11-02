@@ -31,16 +31,12 @@ export default tseslint.config(
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
 
-      // 存量违规降级。这几条规则在现有代码里有 14 处命中，分布在 16 个前端源
-      // 文件里；修它们要动业务代码，那是独立 PR 的工作量（也会和并行 PR 冲突）。
-      // 规则没有关掉，而是用 `--max-warnings 22` 做棘轮：新增违规会让总数超过
-      // 22 而失败，修掉一处就把 package.json 里的数字调小。
-      "no-empty": "warn",
-      "prefer-const": "warn",
-      "no-useless-escape": "warn",
-      "@typescript-eslint/no-empty-object-type": "warn",
-      "@typescript-eslint/no-unused-expressions": "warn",
-      "no-loss-of-precision": "warn",
+      "no-empty": "error",
+      "prefer-const": "error",
+      "no-useless-escape": "error",
+      "@typescript-eslint/no-empty-object-type": "error",
+      "@typescript-eslint/no-unused-expressions": "error",
+      "no-loss-of-precision": "error",
     },
   },
 );

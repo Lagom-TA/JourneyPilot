@@ -100,9 +100,8 @@ class LocalConnectorGap(StrictModel):
         if (
             self.departure_time.date() != self.day_date
             or self.latest_arrival_time.date() != self.day_date
-            or self.latest_arrival_time <= self.departure_time
         ):
-            raise ValueError("connector gap window must be ordered within its Day")
+            raise ValueError("connector gap times must be within its Day")
         return self
 
 
@@ -132,14 +131,6 @@ def extract_local_connector_gaps(
         ) in day_connector_adjacencies(day, candidates, skeleton):
             left_key = placement_occurrence_key(day.day_id, left)
             right_key = placement_occurrence_key(day.day_id, right)
-            if latest_arrival_time <= departure_time:
-                raise ItineraryCompositionError(
-                    f"day {day.day_id} connector gap {left_key} -> {right_key} leaves "
-                    f"{(latest_arrival_time - departure_time).total_seconds() / 60:.0f}min "
-                    f"between {departure_time.isoformat()} and "
-                    f"{latest_arrival_time.isoformat()}; "
-                    "a positive transfer window is required"
-                )
             requested_modes = list(
                 dict.fromkeys(requests.get((left_key, right_key), []))
             )

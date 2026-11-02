@@ -62,11 +62,13 @@ async def _compose_draft(
             tool_cache=tool_cache,
             tool_context=tool_context,
             final_round_notice=_COMPOSITION_FINAL_ROUND_NOTICE,
+            journal_key=f"composition_react_{attempt}",
         )
         if react.outcome is not ReactOutcome.FINAL_ANSWER:
+            detail = f": {react.error}" if react.error else ""
             raise ValueError(
                 f"composition tool loop ended without a final answer: "
-                f"{react.outcome.value}"
+                f"{react.outcome.value}{detail}"
             )
         content = react.content
         if not isinstance(content, str):

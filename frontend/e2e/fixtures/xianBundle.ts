@@ -262,8 +262,14 @@ export function xianDeliveryBundle(revision = 1) {
         unresolved: [],
       },
       selection_slots: [],
-      weather_proposal_decisions: [],
-      weather_adjustments: [],
+      weather_adjustments: [] as Array<{
+        proposal_id: string;
+        date: string;
+        severity: 'low' | 'medium' | 'high';
+        summary: string;
+        cost_delta_cny: number | null;
+        time_delta_minutes: number | null;
+      }>,
     },
     report_projection: {
       source_workspace_revision: revision,

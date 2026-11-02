@@ -15,10 +15,12 @@ import { formatTripCostSummary } from '../../model/costPresentation';
 import { routeLines } from '../../model/mapModel';
 import { type ControlledTripIdentity } from '../../types/planner';
 import { type PublicDeliveryBundle } from '../../types/delivery';
+import { type PublicWeatherAdjustment } from '../../types/weather';
 import { type MapProjection } from '../../types/report';
 import { BundleMapLeafletLazy } from './BundleMapLeafletLazy';
 import { DayTimeline } from './DayTimeline';
 import { TripOverview } from './TripOverview';
+import { WeatherSuggestions } from './WeatherSuggestions';
 import { FullReportView, PdfDownloadButton } from './FullReportView';
 import { GenerationJourneyPanel } from './GenerationJourneyPanel';
 import { ItineraryCardFlow, TimelineEntityDetails, type CardMapSelection, type TimelineEntity } from './ItineraryCardFlow';
@@ -159,6 +161,8 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   const reducedMotion = useReducedMotion();
   const [activeDay, setActiveDay] = React.useState<number | null>(null);
   const [sidebarMode, setSidebarMode] = React.useState<'itinerary' | 'conversation'>('itinerary');
+  const [conversationDraft, setConversationDraft] = React.useState('');
+  const [conversationRunId, setConversationRunId] = React.useState<string | null>(null);
   const [selectedEntityId, setSelectedEntityId] = React.useState<string | null>(null);
   const [selectedOccurrenceKey, setSelectedOccurrenceKey] = React.useState<string | null>(null);
   const [linkedEntityId, setLinkedEntityId] = React.useState<string | null>(null);
@@ -166,7 +170,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   const [showRoutes, setShowRoutes] = React.useState(true);
   const [hiddenLayers, setHiddenLayers] = React.useState<PlaceLayer[]>([]);
   const placeReturnFocusRef = React.useRef<{ entityId: string; occurrenceKey: string | null } | null>(null);
-  const conversationReturnFocusRef = React.useRef<'navigation' | 'toolbar' | null>(null);
+  const conversationReturnFocusRef = React.useRef<string | null>(null);
   const navigationScrollRef = React.useRef<HTMLDivElement>(null);
   const contentScrollRef = React.useRef<HTMLDivElement>(null);
   const floatingPanelRef = React.useRef<HTMLDivElement>(null);
@@ -208,9 +212,19 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   }, [selectedEntityId, selectedOccurrenceKey]);
 
   const openConversation = React.useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    conversationReturnFocusRef.current = event.currentTarget.dataset.conversationTrigger === 'toolbar' ? 'toolbar' : 'navigation';
+    conversationReturnFocusRef.current = event.currentTarget.dataset.conversationTrigger ?? 'navigation';
+    setConversationDraft('');
+    setConversationRunId(null);
     setSidebarMode('conversation');
   }, []);
+
+  const discussWeather = React.useCallback((suggestion: PublicWeatherAdjustment, event: React.MouseEvent<HTMLButtonElement>) => {
+    conversationReturnFocusRef.current = event.currentTarget.dataset.conversationTrigger ?? 'navigation';
+    setConversationDraft(`请根据 ${suggestion.date} 的天气建议调整行程：${suggestion.summary}。请结合最新天气和当天安排重新规划受影响的部分。`);
+    setConversationRunId(bundle?.manifest.run_id ?? null);
+    dispatch({ type: 'SET_DELIVERABLE_VIEW', payload: 'interactive_itinerary' });
+    setSidebarMode('conversation');
+  }, [bundle?.manifest.run_id, dispatch]);
 
   const closeConversation = React.useCallback(() => {
     const source = conversationReturnFocusRef.current ?? 'navigation';
@@ -289,7 +303,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
     setHiddenLayers([]);
     overviewScrollTop.current = 0;
     returnFocusDayId.current = null;
-  }, [state.currentSessionId, state.currentTripRunId]);
+  }, [state.currentSessionId, bundle?.manifest.run_id]);
 
   React.useEffect(() => {
     const outsideDisplayedDay = (id: string | null) => (
@@ -448,12 +462,6 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
           {state.currentTripRunReadOnly && <span>历史结果 · 只读</span>}
         </div>
         {metaLabel && <p>{metaLabel}</p>}
-        {reportDocument && reportDocument.unresolved.length > 0 && (
-          <div role="status" className="mt-2 text-xs leading-5 text-ink-secondary">
-            <strong>尚未安排</strong>
-            {reportDocument.unresolved.map((item) => <p key={item}>{item}</p>)}
-          </div>
-        )}
         <div className="journey-view-actions">
           <button type="button" className="journey-view-action" onClick={openReading}><BookOpen size={14} />阅读版</button>
           <PdfDownloadButton bundle={bundle} compact />
@@ -474,7 +482,14 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
         <h2>调整这趟旅行</h2>
         <p>告诉我你的想法，日程和地图会一起更新。</p>
       </header>
-      {(state.planApprovalGate || state.understandingQuestions) ? <GenerationJourneyPanel /> : <ConversationThread embedded />}
+      {(state.planApprovalGate || state.understandingQuestions) ? <GenerationJourneyPanel /> : (
+        <ConversationThread
+          embedded
+          initialInput={conversationDraft}
+          targetRunId={conversationRunId}
+          onInputSent={() => setConversationDraft('')}
+        />
+      )}
     </div>
   ) : !reportDocument ? (
     <div className="journey-report-pending" role={bundle?.report_projection.status === 'failed' ? 'alert' : 'status'}>
@@ -488,12 +503,14 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
         <h2>{selectedSummary?.destinationLabel ?? selectedDay.theme}</h2>
         <span>{selectedDay.theme}</span>
       </header>
+      <WeatherSuggestions suggestions={bundle?.workspace.weather_adjustments.filter((item) => item.date === selectedDay.date) ?? []} readOnly={state.currentTripRunReadOnly} onDiscuss={discussWeather} />
       <TodayNextCard node={nextNode} actualToday={actualToday} />
       <DayTimeline nodes={selectedTimeline} waypointOrder={waypointOrder} linkedEntityId={linkedEntityId} onLinkEntity={setLinkedEntityId} />
       {selectedDay.estimated_cost_cny != null && <footer>当日约 <strong>¥{selectedDay.estimated_cost_cny.toLocaleString('zh-CN')}</strong></footer>}
     </div>
   ) : bundle ? (
     <>
+      <WeatherSuggestions suggestions={bundle.workspace.weather_adjustments.filter((item) => activeDay == null || item.date === selectedDay?.date)} readOnly={state.currentTripRunReadOnly} onDiscuss={discussWeather} />
       {activeDay == null && (
         <TripOverview
           itinerary={bundle.workspace.itinerary}

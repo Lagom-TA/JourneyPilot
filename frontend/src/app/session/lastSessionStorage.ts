@@ -14,5 +14,7 @@ export function setLastSession(sessionId: string | null): void {
         else
             localStorage.setItem(LAST_SESSION_KEY, sessionId);
     }
-    catch { }
+    catch {
+        // 本地存储不可用时仍可继续使用当前会话。
+    }
 }

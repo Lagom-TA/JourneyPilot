@@ -50,7 +50,6 @@ class TripReportBuildContext(StrictModel):
     source_fact_data_revision: int = Field(ge=0)
     source_weather_data_revision: int = Field(ge=0)
     weather_coverage_summary: WeatherCoverageSummary
-    active_weather_proposal_ids: list[str] = Field(default_factory=list)
 
 
 class PdfExportArtifact(StrictModel):
@@ -82,15 +81,6 @@ def build_report_context(bundle: DeliveryBundle) -> TripReportBuildContext:
         raise ReportOutOfDateError("report projection is not current")
 
     coverage_statuses = [item.status for item in bundle.weather_snapshot.coverage]
-    decisions = {
-        item.proposal_id: item.decision
-        for item in bundle.workspace.weather_proposal_decisions
-    }
-    active_high_proposals = sorted(
-        item.proposal_id
-        for item in bundle.weather_snapshot.adjustment_proposals
-        if item.severity == "high" and item.proposal_id not in decisions
-    )
     return TripReportBuildContext(
         source_workspace_revision=manifest.workspace_revision,
         source_fact_data_revision=manifest.fact_data_revision,
@@ -100,7 +90,6 @@ def build_report_context(bundle: DeliveryBundle) -> TripReportBuildContext:
             partial_destinations=coverage_statuses.count("partial"),
             unavailable_destinations=coverage_statuses.count("unavailable"),
         ),
-        active_weather_proposal_ids=active_high_proposals,
     )
 
 
@@ -422,11 +411,6 @@ def render_trip_report_pdf(
         if item
     ]
     story.extend([Paragraph(" · ".join(summary), styles["small"]), Spacer(1, 5 * mm)])
-
-    if document.unresolved:
-        story.append(Paragraph("尚未安排", styles["h1"]))
-        for item in document.unresolved:
-            story.append(Paragraph(escape(item), styles["body"]))
 
     if document.highlights:
         story.append(Paragraph("全程亮点", styles["h1"]))

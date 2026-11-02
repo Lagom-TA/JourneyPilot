@@ -108,6 +108,8 @@ jobs:
           done
       - name: shellcheck
         run: shellcheck --severity=warning $(git ls-files '*.sh')
+      - name: Check service supervision
+        run: bash infra/scripts/supervise_harness.sh
 
   docker:
     name: docker · image + compose

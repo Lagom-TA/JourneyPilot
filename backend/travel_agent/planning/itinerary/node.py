@@ -90,14 +90,17 @@ def _connector_overtime_context(
 ) -> str:
     """把超窗相邻关系压成回炉修正的提示，供下一轮组合使用。"""
     parts = [
-        f"{gap.from_place_id}→{gap.to_place_id} 实际路线约 {duration} 分钟、"
-        f"可用窗口只有 {window} 分钟"
+        f"{gap.day_date} "
+        f"{gap.from_endpoint.name if gap.from_endpoint else gap.from_place_id}→"
+        f"{gap.to_endpoint.name if gap.to_endpoint else gap.to_place_id}，"
+        f"{gap.departure_time:%H:%M} 出发至 {gap.latest_arrival_time:%H:%M} 抵达，"
+        f"路线约 {duration} 分钟、可用窗口 {window} 分钟"
         for gap, duration, window in overtimed
     ]
     text = (
-        "上一轮相邻停留点的实际路线超出可用时间窗口："
+        "上一轮相邻停留点的路线耗时超出可用时间窗口："
         + "；".join(parts)
-        + "。请调整停留时间或改用更近的候选，让通行窗口容纳真实门到门耗时。"
+        + "。请调整停留时间或改用更近的候选，为门到门接驳留出足够时间。"
     )
     if len(text) <= _FAILURE_CONTEXT_CHAR_LIMIT:
         return text
@@ -106,7 +109,11 @@ def _connector_overtime_context(
 
 def _composition_phase(state: TravelAgentState) -> str:
     """本次调用生成草稿，还是把已有草稿物化为正式行程。"""
-    if state.placement_skeleton is None or state.trip_workspace is not None:
+    if (
+        state.placement_skeleton is None
+        or state.trip_workspace is not None
+        or state.composition_failure_context is not None
+    ):
         return "placement_skeleton"
     return "materialize_connectors"
 
@@ -266,7 +273,7 @@ async def itinerary_planner_node(
                 "messages": [AIMessage(content="相邻路线与时间窗口冲突，正在重新安排")],
                 "agent_status": {output_key: "pending"},
                 "next_agent": None,
-                "placement_skeleton": None,
+                "placement_skeleton": skeleton,
                 "trip_workspace": None,
                 "local_connector_gaps": [],
                 "composition_reschedule_rounds": (

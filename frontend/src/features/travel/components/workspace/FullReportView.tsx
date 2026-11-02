@@ -198,15 +198,6 @@ export function FullReportView({ bundle, allowPdf = true }: {
   return (
     <article data-testid="full-report" className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-7 sm:py-8">
       <ReportCover bundle={bundle} document={document} allowPdf={allowPdf} />
-      {document.unresolved.length > 0 && (
-        <section className="border-b border-stroke py-5" aria-label="尚未安排">
-          <h2 className="font-semibold text-ink">尚未安排</h2>
-          <ul className="mt-2 space-y-1 text-sm text-ink-secondary">
-            {document.unresolved.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </section>
-      )}
-
       <nav className="report-toc" aria-label="阅读版目录">
         <span>目录</span>
         {document.highlights.length > 0 && <a href="#report-highlights-heading">行程总览</a>}

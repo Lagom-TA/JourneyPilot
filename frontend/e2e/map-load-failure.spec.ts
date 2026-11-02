@@ -14,7 +14,8 @@ if (process.env.JP_MAP_LOAD_FAILURE_E2E === '1' && !/^http:\/\/127\.0\.0\.1:\d+$
 const EVIDENCE_DIR = '../test-results/e2e-evidence/map-load-failure';
 const EVIDENCE_SUFFIX = process.env.JP_MAP_EVIDENCE_SUFFIX || 'after-fix';
 const TILE_PATTERN = /^https:\/\/webrd0[1-4]\.is\.autonavi\.com\/appmaptile/;
-const DEP_PATTERN = /\/node_modules\/\.vite\/deps\/(?:react-leaflet|leaflet)\.js$/;
+// Vite 的依赖缓存目录可自定义，包含 /@fs/ 路径时仍需拦截地图依赖。
+const DEP_PATTERN = /\/deps\/(?:react-leaflet|leaflet)\.js$/;
 
 type DepFailure = { failing: boolean; remaining: number };
 
@@ -134,6 +135,10 @@ test('地图离线夹具：加载失败时准确提示、保留日程并通过�
   await page.setViewportSize({ width: 2000, height: 900 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const fixture = await mountFixture(page, { depFailure: { failing: true } });
+  await expect.poll(
+    () => fixture.depResponses.filter(({ status }) => status === 504).length,
+    { message: '地图依赖请求应被拦截并返回 504', timeout: 15_000 },
+  ).toBeGreaterThan(0);
   await expect(page.getByText('地图没能加载出来。', { exact: true })).toBeVisible({ timeout: 15_000 });
   const failure = page.getByTestId('lazy-view-failure');
   await expect(failure).toBeVisible();
@@ -152,6 +157,7 @@ test('地图离线夹具：加载失败时准确提示、保留日程并通过�
   await page.screenshot({ path: evidencePath('module-load-failure'), fullPage: true });
   const failureText = (await failure.textContent())?.trim() ?? null;
   const depResponsesBeforeReload = [...fixture.depResponses];
+  const failedDepPaths = new Set(depResponsesBeforeReload.filter(({ status }) => status === 504).map(({ url }) => url));
 
   // 故障解除后，重新加载页面必须真正恢复地图，而不是只验证按钮可点。
   fixture.depFailure.failing = false;
@@ -163,6 +169,11 @@ test('地图离线夹具：加载失败时准确提示、保留日程并通过�
   await expect(map).toBeVisible({ timeout: 10_000 });
   await expect(map).toHaveAttribute('data-basemap-state', 'ready', { timeout: 10_000 });
   await expect(page.getByTestId('lazy-view-failure')).toHaveCount(0);
+  await expect.poll(
+    () => fixture.depResponses.slice(depResponsesBeforeReload.length)
+      .some(({ url, status }) => status === 200 && failedDepPaths.has(url)),
+    { message: '故障解除后同一地图依赖应重新加载成功' },
+  ).toBe(true);
   await page.screenshot({ path: evidencePath('module-load-recovered'), fullPage: true });
 
   writeEvidence('module-load-failure', {

@@ -14,7 +14,6 @@ export interface FollowupComposerInput {
   pendingUnderstanding: boolean;
   pendingRouteConfirmation: boolean;
   canResume?: boolean;
-  hasUnresolved?: boolean;
 }
 
 export interface FollowupComposerState {
@@ -26,7 +25,7 @@ export interface FollowupComposerState {
 const PLACEHOLDER = '继续补充要求，例如：第二天少安排一个景点';
 
 function hintFor(runStatus: TripRunStatus, canResume: boolean): string {
-  if (runStatus === 'completed') return '规划已完成。可以继续补充要求，我会接着完善这趟旅行。';
+  if (runStatus === 'completed') return '规划已生成。可以继续补充要求，我会接着完善这趟旅行。';
   if (runStatus === 'failed') return '这次规划没有完成。可以继续补充要求，或从左侧返回新旅行。';
   if (runStatus === 'cancelled') return '这次规划已取消。可以继续补充要求，或从左侧返回新旅行。';
   return canResume
@@ -45,11 +44,7 @@ export function followupComposerState(input: FollowupComposerInput): FollowupCom
   );
   return {
     visible,
-    hint: terminal
-      ? input.runStatus === 'completed' && input.hasUnresolved
-        ? '部分行程尚未安排，可以继续补充要求。'
-        : hintFor(input.runStatus as TripRunStatus, input.canResume === true)
-      : '',
+    hint: terminal ? hintFor(input.runStatus as TripRunStatus, input.canResume === true) : '',
     placeholder: PLACEHOLDER,
   };
 }

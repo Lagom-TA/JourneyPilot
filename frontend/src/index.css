@@ -3323,6 +3323,10 @@ summary.research-query-summary { cursor: pointer; }
   }
 }
 
+.journey-conversation-view .generation-planning-layout { display: block; height: auto; }
+.journey-conversation-view .generation-planning-sidebar { overflow: visible; padding: 24px 20px 28px; border-right: 0; border-bottom: 1px solid var(--color-stroke); }
+.journey-conversation-view .generation-activity { overflow: visible; }
+.journey-conversation-view .generation-activity-body { overflow: visible; padding: 28px 16px 12px; }
 
 .generation-activity {
   display: flex;

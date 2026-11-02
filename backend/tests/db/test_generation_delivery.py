@@ -121,7 +121,13 @@ async def test_initial_delivery_with_weather_and_long_history_is_readable(migrat
     )
     restored = await DeliveryBundleStore().get_current(run.run_id)
     assert restored == committed == bundle
-    document = public_delivery_bundle(restored)["report_projection"]["document"]
+    public_bundle = public_delivery_bundle(restored)
+    suggestion = public_bundle["workspace"]["weather_adjustments"][0]
+    assert suggestion["proposal_id"] == bundle.weather_snapshot.adjustment_proposals[0].proposal_id
+    assert suggestion["date"] == "2026-11-05"
+    assert suggestion["summary"]
+    assert "status" not in suggestion
+    document = public_bundle["report_projection"]["document"]
     assert document["unresolved"] == ["晚间游船未安排"]
     assert document["cost_coverage_statement"] is None
     assert document["days"][0]["blocks"][0]["summary"] == "适合散步。"
@@ -130,7 +136,8 @@ async def test_initial_delivery_with_weather_and_long_history_is_readable(migrat
     assert restored.map_projection.content.places[0].latitude is None
     pdf = render_trip_report_pdf(restored, exported_at=datetime.now(timezone.utc))
     pdf_text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(pdf.content)).pages)
-    assert "晚间游船未安排" in pdf_text
+    assert "晚间游船未安排" not in pdf_text
+    assert "尚未安排" not in pdf_text
     assert pdf_text.count("适合散步。") == 1
     assert "费用按行程逐项列出" not in pdf_text
     assert (await TripRunStore().get_run(run.run_id)).status == TripRunStatus.COMPLETED

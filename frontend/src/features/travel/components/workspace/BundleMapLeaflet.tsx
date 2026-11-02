@@ -386,7 +386,7 @@ export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, rout
           {BASEMAP_NOTICE[basemap]}
         </p>)}
     <MapContainer ref={guardTeardown} center={anchor.current} zoom={12} zoomControl={false} attributionControl preferCanvas={false} className="h-full w-full">
-      <TileLayer url={TILE.url} subdomains={TILE.subdomains} attribution={TILE.attribution} maxZoom={18} eventHandlers={{
+      <TileLayer url={TILE.url} {...(TILE.subdomains ? { subdomains: TILE.subdomains } : {})} attribution={TILE.attribution} maxZoom={18} eventHandlers={{
             loading: () => { tileErrors.current = 0; },
             load: () => setBasemap(tileErrors.current > 0 ? 'degraded' : 'ready'),
             tileerror: () => { tileErrors.current += 1; setBasemap('degraded'); },

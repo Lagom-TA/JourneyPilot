@@ -196,6 +196,44 @@ async def test_fast_keeps_chat_tool_transport(gateway_settings, monkeypatch, out
     assert "input" not in wire
 
 
+async def test_chat_completion_retries_provider_error_instead_of_accepting_partial_output(
+    gateway_settings, monkeypatch,
+):
+    import travel_agent.llm.router as router_module
+
+    requests = []
+
+    def respond(request):
+        requests.append(request)
+        failed = len(requests) == 1
+        return httpx.Response(200, json={
+            "id": f"chat_{len(requests)}", "object": "chat.completion", "created": 0,
+            "model": "deepseek-flash", "choices": [{"index": 0, "message": {
+                "role": "assistant", "content": '{"partial":' if failed else '{"ok":true}',
+            }, "finish_reason": "error" if failed else "stop"}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+        })
+
+    recorder = UsageRecorder()
+    monkeypatch.setattr(router_module, "get_usage_recorder", lambda: recorder)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        monkeypatch.setattr(router_module, "ChatOpenAI", lambda **kwargs: ReasoningChatOpenAI(
+            **kwargs, http_async_client=client,
+        ))
+        llm = ModelRouter().get_for_task(TaskKind.RESEARCH_TOOLS, has_tools=True)
+        token = current_run_id.set("run_chat_retry")
+        try:
+            result = await llm.ainvoke_with_tools([{"role": "user", "content": "Return JSON."}], [])
+        finally:
+            current_run_id.reset(token)
+    assert json.loads(result["content"]) == {"ok": True}
+    assert len(requests) == 2
+    first, second = recorder.snapshot()
+    assert (first.status, first.finish_reason, first.attempt_number) == ("error", "error", 1)
+    assert (second.status, second.finish_reason, second.attempt_number) == ("ok", "stop", 2)
+    assert first.logical_call_id == second.logical_call_id
+
+
 @pytest.mark.parametrize("stream,terminal", [(False, "incomplete"), (True, "incomplete"), (True, None)])
 async def test_incomplete_responses_fail_without_losing_reported_usage(gateway_settings, monkeypatch, stream, terminal):
     import travel_agent.llm.router as router_module

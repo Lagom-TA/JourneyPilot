@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { deliveryBundle, sessionDetail, sessionSummary } from './fixtures/sessionData';
 import { xianLayoutBundle, xianMixedTransportBundle, xianTransportDisplayBundle } from './fixtures/xianBundle';
@@ -29,7 +30,7 @@ function stagedResearchSteps(longChain: boolean) {
   return [...STAGED_RESEARCH_STEPS, ...rounds.flat()];
 }
 
-async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: boolean; delayedA?: boolean; research?: boolean; planGate?: boolean; specialParty?: boolean; longTrip?: boolean; notice?: boolean; noticeRestoreError?: boolean; bundleData?: ReturnType<typeof deliveryBundle>; terminalStatus?: TerminalRunStatus; resumable?: boolean; readOnlyHistory?: boolean; longChain?: boolean } = {}) {
+async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: boolean; delayedA?: boolean; research?: boolean; planGate?: boolean; specialParty?: boolean; longTrip?: boolean; notice?: boolean; noticeRestoreError?: boolean; bundleData?: ReturnType<typeof deliveryBundle>; terminalStatus?: TerminalRunStatus; resumable?: boolean; readOnlyHistory?: boolean; longChain?: boolean; memoryFact?: boolean } = {}) {
   const pageErrors: string[] = [], escapes: string[] = [], requests: string[] = [];
   let status: string = options.planGate
     ? 'awaiting_input'
@@ -162,7 +163,7 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
     if (path === '/knowledge/collections/travel_knowledge/stats') return json({ total: 0, sources: 0, source_details: [] });
     if (path === '/user/preference-options') return json([]);
     if (path === '/user/profile') return json({ preferences: {} });
-    if (path === '/user/memory/facts') return json({ facts: [] });
+    if (path === '/user/memory/facts') return json({ facts: options.memoryFact ? [{ fact_id: 'offline-fact', content: '偏好靠窗座位', source: 'manual', category: 'other' }] : [] });
     escapes.push(request.url()); return json({ detail: 'Unmocked API request' }, 501);
   });
   return {
@@ -208,7 +209,7 @@ type ChatRequestBody = {
   run_id?: string | null;
   route?: string | null;
   gate_decision?: unknown;
-  messages?: Array<{ role?: string; content?: string }>;
+  messages?: Array<{ role?: string; content?: string; message_id?: string }>;
 };
 
 function sampleHandoffHeights(page: Page, durationMs = 520) {
@@ -436,12 +437,16 @@ test('cancels through HTTP control and leaves the composer usable', async ({ pag
   await expect(page.getByText('A 的历史回答', { exact: true })).toBeVisible();
   await page.getByTestId('brief-input').fill('离线取消测试'); await page.getByTestId('send-button').click();
   await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
-  await sendFrames(page, [{ type: 'chat_start', session_id: 'A', message_id: 'cancel-A', run_id: 'run-A', route_decision: { route: 'trip_planning' } }, { type: 'trip_summary_card', summary_card: { headline: '离线测试行程', summary: '准备调研', current_focus: '离线调研', compact_line: '本地夹具', facts: [], priorities: [] } }, { type: 'chat_chunk', content: '可保留的阶段内容' }]);
-  await expect(page.getByText('可保留的阶段内容', { exact: true })).toBeVisible();
+  await sendFrames(page, [{ type: 'chat_start', session_id: 'A', message_id: 'cancel-A', run_id: 'run-A', route_decision: { route: 'trip_planning' } }, { type: 'agent_progress', agent_name: 'destination_researcher', content: '正在查找目的地资料', progress_status: 'running' }]);
+  const workspace = page.getByTestId('generation-journey-panel');
+  await expect(workspace.locator('.research-panel-title')).toHaveText('查找旅行资料');
   await page.getByTestId('send-button').click();
-  await expect(page.getByPlaceholder('告诉 JourneyPilot 这趟行程想怎么调整…')).toBeVisible();
+  await expect(workspace.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
+  await expect(workspace.getByTestId('brief-input')).toBeEditable();
   expect(fixture.requests.some(request => request.startsWith('POST /api/trip-runs/run-A/control'))).toBe(true);
-  await expect(page.getByText('可保留的阶段内容', { exact: true })).toBeVisible();
+  await workspace.getByRole('button', { name: /查找旅行资料/ }).click();
+  await expect(workspace.locator('.research-panel-title')).toHaveText('查找旅行资料');
+  await expect(workspace.getByTestId('thinking-chain')).toBeVisible();
   await assertOffline(page, fixture);
 });
 
@@ -454,10 +459,10 @@ test('completed planning without a bundle keeps a follow-up composer below the p
   const workspace = page.getByTestId('generation-journey-panel');
   const composer = page.getByTestId('generation-followup-composer');
   await expect(workspace).toBeVisible();
-  await expect(workspace.locator('.generation-progress > h2')).toHaveText('旅行规划已完成');
+  await expect(workspace.locator('.generation-progress > h2')).toHaveText('旅行规划已生成');
   await expect(page.getByTestId('delivery-recovery-notice')).toBeVisible();
   await expect(composer).toBeVisible();
-  await expect(composer).toContainText('规划已完成');
+  await expect(composer).toContainText('规划已生成');
   await expect(composer.getByTestId('brief-input')).toHaveValue('');
   const collapsedGroups = workspace.locator('.research-agent-heading[aria-expanded="false"]');
   expect(await collapsedGroups.count()).toBeGreaterThan(0);
@@ -615,6 +620,182 @@ test('delivered trip adjustment keeps the single shared composer in the same wor
   await sendFrames(page, [{ type: 'run_failed', run_id: 'run-followup', message: '调整未完成，原行程仍可查看。' }], true);
   await expect(conversation.getByRole('alert')).toBeVisible();
   await expect(page.getByTestId('itinerary-map-region')).toBeVisible();
+  await assertOffline(page, fixture);
+});
+
+for (const width of [390, 1440]) {
+  test(`天气建议可在 ${width}px 带入行程调整对话`, async ({ page }) => {
+    const bundle = deliveryBundle();
+    bundle.workspace.weather_adjustments.push({
+      proposal_id: 'rain-day-one', date: '2026-11-01', severity: 'high',
+      summary: '降雨变化，建议调整 1 项安排', cost_delta_cny: null, time_delta_minutes: 20,
+    });
+    const fixture = await offlineApp(page, { bundle: true, bundleData: bundle });
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/');
+    if (width === 390) await page.getByTestId('canvas-pill').click();
+    const suggestions = page.getByTestId('weather-suggestions');
+    await expect(suggestions).toContainText('2026-11-01');
+    await expect(suggestions).toContainText('降雨变化，建议调整 1 项安排');
+    await suggestions.getByRole('button', { name: '讨论调整' }).click();
+    const composer = page.locator('.journey-conversation-view').getByTestId('brief-input');
+    await expect(composer).toBeFocused();
+    await expect(composer).toHaveValue(/2026-11-01.*降雨变化，建议调整 1 项安排/);
+    expect(await page.evaluate(() => (window as FixtureWindow).__offlineChatBodies?.length)).toBe(0);
+    await composer.press('Enter');
+    await expect.poll(async () => (await lastChatBody(page))?.messages?.[0]?.content).toContain('降雨变化，建议调整 1 项安排');
+    expect((await lastChatBody(page))?.run_id).toBe('run-A');
+    await sendFrames(page, [
+      { type: 'chat_start', session_id: 'A', run_id: 'run-A', message_id: 'weather-adjustment', route_decision: { route: 'trip_refinement' } },
+      gateFrame(),
+    ]);
+    await expect(page.getByTestId('trip-brief-plan-gate')).toBeVisible();
+    await sendFrames(page, [{ type: 'run_failed', run_id: 'run-A', message: '调整未完成' }], true);
+    await expect(page.locator('.journey-conversation-view').getByTestId('brief-input')).toHaveValue('');
+    await assertOffline(page, fixture);
+  });
+}
+
+test('取消同一会话的调整后，天气讨论使用仍可查看的父行程', async ({ page }) => {
+  // 会话和 Run 身份与聊天入口的 UUIDv5 规则一致，调整 Run 属于同一会话并指向父 Run。
+  const uuid5 = (name: string) => {
+    const bytes = createHash('sha1')
+      .update(Buffer.from('6ba7b8119dad11d180b400c04fd430c8', 'hex'))
+      .update(name)
+      .digest().subarray(0, 16);
+    bytes[6] = (bytes[6] & 0x0f) | 0x50;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    return bytes.toString('hex');
+  };
+  const firstMessageId = randomUUID();
+  const sessionHex = uuid5(`local:session:${firstMessageId}`);
+  const sessionId = `${sessionHex.slice(0, 8)}-${sessionHex.slice(8, 12)}-${sessionHex.slice(12, 16)}-${sessionHex.slice(16, 20)}-${sessionHex.slice(20)}`;
+  const runIdFor = (messageId: string) => `trip_${uuid5(`local:${sessionId}:${messageId}`)}`;
+  const parentId = runIdFor(firstMessageId);
+  const bundle = deliveryBundle();
+  bundle.manifest.run_id = parentId;
+  bundle.workspace.run_id = parentId;
+  bundle.workspace.weather_adjustments.push({
+    proposal_id: 'rain-day-one', date: '2026-11-01', severity: 'high',
+    summary: '降雨变化，建议调整 1 项安排', cost_delta_cny: null, time_delta_minutes: 20,
+  });
+  const baseRun = {
+    session_id: sessionId, mode: 'deep', title: '天气调整',
+    created_at: '2026-10-25T08:00:00Z', updated_at: '2026-10-25T08:00:00Z',
+  };
+  const parent = { ...baseRun, run_id: parentId, parent_run_id: null, status: 'completed' as const, request_message_id: firstMessageId };
+  const children: Array<typeof baseRun & { run_id: string; parent_run_id: string; status: 'running' | 'cancel_requested' | 'cancelled'; request_message_id: string }> = [];
+  const cancelled: string[] = [];
+  let showCancelledEvents = false;
+  const fixture = await offlineApp(page);
+  await page.route('**/api/**', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.pathname === '/api/user/sessions') return json([sessionSummary(sessionId)]);
+    if (url.pathname === `/api/user/sessions/${sessionId}`) return json(sessionDetail(sessionId));
+    if (url.pathname === '/api/trip-runs') {
+      expect(url.searchParams.get('session_id')).toBe(sessionId);
+      return json({ runs: [...[...children].reverse(), parent], total: children.length + 1 });
+    }
+    const match = /^\/api\/trip-runs\/([^/]+)(?:\/(.*))?$/.exec(url.pathname);
+    if (!match) return route.fallback();
+    const run = [parent, ...children].find((item) => item.run_id === match[1]);
+    if (!run) return route.fallback();
+    const suffix = match[2] ?? '';
+    if (!suffix) return json({
+      run, state: { pending_user_choice: null, latest_state_summary: {} }, execution: null,
+      available_actions: [], events: [], controlled_trip_identity: {
+        origin: { name: '北京' }, destinations: [{ name: '西安' }], start_date: '2026-11-01', end_date: '2026-11-02',
+        party: { adults: 1, children: 0, elderly_companions: false, accessibility_required: false },
+        style: { primary: '轻松', secondary_interests: [], source: 'current' },
+      },
+    });
+    if (suffix === 'bundle/current') return run.run_id === parentId ? json(bundle) : json({ detail: 'not ready' }, 404);
+    if (suffix === 'bundle/current/weather/refresh') return json({ refresh_id: request.postDataJSON().refresh_id, attempted: false, committed: false, used_previous_values: true, refusal_reason: null, bundle });
+    if (suffix === 'events') {
+      const after = Number(url.searchParams.get('after_sequence'));
+      return json({
+        run_id: run.run_id, requested_after_sequence: after, replay_floor_sequence: 1,
+        latest_sequence: after, next_after_sequence: after, window_expired: false,
+        run_status: run.status === 'cancelled' && !showCancelledEvents ? 'running' : run.status,
+        current_bundle_id: run.run_id === parentId ? bundle.manifest.bundle_id : null, events: [],
+      });
+    }
+    if (suffix === 'control') {
+      const child = children.find((item) => item.run_id === run.run_id);
+      expect(child).toBeDefined();
+      expect(request.postDataJSON()).toEqual({ action: 'cancel', session_id: sessionId });
+      child!.status = 'cancel_requested';
+      cancelled.push(child!.run_id);
+      return json({ run_id: child!.run_id, action: 'cancel', command_id: `cancel-${child!.run_id}`, accepted: true, status: 'pending', run_status: 'cancel_requested', message: '取消请求已记录' });
+    }
+    return route.fallback();
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(`/?session_id=${encodeURIComponent(sessionId)}`);
+  await page.getByRole('button', { name: '调整', exact: true }).first().click();
+  const conversation = page.locator('.journey-conversation-view');
+  await conversation.getByTestId('brief-input').fill('把第二天的晚餐换清淡一点');
+  await conversation.getByTestId('brief-input').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
+  const firstRequest = await lastChatBody(page);
+  expect(firstRequest?.session_id).toBe(sessionId);
+  expect(firstRequest?.run_id).toBe(parentId);
+  const firstChildId = runIdFor(firstRequest!.messages![0].message_id!);
+  children.push({ ...baseRun, run_id: firstChildId, parent_run_id: parentId, status: 'running', request_message_id: firstRequest!.messages![0].message_id! });
+  await sendFrames(page, [{ type: 'chat_start', session_id: sessionId, run_id: firstChildId, message_id: 'first-adjustment', route_decision: { route: 'trip_refinement' } }]);
+  await expect(conversation.getByTestId('send-button')).toHaveAttribute('aria-label', '停止本次运行');
+  await conversation.getByTestId('send-button').click();
+  await expect.poll(() => cancelled).toEqual([firstChildId]);
+  await expect(conversation.getByRole('textbox', { name: '行程调整要求' })).toBeVisible();
+  await conversation.getByRole('button', { name: '返回日程' }).click();
+  await page.getByTestId('weather-suggestions').getByRole('button', { name: '讨论调整' }).click();
+  const stoppedComposer = conversation.getByRole('textbox', { name: '行程调整要求' });
+  await expect(stoppedComposer).toHaveValue(/降雨变化/);
+  await page.evaluate(() => { (window as FixtureWindow).__offlineFailChatAttempts = 3; });
+  await stoppedComposer.press('Enter');
+  await expect(conversation.getByTestId('retry-send').last()).toBeVisible();
+  await expect(conversation.getByTestId('brief-input')).toHaveValue(/降雨变化/);
+  expect((await lastChatBody(page))?.run_id).toBe(parentId);
+  await conversation.getByTestId('retry-send').last().click();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
+  const retry = await lastChatBody(page);
+  expect(retry?.session_id).toBe(sessionId);
+  expect(retry?.run_id).toBe(parentId);
+  const secondChildId = runIdFor(retry!.messages![0].message_id!);
+  children.push({ ...baseRun, run_id: secondChildId, parent_run_id: parentId, status: 'running', request_message_id: retry!.messages![0].message_id! });
+  await sendFrames(page, [{ type: 'chat_start', session_id: sessionId, run_id: secondChildId, message_id: 'weather-adjustment', route_decision: { route: 'trip_refinement' } }]);
+  await conversation.getByTestId('brief-input').fill('');
+  await expect(conversation.getByTestId('send-button')).toHaveAttribute('aria-label', '停止本次运行');
+  await conversation.getByTestId('send-button').click();
+  await expect.poll(() => cancelled).toEqual([firstChildId, secondChildId]);
+  for (const child of children) child.status = 'cancelled';
+  showCancelledEvents = true;
+  await page.reload();
+  await page.getByTestId('weather-suggestions').getByRole('button', { name: '讨论调整' }).click();
+  await conversation.getByTestId('brief-input').press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
+  const restoredRequest = await lastChatBody(page);
+  expect(restoredRequest?.session_id).toBe(sessionId);
+  expect(restoredRequest?.run_id).toBe(parentId);
+  expect(restoredRequest?.messages?.[0]?.content).toContain('降雨变化');
+  await assertOffline(page, fixture);
+});
+
+test('只读行程展示天气建议但不提供调整入口', async ({ page }) => {
+  const bundle = deliveryBundle();
+  bundle.workspace.weather_adjustments.push({
+    proposal_id: 'rain-day-one', date: '2026-11-01', severity: 'medium',
+    summary: '降雨变化，建议调整 1 项安排', cost_delta_cny: null, time_delta_minutes: null,
+  });
+  const fixture = await offlineApp(page, { bundle: true, bundleData: bundle, readOnlyHistory: true });
+  await page.goto('/?session_id=A&run_id=run-A');
+  const suggestions = page.getByTestId('weather-suggestions');
+  await expect(suggestions).toContainText('降雨变化');
+  await expect(suggestions.getByRole('button', { name: '讨论调整' })).toHaveCount(0);
   await assertOffline(page, fixture);
 });
 
@@ -791,6 +972,7 @@ test('浮动的恢复提示在桌面与手机上非模态，重试单次提交�
   // 手机：长提示换行，重试可见可点，无横向溢出，且不越出工作区。
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(notice).toBeVisible();
+  await expect.poll(async () => (await recoveryNoticeFacts(page)).zIndex).toBe('1050');
   const phoneDuring = await workspaceGeometry(page);
   const phoneFacts = await recoveryNoticeFacts(page);
   expect(phoneFacts.position).toBe('absolute');
@@ -863,7 +1045,7 @@ test('已完成规划的恢复提示浮在工作区上方且不占高度', async
   const notice = page.getByTestId('delivery-recovery-notice');
   const panel = page.getByTestId('generation-journey-panel');
   await expect(panel).toBeVisible();
-  await expect(panel.getByRole('heading', { name: '旅行规划已完成', exact: true })).toBeVisible();
+  await expect(panel.getByRole('heading', { name: '旅行规划已生成', exact: true })).toBeVisible();
   await expect(notice).toContainText('暂时无法加载这趟旅行的正式结果，请稍后重试。');
   const geometry = await workspaceGeometry(page);
   const facts = await recoveryNoticeFacts(page);
@@ -918,9 +1100,9 @@ test('plan gate stays inside the generation workspace through revise retry and a
   const sidebar = workspace.locator('.generation-planning-sidebar');
   await expect(workspace).toBeVisible();
   await expect(sidebar.locator('.generation-trip-card')).toBeVisible();
-  await expect(workspace.locator('.generation-progress > h2')).toHaveText('等待确认旅行需求');
+  await expect(workspace.locator('.generation-progress > h2')).toHaveText('等待确认研究方案');
   await expect(gate).toBeVisible();
-  await expect(gate).toContainText('想慢一点，每天少走一些');
+  await expect(gate).toContainText('安排适合放松的城市路线');
   await expect(gate.locator('.plan-gate-header > p')).toHaveCount(0);
   await expect(gate.locator('.plan-gate-header > span')).toHaveCount(0);
   await expect(gate.locator('.plan-gate-context')).toHaveCount(0);
@@ -951,13 +1133,13 @@ test('plan gate stays inside the generation workspace through revise retry and a
   })).toEqual({ action: 'supplement', content: '每天只安排一个主要景点，午后留出休息时间', approval_token: 'test-token-A-0' });
   await sendFrames(page, [
     { type: 'chat_start', session_id: 'A', run_id: 'run-A', message_id: 'gate-supplement', route_decision: { route: 'trip_refinement' } },
-    { type: 'approval_gate_raised', run_id: 'run-A', gate: 'plan', run_status: 'awaiting_input', payload: { gate: 'plan', approval_token: 'test-token-A-1', revision: 1, revision_limit: 2, decision_options: ['approve', 'supplement', 'cancel'], plan: { steps: [{ step: 1, agents: ['destination_researcher'], tasks: {} }] }, recognized_requirements: { hard: [], preferences: [{ requirement_id: 'slow', summary: '每天只安排一个主要景点' }], attention: [] }, unresolved_requirement_ids: [] } },
+    { type: 'approval_gate_raised', run_id: 'run-A', gate: 'plan', run_status: 'awaiting_input', payload: { gate: 'plan', approval_token: 'test-token-A-1', revision: 1, revision_limit: 2, decision_options: ['approve', 'supplement', 'cancel'], plan: { steps: [{ step: 1, agents: ['destination_researcher'], tasks: { destination_researcher: '每天只安排一个主要景点' } }] }, recognized_requirements: { hard: [], preferences: [{ requirement_id: 'slow', summary: '每天只安排一个主要景点' }], attention: [] }, unresolved_requirement_ids: [] } },
     { type: 'chat_complete', run_id: 'run-A', run_status: 'awaiting_input', ts_ms: Date.now() },
   ], true);
   await expect(gate).toContainText('每天只安排一个主要景点');
   await expect(guide).toHaveValue('');
   await expect(sidebar).toHaveAttribute('data-mount-probe', 'kept');
-  await expect(workspace.locator('.generation-progress > h2')).toHaveText('等待确认旅行需求');
+  await expect(workspace.locator('.generation-progress > h2')).toHaveText('等待确认研究方案');
 
   await gate.getByRole('button', { name: '确认并开始生成', exact: true }).click();
   await expect.poll(() => page.evaluate(() => {
@@ -992,7 +1174,7 @@ test('cancel keeps the current run workspace and restores a pending gate on phon
   await page.setViewportSize({ width: 2000, height: 880 });
   await page.reload();
   await expect(gate).toBeVisible();
-  await expect(workspace.locator('.generation-progress > h2')).toHaveText('等待确认旅行需求');
+  await expect(workspace.locator('.generation-progress > h2')).toHaveText('等待确认研究方案');
   const sidebar = workspace.locator('.generation-planning-sidebar');
   await sidebar.evaluate(node => node.setAttribute('data-mount-probe', 'kept'));
 
@@ -1070,6 +1252,7 @@ test('narrow plan gate keeps actions visible and party conditions readable throu
     await expect(gate.getByTestId('plan-gate-supplement')).toBeVisible();
     await expect(gate.getByTestId('plan-gate-supplement')).toBeEnabled();
     await assertGateGeometry();
+    await guide.fill('');
   }
 
   await page.setViewportSize({ width: 640, height: 900 });
@@ -1116,7 +1299,7 @@ test('handoff expands from compact requirements to the plan gate and collapses o
 
   await sendFrames(page, [
     { type: 'chat_start', session_id: 'A', run_id: 'run-A', message_id: 'handoff-live', route_decision: { route: 'trip_refinement' } },
-    { type: 'agent_progress', agent_name: 'request_contract_normalizer', content: '正在整理旅行需求', progress_status: 'running' },
+    { type: 'agent_progress', agent_name: 'requirements_preparer', content: '正在整理旅行需求', progress_status: 'running' },
   ]);
   await expect(workspace.locator('.research-panel-title')).toHaveText('整理旅行需求');
   await expect(workspace.locator('.generation-progress li.is-active .generation-stage-title')).toHaveText('整理旅行需求');
@@ -1203,7 +1386,7 @@ test('handoff reaches restored and reduced-motion targets without a residual siz
     return { duration: style.transitionDuration, delay: style.transitionDelay };
   });
   expect(durations.duration.split(',').every((value) => value.trim() === '0s')).toBe(true);
-  await expect(gate.getByRole('heading', { name: '确认旅行需求', exact: true })).toBeFocused();
+  await expect(gate.getByRole('heading', { name: '确认研究方案', exact: true })).toBeFocused();
   await page.screenshot({ path: `${evidence}/desktop-2000-handoff-restored-reduced.png`, fullPage: true });
 
   const before = await handoff.evaluate((element) => element.getBoundingClientRect().height);
@@ -1286,10 +1469,11 @@ test('delivered trip refinement gate keeps party context and actions inside the 
   await page.getByRole('button', { name: '调整', exact: true }).first().click();
   const gate = page.getByTestId('trip-brief-plan-gate');
   await expect(gate).toBeVisible();
-  await expect(gate).toContainText('2 位成人');
-  await expect(gate).toContainText('1 位儿童');
-  await expect(gate).toContainText('有长辈同行');
-  await expect(gate).toContainText('需要无障碍安排');
+  const tripCard = page.locator('.journey-conversation-view .generation-trip-card');
+  await expect(tripCard).toContainText('2 位成人');
+  await expect(tripCard).toContainText('1 位儿童');
+  await expect(tripCard).toContainText('有长辈同行');
+  await expect(tripCard).toContainText('需要无障碍安排');
   const geometry = await gate.evaluate((element) => {
     const box = element.getBoundingClientRect();
     const actions = element.querySelector('.plan-gate-actions') as HTMLElement;
@@ -1424,7 +1608,7 @@ test('phone sheet closes with Escape and restores the canvas entry', async ({ pa
   await assertOffline(page, fixture);
 });
 
-test('concise delivery keeps unlocated stops, one reason and unresolved plans across views', async ({ page }) => {
+test('concise delivery keeps unlocated stops and one reason without listing gaps across views', async ({ page }) => {
   const bundle = structuredClone(deliveryBundle());
   const evidenceDir = '../test-results/e2e-evidence/generation-05-concise-delivery';
   const reason = '适合慢步游览。';
@@ -1454,7 +1638,7 @@ test('concise delivery keeps unlocated stops, one reason and unresolved plans ac
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  await expect(page.getByText('晚间游船暂未安排')).toBeVisible();
+  await expect(page.getByText('晚间游船暂未安排')).toHaveCount(0);
   await page.getByTestId('day-summary-card-day-2').click();
   const occurrence = page.locator('[data-itinerary-occurrence="d2-museum"]');
   await expect(occurrence).toContainText(reason);
@@ -1469,12 +1653,12 @@ test('concise delivery keeps unlocated stops, one reason and unresolved plans ac
   await page.getByRole('button', { name: '阅读版', exact: true }).click();
   const report = page.getByTestId('full-report');
   await expect(report.getByText(reason, { exact: true })).toHaveCount(1);
-  await expect(report).toContainText('晚间游船暂未安排');
+  await expect(report).not.toContainText('晚间游船暂未安排');
   await expect(report).not.toContainText('费用按行程逐项列出');
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${evidenceDir}/concise-desktop-report.png`, fullPage: true });
   await page.reload();
-  await expect(page.getByText('晚间游船暂未安排')).toBeVisible();
+  await expect(page.getByText('晚间游船暂未安排')).toHaveCount(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByTestId('bundle-leaflet-map')).toBeVisible();
   await page.getByRole('button', { name: '第 2 天', exact: true }).click();
@@ -1808,6 +1992,7 @@ test('phone itinerary layout evidence handles a single day', async ({ page }) =>
 });
 
 test('desktop today view keeps hover highlights still and selects only on explicit activation', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-11-01T10:00:00+08:00'));
   const fixture = await offlineApp(page, { bundle: true });
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -2217,6 +2402,82 @@ test('mixed transport display merges headings and keeps station truth', async ({
   await assertOffline(page, fixture);
 });
 
+test('keyboard focus stays within the mobile itinerary sheet', async ({ page }) => {
+  const fixture = await offlineApp(page, { bundle: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  const opener = page.getByTestId('canvas-pill');
+  await opener.click();
+  const sheet = page.getByRole('dialog', { name: '行程详情' });
+  const handle = sheet.getByRole('button', { name: '展开行程详情' });
+  await expect(sheet).toBeFocused();
+  await handle.evaluate((node) => {
+    const hiddenPanel = document.createElement('div');
+    hiddenPanel.inert = true;
+    const hiddenButton = document.createElement('button');
+    hiddenButton.textContent = '隐藏面板中的按钮';
+    hiddenPanel.append(hiddenButton);
+    node.after(hiddenPanel);
+  });
+  await handle.focus();
+  await page.keyboard.press('Tab');
+  expect(await sheet.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+  await expect(handle).not.toBeFocused();
+  await handle.focus();
+  await page.keyboard.press('Shift+Tab');
+  expect(await sheet.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('Tab');
+  await expect(handle).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(sheet).toHaveAttribute('data-detent', '92');
+  await page.keyboard.press('Escape');
+  await expect(sheet).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  await assertOffline(page, fixture);
+});
+
+test('tooltip associates its description with the focused control', async ({ page }) => {
+  const fixture = await offlineApp(page);
+  await page.goto('/');
+  await page.getByTestId('brief-input').fill('希望安排轻松的旅行');
+  await page.getByTestId('send-button').click();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
+  await sendFrames(page, [{ type: 'error', message: '离线模拟错误' }], true);
+  const trigger = page.getByTestId('error-inspect');
+  await trigger.focus();
+  await expect(page.getByRole('tooltip')).toHaveText('技术详情');
+  await expect(trigger).toHaveAccessibleDescription('技术详情');
+  await page.getByTestId('brief-input').focus();
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await assertOffline(page, fixture);
+});
+
+test('confirm action returns focus after cancellation', async ({ page }) => {
+  const fixture = await offlineApp(page, { memoryFact: true });
+  await page.goto('/?view=user-preferences');
+  const row = page.getByTestId('memory-fact');
+  await expect(row).toContainText('偏好靠窗座位');
+  const trigger = row.locator('[data-confirm-action] > button');
+  await trigger.focus();
+  await trigger.press('Enter');
+  await expect(row.getByRole('button', { name: '删除', exact: true })).toBeFocused();
+  await row.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(trigger).toBeFocused();
+  const deleteAll = page.getByTestId('memory-delete-all');
+  await deleteAll.click();
+  const dialog = page.getByRole('dialog', { name: '删除全部记忆？' });
+  await expect(dialog).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press('Tab');
+  await expect(dialog.getByRole('button', { name: '关闭', exact: true })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(deleteAll).toBeFocused();
+  await assertOffline(page, fixture);
+});
+
 test('conversation restores focus to its newly rendered trigger on Escape and return', async ({ page }) => {
   const fixture = await offlineApp(page, { bundle: true });
   await page.setViewportSize({ width: 1440, height: 960 });
@@ -2224,7 +2485,7 @@ test('conversation restores focus to its newly rendered trigger on Escape and re
   await page.goto('/');
   const adjust = page.getByRole('button', { name: '调整', exact: true });
   await adjust.click();
-  const composer = page.getByRole('textbox', { name: '告诉我想怎么改……', exact: true });
+  const composer = page.getByRole('textbox', { name: '旅行需求', exact: true });
   await expect(composer).toBeFocused();
   await composer.press('Escape');
   await expect(adjust).toBeFocused();
@@ -2384,7 +2645,7 @@ test('review live gate must receive heading focus after expansion', async ({ pag
   await sampleHandoffHeights(page);
   console.log('FOCUS', await page.evaluate(() => ({ active: document.activeElement?.tagName, gateInert: (document.querySelector('.generation-handoff-gate') as HTMLElement)?.inert })));
   await assertOffline(page, fixture);
-  await expect(page.getByRole('heading', { name: '确认旅行需求', exact: true })).toBeFocused({ timeout: 1000 });
+  await expect(page.getByRole('heading', { name: '确认研究方案', exact: true })).toBeFocused({ timeout: 1000 });
 });
 
 test('review currentFocus remains visible in actual research stage', async ({ page }) => {
@@ -2486,5 +2747,5 @@ test('review fast new revision reopens with keyboard focus on the current gate',
   await expect(gate.getByLabel('想改哪里？')).toHaveValue('');
   await sampleHandoffHeights(page);
   await assertOffline(page, fixture);
-  await expect(gate.getByRole('heading', { name: '确认旅行需求', exact: true })).toBeFocused({ timeout: 1000 });
+  await expect(gate.getByRole('heading', { name: '确认研究方案', exact: true })).toBeFocused({ timeout: 1000 });
 });

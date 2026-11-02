@@ -8,7 +8,6 @@ from travel_agent.planning.delivery.public.itinerary import _day
 from travel_agent.planning.delivery.public.itinerary import _public_itinerary
 from travel_agent.planning.delivery.travel_content import public_selection_text
 from travel_agent.planning.itinerary.options import SelectionSlot
-from travel_agent.planning.weather.models import WeatherProposalDecision
 from travel_agent.planning.workspace import TripWorkspace
 from typing import Any
 from typing import Dict
@@ -42,23 +41,9 @@ def _public_selection_slot(slot: SelectionSlot) -> Dict[str, Any]:
     }
 
 
-def _public_weather_proposal_decision(
-    decision: WeatherProposalDecision,
-) -> Dict[str, Any]:
-    return {"proposal_id": decision.proposal_id, "decision": decision.decision}
-
-
 def _public_weather_adjustments(bundle: DeliveryBundle) -> List[Dict[str, Any]]:
-    """暴露待定的天气选择，但不暴露原始天气账本。
+    """公开天气建议摘要，不输出天气账本与内部操作。"""
 
-    天气刷新是用户主动发起的操作：客户端需要稳定的 proposal id 与可操作摘要来
-    确认或忽略，但不应收到 provider 观测、原始操作或事实标识。
-    """
-
-    decisions = {
-        item.proposal_id: item.decision
-        for item in bundle.workspace.weather_proposal_decisions
-    }
     return [
         {
             "proposal_id": proposal.proposal_id,
@@ -67,7 +52,6 @@ def _public_weather_adjustments(bundle: DeliveryBundle) -> List[Dict[str, Any]]:
             "summary": proposal.summary,
             "cost_delta_cny": proposal.cost_delta_cny,
             "time_delta_minutes": proposal.time_delta_minutes,
-            "status": decisions.get(proposal.proposal_id, "pending"),
         }
         for proposal in bundle.weather_snapshot.adjustment_proposals
     ]
@@ -90,10 +74,6 @@ def _public_workspace(
         "itinerary": _public_itinerary(workspace.itinerary, view),
         "selection_slots": [
             _public_selection_slot(slot) for slot in workspace.selection_slots
-        ],
-        "weather_proposal_decisions": [
-            _public_weather_proposal_decision(item)
-            for item in workspace.weather_proposal_decisions
         ],
         "weather_adjustments": _public_weather_adjustments(bundle),
     }

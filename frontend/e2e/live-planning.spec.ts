@@ -5,9 +5,9 @@ test.describe.configure({ retries: 0 });
 
 // 需要显式开启：这组用例调用真实付费模型并创建持久化行程。
 // 本套件不得拦截请求或伪造 provider 响应。
-test('真实跨城过夜旅行：表单 → 审批 → 调研 → 行程 → PDF → 刷新恢复', async ({ page, request }, testInfo) => {
+test('真实跨城过夜旅行：需求 → 审批 → 调研 → 行程 → PDF → 刷新恢复', async ({ page, request }, testInfo) => {
   test.skip(process.env.JP_LIVE_E2E !== '1', 'Set JP_LIVE_E2E=1 to call real providers');
-  test.setTimeout(900_000);
+  test.setTimeout(2_100_000);
   const errors: string[] = [];
   const httpErrors: string[] = [];
   const captures: Promise<void>[] = [];
@@ -43,34 +43,31 @@ test('真实跨城过夜旅行：表单 → 审批 → 调研 → 行程 → PDF
   try {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: '想去哪里，告诉我。' })).toBeVisible();
-    await page.getByRole('tab', { name: '按条件规划' }).click();
-    const skipOrigin = page.getByRole('button', { name: '暂时不用默认值', exact: true });
-    await expect(skipOrigin.or(page.getByRole('textbox', { name: '从哪里出发' }))).toBeVisible();
-    if (await skipOrigin.count()) {
-      await skipOrigin.click();
-    }
-    await expect(page.getByRole('textbox', { name: '从哪里出发' })).toBeVisible();
     const destination = process.env.JP_LIVE_DESTINATION || '苏州';
-    for (const [label, query] of [['从哪里出发', '上海'], ['去哪里', destination]]) {
-      const input = page.getByRole('textbox', { name: label, exact: true });
-      await input.fill(query);
-      await input.locator('xpath=../..').getByRole('button').filter({ hasText: `${query}市` }).first().click({ timeout: 40_000 });
-      await expect(input).toHaveValue(`${query}市`);
-    }
     const start = new Date();
-    start.setDate(start.getDate() + 2);
+    start.setDate(start.getDate() + 4);
     const end = new Date(start);
     end.setDate(end.getDate() + 1);
     const date = (value: Date) => `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
-    await page.getByRole('button', { name: '旅行日期：开始日期 → 结束日期' }).click();
-    await page.getByRole('button', { name: `选择 ${date(start)}`, exact: true }).click();
-    await page.getByRole('button', { name: `选择 ${date(end)}`, exact: true }).click();
-    await page.getByRole('button', { name: '确认日期 · 2 天 1 晚' }).click();
-    await page.getByRole('button', { name: '轻松慢游', exact: true }).click();
+    await page.getByRole('textbox', { name: '一句话描述旅行' }).fill(
+      `两位成年人从上海出发到${destination}旅行，${date(start)}至${date(end)}，共两天一晚，预算总计3000元。喜欢人文和当地美食，希望节奏轻松；往返优先高铁，住干净舒适的中档酒店，没有饮食禁忌。请规划具体日程、住宿和交通。`,
+    );
     await page.getByRole('button', { name: '开始规划', exact: true }).click();
 
     const approve = page.getByRole('button', { name: '确认并开始生成', exact: true });
-    await expect(approve).toBeVisible({ timeout: 150_000 });
+    const questions = page.getByTestId('understanding-questions-card');
+    for (let round = 0; round < 6; round += 1) {
+      await expect(approve.or(questions)).toBeVisible({ timeout: 300_000 });
+      if (await approve.isVisible()) break;
+      for (const question of await questions.getByTestId('understanding-question').all()) {
+        const options = question.getByRole('group').getByRole('button');
+        expect(await options.count()).toBeGreaterThan(0);
+        await options.first().click();
+      }
+      await questions.getByTestId('understanding-questions-submit').click();
+      await expect(questions).toBeHidden({ timeout: 30_000 });
+    }
+    await expect(approve).toBeVisible({ timeout: 300_000 });
     await Promise.all(captures);
     expect(runId, '审批阶段必须已持久化真实 Run').not.toBe('');
     console.log(`Live trip ${runId}: waiting for approval`);
@@ -89,7 +86,7 @@ test('真实跨城过夜旅行：表单 → 审批 → 调研 → 行程 → PDF
       const status = detail.run.status;
       console.log(`Live trip ${runId}: ${status}`);
       return ['completed', 'failed', 'cancelled', 'interrupted'].includes(status);
-    }, { timeout: 660_000, intervals: [15_000] }).toBe(true);
+    }, { timeout: 1_800_000, intervals: [15_000] }).toBe(true);
     const finalRun = await (await request.get(`/api/trip-runs/${runId}`)).json();
     expect(finalRun.run.status, JSON.stringify(finalRun.run)).toBe('completed');
 

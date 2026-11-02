@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from travel_agent.planning.delivery.bundle import DeliveryBundle
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
+from travel_agent.planning.delivery.fact_projection import workspace_for_public_projection
 from travel_agent.planning.delivery.provider_environment import ProviderEnvironmentView
 from travel_agent.planning.delivery.public.itinerary import _timestamp
 from travel_agent.planning.delivery.public.report import _public_map
@@ -61,7 +62,11 @@ def public_delivery_bundle(bundle: DeliveryBundle) -> Dict[str, Any]:
     view = EvidenceBasisView.from_itinerary(bundle.workspace.itinerary)
     return {
         "manifest": public_manifest(bundle),
-        "workspace": _public_workspace(bundle.workspace, bundle, view),
+        "workspace": _public_workspace(
+            workspace_for_public_projection(bundle.workspace, bundle.fact_snapshot),
+            bundle,
+            view,
+        ),
         "report_projection": _public_report(bundle.report_projection, view),
         "map_projection": _public_map(bundle.map_projection),
         "source_index": _public_source_index(bundle.source_index),

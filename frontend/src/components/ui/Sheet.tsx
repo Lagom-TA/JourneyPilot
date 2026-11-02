@@ -56,7 +56,7 @@ export const Sheet: React.FC<SheetProps> = ({
   const draggedRef = useRef(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  useOverlayDismiss({ open, onDismiss: onClose, panelRef });
+  useOverlayDismiss({ open, onDismiss: onClose, panelRef, trapFocus: true });
 
   useEffect(() => {
     if (open) {
@@ -127,6 +127,9 @@ export const Sheet: React.FC<SheetProps> = ({
               ref={panelRef}
               /* div 需要 tabIndex 才能接收打开时的程序化焦点。 */
               tabIndex={-1}
+              role="dialog"
+              aria-modal="true"
+              aria-label="行程详情"
               data-testid={testId}
               data-detent={detent}
               initial={{ y: closedY }}
@@ -154,7 +157,10 @@ export const Sheet: React.FC<SheetProps> = ({
                 'rounded-t-card pb-[env(safe-area-inset-bottom)]'
               )}
             >
-              <div
+              <button
+                type="button"
+                aria-label={detent === 55 ? '展开行程详情' : '收起行程详情'}
+                aria-expanded={detent === 92}
                 data-testid="sheet-handle"
                 onPointerDown={(event) => {
                   draggedRef.current = false;
@@ -169,8 +175,8 @@ export const Sheet: React.FC<SheetProps> = ({
                 }}
                 className="flex h-11 flex-none cursor-grab touch-none items-center justify-center active:cursor-grabbing"
               >
-                <div className="h-1 w-9 rounded-full bg-ink/15" />
-              </div>
+                <span className="h-1 w-9 rounded-full bg-ink/15" />
+              </button>
               <div className="min-h-0 flex-1">{children}</div>
             </m.div>
           </CanvasMotion>

@@ -154,7 +154,7 @@ class ServerConfig(StrictConfig):
     #: 或放在带认证的反向代理之后。
     host: str = "0.0.0.0"
     port: int = 8001
-    reload: bool = True
+    reload: bool = False
     log_level: str = "info"
     cors_origins: List[str] = Field(
         default_factory=lambda: ["http://localhost:8080", "http://127.0.0.1:8080"]

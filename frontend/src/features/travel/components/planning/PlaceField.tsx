@@ -16,6 +16,8 @@ export const PlaceField: React.FC<{
   className?: string;
 }> = ({ role, value, onChange, label, frequent, initialQuery = '', onQueryChange, className }) => {
   const [query, setQuery] = React.useState(value?.name || initialQuery);
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
   const [candidates, setCandidates] = React.useState<PlaceSearchCandidate[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -33,7 +35,7 @@ export const PlaceField: React.FC<{
   }, [value]);
 
   React.useEffect(() => {
-    if (!value && initialQuery) setQuery(initialQuery);
+    if (!valueRef.current && initialQuery) setQuery(initialQuery);
   }, [initialQuery]);
 
   React.useEffect(() => {

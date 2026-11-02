@@ -104,7 +104,7 @@ async def offline_graph(monkeypatch):
     from travel_agent.planning.requirements.understanding import agent as understanding_agent
     from travel_agent.planning.research import research_plan_node
     from travel_agent.tools import execution, react
-    from tests.support.memory_stores import InMemoryTripRunStore
+    from tests.support.memory_stores import InMemoryTripRunStore, InMemoryWorkerJournalStore
 
     model = UnderstandingModel()
     for module in (understanding_agent, research_plan_node):
@@ -141,15 +141,17 @@ async def offline_graph(monkeypatch):
     )
     await runs.transition_status("understanding-flow", TripRunStatus.RUNNING)
     graph = build_travel_workflow().compile(checkpointer=InMemorySaver())
+    journal = InMemoryWorkerJournalStore()
     config = {
         "configurable": {
             "thread_id": "understanding-flow",
             "plan_gate_enabled": True,
             "run_execution_store": LeaseStore(),
             "trip_run_store": runs,
+            "worker_journal_store": journal,
         }
     }
-    yield SimpleNamespace(model=model, searches=searches, graph=graph, config=config, runs=runs)
+    yield SimpleNamespace(model=model, searches=searches, graph=graph, config=config, runs=runs, journal=journal)
 
 
 def _initial_state():
@@ -197,6 +199,7 @@ async def test_understanding_rounds_reach_the_plan_gate_with_answers_in_requirem
     assert "海边" in plan_gate["plan_text"]
     # 回答后再查：第二轮模型调用先发起了一次新检索。
     assert offline_graph.searches == ["青岛 11 月 海边", "青岛 慢节奏 景点"]
+    assert len(offline_graph.journal.rows) == 2
     # 模型确实收到了用户的回答，不会重复询问已解决的问题。
     answered_context = offline_graph.model.messages_log[-2]
     assert any(
@@ -211,6 +214,40 @@ async def test_understanding_rounds_reach_the_plan_gate_with_answers_in_requirem
     # 方案请求读到含问答的需求文字。
     assert "想慢慢逛还是排满？：慢慢逛" in offline_graph.model.plan_request["用户需求与回答"]
     assert "从上海去青岛放松几天" in offline_graph.model.plan_request["用户需求与回答"]
+
+
+async def test_invalid_identity_is_repaired_with_worker_journal(offline_graph, monkeypatch):
+    from copy import deepcopy
+
+    from travel_agent.planning.requirements.understanding import agent as understanding_agent
+
+    class RepairModel(UnderstandingModel):
+        async def ainvoke_with_tools_events(self, messages, tools):
+            self.calls += 1
+            self.messages_log.append(deepcopy(messages))
+            identity = deepcopy(IDENTITY)
+            if self.calls == 1:
+                identity["origin"]["kind"] = "城市"
+            yield {
+                "type": "finish",
+                "content": json.dumps({"action": "ready", "trip_identity": identity}, ensure_ascii=False),
+                "tool_calls": [],
+            }
+
+    model = RepairModel()
+    monkeypatch.setattr(understanding_agent, "llm_for_task", lambda *args, **kwargs: model)
+    token = current_execution_lease.set("lease")
+    try:
+        result = await offline_graph.graph.ainvoke(_initial_state(), offline_graph.config)
+    finally:
+        current_execution_lease.reset(token)
+
+    assert result["__interrupt__"][0].value["gate"] == "plan"
+    assert model.calls == 2
+    assert any("trip_identity 校验未通过" in str(message.get("content")) for message in model.messages_log[1])
+    payload = next(iter(offline_graph.journal.rows.values()))[1]
+    assert payload["understanding_react_0"]["done"]
+    assert payload["understanding_react_1"]["done"]
 
 
 async def test_always_asking_model_fails_visibly_at_the_round_cap(offline_graph, monkeypatch):

@@ -18,10 +18,11 @@ const HallmarkTrigger: React.FC<{
     open: boolean;
     toggle: () => void;
     testId: string;
-}> = ({ symbol, label, triggerRef, open, toggle, testId }) => {
+    'aria-describedby'?: string;
+}> = ({ symbol, label, triggerRef, open, toggle, testId, 'aria-describedby': describedBy }) => {
     const [hovered, setHovered] = useState(false);
     const lit = open || hovered;
-    return (<button ref={triggerRef} type="button" data-testid={testId} aria-label={label} aria-expanded={open} onClick={toggle} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} className="flex h-6 w-6 items-center justify-center leading-none transition-[color,opacity] duration-fast ease-standard" style={{
+    return (<button ref={triggerRef} type="button" data-testid={testId} aria-label={label} aria-describedby={describedBy} aria-expanded={open} onClick={toggle} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)} className="flex h-6 w-6 items-center justify-center leading-none transition-[color,opacity] duration-fast ease-standard" style={{
             fontSize: '12px',
             color: lit ? 'var(--color-accent)' : 'var(--color-ink-muted)',
             opacity: lit ? 1 : 0.45,

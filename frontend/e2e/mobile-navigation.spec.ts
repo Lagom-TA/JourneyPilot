@@ -12,7 +12,7 @@ for (const width of [320, 390, 768]) {
     await expect(skip.or(originInput)).toBeVisible();
     if (await skip.count()) await skip.click();
     await expect(page.getByRole('textbox', { name: '从哪里出发' })).toBeVisible();
-    await expect(page.getByRole('textbox', { name: '去哪里', exact: true })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: '目的地，搜索城市或区域', exact: true })).toBeVisible();
     const scroll = page.locator('.new-trip-hero');
     expect(await scroll.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
 

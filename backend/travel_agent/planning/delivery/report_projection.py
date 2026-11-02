@@ -6,7 +6,7 @@ from datetime import date
 from datetime import datetime
 from travel_agent.planning.costs.presentation import cost_coverage_statement
 from travel_agent.planning.delivery.candidate_presentation import candidate_display_name
-from travel_agent.planning.delivery.citation_projection import _citation_lookup
+from travel_agent.planning.delivery.citation_projection import _citation_lookup, _is_missing_fact
 from travel_agent.planning.delivery.citation_projection import project_public_citations
 from travel_agent.planning.delivery.presentation import block_presentation
 from travel_agent.planning.delivery.projection_errors import DeliveryProjectionError
@@ -368,6 +368,7 @@ def project_report(
             option_citations = [
                 citation_by_fact[f"{citation_entity_id}:{fact_id}"]
                 for fact_id in option.fact_assertion_ids
+                if not _is_missing_fact(fact_index[fact_id])
             ]
             options.append(
                 ReportSelectionOption(
@@ -426,6 +427,7 @@ def project_report(
                     f"weather:{day.destination_id}:{day.date.isoformat()}:{fact_id}"
                 ]
                 for fact_id in day.fact_assertion_ids
+                if not _is_missing_fact(fact_index[fact_id])
             ],
         )
         for day in weather.days

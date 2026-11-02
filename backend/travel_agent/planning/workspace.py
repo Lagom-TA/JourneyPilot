@@ -25,7 +25,6 @@ from travel_agent.planning.research.candidates import (
     VisitCandidate,
 )
 from travel_agent.planning.research.catalog import RecommendationCatalog
-from travel_agent.planning.weather.models import WeatherProposalDecision
 from travel_agent.schema import StrictModel
 
 class TripWorkspace(StrictModel):
@@ -39,9 +38,6 @@ class TripWorkspace(StrictModel):
     user_input_anchors: List[UserInputAnchor] = Field(default_factory=list)
     selection_slots: List[SelectionSlot] = Field(default_factory=list)
     personalization_influences: List[PersonalizationInfluence] = Field(
-        default_factory=list
-    )
-    weather_proposal_decisions: List[WeatherProposalDecision] = Field(
         default_factory=list
     )
 
@@ -72,12 +68,6 @@ class TripWorkspace(StrictModel):
         influence_ids = {item.influence_id for item in self.personalization_influences}
         if len(influence_ids) != len(self.personalization_influences):
             raise ValueError("personalization influence ids must be unique")
-        proposal_decision_ids = [
-            item.proposal_id for item in self.weather_proposal_decisions
-        ]
-        if len(proposal_decision_ids) != len(set(proposal_decision_ids)):
-            raise ValueError("weather proposal decisions must be unique")
-
         entities: List[Union[VisitStop, DiningStop, LodgingStay, TransportLeg]] = [
             *self.itinerary.visit_stops,
             *self.itinerary.dining_stops,

@@ -44,7 +44,7 @@ VITE_PROXY_TARGET=http://127.0.0.1:9000 npm run dev
 | `VITE_MAP_TILE_URL` | Leaflet 瓦片地址（支持 `{s}/{z}/{x}/{y}`） | 现网高德瓦片 |
 | `VITE_MAP_TILE_ATTRIBUTION` | 底图署名 HTML | 高德地图署名 |
 
-示例见 `.env.example`。
+`VITE_BASE` 和 `VITE_MAP_TILE_*` 在 Vite 启动或前端构建时读取；修改后需要重启开发服务器或重新构建。子路径部署还需要静态服务器或反向代理把该路径映射到前端产物，后端默认只提供根路径。示例见 `.env.example`。
 
 ## 检查与构建
 

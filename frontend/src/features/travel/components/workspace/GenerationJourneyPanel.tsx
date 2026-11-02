@@ -53,7 +53,6 @@ export const GenerationJourneyPanel: React.FC = () => {
     completed: state.currentTripRunStatus === 'completed',
   });
   const runStatus = state.currentTripRunStatus;
-  const hasUnresolved = Boolean(state.deliveryBundle?.report_projection.document?.unresolved.length);
   const recovery = state.currentTripRunRecovery;
   const canResume = runStatus === 'interrupted' && recovery?.resumable === true;
   const gatePending = Boolean(state.planApprovalGate && state.planApprovalGate.status !== 'cancelled');
@@ -79,7 +78,6 @@ export const GenerationJourneyPanel: React.FC = () => {
     pendingUnderstanding: understandingPending,
     pendingRouteConfirmation: Boolean(state.pendingRouteConfirmation),
     canResume,
-    hasUnresolved,
   });
 
   React.useEffect(() => {
@@ -115,8 +113,10 @@ export const GenerationJourneyPanel: React.FC = () => {
 
   React.useLayoutEffect(() => {
     // 先解除 inert，再交接焦点；延迟回调在门或 Run 更换时取消。
-    processPaneRef.current && ((processPaneRef.current as HTMLElement & { inert: boolean }).inert = gatePending);
-    gatePaneRef.current && ((gatePaneRef.current as HTMLElement & { inert: boolean }).inert = !gatePending);
+    if (processPaneRef.current)
+      (processPaneRef.current as HTMLElement & { inert: boolean }).inert = gatePending;
+    if (gatePaneRef.current)
+      (gatePaneRef.current as HTMLElement & { inert: boolean }).inert = !gatePending;
     if (!gatePending) return;
     const timer = window.setTimeout(() => {
       gatePaneRef.current?.querySelector<HTMLElement>('#trip-brief-plan-gate-title')?.focus();
@@ -194,7 +194,7 @@ export const GenerationJourneyPanel: React.FC = () => {
             ? '等待你的回答'
             : '等待确认研究方案'
           : runStatus === 'completed'
-            ? hasUnresolved ? '部分行程尚未安排' : '旅行规划已完成'
+            ? '旅行规划已生成'
             : '正在规划你的旅行';
 
   const canStartOver = (runStatus === 'failed' || runStatus === 'cancelled' || (runStatus === 'interrupted' && !canResume));

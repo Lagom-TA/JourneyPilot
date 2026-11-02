@@ -429,7 +429,7 @@ test('双模式共享稳定主按钮、紧凑偏好行与宽窄屏几何', async
     await structuredTab.click();
     await expect(action).toHaveCount(1);
     await action.click();
-    await expect(page.getByText('请从地点候选中确认出发地和所有目的地。', { exact: true })).toBeVisible();
+    await expect(page.getByText('先填一点想法或条件，再开始规划。', { exact: true })).toBeVisible();
     await naturalTab.click();
     await expect(naturalInput).toHaveValue('想从深圳去杭州，轻松玩几天。');
     const backToNatural = await plannerGeometry(page);
@@ -1481,8 +1481,9 @@ test('多目的地展开保持规划卡稳定', async ({ browser }) => {
     await settlePlannerScroll(page);
     const openMore = await stabilityGeometry(page);
     expectStablePlannerFrame(closedMore, openMore, '2000x880 more preferences');
+    await page.getByRole('textbox', { name: '预算（可选）' }).fill('-1');
     await page.locator('.planner-action-area .planner-main-action').click();
-    await expect(page.getByText('请从地点候选中确认出发地和所有目的地。', { exact: true })).toBeVisible();
+    await expect(page.getByText('总预算请输入大于 0 的金额', { exact: true })).toBeVisible();
     await settlePlannerScroll(page);
     const errorOpen = await stabilityGeometry(page);
     await add.click();
@@ -1491,7 +1492,7 @@ test('多目的地展开保持规划卡稳定', async ({ browser }) => {
     const errorClosed = await stabilityGeometry(page);
     expectStablePlannerFrame(errorOpen, errorClosed, '2000x880 error toggle');
     expect(errorClosed.card.height).toBeGreaterThan(closedMore.card.height);
-    await expect(page.getByText('请从地点候选中确认出发地和所有目的地。', { exact: true })).toBeVisible();
+    await expect(page.getByText('总预算请输入大于 0 的金额', { exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: `${destinationStabilityEvidence}/home-2000-more-preferences-error.png`, fullPage: true });
     (report.contentGrowth as Record<string, unknown>)['more-preferences-error'] = {
@@ -1603,99 +1604,4 @@ test('多目的地展开保持规划卡稳定', async ({ browser }) => {
   }
 
   writeFileSync(`${destinationStabilityEvidence}/geometry.json`, JSON.stringify(report, null, 2));
-});
-
-test('多目的地展开保持规划卡稳定：卡内需求确认共用目的地控件', async ({ page }) => {
-  test.setTimeout(90_000);
-  mkdirSync(destinationStabilityEvidence, { recursive: true });
-  const fixture = await openHome(page, { width: 2000, height: 880 });
-  const intakePlace = (name: string) => ({
-    place_id: `osm:relation:intake-${name}`,
-    provider: 'osm',
-    kind: 'city',
-    name,
-    display_name: `${name}，中国`,
-    country_code: 'CN',
-    latitude: 31.2,
-    longitude: 121.4,
-    admin_path: ['中国', name],
-  });
-  const intake = {
-    raw_input: '想从北京出发去上海，轻松一点',
-    route_decision: { route: 'trip_planning', confidence: 1, alternatives: [], signals: ['explicit_ui_action'], requires_trip_draft: true, requires_confirmation: false },
-    controlled_identity: null,
-    seed_destinations: [],
-    missing_fields: ['dates', 'place_confirmation'],
-    ready_to_create: false,
-    recognized_requirements: ['轻松一点'],
-    understanding_status: 'ready',
-    draft: {
-      origin_query: '',
-      destination_queries: ['北京'],
-      start_date: '2026-11-05',
-      end_date: '2026-11-08',
-      duration_days: 4,
-      party: { adults: 1, children: 0, elderly_companions: false, accessibility_required: false },
-      style: null,
-      budget_text: '',
-      destination_decided: false,
-      destination_suggestions: [],
-      confirmed_origin: null,
-      confirmed_destinations: [intakePlace('北京')],
-    },
-    questions: [],
-    answers: [],
-    additional_requirements: '',
-  };
-  await page.route('**/api/chat-stream', async (route) => {
-    const events = [
-      { type: 'guided_intake', session_id: 'home-e2e', guided_intake: intake },
-      { type: 'chat_complete' },
-    ];
-    await route.fulfill({
-      status: 200,
-      contentType: 'text/event-stream',
-      body: events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''),
-    });
-  });
-  await page.route('**/api/sessions/home-e2e/intake', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: route.request().postData() || '{}',
-    });
-  });
-  await page.getByTestId('natural-trip-input').fill('想从北京出发去上海，轻松一点');
-  await page.getByRole('button', { name: '开始规划', exact: true }).click();
-  const inlineIntake = page.locator('.planner-inline-intake');
-  await expect(inlineIntake).toBeVisible();
-  await expect(inlineIntake.getByTestId('destination-token-0')).toContainText('北京');
-  const field = inlineIntake.getByTestId('destination-token-field');
-  const add = field.getByTestId('add-destination');
-  await expect(field).toHaveAttribute('data-state', 'closed');
-  await expect(field.locator('.destination-search')).toHaveCount(0);
-  await add.click();
-  const search = field.locator('.destination-search input');
-  await expect(search).toBeFocused();
-  await search.fill('上海');
-  await page.getByTestId('destination-candidates').getByRole('button').filter({ hasText: '上海' }).first().click();
-  await expect(field.getByTestId('destination-token-0')).toContainText('北京');
-  await expect(field.getByTestId('destination-token-1')).toContainText('上海');
-  await expect(field).toHaveAttribute('data-state', 'open');
-  await expect(field.locator('.destination-search input')).toHaveCount(1);
-  await add.click();
-  await expect(field).toHaveAttribute('data-state', 'closed');
-  await expect(field.locator('.destination-search')).toHaveCount(0);
-  await field.getByTestId('destination-token-0').focus();
-  await field.getByTestId('destination-token-0').press('ArrowDown');
-  await expect(field.getByTestId('destination-token-0')).toContainText('上海');
-  await expect(field.getByTestId('destination-token-1')).toContainText('北京');
-  await page.screenshot({ path: `${destinationStabilityEvidence}/inline-intake-shared-destination.png`, fullPage: true });
-  writeFileSync(`${destinationStabilityEvidence}/inline-intake-shared-destination.json`, JSON.stringify({
-    fixture: 'home local API fixture with synthetic guided intake; no real API or model',
-    fieldState: await field.getAttribute('data-state'),
-    order: await field.locator('.destination-token-name').allTextContents(),
-    searchInputs: await field.locator('.destination-search input').count(),
-  }, null, 2));
-  expectCleanFixture(fixture);
 });

@@ -10,7 +10,7 @@
 ./run.sh logs frontend      # 持续查看前端日志
 ```
 
-服务日志位于 `/tmp/journeypilot_logs/backend.log` 和 `frontend.log`。`run.sh` 只有在前后端均就绪后才写入 `tmp/journeypilot.ports`；启动中还没有这个文件不代表没有进程。
+服务日志位于仓库内的 `tmp/logs/backend.log` 和 `tmp/logs/frontend.log`。`run.sh` 只有在前后端均就绪后才写入 `tmp/journeypilot.ports`；启动中还没有这个文件不代表没有进程。
 
 后端与前端代理分别检查：
 

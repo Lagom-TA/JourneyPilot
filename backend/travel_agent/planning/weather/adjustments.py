@@ -5,9 +5,11 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import timedelta
 from travel_agent.planning.delivery.bundle import DeliveryBundle
+from travel_agent.planning.delivery.candidate_presentation import candidate_display_name
 from travel_agent.planning.itinerary.options import SELECTION_SLOT_ENTITY_TYPES
 from travel_agent.planning.references import EntityRef
 from travel_agent.planning.references import EntityType
+from travel_agent.planning.references import TransportLegRef
 from travel_agent.planning.research.candidates import DiningCandidate
 from travel_agent.planning.research.candidates import LodgingCandidate
 from travel_agent.planning.research.candidates import VisitCandidate
@@ -18,6 +20,7 @@ from travel_agent.planning.weather.models import WeatherAdjustmentOperation
 from travel_agent.planning.weather.models import WeatherAdjustmentProposal
 from travel_agent.planning.weather.models import WeatherBufferOperation
 from travel_agent.planning.weather.models import WeatherContextSnapshot
+from travel_agent.planning.weather.models import WeatherDayContext
 from travel_agent.planning.weather.models import WeatherImpact
 from travel_agent.planning.weather.models import WeatherRescheduleOperation
 from travel_agent.planning.weather.models import WeatherSelectionOperation
@@ -52,11 +55,44 @@ def _material_change(previous: dict[str, WeatherImpact], impact: WeatherImpact) 
     return old is None or (old.severity, old.action) != (impact.severity, impact.action)
 
 
-def _entity_id(impact: WeatherImpact) -> Optional[str]:
+def _target_ids(bundle: DeliveryBundle, impact: WeatherImpact) -> list[str]:
     target = impact.target_ref
-    return getattr(target, "entity_id", None) or getattr(
-        target, "transport_leg_id", None
-    )
+    if isinstance(target, EntityRef):
+        entity_type, target_id = target.entity_type, target.entity_id
+    elif isinstance(target, TransportLegRef):
+        entity_type, target_id = EntityType.TRANSPORT_LEG, target.transport_leg_id
+    else:
+        return []
+
+    itinerary = bundle.workspace.itinerary
+    entities = {
+        EntityType.VISIT_STOP: [(item.item_id, item) for item in itinerary.visit_stops],
+        EntityType.DINING_STOP: [(item.item_id, item) for item in itinerary.dining_stops],
+        EntityType.LODGING_STAY: [(item.stay_id, item) for item in itinerary.lodging_stays],
+        EntityType.TRANSPORT_LEG: [(item.transport_leg_id, item) for item in itinerary.transport_legs],
+    }.get(entity_type, [])
+    if any(entity_id == target_id for entity_id, _ in entities):
+        return [target_id]
+
+    scheduled = {
+        ref.entity_id
+        for day in itinerary.day_plans
+        if day.date == impact.date
+        for ref in day.timeline
+        if ref.entity_type == entity_type
+    }
+    return [
+        entity_id
+        for entity_id, entity in entities
+        if entity.lineage.candidate_id == target_id
+        and (
+            entity_id in scheduled
+            or (
+                entity_type == EntityType.LODGING_STAY
+                and entity.check_in_date <= impact.date < entity.check_out_date
+            )
+        )
+    ]
 
 
 def _day_for_target(bundle: DeliveryBundle, target_id: str, impact: WeatherImpact):
@@ -66,6 +102,60 @@ def _day_for_target(bundle: DeliveryBundle, target_id: str, impact: WeatherImpac
             for day in bundle.workspace.itinerary.day_plans
             if day.date == impact.date
             and any(item.entity_id == target_id for item in day.timeline)
+        ),
+        None,
+    )
+
+
+def _weather_day_for_target(
+    bundle: DeliveryBundle,
+    weather: WeatherContextSnapshot,
+    impact: WeatherImpact,
+    target_id: str,
+) -> Optional[WeatherDayContext]:
+    target = impact.target_ref
+    if isinstance(target, EntityRef):
+        entity_type = target.entity_type
+    elif isinstance(target, TransportLegRef):
+        entity_type = EntityType.TRANSPORT_LEG
+    else:
+        return None
+
+    collection_and_id = {
+        EntityType.VISIT_STOP: ("visit_stops", "item_id"),
+        EntityType.DINING_STOP: ("dining_stops", "item_id"),
+        EntityType.LODGING_STAY: ("lodging_stays", "stay_id"),
+        EntityType.TRANSPORT_LEG: ("transport_legs", "transport_leg_id"),
+    }.get(entity_type)
+    if collection_and_id is None:
+        return None
+    collection, id_field = collection_and_id
+    entity = next(
+        (
+            item
+            for item in getattr(bundle.workspace.itinerary, collection)
+            if getattr(item, id_field) == target_id
+        ),
+        None,
+    )
+    if entity is None:
+        return None
+
+    candidate = bundle.workspace.recommendation_catalog.candidate_index().get(
+        entity.lineage.candidate_id
+    )
+    if candidate is not None:
+        destination_id = candidate.destination_id
+    else:
+        day_plan = _day_for_target(bundle, target_id, impact)
+        if day_plan is None:
+            return None
+        destination_id = day_plan.destination_id
+    return next(
+        (
+            day
+            for day in weather.days
+            if day.destination_id == destination_id and day.date == impact.date
         ),
         None,
     )
@@ -88,7 +178,7 @@ def _reschedule_operation(
     )
     if entity is None or entity.planned_start is None:
         return None
-    day = next((item for item in weather.days if item.date == impact.date), None)
+    day = _weather_day_for_target(bundle, weather, impact, target_id)
     if day is None or not day.hourly_windows:
         return None
     windows = [
@@ -145,7 +235,7 @@ def _replacement_operation(
 ) -> Optional[WeatherAdjustmentOperation]:
     workspace = bundle.workspace
     candidates = workspace.recommendation_catalog.candidate_index()
-    day = next((item for item in weather.days if item.date == impact.date), None)
+    day = _weather_day_for_target(bundle, weather, impact, target_id)
     if day is None:
         return None
     slot = next(
@@ -184,6 +274,18 @@ def _replacement_operation(
     )
     if visit is None or visit.lineage.lineage_kind != "candidate_entity":
         return None
+    current = candidates.get(visit.lineage.candidate_id)
+    if not isinstance(current, VisitCandidate):
+        return None
+    scheduled_candidate_ids = {
+        item.lineage.candidate_id for item in workspace.itinerary.visit_stops
+    }
+    scheduled_place_ids = {item.place_id for item in workspace.itinerary.visit_stops}
+    slot_candidate_ids = (
+        {option.candidate_id for option in slot.options}
+        if slot is not None and slot.slot_type == "visit"
+        else None
+    )
     alternatives = sorted(
         (
             (
@@ -192,7 +294,10 @@ def _replacement_operation(
             )
             for item in candidates.values()
             if isinstance(item, VisitCandidate)
-            and item.candidate_id != visit.lineage.candidate_id
+            and item.destination_id == current.destination_id
+            and item.candidate_id not in scheduled_candidate_ids
+            and item.place_id not in scheduled_place_ids
+            and (slot_candidate_ids is None or item.candidate_id in slot_candidate_ids)
         )
     )
     if not alternatives or -alternatives[0][0] <= current_fit:
@@ -256,10 +361,8 @@ def _operation_for(
     bundle: DeliveryBundle,
     weather: WeatherContextSnapshot,
     impact: WeatherImpact,
+    target_id: str,
 ) -> Optional[WeatherAdjustmentOperation]:
-    target_id = _entity_id(impact)
-    if target_id is None:
-        return None
     if impact.action == "move_time":
         return _reschedule_operation(bundle, weather, impact, target_id)
     if impact.action == "replace":
@@ -269,6 +372,45 @@ def _operation_for(
     if impact.action == "add_buffer":
         return _buffer_operation(bundle, impact, target_id)
     return None
+
+
+def _entity_name(bundle: DeliveryBundle, target_id: str) -> str:
+    itinerary = bundle.workspace.itinerary
+    for item in [*itinerary.visit_stops, *itinerary.dining_stops]:
+        if item.item_id == target_id:
+            return item.name
+    for stay in itinerary.lodging_stays:
+        if stay.stay_id == target_id:
+            return stay.name
+    for leg in itinerary.transport_legs:
+        if leg.transport_leg_id == target_id:
+            return f"{leg.from_endpoint.name}至{leg.to_endpoint.name}"
+    for block in itinerary.custom_blocks:
+        if block.item_id == target_id:
+            return block.title
+    return "相关安排"
+
+
+def _describe_operation(bundle: DeliveryBundle, operation: WeatherAdjustmentOperation) -> str:
+    if isinstance(operation, WeatherBufferOperation):
+        return f"为「{_entity_name(bundle, operation.target_entity_id)}」预留 {operation.duration_minutes} 分钟机动时间"
+    if isinstance(operation, WeatherRescheduleOperation):
+        return f"将「{_entity_name(bundle, operation.item_id)}」调整至 {operation.planned_start:%H:%M}"
+    if isinstance(operation, WeatherVisitReplacementOperation):
+        candidate = bundle.workspace.recommendation_catalog.candidate_index()[operation.candidate_id]
+        return f"将「{_entity_name(bundle, operation.item_id)}」换为「{candidate_display_name(candidate)}」"
+    if isinstance(operation, WeatherSelectionOperation):
+        slot = next(item for item in bundle.workspace.selection_slots if item.selection_slot_id == operation.selection_slot_id)
+        option = next(item for item in slot.options if item.option_id == operation.option_id)
+        candidate = bundle.workspace.recommendation_catalog.candidate_index()[option.candidate_id]
+        return f"将「{_entity_name(bundle, slot.target_entity_id)}」换为「{candidate_display_name(candidate)}」"
+    mode = {
+        TransportMode.RIDE_HAILING: "网约车",
+        TransportMode.TAXI: "出租车",
+        TransportMode.METRO: "地铁",
+        TransportMode.BUS: "公交",
+    }[operation.selected_mode]
+    return f"将「{_entity_name(bundle, operation.transport_leg_id)}」的交通方式改为{mode}"
 
 
 def build_weather_adjustment_proposals(
@@ -302,12 +444,12 @@ def build_weather_adjustment_proposals(
     for impact in weather.impacts:
         if not _material_change(previous, impact):
             continue
-        operation = _operation_for(bundle, weather, impact)
-        if operation is not None:
-            grouped[impact.date].append((impact, operation))
+        for target_id in _target_ids(bundle, impact):
+            operation = _operation_for(bundle, weather, impact, target_id)
+            if operation is not None:
+                grouped[impact.date].append((impact, operation))
 
     proposals: list[WeatherAdjustmentProposal] = []
-    handled = {item.proposal_id for item in bundle.workspace.weather_proposal_decisions}
     for proposal_date, items in sorted(grouped.items()):
         unique: dict[str, tuple[WeatherImpact, WeatherAdjustmentOperation]] = {}
         for impact, operation in items:
@@ -322,8 +464,9 @@ def build_weather_adjustment_proposals(
         condition_labels = list(
             dict.fromkeys(_CONDITION_LABELS[item.condition_type] for item in impacts)
         )
+        details = "；".join(_describe_operation(bundle, item) for item in operations)
         summary = (
-            f"{'、'.join(condition_labels)}变化，建议调整 {len(operations)} 项安排"
+            f"{'、'.join(condition_labels)}变化，建议调整 {len(operations)} 项安排：{details}"
         )
         fact_ids = list(
             dict.fromkeys(
@@ -335,8 +478,6 @@ def build_weather_adjustment_proposals(
             for item in operations
             if isinstance(item, WeatherBufferOperation)
         )
-        if proposal_id in handled:
-            continue
         proposals.append(
             WeatherAdjustmentProposal(
                 proposal_id=proposal_id,
@@ -349,7 +490,7 @@ def build_weather_adjustment_proposals(
                     else "medium"
                 ),
                 summary=summary,
-                weather_impact_ids=[item.weather_impact_id for item in impacts],
+                weather_impact_ids=list(dict.fromkeys(item.weather_impact_id for item in impacts)),
                 fact_assertion_ids=fact_ids,
                 operations=operations,
                 time_delta_minutes=time_delta or None,
@@ -362,7 +503,7 @@ def build_weather_adjustment_proposals(
         if item.weather_impact_id not in carried_over_impact_ids
     }
     for existing in bundle.weather_snapshot.adjustment_proposals:
-        if existing.proposal_id in handled or existing.proposal_id in proposal_index:
+        if existing.proposal_id in proposal_index:
             continue
         impacts = [current_impacts.get(item) for item in existing.weather_impact_ids]
         if any(
