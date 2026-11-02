@@ -194,8 +194,8 @@ class DeliveryBundleStore:
             text(
                 """
                 SELECT bundle.bundle
-                FROM delivery_bundle_heads_v2 AS head
-                JOIN delivery_bundles_v2 AS bundle
+                FROM delivery_bundle_heads AS head
+                JOIN delivery_bundles AS bundle
                   ON bundle.bundle_id = head.current_bundle_id
                 WHERE head.run_id = :run_id
                 """
@@ -219,7 +219,7 @@ class DeliveryBundleStore:
                 text(
                     """
                     SELECT current_bundle_id
-                    FROM delivery_bundle_heads_v2
+                    FROM delivery_bundle_heads
                     WHERE run_id = :run_id
                     """
                 ),
@@ -234,8 +234,8 @@ class DeliveryBundleStore:
                 text(
                     """
                     SELECT commit.metadata, bundle.bundle
-                    FROM delivery_bundle_commits_v2 AS commit
-                    JOIN delivery_bundles_v2 AS bundle
+                    FROM delivery_bundle_commits AS commit
+                    JOIN delivery_bundles AS bundle
                       ON bundle.bundle_id = commit.result_bundle_id
                     WHERE commit.run_id = :run_id
                       AND commit.idempotency_key = :idempotency_key
@@ -295,7 +295,7 @@ class DeliveryBundleStore:
                 text(
                     """
                     SELECT request_digest, result_bundle_id
-                    FROM delivery_bundle_commits_v2
+                    FROM delivery_bundle_commits
                     WHERE run_id = :run_id AND idempotency_key = :idempotency_key
                     """
                 ),
@@ -316,7 +316,7 @@ class DeliveryBundleStore:
 
             head_result = await session.execute(
                 text(
-                    "SELECT * FROM delivery_bundle_heads_v2 WHERE run_id = :run_id FOR UPDATE"
+                    "SELECT * FROM delivery_bundle_heads WHERE run_id = :run_id FOR UPDATE"
                 ),
                 {"run_id": run_id},
             )
@@ -327,7 +327,7 @@ class DeliveryBundleStore:
             await session.execute(
                 text(
                     """
-                    INSERT INTO delivery_bundle_commits_v2
+                    INSERT INTO delivery_bundle_commits
                         (run_id, idempotency_key, request_digest, commit_kind,
                          base_bundle_id, result_bundle_id,
                          metadata, created_at)
@@ -391,7 +391,7 @@ class DeliveryBundleStore:
                 text(
                     """
                     SELECT request_digest, result_bundle_id
-                    FROM delivery_bundle_commits_v2
+                    FROM delivery_bundle_commits
                     WHERE run_id = :run_id AND idempotency_key = :idempotency_key
                     """
                 ),
@@ -407,7 +407,7 @@ class DeliveryBundleStore:
                 return BundleCommitResult(bundle=replay, idempotent_replay=True)
 
             head_result = await session.execute(
-                text("SELECT * FROM delivery_bundle_heads_v2 WHERE run_id = :run_id FOR UPDATE"),
+                text("SELECT * FROM delivery_bundle_heads WHERE run_id = :run_id FOR UPDATE"),
                 {"run_id": run_id},
             )
             head_row = head_result.mappings().first()
@@ -420,7 +420,7 @@ class DeliveryBundleStore:
 
             await self._insert_snapshot(
                 session=session,
-                table="trip_workspace_v2_revisions",
+                table="trip_workspace_revisions",
                 revision_column="workspace_revision",
                 run_id=run_id,
                 revision=bundle.manifest.workspace_revision,
@@ -430,7 +430,7 @@ class DeliveryBundleStore:
             self._inject(PersistBoundary.WORKSPACE_SNAPSHOT)
             await self._insert_snapshot(
                 session=session,
-                table="fact_store_v2_revisions",
+                table="fact_store_revisions",
                 revision_column="fact_data_revision",
                 run_id=run_id,
                 revision=bundle.manifest.fact_data_revision,
@@ -440,7 +440,7 @@ class DeliveryBundleStore:
             self._inject(PersistBoundary.FACT_SNAPSHOT)
             await self._insert_snapshot(
                 session=session,
-                table="weather_context_v2_revisions",
+                table="weather_context_revisions",
                 revision_column="weather_data_revision",
                 run_id=run_id,
                 revision=bundle.manifest.weather_data_revision,
@@ -452,7 +452,7 @@ class DeliveryBundleStore:
             await session.execute(
                 text(
                     """
-                    INSERT INTO delivery_bundles_v2
+                    INSERT INTO delivery_bundles
                         (bundle_id, run_id, workspace_revision, fact_data_revision,
                          weather_data_revision, manifest, bundle, created_at)
                     VALUES
@@ -478,7 +478,7 @@ class DeliveryBundleStore:
                 await session.execute(
                     text(
                         """
-                        INSERT INTO delivery_bundle_heads_v2
+                        INSERT INTO delivery_bundle_heads
                             (run_id, current_bundle_id, workspace_revision,
                              fact_data_revision, weather_data_revision, updated_at)
                         VALUES
@@ -492,7 +492,7 @@ class DeliveryBundleStore:
                 update_result = await session.execute(
                     text(
                         """
-                        UPDATE delivery_bundle_heads_v2
+                        UPDATE delivery_bundle_heads
                         SET current_bundle_id = :bundle_id,
                             workspace_revision = :workspace_revision,
                             fact_data_revision = :fact_data_revision,
@@ -510,7 +510,7 @@ class DeliveryBundleStore:
             await session.execute(
                 text(
                     """
-                    INSERT INTO delivery_bundle_commits_v2
+                    INSERT INTO delivery_bundle_commits
                         (run_id, idempotency_key, request_digest, commit_kind,
                          base_bundle_id, result_bundle_id,
                          metadata, created_at)
@@ -538,7 +538,7 @@ class DeliveryBundleStore:
             text(
                 """
                 SELECT bundle
-                FROM delivery_bundles_v2
+                FROM delivery_bundles
                 WHERE bundle_id = :bundle_id
                 """
             ),
@@ -551,9 +551,9 @@ class DeliveryBundleStore:
 
     # 标识符白名单：不把用户输入拼进 SQL 标识符。
     _SNAPSHOT_TABLE_COLUMNS: Dict[str, str] = {
-        "trip_workspace_v2_revisions": "workspace_revision",
-        "fact_store_v2_revisions": "fact_data_revision",
-        "weather_context_v2_revisions": "weather_data_revision",
+        "trip_workspace_revisions": "workspace_revision",
+        "fact_store_revisions": "fact_data_revision",
+        "weather_context_revisions": "weather_data_revision",
     }
 
     async def _insert_snapshot(

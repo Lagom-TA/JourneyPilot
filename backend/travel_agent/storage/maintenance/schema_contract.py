@@ -15,10 +15,9 @@ from __future__ import annotations
 
 import re
 
-# 指纹的合同版本。这个字符串进指纹摘要，所以改动它等于宣布「旧摘要全部失效」——
-# 只有在指纹**算法**变化（扫了新的东西、换了归一化规则）时才递增，
-# 表结构变化由 Alembic revision 表达，不动这里。
-SCHEMA_CONTRACT_VERSION = "journeypilot.db.v1"
+# 指纹的合同标识。它进指纹摘要：扫地范围或归一化规则变化时改这个标识，
+# 旧摘要随即全部失效。表结构变化由 Alembic revision 表达，不动这里。
+SCHEMA_CONTRACT_ID = "journeypilot.db"
 
 # 基线 revision。`census.py` 判定「有核心表但没有 alembic_version」的既有库时，
 # 只允许 stamp 到这一个 revision，且必须先证明指纹与它一致。
@@ -51,13 +50,13 @@ MANAGED_TABLES: tuple[str, ...] = (
     "trip_run_commands",
     # 后台任务
     "background_jobs",
-    # Delivery v2
-    "trip_workspace_v2_revisions",
-    "fact_store_v2_revisions",
-    "weather_context_v2_revisions",
-    "delivery_bundles_v2",
-    "delivery_bundle_heads_v2",
-    "delivery_bundle_commits_v2",
+    # 交付
+    "trip_workspace_revisions",
+    "fact_store_revisions",
+    "weather_context_revisions",
+    "delivery_bundles",
+    "delivery_bundle_heads",
+    "delivery_bundle_commits",
     # 审计与台账
     "tool_execution_audits",
     "run_llm_calls",
