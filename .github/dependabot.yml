@@ -1,0 +1,59 @@
+# 依赖更新由 Dependabot 提 PR，而不是靠人记得去 bump。
+#
+# 每个生态都分组：一次 PR 里放一组 minor/patch，而不是十几个单包 PR —— 后者在
+# 一个只有一个人维护的仓库里等于没人看。major 仍然单独提，因为 major 需要读
+# changelog。
+#
+# 注意：`uv` 生态要求仓库的 Python 依赖由 uv 管理（backend/uv.lock）。如果
+# Dependabot 报「unsupported ecosystem」，把它换成 `pip` 只会提不改 uv.lock 的
+# PR —— 那些 PR 会在 `uv sync --frozen` 上失败，所以宁可先不配。
+
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      python-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "npm"
+    directory: "/backend/mcp"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      mcp-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "docker"
+    directory: "/infra"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      docker:
+        patterns: ["*"]
