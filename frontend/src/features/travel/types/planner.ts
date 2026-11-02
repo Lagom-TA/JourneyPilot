@@ -1,6 +1,5 @@
 export type PlaceKind = 'city' | 'administrative_area' | 'island' | 'scenic_area' | 'airport' | 'train_station' | 'country' | 'poi' | 'hotel' | 'restaurant';
 export type JourneyRoute = 'trip_planning' | 'destination_discovery' | 'fast_answer' | 'trip_refinement';
-export type TripSupplementCategory = 'food' | 'transport' | 'accommodation' | 'pace' | 'must_do' | 'other';
 export type PlanGateDecisionAction = 'approve' | 'supplement' | 'retry' | 'cancel' | 'answer';
 export interface PlaceIdentity {
     place_id: string;

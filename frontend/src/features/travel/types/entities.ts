@@ -96,26 +96,6 @@ export interface DiningStop extends ScheduledStopBase {
 }
 export type LodgingPriceKind = 'reference_estimate' | 'live_quote';
 export type LodgingAvailabilityStatus = 'confirmed' | 'needs_confirmation' | 'unavailable';
-export interface LodgingStay {
-    type: 'lodging_stay';
-    stay_id: string;
-    place_id: string;
-    name: string;
-    check_in_date: string;
-    check_out_date: string;
-    check_in_time: string | null;
-    check_out_time: string | null;
-    nights: number;
-    room_type: string | null;
-    nightly_price_cny: number | null;
-    total_price_cny: number | null;
-    price_kind: LodgingPriceKind;
-    availability_status: LodgingAvailabilityStatus;
-    address: string;
-    selection_reason: string;
-    intent_explanations: IntentExplanationRecord[];
-    lineage: EntityLineage;
-}
 export interface CustomBlock {
     type: 'custom_block';
     item_id: string;

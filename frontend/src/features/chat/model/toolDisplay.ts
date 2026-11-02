@@ -436,9 +436,3 @@ export function toolResultCount(summary: string | null): number | null {
         return null;
     return parseCountValue(match[1]);
 }
-export function toolSourceLabel(toolName: string | undefined): string {
-    const name = (toolName || '').trim();
-    if (!name)
-        return KIND_LABELS.other;
-    return KIND_LABELS[classifyTool(name, undefined)];
-}

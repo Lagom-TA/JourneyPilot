@@ -14,20 +14,6 @@ export const FIELD_LABEL = 'mb-1 block text-[13px] font-medium text-ink-secondar
 
 export const FIELD_VALUE = 'text-[15px] text-ink placeholder:text-ink-muted';
 
-export const Field: React.FC<{
-  label: string;
-  invalid?: boolean;
-  className?: string;
-  children: React.ReactNode;
-}> = ({ label, invalid, className, children }) => (
-  <div className={cn('min-w-0 flex-1', className)}>
-    <label className={FIELD_LABEL}>{label}</label>
-    <div className={cn(RULED_FIELD, invalid && 'border-error after:bg-error after:opacity-100')}>
-      {children}
-    </div>
-  </div>
-);
-
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   icon?: React.ReactNode;
   iconClassName?: string;

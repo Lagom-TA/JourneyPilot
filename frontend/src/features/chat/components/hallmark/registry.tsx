@@ -3,7 +3,6 @@ import { type CostLedgerView, costLedgerBlurb } from "../../model/costLedger";
 import { ContextLens } from "./ContextLens";
 import { CostLedger } from "./CostLedger";
 import React from 'react';
-export type HallmarkGlyph = 'context' | 'cost';
 export interface HallmarkEntry<Data> {
     symbol: string;
     ariaLabel: string;

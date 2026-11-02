@@ -112,6 +112,3 @@ export function getChatErrorGuidance(raw: string, kind: ChatErrorKind): ChatErro
         actionLabel: '再试一次',
     };
 }
-export function cleanChatErrorDetail(raw: string): string {
-    return normalizedError(raw) || 'Unknown error';
-}
