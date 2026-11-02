@@ -12,7 +12,7 @@ from travel_agent.planning.run_errors import (
 )
 
 
-async def raise_workspace_mutation_conflict(run_id: str, bundle_store) -> None:
+async def raise_bundle_revision_conflict(run_id: str, bundle_store) -> None:
     """仅根据头部元数据返回 CAS 冲突。
 
     冲突发生时 run 可能已处于异常状态，因此不再读取并重新投影持久化的 Bundle；

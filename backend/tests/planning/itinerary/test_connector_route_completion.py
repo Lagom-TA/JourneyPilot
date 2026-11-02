@@ -16,9 +16,6 @@ from travel_agent.planning.research.candidates import TransportCandidate
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
 from travel_agent.planning.delivery.public.itinerary import _public_itinerary
 from travel_agent.planning.itinerary.models import TransportLeg
-from travel_agent.planning.itinerary.mutations.transport import (
-    _transport_from_candidate,
-)
 from travel_agent.planning.research.transport import local_routes
 from travel_agent.tools.governance import build_tool_execution_envelope
 
@@ -511,6 +508,3 @@ async def test_provider_station_facts_survive_model_public_projection_and_readba
     assert isinstance(candidate, TransportCandidate)
     assert candidate.boarding_stop is not None
     assert candidate.alighting_stop is not None
-    replaced = _transport_from_candidate(leg, candidate)
-    assert replaced.boarding_stop == leg.boarding_stop
-    assert replaced.alighting_stop == leg.alighting_stop

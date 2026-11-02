@@ -19,7 +19,7 @@ from travel_agent.config.loader import get_settings
 from ..paths import BACKEND_DIR
 from ..utils.log_redaction import install_query_secret_redaction
 from .middleware import request_logging_middleware
-from .routes.trip_runs import runs, events, delivery, workspace, control
+from .routes.trip_runs import runs, events, delivery, control
 from .routes import chat, knowledge, memory, places, preset, product, sessions, system, user
 
 logger = logging.getLogger(__name__)
@@ -76,7 +76,6 @@ def create_app() -> FastAPI:
     app.include_router(runs.router)
     app.include_router(events.router)
     app.include_router(delivery.router)
-    app.include_router(workspace.router)
     app.include_router(control.router)
 
     # Vite 将前端构建产物生成到后端包旁的 static 目录。

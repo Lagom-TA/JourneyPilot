@@ -9,8 +9,6 @@ from travel_agent.planning.delivery.public.itinerary import _public_itinerary
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
 from travel_agent.planning.delivery.report_projection import project_report
 from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
-from travel_agent.planning.itinerary.mutations.apply import apply_workspace_v2_mutation
-from travel_agent.planning.itinerary.mutations.contracts import UpdateStopScheduleMutation
 from travel_agent.planning.itinerary.parsing import parse_itinerary_composition
 from travel_agent.planning.itinerary.title_writing import write_itinerary_copy
 from travel_agent.planning.requirements.inputs import UserInputAnchor
@@ -285,24 +283,6 @@ async def test_repeated_public_projection_does_not_call_the_model_again():
 
     assert model.calls == 1
 
-
-def test_local_mutation_keeps_the_authored_copy_until_a_new_composition():
-    workspace = _workspace()
-    stop = workspace.itinerary.visit_stops[0]
-    mutation = UpdateStopScheduleMutation(
-        item_id=stop.item_id,
-        planned_start=stop.planned_start.replace(hour=11),
-        planned_end=stop.planned_end.replace(hour=12),
-        duration_minutes=60,
-    )
-
-    application = apply_workspace_v2_mutation(workspace, mutation)
-
-    assert application.changed is True
-    assert application.workspace.itinerary.title == workspace.itinerary.title
-    assert [day.theme for day in application.workspace.itinerary.day_plans] == [
-        day.theme for day in workspace.itinerary.day_plans
-    ]
 
 @pytest.mark.asyncio
 async def test_report_projection_reads_the_same_formal_title():

@@ -24,7 +24,7 @@ from travel_agent.planning.delivery.map_projection import project_stored_bundle_
 
 from travel_agent.api.run_authorization import _get_authorized_run
 from travel_agent.api.run_errors import (
-    raise_workspace_mutation_conflict,
+    raise_bundle_revision_conflict,
     raise_run_use_case_error,
 )
 from travel_agent.planning.weather.bundle_refresh import refresh_delivery_weather
@@ -90,7 +90,7 @@ async def refresh_current_bundle_weather(
     except DeliveryBundleMissing as error:
         raise_run_use_case_error(error)
     except BundleRevisionConflict:
-        await raise_workspace_mutation_conflict(
+        await raise_bundle_revision_conflict(
             run_id, components.delivery_bundle_store
         )
         raise AssertionError("unreachable")
