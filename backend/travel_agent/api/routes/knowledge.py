@@ -13,6 +13,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 
+from travel_agent.api.server_errors import internal_server_error
 from travel_agent.bootstrap.registry import get_components
 from travel_agent.config.loader import get_settings
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
@@ -132,9 +133,8 @@ async def index_text(request: KnowledgeUploadRequest):
             collection=logical_collection,
             message=f"成功索引 {count} 个文本块",
         )
-    except Exception as e:
-        logger.error(f"知识库索引失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="知识库索引失败") from exc
 
 
 @router.post("/upload-file", response_model=KnowledgeUploadResponse)
@@ -205,9 +205,8 @@ async def upload_file(
             collection=logical_collection,
             message=f"文件 [{file.filename}] 已成功索引 {count} 个文本块",
         )
-    except Exception as e:
-        logger.error(f"文件索引失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="文件索引失败") from exc
 
 
 @router.post("/query", response_model=KnowledgeQueryResponse)
@@ -223,9 +222,8 @@ async def query_knowledge(request: KnowledgeQueryRequest):
             top_k=request.top_k,
         )
         return KnowledgeQueryResponse(results=docs, total=len(docs))
-    except Exception as e:
-        logger.error(f"知识库查询失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="知识库查询失败") from exc
 
 
 @router.delete("/collection/{collection_name}", response_model=KnowledgeDeleteResponse)
@@ -241,8 +239,8 @@ async def delete_collection(collection_name: str):
             deleted_chunks=count,
             message=f"已删除资料库的 {count} 个文档块",
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="知识库集合删除失败") from exc
 
 
 async def _require_source_document(collection: str, source: str) -> dict:
@@ -312,9 +310,8 @@ async def update_source_document(
             collection=logical_collection,
             message=f"已重新整理成 {count} 个文本块",
         )
-    except Exception as e:
-        logger.error(f"资料改写失败: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="资料改写失败") from exc
 
 
 @router.delete(
@@ -352,5 +349,5 @@ async def get_collection_stats(collection_name: str):
     try:
         stats = await components.knowledge_indexer.get_collection_stats(scoped)
         return KnowledgeCollectionStatsResponse(collection=logical_collection, **stats)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        raise internal_server_error(exc, log_message="知识库统计读取失败") from exc

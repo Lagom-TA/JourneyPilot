@@ -491,19 +491,24 @@ async def _prepare_chat(
             lease_keeper = await lease.claim(
                 trip_run.run_id, checkpoint_id=safe_checkpoint_id
             )
-            claimed = await trip_run_store.claim_checkpoint_resume(
-                trip_run.run_id,
-                allowed_statuses=allowed_statuses,
-                current_node=claim_node,
-                payload={
-                    "checkpoint_thread_id": trip_run.run_id,
-                    **(
-                        {"gate": gate_node or "plan", "gate_decision": resume_payload}
-                        if gate_resume
-                        else {}
-                    ),
-                },
-            )
+            try:
+                claimed = await trip_run_store.claim_checkpoint_resume(
+                    trip_run.run_id,
+                    allowed_statuses=allowed_statuses,
+                    current_node=claim_node,
+                    payload={
+                        "checkpoint_thread_id": trip_run.run_id,
+                        **(
+                            {"gate": gate_node or "plan", "gate_decision": resume_payload}
+                            if gate_resume
+                            else {}
+                        ),
+                    },
+                )
+            except BaseException:
+                # 准备阶段失败时立刻归还租约，避免留下仍算“活着”的幽灵执行器。
+                await lease_keeper.release(reason="preparation_failed")
+                raise
             if claimed is None:
                 await lease_keeper.release(reason="resume_lost_status_race")
                 raise PreparationRefused(PreparationRejection.RESUME_STATUS_RACE)
@@ -542,43 +547,48 @@ async def _prepare_chat(
         message_id = trip_run.assistant_message_id
     if lease_keeper is None:
         lease_keeper = await lease.claim(trip_run.run_id)
-    if checkpoint_resume:
-        history, session_anchor_data, session_compressed = [], None, False
-    else:
-        history, session_anchor_data, session_compressed = await load_session_history(
-            chat_session_memory,
-            LOCAL_USER_ID,
-            session_id,
-            mode,
-            user_message,
-            request_trip_identity,
-            load_anchor=True,
-        )
+    try:
+        if checkpoint_resume:
+            history, session_anchor_data, session_compressed = [], None, False
+        else:
+            history, session_anchor_data, session_compressed = await load_session_history(
+                chat_session_memory,
+                LOCAL_USER_ID,
+                session_id,
+                mode,
+                user_message,
+                request_trip_identity,
+                load_anchor=True,
+            )
 
-    return PreparedChat(
-        user_message=user_message,
-        user_message_id=user_message_id,
-        session_id=session_id,
-        message_id=message_id,
-        route_decision=route_decision,
-        use_deep_research=use_deep_research,
-        mode=mode,
-        request_trip_identity=request_trip_identity,
-        preset_context=preset_context,
-        preset_pack_constraints=preset_pack_constraints,
-        authoritative_controlled_trip_identity=authoritative_controlled_trip_identity,
-        checkpoint_resume=checkpoint_resume,
-        resume_payload=resume_payload,
-        trip_run=trip_run,
-        lease=lease,
-        lease_keeper=lease_keeper,
-        history=history,
-        session_anchor_data=session_anchor_data,
-        session_compressed=session_compressed,
-        refinement_action=refinement_action,
-        refinement_bundle=refinement_bundle,
-        refinement_context=refinement_context,
-    )
+        return PreparedChat(
+            user_message=user_message,
+            user_message_id=user_message_id,
+            session_id=session_id,
+            message_id=message_id,
+            route_decision=route_decision,
+            use_deep_research=use_deep_research,
+            mode=mode,
+            request_trip_identity=request_trip_identity,
+            preset_context=preset_context,
+            preset_pack_constraints=preset_pack_constraints,
+            authoritative_controlled_trip_identity=authoritative_controlled_trip_identity,
+            checkpoint_resume=checkpoint_resume,
+            resume_payload=resume_payload,
+            trip_run=trip_run,
+            lease=lease,
+            lease_keeper=lease_keeper,
+            history=history,
+            session_anchor_data=session_anchor_data,
+            session_compressed=session_compressed,
+            refinement_action=refinement_action,
+            refinement_bundle=refinement_bundle,
+            refinement_context=refinement_context,
+        )
+    except BaseException:
+        # 准备阶段失败时立刻归还租约，避免留下仍算“活着”的幽灵执行器。
+        await lease_keeper.release(reason="preparation_failed")
+        raise
 
 
 def _extract_interrupt_payload(value: Any) -> Dict[str, Any]:

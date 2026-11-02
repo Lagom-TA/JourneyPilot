@@ -41,8 +41,6 @@ async def list_session_turns(
         )
     except PermissionError:
         raise HTTPException(status_code=403, detail="无权访问该会话")
-    except CompactionBusy:
-        raise HTTPException(status_code=409, detail="上下文正在整理中，稍后再试")
     except Exception as e:
         logger.error(f"读取会话分页失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="读取会话历史失败")
@@ -63,6 +61,11 @@ async def compact_session(session_id: str):
         )
     except PermissionError:
         raise HTTPException(status_code=403, detail="无权访问该会话")
+    except CompactionBusy as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "compaction_busy", "message": "上下文正在整理中，稍后再试"},
+        ) from exc
     except Exception as e:
         logger.error(f"手动压缩失败: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="上下文整理失败，请稍后重试")
