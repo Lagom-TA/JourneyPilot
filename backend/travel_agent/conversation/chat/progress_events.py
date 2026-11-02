@@ -232,17 +232,6 @@ async def _handle_state_update(
             "step_name": get_step_display_name("planning"),
             "ts_ms": run_ts_ms(),
         }
-        now_iso = datetime.now(timezone.utc).isoformat()
-        ctx.thinking_steps.append(
-            {
-                "step_id": str(uuid.uuid4()),
-                "agent_name": get_agent_display_name("supervisor"),
-                "step_name": get_step_display_name("orchestrating"),
-                "content": thinking_content,
-                "timestamp": now_iso,
-                "end_time": now_iso,
-            }
-        )
 
     else:
         if ctx.use_deep_research and node_name in _DEEP_WORKER_NODES:

@@ -8,7 +8,6 @@ import re
 
 
 AGENT_DISPLAY_NAMES: Final[Dict[str, str]] = {
-    "supervisor": "规划协调",
     "scope_clarifier": "需求确认",
     "understanding_agent": "理解旅行需求",
     "understanding_gate": "等待你的回答",
@@ -33,11 +32,9 @@ AGENT_DISPLAY_NAMES: Final[Dict[str, str]] = {
 
 
 STEP_DISPLAY_NAMES: Final[Dict[str, str]] = {
-    "orchestrating": "协调规划步骤",
     "planning": "制定计划",
     "researching": "查询旅行资料",
     "synthesizing": "汇总旅行内容",
-    "supervisor": "协调规划步骤",
     "scope_clarifier": "确认旅行需求",
     "understanding_agent": "理解并核实旅行需求",
     "understanding_gate": "等待你的回答",
