@@ -5,7 +5,7 @@
     "vector"
   ],
   "missing_tables": [],
-  "schema_contract_version": "journeypilot.db.v1",
+  "schema_contract_id": "journeypilot.db",
   "tables": {
     "background_jobs": {
       "columns": [
@@ -327,7 +327,7 @@
         }
       ]
     },
-    "delivery_bundle_commits_v2": {
+    "delivery_bundle_commits": {
       "columns": [
         {
           "default": null,
@@ -356,13 +356,6 @@
           "name": "idempotency_key",
           "not_null": true,
           "type": "text"
-        },
-        {
-          "default": null,
-          "generated": null,
-          "name": "inverse_patch",
-          "not_null": false,
-          "type": "jsonb"
         },
         {
           "default": "'{}'::jsonb",
@@ -395,7 +388,7 @@
       ],
       "constraints": [
         {
-          "definition": "FOREIGN KEY (result_bundle_id) REFERENCES delivery_bundles_v2(bundle_id)",
+          "definition": "FOREIGN KEY (result_bundle_id) REFERENCES delivery_bundles(bundle_id)",
           "type": "f"
         },
         {
@@ -409,12 +402,12 @@
       ],
       "indexes": [
         {
-          "definition": "CREATE INDEX idx_delivery_bundle_commits_v2_run_created ON public.delivery_bundle_commits_v2 USING btree (run_id, created_at DESC)",
-          "name": "idx_delivery_bundle_commits_v2_run_created"
+          "definition": "CREATE INDEX idx_delivery_bundle_commits_run_created ON public.delivery_bundle_commits USING btree (run_id, created_at DESC)",
+          "name": "idx_delivery_bundle_commits_run_created"
         }
       ]
     },
-    "delivery_bundle_heads_v2": {
+    "delivery_bundle_heads": {
       "columns": [
         {
           "default": null,
@@ -461,7 +454,7 @@
       ],
       "constraints": [
         {
-          "definition": "FOREIGN KEY (current_bundle_id) REFERENCES delivery_bundles_v2(bundle_id)",
+          "definition": "FOREIGN KEY (current_bundle_id) REFERENCES delivery_bundles(bundle_id)",
           "type": "f"
         },
         {
@@ -475,7 +468,7 @@
       ],
       "indexes": []
     },
-    "delivery_bundles_v2": {
+    "delivery_bundles": {
       "columns": [
         {
           "default": null,
@@ -540,15 +533,15 @@
           "type": "f"
         },
         {
-          "definition": "FOREIGN KEY (run_id, fact_data_revision) REFERENCES fact_store_v2_revisions(run_id, fact_data_revision)",
+          "definition": "FOREIGN KEY (run_id, fact_data_revision) REFERENCES fact_store_revisions(run_id, fact_data_revision)",
           "type": "f"
         },
         {
-          "definition": "FOREIGN KEY (run_id, weather_data_revision) REFERENCES weather_context_v2_revisions(run_id, weather_data_revision)",
+          "definition": "FOREIGN KEY (run_id, weather_data_revision) REFERENCES weather_context_revisions(run_id, weather_data_revision)",
           "type": "f"
         },
         {
-          "definition": "FOREIGN KEY (run_id, workspace_revision) REFERENCES trip_workspace_v2_revisions(run_id, workspace_revision)",
+          "definition": "FOREIGN KEY (run_id, workspace_revision) REFERENCES trip_workspace_revisions(run_id, workspace_revision)",
           "type": "f"
         },
         {
@@ -562,12 +555,12 @@
       ],
       "indexes": [
         {
-          "definition": "CREATE INDEX idx_delivery_bundles_v2_run_created ON public.delivery_bundles_v2 USING btree (run_id, created_at DESC)",
-          "name": "idx_delivery_bundles_v2_run_created"
+          "definition": "CREATE INDEX idx_delivery_bundles_run_created ON public.delivery_bundles USING btree (run_id, created_at DESC)",
+          "name": "idx_delivery_bundles_run_created"
         }
       ]
     },
-    "fact_store_v2_revisions": {
+    "fact_store_revisions": {
       "columns": [
         {
           "default": null,
@@ -2365,7 +2358,7 @@
         }
       ]
     },
-    "trip_workspace_v2_revisions": {
+    "trip_workspace_revisions": {
       "columns": [
         {
           "default": null,
@@ -2475,7 +2468,7 @@
       ],
       "indexes": []
     },
-    "weather_context_v2_revisions": {
+    "weather_context_revisions": {
       "columns": [
         {
           "default": null,
