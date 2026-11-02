@@ -6,7 +6,7 @@ import { mkdirSync } from 'node:fs';
  * 全部 API 在浏览器内拦截，离线演示，不访问外部服务。
  */
 
-const SCREEN_DIR = '../output/polish/20261101-0035-generation-02-workspace-understanding/screens';
+const SCREEN_DIR = '../test-results/e2e-evidence/generation-02-workspace-understanding/screens';
 
 const routeDecision = { route: 'trip_planning', confidence: 1, alternatives: [], signals: ['model_intent'], requires_trip_draft: true, requires_confirmation: false };
 const fastDecision = { route: 'fast_answer', confidence: 1, alternatives: [], signals: ['model_intent'], requires_trip_draft: false, requires_confirmation: false };

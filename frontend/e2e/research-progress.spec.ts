@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
-const EVIDENCE_DIR = '../output/polish/20261030-0108-process-disclosure';
+const EVIDENCE_DIR = '../test-results/e2e-evidence/process-disclosure';
 
 // 在 Vite dev 下运行：JP_COMPONENT_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8088 npm run test:e2e -- research-progress
 // 该 fixture 使用真实 UI 组件与合成事件，不调用付费 API。
@@ -470,7 +470,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     });
     expect(motion.name).toBe('generation-stage-sweep');
     expect(Number.parseFloat(motion.duration)).toBeGreaterThanOrEqual(3);
-    await page.screenshot({ path: '../output/polish/20261029-1252-generation-layout/generation-2000-waiting.png' });
+    await page.screenshot({ path: '../test-results/e2e-evidence/generation-layout/generation-2000-waiting.png' });
     await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.addResearch());
     await expandProcessPanel(page);
     // 规划卡记录属于需求整理阶段：先选该阶段核对，再回到研究阶段看角色卡片。
@@ -483,11 +483,11 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await expect(transport.getByTestId('research-agent-update')).toHaveCount(0);
     await expect(transport).toContainText('上海虹桥 -> 杭州东');
     await expect(page.locator('.research-agent-description')).toHaveCount(0);
-    await page.screenshot({ path: '../output/polish/20261029-1252-generation-layout/generation-2000-research-r3.png' });
+    await page.screenshot({ path: '../test-results/e2e-evidence/generation-layout/generation-2000-research-r3.png' });
     await transport.getByTestId('research-query').locator('summary').click();
     await expect(transport).toContainText('已整理上海到杭州的火车衔接');
     await expect(transport.getByRole('link', { name: '上海虹桥 → 杭州东' })).toBeVisible();
-    await page.screenshot({ path: '../output/polish/20261029-1252-generation-layout/generation-2000-research-r3-details.png' });
+    await page.screenshot({ path: '../test-results/e2e-evidence/generation-layout/generation-2000-research-r3-details.png' });
     await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.longTitle());
     const title = page.locator('.generation-trip-card-header h1');
     await expect(title).toContainText('乌兰浩特');
@@ -511,7 +511,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     expect(titleGeometry.placeHeights).toHaveLength(5);
     for (const height of titleGeometry.placeHeights) expect(height).toBeLessThan(titleGeometry.lineHeight * 1.35);
     expect(titleGeometry.headingRight).toBeLessThanOrEqual(titleGeometry.stopLeft + 1);
-    await page.screenshot({ path: '../output/polish/20261029-1252-generation-layout/generation-2000-long-title.png' });
+    await page.screenshot({ path: '../test-results/e2e-evidence/generation-layout/generation-2000-long-title.png' });
     expect(errors).toEqual([]);
   });
 
@@ -523,7 +523,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await expect(active).toHaveCount(1);
     const researchWidth = await page.locator('.research-panel-workspace').evaluate((element) => element.getBoundingClientRect().width);
     expect(researchWidth).toBeGreaterThan(900);
-    await page.screenshot({ path: '../output/polish/20261029-1817-compact-tool-activity/generation-1440-active.png' });
+    await page.screenshot({ path: '../test-results/e2e-evidence/compact-tool-activity/generation-1440-active.png' });
     await expect(page.locator('.generation-progress')).toHaveAttribute('data-active', 'true');
     await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.stop());
     await expect(page.locator('.generation-progress')).toHaveAttribute('data-active', 'false');
@@ -554,7 +554,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
       return { cardBottom: card.bottom, activityTop: activity.top };
     });
     expect(order.activityTop).toBeGreaterThanOrEqual(order.cardBottom - 1);
-    await page.screenshot({ path: '../output/polish/20261029-1252-generation-layout/generation-390-phone.png', fullPage: true });
+    await page.screenshot({ path: '../test-results/e2e-evidence/generation-layout/generation-390-phone.png', fullPage: true });
   });
 
   test('2000px 需求整理完成随后失败只显示真实阶段状态', async ({ page }) => {
@@ -569,7 +569,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await expect(page.getByText('旅行方案暂时无法生成，请稍后重试。', { exact: true })).toBeVisible();
     await expect(page.locator('.research-panel-title')).toHaveText('旅行规划未完成');
     await expectCompactProcessWithoutCards(page);
-    await page.screenshot({ path: '../output/polish/20261029-1252-generation-layout/generation-2000-failed-r3.png' });
+    await page.screenshot({ path: '../test-results/e2e-evidence/generation-layout/generation-2000-failed-r3.png' });
     expect(errors).toEqual([]);
   });
 
@@ -606,7 +606,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.locator('.generation-activity').scrollIntoViewIfNeeded();
     await expect(page.getByTestId('thinking-chain')).toBeInViewport();
-    await page.screenshot({ path: '../output/polish/20261029-1252-generation-layout/generation-390-failed-r3.png' });
+    await page.screenshot({ path: '../test-results/e2e-evidence/generation-layout/generation-390-failed-r3.png' });
   });
 });
 
@@ -693,7 +693,7 @@ test('同 Run 补充轮次重新展开阶段并隔离旧轮次工具详情', asy
 
 // 组合补查 → 反馈目的地返研 → 返研后继续组合：三个环节在同一过程区可见。
 test('组合补查、反馈返研与返研后继续组合在同一工作台可见', async ({ page }) => {
-  const redoEvidenceDir = '../output/polish/20261101-0035-generation-04-composition-feedback/e2e';
+  const redoEvidenceDir = '../test-results/e2e-evidence/generation-04-composition-feedback/e2e';
   await page.setViewportSize({ width: 2000, height: 880 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/e2e/fixtures/research-progress.html');
@@ -723,7 +723,7 @@ test('组合补查、反馈返研与返研后继续组合在同一工作台可�
 // 真实生成工作台面板上的返研：重做轮归并进同一张目的地卡，过程区焦点
 // 在重做期间回到研究，继续组合后回到路线并展示组合卡。
 test('生成工作台面板把返研重做过程留在当前活动区并归并轮次', async ({ page }) => {
-  const redoEvidenceDir = '../output/polish/20261101-0035-generation-04-composition-feedback/e2e';
+  const redoEvidenceDir = '../test-results/e2e-evidence/generation-04-composition-feedback/e2e';
   await page.setViewportSize({ width: 2000, height: 880 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const errors: string[] = [];
@@ -780,7 +780,7 @@ test('新 Run 不继承旧 Run 的工具详情展开状态', async ({ page }) =>
 });
 
 test('侧栏多城站序、无重复信息与特殊同行 2000px/390px', async ({ page }) => {
-  const evidence = '../output/polish/20261030-0108-planning-summary';
+  const evidence = '../test-results/e2e-evidence/planning-summary';
   expect(typeof evidence).toBe('string');
   await page.setViewportSize({ width: 2000, height: 880 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -827,7 +827,7 @@ test('侧栏多城站序、无重复信息与特殊同行 2000px/390px', async (
 });
 
 test('390px 合法超长城市名可在侧栏换行，不覆盖天数或操作', async ({ page }) => {
-  const evidence = '../output/polish/20261030-0108-planning-summary';
+  const evidence = '../test-results/e2e-evidence/planning-summary';
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/e2e/fixtures/generation-progress.html');
@@ -857,10 +857,10 @@ test('390px 合法超长城市名可在侧栏换行，不覆盖天数或操作',
   expect(geometry.place.height).toBeGreaterThan(20);
   expect(geometry.overflow).toBeLessThanOrEqual(1);
   mkdirSync(evidence, { recursive: true });
-  mkdirSync('../output/polish/20261030-0108-feedback-workflow/review', { recursive: true });
+  mkdirSync('../test-results/e2e-evidence/feedback-workflow/review', { recursive: true });
   writeFileSync(`${evidence}/long-name-390.json`, JSON.stringify(geometry, null, 2));
   await page.screenshot({ path: `${evidence}/long-name-390.png`, fullPage: true });
-  await page.screenshot({ path: '../output/polish/20261030-0108-feedback-workflow/review/long-name-390-fixed.png', fullPage: true });
+  await page.screenshot({ path: '../test-results/e2e-evidence/feedback-workflow/review/long-name-390-fixed.png', fullPage: true });
 });
 
 test('过程披露实屏证据：仅规划去重、完成收起、展开来源与终端失败 2000px/390px', async ({ page }) => {
