@@ -4,7 +4,8 @@
 run/node/agent 归因收敛为一条 ``LLMCallRecord``，写入线程安全的 ``UsageRecorder``
 缓冲。落库、成本计算、价格表与 SSE 暴露不在本模块。
 
-归因复用 run 控制层的 contextvars；无 run 上下文（如离线 eval）时静默跳过记账。
+归因复用 run 控制层的 contextvars；无 run 上下文（入口分流、提示词优化、
+离线 eval）时静默跳过记账——``run_llm_calls.run_id`` 是外键，Run 尚未创建。
 token 字段命名与 OTel GenAI 语义约定对齐。全零 usage 对象视为缺失，成功响应改用
 离线估算并标记 ``estimated=True``；估算不能替代实际账单。
 """

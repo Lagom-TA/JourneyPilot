@@ -543,7 +543,11 @@ class OpenAICompatibleLLM(BaseLLM):
                 raise IncompleteModelResponse(message)
 
     def _start_record(self, method: str, *, stream: bool) -> Optional[LLMCallRecord]:
-        """无 run 上下文（离线 eval 等）时返回 None，跳过记账。"""
+        """无 run 上下文时返回 None，跳过记账。
+
+        入口分流（``classify_route``）、提示词优化与离线 eval 都发生在 Run
+        创建之前；``run_llm_calls.run_id`` 是外键，这些调用在台账之外。
+        """
         run_id, node, agent = read_attribution()
         if run_id is None:
             return None
