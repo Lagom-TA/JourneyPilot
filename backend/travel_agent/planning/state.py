@@ -51,11 +51,10 @@ from typing import Optional
 
 
 def _merge_dicts(a: Dict, b: Dict) -> Dict:
-    """字典字段的 fan-in 归并器，按 ``{**a, **b}`` 后写覆盖同键。
+    """字典字段按 ``{**a, **b}`` 后写覆盖同键。
 
-    fan-in 顺序不表示业务上的完成先后，因此并发归并的分支不得写同一个 key。
-    `research_packets`、`agent_status` 等由 Worker 独占的映射中，每个分支只写
-    自己的 agent key 或带该分支轮次后缀的 key。
+    状态更新在图的边界上串行合并；`research_packets`、`agent_status` 等映射
+    由各自的 Worker 独占，每次只写自己的 key（返研轮带轮次后缀）。
     """
     return {**a, **b}
 
@@ -126,14 +125,14 @@ def _merge_reference_services(
 
 
 def _or_bool(a: bool, b: bool) -> bool:
-    """布尔 OR 聚合：任一并行分支为 True 即为 True。"""
+    """布尔 OR 聚合：任一状态更新为 True 即保持 True。"""
     return bool(a or b)
 
 
 def _prefer_non_empty_str(a: Optional[str], b: Optional[str]) -> Optional[str]:
     """
     字符串聚合：优先保留最新的非空字符串。
-    用于并行分支同时写入错误信息时避免并发冲突。
+    多个边界先后写入错误信息时以最新值为准。
     """
     return b or a
 
@@ -172,7 +171,7 @@ def _merge_run_deadline_allow_clear(
     a: Optional[RunDeadlineSnapshot],
     b: Optional[RunDeadlineSnapshot],
 ) -> Optional[RunDeadlineSnapshot]:
-    """归并同一世代的并行观测，时间不回退。"""
+    """归并同一世代的先后观测，时间不回退。"""
     if b is None or a is None or a.draft_id != b.draft_id:
         return b
     return b.model_copy(
