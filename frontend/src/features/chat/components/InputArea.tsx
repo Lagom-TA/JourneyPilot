@@ -1,4 +1,5 @@
 import { optimizePrompt } from "../api/prompt";
+import { copyText } from "../../../lib/platform";
 import { compactSession } from "../api/sessions";
 import { cn } from "../../../lib/utils";
 import { isTripRunCancellable } from "../../travel/types/runs";
@@ -28,6 +29,7 @@ export const InputArea: React.FC<{
     const [optimizedPrompt, setOptimizedPrompt] = useState<string | null>(null);
     const [optimizeError, setOptimizeError] = useState<string | null>(null);
     const [optimizeCopied, setOptimizeCopied] = useState(false);
+    const [optimizeCopyFailed, setOptimizeCopyFailed] = useState(false);
     const [isCompacting, setIsCompacting] = useState(false);
     const [compactError, setCompactError] = useState<string | null>(null);
     const [supplementStatus, setSupplementStatus] = useState<string | null>(null);
@@ -134,9 +136,13 @@ export const InputArea: React.FC<{
     const handleCopyOptimized = useCallback(async () => {
         if (!optimizedPrompt)
             return;
-        await navigator.clipboard.writeText(optimizedPrompt);
-        setOptimizeCopied(true);
-        setTimeout(() => setOptimizeCopied(false), 2000);
+        const ok = await copyText(optimizedPrompt);
+        setOptimizeCopied(ok);
+        setOptimizeCopyFailed(!ok);
+        setTimeout(() => {
+            setOptimizeCopied(false);
+            setOptimizeCopyFailed(false);
+        }, 2000);
     }, [optimizedPrompt]);
     const handleCloseOptimizePreview = useCallback(() => {
         setOptimizedPrompt(null);
@@ -272,7 +278,7 @@ export const InputArea: React.FC<{
                       {optimizeCopied
                     ? <Check size={12} className="text-success"/>
                     : <Copy size={12}/>}
-                      {optimizeCopied ? '已复制' : '复制'}
+                      <span aria-live="polite">{optimizeCopyFailed ? '复制失败' : optimizeCopied ? '已复制' : '复制'}</span>
                     </button>
                     <button onClick={handleAdoptOptimized} className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-card text-xs font-medium', 'transition-[color,background-color,opacity] duration-base ease-standard', 'bg-accent text-white hover:bg-accent-hover shadow-sm')}>
                       采用

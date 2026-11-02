@@ -3,6 +3,7 @@ import { useApp } from "../state/AppContext";
 import { ApiError } from "../../lib/http";
 import { conflictCurrentBundleId, readCurrentBundleAfterConflict } from "../../features/travel/model/bundleConflict";
 import { isPublicDeliveryBundle } from "../../features/travel/types/delivery";
+import { randomId } from "../../lib/platform";
 import React from 'react';
 const MAX_REFRESH_ATTEMPTS = 3;
 function retryableRefreshError(error: unknown): boolean {
@@ -20,7 +21,7 @@ export function useCurrentBundleWeatherRefresh(enabled: boolean) {
             return;
         const { manifest } = bundle;
         attemptedBundleIds.current.add(manifest.bundle_id);
-        const refreshId = `weather_${crypto.randomUUID()}`;
+        const refreshId = `weather_${randomId()}`;
         let active = true;
         const request = {
             session_id: state.currentSessionId,
