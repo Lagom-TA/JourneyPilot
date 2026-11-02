@@ -13,106 +13,25 @@
 <strong>Evidence-backed travel planning, from a rough idea to a trip you can use.</strong>
 
 <p>
-JourneyPilot researches transport, places, weather, routes, and the open web, then brings everything together in a day-by-day itinerary, map, report, and printable PDF.
+JourneyPilot researches transport, places, weather, routes, and the open web, then brings everything
+together in a day-by-day itinerary, map, report, and printable PDF.
 </p>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-8f6736?style=flat-square)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-8f6736?style=flat-square)](https://python.org)
-[![LangGraph](https://img.shields.io/badge/LangGraph-0.2%2B-8f6736?style=flat-square)](https://github.com/langchain-ai/langgraph)
-[![MCP](https://img.shields.io/badge/MCP-1.9.4%2B-8f6736?style=flat-square)](https://modelcontextprotocol.io/)
-[![React 18](https://img.shields.io/badge/React-18-8f6736?style=flat-square)](https://react.dev/)
+[![Node 22](https://img.shields.io/badge/node-22-8f6736?style=flat-square)](https://nodejs.org/)
 
 **English** | [简体中文](README.zh-CN.md)
 
-[Website](https://imlagom.com/journeypilot/) · [Overview](#overview) · [Highlights](#highlights) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Configuration](#configuration) · [Development](#development)
-
 </div>
 
-<p align="center">
-  <img src="docs/assets/workspace.webp" alt="JourneyPilot trip workspace" width="980">
-</p>
+JourneyPilot is an open-source, self-hosted AI travel planning workspace. Give it dates, destinations,
+preferences, and constraints, and it turns provider data into a trip you can review and refine instead
+of a one-off answer hidden in a chat. Research results, weather, map, report, and PDF stay connected:
+sources remain attached to the facts they support.
 
-## Overview
-
-JourneyPilot is an open-source AI travel planning workspace. Give it your dates, destinations, preferences, and constraints, and it turns provider data into a trip you can review and refine instead of a one-off answer hidden in a chat.
-
-The itinerary, supporting facts, weather, map, report, and PDF stay connected throughout the planning process. Sources remain attached to the details they support, so train numbers, prices, travel times, and place information are easy to check before you go.
-
-The current product interface is in Simplified Chinese. Code, configuration, and API contracts are written in English.
-
-## Highlights
-
-- **Research grounded in provider data** — connect rail, flight, map, weather, currency, and web-search services to build a trip from current information.
-- **A structured daily itinerary** — visits, meals, stays, and transport are arranged with time windows, durations, costs, and researched connections between stops.
-- **One connected workspace** — the interactive plan, sources, map, full report, and PDF are generated from the same delivery record.
-- **Weather-aware planning** — forecasts are considered while the itinerary is being built, with practical alternatives for affected days.
-- **Control over long-running plans** — review the research plan, resume interrupted work, or cancel a run cleanly.
-- **Personal context** — remember common departure points and travel preferences, and search uploaded guides through the built-in knowledge base.
-- **A responsive travel desk** — use a structured planner or describe an idea, browse daily plans and reports with keyboard-accessible tabs, and navigate on mobile with reduced-motion support.
-
-## Who it is for
-
-- **Independent travelers** turning dates, budgets, and preferences into a plan they can check and revise.
-- **Trips with several constraints** where transport, weather, opening hours, and connections need to fit together.
-- **Developers exploring agent applications** with LangGraph orchestration, MCP tools, retrieval, and a connected web workspace.
-
-## Explore the project
-
-| Looking for | Start here |
-|---|---|
-| Interactive introduction to the planning workflow | [JourneyPilot website](https://imlagom.com/journeypilot/) |
-| Design and engineering background | [Project notes (in progress)](https://imlagom.com/blog/journeypilot/) · [Documentation](docs/) |
-| Model and service configuration | [Example configuration](backend/config.example.yaml) · [Configuration](#configuration) |
-| Feedback and bug reports | [GitHub Issues](https://github.com/Lagom-TA/JourneyPilot/issues) |
-
-The website demonstrates the product. To generate your own itineraries, self-host the workspace and configure a model provider and the data services you need. The app researches and organizes travel information; reservations and purchases remain with the relevant providers.
-
-## Product tour
-
-<table>
-<tr>
-<td width="50%" valign="top">
-
-### A clear day-by-day plan
-
-Every stop has a place in the schedule. Visits, dining, lodging, and transport each carry the details you need to understand the day at a glance.
-
-</td>
-<td width="50%" valign="top">
-
-![Day-by-day itinerary](docs/assets/itinerary-day.webp)
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### Details you can verify
-
-Routes, schedules, durations, prices, providers, and source links stay next to the itinerary item they support.
-
-</td>
-<td width="50%" valign="top">
-
-![Transport details and sources](docs/assets/transport-evidence.webp)
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### A report ready to share
-
-The full report follows the same itinerary shown in the workspace and can be exported as a server-rendered PDF.
-
-</td>
-<td width="50%" valign="top">
-
-![JourneyPilot report](docs/assets/report.webp)
-
-</td>
-</tr>
-</table>
+The product interface is in Simplified Chinese. Code identifiers, configuration keys, API contracts,
+and command output are in English; documentation is primarily Chinese.
 
 ## Quick start
 
@@ -121,7 +40,7 @@ The full report follows the same itinerary shown in the workspace and can be exp
 - [uv](https://docs.astral.sh/uv/)
 - Docker Desktop or Docker Engine with Compose
 - Python 3.11
-- Node.js 20.19+ and npm
+- Node.js 22 (minimum 20.19) and npm
 
 ### Run JourneyPilot
 
@@ -131,24 +50,26 @@ cd JourneyPilot
 cp backend/config.example.yaml config.yaml
 ```
 
-Fill in the model section from a provider preset, then supply the API key through the
-environment. Keys never belong in `config.yaml` — that file gets copied, committed and
-pasted into issues:
+Fill the model section from a provider preset, then supply the API key through the environment.
+Keys never belong in `config.yaml` — that file gets copied and pasted into issues:
 
 ```bash
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py configure --list              # available presets
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py configure --provider deepseek # writes the model section
+export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+uv run --project backend python backend/journeypilot.py configure --list              # available presets
+uv run --project backend python backend/journeypilot.py configure --provider deepseek # writes the model section
 export JOURNEYPILOT_PRIMARY_MODEL__API_KEY="your-api-key"
 export JOURNEYPILOT_FAST_MODEL__API_KEY="your-api-key"
 ```
 
-Start the app with the database and Redis ports used by the included Compose stack:
+Start the app with the PostgreSQL and Redis ports used by the included Compose stack:
 
 ```bash
 JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh
 ```
 
-The first start installs backend and frontend dependencies and starts PostgreSQL, Redis, the API, and the web app. The default local embedding model is downloaded on first use.
+The first start installs backend and frontend dependencies, starts PostgreSQL and Redis via Compose, runs
+database migrations, and launches the API and the web app. The default local embedding model is
+downloaded on first use.
 
 | Service | URL |
 |---|---|
@@ -165,36 +86,59 @@ Useful commands:
 ./run.sh stop
 ```
 
-If you always use the included Compose stack, you can save `database.port: 55433` and `redis.port: 16379` in `config.yaml` and start later runs with `./run.sh`.
+`./run.sh restart` is `stop` followed by `start`: it does **not** keep environment variables. Either pass
+the overrides again, or save `database.port: 55433` and `redis.port: 16379` in `config.yaml`.
+
+> `backend/config.example.yaml` targets a local PostgreSQL on 5433 and Redis on 6379; the bundled Compose
+> stack uses 55433 and 16379. Keep the two in sync via the environment variables above or by editing
+> `config.yaml`.
 
 ### Optional capabilities
 
-The default install carries the core product: chat, planning, PostgreSQL/pgvector, Redis,
-MCP tools, PDF export and document import. Heavier enhancements are opt-in, and a
-configuration that asks for one without its dependency **refuses to start** rather than
-failing on the first real call:
+The default install carries the core product: chat, planning, PostgreSQL/pgvector, Redis, MCP tools,
+PDF export, and document import. Heavier enhancements are opt-in; a configuration that asks for one
+without its dependency **refuses to start** instead of failing on the first real call:
 
 ```bash
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend                            # core: remote embeddings only (embedding.provider=openai)
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --group local-embedding    # local Qwen3 ONNX embeddings (the shipped default; what run.sh installs)
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --group cross-encoder      # BGE reranker (rerank.provider=cross_encoder, pulls torch)
+uv sync --project backend                            # core: remote embeddings only (embedding.provider=openai)
+uv sync --project backend --group local-embedding    # local Qwen3 ONNX embeddings (the shipped default; what run.sh installs)
+uv sync --project backend --group cross-encoder      # BGE reranker (rerank.provider=cross_encoder, pulls torch)
 ```
 
-The default Compose database is the official `pgvector` image and compiles nothing.
-Chinese word segmentation (zhparser) is a **different image**, and a build failure there
-leaves the default stack untouched:
+The default Compose database is the official `pgvector` image and compiles nothing. Chinese word
+segmentation (zhparser) is a **different image**, not a Compose profile:
 
 ```bash
 docker build -t journeypilot-postgres:pg18-zhparser ./infra/postgres
 POSTGRES_IMAGE=journeypilot-postgres:pg18-zhparser docker compose -f infra/compose.yml up -d
 ```
 
-Same volume, same port, same service name. Rebuild the lexical indexes after switching;
-`journeypilot doctor` reports the lexical configuration actually in effect.
+`journeypilot doctor` reports whether the zhparser extension is installed. It does **not** report which
+text-search configuration an existing database actually uses: the generated `knowledge_chunks.tsv`
+expression is fixed when the table is created. Enabling Chinese segmentation on an existing database
+requires rebuilding the database (or a dedicated rebuild migration); switching the image alone is not
+enough.
+
+### Self-host with Docker Compose
+
+The Compose stack builds the frontend inside the API image and serves it from the API process:
+
+```bash
+cp backend/config.example.yaml config.yaml   # fill in the model section; Compose mounts this file read-only
+docker compose -f infra/compose.yml up -d --build
+```
+
+The web app and API are both at <http://localhost:8001>; PostgreSQL and Redis stay on the internal
+network, with host ports 55433/16379 for local tooling. Put provider keys in `.env` (read by Compose,
+never committed) or the shell environment. The Compose image installs the `local-embedding` dependency
+group by default; set `DEPENDENCY_GROUPS` to change that.
 
 ## How it works
 
-JourneyPilot chooses an execution path based on the request. Simple travel questions use a fast-answer workflow. For multi-day trips, it reviews the brief, asks for necessary details and reassesses the answers, then presents a research plan for approval. Only after approval does it start formal provider research, compose the itinerary, and assemble the final delivery.
+JourneyPilot chooses an execution path based on the request. Simple travel questions use a fast-answer
+workflow. For multi-day trips, it reviews the brief, asks for necessary details and reassesses the
+answers, then presents a research plan for approval. Only after approval does it run provider research,
+compose the itinerary, and assemble the final delivery.
 
 ```mermaid
 flowchart LR
@@ -202,47 +146,56 @@ flowchart LR
     Route -->|Simple question| Fast["Fast answer"]
     Route -->|Multi-day trip| Clarify["Clarify scope and constraints"]
     Clarify --> Approve["Review research plan"]
-    Approve --> Research["Parallel research"]
+    Approve --> Research["Sequential research"]
     Research --> Places["Places and stays"]
     Research --> Transport["Transport and routes"]
     Research --> Context["Weather and web context"]
     Places --> Compose["Compose itinerary"]
     Transport --> Compose
     Context --> Compose
-    Compose --> Delivery["Delivery Bundle"]
+    Compose --> Delivery["DeliveryBundle"]
     Delivery --> Workspace["Itinerary · map · sources · report · PDF"]
 ```
 
-Research workers return typed packets rather than free-form itinerary text. The dispatcher collects the packets into a candidate catalog, and the model composes the itinerary directly from that catalog. Structural parsing keeps the data readable and preserves source records next to the facts they support; content quality is the model's responsibility. Once the result is ready, it is committed as a single `DeliveryBundle` and projected to every user-facing surface.
+Research workers run in sequence per plan and return typed packets instead of free-form itinerary text.
+The dispatcher collects the packets into a candidate catalog, and the model composes the itinerary
+directly from that catalog. Structural parsing keeps the data readable and preserves source records next
+to the facts they support; content quality is the model's responsibility. Once the result is ready it is
+committed as a single `DeliveryBundle` and projected to every user-facing surface.
 
-Under the hood, JourneyPilot combines a LangGraph workflow with FastAPI, PostgreSQL, Redis, Model Context Protocol tools, hybrid retrieval, and a React workspace. Checkpoints and durable run records keep longer planning sessions recoverable.
+Under the hood, JourneyPilot combines a LangGraph workflow with FastAPI, PostgreSQL, Redis, Model Context
+Protocol tools, hybrid retrieval, and a React workspace. Checkpoints and durable run records keep longer
+planning sessions recoverable.
 
 ## Configuration
 
-Settings are read from built-in defaults and `config.yaml`, with environment variables
-taking precedence. Unknown fields are **rejected** rather than ignored, so a misspelled
-key fails loudly instead of silently doing nothing.
+Settings are read from built-in defaults and `config.yaml`, with environment variables taking precedence.
+Unknown fields are **rejected** rather than ignored, so a misspelled key fails loudly instead of silently
+doing nothing.
 
 - [`backend/config.example.yaml`](backend/config.example.yaml) — annotated starting point
-- [`docs/configuration.md`](docs/configuration.md) — every field, default, range and
-  environment-variable name (generated from the schema; `journeypilot config docs`)
+- [`docs/configuration.md`](docs/configuration.md) — every field, default, range, and environment-variable
+  name (generated by `journeypilot config docs`)
+- [`docs/config.schema.json`](docs/config.schema.json) — JSON Schema for `config.yaml` (generated; usable
+  for editor validation)
 
 ```bash
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config show      # effective values + where each came from
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config validate  # check without starting the service
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config env       # every valid environment variable
+export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+uv run --project backend python backend/journeypilot.py config show      # effective values + where each came from
+uv run --project backend python backend/journeypilot.py config validate  # check without starting the service
+uv run --project backend python backend/journeypilot.py config env       # every valid environment variable
 ```
 
 Every field can be overridden with `JOURNEYPILOT_<section>__<field>`, for example
-`JOURNEYPILOT_DATABASE__PORT=55433`. An unrecognised `JOURNEYPILOT_*` variable stops
-startup — a typo should not be a silent no-op.
+`JOURNEYPILOT_DATABASE__PORT=55433`. An unrecognised `JOURNEYPILOT_*` variable stops startup — a typo
+should not be a silent no-op.
 
 | Setting | What it controls |
 |---|---|
 | `primary_model.*` | Main OpenAI-compatible model used for planning and research. |
 | `fast_model.*` | Optional lower-latency model. Empty connection values fall back to the primary model. |
-| `embedding.*` | Local Qwen3 ONNX embeddings by default, or an OpenAI-compatible embedding service. |
-| `run_control.plan_gate_enabled` | Must stay enabled for deep research: pauses a run for plan review before research begins. When disabled, new deep-research requests are rejected early; fast answers still work. |
+| `embedding.*` | Local Qwen3 ONNX embeddings by default; `openai` for a compatible embedding service; `hash` for an offline smoke path. |
+| `run_control.plan_gate_enabled` | Must stay enabled for deep research: pauses a run for plan review before research begins. When disabled, new deep-research requests are rejected before a run is created; fast answers still work. |
 | `rerank.*` | Second-stage ranking for knowledge-base retrieval. |
 | `run_deadline.*` | The four time windows one deep research run may spend. |
 | `run_budget.*` | Call, token and cost ceilings sealed when a run is authorised. |
@@ -252,7 +205,8 @@ startup — a typo should not be a silent no-op.
 
 ### Data sources
 
-JourneyPilot can be useful with the providers that require no credentials, then gain access to more data sources as more services are configured.
+JourneyPilot is useful with the providers that require no credentials, and gains more data sources as
+more services are configured.
 
 | Area | Included providers | Optional providers |
 |---|---|---|
@@ -264,40 +218,61 @@ JourneyPilot can be useful with the providers that require no credentials, then 
 Add provider credentials under `mcp.servers` in `config.yaml`, then check their status with:
 
 ```bash
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/scripts/check_mcp.py
+uv run --project backend python backend/scripts/check_mcp.py
 ```
 
 `config.yaml`, `.env*`, and other local credential files are ignored by Git.
 
-The repository ships a small factory corpus under `backend/data/corpus/factory/`. With the backend running, load it from another terminal with `python backend/scripts/load_factory_corpus.py`. The optional local binary seed is intentionally not included in this public repository; if you maintain one, keep it under `data/corpus/seed/`. The rest of `data/` stays ignored by Git. Without a local seed, provider-backed research still works and the knowledge corpus is reported as a non-blocking degraded component.
+The repository ships a small factory corpus under `backend/data/corpus/factory/`. With the backend
+running, load it from another terminal with `python backend/scripts/load_factory_corpus.py`. The optional
+local binary seed is not included in this public repository; if you maintain one, keep it under
+`data/corpus/seed/`. Without a local seed, provider-backed research still works and the knowledge corpus
+is reported as a non-blocking degraded component.
 
 ## Database, backups, and upgrades
 
-The API process issues no DDL at all. It creates no tables, alters no columns, and deletes no rows on startup — it only verifies, read-only, that the database matches the schema contract of the code that is running. Schema changes are versioned migrations under [`backend/migrations/versions/`](backend/migrations/versions/), applied by the `journeypilot` command:
+The API process issues no DDL: it creates no tables, alters no columns, and deletes no rows on startup.
+It only verifies, read-only, that the database matches the schema contract of the code that is running.
+Schema changes are versioned migrations under [`backend/migrations/versions/`](backend/migrations/versions/),
+applied by the `journeypilot` command:
 
 ```bash
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py doctor          # database, migration revision, schema, extensions, backups
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py migrate         # run pending migrations (holds a lock; backs up first)
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py backup          # verified backup: dump + manifest + SHA-256 checksums
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py restore <dir>   # restore into a new database, verify, then switch
+export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+uv run --project backend python backend/journeypilot.py doctor          # database, migration revision, schema, extensions, backups
+uv run --project backend python backend/journeypilot.py migrate         # run pending migrations (holds a lock; backs up first)
+uv run --project backend python backend/journeypilot.py backup          # verified backup: dump + manifest + SHA-256 checksums
+uv run --project backend python backend/journeypilot.py restore <dir> --yes  # restore into a new database, verify, then switch
 ```
 
 Every command accepts `--json` for CI use.
 
-`migrate` runs **before** the API, not alongside it. Both supported entry points do this for you — the Docker image's entrypoint and `./run.sh start` each run it and refuse to start the API if it does not pass. Running the API against a database that has not been migrated is not a degraded mode: `GET /api/health/ready` returns 503 with the exact problem and the command that fixes it, and no request is served.
+`migrate` runs **before** the API, not alongside it. Both supported entry points do this for you — the
+Docker image entrypoint and `./run.sh start` each run it and refuse to start the API if it does not pass.
+Running the API against a database that has not been migrated is not a degraded mode:
+`GET /api/health/ready` returns 503 with the exact problem and the command that fixes it.
 
-Because the API never needs DDL rights, you can run it under a PostgreSQL role that only has `SELECT/INSERT/UPDATE/DELETE` and sequence usage, and reserve schema ownership for `journeypilot migrate`. This is verified by a test, not just asserted.
+Because the API never needs DDL rights, you can run it under a PostgreSQL role that only has
+`SELECT/INSERT/UPDATE/DELETE` and sequence usage, and reserve schema ownership for `journeypilot migrate`.
+This is verified by a test, not just asserted.
 
 What the safeguards actually do:
 
-- **A non-empty database is backed up before any migration**, and the backup is verified (non-empty file, `pg_restore --list` parses, checksums recorded). If the backup fails, the migration does not run.
-- **A database whose structure does not match a known revision is refused, never stamped.** `doctor` prints the exact columns, constraints, and indexes that differ.
-- **Migrations that delete data require `--allow-destructive`.** A first install on an empty database does not, because there is nothing to lose.
-- **Restore never overwrites the current database in place.** It restores into a new database, checks the schema fingerprint and row counts against the manifest, and only then switches. The previous database is kept as `<name>_prerestore_<timestamp>` until you delete it.
+- **A non-empty database is backed up before any migration**, and the backup is verified (non-empty file,
+  `pg_restore --list` parses, checksums recorded). If the backup fails, the migration does not run.
+- **A non-empty database without a known revision is refused.** A database that has JourneyPilot tables
+  but no `alembic_version` is not adopted or stamped: rebuild it, or restore a matching backup. `doctor`
+  prints the exact columns, constraints, and indexes that differ for a schema drift.
+- **Migrations that delete data require `--allow-destructive`.** A first install on an empty database
+  does not, because there is nothing to lose.
+- **Restore never overwrites the current database in place.** It restores into a new database, checks the
+  schema fingerprint and row counts against the manifest, and only then switches. The previous database is
+  kept as `<name>_prerestore_<timestamp>` until you delete it.
+- **The LangGraph checkpoint tables are created by `migrate` too**, not by the API. They are owned by
+  `langgraph-checkpoint-postgres` and carry their own version table; without them the API reports
+  `checkpointer` as unavailable instead of failing on the first interrupt.
 
-- **The LangGraph checkpoint tables are created by `migrate` too**, not by the API. They are owned by `langgraph-checkpoint-postgres` and carry their own version table, so they stay out of our migration history — but creating them is still DDL. Without them the API reports `checkpointer` as unavailable at startup rather than failing on the first interrupt.
-
-`maintenance.*` in `config.yaml` controls the backup directory, retention, and the lock timeout. Backups are written outside version control.
+`maintenance.*` in `config.yaml` controls the backup directory, retention, and the lock timeout. Backups
+are written outside version control.
 
 ## Development
 
@@ -305,42 +280,45 @@ Run the frontend against the local API:
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
 Before opening a pull request, run the local checks and validate the behavior your changes affect:
 
 ```bash
+export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+
 # Backend
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --locked --group local-embedding --group dev
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config validate
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config docs --check    # generated field table matches the schema
-JOURNEYPILOT_DATABASE__PORT=55433 UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend pytest -c backend/pyproject.toml      # db tests use temporary databases; skipped without PostgreSQL
+uv sync --project backend --locked --group local-embedding --group dev
+uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
+uv run --project backend python backend/journeypilot.py config validate
+uv run --project backend python backend/journeypilot.py config docs --check    # generated field table matches the schema
+JOURNEYPILOT_DATABASE__PORT=55433 uv run --project backend pytest -c backend/pyproject.toml      # db tests use temporary databases; skipped without PostgreSQL
 
 # Frontend
 cd frontend
-npm ci
-npm run check                                        # type-check + unit tests + build
-npm run test:e2e                                     # needs a running stack; see playwright.config.ts
+npm run check                                        # type-check + lint + unit tests + build
+npm run test:e2e                                     # needs a running stack; see frontend/e2e/README.md
 ```
 
-[CI](.github/workflows/pr.yml) automatically runs backend lint, configuration and unit checks,
-frontend type-checks, unit tests and builds, and secret scanning. Database integration and
-migration tests are available through **Run workflow** in the `PR` workflow. Full-stack browser
-and deployment checks run locally as needed; skipped database tests are not a passing result.
-There is no scheduled nightly or release workflow.
+[CI](.github/workflows/pr.yml) runs backend lint, configuration and unit checks, offline migration SQL,
+frontend type-checks/lint/unit tests/build, MCP dependency installation, shell checks, a Docker build
+smoke, and secret scanning. Database integration and migration tests are available through **Run
+workflow** in the `PR` workflow. Full-stack browser and real-provider checks run locally as needed;
+skipped database tests are not a passing result. There is no scheduled nightly or release workflow.
 
-### Design documents
+### Documentation
 
-- [`docs/README.md`](docs/README.md) — documentation index, including development and testing guides
+- [`docs/README.md`](docs/README.md) — documentation index
 - [`docs/adr/`](docs/adr/) — the decisions, and what was rejected instead
 - [`docs/invariants.md`](docs/invariants.md) — the runtime guarantees the code must preserve
-- [`docs/architecture/overview.md`](docs/architecture/overview.md) — how one request
-  travels through the system
+- [`docs/architecture/overview.md`](docs/architecture/overview.md) — how one request travels through the system
+- [`docs/local-development-troubleshooting.md`](docs/local-development-troubleshooting.md) — local setup troubleshooting
 
-Issues and pull requests are welcome. Keep changes focused, add a regression test for bug fixes, and update both README languages when behavior visible to users changes.
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Security reports follow
+[SECURITY.md](SECURITY.md). Keep changes focused, add a regression test for bug fixes, and update both
+README languages when behavior visible to users changes.
 
 ## Tech stack
 
@@ -357,8 +335,12 @@ Issues and pull requests are welcome. Keep changes focused, add a regression tes
 
 ## License
 
-JourneyPilot is available under the [MIT License](LICENSE).
+JourneyPilot is available under the [MIT License](LICENSE). Third-party data, fonts, and assets are
+listed in [NOTICE](NOTICE).
 
 ## Acknowledgments
 
-JourneyPilot builds on [LangGraph](https://github.com/langchain-ai/langgraph), the [Model Context Protocol](https://modelcontextprotocol.io/), [pgvector](https://github.com/pgvector/pgvector), and open data from [Open-Meteo](https://open-meteo.com/), [Frankfurter](https://frankfurter.dev/), [OpenStreetMap](https://www.openstreetmap.org/), Nominatim, and [Transitous](https://transitous.org/).
+JourneyPilot builds on [LangGraph](https://github.com/langchain-ai/langgraph), the
+[Model Context Protocol](https://modelcontextprotocol.io/), [pgvector](https://github.com/pgvector/pgvector),
+and open data from [Open-Meteo](https://open-meteo.com/), [Frankfurter](https://frankfurter.dev/),
+[OpenStreetMap](https://www.openstreetmap.org/), Nominatim, and [Transitous](https://transitous.org/).
