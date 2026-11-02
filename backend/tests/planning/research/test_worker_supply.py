@@ -429,25 +429,6 @@ async def test_rich_candidate_supply_reaches_composition_and_workspace(monkeypat
     assert "supply_stay_unavailable" not in {option.candidate_id for option in lodging_options}
     assert len(lodging_options) == 9
 
-    # 未入选候选可经真实修改入口直接选用，目录原样保留。
-    from travel_agent.planning.itinerary.mutations.apply import apply_workspace_v2_mutation
-    from travel_agent.planning.itinerary.mutations.contracts import SelectOptionMutation
-
-    unelected = next(
-        option for option in options if option.candidate_id == "supply_visit_07"
-    )
-    application = apply_workspace_v2_mutation(
-        workspace,
-        SelectOptionMutation(
-            selection_slot_id=visit_slots[0].selection_slot_id,
-            option_id=unelected.option_id,
-        ),
-    )
-    assert application.changed
-    replaced = application.workspace
-    assert replaced.itinerary.visit_stops[0].place_id == "supply_place_07"
-    assert set(replaced.recommendation_catalog.candidate_index()) == candidate_ids
-
 
 def test_candidate_limit_scales_with_trip_size_beyond_old_caps():
     long_multicity = {

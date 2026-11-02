@@ -46,7 +46,7 @@ The current product interface is in Simplified Chinese. Code, configuration, and
 - **A structured daily itinerary** — visits, meals, stays, and transport are arranged with time windows, durations, costs, and researched connections between stops.
 - **One connected workspace** — the interactive plan, sources, map, full report, and PDF are generated from the same delivery record.
 - **Weather-aware planning** — forecasts are considered while the itinerary is being built, with practical alternatives for affected days.
-- **Control over long-running plans** — review the research plan, resume interrupted work, make bounded edits, undo recent changes, or cancel a run cleanly.
+- **Control over long-running plans** — review the research plan, resume interrupted work, or cancel a run cleanly.
 - **Personal context** — remember common departure points and travel preferences, and search uploaded guides through the built-in knowledge base.
 - **A responsive travel desk** — use a structured planner or describe an idea, browse daily plans and reports with keyboard-accessible tabs, and navigate on mobile with reduced-motion support.
 

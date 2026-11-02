@@ -22,13 +22,10 @@ FailureInjector = Callable[[str], None]
 
 class BundleCommitKind(str, Enum):
     CREATE = "create"
-    WORKSPACE_MUTATION = "workspace_mutation"
-    WORKSPACE_MUTATION_RECEIPT = "workspace_mutation_receipt"
     FACT_REFRESH = "fact_refresh"
     WEATHER_REFRESH = "weather_refresh"
     WEATHER_REFRESH_RECEIPT = "weather_refresh_receipt"
     WEATHER_FACT_REFRESH = "weather_fact_refresh"
-    UNDO = "undo"
 
 
 class PersistBoundary(str, Enum):
@@ -67,18 +64,7 @@ class BundleCommitResult:
 @dataclass(frozen=True)
 class BundleCommitRecord:
     result: BundleCommitResult
-    inverse_patch: Optional[Dict[str, Any]]
     metadata: Dict[str, Any]
-
-
-@dataclass(frozen=True)
-class BundleUndoHead:
-    mutation_id: str
-    label: str
-    semantic_label: str
-    inverse_patch: Dict[str, Any]
-    result_bundle_id: str
-    workspace_revision: int
 
 
 class BundleRevisionConflict(RuntimeError):
@@ -125,7 +111,6 @@ def _request_digest(
     bundle: Optional[DeliveryBundle],
     kind: BundleCommitKind,
     expected: Optional[BundleRevisionVector],
-    inverse_patch: Optional[Dict[str, Any]],
     metadata: Dict[str, Any],
     idempotency_request: Optional[Dict[str, Any]] = None,
 ) -> str:
@@ -140,7 +125,6 @@ def _request_digest(
         "bundle": bundle.model_dump(mode="json"),
         "kind": kind.value,
         "expected": expected.__dict__ if expected else None,
-        "inverse_patch": inverse_patch,
         "metadata": metadata,
     }
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
@@ -176,8 +160,6 @@ def _validate_transition(
             actual.weather_data_revision - expected.weather_data_revision,
         )
         expected_deltas = {
-            BundleCommitKind.WORKSPACE_MUTATION: {(1, 0, 0)},
-            BundleCommitKind.UNDO: {(1, 0, 0)},
             BundleCommitKind.FACT_REFRESH: {(0, 1, 0)},
             BundleCommitKind.WEATHER_REFRESH: {(0, 0, 1)},
             # 天气与事实联合刷新会把候选目录重绑到新的事实+天气快照，
@@ -251,7 +233,7 @@ class DeliveryBundleStore:
             result = await session.execute(
                 text(
                     """
-                    SELECT commit.inverse_patch, commit.metadata, bundle.bundle
+                    SELECT commit.metadata, bundle.bundle
                     FROM delivery_bundle_commits_v2 AS commit
                     JOIN delivery_bundles_v2 AS bundle
                       ON bundle.bundle_id = commit.result_bundle_id
@@ -269,56 +251,7 @@ class DeliveryBundleStore:
                     bundle=DeliveryBundle.model_validate(_json_loads(row["bundle"])),
                     idempotent_replay=True,
                 ),
-                inverse_patch=_json_loads(row["inverse_patch"]),
                 metadata=_json_loads(row["metadata"]) or {},
-            )
-
-    async def get_undo_head(self, run_id: str) -> Optional[BundleUndoHead]:
-        """返回当前语义 workspace head 的服务端 inverse。"""
-        async with get_db_session() as session:
-            result = await session.execute(
-                text(
-                    """
-                    SELECT commit.idempotency_key, commit.inverse_patch,
-                           commit.metadata, commit.result_bundle_id,
-                           bundle.workspace_revision
-                    FROM delivery_bundle_heads_v2 AS head
-                    JOIN delivery_bundle_commits_v2 AS commit
-                      ON commit.run_id = head.run_id
-                    JOIN delivery_bundles_v2 AS bundle
-                      ON bundle.bundle_id = commit.result_bundle_id
-                    WHERE head.run_id = :run_id
-                      -- 天气/事实重绑可能仅为了让当前 Candidate 目录与刷新后的
-                      -- 事实对齐而提升不可变 Workspace revision。它不能覆盖最近
-                      -- 一个用户发起的 undo head；服务只重新应用可安全变基的
-                      -- inverse。
-                      AND bundle.workspace_revision <= head.workspace_revision
-                      AND commit.inverse_patch IS NOT NULL
-                      AND commit.commit_kind IN ('workspace_mutation', 'undo')
-                    ORDER BY commit.created_at DESC, commit.result_bundle_id DESC
-                    LIMIT 1
-                    """
-                ),
-                {"run_id": run_id},
-            )
-            row = result.mappings().first()
-            if row is None:
-                return None
-            metadata = _json_loads(row["metadata"]) or {}
-            return BundleUndoHead(
-                mutation_id=str(row["idempotency_key"]),
-                label=str(
-                    metadata.get("undo_label")
-                    or f"撤销：{metadata.get('label') or '上一步调整'}"
-                ),
-                semantic_label=str(
-                    metadata.get("semantic_label")
-                    or metadata.get("label")
-                    or "上一步调整"
-                ),
-                inverse_patch=_json_loads(row["inverse_patch"]),
-                result_bundle_id=str(row["result_bundle_id"]),
-                workspace_revision=int(row["workspace_revision"]),
             )
 
     async def record_noop_receipt(
@@ -343,17 +276,13 @@ class DeliveryBundleStore:
             raise ValueError("idempotency_key is required")
         if not expected.bundle_id:
             raise ValueError("no-op receipt requires an expected bundle")
-        if kind not in {
-            BundleCommitKind.WORKSPACE_MUTATION_RECEIPT,
-            BundleCommitKind.WEATHER_REFRESH_RECEIPT,
-        }:
+        if kind is not BundleCommitKind.WEATHER_REFRESH_RECEIPT:
             raise ValueError("unsupported no-op receipt kind")
         metadata = metadata or {}
         digest = _request_digest(
             bundle=None,
             kind=kind,
             expected=expected,
-            inverse_patch=None,
             metadata=metadata,
             idempotency_request=idempotency_request,
         )
@@ -401,11 +330,11 @@ class DeliveryBundleStore:
                     INSERT INTO delivery_bundle_commits_v2
                         (run_id, idempotency_key, request_digest, commit_kind,
                          base_bundle_id, result_bundle_id,
-                         inverse_patch, metadata, created_at)
+                         metadata, created_at)
                     VALUES
                         (:run_id, :idempotency_key, :request_digest, :commit_kind,
                          :base_bundle_id, :result_bundle_id,
-                         NULL, CAST(:metadata AS jsonb), NOW())
+                         CAST(:metadata AS jsonb), NOW())
                     """
                 ),
                 {
@@ -431,7 +360,6 @@ class DeliveryBundleStore:
         kind: BundleCommitKind,
         idempotency_key: str,
         expected: Optional[BundleRevisionVector] = None,
-        inverse_patch: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         idempotency_request: Optional[Dict[str, Any]] = None,
         session: Any | None = None,
@@ -449,7 +377,6 @@ class DeliveryBundleStore:
             bundle=bundle,
             kind=kind,
             expected=expected,
-            inverse_patch=inverse_patch,
             metadata=metadata,
             idempotency_request=idempotency_request,
         )
@@ -586,11 +513,11 @@ class DeliveryBundleStore:
                     INSERT INTO delivery_bundle_commits_v2
                         (run_id, idempotency_key, request_digest, commit_kind,
                          base_bundle_id, result_bundle_id,
-                         inverse_patch, metadata, created_at)
+                         metadata, created_at)
                     VALUES
                         (:run_id, :idempotency_key, :request_digest, :commit_kind,
                          :base_bundle_id, :result_bundle_id,
-                         CAST(:inverse_patch AS jsonb), CAST(:metadata AS jsonb), NOW())
+                         CAST(:metadata AS jsonb), NOW())
                     """
                 ),
                 {
@@ -600,7 +527,6 @@ class DeliveryBundleStore:
                     "commit_kind": kind.value,
                     "base_bundle_id": expected.bundle_id if expected else None,
                     "result_bundle_id": bundle.manifest.bundle_id,
-                    "inverse_patch": _json_dumps(inverse_patch),
                     "metadata": _json_dumps(metadata),
                 },
             )
@@ -698,7 +624,7 @@ class InMemoryDeliveryBundleStore(DeliveryBundleStore):
         self._heads: Dict[str, str] = {}
         self._commits: Dict[
             tuple[str, str],
-            tuple[str, str, Optional[Dict[str, Any]], Dict[str, Any], BundleCommitKind],
+            tuple[str, str, Dict[str, Any], BundleCommitKind],
         ] = {}
         self._workspace_revisions: Dict[tuple[str, int], str] = {}
         self._fact_revisions: Dict[tuple[str, int], str] = {}
@@ -708,7 +634,7 @@ class InMemoryDeliveryBundleStore(DeliveryBundleStore):
     def snapshot_for_initial_delivery(self) -> tuple[
         Dict[str, DeliveryBundle],
         Dict[str, str],
-        Dict[tuple[str, str], tuple[str, str, Optional[Dict[str, Any]], Dict[str, Any], BundleCommitKind]],
+        Dict[tuple[str, str], tuple[str, str, Dict[str, Any], BundleCommitKind]],
         Dict[tuple[str, int], str],
         Dict[tuple[str, int], str],
         Dict[tuple[str, int], str],
@@ -729,7 +655,7 @@ class InMemoryDeliveryBundleStore(DeliveryBundleStore):
         snapshot: tuple[
             Dict[str, DeliveryBundle],
             Dict[str, str],
-            Dict[tuple[str, str], tuple[str, str, Optional[Dict[str, Any]], Dict[str, Any], BundleCommitKind]],
+            Dict[tuple[str, str], tuple[str, str, Dict[str, Any], BundleCommitKind]],
             Dict[tuple[str, int], str],
             Dict[tuple[str, int], str],
             Dict[tuple[str, int], str],
@@ -755,61 +681,10 @@ class InMemoryDeliveryBundleStore(DeliveryBundleStore):
         existing = self._commits.get((run_id, idempotency_key))
         if existing is None:
             return None
-        _, bundle_id, inverse_patch, metadata, _ = existing
+        _, bundle_id, metadata, _ = existing
         return BundleCommitRecord(
             result=BundleCommitResult(bundle=self._bundles[bundle_id], idempotent_replay=True),
-            inverse_patch=inverse_patch,
             metadata=metadata,
-        )
-
-    async def get_undo_head(self, run_id: str) -> Optional[BundleUndoHead]:
-        current = await self.get_current(run_id)
-        if current is None:
-            return None
-        matches: list[BundleUndoHead] = []
-        for (commit_run_id, mutation_id), (
-            _,
-            bundle_id,
-            inverse,
-            metadata,
-            kind,
-        ) in self._commits.items():
-            bundle = self._bundles[bundle_id]
-            if (
-                commit_run_id != run_id
-                or inverse is None
-                or kind not in {
-                    BundleCommitKind.WORKSPACE_MUTATION,
-                    BundleCommitKind.UNDO,
-                }
-                or bundle.manifest.workspace_revision > current.manifest.workspace_revision
-            ):
-                continue
-            matches.append(
-                BundleUndoHead(
-                    mutation_id=mutation_id,
-                    label=str(
-                        metadata.get("undo_label")
-                        or f"撤销：{metadata.get('label') or '上一步调整'}"
-                    ),
-                    semantic_label=str(
-                        metadata.get("semantic_label")
-                        or metadata.get("label")
-                        or "上一步调整"
-                    ),
-                    inverse_patch=inverse,
-                    result_bundle_id=bundle_id,
-                    workspace_revision=bundle.manifest.workspace_revision,
-                )
-            )
-        if not matches:
-            return None
-        return max(
-            matches,
-            key=lambda item: (
-                self._bundles[item.result_bundle_id].manifest.created_at,
-                item.result_bundle_id,
-            ),
         )
 
     async def record_noop_receipt(
@@ -826,17 +701,13 @@ class InMemoryDeliveryBundleStore(DeliveryBundleStore):
             raise ValueError("idempotency_key is required")
         if not expected.bundle_id:
             raise ValueError("no-op receipt requires an expected bundle")
-        if kind not in {
-            BundleCommitKind.WORKSPACE_MUTATION_RECEIPT,
-            BundleCommitKind.WEATHER_REFRESH_RECEIPT,
-        }:
+        if kind is not BundleCommitKind.WEATHER_REFRESH_RECEIPT:
             raise ValueError("unsupported no-op receipt kind")
         metadata = metadata or {}
         digest = _request_digest(
             bundle=None,
             kind=kind,
             expected=expected,
-            inverse_patch=None,
             metadata=metadata,
             idempotency_request=idempotency_request,
         )
@@ -845,7 +716,7 @@ class InMemoryDeliveryBundleStore(DeliveryBundleStore):
             commit_key = (run_id, idempotency_key)
             existing = self._commits.get(commit_key)
             if existing:
-                existing_digest, bundle_id, _, _, _ = existing
+                existing_digest, bundle_id, _, _ = existing
                 if existing_digest != digest:
                     raise BundleIdempotencyMismatch("idempotency key was used for another commit")
                 return BundleCommitResult(
@@ -865,7 +736,6 @@ class InMemoryDeliveryBundleStore(DeliveryBundleStore):
                 commit_key: (
                     digest,
                     expected.bundle_id,
-                    None,
                     metadata,
                     kind,
                 ),
@@ -879,7 +749,6 @@ class InMemoryDeliveryBundleStore(DeliveryBundleStore):
         kind: BundleCommitKind,
         idempotency_key: str,
         expected: Optional[BundleRevisionVector] = None,
-        inverse_patch: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         idempotency_request: Optional[Dict[str, Any]] = None,
     ) -> BundleCommitResult:
@@ -896,7 +765,6 @@ class InMemoryDeliveryBundleStore(DeliveryBundleStore):
             bundle=bundle,
             kind=kind,
             expected=expected,
-            inverse_patch=inverse_patch,
             metadata=metadata,
             idempotency_request=idempotency_request,
         )
@@ -905,7 +773,7 @@ class InMemoryDeliveryBundleStore(DeliveryBundleStore):
             commit_key = (run_id, idempotency_key)
             existing = self._commits.get(commit_key)
             if existing:
-                existing_digest, bundle_id, _, _, _ = existing
+                existing_digest, bundle_id, _, _ = existing
                 if existing_digest != digest:
                     raise BundleIdempotencyMismatch("idempotency key was used for another commit")
                 return BundleCommitResult(bundle=self._bundles[bundle_id], idempotent_replay=True)
@@ -969,7 +837,6 @@ class InMemoryDeliveryBundleStore(DeliveryBundleStore):
             commits[commit_key] = (
                 digest,
                 bundle.manifest.bundle_id,
-                inverse_patch,
                 metadata,
                 kind,
             )

@@ -156,7 +156,6 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
     if (path === '/trip-runs/run-A/control') { expect(request.postDataJSON()).toEqual({ action: 'cancel', session_id: 'A' }); status = 'cancelled'; return json({ accepted: true, run_status: 'cancelled', message: '已取消' }); }
     if (path === '/trip-runs/run-A/supplements') return json({ accepted: true, status: 'pending', command_id: 'supplement-1', message: '已加入当前运行，将在下一个执行边界处理。' });
     if (path === '/trip-runs/run-A/bundle/current/weather/refresh') return json({ refresh_id: request.postDataJSON().refresh_id, attempted: false, committed: false, used_previous_values: true, refusal_reason: null, bundle });
-    if (path === '/trip-runs/run-A/workspace/undo-head') return json({ can_undo: false, mutation_id: null });
     if (path === '/presets') return json([]);
     if (path === '/user/default-origin') return json({ place: null });
     if (path === '/product/trip-planner') return json({ primary_styles: [{ id: 'relaxed', label: '轻松', is_default: true, inference_keywords: [] }], secondary_interests: [], default_adults: 1, default_children: 0, default_elderly_companions: false, default_accessibility_required: false, max_secondary_interests: 3, inspiration_rotation_ms: 5000, inspiration_prompts: [] });
