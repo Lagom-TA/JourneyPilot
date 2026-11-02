@@ -51,9 +51,8 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
   `planning/research/prompts.py` 维护共享调研提示合同。
 - `planning/itinerary/`：行程草稿生成、地点解析、住宿基点、开放时间和已选供应的物化。
   `planning/itinerary/composition.py` 让模型基于 catalog 写出完整草稿，`planning/itinerary/materialize.py`
-  物化为 `TripWorkspaceV2`。`planning/itinerary/mutations/` 分开定义编辑合同、时间线校验、具体变更、
-  结果构造、天气操作与撤销；`planning/itinerary/mutations/apply.py` 只按具体变更类型分派，不承担变更算法。
-- `planning/delivery/`：事实、来源、引用、报告与地图投影，公共序列化、天气刷新和工作区变更的原子服务。
+  物化为 `TripWorkspace`；接驳、地点与开放时间由各自模块补齐，服务端只做结构解析与身份绑定。
+- `planning/delivery/`：事实、来源、引用、报告与地图投影，公共序列化、天气刷新与交付持久化的原子服务。
   `planning/delivery/projection_builder.py` 生成报告、地图与来源索引，`planning/delivery/assembly.py`
   组装 Bundle，`planning/delivery/persistence.py` 在同一事务中提交 Bundle、读回确认、完成状态与终态事件，
   `planning/delivery/finalizer.py` 负责重试及失败转换。checkpoint 是另一条持久化通道，不能替代已提交
@@ -132,8 +131,8 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
    `build_candidate_catalog` 构建 `RecommendationCatalog`；
    catalog 保留 generation 一致性检查，拦截过期产物。
 8. **组合**：`itinerary_planner` 读取 catalog，由模型直接写出完整行程草稿，再物化为
-   `TripWorkspaceV2`。服务端负责结构解析、身份绑定与时间线物化，不做内容质量裁决；
-   接驳、用户编辑与撤销记录在 mutation history 中。
+   `TripWorkspace`。服务端负责结构解析、身份绑定与时间线物化，不做内容质量裁决；
+   接驳缺口由服务端按真实路线补齐。
 9. **交付**：`budget_estimate` 清理不受支持的总额字段，不调用模型或 Provider；
    `delivery_projector` 从同一 Workspace 生成报告、地图与来源索引；`delivery_finalizer`
    原子提交唯一的 `DeliveryBundle`。工作台、报告、PDF 与来源列表都来自这份记录。

@@ -103,3 +103,19 @@ def test_every_revision_declares_its_gates():
         assert isinstance(getattr(module, "reversible", None), bool), (
             f"{revision} 没有声明 reversible"
         )
+
+
+def test_managed_tables_carry_no_version_suffix():
+    """交付表名是当前名字：不留 *_v2 后缀，也不存在两套同名表。"""
+
+    from travel_agent.storage.maintenance.schema_contract import MANAGED_TABLES
+
+    assert not [table for table in MANAGED_TABLES if "_v2" in table]
+    assert {
+        "trip_workspace_revisions",
+        "fact_store_revisions",
+        "weather_context_revisions",
+        "delivery_bundles",
+        "delivery_bundle_heads",
+        "delivery_bundle_commits",
+    } <= set(MANAGED_TABLES)
