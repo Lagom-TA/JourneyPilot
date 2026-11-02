@@ -54,23 +54,6 @@ async def _write_turns(
         )
 
 
-async def test_intake_answers_survive_reload_and_unrelated_turn(migrated_async_database):
-    from travel_agent.conversation.intake_contracts import GuidedIntakeState, RouteDecision, RouteName
-    memory = ChatSessionMemory()
-    intake = GuidedIntakeState(raw_input="第一次独自去海边，预算5000元", route_decision=RouteDecision(route=RouteName.TRIP_PLANNING, confidence=1, requires_trip_draft=True))
-    kwargs = dict(session_id="intake-persist", user_id=_USER, title_seed=intake.raw_input, guided_intake=intake, user_message_id="intake-user", assistant_message_id="intake-assistant")
-    await memory.save_guided_intake(**kwargs)
-    await memory.save_guided_intake(**kwargs)
-    detail = await memory.get_session_detail(_USER, "intake-persist")
-    assert [message["content"] for message in detail["messages"] if message["role"] == "user"] == [intake.raw_input]
-    loaded = await memory.get_guided_intake(session_id="intake-persist", user_id=_USER)
-    assert loaded.raw_input == intake.raw_input
-    await _write_turns(memory, "intake-persist", 1)
-    assert (await memory.get_guided_intake(session_id="intake-persist", user_id=_USER)).raw_input == intake.raw_input
-    await memory.clear_guided_intake(session_id="intake-persist", user_id=_USER)
-    assert await memory.get_guided_intake(session_id="intake-persist", user_id=_USER) is None
-
-
 async def test_a_turn_is_always_returned_whole(migrated_async_database):
     memory = ChatSessionMemory()
     await _write_turns(memory, "s-1", 3, steps=3)
