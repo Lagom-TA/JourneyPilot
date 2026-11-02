@@ -3,6 +3,7 @@ import { copyText } from "../../../lib/platform";
 import { compactSession } from "../api/sessions";
 import { cn } from "../../../lib/utils";
 import { isTripRunCancellable } from "../../travel/types/runs";
+import { composerState } from "../model/composer";
 import { useApp } from "../../../app/state/AppContext";
 import { Button } from "../../../components/ui/Button";
 import { Tooltip } from "../../../components/ui/Tooltip";
@@ -179,8 +180,13 @@ export const InputArea: React.FC<{
             setIsCompacting(false);
         }
     }, [state.currentSessionId, isCompacting]);
-    const runInFlight = Boolean(state.currentTripRunId && isTripRunCancellable(state.currentTripRunStatus));
-    const showStop = runInFlight && !input.trim();
+    const composer = composerState({
+        isStreaming: state.isStreaming,
+        hasInput: Boolean(input.trim()),
+        hasTripRun: Boolean(state.currentTripRunId),
+        runCancellable: isTripRunCancellable(state.currentTripRunStatus),
+    });
+    const showStop = composer.showStop;
     const normalPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改……' : '描述这趟旅行：目的地、日期、同行人、预算、偏好…');
     const stoppedPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改……' : '告诉 JourneyPilot 这趟行程想怎么调整…');
     return (<div className="w-full">
@@ -204,7 +210,7 @@ export const InputArea: React.FC<{
                 setInput(e.target.value);
                 adjustHeight();
             }} onKeyDown={handleKeyDown} placeholder={normalPlaceholder} rows={1} name="chat-message" autoComplete="off" autoFocus={minimal && autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[200px] leading-relaxed')}/>
-                  <Button variant="primary" size="sm" data-testid="send-button" aria-label={showStop ? '停止本次运行' : '发送'} data-streaming={showStop ? 'true' : 'false'} onClick={showStop ? handleStop : handleSend} disabled={!showStop && !input.trim()} className={cn('flex-shrink-0 !rounded-card !h-8 !w-8 !p-0', showStop &&
+                  <Button variant="primary" size="sm" data-testid="send-button" aria-label={showStop ? (state.currentTripRunId ? '停止本次运行' : '停止回答') : '发送'} data-streaming={showStop ? 'true' : 'false'} onClick={showStop ? handleStop : handleSend} disabled={!showStop && composer.sendDisabled} className={cn('flex-shrink-0 !rounded-card !h-8 !w-8 !p-0', showStop &&
                 '!bg-ink/75 hover:!bg-ink !shadow-none')}>
                     {showStop ? <Square size={13}/> : <Send size={14}/>}
                   </Button>

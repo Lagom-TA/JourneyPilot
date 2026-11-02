@@ -1,7 +1,7 @@
 import { createStreamOwnership } from "./streamOwnership";
 import { createStreamEvents } from "./streamEvents";
 import { createStreamFrameBatch } from "../../features/chat/model/streamFrameBatch";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { useApp } from "../state/AppContext";
 import { streamChat } from "../../features/chat/api/streamChat";
 import { generateId } from "../../lib/utils";
@@ -12,6 +12,7 @@ import { type ControlledTripIdentity, type JourneyRoute, type PlanGateDecisionAc
 export function useSendMessage() {
     const { state, dispatch, activeStreamAbortRef, activeStreamRef, currentStateRef, sessionRuntimeCacheRef } = useApp();
     const { refreshSessions, setLastSession } = useSessionManager();
+    const sendInFlightRef = useRef(false);
     const sendMessage = useCallback(async (text: string, options?: {
         displayText?: string;
         assistantPendingLabel?: string;
@@ -27,8 +28,9 @@ export function useSendMessage() {
         };
         onRequestError?: (error: Error) => void;
     }) => {
-        if (!text.trim() || state.isStreaming)
+        if (!text.trim() || state.isStreaming || sendInFlightRef.current)
             return false;
+        sendInFlightRef.current = true;
         const ownedController = new AbortController();
         const effectiveSignal = ownedController.signal;
         activeStreamAbortRef.current = ownedController;
@@ -122,6 +124,7 @@ export function useSendMessage() {
             }
         }
         finally {
+            sendInFlightRef.current = false;
             flushFrameNow();
             if (!effectiveSignal.aborted) {
                 scopedDispatch({ type: 'SET_STREAMING', payload: false });
