@@ -31,7 +31,6 @@ class TripRunResponse(BaseModel):
     current_node: Optional[str] = None
     resume_policy: str = "clarify_only"
     last_error_code: Optional[str] = None
-    last_error_message: Optional[str] = None
     attempt: int = 1
     created_at: str
     updated_at: str

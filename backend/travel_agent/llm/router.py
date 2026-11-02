@@ -103,7 +103,7 @@ class BaseLLM(Protocol):
         self, messages: List[Dict[str, Any]], **kwargs: Any
     ) -> AsyncIterator[str]: ...
 
-    async def astream_with_tools(
+    async def ainvoke_with_tools_events(
         self,
         messages: List[Dict[str, Any]],
         tools: List[Dict[str, Any]],
@@ -863,7 +863,7 @@ class OpenAICompatibleLLM(BaseLLM):
             await await_model_operation(asyncio.sleep(min(0.5 * 2 ** attempt, 8)),
                                         operation="model.astream.retry_wait")
 
-    async def astream_with_tools(
+    async def ainvoke_with_tools_events(
         self,
         messages: List[Dict[str, Any]],
         tools: List[Dict[str, Any]],

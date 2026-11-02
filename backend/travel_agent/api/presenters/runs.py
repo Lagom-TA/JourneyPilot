@@ -33,7 +33,6 @@ def _run_response(
         current_node=run.current_node,
         resume_policy=run.resume_policy.value,
         last_error_code=run.last_error_code,
-        last_error_message=None,
         attempt=run.attempt,
         created_at=run.created_at,
         updated_at=run.updated_at,
@@ -110,10 +109,6 @@ def _event_response(event) -> Optional[TripRunEventResponse]:
 
     ``audit_safe_value`` 会剔除其他事件载荷中的原始 I/O 字段。
     """
-    if event.event_type.startswith("preapproval.model_call."):
-        # Journal payloads may contain model results and retry bindings. They are
-        # server-only replay records, not public event-stream content.
-        return None
     if event.event_type in {"delivery.ready", "bundle.current_changed"}:
         payload = {
             "bundle_id": event.payload.get("bundle_id"),

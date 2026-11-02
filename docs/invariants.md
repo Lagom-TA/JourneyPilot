@@ -236,7 +236,7 @@ Tests:
 - `backend/tests/api/test_chat_use_cases.py::test_deep_post_commit_failure_keeps_sealed_truth_and_projection_flag`
 
 ### INV-SSE-002：慢客户端不让内存无界增长，且不丢一个字符
-约定：critical 队列有界且不丢；token 合并成更大 chunk 而不是丢弃；待发正文超上限即强制 flush；消费者卡住则结束传输交给 durable 恢复。
+约定：critical 队列有界；未 stall 时不丢，stall 后不再入队并计入 `dropped_critical_events`；token 合并成更大 chunk 而不是丢弃；待发正文超上限即强制 flush；消费者卡住则结束传输交给 durable 恢复。
 Owner: `backend/travel_agent/runtime/events.py`
 Storage: 进程内，上限在 `Settings.streaming`。
 ADR: [ADR-0006](adr/ADR-0006-resource-budgets-and-isolation.md)

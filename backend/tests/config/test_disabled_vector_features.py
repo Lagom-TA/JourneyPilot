@@ -128,7 +128,7 @@ async def test_fast_answer_continues_without_retrieval(disabled_vectors, monkeyp
     class FakeLLM:
         calls = 0
 
-        async def astream_with_tools(self, messages, schemas):
+        async def ainvoke_with_tools_events(self, messages, schemas):
             self.calls += 1
             assert all(item["function"]["name"] != "knowledge_search" for item in schemas)
             yield {"type": "finish", "content": "建议用两天游览苏州，园林与老街分开安排。", "tool_calls": []}

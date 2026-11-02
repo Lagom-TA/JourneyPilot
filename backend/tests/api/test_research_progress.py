@@ -67,7 +67,7 @@ async def test_worker_packet_still_reaches_internal_consumer():
     from travel_agent.tools.react import streaming_react_loop
 
     class LLM:
-        async def astream_with_tools(self, messages, schemas):
+        async def ainvoke_with_tools_events(self, messages, schemas):
             yield {'type': 'reasoning_delta', 'content': 'private internal reasoning'}
             for char in PACKET:
                 yield {'type': 'text_delta', 'content': char}

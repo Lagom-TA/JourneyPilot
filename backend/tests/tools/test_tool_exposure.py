@@ -114,7 +114,7 @@ class _ScriptedLLM:
         self.finishes = iter(finishes)
         self.requests = []
 
-    async def astream_with_tools(self, messages, schemas):
+    async def ainvoke_with_tools_events(self, messages, schemas):
         self.requests.append((deepcopy(messages), deepcopy(schemas)))
         yield {"type": "finish", **next(self.finishes)}
 

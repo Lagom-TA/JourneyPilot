@@ -93,7 +93,7 @@ async def test_local_revision_reuses_an_unselected_candidate(resources, delivere
     monkeypatch.setattr(preparation, "understand_followup", decide)
     from travel_agent.planning.itinerary import node as itinerary_node
     class Model:
-        async def astream_with_tools(self, messages, tools):
+        async def ainvoke_with_tools_events(self, messages, tools):
             text = "\n".join(str(message.get("content", "")) for message in messages)
             assert "原有景点" in text and "candidate_alternative" in text
             draft = itinerary_draft([{**visit_entry(), "candidate_id": "candidate_alternative"}])
@@ -128,7 +128,7 @@ async def test_destination_change_reaches_a_new_plan_and_failure_keeps_the_origi
     from travel_agent.planning.requirements.understanding import agent as understanding
     from travel_agent.planning.research import research_plan_node
     class Model:
-        async def astream_with_tools(self, messages, tools):
+        async def ainvoke_with_tools_events(self, messages, tools):
             changed = identity()
             changed["destinations"] = [{**changed["destinations"][0], "place_id": "destination_kyoto", "name": "京都", "display_name": "京都"}]
             yield {"type": "finish", "content": json.dumps({"action": "ready", "trip_identity": changed}), "tool_calls": []}

@@ -18,7 +18,7 @@ class ScriptedLLM:
         self.responses = iter(responses)
         self.requests = []
 
-    async def astream_with_tools(self, messages, schemas):
+    async def ainvoke_with_tools_events(self, messages, schemas):
         self.requests.append(deepcopy(messages))
         yield {"type": "finish", **next(self.responses)}
 
@@ -195,7 +195,7 @@ async def test_fast_answer_never_completes_a_nonfinal_real_loop(knowledge, monke
     class Model:
         calls = 0
 
-        async def astream_with_tools(self, messages, schemas):
+        async def ainvoke_with_tools_events(self, messages, schemas):
             self.calls += 1
             if scenario == "partial":
                 yield {"type": "text_delta", "content": "我再查一下"}

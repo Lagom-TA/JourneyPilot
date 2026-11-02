@@ -30,7 +30,7 @@ class FakeLLM:
     def __init__(self):
         self.requests = []
 
-    async def astream_with_tools(self, messages, tools):
+    async def ainvoke_with_tools_events(self, messages, tools):
         self.requests.append(deepcopy(messages))
         if len(self.requests) == 1:
             yield {"type": "finish", "content": "", "tool_calls": [
@@ -268,7 +268,7 @@ async def test_cancellation_stops_rail_ticket_prefetch(monkeypatch, cancel_at):
 
 async def test_stream_without_finish_never_admits_partial_json(tools):
     class Partial:
-        async def astream_with_tools(self, *a):
+        async def ainvoke_with_tools_events(self, *a):
             yield {"type": "text_delta", "content": '{"candidate":'}
     result = await react.streaming_react_loop(Partial(), [], tools, None, "worker")
     assert result.content == ""
@@ -276,7 +276,7 @@ async def test_stream_without_finish_never_admits_partial_json(tools):
 
 async def test_old_workflow_cache_cannot_bypass_gateway(monkeypatch, tools):
     class LLM:
-        async def astream_with_tools(self, messages, schemas):
+        async def ainvoke_with_tools_events(self, messages, schemas):
             if any(m["role"] == "tool" for m in messages):
                 yield {"type": "finish", "content": "finished", "tool_calls": []}
             else:
@@ -395,7 +395,7 @@ async def test_repeated_side_effecting_tool_calls_are_never_locally_cached(monke
                       manifest=ToolManifest(tool_name="fixture_write", side_effecting=True))
     monkeypatch.setattr(execution, "get_tool_registry", lambda: registry)
     class LLM:
-        async def astream_with_tools(self, messages, schemas):
+        async def ainvoke_with_tools_events(self, messages, schemas):
             tool_calls = [] if any(m["role"] == "tool" for m in messages) else [
                 {"id": str(n), "name": "fixture_write", "arguments": {}} for n in (1, 2)]
             yield {"type": "finish", "content": "", "tool_calls": tool_calls}
@@ -423,7 +423,7 @@ async def test_terminal_outcomes_and_journal_replay_are_identical(monkeypatch, t
     executed = []
 
     class Model:
-        async def astream_with_tools(self, messages, schemas):
+        async def ainvoke_with_tools_events(self, messages, schemas):
             calls.append(1)
             if scenario == "exception" or scenario == "tool_failure" and len(calls) > 1:
                 raise RuntimeError("fixture-model-error")
@@ -487,7 +487,7 @@ async def test_worker_recovery_never_records_a_completed_fast_answer_after_loop_
     calls = []
 
     class Model:
-        async def astream_with_tools(self, messages, schemas):
+        async def ainvoke_with_tools_events(self, messages, schemas):
             calls.append(1)
             if not limit:
                 raise RuntimeError("fixture-model-error")

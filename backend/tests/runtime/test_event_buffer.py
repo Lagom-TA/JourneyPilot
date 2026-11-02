@@ -100,8 +100,23 @@ async def test_a_consumer_that_never_reads_is_reported_stalled():
 
     assert buffer.stalled is True
     assert buffer.stats.stalled_total == 1
-    # 关键事件仍然在缓冲里，一条都没丢。
-    assert await _drain(buffer) == [("state", "a", 1), ("state", "a", 2)]
+    # stall 之后 critical 队列仍然有界：第二条不再入队，改为计数。
+    assert buffer.stats.dropped_critical_events == 1
+    assert buffer.stats.max_critical_size <= 1
+    assert await _drain(buffer) == [("state", "a", 1)]
+
+
+async def test_a_stalled_consumer_does_not_let_the_critical_queue_grow():
+    """stall 后继续入队会让内存无界增长；上限必须一直有效。"""
+
+    buffer = _buffer(critical_queue_size=2)
+    for index in range(6):
+        await buffer.put(("state", "a", index))
+
+    assert buffer.stalled is True
+    assert buffer.stats.max_critical_size <= 2
+    assert buffer.stats.dropped_critical_events == 4
+    assert [item[2] for item in await _drain(buffer)] == [0, 1]
 
 
 async def test_terminal_events_ignore_the_capacity_bound():

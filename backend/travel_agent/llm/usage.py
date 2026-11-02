@@ -80,7 +80,7 @@ class LLMCallRecord:
     tier: Optional[str]
     provider: Optional[str]
     model_request: str
-    method: str  # ainvoke | ainvoke_with_tools | astream | astream_with_tools
+    method: str  # ainvoke | ainvoke_with_tools | astream | ainvoke_with_tools_events
     stream: bool
     start_ts: str  # ISO8601 wall clock 时间戳
     model_response: Optional[str] = None
