@@ -1,4 +1,4 @@
-"""RetrievalSummary v1 的桥接辅助函数。
+"""RetrievalSummary 的桥接辅助函数。
 
 把原始检索分块转换成可安全写入 trace/eval 的摘要：计数、检索方法、来源元数据
 与短片段。桥接输出不保留原始分块。
@@ -101,7 +101,6 @@ class RetrievalSourceSummary:
 
 @dataclass
 class RetrievalSummary:
-    summary_version: str = "retrieval_summary_v1"
     query: str = ""
     rewritten_queries: List[str] = field(default_factory=list)
     retrieval_mode: str = "vector"
@@ -163,7 +162,7 @@ def build_retrieval_summary(
     collections: Optional[Iterable[str]] = None,
     top_n: int = 5,
 ) -> RetrievalSummary:
-    """构建可安全写入 trace/eval 的 RetrievalSummary v1。"""
+    """构建可安全写入 trace/eval 的 RetrievalSummary。"""
     selected = selected_docs if selected_docs is not None else docs
     mode_dict = mode_decision.to_dict() if hasattr(mode_decision, "to_dict") else (mode_decision or {})
     retriever_used = list(mode_dict.get("enabled_features") or [])
@@ -245,7 +244,6 @@ def retrieval_summary_to_evidence_sources(summary: RetrievalSummary) -> List[Dic
                 "freshness_status": src.freshness_hint,
                 "authority_score": authority,
                 "metadata": {
-                    "retrieval_summary_version": summary.summary_version,
                     "retrieval_source_id": src.source_id,
                     "retrieval_method": src.retrieval_method,
                     "collection": src.collection,

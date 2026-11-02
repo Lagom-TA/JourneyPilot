@@ -59,7 +59,6 @@ _ROUTE_IDENTITY_KEYS = (
 
 
 _ENVELOPE_TOP_KEYS = (
-    "schema_version",
     "audit_id",
     "tool_name",
     "server_name",

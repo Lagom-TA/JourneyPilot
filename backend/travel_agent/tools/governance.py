@@ -1,4 +1,4 @@
-"""JourneyPilot ToolExecutionEnvelope v1 的工具治理辅助函数。
+"""JourneyPilot ToolExecutionEnvelope 的工具治理辅助函数。
 
 envelope 是暴露给 agent、trace、来源归一化与护栏的执行层合同。原始工具参数与原始
 工具输出留在这一层之下。
@@ -15,8 +15,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Optional
 
-
-TOOL_ENVELOPE_SCHEMA_VERSION = "tool_execution_envelope.v1"
 
 _MAX_TEXT = 900
 _MAX_SUMMARY = 180
@@ -127,7 +125,6 @@ class ToolExecutionEnvelope:
     sanitized_args_summary: str
     result_summary: str
     untrusted_content: bool
-    schema_version: str = TOOL_ENVELOPE_SCHEMA_VERSION
     retrieved_at: Optional[str] = None
     freshness_hint: Optional[Dict[str, Any]] = None
     sanitized_result: Any = None
@@ -501,8 +498,15 @@ def tool_envelope_to_evidence_candidate(envelope: ToolExecutionEnvelope | Dict[s
     }
 
 
+_ENVELOPE_IDENTIFYING_KEYS = frozenset(
+    {"audit_id", "tool_name", "status", "args_digest", "sanitized_result"}
+)
+
+
 def is_tool_execution_envelope(value: Any) -> bool:
-    return isinstance(value, dict) and value.get("schema_version") == TOOL_ENVELOPE_SCHEMA_VERSION
+    """按 envelope 的固定字段识别；envelope 不带版本标记。"""
+
+    return isinstance(value, dict) and _ENVELOPE_IDENTIFYING_KEYS <= value.keys()
 
 
 def _sanitize_value(

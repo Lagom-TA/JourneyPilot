@@ -9,7 +9,7 @@ from travel_agent.conversation.chat.tool_events import _handle_tool_done, _handl
 from travel_agent.api.sse_projection import project_sse_payload
 from travel_agent.tools.display import public_text, result_preview
 
-PACKET = '正在分派并行调研任务{"contract_version":"journeypilot.research_packet.v5","candidates":[{"name":"伪满皇宫博物院"}]}'
+PACKET = '正在分派并行调研任务{"research_packet_id":"packet-1","candidates":[{"name":"伪满皇宫博物院"}]}'
 
 
 def context():
@@ -59,7 +59,7 @@ async def test_parallel_workers_and_tool_detail_survive_public_projection():
     events = [e async for e in _handle_state_update(('state', 'destination_researcher', {'messages': [PACKET]}), ctx)]
     progress = next(e for e in events if e['type'] == 'agent_progress')
     assert progress['progress_status'] == 'completed'
-    assert 'contract_version' not in json.dumps(ctx.thinking_steps)
+    assert 'research_packet_id' not in json.dumps(ctx.thinking_steps)
 
 
 async def test_worker_packet_still_reaches_internal_consumer():
@@ -111,4 +111,4 @@ def test_worker_summary_uses_candidates_and_honors_failed_status():
     update['agent_status'] = {'destination_researcher': 'failed'}
     status, content, rows = worker_result('destination_researcher', update)
     assert status == 'failed' and rows == []
-    assert 'internal' not in content and 'contract_version' not in content
+    assert 'internal' not in content and 'research_packet_id' not in content

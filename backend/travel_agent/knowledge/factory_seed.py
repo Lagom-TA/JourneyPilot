@@ -17,7 +17,7 @@ from .collections import FACTORY_KNOWLEDGE_COLLECTIONS
 
 logger = logging.getLogger(__name__)
 
-SEED_SCHEMA = "journeypilot.factory_corpus_seed.v1"
+SEED_SCHEMA = "journeypilot.factory_corpus_seed"
 
 DEFAULT_SEED_DIR = REPO_ROOT / "data" / "corpus" / "seed"
 CHUNKS_FILE = "factory-chunks.jsonl"

@@ -69,13 +69,6 @@ export function getChatErrorGuidance(raw: string, kind: ChatErrorKind): ChatErro
             actionLabel: '再试一次',
         };
     }
-    if (/bundle_contract_superseded/i.test(message)) {
-        return {
-            title: '这趟旅行的结果无法展示',
-            description: '它是用旧版本的结果格式保存的，现在已经读不出来了。请重新规划这趟旅行；重新载入不会有帮助。',
-            action: null,
-        };
-    }
     if (/delivery_integrity_projection_failure/i.test(message)) {
         return {
             title: '这次运行的结果无法展示',

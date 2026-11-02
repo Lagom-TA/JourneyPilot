@@ -42,7 +42,6 @@ _SAFE_METADATA_KEYS = {
     "retry_scheduled",
     "max_attempts",
     "result_trust_policy",
-    "schema_version",
     "side_effecting",
     "snapshot_cache",
     "tool_poisoning_flags",
@@ -148,7 +147,6 @@ def build_audit_record_from_envelope(
     gateway_decision: str | ToolGatewayDecision = ToolGatewayDecision.ALLOW,
 ) -> ToolAuditRecord:
     metadata = dict(envelope.get("metadata") or {})
-    metadata.setdefault("schema_version", envelope.get("schema_version"))
     metadata.setdefault("auth_boundary", manifest.auth_boundary.value)
     metadata.setdefault("side_effecting", manifest.side_effecting)
     metadata.setdefault("irreversible", manifest.irreversible)

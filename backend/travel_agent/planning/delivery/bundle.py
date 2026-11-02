@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -32,20 +32,13 @@ from travel_agent.planning.weather.models import (
 from travel_agent.planning.workspace import TripWorkspaceV2
 from travel_agent.schema import StrictModel
 
-DELIVERY_BUNDLE_CONTRACT_VERSION = "journeypilot.delivery_bundle.v12"
-
-
 class DeliveryRevisionManifest(StrictModel):
-    contract_version: Literal[DELIVERY_BUNDLE_CONTRACT_VERSION] = (
-        DELIVERY_BUNDLE_CONTRACT_VERSION
-    )
     run_id: str = Field(min_length=1)
     generation_id: str = Field(min_length=1)
     bundle_id: str = Field(min_length=1)
     workspace_revision: int = Field(ge=0)
     fact_data_revision: int = Field(ge=0)
     weather_data_revision: int = Field(ge=0)
-    contract_versions: Dict[str, str]
     content_hashes: Dict[str, str]
     created_at: datetime
 
@@ -101,13 +94,6 @@ class DeliveryBundle(StrictModel):
             raise ValueError("workspace run id does not match manifest")
         if self.workspace.generation_id != self.manifest.generation_id:
             raise ValueError("workspace generation does not match manifest")
-        expected_contract_versions = {
-            "workspace": self.workspace.contract_version,
-            "facts": self.fact_snapshot.contract_version,
-            "weather": self.weather_snapshot.contract_version,
-        }
-        if self.manifest.contract_versions != expected_contract_versions:
-            raise ValueError("bundle manifest contract versions do not match snapshots")
         catalog = self.workspace.recommendation_catalog
         if catalog.fact_data_revision > self.fact_snapshot.fact_data_revision:
             raise ValueError("recommendation catalog cannot use a future fact revision")

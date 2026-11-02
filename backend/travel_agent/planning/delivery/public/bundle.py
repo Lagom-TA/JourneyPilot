@@ -16,7 +16,6 @@ from typing import Mapping
 
 
 _PUBLIC_MANIFEST_KEYS = (
-    "contract_version",
     "run_id",
     "generation_id",
     "bundle_id",
@@ -30,7 +29,6 @@ _PUBLIC_MANIFEST_KEYS = (
 def public_manifest(bundle: DeliveryBundle) -> Dict[str, Any]:
     manifest = bundle.manifest
     return {
-        "contract_version": manifest.contract_version,
         "run_id": manifest.run_id,
         "generation_id": manifest.generation_id,
         "bundle_id": manifest.bundle_id,

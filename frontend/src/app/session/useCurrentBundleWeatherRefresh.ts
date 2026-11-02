@@ -1,7 +1,6 @@
 import { refreshCurrentBundleWeather } from "../../features/travel/api/delivery";
 import { useApp } from "../state/AppContext";
 import { ApiError } from "../../lib/http";
-import { apiErrorDetail } from "../../lib/apiErrorDetail";
 import { conflictCurrentBundleId, readCurrentBundleAfterConflict } from "../../features/travel/model/bundleConflict";
 import { isPublicDeliveryBundle } from "../../features/travel/types/delivery";
 import React from 'react';
@@ -50,8 +49,6 @@ export function useCurrentBundleWeatherRefresh(enabled: boolean) {
                     if (!active)
                         return;
                     if (error instanceof ApiError && error.status === 409) {
-                        if (apiErrorDetail(error).code === 'bundle_contract_superseded')
-                            return;
                         if (conflictCurrentBundleId(error)) {
                             try {
                                 const current = await readCurrentBundleAfterConflict(manifest.run_id, state.currentSessionId);

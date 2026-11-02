@@ -13,9 +13,6 @@ from travel_agent.planning.research.evidence import (
 )
 from travel_agent.schema import StrictModel
 
-RESEARCH_PACKET_CONTRACT_VERSION = "journeypilot.research_packet.v7"
-
-
 class ResearchPacket(StrictModel):
     # checkpoint 重建出的实例也要重新校验，而不只校验新解析的 dict。
     model_config = ConfigDict(
@@ -24,9 +21,6 @@ class ResearchPacket(StrictModel):
         revalidate_instances="always",
     )
 
-    contract_version: Literal[RESEARCH_PACKET_CONTRACT_VERSION] = (
-        RESEARCH_PACKET_CONTRACT_VERSION
-    )
     research_packet_id: str = Field(min_length=1)
     run_id: str = Field(min_length=1)
     generation_id: str = Field(min_length=1)

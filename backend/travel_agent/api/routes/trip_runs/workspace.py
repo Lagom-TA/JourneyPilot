@@ -5,7 +5,6 @@ from fastapi import APIRouter, HTTPException, Query
 from travel_agent.bootstrap.registry import get_components
 from travel_agent.planning.itinerary.mutations.contracts import WorkspaceV2MutationError
 from travel_agent.storage.delivery_bundle_store import (
-    BundleContractSuperseded,
     BundleIdempotencyMismatch,
     BundleRevisionConflict,
     BundleRevisionVector,
@@ -24,10 +23,7 @@ from travel_agent.api.schemas.workspace import (
 from travel_agent.planning.delivery.public.bundle import public_delivery_bundle
 
 from travel_agent.api.run_authorization import _get_authorized_run
-from travel_agent.api.run_errors import (
-    raise_workspace_mutation_conflict,
-    raise_bundle_contract_superseded,
-)
+from travel_agent.api.run_errors import raise_workspace_mutation_conflict
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/trip-runs", tags=["trip-runs"])
@@ -68,9 +64,6 @@ async def preview_workspace_v2_mutation(
             expected=_workspace_expected(request),
             mutation=request.operation,
         )
-    except BundleContractSuperseded as exc:
-        raise_bundle_contract_superseded(exc)
-        raise AssertionError("unreachable")
     except BundleRevisionConflict:
         await raise_workspace_mutation_conflict(
             run_id, components.delivery_bundle_store
@@ -119,9 +112,6 @@ async def apply_workspace_v2_mutation(
             mutation=request.operation,
             idempotency_key=request.mutation_id,
         )
-    except BundleContractSuperseded as exc:
-        raise_bundle_contract_superseded(exc)
-        raise AssertionError("unreachable")
     except BundleRevisionConflict:
         await raise_workspace_mutation_conflict(
             run_id, components.delivery_bundle_store
@@ -142,11 +132,7 @@ async def apply_workspace_v2_mutation(
         ) from exc
 
     if result.commit is None:
-        try:
-            bundle = await components.delivery_bundle_store.get_current(run_id)
-        except BundleContractSuperseded as exc:
-            raise_bundle_contract_superseded(exc)
-            raise AssertionError("unreachable")
+        bundle = await components.delivery_bundle_store.get_current(run_id)
         if bundle is None:
             raise HTTPException(status_code=404, detail="当前 Delivery Bundle 不存在")
         replay = False
@@ -174,11 +160,7 @@ async def read_workspace_v2_mutation(
 ) -> WorkspaceV2MutationResponse:
     components = get_components()
     await _get_authorized_run(run_id, session_id=session_id)
-    try:
-        record = await components.delivery_bundle_store.get_commit(run_id, mutation_id)
-    except BundleContractSuperseded as exc:
-        raise_bundle_contract_superseded(exc)
-        raise AssertionError("unreachable")
+    record = await components.delivery_bundle_store.get_commit(run_id, mutation_id)
     if record is None or "mutation" not in record.metadata:
         raise HTTPException(status_code=404, detail="行程调整记录不存在")
     return WorkspaceV2MutationResponse(
@@ -229,9 +211,6 @@ async def undo_workspace_v2_mutation(
             undo_of_mutation_id=request.undo_of_mutation_id,
             idempotency_key=request.undo_id,
         )
-    except BundleContractSuperseded as exc:
-        raise_bundle_contract_superseded(exc)
-        raise AssertionError("unreachable")
     except BundleRevisionConflict:
         await raise_workspace_mutation_conflict(
             run_id, components.delivery_bundle_store

@@ -84,7 +84,6 @@ def _public_workspace(
     """
 
     return {
-        "contract_version": workspace.contract_version,
         "run_id": workspace.run_id,
         "generation_id": workspace.generation_id,
         "workspace_revision": workspace.workspace_revision,

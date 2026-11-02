@@ -14,10 +14,6 @@ from typing import Dict, List, Literal, Optional, Set
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-#: config.yaml 的结构版本。不认识的版本一律拒绝并说明要改什么。
-CONFIG_VERSION = 2
-
-
 class StrictConfig(BaseModel):
     """所有配置段的基类：未知字段拒绝，不静默忽略。"""
 
@@ -418,7 +414,7 @@ class GeocodingConfig(StrictConfig):
     # ``provider_snapshot_cache.place_identity_ttl_seconds`` 同为 7 天口径。
     search_cache_ttl_seconds: int = Field(default=7 * 24 * 60 * 60, gt=0)
     search_cache_key_prefix: str = Field(
-        default="journeypilot:nominatim-search:v1",
+        default="journeypilot:nominatim-search",
         min_length=1,
     )
     search_cache_redis_timeout_seconds: float = Field(default=0.25, gt=0)
@@ -443,7 +439,7 @@ class ProviderSnapshotCacheConfig(StrictConfig):
 
     enabled: bool = True
     redis_key_prefix: str = Field(
-        default="journeypilot:provider-snapshot:v1",
+        default="journeypilot:provider-snapshot",
         min_length=1,
     )
     redis_timeout_seconds: float = Field(default=0.25, gt=0)

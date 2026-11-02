@@ -387,7 +387,7 @@ function sanitizeInternalIdentifiers(text: string): string {
         .replace(INTERNAL_IDENTIFIER, token => aliasForInternalIdentifier(token))
         .replace(PROVIDER_IDENTIFIER, token => aliasForInternalIdentifier(token));
 }
-const TECHNICAL_INPUT_FIELDS = /\b(?:contract_version|research_packet_id|tool_call_id|run_id|session_id|provider|status_code|args_summary|sanitized_result|raw_result)\b\s*[:=]/i;
+const TECHNICAL_INPUT_FIELDS = /\b(?:research_packet_id|tool_call_id|run_id|session_id|provider|status_code|args_summary|sanitized_result|raw_result)\b\s*[:=]/i;
 const TECHNICAL_ERROR_TEXT = [
     /^\s*(?:error|exception|traceback|typeerror|valueerror|runtimeerror|keyerror|httpx?error|urllib3)\b/i,
     /\b(?:traceback \(most recent call last\)|stack trace|internal server error|service unavailable|bad gateway|gateway timeout)\b/i,

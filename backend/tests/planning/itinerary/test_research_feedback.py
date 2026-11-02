@@ -496,7 +496,6 @@ async def test_failed_composition_is_not_re_entered_after_research_window_closes
     authorized = now - timedelta(seconds=1000)
     snapshot = RunDeadlineSnapshot(
         draft_id="draft",
-        policy_version="run_deadline.v2",
         planning_authorized_at=authorized,
         target_at=authorized + timedelta(seconds=600),
         closeout_at=authorized + timedelta(seconds=900),

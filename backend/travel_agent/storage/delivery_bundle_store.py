@@ -13,35 +13,11 @@ from typing import Any, Callable, Dict, Optional
 
 from sqlalchemy import text
 
-from travel_agent.planning.delivery.bundle import (
-    DELIVERY_BUNDLE_CONTRACT_VERSION,
-    DeliveryBundle,
-)
+from travel_agent.planning.delivery.bundle import DeliveryBundle
 
 from .database import get_db_session
 
 FailureInjector = Callable[[str], None]
-
-
-class BundleContractSuperseded(RuntimeError):
-    """已存 Bundle 的合同版本与当前代码不一致。
-
-    先从行内的 ``manifest`` JSONB 列读取版本标记并在解析载荷之前比较。直接解析
-    会在深层字段抛 ``ValidationError``，应用内没有处理器，最终变成一次普通产品
-    读取的 500 错误。版本标记只需一次比较就能给出同样的结论，并说明该行写入时
-    使用的合同版本。
-
-    遇到不匹配时拒绝读取，不做兼容分发：旧结构如何处置是一次性的数据决策，
-    不是常驻代码路径。
-    """
-
-    def __init__(self, *, run_id: str, stored: Optional[str]) -> None:
-        super().__init__(
-            f"delivery bundle for run {run_id} was stored under contract "
-            f"{stored or 'unknown'}, which {DELIVERY_BUNDLE_CONTRACT_VERSION} supersedes"
-        )
-        self.run_id = run_id
-        self.stored = stored
 
 
 class BundleCommitKind(str, Enum):
@@ -223,24 +199,6 @@ class DeliveryBundleStore:
         if self._failure_injector:
             self._failure_injector(boundary.value)
 
-    def bundle_from_row(
-        self,
-        *,
-        run_id: str,
-        contract_stamp: Optional[str],
-        payload: Any,
-    ) -> DeliveryBundle:
-        """先比较已存版本标记，再解析载荷；所有读取路径都经过这里。
-
-        每次返回已存载荷的读取都走这个入口，新增消费方不会漏掉版本比较。标记与
-        载荷在同一行，因此不增加查询次数，也不需要改 schema：
-        ``delivery_bundles_v2.manifest`` 本身就是独立的 JSONB 列。
-        """
-
-        if contract_stamp != DELIVERY_BUNDLE_CONTRACT_VERSION:
-            raise BundleContractSuperseded(run_id=run_id, stored=contract_stamp)
-        return DeliveryBundle.model_validate(payload)
-
     async def get_current(self, run_id: str) -> Optional[DeliveryBundle]:
         async with get_db_session() as session:
             return await self.get_current_in_session(session, run_id)
@@ -253,8 +211,7 @@ class DeliveryBundleStore:
         result = await session.execute(
             text(
                 """
-                SELECT bundle.manifest->>'contract_version' AS contract_stamp,
-                       bundle.bundle
+                SELECT bundle.bundle
                 FROM delivery_bundle_heads_v2 AS head
                 JOIN delivery_bundles_v2 AS bundle
                   ON bundle.bundle_id = head.current_bundle_id
@@ -266,11 +223,7 @@ class DeliveryBundleStore:
         row = result.mappings().first()
         if row is None or row["bundle"] is None:
             return None
-        return self.bundle_from_row(
-            run_id=run_id,
-            contract_stamp=row["contract_stamp"],
-            payload=_json_loads(row["bundle"]),
-        )
+        return DeliveryBundle.model_validate(_json_loads(row["bundle"]))
 
     async def get_current_bundle_id(self, run_id: str) -> Optional[str]:
         """只读取当前 Bundle 身份，不加载也不校验载荷。
@@ -298,8 +251,7 @@ class DeliveryBundleStore:
             result = await session.execute(
                 text(
                     """
-                    SELECT commit.inverse_patch, commit.metadata, bundle.bundle,
-                           bundle.manifest->>'contract_version' AS contract_stamp
+                    SELECT commit.inverse_patch, commit.metadata, bundle.bundle
                     FROM delivery_bundle_commits_v2 AS commit
                     JOIN delivery_bundles_v2 AS bundle
                       ON bundle.bundle_id = commit.result_bundle_id
@@ -314,11 +266,7 @@ class DeliveryBundleStore:
                 return None
             return BundleCommitRecord(
                 result=BundleCommitResult(
-                    bundle=self.bundle_from_row(
-                        run_id=run_id,
-                        contract_stamp=row["contract_stamp"],
-                        payload=_json_loads(row["bundle"]),
-                    ),
+                    bundle=DeliveryBundle.model_validate(_json_loads(row["bundle"])),
                     idempotent_replay=True,
                 ),
                 inverse_patch=_json_loads(row["inverse_patch"]),
@@ -663,7 +611,7 @@ class DeliveryBundleStore:
         result = await session.execute(
             text(
                 """
-                SELECT run_id, manifest->>'contract_version' AS contract_stamp, bundle
+                SELECT bundle
                 FROM delivery_bundles_v2
                 WHERE bundle_id = :bundle_id
                 """
@@ -673,11 +621,7 @@ class DeliveryBundleStore:
         row = result.mappings().first()
         if row is None or row["bundle"] is None:
             return None
-        return self.bundle_from_row(
-            run_id=str(row["run_id"]),
-            contract_stamp=row["contract_stamp"],
-            payload=_json_loads(row["bundle"]),
-        )
+        return DeliveryBundle.model_validate(_json_loads(row["bundle"]))
 
     # 标识符白名单：不把用户输入拼进 SQL 标识符。
     _SNAPSHOT_TABLE_COLUMNS: Dict[str, str] = {

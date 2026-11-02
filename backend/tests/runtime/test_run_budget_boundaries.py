@@ -117,7 +117,7 @@ def test_sealing_a_draft_produces_a_budget_alongside_the_deadline():
     update = seal_minimum_delivery_draft(_State())
     assert update["run_deadline"] is not None
     assert update["run_budget"] is not None
-    assert update["run_budget"].policy_version == "run_budget.v1"
+    assert "policy_version" not in update["run_budget"].model_dump()
 
 
 def test_a_replay_of_a_sealed_draft_never_refills_the_budget():

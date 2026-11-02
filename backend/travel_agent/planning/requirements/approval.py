@@ -58,7 +58,7 @@ def _build_plan_gate_payload(state: TravelAgentState) -> Dict[str, Any]:
         "plan_text": text,
     }
     digest = hashlib.sha256(json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    payload["approval_token"] = f"plan_gate.approval.v1:{digest}"
+    payload["approval_token"] = f"plan_gate.approval:{digest}"
     return payload
 
 

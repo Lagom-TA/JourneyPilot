@@ -121,7 +121,7 @@ for (const mobile of [false, true]) {
         { type: 'chat_start', session_id: 'understanding-e2e', run_id: 'trip-understanding', message_id: 'assistant-1', route_decision: routeDecision },
         { type: 'tool_start', run_id: 'trip-understanding', message_id: 'assistant-1', agent_name: '理解旅行需求', tool_name: 'free_web_search', tool_call_id: 'tool-1', args_summary: '青岛 11 月 海边', category: 'web', ts_ms: 1 },
         { type: 'tool_result', run_id: 'trip-understanding', message_id: 'assistant-1', agent_name: '理解旅行需求', tool_name: 'free_web_search', tool_call_id: 'tool-1', summary: '青岛 11 月适合海边散步', status: 'success', result_preview: [], duration_ms: 800, ts_ms: 2 },
-        { type: 'understanding_questions', run_id: 'trip-understanding', gate: 'understanding', run_status: 'awaiting_input', payload: understandingPayload(1, 'understanding_gate.approval.v1:e2e-1') },
+        { type: 'understanding_questions', run_id: 'trip-understanding', gate: 'understanding', run_status: 'awaiting_input', payload: understandingPayload(1, 'understanding_gate.approval:e2e-1') },
         { type: 'chat_complete', run_id: 'trip-understanding', run_status: 'awaiting_input' },
       ],
     });
@@ -148,7 +148,7 @@ for (const mobile of [false, true]) {
     const decision = harness.chatRequests.at(-1)!.gate_decision;
     expect(decision.answers[0].text).toContain('慢慢逛，留出休息时间');
     expect(decision.answers[0].text).toContain('第二天想睡到自然醒');
-    expect(decision.approval_token).toBe('understanding_gate.approval.v1:e2e-1');
+    expect(decision.approval_token).toBe('understanding_gate.approval:e2e-1');
     // 回答后方案在同一工作台出现，理解卡退场，没有首页闪回。
     await expect(page.getByTestId('trip-brief-plan-gate')).toBeVisible();
     await expect(page.getByTestId('trip-brief-plan-gate')).toContainText('研究和安排设想');
@@ -170,7 +170,7 @@ test('刷新后工作台恢复待答问题，回答继续同一运行', async ({
       asked = true;
       return [
         { type: 'chat_start', session_id: 'understanding-e2e', run_id: 'trip-understanding', message_id: 'assistant-1', route_decision: routeDecision },
-        { type: 'understanding_questions', run_id: 'trip-understanding', gate: 'understanding', run_status: 'awaiting_input', payload: understandingPayload(1, 'understanding_gate.approval.v1:e2e-1') },
+        { type: 'understanding_questions', run_id: 'trip-understanding', gate: 'understanding', run_status: 'awaiting_input', payload: understandingPayload(1, 'understanding_gate.approval:e2e-1') },
         { type: 'chat_complete', run_id: 'trip-understanding', run_status: 'awaiting_input' },
       ];
     },
@@ -189,7 +189,7 @@ test('刷新后工作台恢复待答问题，回答继续同一运行', async ({
         run_id: 'trip-understanding', status: 'awaiting_input', current_node: 'understanding_gate',
         completed_nodes: [], latest_state_summary: {}, pending_user_choice: {
           type: 'understanding_questions', gate: 'understanding',
-          payload: understandingPayload(1, 'understanding_gate.approval.v1:e2e-1'),
+          payload: understandingPayload(1, 'understanding_gate.approval:e2e-1'),
         }, trace_event_count: 0, pending_monitor_trigger_count: 0, last_error: null, updated_at: '2026-11-01',
       },
       events: [],

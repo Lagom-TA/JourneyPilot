@@ -15,7 +15,6 @@ from travel_agent.planning.research.candidates import (
     VisitCandidate,
 )
 from travel_agent.planning.research.evidence import FactAssertion, FieldProvenance, SourceRecord
-from travel_agent.planning.research.packets import RESEARCH_PACKET_CONTRACT_VERSION
 from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.tools.knowledge_results import knowledge_tool_documents
 
@@ -150,8 +149,7 @@ def parse_research_packet_output(
     )
     _sanitize_packet_nested_models(payload)
     _bind_authoritative_packet_metadata(payload, authoritative_packet_metadata)
-    # 契约版本与 worker 域由服务端绑定，不采用模型自报值。
-    payload["contract_version"] = RESEARCH_PACKET_CONTRACT_VERSION
+    # worker 域由服务端绑定，不采用模型自报值。
     payload["worker_kind"] = expected_worker
     _bind_authoritative_candidate_constraints(
         payload,

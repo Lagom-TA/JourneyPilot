@@ -37,9 +37,6 @@ from .pg_tools import PgToolRunner, resolve_runner
 
 logger = logging.getLogger(__name__)
 
-#: manifest 结构版本。restore 用它判断「这个备份这份代码认不认识」。
-BACKUP_FORMAT_VERSION = 1
-
 DUMP_FILENAME = "database.dump"
 MANIFEST_FILENAME = "manifest.json"
 FINGERPRINT_FILENAME = "schema_fingerprint.json"
@@ -240,7 +237,6 @@ def create_backup(
         )
 
     manifest: dict[str, Any] = {
-        "backup_format_version": BACKUP_FORMAT_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "kind": kind,
         "label": label,
@@ -308,12 +304,6 @@ def verify_backup(directory: Path) -> list[str]:
         manifest = load_manifest(directory)
     except BackupError as exc:
         return [str(exc)]
-
-    version = manifest.get("backup_format_version")
-    if version != BACKUP_FORMAT_VERSION:
-        problems.append(
-            f"备份格式版本 {version} 与这份代码支持的 {BACKUP_FORMAT_VERSION} 不同"
-        )
 
     for item in manifest.get("files", []):
         path = directory / item["name"]

@@ -13,7 +13,6 @@ class PublicBundleManifestResponse(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    contract_version: str
     run_id: str
     generation_id: str
     bundle_id: str
@@ -28,7 +27,6 @@ class PublicBundleWorkspaceResponse(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    contract_version: str
     run_id: str
     generation_id: str
     workspace_revision: int

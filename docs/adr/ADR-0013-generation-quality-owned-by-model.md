@@ -20,5 +20,5 @@
 ## 影响
 
 - 主链路为：`scope_clarifier` → `requirements_preparer` → `research_plan_generator` → `minimum_delivery_draft_builder` → `destination_geo_resolver` → `trip_summary_card_brief` → `planner` → `plan_gate` → `weather_context_builder` → `dispatcher` → `destination_researcher` / `transport_researcher` / `accommodation_researcher` → `itinerary_planner` → `budget_estimate` → `delivery_projector` → `delivery_finalizer`。另有控制节点 `intent_amendment_router` 处理计划修改与追加要求的路由。Dispatcher 收齐 worker packet 后调用 `assembly.py` 的 `build_candidate_catalog` 构建 `RecommendationCatalog`，模型直接读取 catalog 组合行程。
-- 契约版本：`ResearchPacket` v7、`RecommendationCatalog` v8、`TripWorkspaceV2` v12、`DeliveryBundle` v11。旧持久化产物不可加载，不提供兼容读取层。
+- 持久化产物按当前结构读取；结构不匹配的旧产物不加载，不提供兼容读取层。
 - 测试策略转为精准行为测试：每个测试回答「给定输入，关键输出是什么」，不再维护门控断言、哈希或快照对照、修复循环矩阵。

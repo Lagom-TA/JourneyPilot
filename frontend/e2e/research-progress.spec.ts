@@ -44,7 +44,7 @@ for (const width of [320, 390, 1440]) {
     // 串行研究：目的地进行中时，交通与住宿还没有开始。
     await expect(page.getByTestId('research-agent-transport')).toHaveCount(0);
     await expect(page.getByTestId('research-agent-stay')).toHaveCount(0);
-    await expect(panel).not.toContainText('contract_version');
+    await expect(panel).not.toContainText('research_packet_id');
     await expect(destination.getByRole('button')).toHaveCount(1);
     await expect(destination.getByRole('button')).toHaveAttribute('aria-expanded', 'true');
     const query = destination.getByTestId('research-query');
@@ -224,14 +224,14 @@ test('workspace 激活摘要、真实计数、安全详情与后续事件保持�
   const machineInput = page.getByTestId('research-query').filter({ hasText: '机器载荷输入已过滤' });
   await machineInput.locator('summary').click();
   await expect(machineInput.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
-  for (const leaked of ['success', 'provider', 'tavily_search', 'contract_version']) {
+  for (const leaked of ['success', 'provider', 'tavily_search', 'sanitized_result']) {
     await expect(machineInput).not.toContainText(leaked);
   }
 
   const contractInput = page.getByTestId('research-query').filter({ hasText: '合同字段输入已过滤' });
   await contractInput.locator('summary').click();
   await expect(contractInput.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
-  for (const leaked of ['contract_version', 'research_packet_id', 'packet-1']) {
+  for (const leaked of ['research_packet_id', 'packet-1', 'tool_call_id']) {
     await expect(contractInput).not.toContainText(leaked);
   }
 

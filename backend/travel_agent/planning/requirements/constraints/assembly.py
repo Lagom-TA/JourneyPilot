@@ -164,7 +164,6 @@ async def build_constraint_pack(
             "user_id": _get(state, "user_id") or "",
             "session_id": _get(state, "session_id") or "",
             "built_at": now,
-            "pack_version": "v2",
             "source_layers": source_layers,
             "constraint_context_status": context_status,
             "missing_source_layers": list(missing_source_layers or []),

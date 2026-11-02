@@ -428,7 +428,7 @@ class OpenAICompatibleLLM(BaseLLM):
             stream_usage=self.capabilities.supports_stream_usage,
             use_responses_api=use_responses_api,
             streaming=self._responses_streaming,
-            use_legacy_max_tokens=self.capabilities.token_limit_field == "max_tokens",
+            send_max_tokens=self.capabilities.token_limit_field == "max_tokens",
             store=False if use_responses_api else None,
             # Responses 有原生推理与输出字段；Chat 方言的 extra_body 会在 SDK
             # 序列化后覆盖它们。

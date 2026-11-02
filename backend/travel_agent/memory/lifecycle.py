@@ -101,7 +101,6 @@ class MemoryRetentionPolicy:
 
     def to_metadata(self, category: str, importance: int) -> Dict[str, Any]:
         return {
-            "policy_version": "memory_retention_policy_v1",
             "category": category,
             "ttl_days": self.ttl_days_for(category, importance),
             "importance": importance,

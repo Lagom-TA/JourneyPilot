@@ -18,9 +18,6 @@ from travel_agent.schema import StrictModel
 
 from travel_agent.integrations.weather_contracts import WeatherTimeWindow
 
-WEATHER_SNAPSHOT_CONTRACT_VERSION = "journeypilot.weather_context_snapshot.v2"
-
-
 class WeatherSensitivity(StrictModel):
     exposure: Literal["indoor", "outdoor", "mixed"]
     rain_sensitivity: Literal["none", "low", "high"]
@@ -260,9 +257,6 @@ class WeatherAdjustmentProposal(StrictModel):
 
 
 class WeatherContextSnapshot(StrictModel):
-    contract_version: Literal[WEATHER_SNAPSHOT_CONTRACT_VERSION] = (
-        WEATHER_SNAPSHOT_CONTRACT_VERSION
-    )
     weather_data_revision: int = Field(ge=0)
     trip_start_date: Date
     trip_end_date: Date

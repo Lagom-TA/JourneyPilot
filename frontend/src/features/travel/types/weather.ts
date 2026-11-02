@@ -1,6 +1,5 @@
 import { type TransportMode, type EntityRef } from "./entities";
 import { type PublicDeliveryBundle } from "./delivery";
-export const WEATHER_SNAPSHOT_CONTRACT_VERSION = 'journeypilot.weather_context_snapshot.v2' as const;
 export type WeatherAdjustmentOperation = {
     type: 'reschedule_item';
     item_id: string;
@@ -44,7 +43,6 @@ export interface WeatherAdjustmentProposal {
     time_delta_minutes: number | null;
 }
 export interface WeatherContextSnapshot {
-    contract_version: typeof WEATHER_SNAPSHOT_CONTRACT_VERSION;
     weather_data_revision: number;
     trip_start_date: string;
     trip_end_date: string;

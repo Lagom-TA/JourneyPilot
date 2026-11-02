@@ -4,7 +4,6 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query, Response
 from travel_agent.bootstrap.registry import get_components
 from travel_agent.storage.delivery_bundle_store import (
-    BundleContractSuperseded,
     BundleIdempotencyMismatch,
     BundleRevisionConflict,
     BundleRevisionVector,
@@ -26,7 +25,6 @@ from travel_agent.planning.delivery.map_projection import project_stored_bundle_
 from travel_agent.api.run_authorization import _get_authorized_run
 from travel_agent.api.run_errors import (
     raise_workspace_mutation_conflict,
-    raise_bundle_contract_superseded,
     raise_run_use_case_error,
 )
 from travel_agent.planning.weather.bundle_refresh import refresh_delivery_weather
@@ -58,11 +56,7 @@ async def read_current_delivery_bundle(
 ) -> PublicDeliveryBundleResponse:
     components = get_components()
     await _get_authorized_run(run_id, session_id=session_id)
-    try:
-        bundle = await components.delivery_bundle_store.get_current(run_id)
-    except BundleContractSuperseded as exc:
-        raise_bundle_contract_superseded(exc)
-        raise AssertionError("unreachable")
+    bundle = await components.delivery_bundle_store.get_current(run_id)
     if bundle is None:
         raise HTTPException(status_code=404, detail="当前 Delivery Bundle 不存在")
     response_bundle = bundle.model_copy(
@@ -95,9 +89,6 @@ async def refresh_current_bundle_weather(
         )
     except DeliveryBundleMissing as error:
         raise_run_use_case_error(error)
-    except BundleContractSuperseded as exc:
-        raise_bundle_contract_superseded(exc)
-        raise AssertionError("unreachable")
     except BundleRevisionConflict:
         await raise_workspace_mutation_conflict(
             run_id, components.delivery_bundle_store
@@ -141,9 +132,6 @@ async def export_current_trip_report_pdf(
             ),
             bundle_store=components.delivery_bundle_store,
         )
-    except BundleContractSuperseded as exc:
-        raise_bundle_contract_superseded(exc)
-        raise AssertionError("unreachable")
     except (DeliveryBundleMissing, ReportRevisionChanged) as error:
         raise_run_use_case_error(error)
     except ReportOutOfDateError as exc:

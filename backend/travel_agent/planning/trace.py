@@ -7,8 +7,6 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-TRACE_SCHEMA_VERSION = "workflow_trace_event.v1"
-
 
 NODE_PHASES: Dict[str, str] = {
     "scope_clarifier": "scope",
@@ -54,7 +52,7 @@ def compact_summary(value: Any, *, limit: int = 180) -> str:
 
 @dataclass
 class WorkflowTraceEvent:
-    """供 SSE 与调试时间线使用的轻量 v1 追踪事件。"""
+    """供 SSE 与调试时间线使用的轻量追踪事件。"""
 
     run_id: str
     sequence: int
@@ -62,7 +60,6 @@ class WorkflowTraceEvent:
     phase: str
     status: str
     event_id: str = field(default_factory=lambda: f"tr_{uuid.uuid4().hex[:12]}")
-    schema_version: str = TRACE_SCHEMA_VERSION
     input_summary: Optional[str] = None
     output_summary: Optional[str] = None
     route_decision: Optional[str] = None
@@ -74,7 +71,6 @@ class WorkflowTraceEvent:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "schema_version": self.schema_version,
             "event_id": self.event_id,
             "run_id": self.run_id,
             "sequence": self.sequence,

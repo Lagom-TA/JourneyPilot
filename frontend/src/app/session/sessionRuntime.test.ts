@@ -9,8 +9,7 @@ import { createStreamFrameBatch } from '../../features/chat/model/streamFrameBat
 import { createDeliveryProtocol } from '../../features/travel/model/deliveryProtocol';
 import type { Message } from '../../features/chat/types/messages';
 import type { UsageUpdateEvent } from '../../features/chat/types/cost';
-import { DELIVERY_BUNDLE_CONTRACT_VERSION, type PublicDeliveryBundle } from '../../features/travel/types/delivery';
-import { TRIP_WORKSPACE_CONTRACT_VERSION } from '../../features/travel/types/workspace';
+import { type PublicDeliveryBundle } from '../../features/travel/types/delivery';
 
 const message = (id: string, content = id): Message => ({ id, role: 'assistant', content, displayContent: content, timestamp: new Date('2026-10-25T08:00:00Z') });
 const stateFor = (id: string): AppState => ({ ...initialState, currentSessionId: id, currentMessages: [message(id)], currentTripRunId: `run-${id}`, currentTripRunStatus: 'running', isStreaming: true });
@@ -18,8 +17,8 @@ const usage: UsageUpdateEvent = { type: 'usage_update', run_id: 'run-A', call_id
 const deliveryBundle = (revision = 1): PublicDeliveryBundle => {
   const cost = { known_subtotal_cny: null, estimated_total_cny: null, priced_component_count: 0, budget_relevant_component_count: 0, coverage: 'none' as const, budget_cap_cny: null, budget_status: 'unknown' as const, llm_estimated_total_cny: null };
   return {
-    manifest: { contract_version: DELIVERY_BUNDLE_CONTRACT_VERSION, run_id: 'run-A', generation_id: 'generation-A', bundle_id: `bundle-${revision}`, workspace_revision: revision, fact_data_revision: revision, weather_data_revision: revision, created_at: '2026-10-25T08:00:00Z' },
-    workspace: { contract_version: TRIP_WORKSPACE_CONTRACT_VERSION, run_id: 'run-A', generation_id: 'generation-A', workspace_revision: revision,
+    manifest: { run_id: 'run-A', generation_id: 'generation-A', bundle_id: `bundle-${revision}`, workspace_revision: revision, fact_data_revision: revision, weather_data_revision: revision, created_at: '2026-10-25T08:00:00Z' },
+    workspace: { run_id: 'run-A', generation_id: 'generation-A', workspace_revision: revision,
       itinerary: { itinerary_id: 'itinerary-A', title: '离线旅行交付', destination_ids: [], duration_days: 1, day_plans: [], visit_stops: [], dining_stops: [], lodging_stays: [], transport_legs: [], custom_blocks: [], cost_summary: cost, highlights: [], important_notes: [], unresolved: [] },
       selection_slots: [], weather_proposal_decisions: [], weather_adjustments: [] },
     report_projection: { source_workspace_revision: revision, source_fact_data_revision: revision, source_weather_data_revision: revision, status: 'ready',

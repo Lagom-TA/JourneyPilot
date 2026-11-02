@@ -12,7 +12,6 @@ import pytest
 
 from travel_agent.storage.maintenance import migrate
 from travel_agent.storage.maintenance.backup import (
-    BACKUP_FORMAT_VERSION,
     DUMP_FILENAME,
     MANIFEST_FILENAME,
     create_backup,
@@ -57,7 +56,7 @@ def test_backup_is_created_and_verified(temp_database, settings, scratch_dir):
         )
 
     manifest = result.manifest
-    assert manifest["backup_format_version"] == BACKUP_FORMAT_VERSION
+    assert "backup_format_version" not in manifest
     assert manifest["migration_revision"] == migrate.revision_line()[-1]
     assert manifest["row_counts"]["user_profiles"] == 1
     assert manifest["total_business_rows"] >= 2

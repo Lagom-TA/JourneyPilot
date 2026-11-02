@@ -214,7 +214,6 @@ async def durable_delivery(resources):
         workspace_revision=0,
         fact_data_revision=0,
         weather_data_revision=0,
-        contract_versions={},
         content_hashes={},
         created_at=datetime.now(timezone.utc),
     )

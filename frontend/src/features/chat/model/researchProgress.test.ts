@@ -7,7 +7,7 @@ import { describeToolStep } from "./toolDisplay";
 const step = (agentName: string, extra: Partial<ThinkingStep> = {}): ThinkingStep => ({ id: agentName, agentName, content: '', stepName: '', timestamp: new Date(), ...extra });
 describe('public research activity', () => {
     it('blocks old JSON records even after a natural-language prefix', () => {
-        expect(publicProgressText('正在按顺序安排调研任务{"contract_version":"journeypilot.research_packet.v5"}')).toBe('');
+        expect(publicProgressText('正在按顺序安排调研任务{"research_packet_id":"packet-1"}')).toBe('');
         expect(publicProgressText('```json\n{"candidates":[]}')).toBe('');
         expect(publicProgressText('找到 1 个结果')).toBe('找到 1 个结果');
     });
