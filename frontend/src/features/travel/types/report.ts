@@ -111,7 +111,6 @@ export interface TripReportProjection {
             citation_ids: string[];
         }>;
         highlights: string[];
-        important_notes: string[];
         unresolved: string[];
     } | null;
     citations: PublicCitationProjection[];

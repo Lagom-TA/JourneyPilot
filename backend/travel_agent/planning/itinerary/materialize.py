@@ -7,7 +7,6 @@ from travel_agent.planning.itinerary.mutation_contracts import CompositionMutati
 from travel_agent.planning.requirements.place_names import CONTROLLED_DESTINATION_ANCHOR_PREFIX, controlled_public_place_name
 from travel_agent.planning.itinerary.day_themes import derive_day_theme
 from travel_agent.planning.research.reference_service_contracts import ProviderReferenceService
-from travel_agent.planning.delivery.reference_service_presentation import reference_service_note
 from travel_agent.planning.transport_semantics import count_service_transfers
 from travel_agent.planning.itinerary.highlights import derive_trip_highlights
 from travel_agent.planning.costs.coverage import (
@@ -149,36 +148,6 @@ def _authored_transport_leg(
         route_status="ready",
         lineage=_authored_lineage(),
     )
-
-
-def _reference_service_notes(
-    reference_services: list[ProviderReferenceService],
-    *,
-    transport_legs: list[TransportLeg],
-    day_plans: list[DayPlan],
-) -> list[str]:
-
-    if not reference_services:
-        return []
-    long_distance_ids = {
-        leg.transport_leg_id
-        for leg in transport_legs
-        if leg.transport_class == "long_distance"
-    }
-    dates_with_long_distance = {
-        day.date
-        for day in day_plans
-        if any(
-            entry.entity_type == EntityType.TRANSPORT_LEG
-            and entry.entity_id in long_distance_ids
-            for entry in day.timeline
-        )
-    }
-    return [
-        reference_service_note(service)
-        for service in reference_services
-        if service.requested_date not in dates_with_long_distance
-    ]
 
 
 def materialize_trip_workspace(
@@ -732,9 +701,6 @@ def materialize_trip_workspace(
             dining=dining,
             lodging=lodging,
             transport_legs=transport,
-        ),
-        important_notes=_reference_service_notes(
-            reference_services or [], transport_legs=transport, day_plans=day_plans
         ),
     )
     return TripWorkspace(

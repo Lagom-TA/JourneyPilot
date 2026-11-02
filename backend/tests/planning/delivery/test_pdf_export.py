@@ -33,7 +33,6 @@ def _bundle():
                 ]
             )
         ],
-        important_notes=["不应进入正文的提醒"],
         unresolved=[],
     )
     itinerary = SimpleNamespace(
@@ -84,4 +83,3 @@ def test_pdf_contains_trip_content_without_noise_sections():
     assert "其它合格选择" not in text
     assert "出发前事项" not in text
     assert "数据说明" not in text
-    assert "不应进入正文的提醒" not in text

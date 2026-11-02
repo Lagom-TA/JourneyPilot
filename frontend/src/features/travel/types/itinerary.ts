@@ -123,7 +123,6 @@ export interface PublicStructuredItinerary {
     custom_blocks: PublicCustomBlock[];
     cost_summary: CostCoverageSummary;
     highlights: string[];
-    important_notes: string[];
     unresolved: string[];
 }
 export interface SelectionOption {

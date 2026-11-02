@@ -233,7 +233,6 @@ class StructuredItinerary(StrictModel):
     custom_blocks: List[CustomBlock] = Field(default_factory=list)
     cost_summary: CostCoverageSummary = Field(default_factory=CostCoverageSummary.empty)
     highlights: List[str] = Field(default_factory=list)
-    important_notes: List[str] = Field(default_factory=list)
     unresolved: List[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
