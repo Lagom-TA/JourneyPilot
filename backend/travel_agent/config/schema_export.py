@@ -3,7 +3,9 @@
 字段表由生成器维护：CI 跑一次生成器并要求 git diff 为空。手写的字段表会在改
 默认值后过期，而过期的文档仍然显得可信。
 
-分工：字段表、环境变量表、默认值、取值范围自动生成；快速开始与解释性文档手写。
+JSON Schema 描述的是 ``config.yaml`` 的形态（而不是 ``Settings`` 的内部字段名），
+所以可以直接用来校验用户的配置文件。字段表、环境变量表、默认值、取值范围自动
+生成；快速开始与解释性文档手写。
 """
 
 from __future__ import annotations
@@ -22,7 +24,40 @@ GENERATED_HEADER = (
 
 
 def json_schema() -> Dict[str, Any]:
-    return Settings.model_json_schema(mode="validation")
+    """``config.yaml`` 形态的 JSON Schema。
+
+    ``Settings`` 把 MCP 配置放在 ``mcp_servers`` 字段里，但 ``config.yaml`` 只
+    接受 ``mcp.servers``（见 ``loader.build_settings``：这条路径是合并语义）。
+    这里把生成结果映射成 YAML 真正接受的形状，并清掉 description 里的 Markdown
+    记号——JSON Schema 会被编辑器和校验器直接展示，反引号和粗体只会变成噪音。
+    """
+
+    schema = Settings.model_json_schema(mode="validation")
+    properties = schema.get("properties", {})
+    mcp_servers = properties.pop("mcp_servers", None)
+    if mcp_servers is not None:
+        properties["mcp"] = {
+            "additionalProperties": False,
+            "properties": {"servers": mcp_servers},
+            "title": "Mcp",
+            "type": "object",
+        }
+    _strip_markdown(schema)
+    return schema
+
+
+def _strip_markdown(value: Any) -> None:
+    """递归去掉 description 里的 Markdown 记号（``**`` 与反引号）。"""
+
+    if isinstance(value, dict):
+        description = value.get("description")
+        if isinstance(description, str):
+            value["description"] = description.replace("**", "").replace("`", "")
+        for item in value.values():
+            _strip_markdown(item)
+    elif isinstance(value, list):
+        for item in value:
+            _strip_markdown(item)
 
 
 def _type_name(annotation: Any) -> str:
