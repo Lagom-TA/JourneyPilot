@@ -64,11 +64,11 @@ async def queue_supplement(
         )
     notify(run_id)
     return SupplementOutcome(
-        command, impact_scope, supplement_message(command, impact_scope)
+        command, impact_scope, _supplement_message(command, impact_scope)
     )
 
 
-def supplement_message(command: RunCommand, impact_scope: list[str]) -> str:
+def _supplement_message(command: RunCommand, impact_scope: list[str]) -> str:
     """回执上那句话。命令已经有结论时，说结论，不说「即将分析」。"""
 
     if command.status is RunCommandStatus.CONSUMED:

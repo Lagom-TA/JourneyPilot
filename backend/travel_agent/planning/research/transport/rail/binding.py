@@ -5,10 +5,6 @@ import logging
 from typing import Any, Dict, List, Mapping, Optional
 
 from travel_agent.integrations.place_identity import stable_place_id_12306
-from travel_agent.planning.research.output.options import (
-    has_required_provider_route_selection_options,
-)
-from travel_agent.planning.research.output.transcript import authoritative_tool_messages
 from travel_agent.planning.research.provider_contracts import (
     ProviderEvidenceScope,
     ProviderRouteLegScope,
@@ -610,24 +606,13 @@ async def discover_domestic_rail_route(
     *,
     state: TravelAgentState,
     messages: List[Dict[str, Any]],
-    required_transport_classes: List[str] | None,
-    connector_gaps: List[Dict[str, Any]] | None,
     tool_context: Dict[str, Any],
     authoritative_tool_results: List[Dict[str, Any]],
     reference_services: List[ProviderReferenceService],
     required_route_scopes: List[ProviderEvidenceScope],
     now: Optional[datetime.datetime] = None,
-) -> bool:
+) -> None:
     """为所有指定的国内城际铁路腿确定班次。"""
-    classes = required_transport_classes or []
-
-    if connector_gaps or (classes and "long_distance" not in classes):
-        logger.info(
-            "[transport_researcher] skip domestic rail: connector_gaps=%s classes=%s",
-            bool(connector_gaps),
-            classes,
-        )
-        return False
     identity = state.controlled_trip_identity or {}
     if not isinstance(identity, Mapping):
         logger.warning(
@@ -703,16 +688,9 @@ async def discover_domestic_rail_route(
             bound_arrivals=bound_arrivals,
         ):
             bound_leg_roles.append(scoped_leg.leg_role)
-    ready = has_required_provider_route_selection_options(
-        authoritative_tool_messages(authoritative_tool_results),
-        required_transport_classes=required_transport_classes,
-        required_route_scopes=required_route_scopes,
-    )
     logger.info(
-        "[transport_researcher] domestic rail legs bound %d/%d (roles=%s ready=%s)",
+        "[transport_researcher] domestic rail legs bound %d/%d (roles=%s)",
         len(bound_leg_roles),
         len(scoped_legs),
         bound_leg_roles,
-        ready,
     )
-    return ready

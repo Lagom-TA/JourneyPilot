@@ -265,7 +265,6 @@ class DeliveryBundle(StrictModel):
                 for item in self.workspace.itinerary.custom_blocks
             }
         )
-        workspace_entity_refs = real_workspace_entity_refs
         projection_fact_ids_by_ref: Dict[tuple[EntityType, str], set[str]] = {
             **{
                 (EntityType.VISIT_STOP, item.item_id): set(
@@ -367,7 +366,7 @@ class DeliveryBundle(StrictModel):
                 for day in document.days
                 for block in day.blocks
             }
-            if not report_refs <= workspace_entity_refs:
+            if not report_refs <= real_workspace_entity_refs:
                 raise ValueError(
                     "report projection contains a dangling workspace entity reference"
                 )

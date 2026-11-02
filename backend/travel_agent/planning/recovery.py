@@ -84,14 +84,12 @@ def with_worker_recovery(node, worker):
         try:
             result = await worker(state, config)
             # 先把强类型结果写入日志再返回 Pregel：若 Pregel 在 checkpoint 前
-            # 退出，重放会把同一条更新再次送入 reducer。HITL 部分结果需要新的
-            # 用户输入，不视为完整 packet。
-            if not result.get("pending_user_choice"):
-                for message in result.get("messages", []):
-                    if getattr(message, "id", None) is None:
-                        message.id = str(uuid.uuid4())
-                journal.payload["worker_result"] = deepcopy(result)
-                await journal.commit()
+            # 退出，重放会把同一条更新再次送入 reducer。
+            for message in result.get("messages", []):
+                if getattr(message, "id", None) is None:
+                    message.id = str(uuid.uuid4())
+            journal.payload["worker_result"] = deepcopy(result)
+            await journal.commit()
             return result
         finally:
             current_worker_journal.reset(token)

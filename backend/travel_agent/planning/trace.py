@@ -148,9 +148,6 @@ def summarize_state_update(node: str, state_update: Dict[str, Any]) -> Dict[str,
         )
     if state_update.get("map_projection"):
         parts.append("map_projection=ready")
-    if state_update.get("pending_user_choice"):
-        route_decision = "HALT"
-        parts.append("pending_user_choice=true")
 
     return {
         "output_summary": ", ".join(parts) or "node completed",
