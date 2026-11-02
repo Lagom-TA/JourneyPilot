@@ -46,6 +46,7 @@ check_direct_service() (
   BACKEND_PORT=8001
   FRONTEND_PORT=8080
   FRONTEND_DIR="$temp_dir"
+  export LOG_DIR BACKEND_LOG FRONTEND_LOG BACKEND_PORT FRONTEND_PORT FRONTEND_DIR
   run_in_env() { printf '%s\n' "$temp_dir/service"; }
   backend_is_ready() { [[ -s "$JP_TEST_PID_FILE" ]]; }
   frontend_is_ready() { [[ -s "$JP_TEST_PID_FILE" ]]; }
