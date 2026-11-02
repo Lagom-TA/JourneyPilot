@@ -216,3 +216,21 @@ def test_hand_written_no_fallback_tools_absent_from_fallback_map():
         "「这个工具不接受替身」，_FALLBACK_MAP 缺它的键是承诺的执行面。只改前一半，"
         "声明变成无人执行的空话；只改后一半，降级边失去了声明依据。两边必须同改。"
     )
+
+
+async def test_execute_reports_a_stable_code_instead_of_the_exception_text():
+    registry = ToolRegistry()
+
+    async def exploding_executor(**kwargs: Any) -> Dict[str, Any]:
+        raise RuntimeError("secret upstream detail")
+
+    registry.register(
+        name="exploding",
+        description="always fails",
+        parameters_schema={"type": "object"},
+        executor=exploding_executor,
+        source="local",
+    )
+    result = await registry.execute("exploding")
+    assert result == {"success": False, "error": "tool_internal_error"}
+    assert "secret upstream detail" not in repr(result)

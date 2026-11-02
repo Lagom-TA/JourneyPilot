@@ -9,6 +9,10 @@ from .registry import get_tool_registry
 logger = logging.getLogger(__name__)
 
 
+class ToolAccessUnavailable(RuntimeError):
+    """工具目录读不到。调用方必须显式失败，不能当成“没有工具”继续跑。"""
+
+
 def exclude_tools(
     available: List[Dict[str, Any]],
     excluded: List[str],
@@ -49,9 +53,9 @@ async def get_available_tools(selected_mcp_servers: List[str]) -> List[Dict[str,
             elif tool.get("server_name") in selected:
                 filtered.append(tool)
         return filtered
-    except Exception as e:
-        logger.warning(f"获取工具列表失败: {e}")
-        return []
+    except Exception as exc:
+        logger.exception("获取工具列表失败")
+        raise ToolAccessUnavailable("工具目录暂时不可用") from exc
 
 
 def filter_tools_for_agent(
