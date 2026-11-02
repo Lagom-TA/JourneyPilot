@@ -11,6 +11,10 @@ ENV_SEPARATOR = "__"
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 
+#: 运行时逃生口，不是配置字段：由使用方直接读环境变量，不参与 Settings 覆盖，
+#: 也不出现在 `config env` 的字段清单里。列在这里是为了让严格校验不把它当成拼错。
+_RUNTIME_ONLY_ENV = frozenset({"JOURNEYPILOT_PDF_FONT_PATH"})
+
 
 class EnvOverrideError(ValueError):
     """一个环境变量指向了不存在的字段，或者它的值不是那个字段的类型。"""
@@ -114,6 +118,8 @@ def apply_env_overrides(settings: BaseModel) -> List[Tuple[str, str]]:
 
     for name, raw in sorted(os.environ.items()):
         if not name.startswith(ENV_PREFIX):
+            continue
+        if name in _RUNTIME_ONLY_ENV:
             continue
         path = known.get(name)
         if path is None:

@@ -132,6 +132,15 @@ def test_a_misspelled_env_variable_is_an_error_not_a_no_op(monkeypatch):
     assert "JOURNEYPILOT_DATABSE__PORT" in str(exc.value)
 
 
+def test_runtime_only_env_variable_is_not_a_config_override(monkeypatch):
+    """PDF 字体路径是运行时逃生口，不是配置字段；严格校验不能把它当成拼错。"""
+
+    monkeypatch.setenv("JOURNEYPILOT_PDF_FONT_PATH", "/tmp/font.ttc")
+    settings = Settings()
+    applied = dict(apply_env_overrides(settings))
+    assert "JOURNEYPILOT_PDF_FONT_PATH" not in applied.values()
+
+
 def test_a_wrong_typed_env_value_is_an_error_not_a_fallback(monkeypatch):
     monkeypatch.setenv("JOURNEYPILOT_DATABASE__PORT", "not-a-number")
     with pytest.raises(EnvOverrideError) as exc:
