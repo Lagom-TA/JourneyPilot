@@ -536,7 +536,7 @@ backend_is_ready() {
   local base_url="http://127.0.0.1:${port}"
   curl --silent --fail "${base_url}/api/health/ready" >/dev/null 2>&1 || return 1
   curl --silent --fail "${base_url}/openapi.json" 2>/dev/null \
-    | grep -q '"title":"JourneyPilot TripOps API"'
+    | grep -q '"title":"JourneyPilot API"'
 }
 
 frontend_is_ready() {

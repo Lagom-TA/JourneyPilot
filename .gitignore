@@ -109,13 +109,5 @@ chromedriver/
 .claude/settings.local.json
 .claude/worktrees/
 
-# 本地审查草稿，不是发布文档
-/docs/review/
-/docs/design/
+# 本地审查输出，不随仓库发布
 /docs/audits/
-/docs/pending.md
-/dev_docs/
-/harness_review_*.md
-/harness_handoff_*.md
-/e2e_review_*.md
-/landing_page/resource/

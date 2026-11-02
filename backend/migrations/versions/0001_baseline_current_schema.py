@@ -410,7 +410,7 @@ def upgrade() -> None:
         """
     )
 
-    # ---------------------------------------------------------------- TripOps durable run
+    # ------------------------------------------------------------ TripRun durable 记录
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS trip_runs (
