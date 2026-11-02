@@ -9,21 +9,29 @@
 - 日志文本、prompt 全文、私有函数和旧路径不单独建测试，除非它们本身是公开或持久化合同。
 - 类型检查、lint、构建和生成物检查交给各自工具，不用 pytest 读取源码再实现一遍。
 
-目录分工：
+## 目录分工
 
 - `api/`、`bootstrap/`、`cli/`：HTTP/SSE、应用生命周期和命令行行为。
 - `planning/`、`conversation/`、`memory/`、`knowledge/`：各领域的实际输入、输出和状态变化。
 - `runtime/`、`llm/`、`tools/`、`config/`：执行控制、模型适配、工具调用与配置行为。
-- `fixtures/`：共享的业务数据构造和外部依赖替身；测试与实验脚本直接导入这些定义，不从其他测试模块取夹具。
+- `integrations/`：供应商适配与外部响应路径；不访问真实网络。
+- `fixtures/`、`support/`：共享的业务数据构造、外部依赖替身与辅助函数；测试与实验脚本直接导入这些定义。
 - `db/`：真实 PostgreSQL 的事务、约束、租约、迁移、备份和恢复；`db/test_offline_sql.py` 只生成并检查 SQL，不连接数据库。
 - 根 `conftest.py` 保留临时数据库隔离：仅使用随机命名的 `jp_test_*` 数据库，同步切换环境、配置和引擎，并在删库前关闭引擎。
 
-自动 CI 运行非数据库测试和 `db/test_offline_sql.py`。数据库迁移与集成测试可在 Actions 的 `PR` 工作流中手动触发，或在本地数据库就绪后执行：
+## 运行
+
+在仓库根目录执行（`UV_PROJECT_ENVIRONMENT` 指向根目录 `.venv`）：
 
 ```bash
+export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+
+# 非数据库测试 + 离线迁移 SQL（CI 自动运行）
 uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignore=backend/tests/db -q
 uv run --project backend pytest -c backend/pyproject.toml backend/tests/db/test_offline_sql.py -q
+
+# 数据库集成测试（需要 PostgreSQL；CI 的 PR 工作流可手动触发）
 JP_TESTS_REQUIRE_POSTGRES=1 uv run --project backend pytest -c backend/pyproject.toml backend/tests/db -q
 ```
 
-数据库不可用时的 skip 只说明环境缺失，不能作为数据库契约已通过的证据。
+数据库不可用时的 skip 只说明环境缺失，不能作为数据库契约已通过的证据。CI 覆盖范围与手动 job 见 [仓库根 README](../../README.md#development)。

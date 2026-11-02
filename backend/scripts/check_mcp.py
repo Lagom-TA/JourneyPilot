@@ -1,3 +1,15 @@
+"""探测已配置的 MCP server 是否可用。
+
+用法：
+
+    python backend/scripts/check_mcp.py
+
+按当前 ``config.yaml`` 初始化 MCPManager，逐个打印 server 的 status、工具数与类型；
+启用的 server 不健康时返回 1，全部健康返回 0。``MCP_CHECK_TIMEOUT_SECONDS`` 可覆盖
+整体探测超时（默认 45 秒）。脚本不访问数据库、不调用模型，只在本机孵化 MCP 进程。
+诊断数据库/架构问题请用 ``journeypilot doctor``。
+"""
+
 from __future__ import annotations
 
 import asyncio

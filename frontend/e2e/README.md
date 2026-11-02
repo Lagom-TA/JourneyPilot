@@ -1,12 +1,16 @@
 # 端到端测试
 
-先启动一套 JourneyPilot，再用 `JOURNEYPILOT_APP_URL` 指向入口。Compose 的网页入口通常是 `http://127.0.0.1:8001`；`run.sh` 的前端入口是 `http://127.0.0.1:8080`。命令在 `frontend/` 下执行。
+先把一套 JourneyPilot 跑起来，再用 `JOURNEYPILOT_APP_URL` 指向入口。Compose 的网页入口通常是 `http://127.0.0.1:8001`；`run.sh` 的前端入口是 `http://127.0.0.1:8080`。命令在 `frontend/` 下执行（Node 版本见 `frontend/.nvmrc`）。
 
 ```bash
 JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 npm run test:e2e
 ```
 
-`test:e2e` 是裸 `playwright test`，会执行所有未 skip 的用例。带 `JP_*` 开关的用例未开启时显示 skipped，skipped 不代表已验证。
+`test:e2e` 是裸 `playwright test`，会执行所有未 skip 的用例。带 `JP_*` 开关的用例未开启时显示 skipped；skipped 不代表已验证。默认 e2e 不在 CI 中；只想检查 spec 能否编译/列出时：
+
+```bash
+npx playwright test --list
+```
 
 ## 用例与前置条件
 
@@ -22,7 +26,7 @@ JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 npm run test:e2e
 | `research-progress.spec.ts` | `JP_COMPONENT_E2E=1` | 可打开页面 | 无；使用本地组件样例 |
 | `workspace.spec.ts` | `JP_WRITE_E2E=1` | 完整应用 | 真实资料库与风格写入；只删除本次唯一命名的测试数据 |
 | `live-planning.spec.ts` | `JP_LIVE_E2E=1` | 完整应用与可用模型 | 调用真实付费模型，并保留新建旅行 |
-| `delivery-readonly.spec.ts` | `JP_READ_RUN_ID=<run_id>` | 已完成的测试行程 | 只读；不写入、不撤销 |
+| `delivery-readonly.spec.ts` | `JP_READ_RUN_ID=<run_id>`（兼容 `JP_EDIT_RUN_ID`） | 已完成的测试行程 | 只读；不写入、不撤销 |
 
 ## 常用命令
 
@@ -50,7 +54,7 @@ JP_READ_RUN_ID=trip_xxx JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
 
 ## 证据与失败处理
 
-- 截图、JSON 几何数据与附件写入 `test-results/e2e-evidence/`；该目录与 Playwright 的 trace、video、junit 报告都在 `test-results/` 下，已被 Git 忽略。
+- 截图、JSON 几何数据与附件写入 `test-results/e2e-evidence/`；trace、video、junit 报告也在 `test-results/` 下，均已被 Git 忽略。
 - 完整规划用例保存 SSE、Run/Bundle 快照、截图、PDF 与浏览器诊断；原始材料可能包含真实请求和服务结果，只能留在忽略目录。
 - 模型输出不确定，外部服务也可能失败。完整规划用例最长等待 15 分钟；失败时先区分应用故障、上游失败与选择器错误，不通过放宽交付要求或改用模拟响应让用例通过。
 - 冒烟测试允许 readiness 返回 503，以检查降级响应合同；判断部署可用仍须确认 `/api/health/ready` 返回 200 且 `status=ready`。
