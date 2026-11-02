@@ -141,10 +141,24 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: "false"
       - name: The scanner still catches a planted key
-        # 白名单收窄之后必须证明它没有把扫描器关掉：种一个 AWS 示例密钥，扫描器
-        # 必须报出来。这个值是 AWS 官方文档里的公开示例，不是真凭据。
+        # 白名单收窄之后必须证明它没有把扫描器关掉：种一个合成密钥，扫描器必须
+        # 报出来。
+        #
+        # 刻意**不用** AWS 文档里的示例 key（以 EXAMPLE 结尾的那个）：gitleaks 的
+        # 默认规则自带 `.+EXAMPLE$` 的 allowlist，会放行它 —— 拿它做自检得到的
+        # 是一个永远「通过」的假门禁。
+        #
+        # 这个值是随机合成的，只满足 aws-access-token 规则的形状（4 位前缀 + 16 位
+        # `[A-Z2-7]`，熵 >= 3），不对应任何真实凭据。
+        #
+        # **运行期拼接，不写死字面量**：gitleaks-action 扫的是 git 历史
+        # （`git log -p --full-history --all`），写死的字面量会让扫描器在仓库
+        # 历史里命中这个测试夹具本身 —— 自检反而变成一次真实的「泄露」。
+        # 相邻字符串字面量在 shell 里直接拼接，所以源码里不存在连续可匹配串；
+        # 前缀也拆开，这样 `git log -p | grep <前缀>` 为空，可以机械地复核。
         run: |
-          printf 'aws_access_key_id = "AKIAIOSFODNN7EXAMPLE"\n' > planted-secret.txt
+          key="AK""IA""EYKH2CMZ5ML24UMD"
+          printf 'aws_access_key_id = "%s"\n' "$key" > planted-secret.txt
           if docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 \
                detect --source /repo --no-git --config /repo/.gitleaks.toml --redact; then
             echo "::error::gitleaks did not flag a planted AWS key — the allowlist is too broad"
