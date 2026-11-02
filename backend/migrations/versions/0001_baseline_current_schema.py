@@ -6,8 +6,7 @@ Create Date: 2026-08-17
 
 ## 这条迁移是什么
 
-业务结构的完整定义，一次建成。它是「历史被折叠成的一个点」，不是历史的第一步 ——
-产品没有用户，没有任何库需要从更早的形状逐级爬上来。
+业务结构的完整定义，空库一次建成。没有更早的形状需要逐级升级。
 
 ## 门禁
 
@@ -113,10 +112,11 @@ def upgrade() -> None:
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS user_profiles (
-            user_id       TEXT PRIMARY KEY,
+            user_id       TEXT PRIMARY KEY DEFAULT 'local',
             display_name  TEXT NOT NULL DEFAULT '',
             preferences   JSONB NOT NULL DEFAULT '{}',
             auto_portrait TEXT NOT NULL DEFAULT '',
+            revision      INTEGER NOT NULL DEFAULT 0,
             created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
@@ -129,12 +129,11 @@ def upgrade() -> None:
         """
         CREATE TABLE IF NOT EXISTS chat_sessions (
             session_id           TEXT PRIMARY KEY,
-            user_id              TEXT NOT NULL,
+            user_id              TEXT NOT NULL DEFAULT 'local',
             title                TEXT NOT NULL,
             status               TEXT NOT NULL DEFAULT 'active',
             mode                 TEXT NOT NULL DEFAULT 'fast',
             last_message_preview TEXT NOT NULL DEFAULT '',
-            pending_clarify      JSONB,
             anchor_summary       JSONB DEFAULT NULL,
             compression_count    INTEGER NOT NULL DEFAULT 0,
             compaction_boundary_event_order INTEGER NOT NULL DEFAULT 0,
@@ -157,6 +156,7 @@ def upgrade() -> None:
             session_id   TEXT NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
             event_order  INTEGER NOT NULL,
             event_type   TEXT NOT NULL,
+            turn_id      TEXT NOT NULL,
             payload      JSONB NOT NULL,
             created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
@@ -168,14 +168,22 @@ def upgrade() -> None:
         ON chat_session_events (session_id, event_order)
         """
     )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_chat_events_session_turn_order
+        ON chat_session_events (session_id, turn_id, event_order)
+        """
+    )
 
     # ---------------------------------------------------------------- 记忆系统
     op.execute(
         f"""
         CREATE TABLE IF NOT EXISTS memory_facts (
             fact_id            BIGSERIAL PRIMARY KEY,
-            user_id            TEXT NOT NULL,
+            user_id            TEXT NOT NULL DEFAULT 'local',
             session_id         TEXT NOT NULL DEFAULT '',
+            source_message_id  TEXT NOT NULL DEFAULT '',
+            fact_digest        TEXT,
             content            TEXT NOT NULL,
             category           TEXT NOT NULL DEFAULT 'preference',
             importance         SMALLINT NOT NULL DEFAULT 5,
@@ -212,6 +220,13 @@ def upgrade() -> None:
         WHERE expires_at IS NOT NULL
         """
     )
+    op.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_facts_digest
+        ON memory_facts (user_id, fact_digest)
+        WHERE fact_digest IS NOT NULL
+        """
+    )
     # IVFFlat 在空表上建索引是合法的（列表数偏大只影响召回质量，不影响正确性），
     # 所以这里**不吞异常**：建不出来说明 pgvector 有真问题，那时该让迁移失败。
     op.execute(
@@ -226,7 +241,7 @@ def upgrade() -> None:
         f"""
         CREATE TABLE IF NOT EXISTS memory_entities (
             entity_id   BIGSERIAL PRIMARY KEY,
-            user_id     TEXT NOT NULL,
+            user_id     TEXT NOT NULL DEFAULT 'local',
             name        TEXT NOT NULL,
             entity_type TEXT NOT NULL,
             properties  JSONB NOT NULL DEFAULT '{{}}',
@@ -250,7 +265,7 @@ def upgrade() -> None:
         """
         CREATE TABLE IF NOT EXISTS memory_relations (
             relation_id    BIGSERIAL PRIMARY KEY,
-            user_id        TEXT NOT NULL,
+            user_id        TEXT NOT NULL DEFAULT 'local',
             source_id      BIGINT NOT NULL REFERENCES memory_entities(entity_id) ON DELETE CASCADE,
             target_id      BIGINT NOT NULL REFERENCES memory_entities(entity_id) ON DELETE CASCADE,
             relation       TEXT NOT NULL,
@@ -283,7 +298,7 @@ def upgrade() -> None:
         """
         CREATE TABLE IF NOT EXISTS memory_forgetting_audits (
             request_id               TEXT PRIMARY KEY,
-            user_id                  TEXT NOT NULL,
+            user_id                  TEXT NOT NULL DEFAULT 'local',
             scope                    TEXT NOT NULL,
             category                 TEXT,
             fact_id                  TEXT,
@@ -358,7 +373,7 @@ def upgrade() -> None:
         """
         CREATE TABLE IF NOT EXISTS travel_presets (
             id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::TEXT,
-            user_id TEXT NOT NULL,
+            user_id TEXT NOT NULL DEFAULT 'local',
             name TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '',
             icon TEXT DEFAULT 'compass',
@@ -398,7 +413,7 @@ def upgrade() -> None:
         CREATE TABLE IF NOT EXISTS trip_runs (
             run_id               TEXT PRIMARY KEY,
             session_id           TEXT NOT NULL DEFAULT '',
-            user_id              TEXT NOT NULL DEFAULT 'anonymous',
+            user_id              TEXT NOT NULL DEFAULT 'local',
             mode                 TEXT NOT NULL DEFAULT 'deep',
             status               TEXT NOT NULL DEFAULT 'created',
             request_message_id   TEXT NOT NULL DEFAULT '',
@@ -482,6 +497,116 @@ def upgrade() -> None:
     )
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_trip_run_events_type ON trip_run_events (event_type)"
+    )
+
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS trip_run_executions (
+            run_id                  TEXT PRIMARY KEY REFERENCES trip_runs(run_id) ON DELETE CASCADE,
+            executor_id             TEXT,
+            lease_token             TEXT,
+            lease_acquired_at       TIMESTAMPTZ,
+            lease_expires_at        TIMESTAMPTZ,
+            heartbeat_at            TIMESTAMPTZ,
+            process_started_at      TIMESTAMPTZ,
+            last_safe_checkpoint_id TEXT,
+            recovery_status         TEXT NOT NULL DEFAULT 'idle',
+            recovery_reason         TEXT,
+            updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """
+    )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_trip_run_executions_lease_expires
+        ON trip_run_executions (lease_expires_at)
+        """
+    )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_trip_run_executions_recovery_status
+        ON trip_run_executions (recovery_status)
+        """
+    )
+
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS trip_run_commands (
+            command_id      TEXT PRIMARY KEY,
+            run_id          TEXT NOT NULL REFERENCES trip_runs(run_id) ON DELETE CASCADE,
+            command_type    TEXT NOT NULL,
+            payload         JSONB NOT NULL DEFAULT '{}',
+            request_digest  TEXT NOT NULL,
+            status          TEXT NOT NULL DEFAULT 'pending',
+            claimed_by      TEXT,
+            claimed_at      TIMESTAMPTZ,
+            consumed_at     TIMESTAMPTZ,
+            result          JSONB,
+            error_code      TEXT,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (run_id, request_digest)
+        )
+        """
+    )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_trip_run_commands_pending
+        ON trip_run_commands (run_id, status, created_at)
+        WHERE status = 'pending'
+        """
+    )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_trip_run_commands_open
+        ON trip_run_commands (status, command_type)
+        WHERE status IN ('pending', 'claimed')
+        """
+    )
+
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS background_jobs (
+            job_id            TEXT PRIMARY KEY,
+            job_type          TEXT NOT NULL,
+            dedupe_key        TEXT NOT NULL,
+            payload           JSONB NOT NULL DEFAULT '{}',
+            status            TEXT NOT NULL DEFAULT 'pending',
+            priority          INTEGER NOT NULL DEFAULT 100,
+            attempts          INTEGER NOT NULL DEFAULT 0,
+            max_attempts      INTEGER NOT NULL DEFAULT 5,
+            available_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            lease_owner       TEXT,
+            lease_expires_at  TIMESTAMPTZ,
+            last_error_code   TEXT,
+            last_error_summary TEXT,
+            result            JSONB,
+            created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            completed_at      TIMESTAMPTZ,
+            UNIQUE (job_type, dedupe_key)
+        )
+        """
+    )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_background_jobs_claimable
+        ON background_jobs (priority, created_at)
+        WHERE status IN ('pending', 'retry_wait', 'running')
+        """
+    )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_background_jobs_type_status
+        ON background_jobs (job_type, status, updated_at)
+        """
+    )
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_background_jobs_session
+        ON background_jobs ((payload ->> 'session_id'))
+        WHERE status IN ('pending', 'retry_wait', 'running')
+        """
     )
 
     # ---------------------------------------------------------------- Delivery v2
@@ -654,7 +779,16 @@ def upgrade() -> None:
             input_tokens            INTEGER,
             output_tokens           INTEGER,
             cached_input_tokens     INTEGER,
+            cache_write_input_tokens INTEGER,
             reasoning_output_tokens INTEGER,
+            total_tokens            INTEGER,
+            usage_complete          BOOLEAN NOT NULL DEFAULT FALSE,
+            usage_source            TEXT NOT NULL DEFAULT 'missing',
+            logical_call_id         TEXT,
+            attempt_number          INTEGER NOT NULL DEFAULT 1,
+            request_input_tokens_estimate INTEGER,
+            tool_schema_tokens_estimate INTEGER,
+            finish_reason           TEXT,
             cost_usd                DOUBLE PRECISION,
             estimated               BOOLEAN NOT NULL DEFAULT FALSE,
             start_ts                TIMESTAMPTZ,
@@ -669,6 +803,20 @@ def upgrade() -> None:
     )
     op.execute(
         "CREATE INDEX IF NOT EXISTS idx_run_llm_calls_run_start ON run_llm_calls (run_id, start_ts)"
+    )
+
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS run_worker_journals (
+            run_id TEXT NOT NULL REFERENCES trip_runs(run_id) ON DELETE CASCADE,
+            scope_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            payload_type TEXT NOT NULL,
+            payload BYTEA NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (run_id, scope_id)
+        )
+        """
     )
 
 

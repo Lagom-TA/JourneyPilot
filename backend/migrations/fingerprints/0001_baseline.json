@@ -7,6 +7,153 @@
   "missing_tables": [],
   "schema_contract_version": "journeypilot.db.v1",
   "tables": {
+    "background_jobs": {
+      "columns": [
+        {
+          "default": "0",
+          "generated": null,
+          "name": "attempts",
+          "not_null": true,
+          "type": "integer"
+        },
+        {
+          "default": "now()",
+          "generated": null,
+          "name": "available_at",
+          "not_null": true,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "completed_at",
+          "not_null": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": "now()",
+          "generated": null,
+          "name": "created_at",
+          "not_null": true,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "dedupe_key",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "job_id",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "job_type",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "last_error_code",
+          "not_null": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "last_error_summary",
+          "not_null": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "lease_expires_at",
+          "not_null": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "lease_owner",
+          "not_null": false,
+          "type": "text"
+        },
+        {
+          "default": "5",
+          "generated": null,
+          "name": "max_attempts",
+          "not_null": true,
+          "type": "integer"
+        },
+        {
+          "default": "'{}'::jsonb",
+          "generated": null,
+          "name": "payload",
+          "not_null": true,
+          "type": "jsonb"
+        },
+        {
+          "default": "100",
+          "generated": null,
+          "name": "priority",
+          "not_null": true,
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "result",
+          "not_null": false,
+          "type": "jsonb"
+        },
+        {
+          "default": "'pending'::text",
+          "generated": null,
+          "name": "status",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": "now()",
+          "generated": null,
+          "name": "updated_at",
+          "not_null": true,
+          "type": "timestamp with time zone"
+        }
+      ],
+      "constraints": [
+        {
+          "definition": "PRIMARY KEY (job_id)",
+          "type": "p"
+        },
+        {
+          "definition": "UNIQUE (job_type, dedupe_key)",
+          "type": "u"
+        }
+      ],
+      "indexes": [
+        {
+          "definition": "CREATE INDEX idx_background_jobs_claimable ON public.background_jobs USING btree (priority, created_at) WHERE (status = ANY (ARRAY['pending'::text, 'retry_wait'::text, 'running'::text]))",
+          "name": "idx_background_jobs_claimable"
+        },
+        {
+          "definition": "CREATE INDEX idx_background_jobs_session ON public.background_jobs USING btree (((payload ->> 'session_id'::text))) WHERE (status = ANY (ARRAY['pending'::text, 'retry_wait'::text, 'running'::text]))",
+          "name": "idx_background_jobs_session"
+        },
+        {
+          "definition": "CREATE INDEX idx_background_jobs_type_status ON public.background_jobs USING btree (job_type, status, updated_at)",
+          "name": "idx_background_jobs_type_status"
+        }
+      ]
+    },
     "chat_session_events": {
       "columns": [
         {
@@ -50,6 +197,13 @@
           "name": "session_id",
           "not_null": true,
           "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "turn_id",
+          "not_null": true,
+          "type": "text"
         }
       ],
       "constraints": [
@@ -63,6 +217,10 @@
         }
       ],
       "indexes": [
+        {
+          "definition": "CREATE INDEX idx_chat_events_session_turn_order ON public.chat_session_events USING btree (session_id, turn_id, event_order)",
+          "name": "idx_chat_events_session_turn_order"
+        },
         {
           "definition": "CREATE UNIQUE INDEX idx_chat_session_events_order ON public.chat_session_events USING btree (session_id, event_order)",
           "name": "idx_chat_session_events_order"
@@ -123,13 +281,6 @@
         {
           "default": null,
           "generated": null,
-          "name": "pending_clarify",
-          "not_null": false,
-          "type": "jsonb"
-        },
-        {
-          "default": null,
-          "generated": null,
           "name": "session_id",
           "not_null": true,
           "type": "text"
@@ -156,7 +307,7 @@
           "type": "timestamp with time zone"
         },
         {
-          "default": null,
+          "default": "'local'::text",
           "generated": null,
           "name": "user_id",
           "not_null": true,
@@ -669,7 +820,7 @@
           "type": "timestamp with time zone"
         },
         {
-          "default": null,
+          "default": "'local'::text",
           "generated": null,
           "name": "user_id",
           "not_null": true,
@@ -731,6 +882,13 @@
           "type": "timestamp with time zone"
         },
         {
+          "default": null,
+          "generated": null,
+          "name": "fact_digest",
+          "not_null": false,
+          "type": "text"
+        },
+        {
           "default": "nextval('memory_facts_fact_id_seq'::regclass)",
           "generated": null,
           "name": "fact_id",
@@ -766,7 +924,14 @@
           "type": "text"
         },
         {
-          "default": null,
+          "default": "''::text",
+          "generated": null,
+          "name": "source_message_id",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": "'local'::text",
           "generated": null,
           "name": "user_id",
           "not_null": true,
@@ -780,6 +945,10 @@
         }
       ],
       "indexes": [
+        {
+          "definition": "CREATE UNIQUE INDEX idx_memory_facts_digest ON public.memory_facts USING btree (user_id, fact_digest) WHERE (fact_digest IS NOT NULL)",
+          "name": "idx_memory_facts_digest"
+        },
         {
           "definition": "CREATE INDEX idx_memory_facts_embedding ON public.memory_facts USING ivfflat (embedding vector_cosine_ops) WITH (lists='50')",
           "name": "idx_memory_facts_embedding"
@@ -896,7 +1065,7 @@
           "type": "text"
         },
         {
-          "default": null,
+          "default": "'local'::text",
           "generated": null,
           "name": "user_id",
           "not_null": true,
@@ -975,7 +1144,7 @@
           "type": "bigint"
         },
         {
-          "default": null,
+          "default": "'local'::text",
           "generated": null,
           "name": "user_id",
           "not_null": true,
@@ -1071,6 +1240,20 @@
           "type": "text"
         },
         {
+          "default": "1",
+          "generated": null,
+          "name": "attempt_number",
+          "not_null": true,
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "cache_write_input_tokens",
+          "not_null": false,
+          "type": "integer"
+        },
+        {
           "default": null,
           "generated": null,
           "name": "cached_input_tokens",
@@ -1108,6 +1291,13 @@
         {
           "default": null,
           "generated": null,
+          "name": "finish_reason",
+          "not_null": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
           "name": "id",
           "not_null": true,
           "type": "text"
@@ -1125,6 +1315,13 @@
           "name": "latency_ms",
           "not_null": false,
           "type": "double precision"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "logical_call_id",
+          "not_null": false,
+          "type": "text"
         },
         {
           "default": "''::text",
@@ -1171,6 +1368,13 @@
         {
           "default": null,
           "generated": null,
+          "name": "request_input_tokens_estimate",
+          "not_null": false,
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "generated": null,
           "name": "run_id",
           "not_null": true,
           "type": "text"
@@ -1206,9 +1410,37 @@
         {
           "default": null,
           "generated": null,
+          "name": "tool_schema_tokens_estimate",
+          "not_null": false,
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "total_tokens",
+          "not_null": false,
+          "type": "integer"
+        },
+        {
+          "default": null,
+          "generated": null,
           "name": "ttft_ms",
           "not_null": false,
           "type": "double precision"
+        },
+        {
+          "default": "false",
+          "generated": null,
+          "name": "usage_complete",
+          "not_null": true,
+          "type": "boolean"
+        },
+        {
+          "default": "'missing'::text",
+          "generated": null,
+          "name": "usage_source",
+          "not_null": true,
+          "type": "text"
         }
       ],
       "constraints": [
@@ -1227,6 +1459,63 @@
           "name": "idx_run_llm_calls_run_start"
         }
       ]
+    },
+    "run_worker_journals": {
+      "columns": [
+        {
+          "default": null,
+          "generated": null,
+          "name": "payload",
+          "not_null": true,
+          "type": "bytea"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "payload_type",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "run_id",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "scope_id",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": "now()",
+          "generated": null,
+          "name": "updated_at",
+          "not_null": true,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "version",
+          "not_null": true,
+          "type": "integer"
+        }
+      ],
+      "constraints": [
+        {
+          "definition": "FOREIGN KEY (run_id) REFERENCES trip_runs(run_id) ON DELETE CASCADE",
+          "type": "f"
+        },
+        {
+          "definition": "PRIMARY KEY (run_id, scope_id)",
+          "type": "p"
+        }
+      ],
+      "indexes": []
     },
     "tool_execution_audits": {
       "columns": [
@@ -1487,7 +1776,7 @@
           "type": "integer"
         },
         {
-          "default": null,
+          "default": "'local'::text",
           "generated": null,
           "name": "user_id",
           "not_null": true,
@@ -1508,6 +1797,125 @@
         {
           "definition": "CREATE INDEX idx_travel_presets_user_id ON public.travel_presets USING btree (user_id)",
           "name": "idx_travel_presets_user_id"
+        }
+      ]
+    },
+    "trip_run_commands": {
+      "columns": [
+        {
+          "default": null,
+          "generated": null,
+          "name": "claimed_at",
+          "not_null": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "claimed_by",
+          "not_null": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "command_id",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "command_type",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "consumed_at",
+          "not_null": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": "now()",
+          "generated": null,
+          "name": "created_at",
+          "not_null": true,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "error_code",
+          "not_null": false,
+          "type": "text"
+        },
+        {
+          "default": "'{}'::jsonb",
+          "generated": null,
+          "name": "payload",
+          "not_null": true,
+          "type": "jsonb"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "request_digest",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "result",
+          "not_null": false,
+          "type": "jsonb"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "run_id",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": "'pending'::text",
+          "generated": null,
+          "name": "status",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": "now()",
+          "generated": null,
+          "name": "updated_at",
+          "not_null": true,
+          "type": "timestamp with time zone"
+        }
+      ],
+      "constraints": [
+        {
+          "definition": "FOREIGN KEY (run_id) REFERENCES trip_runs(run_id) ON DELETE CASCADE",
+          "type": "f"
+        },
+        {
+          "definition": "PRIMARY KEY (command_id)",
+          "type": "p"
+        },
+        {
+          "definition": "UNIQUE (run_id, request_digest)",
+          "type": "u"
+        }
+      ],
+      "indexes": [
+        {
+          "definition": "CREATE INDEX idx_trip_run_commands_open ON public.trip_run_commands USING btree (status, command_type) WHERE (status = ANY (ARRAY['pending'::text, 'claimed'::text]))",
+          "name": "idx_trip_run_commands_open"
+        },
+        {
+          "definition": "CREATE INDEX idx_trip_run_commands_pending ON public.trip_run_commands USING btree (run_id, status, created_at) WHERE (status = 'pending'::text)",
+          "name": "idx_trip_run_commands_pending"
         }
       ]
     },
@@ -1578,6 +1986,107 @@
         {
           "definition": "CREATE INDEX idx_trip_run_events_type ON public.trip_run_events USING btree (event_type)",
           "name": "idx_trip_run_events_type"
+        }
+      ]
+    },
+    "trip_run_executions": {
+      "columns": [
+        {
+          "default": null,
+          "generated": null,
+          "name": "executor_id",
+          "not_null": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "heartbeat_at",
+          "not_null": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "last_safe_checkpoint_id",
+          "not_null": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "lease_acquired_at",
+          "not_null": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "lease_expires_at",
+          "not_null": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "lease_token",
+          "not_null": false,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "process_started_at",
+          "not_null": false,
+          "type": "timestamp with time zone"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "recovery_reason",
+          "not_null": false,
+          "type": "text"
+        },
+        {
+          "default": "'idle'::text",
+          "generated": null,
+          "name": "recovery_status",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": null,
+          "generated": null,
+          "name": "run_id",
+          "not_null": true,
+          "type": "text"
+        },
+        {
+          "default": "now()",
+          "generated": null,
+          "name": "updated_at",
+          "not_null": true,
+          "type": "timestamp with time zone"
+        }
+      ],
+      "constraints": [
+        {
+          "definition": "FOREIGN KEY (run_id) REFERENCES trip_runs(run_id) ON DELETE CASCADE",
+          "type": "f"
+        },
+        {
+          "definition": "PRIMARY KEY (run_id)",
+          "type": "p"
+        }
+      ],
+      "indexes": [
+        {
+          "definition": "CREATE INDEX idx_trip_run_executions_lease_expires ON public.trip_run_executions USING btree (lease_expires_at)",
+          "name": "idx_trip_run_executions_lease_expires"
+        },
+        {
+          "definition": "CREATE INDEX idx_trip_run_executions_recovery_status ON public.trip_run_executions USING btree (recovery_status)",
+          "name": "idx_trip_run_executions_recovery_status"
         }
       ]
     },
@@ -1828,7 +2337,7 @@
           "type": "timestamp with time zone"
         },
         {
-          "default": "'anonymous'::text",
+          "default": "'local'::text",
           "generated": null,
           "name": "user_id",
           "not_null": true,
@@ -1937,6 +2446,13 @@
           "type": "jsonb"
         },
         {
+          "default": "0",
+          "generated": null,
+          "name": "revision",
+          "not_null": true,
+          "type": "integer"
+        },
+        {
           "default": "now()",
           "generated": null,
           "name": "updated_at",
@@ -1944,7 +2460,7 @@
           "type": "timestamp with time zone"
         },
         {
-          "default": null,
+          "default": "'local'::text",
           "generated": null,
           "name": "user_id",
           "not_null": true,

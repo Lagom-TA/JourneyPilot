@@ -443,7 +443,7 @@ def _call_from_row(row: Dict[str, Any]) -> LLMCostCall:
         cache_write_input_tokens=row.get("cache_write_input_tokens", None),
         total_tokens=row.get("total_tokens", None),
         usage_complete=row.get("usage_complete", False),
-        usage_source=row.get("usage_source", "legacy"),
+        usage_source=row.get("usage_source", "missing"),
         logical_call_id=row.get("logical_call_id", None),
         attempt_number=row.get("attempt_number", 1),
         request_input_tokens_estimate=row.get("request_input_tokens_estimate", None),

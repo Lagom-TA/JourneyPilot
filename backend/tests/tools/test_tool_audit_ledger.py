@@ -137,7 +137,7 @@ async def test_orphaned_run_id_does_not_conflict(audit_store) -> None:
     """4. 旧行 run_id 为 None、新 envelope 带 run_id：**不抛**。
 
     ``tool_execution_audits.run_id`` 是 ``ON DELETE SET NULL``
-    （``migrations/versions/0001_baseline_current_schema.py:593``），所以父 run 被删
+    （``migrations/versions/0001_baseline_current_schema.py:718``），所以父 run 被删
     之后旧行的 run_id 就是 NULL，而重新到达的 envelope 还带着它自己的 run_id。这是
     这张表的正常状态，不是内容冲突 —— 把 run_id 放进身份元组会在这里抛假冲突。
     """
