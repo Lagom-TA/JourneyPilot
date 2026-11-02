@@ -4,6 +4,7 @@ import { getCurrentDeliveryBundle } from '../../features/travel/api/delivery';
 import { PresenceFrame } from '../../components/ui/PresenceSurface';
 import { useApp } from '../state/AppContext';
 import { useCurrentBundleWeatherRefresh } from '../session/useCurrentBundleWeatherRefresh';
+import { useSessionManager } from '../session/useSessionManager';
 import { isPublicDeliveryBundle } from '../../features/travel/types/delivery';
 import { ConversationThread } from '../../features/chat/components/ConversationThread';
 import { PageSkeleton } from '../components/PageSkeleton';
@@ -19,6 +20,7 @@ const directHandoff: Variants = {
 
 export const TripWorkspaceShell: React.FC = () => {
   const { state, dispatch, currentStateRef } = useApp();
+  const { openSession } = useSessionManager();
   const reducedMotion = useReducedMotion();
   const retryCurrentBundle = React.useCallback(async () => {
     const runId = state.currentTripRunId;
@@ -56,6 +58,16 @@ export const TripWorkspaceShell: React.FC = () => {
     handoffFocusPendingRef.current = false;
     document.querySelector<HTMLElement>('[data-workspace-handoff-focus]')?.focus({ preventScroll: true });
   }, []);
+  const retrySession = React.useCallback(() => {
+    const error = state.sessionLoadError;
+    if (!error) return;
+    if (error.sessionId) {
+      void openSession(error.sessionId, error.runId ?? undefined);
+    }
+    else {
+      window.location.reload();
+    }
+  }, [openSession, state.sessionLoadError]);
   useCurrentBundleWeatherRefresh(state.deliveryBundle !== null && state.deliverableView !== 'full_report');
 
   if (!state.sessionInitialized) return <PageSkeleton />;
@@ -87,6 +99,31 @@ export const TripWorkspaceShell: React.FC = () => {
           )}
         </AnimatePresence>
       </div>
+
+      {state.sessionLoadError && (
+        <div
+          data-testid="session-load-error"
+          role="alert"
+          aria-atomic="true"
+          className="recovery-notice flex items-center justify-between gap-3 rounded-card border border-stroke bg-panel/95 px-4 py-2.5 text-sm text-ink shadow-lg backdrop-blur"
+        >
+          <span data-testid="session-load-error-message" className="min-w-0 break-words">
+            {state.sessionLoadError.message}
+          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={retrySession}
+              className="min-h-9 rounded-label border border-stroke bg-surface px-3 text-xs font-semibold text-ink hover:bg-accent-soft"
+            >重试</button>
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'CLEAR_SESSION_LOAD_ERROR' })}
+              className="min-h-9 rounded-label px-2 text-xs font-medium text-ink-secondary hover:text-ink"
+            >关闭</button>
+          </div>
+        </div>
+      )}
 
       {/* 恢复提示只做状态提示：脱离文档流覆盖在工作区上方，不占高度、不抢焦点、不拦框外操作。 */}
       {showRecoveryNotice && (

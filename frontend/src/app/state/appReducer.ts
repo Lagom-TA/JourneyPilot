@@ -16,6 +16,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, sidebarCollapsed: action.payload };
         case 'SET_SESSION_ID':
             return { ...state, currentSessionId: action.payload };
+        case 'SET_SESSION_LOAD_ERROR':
+            return { ...state, sessionLoadError: action.payload };
+        case 'CLEAR_SESSION_LOAD_ERROR':
+            return state.sessionLoadError === null ? state : { ...state, sessionLoadError: null };
         case 'SET_CURRENT_TRIP_RUN': {
             const isDifferentRun = action.payload.runId !== state.currentTripRunId;
             return {
@@ -71,6 +75,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             return {
                 ...state,
                 ...action.payload,
+                sessionLoadError: null,
                 deliverableView: 'interactive_itinerary',
                 conversationEpoch: state.conversationEpoch + 1,
             };
@@ -128,6 +133,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                 inputMode: 'normal',
                 isStreaming: false,
                 isSynthesizing: false,
+                sessionLoadError: null,
             };
         case 'SET_SESSIONS':
         case 'REMOVE_SESSION':

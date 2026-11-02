@@ -23,6 +23,12 @@ export interface AppState extends ChatState, TravelState {
     mobileCanvasOpen: boolean;
     activePresetId: string | null;
     activePresetName: string | null;
+    /** 打开会话/历史生成记录失败时的显式错误；不参与会话 runtime 快照。 */
+    sessionLoadError: {
+        sessionId: string | null;
+        runId: string | null;
+        message: string;
+    } | null;
 }
 export type AppAction = ChatAction | TravelAction | {
     type: 'SESSION_INITIALIZED';
@@ -67,6 +73,15 @@ export type AppAction = ChatAction | TravelAction | {
         id: string;
         name: string;
     } | null;
+} | {
+    type: 'SET_SESSION_LOAD_ERROR';
+    payload: {
+        sessionId: string | null;
+        runId: string | null;
+        message: string;
+    };
+} | {
+    type: 'CLEAR_SESSION_LOAD_ERROR';
 } | {
     type: 'CLEAR_CHAT';
 };
