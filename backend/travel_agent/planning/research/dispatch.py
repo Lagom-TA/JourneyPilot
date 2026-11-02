@@ -6,6 +6,11 @@ from typing import Any, Dict, Optional, Set
 from langchain_core.runnables import RunnableConfig
 
 from travel_agent.planning.assignments import strip_round_suffix
+from travel_agent.planning.nodes import NODE_DELIVERY_FINALIZER
+from travel_agent.planning.outcomes import (
+    DeliveryFailureRecord,
+    InternalFailureClass,
+)
 from travel_agent.planning.research.assembly import build_candidate_catalog
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.deadlines import observe_run_deadline
@@ -100,10 +105,21 @@ async def dispatcher_node(
                     "next_agent": "itinerary_planner",
                 }
 
-            return {
+            closeout: Dict[str, Any] = {
                 **deadline_update,
                 "next_agent": "to_check",
             }
+            if state.trip_workspace is None:
+                # 窗口关闭且没有产出可交付的组合：属于内容缺口，不是依赖
+                # 瞬时故障。带着失败记录直连交付定稿，不再让 projector 抛错。
+                closeout["delivery_failure"] = DeliveryFailureRecord(
+                    failure_class=InternalFailureClass.RESEARCH_GAP,
+                    operation="deadline_closeout",
+                    attempts=1,
+                    retry_exhausted=True,
+                    public_message="未能在时限内完成行程组合，请稍后重试。",
+                )
+            return closeout
 
     if not plan or step >= len(plan):
         logger.info("Dispatcher: 计划已完成，路由到交付投影")
@@ -147,6 +163,9 @@ async def dispatcher_node(
 
 def route_after_dispatcher(state: TravelAgentState) -> str:
     """LangGraph 条件边：根据 dispatcher 决策返回下一节点。"""
+    if state.delivery_failure is not None:
+        return NODE_DELIVERY_FINALIZER
+
     next_agent = state.next_agent or "to_check"
 
     if next_agent not in _KNOWN_NEXT_AGENTS:

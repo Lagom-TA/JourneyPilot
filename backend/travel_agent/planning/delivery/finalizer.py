@@ -84,6 +84,11 @@ async def delivery_finalizer_node(
         raise ValueError("delivery_bundle_store is required")
     if not isinstance(trip_store, TripRunStore):
         raise ValueError("trip_run_store is required")
+    if state.delivery_failure is not None:
+        # 截止窗口已由 dispatcher 收口：直接按记录失败，不再走组装/投影。
+        record = state.delivery_failure
+        await _mark_failed(trip_store, state, record)
+        raise DeliveryFinalizationError(record, RuntimeError("deadline closeout"))
     try:
         _require_sealed_completion_generation(state)
     except Exception as exc:
