@@ -8,6 +8,7 @@ import { useOverlayDismiss } from '../../hooks/useOverlayDismiss';
 import { BrandMark, BrandWordmark } from '../components/BrandMark';
 import { useSessionManager } from '../session/useSessionManager';
 import { duration, easing } from '../../lib/motion';
+import { getViewHref } from '../../lib/viewHref';
 import React from 'react';
 
 interface MainLayoutProps {
@@ -86,9 +87,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     );
     const className = cn(mobile ? 'mobile-nav-link' : 'desktop-nav-link', active && 'is-active');
     if (view === 'chat') {
-      return <a key={`${mobile ? 'mobile' : 'desktop'}-${view}`} href="/?view=chat" aria-current={active ? 'page' : undefined} className={className} onClick={(event) => { event.preventDefault(); startNewTrip(); }}>{content}</a>;
+      return <a key={`${mobile ? 'mobile' : 'desktop'}-${view}`} href={getViewHref('chat')} aria-current={active ? 'page' : undefined} className={className} onClick={(event) => { event.preventDefault(); startNewTrip(); }}>{content}</a>;
     }
-    return <a key={`${mobile ? 'mobile' : 'desktop'}-${view}`} href={`/?view=${view}`} aria-current={active ? 'page' : undefined} className={className} onClick={(event) => { event.preventDefault(); changeView(view); }}>{content}</a>;
+    return <a key={`${mobile ? 'mobile' : 'desktop'}-${view}`} href={getViewHref(view)} aria-current={active ? 'page' : undefined} className={className} onClick={(event) => { event.preventDefault(); changeView(view); }}>{content}</a>;
   };
 
   const preferenceActive = PREFERENCE_VIEWS.includes(state.activeView);
@@ -96,7 +97,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   return (
     <div className="app-shell paper-grain">
       <header aria-hidden={drawerOpen || undefined} className="app-topbar">
-        <a href="/?view=chat" className="app-brand" aria-label="JourneyPilot 新旅行" onClick={(event) => { event.preventDefault(); startNewTrip(); }}>
+        <a href={getViewHref('chat')} className="app-brand" aria-label="JourneyPilot 新旅行" onClick={(event) => { event.preventDefault(); startNewTrip(); }}>
           <BrandMark size={27} />
           <BrandWordmark height={16} className="app-brand-word" />
         </a>
@@ -125,7 +126,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
             {PREFERENCE_LINKS.map((item) => (
               <a
                 key={item.view}
-                href={`/?view=${item.view}`}
+                href={getViewHref(item.view)}
                 aria-current={state.activeView === item.view ? 'page' : undefined}
                 className={cn(state.activeView === item.view && 'is-active')}
                 onClick={(event) => { event.preventDefault(); changeView(item.view); }}
@@ -175,7 +176,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           {navLink('user-preferences', '偏好与资料', <Compass size={17} aria-hidden />, true)}
           <div className="mobile-preference-links">
             {[...PREFERENCE_LINKS].reverse().map((item) => (
-              <a key={item.view} href={`/?view=${item.view}`} className={cn('mobile-nav-link', state.activeView === item.view && 'is-active')} onClick={(event) => { event.preventDefault(); changeView(item.view); }}>
+              <a key={item.view} href={getViewHref(item.view)} className={cn('mobile-nav-link', state.activeView === item.view && 'is-active')} onClick={(event) => { event.preventDefault(); changeView(item.view); }}>
                 <span>{item.label}</span><ChevronRight size={15} className="ml-auto opacity-45" />
               </a>
             ))}
