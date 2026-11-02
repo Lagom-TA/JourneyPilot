@@ -118,7 +118,7 @@ stop_spinner() {
 
 write_runtime_state() {
   mkdir -p "$(dirname "$PORTS_FILE")"
-  # shell-sourceable + machine-readable for frontend/e2e/support/resolve_ports.py
+  # 纯 key=value 数据文件, 不是 shell 脚本: 读取方一律按行解析, 绝不 source。
   {
     printf 'BACKEND_PID=%s\nFRONTEND_PID=%s\nBACKEND_PORT=%s\nFRONTEND_PORT=%s\n' \
       "$BACKEND_PID" "$FRONTEND_PID" "$BACKEND_PORT" "$FRONTEND_PORT"
@@ -129,12 +129,22 @@ write_runtime_state() {
 }
 
 read_runtime_state() {
-  # Reset before sourcing so missing keys don't retain stale values
+  # Reset before parsing so missing keys don't retain stale values
   BACKEND_PID="" FRONTEND_PID="" BACKEND_PORT="" FRONTEND_PORT="8080"
-  if [[ -f "$PORTS_FILE" ]]; then
-    # shellcheck source=/dev/null
-    source "$PORTS_FILE"
-  fi
+  [[ -f "$PORTS_FILE" ]] || return 0
+
+  # 按行解析而不是 source: 这个文件由上一次 run.sh 写入, 但它在仓库工作区里、
+  # 可被任何进程改写。source 一个可写文件等于把「谁写谁执行」的权限交给它,
+  # 而这里只需要四个数字。
+  local key value
+  while IFS='=' read -r key value; do
+    case "$key" in
+      BACKEND_PID)   BACKEND_PID="$value"   ;;
+      FRONTEND_PID)  FRONTEND_PID="$value"  ;;
+      BACKEND_PORT)  BACKEND_PORT="$value"  ;;
+      FRONTEND_PORT) FRONTEND_PORT="$value" ;;
+    esac
+  done < "$PORTS_FILE"
 }
 
 # start 前置守卫: canonical state 里记录的实例还活着时, 拒绝再拉起第二套。
@@ -427,8 +437,11 @@ require_command() {
   fi
 }
 
+# --frozen: 与 CI 的 `uv sync --frozen` 对齐。没有它, `uv run` 在 pyproject 与
+# uv.lock 不一致时会静默重新解析并写回 lockfile —— 本地跑一次 run.sh 就能把
+# lockfile 改成 CI 不接受的样子, 正是 PR #34 那类漂移的复发通道。
 run_in_env() {
-  (cd "$ROOT_DIR" && uv run --project "$BACKEND_DIR" "$@")
+  (cd "$ROOT_DIR" && uv run --frozen --project "$BACKEND_DIR" "$@")
 }
 
 check_python_env_exists() {
@@ -520,7 +533,8 @@ PY
 
 backend_is_ready() {
   command -v curl >/dev/null 2>&1 || return 1
-  local base_url="http://127.0.0.1:${BACKEND_PORT}"
+  local port="${1:-$BACKEND_PORT}"
+  local base_url="http://127.0.0.1:${port}"
   curl --silent --fail "${base_url}/api/health/ready" >/dev/null 2>&1 || return 1
   curl --silent --fail "${base_url}/openapi.json" 2>/dev/null \
     | grep -q '"title":"JourneyPilot TripOps API"'
@@ -528,7 +542,42 @@ backend_is_ready() {
 
 frontend_is_ready() {
   command -v curl >/dev/null 2>&1 || return 1
-  curl --silent --fail "http://127.0.0.1:${FRONTEND_PORT}/" >/dev/null 2>&1
+  local port="${1:-$FRONTEND_PORT}"
+  curl --silent --fail "http://127.0.0.1:${port}/" >/dev/null 2>&1
+}
+
+# 端口发现: 只读、无副作用, 供 status 在 runtime state 缺失或过期时使用。
+# 刻意内联在 run.sh 里 —— 测试目录不是运行时依赖, 删掉 frontend/e2e/ 不该让
+# run.sh 失效 (PR #36 删掉 resolve_ports.py 后这里曾指向一个不存在的文件)。
+discover_ports() {
+  local key value
+  if [[ -f "$PORTS_FILE" ]]; then
+    while IFS='=' read -r key value; do
+      case "$key" in
+        BACKEND_PORT)  BACKEND_PORT="$value"  ;;
+        FRONTEND_PORT) FRONTEND_PORT="$value" ;;
+      esac
+    done < "$PORTS_FILE"
+  fi
+
+  local port
+  if [[ -z "${BACKEND_PORT:-}" ]] || ! backend_is_ready; then
+    for port in $(seq 8001 8020); do
+      if backend_is_ready "$port"; then
+        BACKEND_PORT="$port"
+        break
+      fi
+    done
+  fi
+
+  if [[ -z "${FRONTEND_PORT:-}" ]] || ! frontend_is_ready; then
+    for port in $(seq 8080 8090); do
+      if frontend_is_ready "$port"; then
+        FRONTEND_PORT="$port"
+        break
+      fi
+    done
+  fi
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -692,17 +741,24 @@ step_mcp() {
 }
 
 step_frontend_deps() {
-  if [[ ! -x "$FRONTEND_DIR/node_modules/.bin/vite" ]]; then
-    start_spinner "npm install..."
+  local vite_bin="$FRONTEND_DIR/node_modules/.bin/vite"
+  local lock_file="$FRONTEND_DIR/package-lock.json"
+  local lock_stamp="$FRONTEND_DIR/node_modules/.package-lock.json"
+
+  # npm ci 而不是 npm install: install 会按当前 npm 版本重写 package-lock.json,
+  # 本地跑一次就可能把 lockfile 改成 CI 的 `npm ci` 不接受的样子 (PR #34 的根因)。
+  # lockfile 比已安装的树新时也重装, 否则改了依赖却还在跑旧 node_modules。
+  if [[ ! -x "$vite_bin" ]] || { [[ -f "$lock_file" ]] && [[ "$lock_file" -nt "$lock_stamp" ]]; }; then
+    start_spinner "npm ci..."
     local npm_out npm_ok=0
-    npm_out=$(npm --prefix "$FRONTEND_DIR" install 2>&1) && npm_ok=1 || true
+    npm_out=$(npm --prefix "$FRONTEND_DIR" ci 2>&1) && npm_ok=1 || true
     stop_spinner
     if (( npm_ok == 0 )); then
-      print_item "frontend" fail "npm install 失败"
+      print_item "frontend" fail "npm ci 失败"
       printf "  ${DIM}│${RESET}      ${DIM}%s${RESET}\n" "$(echo "$npm_out" | tail -5)"
       return 1
     fi
-    print_item "frontend" ok "npm install done"
+    print_item "frontend" ok "npm ci done"
   else
     print_item "frontend" ok "node_modules OK"
   fi
@@ -715,7 +771,7 @@ step_migrate() {
 
   local out status
   start_spinner "journeypilot migrate..."
-  out=$( (cd "$ROOT_DIR" && uv run --project "$BACKEND_DIR" python "$BACKEND_DIR/journeypilot.py" migrate 2>&1) ) && status=0 || status=$?
+  out=$( (cd "$ROOT_DIR" && uv run --frozen --project "$BACKEND_DIR" python "$BACKEND_DIR/journeypilot.py" migrate 2>&1) ) && status=0 || status=$?
   stop_spinner
 
   if (( status != 0 )); then
@@ -738,7 +794,11 @@ step_start_backend() {
 
   (
     cd "$ROOT_DIR"
-    JOURNEYPILOT_SERVER__PORT="$BACKEND_PORT" uv run --project "$BACKEND_DIR" python -c "
+    # reload 刻意保持 False: 配置默认值是 True, 直接透传会让 ./run.sh start 默认
+    # 起一个 reloader 进程 (并递归 watch 整个仓库)。把默认值改成 False 需要重新
+    # 生成 docs/configuration.md 与 docs/config.schema.json, 那是文档 PR 的范围,
+    # 所以这里先保持现状, 见 PR 描述里的后续项。
+    JOURNEYPILOT_SERVER__PORT="$BACKEND_PORT" uv run --frozen --project "$BACKEND_DIR" python -c "
 import sys
 sys.path.insert(0, r'$BACKEND_DIR')
 import uvicorn
@@ -779,7 +839,7 @@ step_start_frontend() {
   (
     cd "$FRONTEND_DIR"
     VITE_PROXY_TARGET="http://127.0.0.1:${BACKEND_PORT}" \
-      npm run dev -- --host 0.0.0.0 --port "$FRONTEND_PORT" --strictPort
+      npm run dev -- --host "${FRONTEND_HOST:-127.0.0.1}" --port "$FRONTEND_PORT" --strictPort
   ) >> "$FRONTEND_LOG" 2>&1 &
   FRONTEND_PID=$!
 
@@ -830,11 +890,13 @@ cmd_start() {
   step_config
   step_infra || exit 1
   step_python || exit 1
+  # 端口先解析再迁移: 端口被占时应该在动数据库之前就被拒绝, 而不是先跑完一次
+  # 迁移再失败, 留下一次无意义的副作用。
+  resolve_backend_port || exit 1
+  resolve_frontend_port || exit 1
   step_migrate || exit 1
   step_mcp
   step_frontend_deps || exit 1
-  resolve_backend_port || exit 1
-  resolve_frontend_port || exit 1
   step_start_backend || exit 1
   step_start_frontend || exit 1
 
@@ -849,7 +911,7 @@ cmd_start() {
   printf "  ${DIM}│${RESET}  %-14s ${GREEN}live${RESET}  ${DIM}前端直连真实后端${RESET}\n" "mode"
   printf "  ${DIM}│${RESET}  %-14s ${DIM}%s${RESET}\n" "ports file" "$PORTS_FILE"
   if [[ "${BACKEND_PORT}" != "8001" ]] || [[ "${FRONTEND_PORT}" != "8080" ]]; then
-    print_item "port note" warn "using non-default ports — e2e: read $PORTS_FILE or frontend/e2e/support/resolve_ports.py"
+    print_item "port note" warn "using non-default ports — read $PORTS_FILE"
   fi
 
   printf "\n  ${GREEN}ready in %ds${RESET}  ${DIM}·  Ctrl+C to stop  ·  ./run.sh logs${RESET}\n\n" "$elapsed"
@@ -957,18 +1019,9 @@ cmd_status() {
   read_runtime_state
 
   # A stale or missing state file must not force status back to the configured
-  # default. Reuse the same health-validated resolver as E2E for read-only
-  # discovery; never use discovery to acquire stop authority over a process.
-  if [[ -z "${BACKEND_PORT:-}" ]] || ! backend_is_ready; then
-    local resolved_ports key value
-    resolved_ports="$(run_in_env python "$ROOT_DIR/frontend/e2e/support/resolve_ports.py" 2>/dev/null || true)"
-    while IFS='=' read -r key value; do
-      case "$key" in
-        BACKEND_PORT) BACKEND_PORT="$value" ;;
-        FRONTEND_PORT) FRONTEND_PORT="$value" ;;
-      esac
-    done <<< "$resolved_ports"
-  fi
+  # default. Reuse the same health-validated discovery as start; never use
+  # discovery to acquire stop authority over a process.
+  discover_ports
 
   # status 是纯只读命令。立即把服务 PID 移入局部变量，避免脚本退出时全局 cleanup
   # 把刚刚检查过的常驻服务当成当前命令的子进程误杀。
@@ -997,25 +1050,42 @@ cmd_status() {
     print_item "frontend" fail "page unavailable   :${FRONTEND_PORT:-8080}"
   fi
 
-  local pg_status rd_status
-  pg_status=$(docker inspect --format='{{.State.Health.Status}}' journeypilot-postgres 2>/dev/null || echo "unknown")
-  rd_status=$(docker inspect --format='{{.State.Health.Status}}' journeypilot-redis   2>/dev/null || echo "unknown")
+  # docker 缺失时不要谎报「container not found」—— 那是「没装 docker」, 不是
+  # 「容器没起」, 两者的下一步动作完全不同。
+  if ! command -v docker >/dev/null 2>&1; then
+    print_item "postgres" warn "docker not installed — compose stack not checked"
+    print_item "redis" warn "docker not installed — compose stack not checked"
+    echo
+    return 0
+  fi
 
-  # Compose host ports from infra/compose.yml (not config.example 5433/6379).
+  local pg_status rd_status pg_port rd_port
+  # docker inspect 在容器不存在时退出码非 0, 而且会先往 stdout 吐一个空行;
+  # pipefail 下直接赋值会让 set -e 提前退出, 所以统一 || true 再兜底。
+  pg_status=$(docker inspect --format='{{.State.Health.Status}}' journeypilot-postgres 2>/dev/null | head -1 || true)
+  rd_status=$(docker inspect --format='{{.State.Health.Status}}' journeypilot-redis    2>/dev/null | head -1 || true)
+  pg_status="${pg_status:-unknown}"
+  rd_status="${rd_status:-unknown}"
+  # 实际发布的宿主端口, 而不是写死 compose 默认值: 端口被改过时 status 不该说谎。
+  pg_port=$(docker port journeypilot-postgres 5432 2>/dev/null | head -1 | sed 's/.*://' || true)
+  rd_port=$(docker port journeypilot-redis    6379 2>/dev/null | head -1 | sed 's/.*://' || true)
+  pg_port="${pg_port:-55433}"
+  rd_port="${rd_port:-16379}"
+
   if [[ "$pg_status" == "healthy" ]]; then
-    print_item "postgres" ok "healthy   :55433 (compose host)"
+    print_item "postgres" ok "healthy   :${pg_port} (compose host)"
   elif [[ "$pg_status" == "unknown" ]]; then
     print_item "postgres" warn "container not found"
   else
-    print_item "postgres" fail "${pg_status}   :55433 (compose host)"
+    print_item "postgres" fail "${pg_status}   :${pg_port} (compose host)"
   fi
 
   if [[ "$rd_status" == "healthy" ]]; then
-    print_item "redis" ok "healthy   :16379 (compose host)"
+    print_item "redis" ok "healthy   :${rd_port} (compose host)"
   elif [[ "$rd_status" == "unknown" ]]; then
     print_item "redis" warn "container not found"
   else
-    print_item "redis" fail "${rd_status}   :16379 (compose host)"
+    print_item "redis" fail "${rd_status}   :${rd_port} (compose host)"
   fi
 
   echo
@@ -1081,6 +1151,25 @@ cmd_check() {
     status=1
   fi
 
+  # config validate: 严格解析。未知的 JOURNEYPILOT_* 变量、类型错误、越界值都会
+  # 在这里被拒 —— 否则它们要等到 start 的后半段才炸, 报错还指向别处。
+  start_spinner "config validate..."
+  local cfg_out cfg_status
+  cfg_out=$( (cd "$ROOT_DIR" && uv run --frozen --project "$BACKEND_DIR" python "$BACKEND_DIR/journeypilot.py" config validate 2>&1) ) \
+    && cfg_status=0 || cfg_status=$?
+  stop_spinner
+
+  if (( cfg_status == 0 )); then
+    print_item "config" ok "config.yaml valid"
+  else
+    print_item "config" fail "config.yaml rejected — see below"
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      printf "  ${DIM}│${RESET}      ${DIM}%s${RESET}\n" "$line"
+    done <<< "$cfg_out"
+    status=1
+  fi
+
   # MCP servers
   start_spinner "checking MCP servers..."
   local mcp_out
@@ -1105,14 +1194,14 @@ cmd_check() {
   # doctor 只读、不加锁，所以 check 可以跑它；migrate 不能挪进 check。
   start_spinner "journeypilot doctor..."
   local doctor_out doctor_status
-  doctor_out=$( (cd "$ROOT_DIR" && uv run --project "$BACKEND_DIR" python "$BACKEND_DIR/journeypilot.py" doctor 2>&1) ) \
+  doctor_out=$( (cd "$ROOT_DIR" && uv run --frozen --project "$BACKEND_DIR" python "$BACKEND_DIR/journeypilot.py" doctor 2>&1) ) \
     && doctor_status=0 || doctor_status=$?
   stop_spinner
 
   if (( doctor_status == 0 )); then
     print_item "database" ok "$(echo "$doctor_out" | sed -n 's/^判定 *\(.*\)$/\1/p' | tail -1)"
   else
-    print_item "database" fail "see below — run: uv run --project backend python backend/journeypilot.py doctor"
+    print_item "database" fail "see below — run: uv run --frozen --project backend python backend/journeypilot.py doctor"
     while IFS= read -r line; do
       [[ -z "$line" ]] && continue
       printf "  ${DIM}│${RESET}      ${DIM}%s${RESET}\n" "$line"
@@ -1135,6 +1224,14 @@ cmd_help() {
   printf "    ${BOLD}logs${RESET}     Tail logs  ${DIM}[backend|frontend]${RESET}\n"
   printf "    ${BOLD}check${RESET}    Validate environment without starting\n"
   printf "    ${BOLD}help${RESET}     Show this help\n"
+  echo
+  printf "  ${CYAN}Environment:${RESET}\n"
+  printf "    ${DIM}JOURNEYPILOT_*${RESET}          config overrides, e.g. ${DIM}JOURNEYPILOT_DATABASE__PORT=55433${RESET}\n"
+  printf "    ${DIM}FRONTEND_HOST${RESET}           vite dev-server bind address  ${DIM}(default 127.0.0.1)${RESET}\n"
+  printf "    ${DIM}JOURNEYPILOT_SERVER__HOST${RESET}  API bind address  ${DIM}(default 127.0.0.1)${RESET}\n"
+  printf "    ${DIM}JOURNEYPILOT_SERVER__RELOAD${RESET}  backend auto-reload  ${DIM}(default false)${RESET}\n"
+  echo
+  printf "  ${DIM}Unknown JOURNEYPILOT_* names are rejected by 'config validate'.${RESET}\n"
   echo
 }
 
