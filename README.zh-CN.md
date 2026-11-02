@@ -18,101 +18,15 @@ JourneyPilot 会查询交通、地点、天气、路线和公开资料，再把�
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-8f6736?style=flat-square)](LICENSE)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-8f6736?style=flat-square)](https://python.org)
-[![LangGraph](https://img.shields.io/badge/LangGraph-0.2%2B-8f6736?style=flat-square)](https://github.com/langchain-ai/langgraph)
-[![MCP](https://img.shields.io/badge/MCP-1.9.4%2B-8f6736?style=flat-square)](https://modelcontextprotocol.io/)
-[![React 18](https://img.shields.io/badge/React-18-8f6736?style=flat-square)](https://react.dev/)
+[![Node 22](https://img.shields.io/badge/node-22-8f6736?style=flat-square)](https://nodejs.org/)
 
 [English](README.md) | **简体中文**
 
-[项目网站](https://imlagom.com/journeypilot/) · [项目介绍](#项目介绍) · [主要功能](#主要功能) · [快速开始](#快速开始) · [工作方式](#工作方式) · [配置](#配置) · [参与开发](#参与开发)
-
 </div>
 
-<p align="center">
-  <img src="docs/assets/workspace.webp" alt="JourneyPilot 行程工作台" width="980">
-</p>
+JourneyPilot 是一个开源的、自托管的 AI 旅行规划工作台。告诉它出行日期、目的地、偏好和限制，它会把查到的信息整理成一份可以继续查看、调整和导出的行程，而不是让结果停留在一段聊天回复里。调研结果、天气、地图、报告和 PDF 始终连在一起：来源保留在它支持的事实旁边。
 
-## 项目介绍
-
-JourneyPilot 是一个开源的 AI 旅行规划工作台。告诉它出行日期、目的地、偏好和限制，它会把查到的信息整理成一份可以继续查看、调整和导出的行程，而不是让结果停留在一段聊天回复里。
-
-行程安排、事实来源、天气、地图、完整报告和 PDF 始终放在同一个工作台里。车次、价格、路程时间和地点信息都会保留对应的来源，出发前可以很方便地逐项确认。
-
-当前产品界面使用简体中文，代码、配置和 API 契约使用英文。
-
-## 主要功能
-
-- **查过再写**：可以接入铁路、航班、地图、天气、汇率和网络搜索服务，用实时查询结果支撑行程。
-- **按天安排清楚**：景点、用餐、住宿和交通都有自己的时间、时长、费用和前后衔接。
-- **所有结果放在一起**：交互行程、来源、地图、报告和 PDF 来自同一份交付结果，修改后也会一起更新。
-- **让天气真正影响行程**：规划时就会考虑天气，并为受影响的日期准备更合适的替代安排。
-- **长任务也能掌控**：开始调研前可以先确认计划；运行中断后可以恢复，也可以取消任务。
-- **记住常用信息**：保存常用出发地和旅行偏好，还能从上传的攻略中检索需要的内容。
-- **桌面与手机都好用**：填写旅行表单或直接描述想法，通过支持键盘的页签切换行程与报告，移动端有独立导航，并适配减少动画偏好。
-
-## 适合怎样使用
-
-- **规划自由行**：把日期、预算和偏好整理成可以核对、调整的出行计划。
-- **处理多重出行限制**：一起考虑交通、天气、开放时间和各站之间的衔接。
-- **学习 Agent 应用开发**：查看 LangGraph 编排、MCP 工具、检索系统与 Web 工作台如何配合。
-
-## 继续了解
-
-| 想看什么 | 从这里开始 |
-|---|---|
-| 旅行规划流程的交互式介绍 | [JourneyPilot 项目网站](https://imlagom.com/journeypilot/) |
-| 产品与工程设计 | [项目手记（撰写中）](https://imlagom.com/blog/journeypilot/) · [文档目录](docs/) |
-| 模型和外部服务配置 | [示例配置](backend/config.example.yaml) · [配置说明](#配置) |
-| 反馈建议或报告问题 | [GitHub Issues](https://github.com/Lagom-TA/JourneyPilot/issues) |
-
-项目网站用于展示产品。生成自己的行程时，需要自行部署工作台，并配置模型和所需的数据服务。应用负责查询和整理旅行信息，订票、预订和付款由相应服务商处理。
-
-## 产品预览
-
-<table>
-<tr>
-<td width="50%" valign="top">
-
-### 一眼看懂每天怎么走
-
-每天的景点、餐饮、住宿和交通都排在清晰的时间线上，打开行程就能看懂当天的节奏。
-
-</td>
-<td width="50%" valign="top">
-
-![按天展示的行程](docs/assets/itinerary-day.webp)
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### 重要信息随时可查
-
-路线、班次、时长、价格、数据提供方和来源链接，会直接放在对应的行程项旁边。
-
-</td>
-<td width="50%" valign="top">
-
-![交通详情与来源](docs/assets/transport-evidence.webp)
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### 随时整理成完整报告
-
-完整报告和工作台里的行程保持一致，也可以导出为服务端生成的 PDF，方便保存或分享。
-
-</td>
-<td width="50%" valign="top">
-
-![JourneyPilot 完整报告](docs/assets/report.webp)
-
-</td>
-</tr>
-</table>
+当前产品界面使用简体中文；代码标识符、配置键、API 契约与命令输出使用英文，文档以中文为主。
 
 ## 快速开始
 
@@ -121,7 +35,7 @@ JourneyPilot 是一个开源的 AI 旅行规划工作台。告诉它出行日期
 - [uv](https://docs.astral.sh/uv/)
 - Docker Desktop，或支持 Compose 的 Docker Engine
 - Python 3.11
-- Node.js 20.19+ 和 npm
+- Node.js 22（最低 20.19）和 npm
 
 ### 启动 JourneyPilot
 
@@ -131,12 +45,12 @@ cd JourneyPilot
 cp backend/config.example.yaml config.yaml
 ```
 
-按 provider preset 填好模型段，API Key 走环境变量。**Key 不要写进 `config.yaml`** ——
-这份文件会被复制、被提交、被贴进 issue：
+按 provider preset 填好模型段，API Key 走环境变量。**Key 不要写进 `config.yaml`** —— 这份文件会被复制、被贴进 issue：
 
 ```bash
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py configure --list              # 可用 preset
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py configure --provider deepseek # 写好模型段
+export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+uv run --project backend python backend/journeypilot.py configure --list              # 可用 preset
+uv run --project backend python backend/journeypilot.py configure --provider deepseek # 写好模型段
 export JOURNEYPILOT_PRIMARY_MODEL__API_KEY="your-api-key"
 export JOURNEYPILOT_FAST_MODEL__API_KEY="your-api-key"
 ```
@@ -147,7 +61,7 @@ export JOURNEYPILOT_FAST_MODEL__API_KEY="your-api-key"
 JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh
 ```
 
-第一次启动会安装前后端依赖，并依次拉起 PostgreSQL、Redis、API 和网页端。默认的本地向量模型会在首次使用时下载。
+第一次启动会安装前后端依赖，通过 Compose 启动 PostgreSQL 和 Redis，执行数据库迁移，并拉起 API 与网页端。默认的本地向量模型会在首次使用时下载。
 
 | 服务 | 地址 |
 |---|---|
@@ -164,34 +78,43 @@ JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh
 ./run.sh stop
 ```
 
-如果一直使用仓库自带的 Compose 服务，可以把 `database.port: 55433` 和 `redis.port: 16379` 写入 `config.yaml`，之后直接运行 `./run.sh`。
+`./run.sh restart` 等价于先 `stop` 再 `start`，**不会**保存环境变量。要么每次重新带上覆盖，要么把 `database.port: 55433` 和 `redis.port: 16379` 写进 `config.yaml`。
+
+> `backend/config.example.yaml` 默认面向本机 PostgreSQL（5433）和 Redis（6379）；仓库自带的 Compose 使用 55433 和 16379。通过上面的环境变量或直接改 `config.yaml` 把两者对齐。
 
 ### 可选增强能力
 
-默认安装带的是核心产品：聊天、规划、PostgreSQL/pgvector、Redis、MCP 工具、PDF 导出与
-基础文档导入。重型增强显式安装；配置选了某个增强但依赖没装时，程序**拒绝启动**，
-而不是等到第一次真正调用才抛 ImportError：
+默认安装带的是核心产品：聊天、规划、PostgreSQL/pgvector、Redis、MCP 工具、PDF 导出与基础文档导入。重型增强显式安装；配置选了某个增强但依赖没装时，程序**拒绝启动**，而不是等到第一次真正调用才抛 ImportError：
 
 ```bash
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend                            # core：只够跑远程 embedding（embedding.provider=openai）
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --group local-embedding    # 本地 Qwen3 ONNX 向量（配置默认档，run.sh 装的就是这个）
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --group cross-encoder      # BGE 重排（rerank.provider=cross_encoder，会拉 torch）
+uv sync --project backend                            # core：只够跑远程 embedding（embedding.provider=openai）
+uv sync --project backend --group local-embedding    # 本地 Qwen3 ONNX 向量（配置默认档，run.sh 装的就是这个）
+uv sync --project backend --group cross-encoder      # BGE 重排（rerank.provider=cross_encoder，会拉 torch）
 ```
 
-默认的 Compose 数据库用官方 `pgvector` 镜像，不编译任何东西。中文分词增强（zhparser）
-是**换一个镜像**，它构建失败不影响默认档：
+默认的 Compose 数据库用官方 `pgvector` 镜像，不编译任何东西。中文分词增强（zhparser）是**换一个镜像**，不是 Compose profile：
 
 ```bash
 docker build -t journeypilot-postgres:pg18-zhparser ./infra/postgres
 POSTGRES_IMAGE=journeypilot-postgres:pg18-zhparser docker compose -f infra/compose.yml up -d
 ```
 
-同一个卷、同一个端口、同一个服务名，切换后要重建词法索引。
-`journeypilot doctor` 会报出当前实际生效的 lexical config。
+`journeypilot doctor` 报告 zhparser 扩展是否安装，但**不报告**已有数据库实际使用哪种 text search 配置：`knowledge_chunks.tsv` 的生成表达式在建表时就固定了。已有数据库要启用中文分词，需要重建数据库（或写一条专门的重建迁移）；只换镜像不够。
+
+### 用 Docker Compose 自托管
+
+Compose 会在 API 镜像内构建前端，并由 API 进程提供静态页面：
+
+```bash
+cp backend/config.example.yaml config.yaml   # 填好模型段；Compose 以只读方式挂载这份配置
+docker compose -f infra/compose.yml up -d --build
+```
+
+网页端和 API 都在 <http://localhost:8001>；PostgreSQL 与 Redis 留在内部网络，宿主端口 55433/16379 留给本机工具。Provider Key 放进 `.env`（Compose 会读取，不会提交）或 shell 环境变量。Compose 镜像默认安装 `local-embedding` 依赖组，可用 `DEPENDENCY_GROUPS` 调整。
 
 ## 工作方式
 
-JourneyPilot 会先判断请求适合快速回答还是完整规划。签证、汇率等简单问题会直接进入快速流程；多日行程会先梳理需求，有必要时追问并在回答后重新分析，再展示研究计划供确认。确认后才开展地点、住宿、交通、路线、天气和公开资料的正式调研，组合行程并生成最终交付。
+JourneyPilot 会先判断请求适合快速回答还是完整规划。简单旅行问题进入快速流程；多日行程会先梳理需求，必要时追问并在回答后重新分析，再展示研究计划供确认。确认后才开展 Provider 调研、组合行程并生成最终交付。
 
 ```mermaid
 flowchart LR
@@ -199,45 +122,44 @@ flowchart LR
     Route -->|简单问题| Fast["快速回答"]
     Route -->|多日行程| Clarify["确认需求与限制"]
     Clarify --> Approve["确认研究计划"]
-    Approve --> Research["并行调研"]
+    Approve --> Research["串行调研"]
     Research --> Places["地点与住宿"]
     Research --> Transport["交通与路线"]
     Research --> Context["天气与网络资料"]
     Places --> Compose["组合行程"]
     Transport --> Compose
     Context --> Compose
-    Compose --> Delivery["交付结果"]
+    Compose --> Delivery["DeliveryBundle"]
     Delivery --> Workspace["行程 · 地图 · 来源 · 报告 · PDF"]
 ```
 
-调研阶段返回的是带明确字段和来源的数据包（ResearchPacket），而不是直接写一篇行程。调度器（dispatcher）收齐结果后构建候选目录，模型直接从目录组合行程。服务端负责结构解析，保证数据可读，并把来源记录保留在它支持的事实旁边；内容质量由模型负责。结果写入一份 `DeliveryBundle`，再生成工作台里的所有内容。
+调研阶段按执行计划逐个运行 Worker，返回的是带明确字段和来源的数据包（ResearchPacket），而不是直接写一篇行程。调度器收齐结果后构建候选目录，模型直接从目录组合行程。服务端负责结构解析，保证数据可读，并把来源记录保留在它支持的事实旁边；内容质量由模型负责。结果写入一份 `DeliveryBundle`，再生成工作台里的所有内容。
 
-JourneyPilot 的后端使用 LangGraph 和 FastAPI，数据保存在 PostgreSQL 和 Redis 中，通过 MCP 工具连接外部服务，并结合混合检索与 React 工作台完成整个规划流程。检查点和持久化的运行记录让耗时较长的任务可以继续恢复。
+后端使用 LangGraph 和 FastAPI，数据保存在 PostgreSQL 和 Redis 中，通过 MCP 工具连接外部服务，并结合混合检索与 React 工作台完成整个规划流程。检查点和持久化的运行记录让耗时较长的任务可以恢复。
 
 ## 配置
 
-JourneyPilot 会先读取内置默认值和 `config.yaml`，环境变量拥有最高优先级。**未知字段会被
-拒绝**而不是忽略：一个拼错的字段名静默什么都不做，是「我改了配置为什么没生效」的唯一来源。
+JourneyPilot 会先读取内置默认值和 `config.yaml`，环境变量拥有最高优先级。**未知字段会被拒绝**而不是忽略：拼错的字段名应该立刻报错，而不是静默不生效。
 
 - [`backend/config.example.yaml`](backend/config.example.yaml) —— 带注释的起点
-- [`docs/configuration.md`](docs/configuration.md) —— 每个字段的类型、默认值、取值范围与
-  环境变量名（由 schema 生成，`journeypilot config docs`）
+- [`docs/configuration.md`](docs/configuration.md) —— 每个字段的类型、默认值、取值范围与环境变量名（由 `journeypilot config docs` 生成）
+- [`docs/config.schema.json`](docs/config.schema.json) —— 描述 `config.yaml` 的 JSON Schema（生成物，可用于编辑器校验）
 
 ```bash
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config show      # 生效值 + 每个值的来源
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config validate  # 只校验，不启动服务
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config env       # 全部合法环境变量名
+export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+uv run --project backend python backend/journeypilot.py config show      # 生效值 + 每个值的来源
+uv run --project backend python backend/journeypilot.py config validate  # 只校验，不启动服务
+uv run --project backend python backend/journeypilot.py config env       # 全部合法环境变量名
 ```
 
-每个字段都能用 `JOURNEYPILOT_<段>__<字段>` 覆盖，例如 `JOURNEYPILOT_DATABASE__PORT=55433`。
-认不出的 `JOURNEYPILOT_*` 变量会让启动失败 —— 拼错一个字母不该静默无效。
+每个字段都能用 `JOURNEYPILOT_<段>__<字段>` 覆盖，例如 `JOURNEYPILOT_DATABASE__PORT=55433`。认不出的 `JOURNEYPILOT_*` 变量会让启动失败 —— 拼错一个字母不该静默无效。
 
 | 配置 | 作用 |
 |---|---|
 | `primary_model.*` | 规划和调研使用的主要模型，支持 OpenAI 兼容接口。 |
 | `fast_model.*` | 可选的低延迟模型；连接信息留空时会沿用主要模型。 |
-| `embedding.*` | 默认使用本地 Qwen3 ONNX 向量模型，也可以连接 OpenAI 兼容的向量服务。 |
-| `run_control.plan_gate_enabled` | 完整调研必须保持开启：调研开始前暂停并等待确认研究计划。关闭后，新的完整调研会在创建 Run 前被明确拒绝；快问快答不受影响。 |
+| `embedding.*` | 默认使用本地 Qwen3 ONNX 向量模型；`openai` 使用兼容的向量服务；`hash` 仅用于离线 smoke。 |
+| `run_control.plan_gate_enabled` | 完整调研必须保持开启：调研开始前暂停并等待确认研究计划。关闭后，新的完整调研会在创建 Run 前被拒绝；快问快答不受影响。 |
 | `rerank.*` | 知识库检索的第二阶段排序。 |
 | `run_deadline.*` | 一次完整调研可以花掉的四段时间窗。 |
 | `run_budget.*` | Run 被授权时封存的调用数 / token / 费用上限。 |
@@ -259,38 +181,38 @@ UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/jour
 在 `config.yaml` 的 `mcp.servers` 下填入服务密钥，然后运行：
 
 ```bash
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/scripts/check_mcp.py
+uv run --project backend python backend/scripts/check_mcp.py
 ```
 
 `config.yaml`、`.env*` 和其他本地密钥文件都已加入 Git 忽略列表。
 
-仓库自带一份小规模出厂语料，位于 `backend/data/corpus/factory/`；启动后端后可在另一个终端运行 `python backend/scripts/load_factory_corpus.py` 把它装入知识库。可选的本地二进制种子没有随这个公开仓库发布，如果你维护它，请放在 `data/corpus/seed/` 下；除此之外的 `data/` 内容仍被 Git 忽略。没有本地种子时，基于 Provider 的调研仍可运行，知识库只会在就绪检查中作为非阻塞降级项报告。
+仓库自带一份小规模出厂语料，位于 `backend/data/corpus/factory/`；启动后端后可在另一个终端运行 `python backend/scripts/load_factory_corpus.py` 把它装入知识库。可选的本地二进制种子没有随这个公开仓库发布，如果你维护它，请放在 `data/corpus/seed/` 下。没有本地种子时，基于 Provider 的调研仍可运行，知识库只会在就绪检查中作为非阻塞降级项报告。
 
 ## 数据库、备份与升级
 
 API 进程不执行任何 DDL：不建表、不改列、不删数据，启动时只**只读**校验「这个库是否匹配当前代码的结构合同」。结构变更是 [`backend/migrations/versions/`](backend/migrations/versions/) 下的版本化迁移，由 `journeypilot` 执行：
 
 ```bash
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py doctor          # 体检：数据库、迁移版本、结构、扩展、备份现状
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py migrate         # 执行待迁移（持锁；非空库先自动备份）
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py backup          # 生成经过校验的备份：转储 + manifest + SHA-256
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py restore <目录>   # 恢复到新库、验证通过后再切换
+export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+uv run --project backend python backend/journeypilot.py doctor          # 体检：数据库、迁移版本、结构、扩展、备份现状
+uv run --project backend python backend/journeypilot.py migrate         # 执行待迁移（持锁；非空库先自动备份）
+uv run --project backend python backend/journeypilot.py backup          # 生成经过校验的备份：转储 + manifest + SHA-256
+uv run --project backend python backend/journeypilot.py restore <目录> --yes  # 恢复到新库、验证通过后再切换
 ```
 
 每个命令都支持 `--json`，供 CI 使用。
 
-`migrate` 跑在 API **之前**，不是与它并行。两条官方入口都已经替你做了这件事：Docker 镜像的 entrypoint 和 `./run.sh start` 各自先跑一次迁移，不通过就不启动 API。让 API 连上一个没迁移过的库不是「降级运行」——`GET /api/health/ready` 返回 503，附上具体问题和那条能修好它的命令，一条业务请求都不会被服务。
+`migrate` 跑在 API **之前**，不是与它并行。两条官方入口都已经替你做了这件事：Docker 镜像的 entrypoint 和 `./run.sh start` 各自先跑一次迁移，不通过就不启动 API。让 API 连上一个没迁移过的库不是「降级运行」——`GET /api/health/ready` 返回 503，并给出具体问题和能修好它的命令。
 
-因为 API 不需要 DDL 权限，你可以用一个只有 `SELECT/INSERT/UPDATE/DELETE` 和 sequence 使用权的 PostgreSQL 角色运行它，把结构所有权留给 `journeypilot migrate`。这一条有测试保证，不只是一句声明。
+因为 API 不需要 DDL 权限，你可以用一个只有 `SELECT/INSERT/UPDATE/DELETE` 和 sequence 使用权的 PostgreSQL 角色运行它，把结构所有权留给 `journeypilot migrate`。这一点有测试保证。
 
 这几道保护具体做了什么：
 
 - **非空数据库在任何迁移之前必定先备份**，而且备份要通过校验（文件非空、`pg_restore --list` 能解析、checksum 已记录）。备份失败就不迁移。
-- **结构与任何已知 revision 都不匹配的数据库会被拒绝，绝不会被标记成最新版本。** `doctor` 会逐条列出差异的列、约束和索引。
+- **没有已知 revision 的非空数据库会被拒绝。** 有 JourneyPilot 表但没有 `alembic_version` 的库不会被纳管或 stamp：请重建数据库，或从匹配的备份恢复。结构漂移时 `doctor` 会逐条列出差异的列、约束和索引。
 - **会删数据的迁移需要 `--allow-destructive`。** 空库首次安装不需要 —— 那里没有数据可丢。
 - **恢复绝不原地覆盖当前数据库。** 它先恢复到一个新库，比对结构指纹和行数，通过之后才切换；恢复前的数据库保留为 `<库名>_prerestore_<时间戳>`，直到你自己删除。
-
-- **LangGraph 的 checkpoint 表同样由 `migrate` 建**，不由 API 建。它们的 owner 是 `langgraph-checkpoint-postgres` 并自带版本表，所以不进我们的迁移历史 —— 但建它们仍然是 DDL。缺了它们，API 在启动时就报 `checkpointer` 不可用，而不是等第一次 interrupt 才失败。
+- **LangGraph 的 checkpoint 表同样由 `migrate` 建**，不由 API 建。它们的 owner 是 `langgraph-checkpoint-postgres` 并自带版本表；缺了它们，API 会报告 `checkpointer` 不可用，而不是等第一次 interrupt 才失败。
 
 `config.yaml` 里的 `maintenance.*` 控制备份目录、保留份数和锁超时。备份目录不进版本控制。
 
@@ -300,40 +222,39 @@ UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/jour
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
 提交 Pull Request 前，请完成本地检查，并验证本次改动影响的实际功能：
 
 ```bash
+export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
+
 # 后端
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv sync --project backend --locked --group local-embedding --group dev
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config validate
-UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py config docs --check    # 生成的字段表与 schema 一致
-JOURNEYPILOT_DATABASE__PORT=55433 UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend pytest -c backend/pyproject.toml      # db 测试建临时库；没有 PostgreSQL 时自动跳过
+uv sync --project backend --locked --group local-embedding --group dev
+uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
+uv run --project backend python backend/journeypilot.py config validate
+uv run --project backend python backend/journeypilot.py config docs --check    # 生成的字段表与 schema 一致
+JOURNEYPILOT_DATABASE__PORT=55433 uv run --project backend pytest -c backend/pyproject.toml      # db 测试建临时库；没有 PostgreSQL 时自动跳过
 
 # 前端
 cd frontend
-npm ci
-npm run check                                        # 类型检查 + 单元测试 + 构建
-npm run test:e2e                                     # 需要一套跑着的服务，见 playwright.config.ts
+npm run check                                        # 类型检查 + lint + 单元测试 + 构建
+npm run test:e2e                                     # 需要一套跑着的服务，见 frontend/e2e/README.md
 ```
 
-[CI](.github/workflows/pr.yml) 自动运行后端 lint、配置与单元测试，前端类型检查、
-单元测试与构建，以及密钥扫描。数据库迁移与集成测试可在 Actions 的 `PR` 工作流中
-点击 **Run workflow** 手动执行。完整应用的浏览器与部署验证按需在本地运行，
-数据库测试跳过不等于验证通过。不保留定时 nightly 或 release 工作流。
+[CI](.github/workflows/pr.yml) 自动运行后端 lint、配置与单元测试、离线迁移 SQL，前端类型检查/lint/单元测试/构建，MCP 依赖安装，shell 检查，Docker 构建 smoke，以及密钥扫描。数据库迁移与集成测试可在 Actions 的 `PR` 工作流中点击 **Run workflow** 手动执行。完整应用的浏览器与真实 Provider 验证按需在本地运行，数据库测试跳过不等于验证通过。不保留定时 nightly 或 release 工作流。
 
-### 设计文档
+### 文档
 
-- [`docs/README.md`](docs/README.md) —— 文档索引，包含开发与测试指南
+- [`docs/README.md`](docs/README.md) —— 文档索引
 - [`docs/adr/`](docs/adr/) —— 做过的决定，以及被否掉的替代方案
 - [`docs/invariants.md`](docs/invariants.md) —— 代码必须保留的运行时保证
 - [`docs/architecture/overview.md`](docs/architecture/overview.md) —— 一次请求怎么走完全程
+- [`docs/local-development-troubleshooting.md`](docs/local-development-troubleshooting.md) —— 本地启动排障
 
-欢迎提交 Issue 和 Pull Request。请尽量让每次改动保持聚焦；修复缺陷时补上回归测试；如果改动影响用户可见的行为，也请同步更新中英文 README。
+欢迎提交 Issue 和 Pull Request，见 [CONTRIBUTING.md](CONTRIBUTING.md)；安全问题请按 [SECURITY.md](SECURITY.md) 报告。请尽量让每次改动保持聚焦；修复缺陷时补上回归测试；如果改动影响用户可见的行为，也请同步更新中英文 README。
 
 ## 技术栈
 
@@ -350,7 +271,7 @@ npm run test:e2e                                     # 需要一套跑着的服�
 
 ## 许可
 
-JourneyPilot 使用 [MIT License](LICENSE) 开源。
+JourneyPilot 使用 [MIT License](LICENSE) 开源。第三方数据、字体与素材见 [NOTICE](NOTICE)。
 
 ## 致谢
 

@@ -17,8 +17,9 @@ services:
   #   docker build -t journeypilot-postgres:pg18-zhparser ./infra/postgres
   #   POSTGRES_IMAGE=journeypilot-postgres:pg18-zhparser docker compose -f infra/compose.yml up -d
   #
-  # 同一个卷、同一个端口、同一个服务名 —— 它是同一个数据库的增强版本。切换之后
-  # 必须重建词法索引（`journeypilot doctor` 报出当前实际生效的 lexical config）。
+  # 同一个卷、同一个端口、同一个服务名 —— 它是同一个数据库的增强版本。生成列在
+  # 建表时就固定了，已有库要切换分词需要重建数据库（或专门的重建迁移）；
+  # `journeypilot doctor` 只报告 zhparser 扩展是否安装。
   # ──────────────────────────────────────────────────────────
   postgres:
     # 固定 digest 而不是只固定 tag：`pg18` 会被上游重新指向，而「同一份 compose
