@@ -41,8 +41,16 @@ jobs:
           uv run --project backend python backend/journeypilot.py config docs --check
       - name: Unit tests and offline migrations
         run: |
-          uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignore=backend/tests/db -q
+          uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignore=backend/tests/db -q \
+            --cov=travel_agent --cov-report=term-missing:skip-covered --cov-fail-under=60
           uv run --project backend pytest -c backend/pyproject.toml backend/tests/db/test_offline_sql.py -q
+      - name: Migrations have a single head
+        # 两个 head 意味着 alembic 不知道该往哪走，而 `upgrade head` 会直接报错。
+        # 这个检查只读迁移脚本目录，不连库。
+        run: |
+          heads=$(uv run --project backend alembic -c backend/alembic.ini heads)
+          echo "$heads"
+          test "$(printf '%s\n' "$heads" | grep -c '(head)')" -eq 1
 
   frontend:
     name: frontend · type-check + unit + build
@@ -60,6 +68,46 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci --no-audit --no-fund
       - run: npm run check
+
+  mcp:
+    name: mcp · node deps
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/mcp/package-lock.json
+      # 这些 MCP server 由 npx 拉起，版本由 lockfile 决定。`npm ci` 是唯一能证明
+      # 「lockfile 与 package.json 一致、且能装出来」的检查。
+      - run: npm ci --prefix backend/mcp --no-audit --no-fund
+      - name: Syntax-check the bundled data module
+        run: node --check backend/mcp/rail/station_name.js
+
+  shell:
+    name: shell · syntax + shellcheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install a pinned shellcheck
+        # 用固定版本而不是 runner 自带的：本地验证与 CI 必须是同一个版本，
+        # 否则「本机干净」不说明任何事。
+        run: |
+          curl -sSL "https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz" \
+            | tar -xJ -C /tmp
+          sudo install /tmp/shellcheck-v0.10.0/shellcheck /usr/local/bin/shellcheck
+          shellcheck --version
+      - name: bash -n
+        run: |
+          for f in $(git ls-files '*.sh'); do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+      - name: shellcheck
+        run: shellcheck --severity=warning $(git ls-files '*.sh')
 
   docker:
     name: docker · image + compose
@@ -92,6 +140,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: "false"
+      - name: The scanner still catches a planted key
+        # 白名单收窄之后必须证明它没有把扫描器关掉：种一个 AWS 示例密钥，扫描器
+        # 必须报出来。这个值是 AWS 官方文档里的公开示例，不是真凭据。
+        run: |
+          printf 'aws_access_key_id = "AKIAIOSFODNN7EXAMPLE"\n' > planted-secret.txt
+          if docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 \
+               detect --source /repo --no-git --config /repo/.gitleaks.toml --redact; then
+            echo "::error::gitleaks did not flag a planted AWS key — the allowlist is too broad"
+            exit 1
+          fi
+          rm -f planted-secret.txt
 
   backend-integration:
     name: backend · integration + migration (manual)
