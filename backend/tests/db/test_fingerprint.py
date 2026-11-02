@@ -107,7 +107,7 @@ def test_diff_names_what_actually_differs():
 
     def table(columns, indexes=()):
         return {
-            "schema_contract_version": "journeypilot.db.v1",
+            "schema_contract_id": "journeypilot.db",
             "tables": {
                 "t": {
                     "columns": list(columns),
@@ -139,7 +139,7 @@ def test_digest_is_stable_across_key_insertion_order():
     """摘要只取决于内容，不取决于 dict 的构造顺序。"""
 
     base = {
-        "schema_contract_version": "v",
+        "schema_contract_id": "v",
         "tables": {},
         "missing_tables": [],
         "extensions": ["vector", "pgcrypto"],
@@ -148,7 +148,7 @@ def test_digest_is_stable_across_key_insertion_order():
         "extensions": ["vector", "pgcrypto"],
         "missing_tables": [],
         "tables": {},
-        "schema_contract_version": "v",
+        "schema_contract_id": "v",
     }
     assert fingerprint_digest(base) == fingerprint_digest(shuffled)
 

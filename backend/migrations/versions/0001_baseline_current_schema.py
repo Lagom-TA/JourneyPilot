@@ -609,11 +609,11 @@ def upgrade() -> None:
         """
     )
 
-    # ---------------------------------------------------------------- Delivery v2
+    # ---------------------------------------------------------------- 交付
     # 不可变基线快照 + 不可变 bundle + 一个 CAS 保护的 current 指针。
     op.execute(
         """
-        CREATE TABLE IF NOT EXISTS trip_workspace_v2_revisions (
+        CREATE TABLE IF NOT EXISTS trip_workspace_revisions (
             run_id             TEXT NOT NULL REFERENCES trip_runs(run_id) ON DELETE CASCADE,
             workspace_revision INTEGER NOT NULL,
             content_hash       TEXT NOT NULL,
@@ -625,7 +625,7 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE TABLE IF NOT EXISTS fact_store_v2_revisions (
+        CREATE TABLE IF NOT EXISTS fact_store_revisions (
             run_id             TEXT NOT NULL REFERENCES trip_runs(run_id) ON DELETE CASCADE,
             fact_data_revision INTEGER NOT NULL,
             content_hash       TEXT NOT NULL,
@@ -637,7 +637,7 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE TABLE IF NOT EXISTS weather_context_v2_revisions (
+        CREATE TABLE IF NOT EXISTS weather_context_revisions (
             run_id                TEXT NOT NULL REFERENCES trip_runs(run_id) ON DELETE CASCADE,
             weather_data_revision INTEGER NOT NULL,
             content_hash          TEXT NOT NULL,
@@ -649,7 +649,7 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE TABLE IF NOT EXISTS delivery_bundles_v2 (
+        CREATE TABLE IF NOT EXISTS delivery_bundles (
             bundle_id            TEXT PRIMARY KEY,
             run_id               TEXT NOT NULL REFERENCES trip_runs(run_id) ON DELETE CASCADE,
             workspace_revision   INTEGER NOT NULL,
@@ -660,25 +660,25 @@ def upgrade() -> None:
             created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             UNIQUE (run_id, workspace_revision, fact_data_revision, weather_data_revision),
             FOREIGN KEY (run_id, workspace_revision)
-                REFERENCES trip_workspace_v2_revisions(run_id, workspace_revision),
+                REFERENCES trip_workspace_revisions(run_id, workspace_revision),
             FOREIGN KEY (run_id, fact_data_revision)
-                REFERENCES fact_store_v2_revisions(run_id, fact_data_revision),
+                REFERENCES fact_store_revisions(run_id, fact_data_revision),
             FOREIGN KEY (run_id, weather_data_revision)
-                REFERENCES weather_context_v2_revisions(run_id, weather_data_revision)
+                REFERENCES weather_context_revisions(run_id, weather_data_revision)
         )
         """
     )
     op.execute(
         """
-        CREATE INDEX IF NOT EXISTS idx_delivery_bundles_v2_run_created
-        ON delivery_bundles_v2 (run_id, created_at DESC)
+        CREATE INDEX IF NOT EXISTS idx_delivery_bundles_run_created
+        ON delivery_bundles (run_id, created_at DESC)
         """
     )
     op.execute(
         """
-        CREATE TABLE IF NOT EXISTS delivery_bundle_heads_v2 (
+        CREATE TABLE IF NOT EXISTS delivery_bundle_heads (
             run_id                TEXT PRIMARY KEY REFERENCES trip_runs(run_id) ON DELETE CASCADE,
-            current_bundle_id      TEXT NOT NULL REFERENCES delivery_bundles_v2(bundle_id),
+            current_bundle_id      TEXT NOT NULL REFERENCES delivery_bundles(bundle_id),
             workspace_revision     INTEGER NOT NULL,
             fact_data_revision     INTEGER NOT NULL,
             weather_data_revision  INTEGER NOT NULL,
@@ -688,14 +688,13 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE TABLE IF NOT EXISTS delivery_bundle_commits_v2 (
+        CREATE TABLE IF NOT EXISTS delivery_bundle_commits (
             run_id                 TEXT NOT NULL REFERENCES trip_runs(run_id) ON DELETE CASCADE,
             idempotency_key         TEXT NOT NULL,
             request_digest          TEXT NOT NULL,
             commit_kind            TEXT NOT NULL,
             base_bundle_id          TEXT,
-            result_bundle_id        TEXT NOT NULL REFERENCES delivery_bundles_v2(bundle_id),
-            inverse_patch           JSONB,
+            result_bundle_id        TEXT NOT NULL REFERENCES delivery_bundles(bundle_id),
             metadata                JSONB NOT NULL DEFAULT '{}',
             created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             PRIMARY KEY (run_id, idempotency_key)
@@ -704,8 +703,8 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE INDEX IF NOT EXISTS idx_delivery_bundle_commits_v2_run_created
-        ON delivery_bundle_commits_v2 (run_id, created_at DESC)
+        CREATE INDEX IF NOT EXISTS idx_delivery_bundle_commits_run_created
+        ON delivery_bundle_commits (run_id, created_at DESC)
         """
     )
 

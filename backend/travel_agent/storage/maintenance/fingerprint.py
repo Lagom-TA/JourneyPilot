@@ -40,7 +40,7 @@ from .schema_contract import (
     MANAGED_TABLES,
     OPTIONAL_EXTENSIONS,
     REQUIRED_EXTENSIONS,
-    SCHEMA_CONTRACT_VERSION,
+    SCHEMA_CONTRACT_ID,
     sql_table_name_list,
 )
 
@@ -192,7 +192,7 @@ def build_fingerprint(
         table["indexes"].sort(key=lambda item: item["name"])
 
     return {
-        "schema_contract_version": SCHEMA_CONTRACT_VERSION,
+        "schema_contract_id": SCHEMA_CONTRACT_ID,
         "tables": {name: tables[name] for name in sorted(tables)},
         "missing_tables": sorted(set(MANAGED_TABLES) - set(tables)),
         "extensions": sorted(extensions & set(REQUIRED_EXTENSIONS)),
@@ -210,7 +210,7 @@ def build_fingerprint(
 
 # 摘要只覆盖「结构合同」那几项。环境事实（可选能力、实际向量维度）刻意留在摘要之外，
 # 否则装不装 zhparser 就会变成「未知 schema，拒绝启动」。
-_DIGEST_KEYS = ("schema_contract_version", "tables", "missing_tables", "extensions")
+_DIGEST_KEYS = ("schema_contract_id", "tables", "missing_tables", "extensions")
 
 
 def normative_only(fingerprint: Mapping[str, Any]) -> dict[str, Any]:
@@ -272,10 +272,10 @@ def diff_fingerprints(
 
     problems: list[str] = []
 
-    if expected.get("schema_contract_version") != actual.get("schema_contract_version"):
+    if expected.get("schema_contract_id") != actual.get("schema_contract_id"):
         problems.append(
-            f"指纹合同版本不同：期望 {expected.get('schema_contract_version')}，"
-            f"实际 {actual.get('schema_contract_version')}"
+            f"指纹合同标识不同：期望 {expected.get('schema_contract_id')}，"
+            f"实际 {actual.get('schema_contract_id')}"
         )
 
     expected_tables: Mapping[str, Any] = expected.get("tables", {})
