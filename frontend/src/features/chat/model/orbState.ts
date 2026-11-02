@@ -5,7 +5,6 @@ const NODE_ORBS: ReadonlyArray<readonly [
     display: string,
     orb: OrbState
 ]> = [
-    ['supervisor', '规划协调', 'working'],
     ['scope_clarifier', '需求确认', 'listening'],
     ['requirements_preparer', '整理需求', 'listening'],
     ['research_plan_generator', '研究生成', 'composing'],

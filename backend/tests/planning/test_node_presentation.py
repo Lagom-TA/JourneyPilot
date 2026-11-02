@@ -23,10 +23,10 @@ def _graph_node_names() -> frozenset[str]:
     ("table_name", "extra_keys"),
     [
         ("trace", {"workflow"}),
-        ("agent", {"supervisor"}),
+        ("agent", set()),
         (
             "step",
-            {"supervisor", "orchestrating", "planning", "researching", "synthesizing"},
+            {"planning", "researching", "synthesizing"},
         ),
     ],
 )

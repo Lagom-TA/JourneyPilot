@@ -16,7 +16,6 @@ const NODE_STAGES: ReadonlyArray<readonly [
     display: string,
     stage: StageId
 ]> = [
-    ['supervisor', '规划协调', 'planning'],
     ['scope_clarifier', '需求确认', 'planning'],
     ['understanding_agent', '理解需求', 'planning'],
     ['understanding_gate', '等待回答', 'planning'],
@@ -65,7 +64,6 @@ export function parseAgentRound(agentName: string): {
 }
 export type ActivityStageId = 'requirements' | 'research' | 'route' | 'delivery';
 const ACTIVITY_STAGE_BY_NODE: Record<string, ActivityStageId> = {
-    supervisor: 'requirements',
     scope_clarifier: 'requirements',
     understanding_agent: 'requirements',
     understanding_gate: 'requirements',
