@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from typing import NoReturn
 from travel_agent.runtime.command_contracts import (
     RunCommand,
     RunCommandStatus,
@@ -18,7 +19,7 @@ class RunControlOutcome:
     message: str
 
 
-async def refuse_cancel(run_id, trip_run_store, cause=None):
+async def refuse_cancel(run_id, trip_run_store, cause=None) -> NoReturn:
     current = await trip_run_store.get_run(run_id)
     raise RunNotCancellable(
         current.status.value if current is not None else None
@@ -65,7 +66,6 @@ async def cancel_run(
         raise RunNotFound() from exc
     except RuntimeError as exc:
         await refuse_cancel(run_id, trip_run_store, exc)
-        raise AssertionError("unreachable")
     notify(run_id)
 
     if run.status not in {TripRunStatus.CANCEL_REQUESTED, TripRunStatus.CANCELLED}:
@@ -91,7 +91,6 @@ async def cancel_run(
             )
         except ValueError as exc:
             await refuse_cancel(run_id, trip_run_store, exc)
-            raise AssertionError("unreachable")
 
     if run.status == TripRunStatus.CANCELLED:
         await command_store.settle(

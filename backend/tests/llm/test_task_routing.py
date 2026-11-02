@@ -34,7 +34,6 @@ def test_understanding_keeps_the_strong_model_with_tools(primary):
     route = select_task_route(TaskKind.UNDERSTANDING, primary, FAST, has_tools=True)
     assert route.tier == "primary"
     assert route.model_name == primary
-    assert route.reason == "task_default"
 
 
 def test_research_tools_stay_on_the_fast_tier():

@@ -1,3 +1,5 @@
+from typing import NoReturn
+
 from fastapi import HTTPException
 from travel_agent.conversation.chat.errors import (
     PreparationRefused,
@@ -12,7 +14,7 @@ from travel_agent.conversation.chat.errors import (
 _PROJECTION_FAILURE_REASON_CODE = "delivery_integrity_projection_failure"
 
 
-def raise_chat_preparation_error(error: Exception) -> None:
+def raise_chat_preparation_error(error: Exception) -> NoReturn:
     if isinstance(error, PreparationRefused):
         if error.reason is PreparationRejection.EMPTY_MESSAGE:
             raise HTTPException(status_code=400, detail="消息内容不能为空") from error

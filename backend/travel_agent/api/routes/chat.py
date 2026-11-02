@@ -79,7 +79,6 @@ async def chat_stream(
         )
     except Exception as error:
         raise_chat_preparation_error(error)
-        raise AssertionError("unreachable")
     if isinstance(prepared, ImmediateChat):
         events = prepared.events
     else:

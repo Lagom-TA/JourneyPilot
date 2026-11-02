@@ -1,5 +1,8 @@
 from __future__ import annotations
+
 import logging
+from typing import Any
+
 from travel_agent.runtime.run_contracts import TripRunStatus
 
 logger = logging.getLogger(__name__)
@@ -30,7 +33,9 @@ class ChatDelivery:
                 "workflow delivery differs from the current persisted Bundle"
             )
 
-    async def completion_events(self, bundle_id):
+    async def _single_delivery_events(self, bundle_id: str) -> tuple[Any, Any]:
+        """读取该 Bundle 唯一的一组 delivery.ready / run.terminal 事件。"""
+
         durable_events = await self.trip_run_store.list_delivery_events(
             self.run_id,
             bundle_id,
@@ -58,6 +63,9 @@ class ChatDelivery:
             raise RuntimeError("deep research delivery events are out of order")
         return ready_event, terminal_event
 
+    async def completion_events(self, bundle_id):
+        return await self._single_delivery_events(bundle_id)
+
     async def load_durable_completed_delivery(self):
         """提交后的记账失败时，恢复唯一不变的一次投递。"""
         if not self.use_deep_research:
@@ -70,32 +78,7 @@ class ChatDelivery:
             or current_bundle is None
         ):
             return None
-        bundle_id = current_bundle.manifest.bundle_id
-        durable_events = await self.trip_run_store.list_delivery_events(
-            self.run_id,
-            bundle_id,
+        ready_event, terminal_event = await self._single_delivery_events(
+            current_bundle.manifest.bundle_id
         )
-        ready_events = [
-            event
-            for event in durable_events
-            if event.event_type == "delivery.ready"
-            and event.payload.get("bundle_id") == bundle_id
-        ]
-        terminal_events = [
-            event
-            for event in durable_events
-            if event.event_type == "run.terminal"
-            and event.payload.get("bundle_id") == bundle_id
-            and event.payload.get("status") == TripRunStatus.COMPLETED.value
-        ]
-        if len(ready_events) != 1 or len(terminal_events) != 1:
-            raise RuntimeError(
-                "completed deep research delivery events are missing or duplicated"
-            )
-        ready_event = ready_events[0]
-        terminal_event = terminal_events[0]
-        if ready_event.sequence >= terminal_event.sequence:
-            raise RuntimeError(
-                "completed deep research delivery events are out of order"
-            )
         return current_bundle, ready_event, terminal_event
