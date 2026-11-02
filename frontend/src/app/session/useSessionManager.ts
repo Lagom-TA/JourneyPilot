@@ -12,8 +12,9 @@ import { hasResearchStarted, projectVisibleMessages } from "../../features/chat/
 import { type UnderstandingQuestion } from "../../features/travel/types/planner";
 import { type ChatSession } from "../../features/chat/types/messages";
 import { type ControlledTripIdentity } from "../../features/travel/types/planner";
-import { tripRunRecoveryFromDetail } from "../../features/travel/types/runs";
+import { tripRunRecoveryFromDetail, type TripRunDetailResponse } from "../../features/travel/types/runs";
 import { isPublicDeliveryBundle } from "../../features/travel/types/delivery";
+import { planRequestedRun, sessionLoadFailureMessage } from "./sessionRestore";
 export function useSessionManager() {
     const { state, dispatch, activeStreamRef, currentStateRef, sessionRuntimeCacheRef } = useApp();
     const openSessionSeqRef = useRef(0);
@@ -55,6 +56,7 @@ export function useSessionManager() {
             setLastSession(sessionId);
             return;
         }
+        try {
         const [detail, runListResult] = await Promise.all([
             getSessionDetail(sessionId),
             listTripRuns({ sessionId, mode: 'deep', limit: 80 }).catch(() => null),
@@ -64,15 +66,21 @@ export function useSessionManager() {
         cacheCurrentRuntimeIfStreaming(sessionId);
         const latestRun = runListResult?.runs[0] || null;
         const requestedRunIsLatest = Boolean(requestedRunId && latestRun?.run_id === requestedRunId);
-        const requestedRunDetail = requestedRunId && !requestedRunIsLatest
-            ? await getTripRunDetail(requestedRunId).catch(() => null)
-            : null;
-        if (requestedRunDetail && requestedRunDetail.run.session_id !== sessionId)
-            throw new Error('trip run does not belong to this session');
-        const selectedRun = requestedRunId
-            ? (requestedRunIsLatest ? latestRun : requestedRunDetail?.run ?? null)
-            : latestRun;
-        const currentTripRunReadOnly = Boolean(requestedRunId && selectedRun && latestRun && selectedRun.run_id !== latestRun.run_id);
+        let requestedRunDetail: TripRunDetailResponse | null = null;
+        let requestedRunDetailFailed = false;
+        if (requestedRunId && !requestedRunIsLatest) {
+            try {
+                requestedRunDetail = await getTripRunDetail(requestedRunId);
+            }
+            catch {
+                requestedRunDetailFailed = true;
+            }
+        }
+        if (seq !== openSessionSeqRef.current)
+            return;
+        const runPlan = planRequestedRun({ sessionId, requestedRunId, latestRun, requestedRunDetail, requestedRunDetailFailed });
+        const selectedRun = runPlan.selectedRun;
+        const currentTripRunReadOnly = runPlan.readOnly;
         const [selectedRunDetail, currentBundleResult] = selectedRun
             ? await Promise.all([
                 requestedRunDetail ?? getTripRunDetail(selectedRun.run_id).catch(() => null),
@@ -171,7 +179,31 @@ export function useSessionManager() {
             inputMode: 'normal',
         };
         dispatch({ type: 'RESTORE_SESSION_RUNTIME', payload: restoredRuntime });
+        if (runPlan.failure) {
+            dispatch({
+                type: 'SET_SESSION_LOAD_ERROR',
+                payload: { sessionId, runId: requestedRunId ?? null, message: sessionLoadFailureMessage(runPlan.failure) },
+            });
+            const url = new URL(window.location.href);
+            if (url.searchParams.get('session_id') === sessionId) {
+                url.searchParams.delete('run_id');
+                window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+            }
+        }
         setLastSession(sessionId);
+        }
+        catch {
+            if (seq !== openSessionSeqRef.current)
+                return;
+            dispatch({
+                type: 'SET_SESSION_LOAD_ERROR',
+                payload: {
+                    sessionId,
+                    runId: requestedRunId ?? null,
+                    message: '暂时无法打开这个会话，请重试。',
+                },
+            });
+        }
     }, [activeStreamRef, cacheCurrentRuntimeIfStreaming, currentStateRef, dispatch, sessionRuntimeCacheRef, setLastSession]);
     const initializeSessions = useCallback(async () => {
         try {
@@ -204,6 +236,10 @@ export function useSessionManager() {
             await openSession(targetId);
         }
         catch {
+            dispatch({
+                type: 'SET_SESSION_LOAD_ERROR',
+                payload: { sessionId: null, runId: null, message: '暂时无法读取旅行会话，请重试。' },
+            });
         }
         finally {
             dispatch({ type: 'SESSION_INITIALIZED' });

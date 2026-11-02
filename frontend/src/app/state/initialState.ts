@@ -39,6 +39,7 @@ export const initialState: AppState = {
     canvasOpen: false,
     mobileCanvasOpen: false,
     inputMode: 'normal',
+    sessionLoadError: null,
     ...(() => {
         const stored = readStoredActivePreset();
         return {
