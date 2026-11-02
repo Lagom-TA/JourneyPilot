@@ -25,8 +25,6 @@ class PlannedFreeTime(StrictModel):
 
 
 class DayDesign(StrictModel):
-    focus: str = Field(min_length=1, max_length=160)
-    rationale: str = Field(min_length=1, max_length=800)
     free_time: list[PlannedFreeTime] = Field(default_factory=list, max_length=8)
     # 当天确实无法安排的具体事项：研究或补查后仍缺支撑时如实写出，
     # 服务器保留到工作台的重要说明，不把缺口伪装成完整安排。
