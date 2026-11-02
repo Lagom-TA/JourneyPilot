@@ -79,7 +79,7 @@ Tests:
 - `backend/tests/runtime/test_run_execution_contract.py::test_a_superseded_lease_keeper_does_not_evict_the_active_one`
 
 ### INV-RUN-005：分窗表覆盖图上每一个 worker
-约定：分窗表必须恰好覆盖 dispatcher 的扇出目标，每个 worker 恰好属于 research 或 composition 一个窗口；漏一个会让它落进默认 research 档。
+约定：分窗表必须恰好覆盖执行计划里的每个 worker 目标，每个 worker 恰好属于 research 或 composition 一个窗口；漏一个会让它落进默认 research 档。
 Owner: `backend/travel_agent/planning/execution.py` 的 `_DEADLINE_BLOCKED_WORKER_NODES` / `_RESEARCH_WORKER_NODES` / `_COMPOSITION_WORKER_NODES`、`backend/travel_agent/planning/nodes.py` 的 `WORKER_NODES`
 Tests:
 - `backend/tests/runtime/test_run_execution_contract.py::test_the_node_window_table_covers_every_worker_the_graph_fans_out_to`

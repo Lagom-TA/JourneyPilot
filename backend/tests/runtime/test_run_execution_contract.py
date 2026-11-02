@@ -129,7 +129,7 @@ def test_a_superseded_lease_keeper_does_not_evict_the_active_one():
         _owner_runtime_run_lease._active_keepers.pop("run-1", None)
 
 
-def test_the_node_window_table_covers_every_worker_the_graph_fans_out_to():
+def test_the_node_window_table_covers_every_worker_the_plan_dispatches():
     """每个已声明的 worker 都必须受窗口和交付完成守卫约束。"""
 
     from travel_agent.planning import execution
@@ -137,7 +137,7 @@ def test_the_node_window_table_covers_every_worker_the_graph_fans_out_to():
 
     declared = execution._DEADLINE_BLOCKED_WORKER_NODES
     assert declared == set(WORKER_NODES), (
-        "dispatcher 扇出的 worker 与 execution 的分窗表不一致：\n"
+        "执行计划里的 worker 与 execution 的分窗表不一致：\n"
         f"  只在图里：{sorted(set(WORKER_NODES) - declared)}\n"
         f"  只在表里：{sorted(declared - set(WORKER_NODES))}"
     )

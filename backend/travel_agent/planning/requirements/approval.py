@@ -99,8 +99,7 @@ async def plan_gate_node(state: TravelAgentState, config: Optional[RunnableConfi
             }
         return {
             "plan_gate_decision": {"action": "approve", "revision": state.plan_gate_revision_count, "approval_token": supplied},
-            # 批准时落章当前串行执行计划：用户确认的分组与实际执行保持一致，
-            # 旧检查点携带的历史计划不继续生效。
+            # 批准时落章当前串行执行计划：用户确认的分组与实际执行保持一致。
             "execution_plan": RESEARCH_EXECUTION_PLAN,
             "current_plan_step": 0,
             **seal_minimum_delivery_draft(state),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional, Set, Union
+from typing import Any, Dict, Optional, Set
 
 from langchain_core.runnables import RunnableConfig
 
@@ -65,6 +65,9 @@ async def dispatcher_node(
     """Dispatcher 节点：推进执行计划，检查 worker 完成状态。"""
     plan = state.execution_plan
     step = state.current_plan_step
+    # 计划是串行推进的：每一步只交给一个角色，后一位读取前序成果。
+    if any(len(group) != 1 for group in plan):
+        raise ValueError("execution plan steps must hold exactly one agent")
 
     deadline = state.run_deadline
     observed_deadline, observation = (
@@ -142,7 +145,7 @@ async def dispatcher_node(
     return {"next_agent": "to_check"}
 
 
-def route_after_dispatcher(state: TravelAgentState) -> Union[str, list]:
+def route_after_dispatcher(state: TravelAgentState) -> str:
     """LangGraph 条件边：根据 dispatcher 决策返回下一节点。"""
     next_agent = state.next_agent or "to_check"
 
@@ -175,11 +178,10 @@ def route_after_dispatcher(state: TravelAgentState) -> Union[str, list]:
                 return "to_check"
 
             resolved_group = [strip_round_suffix(a) for a in pending]
-
-            if len(resolved_group) > 1:
-                from langgraph.types import Send
-
-                return [Send(node, state) for node in resolved_group]
+            if len(resolved_group) != 1:
+                raise RuntimeError(
+                    "dispatcher plan step must hold exactly one agent"
+                )
             return resolved_group[0]
 
         logger.error(
