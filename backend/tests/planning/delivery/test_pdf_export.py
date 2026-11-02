@@ -4,7 +4,10 @@ from datetime import datetime, timezone
 from io import BytesIO
 from types import SimpleNamespace
 
+import pytest
 from pypdf import PdfReader
+
+from travel_agent.integrations.pdf_readiness import PdfFontUnavailable
 from travel_agent.planning.delivery.pdf_export import render_trip_report_pdf
 
 
@@ -66,10 +69,13 @@ def _bundle():
 
 
 def test_pdf_contains_trip_content_without_noise_sections():
-    artifact = render_trip_report_pdf(
-        _bundle(),
-        exported_at=datetime(2026, 10, 26, tzinfo=timezone.utc),
-    )
+    try:
+        artifact = render_trip_report_pdf(
+            _bundle(),
+            exported_at=datetime(2026, 10, 26, tzinfo=timezone.utc),
+        )
+    except PdfFontUnavailable as exc:
+        pytest.skip(f"no embeddable CJK font for PDF export: {exc}")
     reader = PdfReader(BytesIO(artifact.content))
     text = "\n".join(page.extract_text() or "" for page in reader.pages)
 
