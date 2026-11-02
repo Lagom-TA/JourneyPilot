@@ -45,7 +45,7 @@ describe('normalizePlanApprovalGate', () => {
 
     it('restores a plan without fabricating a missing approval token', () => {
         const gate = normalizePlanApprovalGate({
-            run_id: 'run_legacy',
+            run_id: 'run-A',
             payload: {
                 revision: 1,
                 approval_token: null,

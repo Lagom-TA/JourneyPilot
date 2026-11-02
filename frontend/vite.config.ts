@@ -22,15 +22,10 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // react-markdown 生态（remark / rehype / mdast / micromark / unified /
-          // vfile / property-information 等，合计约 91kb gz）是 chat 首屏 Markdown
-          // 渲染的必需依赖，按设计保留为静态 import（拆成懒加载会拖慢聊天首帧）。
-          // 但它是一整棵稳定的第三方依赖树，从 app 入口 chunk 拆出到独立 vendor
-          // chunk：① 与入口并行下载，首屏不增延迟；② 第三方代码变动频率低，独立
-          // 长缓存命中率高；③ 把 app 入口的 minified raw 体积降到 500kb 阈值下，
-          // 消除 chunk 体积警告。
-          // 注意：motion 的 domMax 拆分由 LazyMotion + CanvasMotion 动态 import
-          // 自动完成（motion-features chunk），此处不触碰，避免把 domMax 拉回主包。
+          // react-markdown 生态是 chat 首屏 Markdown 的静态依赖，拆成懒加载会
+          // 拖慢首帧；这里把它整棵第三方依赖树独立成 vendor chunk，与入口并行
+          // 下载并获得稳定长缓存。motion 的 domMax 由 LazyMotion + CanvasMotion
+          // 动态 import 自动拆成 motion-features chunk，不要在此把它拉回主包。
           if (id.includes('node_modules')) {
             // Keep the interaction libraries independently cacheable after UI changes.
             if (/[/\\]node_modules[/\\](thinking-orbs)[/\\]/.test(id)) {

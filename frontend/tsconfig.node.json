@@ -6,15 +6,11 @@
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     /*
-     * 产物必须落到别处，不能落在这些配置旁边。
-     *
-     * `composite: true` 蕴含 `declaration: true`，所以这个程序**天生会 emit**，而
-     * `noEmit` 只写在 `package.json` 的命令行上（`tsc -p tsconfig.node.json --noEmit`）。
-     * 于是任何一次不带那个开关的调用（裸 `npx tsc -p tsconfig.node.json`、`tsc -b`）都会
-     * 在 `frontend/` 根上吐出 `tailwind.config.js` / `vite.config.js` 各一份加 `.d.ts`。
-     * Tailwind 解析配置时 `tailwind.config.js` 排在 `tailwind.config.ts` 前面，一旦
-     * 这份 `.js` 快照落地，`.ts` 里的修改既不报错也不生效。`outDir` 让它们改落到
-     * `node_modules` 里的临时目录 —— 那里不参与任何解析顺序。
+     * `composite` 会 emit，而 `noEmit` 只写在 `package.json` 的命令行上；裸
+     * `tsc -p tsconfig.node.json` 或 `tsc -b` 会在 `frontend/` 根目录生成配置的
+     * `.js`/`.d.ts`。Tailwind 解析配置时优先匹配 `tailwind.config.js`，会遮蔽
+     * `.ts` 的修改。这个 `outDir` 把声明产物改落到 `node_modules/.tmp`，避免
+     * 污染配置目录与解析顺序。
      */
     "outDir": "./node_modules/.tmp/tsconfig-node"
   },
