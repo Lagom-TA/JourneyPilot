@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 class RestoreError(RuntimeError):
-    """恢复失败。当前数据库未被修改（切换是最后一步，且为重命名）。"""
+    """恢复失败；错误信息说明当前库和预备库的状态。"""
 
 
 @dataclass
@@ -91,6 +91,26 @@ def _terminate_connections(conn: Any, name: str) -> int:
             (name,),
         )
         return int(cur.fetchone()[0])
+
+
+def _switch_database(conn: Any, current: str, staging: str, retained: str) -> None:
+    """切换失败时将留档库改回原名，并保留预备库供排查。"""
+    with conn.cursor() as cur:
+        try:
+            cur.execute(f"ALTER DATABASE {_quote(current)} RENAME TO {_quote(retained)}")
+        except Exception as exc:
+            raise RestoreError(f"恢复切换失败，请检查原库 {current} 与预备库 {staging} 的状态") from exc
+        try:
+            cur.execute(f"ALTER DATABASE {_quote(staging)} RENAME TO {_quote(current)}")
+        except Exception as exc:
+            try:
+                cur.execute(f"ALTER DATABASE {_quote(retained)} RENAME TO {_quote(current)}")
+            except Exception as rollback_exc:
+                raise RestoreError(
+                    f"恢复切换及回退均失败；原数据保留在 {retained}，预备库为 {staging}，"
+                    f"请手动将原库改回 {current}。回退错误：{rollback_exc}"
+                ) from exc
+            raise RestoreError(f"恢复切换失败，原库 {current} 已恢复；预备库保留为 {staging}") from exc
 
 
 def preflight(directory: Path, target: DatabaseTarget, *, server_major: int) -> dict[str, Any]:
@@ -196,13 +216,7 @@ def restore(
             killed = _terminate_connections(maintenance, target.database)
             logger.warning("已强制断开 %d 个到 %s 的连接", killed, target.database)
 
-        with maintenance.cursor() as cur:
-            cur.execute(
-                f"ALTER DATABASE {_quote(target.database)} RENAME TO {_quote(retained_name)}"
-            )
-            cur.execute(
-                f"ALTER DATABASE {_quote(staging_name)} RENAME TO {_quote(target.database)}"
-            )
+        _switch_database(maintenance, target.database, staging_name, retained_name)
 
     logger.info(
         "恢复完成：%s 已就位；恢复前的数据库保留为 %s（确认无误后可用 "

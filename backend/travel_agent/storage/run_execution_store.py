@@ -114,8 +114,8 @@ class RunExecutionStore:
                          last_safe_checkpoint_id, recovery_status, recovery_reason,
                          updated_at)
                     VALUES
-                        (:run_id, :executor_id, :lease_token, NOW(),
-                         NOW() + (:lease_seconds * INTERVAL '1 second'), NOW(),
+                        (:run_id, :executor_id, :lease_token, clock_timestamp(),
+                         clock_timestamp() + (:lease_seconds * INTERVAL '1 second'), clock_timestamp(),
                          :process_started_at, :checkpoint_id, :claimed, NULL, NOW())
                     ON CONFLICT (run_id) DO UPDATE
                     SET executor_id = EXCLUDED.executor_id,
@@ -135,7 +135,7 @@ class RunExecutionStore:
                     -- 不判 executor_id：它是进程常量，同进程的第二次 claim 会无条件
                     -- 命中，使双执行保护在该场景下失效。
                     WHERE trip_run_executions.lease_expires_at IS NULL
-                       OR trip_run_executions.lease_expires_at < NOW()
+                       OR trip_run_executions.lease_expires_at < clock_timestamp()
                     RETURNING *
                     """
                 ),
@@ -163,18 +163,22 @@ class RunExecutionStore:
         """续租。租约 token 不匹配（已被别人接管）时返回 False。"""
 
         async with get_db_session() as session:
+            await session.execute(
+                text("SELECT run_id FROM trip_run_executions WHERE run_id = :run_id FOR UPDATE"),
+                {"run_id": run_id},
+            )
             result = await session.execute(
                 text(
                     """
                     UPDATE trip_run_executions
-                    SET lease_expires_at = NOW() + (:lease_seconds * INTERVAL '1 second'),
+                    SET lease_expires_at = clock_timestamp() + (:lease_seconds * INTERVAL '1 second'),
                         heartbeat_at = NOW(),
                         recovery_status = :recovery_status,
                         updated_at = NOW()
                     WHERE run_id = :run_id
                       AND lease_token = :lease_token
                       AND executor_id = :executor_id
-                      AND lease_expires_at > NOW()
+                      AND lease_expires_at > clock_timestamp()
                     RETURNING run_id
                     """
                 ),
@@ -198,6 +202,10 @@ class RunExecutionStore:
         """记录一个已经落盘的安全边界。LLM 调用**开始**时不算安全边界。"""
 
         async with get_db_session() as session:
+            await session.execute(
+                text("SELECT run_id FROM trip_run_executions WHERE run_id = :run_id FOR UPDATE"),
+                {"run_id": run_id},
+            )
             result = await session.execute(
                 text(
                     """
@@ -207,7 +215,7 @@ class RunExecutionStore:
                     WHERE run_id = :run_id
                       AND lease_token = :lease_token
                       AND executor_id = :executor_id
-                      AND lease_expires_at > NOW()
+                      AND lease_expires_at > clock_timestamp()
                     RETURNING run_id
                     """
                 ),

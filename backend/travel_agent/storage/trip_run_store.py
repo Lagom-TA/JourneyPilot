@@ -94,12 +94,15 @@ async def _require_execution_lease(session: Any, run_id: str, lease_token: Optio
     """运行执行者写入终态前，与租约接管使用同一行锁。"""
     if lease_token is None:
         return
+    await session.execute(
+        text("SELECT run_id FROM trip_run_executions WHERE run_id = :run_id FOR UPDATE"),
+        {"run_id": run_id},
+    )
     result = await session.execute(
         text("""
             SELECT run_id FROM trip_run_executions
             WHERE run_id = :run_id AND lease_token = :lease_token
-              AND lease_expires_at > NOW()
-            FOR UPDATE
+              AND lease_expires_at > clock_timestamp()
         """),
         {"run_id": run_id, "lease_token": lease_token},
     )
@@ -279,14 +282,9 @@ class TripRunStore:
                     "summary": _json_dumps(initial_summary),
                 },
             )
-            from travel_agent.storage.worker_journal_store import TOOL_BUDGET_SCOPE, initial_tool_budget
+            from travel_agent.storage.worker_journal_store import WorkerJournalStore
 
-            kind, payload = initial_tool_budget()
-            await session.execute(text(
-                "INSERT INTO run_worker_journals "
-                "(run_id, scope_id, version, payload_type, payload) "
-                "VALUES (:run_id, :scope_id, 1, :kind, :payload)"
-            ), {"run_id": run.run_id, "scope_id": TOOL_BUDGET_SCOPE, "kind": kind, "payload": payload})
+            await WorkerJournalStore().create_initial_tool_budget(run.run_id, db_session=session)
             await self._append_event_in_session(
                 session,
                 run.run_id,
@@ -730,6 +728,7 @@ class TripRunStore:
                     **({"last_error": last_error} if last_error else {}),
                 },
             )
+            await _require_execution_lease(session, run_id, execution_lease_token)
             refreshed = await session.execute(
                 text("SELECT * FROM trip_runs WHERE run_id = :run_id"),
                 {"run_id": run_id},
@@ -892,6 +891,7 @@ class TripRunStore:
                 },
             )
             self._inject(DeliveryCompletionBoundary.TERMINAL_EVENT)
+            await _require_execution_lease(session, run_id, execution_lease_token)
             refreshed = await session.execute(
                 text("SELECT * FROM trip_runs WHERE run_id = :run_id"),
                 {"run_id": run_id},

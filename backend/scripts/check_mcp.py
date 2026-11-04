@@ -31,7 +31,14 @@ async def main() -> int:
     manager = MCPManager()
     timeout = int(os.getenv("MCP_CHECK_TIMEOUT_SECONDS", "45"))
     try:
-        states = await asyncio.wait_for(manager.initialize(settings.mcp_servers), timeout=timeout)
+        return await _probe(manager, settings.mcp_servers, timeout)
+    finally:
+        await manager.close_all_sessions()
+
+
+async def _probe(manager: MCPManager, servers: dict, timeout: int) -> int:
+    try:
+        states = await asyncio.wait_for(manager.initialize(servers), timeout=timeout)
     except asyncio.TimeoutError:
         print(f"MCP probe timed out after {timeout}s")
         return 1

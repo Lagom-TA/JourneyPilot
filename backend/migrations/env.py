@@ -32,17 +32,17 @@ if config.config_file_name is not None:
 target_metadata = None
 
 
-def _database_url() -> str:
+def _database_url():
     """迁移要连的库。psycopg3 同步驱动 —— Alembic 是同步的。"""
 
     explicit = config.attributes.get("db_url")
     if explicit:
-        return str(explicit)
+        return explicit
 
     from travel_agent.config.loader import get_settings
+    from travel_agent.storage.maintenance.connection import DatabaseTarget
 
-    db = get_settings().database
-    return f"postgresql+psycopg://{db.user}:{db.password}@{db.host}:{db.port}/{db.name}"
+    return DatabaseTarget.from_settings(get_settings()).sqlalchemy_url
 
 
 def run_migrations_offline() -> None:

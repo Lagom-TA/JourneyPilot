@@ -120,5 +120,7 @@ async def test_status_transition_rejects_a_lost_execution_lease():
             execution_lease_token="old-lease",
         )
     assert exc.value.reason == "lease_lost"
-    assert len(session.calls) == 2
-    assert session.calls[1][1]["lease_token"] == "old-lease"
+    assert len(session.calls) == 3
+    assert "FOR UPDATE" in session.calls[1][0]
+    assert "clock_timestamp()" in session.calls[2][0]
+    assert session.calls[2][1]["lease_token"] == "old-lease"

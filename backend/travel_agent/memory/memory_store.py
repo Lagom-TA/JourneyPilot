@@ -447,10 +447,10 @@ class MemoryStore:
             )
             return len(result.fetchall())
 
-    async def delete_all_user_facts(self, user_id: str) -> int:
+    async def delete_all_user_facts(self, user_id: str, *, db_session: Any = None) -> int:
         if not user_id:
             return 0
-        async with get_db_session() as session:
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text("""
                     DELETE FROM memory_facts

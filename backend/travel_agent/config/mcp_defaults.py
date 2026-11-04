@@ -70,6 +70,7 @@ _DEFAULT_SERVERS: dict[str, dict[str, Any]] = {
     "open-meteo": {
         "description": "Open-Meteo MCP：当前天气、固定 7 日预报、历史天气与空气质量（零 Key，https://open-meteo.com）",
         "node": ("open-meteo-mcp@0.1.0", "weather-mcp"),
+        "disabled": True,
     },
     # 汇率：仓库内实现的 Frankfurter 服务，零 Key。
     "currency-exchange-mcp": {
@@ -124,5 +125,6 @@ def default_mcp_servers(factory: Callable[..., ServerConfig]) -> Dict[str, Serve
             env=_server_env(required_env),
             description=declaration["description"],
             required_env=list(required_env),
+            disabled=bool(declaration.get("disabled", False)),
         )
     return servers

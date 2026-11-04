@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
@@ -14,6 +15,8 @@ from ..memory.memory_graph import MemoryGraph
 from ..memory.memory_store import MemoryStore
 from ..memory.user_profile import UserProfileMemory
 from .database import get_db_session
+from .background_job_store import BackgroundJobStore
+from .memory_lock import lock_user_memory
 from .row_values import iso_or_empty as _iso, json_dumps as _json_dumps
 
 
@@ -94,6 +97,7 @@ class MemoryLifecycleStore:
         clear_auto_portrait: bool,
         clear_graph: bool,
         clear_session_anchors: bool,
+        db_session: Any = None,
     ) -> Dict[str, int]:
         """清除系统自动学习的数据，用户手填的偏好不动。
 
@@ -107,15 +111,15 @@ class MemoryLifecycleStore:
         """
         counts = {"entities": 0, "relations": 0, "profiles": 0, "anchors": 0}
         if clear_graph:
-            graph_counts = await self.memory_graph.delete_user_graph(user_id)
+            graph_counts = await self.memory_graph.delete_user_graph(user_id, db_session=db_session)
             counts["entities"] = int(graph_counts.get("entities", 0))
             counts["relations"] = int(graph_counts.get("relations", 0))
         if clear_auto_portrait:
             counts["profiles"] = await self.user_profile_memory.clear_profile_memory(
-                user_id
+                user_id, db_session=db_session
             )
         if clear_session_anchors:
-            counts["anchors"] = await self.chat_session_memory.clear_user_anchors(user_id)
+            counts["anchors"] = await self.chat_session_memory.clear_user_anchors(user_id, db_session=db_session)
         return counts
 
     async def delete_by_category(
@@ -173,37 +177,46 @@ class MemoryLifecycleStore:
         clear_graph: bool = True,
         clear_session_anchors: bool = True,
     ) -> MemoryDeletionSummary:
-        affected_facts = await self.memory_store.delete_all_user_facts(user_id)
-        cleared = await self._clear_system_learned_memory(
-            user_id,
-            clear_auto_portrait=clear_auto_portrait,
-            clear_graph=clear_graph,
-            clear_session_anchors=clear_session_anchors,
-        )
-
-        summary = MemoryDeletionSummary(
-            request_id=request_id or generate_memory_forgetting_request_id(),
-            user_id=user_id,
-            scope=MemoryDeleteScope.ALL_USER,
-            affected_facts=affected_facts,
-            affected_entities=cleared["entities"],
-            affected_relations=cleared["relations"],
-            affected_profiles=cleared["profiles"],
-            affected_session_anchors=cleared["anchors"],
-            boundary=default_forgetting_boundary(
-                auto_portrait_cleared=clear_auto_portrait,
-                graph_cleared=clear_graph,
-                session_anchor_cleared=clear_session_anchors,
-            ),
-            metadata=sanitize_forgetting_metadata({
-                "reason": reason,
-                "clear_auto_portrait": clear_auto_portrait,
-                "clear_graph": clear_graph,
-                "clear_session_anchors": clear_session_anchors,
-            }),
-        )
-        await self.record_audit(summary)
-        return summary
+        if not user_id:
+            raise ValueError("user_id is required")
+        async with get_db_session() as session:
+            await lock_user_memory(session, user_id)
+            # 抽取写入先锁任务再锁画像；删除保持相同顺序。
+            await BackgroundJobStore().cancel_memory_extractions(user_id, db_session=session)
+            await self.user_profile_memory.ensure_profile_for_write(user_id, db_session=session, lock=True)
+            affected_facts = await self.memory_store.delete_all_user_facts(user_id, db_session=session)
+            cleared = await self._clear_system_learned_memory(
+                user_id,
+                clear_auto_portrait=clear_auto_portrait,
+                clear_graph=clear_graph,
+                clear_session_anchors=clear_session_anchors,
+                db_session=session,
+            )
+            fence_revision = await self.user_profile_memory.advance_memory_fence(user_id, db_session=session)
+            summary = MemoryDeletionSummary(
+                request_id=request_id or generate_memory_forgetting_request_id(),
+                user_id=user_id,
+                scope=MemoryDeleteScope.ALL_USER,
+                affected_facts=affected_facts,
+                affected_entities=cleared["entities"],
+                affected_relations=cleared["relations"],
+                affected_profiles=cleared["profiles"],
+                affected_session_anchors=cleared["anchors"],
+                boundary=default_forgetting_boundary(
+                    auto_portrait_cleared=clear_auto_portrait,
+                    graph_cleared=clear_graph,
+                    session_anchor_cleared=clear_session_anchors,
+                ),
+                metadata=sanitize_forgetting_metadata({
+                    "reason": reason,
+                    "clear_auto_portrait": clear_auto_portrait,
+                    "clear_graph": clear_graph,
+                    "clear_session_anchors": clear_session_anchors,
+                    "memory_fence_revision": fence_revision,
+                }),
+            )
+            await self.record_audit(summary, db_session=session, require_insert=True)
+            return summary
 
     async def delete_expired(
         self,
@@ -225,11 +238,13 @@ class MemoryLifecycleStore:
         await self.record_audit(summary)
         return summary
 
-    async def record_audit(self, summary: MemoryDeletionSummary) -> ForgettingAuditRecord:
+    async def record_audit(
+        self, summary: MemoryDeletionSummary, *, db_session: Any = None, require_insert: bool = False,
+    ) -> ForgettingAuditRecord:
         record = ForgettingAuditRecord(**summary.model_dump())
         record.metadata = sanitize_forgetting_metadata(record.metadata)
-        async with get_db_session() as session:
-            await session.execute(
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
+            result = await session.execute(
                 text("""
                     INSERT INTO memory_forgetting_audits
                         (request_id, user_id, scope, category, fact_id, status,
@@ -242,6 +257,7 @@ class MemoryLifecycleStore:
                          :affected_profiles, :affected_session_anchors,
                          CAST(:boundary AS jsonb), CAST(:metadata AS jsonb), NOW())
                     ON CONFLICT (request_id) DO NOTHING
+                    RETURNING request_id
                 """),
                 {
                     "request_id": record.request_id,
@@ -259,6 +275,8 @@ class MemoryLifecycleStore:
                     "metadata": _json_dumps(record.metadata),
                 },
             )
+            if require_insert and result.scalar_one_or_none() is None:
+                raise ValueError("memory deletion request_id already exists")
         return record
 
     async def list_audits(self, user_id: str, *, limit: int = 50) -> List[ForgettingAuditRecord]:

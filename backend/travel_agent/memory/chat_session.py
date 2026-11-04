@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import bindparam, text
@@ -1072,6 +1072,8 @@ class ChatSessionMemory:
         self,
         user_id: str,
         session_id: Optional[str] = None,
+        *,
+        db_session: Any = None,
     ) -> int:
         """清空已压缩的会话摘要，不删除聊天历史。
 
@@ -1085,7 +1087,7 @@ class ChatSessionMemory:
         if session_id:
             clause += " AND session_id = :sid"
             params["sid"] = session_id
-        async with get_db_session() as session:
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text(f"""
                     UPDATE chat_sessions

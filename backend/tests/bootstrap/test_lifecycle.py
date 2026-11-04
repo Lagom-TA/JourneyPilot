@@ -284,6 +284,14 @@ async def test_assembly_failure_closes_open_checkpointer_pool(monkeypatch):
     pool.close.assert_awaited_once()
 
 
+async def test_checkpointer_closes_pool_if_open_fails(monkeypatch):
+    pool = SimpleNamespace(open=AsyncMock(side_effect=RuntimeError("open failed")), close=AsyncMock())
+    monkeypatch.setattr(checkpointer, "AsyncConnectionPool", Mock(return_value=pool))
+    with pytest.raises(RuntimeError, match="open failed"):
+        await checkpointer.build_checkpointer(Settings())
+    pool.close.assert_awaited_once()
+
+
 async def test_pdf_startup_records_failed_probe_without_real_render(monkeypatch):
     from travel_agent.integrations import pdf_readiness
     from travel_agent.runtime import blocking_work

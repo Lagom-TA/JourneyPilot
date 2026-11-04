@@ -13,8 +13,10 @@ from __future__ import annotations
 from typing import Dict, List, Literal, Optional, Set
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy.engine import URL
 
 from travel_agent import USER_AGENT
+from .connection_urls import postgres_url, redis_url, sqlalchemy_postgres_url
 
 class StrictConfig(BaseModel):
     """所有配置段的基类：未知字段拒绝，不静默忽略。"""
@@ -107,12 +109,12 @@ class DatabaseConfig(StrictConfig):
     max_overflow: int = 20
 
     @property
-    def url(self) -> str:
-        return f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+    def url(self) -> URL:
+        return sqlalchemy_postgres_url(user=self.user, password=self.password, host=self.host, port=self.port, database=self.name, driver="asyncpg")
 
     @property
     def sync_url(self) -> str:
-        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+        return postgres_url(user=self.user, password=self.password, host=self.host, port=self.port, database=self.name)
 
 
 class MaintenanceConfig(StrictConfig):
@@ -143,9 +145,7 @@ class RedisConfig(StrictConfig):
 
     @property
     def url(self) -> str:
-        if self.password:
-            return f"redis://:{self.password}@{self.host}:{self.port}/{self.db}"
-        return f"redis://{self.host}:{self.port}/{self.db}"
+        return redis_url(password=self.password, host=self.host, port=self.port, database=self.db)
 
 
 class ServerConfig(StrictConfig):

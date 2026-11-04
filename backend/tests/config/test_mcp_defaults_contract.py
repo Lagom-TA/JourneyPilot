@@ -59,6 +59,7 @@ def test_defaults_expose_real_servers_and_launch_paths(monkeypatch: pytest.Monke
     assert servers["duckduckgo-search"].args[0].endswith("backend/mcp/search/free_search.py")
     assert servers["fetch"].args == ["-m", "mcp_server_fetch"]
     assert servers["tavily-search"].required_env == ["TAVILY_API_KEY"]
+    assert servers["open-meteo"].disabled is True
 
 
 def test_node_servers_prefer_local_bin_and_fall_back_to_versioned_npx(
@@ -73,6 +74,14 @@ def test_node_servers_prefer_local_bin_and_fall_back_to_versioned_npx(
     fallback = default_mcp_servers(MCPServerItem)["tavily-search"]
     assert fallback.command == "npx"
     assert fallback.args == ["-y", "tavily-mcp@0.2.21"]
+
+
+def test_open_meteo_mcp_requires_explicit_enablement():
+    from travel_agent.config.loader import build_settings
+
+    assert build_settings({}).mcp_servers["open-meteo"].disabled is True
+    settings = build_settings({"mcp": {"servers": {"open-meteo": {"disabled": False}}}})
+    assert settings.mcp_servers["open-meteo"].disabled is False
 
 
 def test_provider_env_is_fresh_and_limited_to_required_keys(

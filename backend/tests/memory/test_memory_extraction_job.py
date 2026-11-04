@@ -113,6 +113,7 @@ async def test_disabled_vectors_do_not_enqueue_or_wake_worker(monkeypatch):
     await extraction_jobs.enqueue_memory_extraction(
         user_id="local", session_id="session", user_message="我吃素",
         user_message_id="message", assistant_message_id="reply", profile_revision=1,
+        memory_revision_at_start=1,
         portrait_baseline="", background_job_worker=worker,
     )
     get_store.assert_not_called()

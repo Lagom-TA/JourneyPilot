@@ -1,18 +1,20 @@
 """后台任务的持久化。
 
-最终事实在 `background_jobs`：入队是一次写库，进程换了任务还在。租约与可领取时间
-一律由 PostgreSQL 的 `NOW()` 判定，与执行租约同一个时钟口径。
+最终事实在 `background_jobs`：入队是一次写库，进程换了任务还在。租约有效期由
+PostgreSQL 的当前时钟判定，可领取时间使用数据库事务时间。
 """
 
 from __future__ import annotations
 
 import uuid
+from contextlib import nullcontext
 from typing import Any, Dict, List, Mapping, Optional
 
 from sqlalchemy import bindparam, text
 
 from travel_agent.runtime.job_contracts import OPEN_BACKGROUND_JOB_STATUSES, BackgroundJob, BackgroundJobStatus, BackgroundJobType, coerce_job_status, coerce_job_type, generate_background_job_id
 from .database import get_db_session
+from .memory_lock import lock_user_memory
 from .run_execution_store import EXECUTOR_ID
 from travel_agent.runtime.time import iso_or_none as _iso
 from travel_agent.storage.row_values import json_dumps as _dumps
@@ -78,6 +80,7 @@ class BackgroundJobStore:
         *,
         priority: int = 100,
         max_attempts: int = 5,
+        db_session: Any = None,
     ) -> tuple[BackgroundJob, bool]:
         """写入一条任务，返回 `(任务, 是否新建)`。
 
@@ -85,7 +88,7 @@ class BackgroundJobStore:
         """
 
         kind = coerce_job_type(job_type)
-        async with get_db_session() as session:
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             inserted = await session.execute(
                 text(
                     """
@@ -125,6 +128,79 @@ class BackgroundJobStore:
                 raise BackgroundJobVanished(kind.value, dedupe_key)
             return _job_from_row(dict(conflicting)), False
 
+    async def enqueue_memory_extraction(
+        self, dedupe_key: str, payload: Dict[str, Any], *, memory_revision_at_start: int,
+    ) -> bool:
+        """删除全部记忆前开始的对话不能在删除完成后重新入队。"""
+        user_id = str(payload.get("user_id") or "")
+        if not user_id:
+            raise ValueError("memory extraction requires user_id")
+        async with get_db_session() as session:
+            await lock_user_memory(session, user_id)
+            result = await session.execute(
+                text("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM memory_forgetting_audits
+                        WHERE user_id = :uid AND scope = 'all_user'
+                          AND (metadata ->> 'memory_fence_revision')::bigint > :revision
+                    )
+                """),
+                {"uid": user_id, "revision": memory_revision_at_start},
+            )
+            if result.scalar_one():
+                return False
+            await self.enqueue(
+                BackgroundJobType.MEMORY_EXTRACTION, dedupe_key, payload,
+                db_session=session,
+            )
+            return True
+
+    async def cancel_memory_extractions(self, user_id: str, *, db_session: Any) -> None:
+        """取消未完成及可重试任务，并移除任务中保存的旧画像基线。"""
+        await db_session.execute(
+            text("""
+                UPDATE background_jobs
+                SET payload = payload - 'portrait_baseline',
+                    status = CASE WHEN status IN :cancel_statuses THEN 'cancelled' ELSE status END,
+                    lease_owner = CASE WHEN status IN :cancel_statuses THEN NULL ELSE lease_owner END,
+                    lease_expires_at = CASE WHEN status IN :cancel_statuses THEN NULL ELSE lease_expires_at END,
+                    last_error_code = CASE WHEN status IN :cancel_statuses THEN 'memory_deleted' ELSE last_error_code END,
+                    updated_at = NOW()
+                WHERE job_type = :job_type AND payload ->> 'user_id' = :uid
+            """).bindparams(bindparam("cancel_statuses", expanding=True)),
+            {"uid": user_id, "job_type": BackgroundJobType.MEMORY_EXTRACTION.value,
+             "cancel_statuses": [*_OPEN_STATUS_VALUES, BackgroundJobStatus.DEAD.value]},
+        )
+
+    async def lock_running_result(self, job_id: str, lease_owner: str, *, db_session: Any):
+        await db_session.execute(
+            text("SELECT job_id FROM background_jobs WHERE job_id = :job_id FOR UPDATE"),
+            {"job_id": job_id},
+        )
+        result = await db_session.execute(
+            text("""
+                SELECT result FROM background_jobs
+                WHERE job_id = :job_id AND status = 'running'
+                  AND lease_owner = :owner AND lease_expires_at > clock_timestamp()
+            """),
+            {"job_id": job_id, "owner": lease_owner},
+        )
+        return result.mappings().first()
+
+    async def mark_applied(
+        self, job_id: str, lease_owner: str, result: Dict[str, Any], *, db_session: Any,
+    ) -> bool:
+        marked = await db_session.execute(
+            text("""
+                UPDATE background_jobs SET result = CAST(:result AS jsonb), updated_at = NOW()
+                WHERE job_id = :job_id AND status = 'running' AND lease_owner = :owner
+                  AND lease_expires_at > clock_timestamp()
+                RETURNING job_id
+            """),
+            {"job_id": job_id, "owner": lease_owner, "result": _dumps(result)},
+        )
+        return marked.scalar_one_or_none() is not None
+
     async def get(self, job_id: str) -> Optional[BackgroundJob]:
         async with get_db_session() as session:
             result = await session.execute(
@@ -149,7 +225,7 @@ class BackgroundJobStore:
                 FROM background_jobs
                 WHERE status IN :claimable_statuses
                   AND available_at <= NOW()
-                  AND (lease_expires_at IS NULL OR lease_expires_at < NOW())
+                  AND (lease_expires_at IS NULL OR lease_expires_at < clock_timestamp())
                   AND attempts < max_attempts
                 ORDER BY priority ASC, created_at ASC
                 FOR UPDATE SKIP LOCKED
@@ -159,7 +235,7 @@ class BackgroundJobStore:
             SET status = :running,
                 attempts = j.attempts + 1,
                 lease_owner = :lease_owner,
-                lease_expires_at = NOW() + (:lease_seconds * INTERVAL '1 second'),
+                lease_expires_at = clock_timestamp() + (:lease_seconds * INTERVAL '1 second'),
                 updated_at = NOW()
             FROM claimable
             WHERE j.job_id = claimable.job_id
@@ -175,7 +251,7 @@ class BackgroundJobStore:
                         last_error_summary = '任务尝试次数已用尽', updated_at = NOW()
                     WHERE status IN :claimable_statuses
                       AND available_at <= NOW()
-                      AND (lease_expires_at IS NULL OR lease_expires_at < NOW())
+                      AND (lease_expires_at IS NULL OR lease_expires_at < clock_timestamp())
                       AND attempts >= max_attempts
                 """).bindparams(bindparam("claimable_statuses", expanding=True)),
                 {"dead": BackgroundJobStatus.DEAD.value,
@@ -197,16 +273,20 @@ class BackgroundJobStore:
 
     async def renew_lease(self, job_id: str, *, lease_owner: str, lease_seconds: int) -> bool:
         async with get_db_session() as session:
+            await session.execute(
+                text("SELECT job_id FROM background_jobs WHERE job_id = :job_id FOR UPDATE"),
+                {"job_id": job_id},
+            )
             result = await session.execute(
                 text(
                     """
                     UPDATE background_jobs
-                    SET lease_expires_at = NOW() + (:lease_seconds * INTERVAL '1 second'),
+                    SET lease_expires_at = clock_timestamp() + (:lease_seconds * INTERVAL '1 second'),
                         updated_at = NOW()
                     WHERE job_id = :job_id
                       AND lease_owner = :lease_owner
                       AND status = :running
-                      AND lease_expires_at > NOW()
+                      AND lease_expires_at > clock_timestamp()
                     RETURNING job_id
                     """
                 ),
@@ -223,6 +303,10 @@ class BackgroundJobStore:
         self, job_id: str, *, lease_owner: str, result: Optional[Dict[str, Any]] = None,
     ) -> bool:
         async with get_db_session() as session:
+            await session.execute(
+                text("SELECT job_id FROM background_jobs WHERE job_id = :job_id FOR UPDATE"),
+                {"job_id": job_id},
+            )
             updated = await session.execute(
                 text(
                     """
@@ -240,7 +324,7 @@ class BackgroundJobStore:
                     WHERE job_id = :job_id
                       AND status = :running
                       AND lease_owner = :lease_owner
-                      AND lease_expires_at > NOW()
+                      AND lease_expires_at > clock_timestamp()
                     RETURNING job_id
                     """
                 ),
@@ -269,6 +353,10 @@ class BackgroundJobStore:
         """
 
         async with get_db_session() as session:
+            await session.execute(
+                text("SELECT job_id FROM background_jobs WHERE job_id = :job_id FOR UPDATE"),
+                {"job_id": job_id},
+            )
             updated = await session.execute(
                 text(
                     """
@@ -289,7 +377,7 @@ class BackgroundJobStore:
                     WHERE job_id = :job_id
                       AND status = :running
                       AND lease_owner = :lease_owner
-                      AND lease_expires_at > NOW()
+                      AND lease_expires_at > clock_timestamp()
                     RETURNING status
                     """
                 ),

@@ -68,6 +68,14 @@ class UserProfileMemory:
             )
             return int(result.scalar() or 0)
 
+    async def advance_memory_fence(self, user_id: str, *, db_session: Any) -> int:
+        result = await db_session.execute(
+            text("UPDATE user_profiles SET revision = revision + 1, updated_at = NOW() "
+                 "WHERE user_id = :uid RETURNING revision"),
+            {"uid": user_id},
+        )
+        return int(result.scalar_one())
+
     async def save_user_profile(self, profile: UserProfile) -> None:
         """保存或更新用户画像（upsert）。每次写入 revision 前进一格。"""
         now = datetime.now(timezone.utc).isoformat()
@@ -140,7 +148,7 @@ class UserProfileMemory:
                 {"uid": user_id, "portrait": portrait_text},
             )
 
-    async def clear_profile_memory(self, user_id: str) -> int:
+    async def clear_profile_memory(self, user_id: str, *, db_session: Any = None) -> int:
         """清除画像中由系统生成的部分，用户手填的偏好保持不变。
 
         profile 行包含两类来源不同的数据：``preferences``（六组偏好与常用出发地，
@@ -151,7 +159,7 @@ class UserProfileMemory:
         """
         if not user_id:
             return 0
-        async with get_db_session() as session:
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text("""
                     UPDATE user_profiles

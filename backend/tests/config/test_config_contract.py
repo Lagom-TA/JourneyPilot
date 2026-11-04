@@ -123,6 +123,24 @@ def test_nested_env_override_applies_and_reports_its_path(monkeypatch):
     assert applied["database.port"] == "JOURNEYPILOT_DATABASE__PORT"
 
 
+def test_connection_credentials_with_url_characters_are_preserved():
+    from psycopg.conninfo import conninfo_to_dict
+    from redis.connection import parse_url
+    from travel_agent.config.models import DatabaseConfig, RedisConfig
+    from travel_agent.storage.maintenance.connection import DatabaseTarget
+
+    db = DatabaseConfig(user="u:@/", password="p@:/#% ", name="db?/#", host="::1")
+    target = DatabaseTarget(host=db.host, port=db.port, user=db.user, password=db.password, database=db.name)
+    for url in (db.url, target.asyncpg_url, target.sqlalchemy_url):
+        assert (url.username, url.password, url.host, url.database) == (db.user, db.password, db.host, db.name)
+    assert conninfo_to_dict(target.libpq_dsn) == {
+        "user": db.user, "password": db.password, "host": db.host,
+        "port": str(db.port), "dbname": db.name,
+    }
+    redis = RedisConfig(password=db.password, host="::1")
+    assert parse_url(redis.url)["password"] == db.password
+
+
 def test_a_misspelled_env_variable_is_an_error_not_a_no_op(monkeypatch):
     """拼错一个字母后静默什么都不做，会让配置改动看起来没有生效；这里要求报错。"""
 

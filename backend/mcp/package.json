@@ -1,5 +1,6 @@
 {
   "name": "journeypilot",
+  "version": "0.1.0",
   "private": true,
   "dependencies": {
     "@amap/amap-maps-mcp-server": "0.0.8",

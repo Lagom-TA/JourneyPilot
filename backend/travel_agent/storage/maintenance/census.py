@@ -106,7 +106,7 @@ _EXTENSIONS_SQL = "SELECT extname FROM pg_extension ORDER BY extname"
 _ALEMBIC_VERSION_SQL = "SELECT version_num FROM alembic_version"
 
 
-def take_census(conn: Any) -> DatabaseCensus:
+def take_census(conn: Any, *, strict: bool = False) -> DatabaseCensus:
     """从 psycopg3 连接采集 census。只读，不建任何东西。"""
 
     with conn.cursor() as cur:
@@ -141,6 +141,8 @@ def take_census(conn: Any) -> DatabaseCensus:
                 cur.execute(f'SELECT count(*) FROM "{name}"')  # noqa: S608 — 名字来自代码常量
                 row_counts[name] = int(cur.fetchone()[0])
             except Exception:  # pragma: no cover — 只在库损坏/权限异常时走到
+                if strict:
+                    raise
                 conn.rollback()
                 row_counts[name] = -1
 

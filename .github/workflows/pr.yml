@@ -199,6 +199,9 @@ jobs:
       JOURNEYPILOT_REDIS__HOST: 127.0.0.1
       JOURNEYPILOT_REDIS__PORT: "6379"
       JP_TESTS_REQUIRE_POSTGRES: "1"
+      JP_B4_ROLLBACK_TESTS: "1"
+      JP_B5_ROLLBACK_TESTS: "1"
+      JP_B6_ROLLBACK_TESTS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-backend

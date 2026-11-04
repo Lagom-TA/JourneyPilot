@@ -30,6 +30,7 @@ async def complete_chat(
     delivery,
     lifecycle,
     stream_profile,
+    memory_revision_at_start: int | None = None,
     background_job_worker,
     session_id,
     user_message,
@@ -67,16 +68,18 @@ async def complete_chat(
 
     await turns.save_success(assistant_content, assistant_type)
 
-    await enqueue_memory_extraction(
-        user_id=LOCAL_USER_ID,
-        session_id=session_id,
-        user_message=user_message,
-        user_message_id=user_message_id,
-        assistant_message_id=message_id,
-        profile_revision=stream_profile.revision if stream_profile else 0,
-        portrait_baseline=stream_profile.auto_portrait if stream_profile else "",
-        background_job_worker=background_job_worker,
-    )
+    if memory_revision_at_start is not None:
+        await enqueue_memory_extraction(
+            user_id=LOCAL_USER_ID,
+            session_id=session_id,
+            user_message=user_message,
+            user_message_id=user_message_id,
+            assistant_message_id=message_id,
+            profile_revision=stream_profile.revision if stream_profile else 0,
+            memory_revision_at_start=memory_revision_at_start,
+            portrait_baseline=stream_profile.auto_portrait if stream_profile else "",
+            background_job_worker=background_job_worker,
+        )
 
     current_bundle = None
     if ctx.use_deep_research:

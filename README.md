@@ -134,11 +134,14 @@ uv run --project backend python backend/journeypilot.py config show
 uv run --project backend python backend/scripts/check_mcp.py
 ```
 
-Built-in tools include web search, OpenStreetMap/Nominatim, China Railway 12306, Open-Meteo, and exchange
-rates. Amap, Baidu, Tavily, Brave, Duffel, and other providers can be configured as needed. On tool-name
-collisions, the registered owner is retained; MCP servers register in configuration order. Coverage and
-results depend on each service; routes within mainland China require an Amap key. Model and provider
-calls may incur charges.
+Built-in tools include web search, OpenStreetMap/Nominatim, China Railway 12306, and exchange rates. Trip
+planning uses the built-in Open-Meteo weather adapter. The third-party Open-Meteo MCP server is disabled
+by default because it sends a startup notification to a third-party domain. Set
+`mcp.servers.open-meteo.disabled` to `false` to enable it. Amap, Baidu, Tavily, Brave, Duffel, and other
+providers can be configured as needed.
+On tool-name collisions, the registered owner is retained; MCP servers register in configuration order.
+Coverage and results depend on each service; routes within mainland China require an Amap key. Model and
+provider calls may incur charges.
 
 The knowledge base uses a local Qwen3 ONNX embedding model by default; a compatible remote embedding
 service can also be configured. Incomplete embedding results fail indexing and leave the existing document intact.
@@ -152,6 +155,8 @@ the database or create a backup:
 uv run --project backend python backend/journeypilot.py doctor
 uv run --project backend python backend/journeypilot.py backup
 ```
+
+The database dump and row counts use the same snapshot; restore verifies the required files and checksums first.
 
 ## Development
 

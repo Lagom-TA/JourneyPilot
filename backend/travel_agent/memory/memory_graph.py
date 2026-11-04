@@ -198,11 +198,11 @@ class MemoryGraph:
             rows = result.mappings().fetchall()
         return [dict(r) for r in rows]
 
-    async def delete_user_graph(self, user_id: str) -> Dict[str, int]:
+    async def delete_user_graph(self, user_id: str, *, db_session: Any = None) -> Dict[str, int]:
         """物理删除该用户的图谱实体与关系。"""
         if not user_id:
             return {"entities": 0, "relations": 0}
-        async with get_db_session() as session:
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             relation_result = await session.execute(
                 text("""
                     DELETE FROM memory_relations

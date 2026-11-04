@@ -9,13 +9,14 @@
 ## 身份与持久化
 
 ### INV-BACKUP-001：备份必须能被校验出损坏
-约定：备份以 manifest 记录大小与 SHA-256，校验时逐文件比对；`pg_dump` 的退出码不是通过依据。
+约定：备份的行数、结构指纹和数据库转储使用同一快照；manifest 记录必需文件的大小与 SHA-256，校验时逐文件比对；`pg_dump` 的退出码不是通过依据。
 Owner: `backend/travel_agent/storage/maintenance/backup.py`
 Storage: 备份目录里的 `manifest.json`。
 Tests:
 - `backend/tests/db/test_backup.py::test_verify_catches_a_truncated_dump`
 - `backend/tests/db/test_backup.py::test_verify_catches_a_tampered_dump_of_the_same_size`
 - `backend/tests/db/test_restore.py::test_corrupted_backup_is_refused_and_current_database_untouched`
+- `backend/tests/cli/test_maintenance_safety.py`
 
 ### INV-BACKUP-002：备份里的密钥只留「有没有」
 约定：备份与 `config show` 共用一套脱敏规则；判据是字段名而不是值的样子，输出只有 `<set>` / `<unset>`。
@@ -121,6 +122,12 @@ Tests:
 - `backend/tests/db/test_b5_memory_rollback.py`
 - `backend/tests/db/test_background_jobs.py`
 - `backend/tests/runtime/test_lease_races.py::test_old_job_handler_cannot_finish_after_a_new_claim`
+
+### INV-MEMORY-001：全部删除与记忆抽取串行收口
+约定：全部删除在一个事务内取消未完成和可重试的抽取、清除选定记忆并记录删除边界；删除前开始的对话不能在删除后重新安排抽取。用户手填偏好不受影响。
+Owner: `backend/travel_agent/storage/memory_lifecycle_store.py`、`backend/travel_agent/storage/background_job_store.py`
+Tests:
+- `backend/tests/db/test_b6_memory_rollback.py`
 
 ### INV-RUN-001：每个 running Run 都有有效租约
 约定：运行前取得执行租约；心跳周期显著小于租约长度；过期租约不能续活，连续写失败达到阈值后停止发起新的外部调用。

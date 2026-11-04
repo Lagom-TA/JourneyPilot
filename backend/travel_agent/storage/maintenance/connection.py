@@ -11,6 +11,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Iterator
 
+from sqlalchemy.engine import URL
+
+from ...config.connection_urls import postgres_url, sqlalchemy_postgres_url
+
 
 @dataclass(frozen=True)
 class DatabaseTarget:
@@ -43,27 +47,18 @@ class DatabaseTarget:
         )
 
     @property
-    def sqlalchemy_url(self) -> str:
+    def sqlalchemy_url(self) -> URL:
         """Alembic 用。psycopg3 同步驱动。"""
-        return (
-            f"postgresql+psycopg://{self.user}:{self.password}"
-            f"@{self.host}:{self.port}/{self.database}"
-        )
+        return sqlalchemy_postgres_url(user=self.user, password=self.password, host=self.host, port=self.port, database=self.database, driver="psycopg")
 
     @property
-    def asyncpg_url(self) -> str:
+    def asyncpg_url(self) -> URL:
         """API 侧那条异步引擎用的 URL（与 `DatabaseConfig.url` 同一个形状）。"""
-        return (
-            f"postgresql+asyncpg://{self.user}:{self.password}"
-            f"@{self.host}:{self.port}/{self.database}"
-        )
+        return sqlalchemy_postgres_url(user=self.user, password=self.password, host=self.host, port=self.port, database=self.database, driver="asyncpg")
 
     @property
     def libpq_dsn(self) -> str:
-        return (
-            f"postgresql://{self.user}:{self.password}"
-            f"@{self.host}:{self.port}/{self.database}"
-        )
+        return postgres_url(user=self.user, password=self.password, host=self.host, port=self.port, database=self.database)
 
     def describe(self) -> str:
         """给人看的，**不含口令**。"""

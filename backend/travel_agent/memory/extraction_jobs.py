@@ -99,6 +99,7 @@ async def enqueue_memory_extraction(
     user_message_id: str,
     assistant_message_id: str,
     profile_revision: int,
+    memory_revision_at_start: int,
     portrait_baseline: str,
     background_job_worker=None,
 ) -> None:
@@ -111,12 +112,10 @@ async def enqueue_memory_extraction(
         return
     if not user_message or not user_message_id:
         return
-    from travel_agent.runtime.job_contracts import BackgroundJobType
     from travel_agent.storage.background_job_store import get_background_job_store
 
     try:
-        await get_background_job_store().enqueue(
-            BackgroundJobType.MEMORY_EXTRACTION,
+        enqueued = await get_background_job_store().enqueue_memory_extraction(
             memory_extraction_dedupe_key(session_id, assistant_message_id),
             {
                 "user_id": user_id,
@@ -126,9 +125,10 @@ async def enqueue_memory_extraction(
                 "profile_revision": profile_revision,
                 "portrait_baseline": portrait_baseline,
             },
+            memory_revision_at_start=memory_revision_at_start,
         )
     except Exception as e:
         logger.warning(f"记忆抽取入队失败: {e}")
         return
-    if background_job_worker is not None:
+    if enqueued and background_job_worker is not None:
         background_job_worker.notify()

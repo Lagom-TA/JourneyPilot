@@ -180,11 +180,34 @@ def create_backup(
 ) -> BackupResult:
     """产出一份经过校验的备份。任何一步失败都抛异常，不留下看似成功的目录。
 
-    `conn` 是一个已连到 `target` 的 psycopg3 连接，只用来读 census / 指纹 / 库大小；
-    实际导出走 `pg_dump`。
+    census、指纹和 pg_dump 使用同一只读快照，使备份清单与转储内容一致。
     """
 
-    census = take_census(conn)
+    with conn.transaction():
+        with conn.cursor() as cursor:
+            cursor.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+            cursor.execute("SELECT pg_export_snapshot()")
+            snapshot = cursor.fetchone()[0]
+        return _create_backup_from_snapshot(
+            conn, target, snapshot=snapshot, embedding_dimensions=embedding_dimensions,
+            output_root=output_root, kind=kind, label=label,
+            preferred_container=preferred_container,
+        )
+
+
+def _create_backup_from_snapshot(
+    conn: Any,
+    target: DatabaseTarget,
+    *,
+    snapshot: str,
+    embedding_dimensions: int,
+    output_root: Path,
+    kind: str,
+    label: str,
+    preferred_container: str,
+) -> BackupResult:
+
+    census = take_census(conn, strict=True)
     if not census.reachable:  # pragma: no cover — take_census 连不上时直接抛
         raise BackupError("数据库不可达，无法备份")
 
@@ -203,6 +226,29 @@ def create_backup(
     _check_disk_space(output_root, size_estimate)
     directory.mkdir(parents=True)
 
+    try:
+        return _write_backup_files(
+            directory, target, runner=runner, snapshot=snapshot, census=census,
+            fingerprint=fingerprint, size_estimate=size_estimate, kind=kind, label=label,
+        )
+    except BaseException:
+        shutil.rmtree(directory, ignore_errors=True)
+        raise
+
+
+def _write_backup_files(
+    directory: Path,
+    target: DatabaseTarget,
+    *,
+    runner: PgToolRunner,
+    snapshot: str,
+    census: Any,
+    fingerprint: dict[str, Any],
+    size_estimate: int,
+    kind: str,
+    label: str,
+) -> BackupResult:
+
     logger.info(
         "开始备份 %s → %s（%s，库约 %.1f MB）",
         target.describe(), directory, runner.describe(), size_estimate / 1e6,
@@ -211,13 +257,13 @@ def create_backup(
     dump_path = directory / DUMP_FILENAME
     result = runner.run(
         "pg_dump",
-        ["--format=custom", "--no-owner", "--no-acl", "--dbname", target.database],
+        ["--format=custom", "--no-owner", "--no-acl", "--snapshot", snapshot,
+         "--dbname", target.database],
         target=target,
         stdout_path=dump_path,
     )
     if result.returncode != 0:
         stderr = (result.stderr or b"").decode("utf-8", "replace").strip()
-        shutil.rmtree(directory, ignore_errors=True)
         raise BackupError(f"pg_dump 失败（exit {result.returncode}）：\n{stderr}")
 
     dump_bytes = _verify_dump(runner, target, dump_path)
@@ -302,29 +348,65 @@ def verify_backup(directory: Path) -> list[str]:
     problems: list[str] = []
     try:
         manifest = load_manifest(directory)
-    except BackupError as exc:
+    except (BackupError, OSError, ValueError) as exc:
         return [str(exc)]
 
-    for item in manifest.get("files", []):
-        path = directory / item["name"]
+    if not isinstance(manifest, dict):
+        return ["备份清单不是 JSON 对象"]
+    files = manifest.get("files")
+    if not isinstance(files, list):
+        return ["备份清单缺少文件校验列表"]
+    row_counts = manifest.get("row_counts")
+    if not isinstance(row_counts, dict) or any(
+        not isinstance(name, str) or type(count) is not int or count < 0
+        for name, count in row_counts.items()
+    ):
+        problems.append("备份清单缺少有效的表行数")
+    if "migration_revision" not in manifest:
+        problems.append("备份清单缺少迁移版本")
+    database = manifest.get("database")
+    if not isinstance(database, dict) or type(database.get("postgres_major")) is not int:
+        problems.append("备份清单缺少数据库版本")
+
+    names: set[str] = set()
+    for item in files:
+        if not isinstance(item, dict):
+            problems.append("备份文件条目无效")
+            continue
+        name, size, digest = item.get("name"), item.get("bytes"), item.get("sha256")
+        if (
+            not isinstance(name, str) or not name or name in {".", ".."}
+            or Path(name).name != name or name in names
+            or type(size) is not int or size < 0
+            or not isinstance(digest, str) or len(digest) != 64
+            or any(char not in "0123456789abcdef" for char in digest)
+        ):
+            problems.append("备份文件校验条目无效")
+            continue
+        names.add(name)
+        path = directory / name
+        if path.is_symlink():
+            problems.append(f"备份文件不能是符号链接：{name}")
+            continue
         if not path.exists():
-            problems.append(f"缺文件：{item['name']}")
+            problems.append(f"缺文件：{name}")
             continue
         actual_size = path.stat().st_size
-        if actual_size != item["bytes"]:
+        if actual_size != size:
             problems.append(
-                f"{item['name']} 大小不符：manifest {item['bytes']}，实际 {actual_size}"
+                f"{name} 大小不符：manifest {size}，实际 {actual_size}"
             )
             continue
         actual_digest = _sha256(path)
-        if actual_digest != item["sha256"]:
+        if actual_digest != digest:
             problems.append(
-                f"{item['name']} SHA-256 不符：manifest {item['sha256'][:16]}…，"
+                f"{name} SHA-256 不符：manifest {digest[:16]}…，"
                 f"实际 {actual_digest[:16]}…"
             )
 
-    if not (directory / DUMP_FILENAME).exists():
-        problems.append(f"缺数据库转储文件 {DUMP_FILENAME}")
+    for name in (DUMP_FILENAME, FINGERPRINT_FILENAME):
+        if name not in names:
+            problems.append(f"备份清单缺少必需文件的校验：{name}")
 
     return problems
 

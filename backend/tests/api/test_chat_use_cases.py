@@ -83,6 +83,31 @@ async def test_request_rejects_removed_mcp_server_selection(resources):
     assert not resources.fast_workflow.calls
 
 
+async def test_memory_revision_is_captured_before_chat_preparation(resources, monkeypatch):
+    events = []
+
+    async def revision(_user_id):
+        events.append("revision")
+        return 3
+
+    async def prepare_after_delete(*args, **kwargs):
+        events.append("prepare")
+        return object()
+
+    async def execute_with_fence(*args, **kwargs):
+        events.append(kwargs["memory_revision_at_start"])
+        yield None
+
+    resources.user_profile_memory.get_revision = revision
+    monkeypatch.setattr(chat_api, "get_settings", lambda: SimpleNamespace(embedding=SimpleNamespace(enabled=True)))
+    monkeypatch.setattr(chat_api, "prepare_chat", prepare_after_delete)
+    monkeypatch.setattr(chat_api, "execute_chat", execute_with_fence)
+    response = await chat_api.chat_stream(object())
+    async for _ in response.body_iterator:
+        pass
+    assert events == ["revision", "prepare", 3]
+
+
 async def test_missing_preset_precedes_triprun_side_effects(resources, monkeypatch):
     from travel_agent.storage.preset_store import PresetStore
 
@@ -794,6 +819,7 @@ async def test_turns_saved_once_before_extraction_and_successful_deep_publicatio
             delivery=delivery,
             lifecycle=SimpleNamespace(stream_exit_reason="unused"),
             stream_profile=await Profiles().get_user_profile("local"),
+            memory_revision_at_start=7,
             background_job_worker=None,
             session_id="deep",
             user_message="user",

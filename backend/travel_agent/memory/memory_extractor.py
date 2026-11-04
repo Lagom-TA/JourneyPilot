@@ -13,12 +13,10 @@
 from __future__ import annotations
 
 import logging
-import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import text
 
 from travel_agent.runtime.job_contracts import BackgroundJob
 from travel_agent.storage.database import get_db_session
@@ -258,18 +256,11 @@ class MemoryExtractor:
     ) -> MemoryExtractionOutcome:
         from .memory_graph import MemoryGraph
         from .user_profile import UserProfileMemory
+        from travel_agent.storage.background_job_store import BackgroundJobStore
 
         async with get_db_session() as session:
-            result = await session.execute(
-                text("""
-                    SELECT result FROM background_jobs
-                    WHERE job_id = :job_id AND status = 'running'
-                      AND lease_owner = :owner AND lease_expires_at > clock_timestamp()
-                    FOR UPDATE
-                """),
-                {"job_id": job.job_id, "owner": job.lease_owner},
-            )
-            row = result.mappings().first()
+            jobs = BackgroundJobStore()
+            row = await jobs.lock_running_result(job.job_id, job.lease_owner, db_session=session)
             if row is None:
                 raise MemoryExtractionFailed("记忆抽取任务租约已失效")
             committed = _committed_outcome(row["result"])
@@ -296,19 +287,13 @@ class MemoryExtractor:
                 await graph.save_portrait_to_profile(user_id, portrait_text, db_session=session)
 
             outcome = MemoryExtractionOutcome(len(facts), len(portrait))
-            marked = await session.execute(
-                text("""
-                    UPDATE background_jobs SET result = CAST(:result AS jsonb), updated_at = NOW()
-                    WHERE job_id = :job_id AND status = 'running' AND lease_owner = :owner
-                      AND lease_expires_at > clock_timestamp()
-                    RETURNING job_id
-                """),
-                {"job_id": job.job_id, "owner": job.lease_owner,
-                 "result": json.dumps({"memory_extraction_committed": {
-                     "facts": outcome.facts_written, "portraits": outcome.portraits_written,
-                 }})},
+            marked = await jobs.mark_applied(
+                job.job_id, job.lease_owner,
+                {"memory_extraction_committed": {
+                    "facts": outcome.facts_written, "portraits": outcome.portraits_written,
+                }}, db_session=session,
             )
-            if marked.scalar_one_or_none() is None:
+            if not marked:
                 raise MemoryExtractionFailed("记忆抽取任务租约已失效")
             return outcome
 

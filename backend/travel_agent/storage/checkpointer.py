@@ -54,9 +54,8 @@ async def build_checkpointer(
         kwargs=connection_kwargs,
         open=False,
     )
-    await pool.open()
-
     try:
+        await pool.open()
         async with pool.connection() as conn:
             missing = await missing_checkpoint_tables_async(conn)
         if missing:
@@ -67,6 +66,6 @@ async def build_checkpointer(
         checkpointer = AsyncPostgresSaver(pool)
         logger.info("LangGraph Postgres checkpointer 已就绪")
         return checkpointer, pool
-    except Exception:
+    except BaseException:
         await pool.close()
         raise

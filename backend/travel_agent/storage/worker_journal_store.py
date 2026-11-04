@@ -36,15 +36,40 @@ def journal_boundary(method):
 
 
 class WorkerJournalStore:
+    async def create_initial_tool_budget(self, run_id, *, db_session):
+        kind, payload = initial_tool_budget()
+        await db_session.execute(text(
+            "INSERT INTO run_worker_journals "
+            "(run_id, scope_id, version, payload_type, payload) "
+            "VALUES (:run_id, :scope_id, 1, :kind, :payload)"
+        ), {"run_id": run_id, "scope_id": TOOL_BUDGET_SCOPE, "kind": kind, "payload": payload})
+
+    @staticmethod
+    async def _lock_run(session, run_id):
+        # 插入 journal 时外键会读取 trip_runs；先拿父行锁，避免与终态更新的锁顺序相反。
+        result = await session.execute(text(
+            "SELECT run_id FROM trip_runs WHERE run_id=:run_id FOR KEY SHARE"
+        ), {"run_id": run_id})
+        if result.first() is None:
+            raise JournalConflict("worker journal run not found")
+
+    @staticmethod
+    async def _require_lease(session, run_id, lease_token):
+        await session.execute(text(
+            "SELECT run_id FROM trip_run_executions WHERE run_id=:run_id FOR UPDATE"
+        ), {"run_id": run_id})
+        lease = await session.execute(text(
+            "SELECT run_id FROM trip_run_executions WHERE run_id=:run_id "
+            "AND lease_token=:lease_token AND lease_expires_at>clock_timestamp()"
+        ), {"run_id": run_id, "lease_token": lease_token})
+        if lease.first() is None:
+            raise JournalConflict("worker journal execution lease lost")
+
     @journal_boundary
     async def reserve_tool(self, run_id, tool_name, *, lease_token, limit, retry=False):
         async with get_db_session() as session:
-            lease = await session.execute(text(
-                "SELECT run_id FROM trip_run_executions WHERE run_id=:run_id "
-                "AND lease_token=:lease_token AND lease_expires_at>NOW() FOR UPDATE"
-            ), {"run_id": run_id, "lease_token": lease_token})
-            if lease.first() is None:
-                raise JournalConflict("工具预算的执行租约已失效")
+            await self._lock_run(session, run_id)
+            await self._require_lease(session, run_id, lease_token)
             result = await session.execute(text(
                 "SELECT version, payload_type, payload FROM run_worker_journals "
                 "WHERE run_id=:run_id AND scope_id=:scope_id FOR UPDATE"
@@ -85,13 +110,8 @@ class WorkerJournalStore:
     async def save(self, run_id, scope_id, version, payload, *, lease_token):
         kind, data = JsonPlusSerializer().dumps_typed(payload)
         async with get_db_session() as session:
-            # 行锁同时让本次提交与租约接管/释放按顺序执行。
-            lease = await session.execute(text(
-                "SELECT run_id FROM trip_run_executions WHERE run_id=:run_id "
-                "AND lease_token=:lease_token AND lease_expires_at>NOW() FOR UPDATE"
-            ), {"run_id": run_id, "lease_token": lease_token})
-            if lease.first() is None:
-                raise JournalConflict("worker journal execution lease lost")
+            await self._lock_run(session, run_id)
+            await self._require_lease(session, run_id, lease_token)
             result = await session.execute(text("""
                 INSERT INTO run_worker_journals
                     (run_id, scope_id, version, payload_type, payload)

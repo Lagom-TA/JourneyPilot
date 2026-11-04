@@ -22,7 +22,7 @@ async def rollback_database(monkeypatch):
     from travel_agent.runtime import run_recovery
     from travel_agent.storage import (
         background_job_store, delivery_bundle_store, run_command_store,
-        run_execution_store, trip_run_store,
+        run_execution_store, trip_run_store, worker_journal_store,
     )
 
     tables = (
@@ -57,6 +57,7 @@ async def rollback_database(monkeypatch):
             for module in (
                 chat_session, persistence, run_recovery, background_job_store,
                 delivery_bundle_store, run_command_store, run_execution_store, trip_run_store,
+                worker_journal_store,
             ):
                 monkeypatch.setattr(module, "get_db_session", nested_session)
             try:
@@ -161,6 +162,39 @@ async def test_reclaimed_job_rejects_old_owner(rollback_database):
     ), {"job_id": last.job_id})
     assert await store.claim(lease_seconds=45) == []
     assert (await store.get(last.job_id)).status is BackgroundJobStatus.DEAD
+
+
+async def test_expired_leases_are_rejected_inside_a_long_transaction(rollback_database):
+    from travel_agent.runtime.cancellation import RunCancelled
+    from travel_agent.runtime.job_contracts import BackgroundJobType
+    from travel_agent.runtime.run_contracts import TripRunStatus
+    from travel_agent.storage.background_job_store import BackgroundJobStore
+    from travel_agent.storage.run_execution_store import RunExecutionStore
+    from travel_agent.storage.trip_run_store import TripRunStore
+    from travel_agent.storage.worker_journal_store import JournalConflict, WorkerJournalStore
+
+    runs, executions, jobs = TripRunStore(), RunExecutionStore(), BackgroundJobStore()
+    run = await runs.create_run(session_id="b6-clock", user_id="local", mode="fast")
+    await runs.transition_status(run.run_id, TripRunStatus.RUNNING)
+    lease = await executions.claim(run.run_id, lease_seconds=60)
+    job, _ = await jobs.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "b6-clock", {})
+    (job,) = await jobs.claim(lease_seconds=60)
+    await rollback_database.execute(text(
+        "UPDATE trip_run_executions SET lease_expires_at = NOW() + INTERVAL '10 milliseconds' WHERE run_id = :run_id"
+    ), {"run_id": run.run_id})
+    await rollback_database.execute(text(
+        "UPDATE background_jobs SET lease_expires_at = NOW() + INTERVAL '10 milliseconds' WHERE job_id = :job_id"
+    ), {"job_id": job.job_id})
+    await rollback_database.execute(text("SELECT pg_sleep(0.05)"))
+
+    assert not await executions.heartbeat(run.run_id, lease_token=lease.lease_token, lease_seconds=60)
+    with pytest.raises(RunCancelled):
+        await runs.transition_status(run.run_id, TripRunStatus.FAILED, execution_lease_token=lease.lease_token)
+
+    with pytest.raises(JournalConflict):
+        await WorkerJournalStore().save(run.run_id, "scope", 0, {}, lease_token=lease.lease_token)
+    assert not await jobs.renew_lease(job.job_id, lease_owner=job.lease_owner, lease_seconds=60)
+    assert not await jobs.complete(job.job_id, lease_owner=job.lease_owner, result={})
 
 
 async def test_orphan_recovery_settles_status_lease_and_command(rollback_database):

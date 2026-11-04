@@ -63,6 +63,7 @@ async def execute_chat(
     background_job_worker,
     cost_ledger_store=None,
     usage_recorder=None,
+    memory_revision_at_start: int | None = None,
 ) -> AsyncGenerator[Dict[str, Any] | None, None]:
     user_message = prepared.user_message
     user_message_id = prepared.user_message_id
@@ -369,6 +370,7 @@ async def execute_chat(
                 delivery=delivery,
                 lifecycle=lifecycle,
                 stream_profile=stream_profile,
+                memory_revision_at_start=memory_revision_at_start,
                 background_job_worker=background_job_worker,
                 session_id=session_id,
                 user_message=user_message,

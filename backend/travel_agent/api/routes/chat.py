@@ -4,6 +4,7 @@ from typing import Any, AsyncIterator
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from travel_agent.bootstrap.registry import get_components
+from travel_agent.config.loader import get_settings
 from travel_agent.conversation.chat.contracts import ChatRequest
 from travel_agent.conversation.chat.preparation import (
     prepare_chat,
@@ -18,6 +19,7 @@ from travel_agent.api.chat_errors import raise_chat_preparation_error
 from travel_agent.api.schemas.chat import OptimizePromptRequest
 from travel_agent.api.sse import sse_event as encode_sse_event
 from travel_agent.api.sse_projection import project_sse_payload
+from travel_agent.runtime.local_identity import LOCAL_USER_ID
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["chat"])
@@ -70,6 +72,12 @@ async def chat_stream(
       error         - 错误
     """
     components = get_components()
+    memory_revision_at_start = None
+    if get_settings().embedding.enabled:
+        try:
+            memory_revision_at_start = await components.user_profile_memory.get_revision(LOCAL_USER_ID)
+        except Exception as error:
+            logger.warning("无法读取记忆版本，本轮不安排记忆抽取: %s", error)
     try:
         prepared = await prepare_chat(
             request,
@@ -98,6 +106,7 @@ async def chat_stream(
             background_job_worker=components.background_job_worker,
             cost_ledger_store=getattr(components, "cost_ledger_store", None),
             usage_recorder=getattr(components, "usage_recorder", None),
+            memory_revision_at_start=memory_revision_at_start,
         )
     return StreamingResponse(
         present_chat_events(events),
