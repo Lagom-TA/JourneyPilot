@@ -61,12 +61,13 @@ class RunBudgetUsage(StrictModel):
 def remaining_budget(
     snapshot: RunBudgetSnapshot, usage: RunBudgetUsage
 ) -> Dict[str, Optional[float]]:
-    """每一维还剩多少。负数被夹到 0：已经超了就是没有了。"""
+    """返回已知的剩余额度；费用数据不完整时不推算费用余额。"""
 
     return {
         dimension: (
             max(0.0, snapshot.limit(dimension) - usage.spent(dimension))
             if snapshot.enforce_limits and snapshot.limit(dimension) is not None
+            and (dimension != "cost_usd" or usage.cost_complete)
             else None
         )
         for dimension in BUDGET_DIMENSIONS

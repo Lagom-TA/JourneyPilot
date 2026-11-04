@@ -93,6 +93,15 @@ def test_remaining_never_goes_negative():
     assert remaining["llm_calls"] == 0.0
 
 
+def test_incomplete_cost_has_no_claimed_remaining_budget():
+    snapshot = _snapshot(max_llm_calls=5, max_cost_usd=1.0)
+    remaining = remaining_budget(snapshot, RunBudgetUsage(
+        llm_calls=1, cost_usd=0.2, cost_complete=False,
+    ))
+    assert remaining["cost_usd"] is None
+    assert remaining["llm_calls"] == 4
+
+
 # --- 账本 ---------------------------------------------------------------- #
 
 

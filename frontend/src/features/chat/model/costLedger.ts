@@ -200,12 +200,12 @@ function projectSettled(summary: RunCostSummary): CostLedgerView {
         notices.push({
             field: 'currency',
             tone: 'warning',
-            text: '用量或计价信息不足，暂时无法计算本轮成本。',
+            text: '用量或计价信息不足，暂时无法计算本轮成本；若启用了费用上限，可能无法生效。',
         });
     }
-    if (summary.token_usage_complete === false || summary.cost_complete === false) {
+    else if (summary.token_usage_complete === false || summary.cost_complete === false || summary.unpriced_call_count > 0) {
         notices.push({ field: 'token_usage_complete', tone: 'warning',
-            text: '部分调用缺少完整计量，当前显示已知用量和成本。' });
+            text: '部分调用缺少完整计量或计价，当前显示已知用量和成本；若启用了费用上限，可能无法生效。' });
     }
     if (summary.cache_read_usage_complete === false || summary.cache_write_usage_complete === false
         || summary.reasoning_usage_complete === false) {
@@ -273,12 +273,12 @@ function projectLive(live: RunCostLive): CostLedgerView {
         notices.push({
             field: 'currency',
             tone: 'warning',
-            text: '用量或计价信息不足，暂时只累计已知用量。',
+            text: '用量或计价信息不足，暂时只累计已知用量；若启用了费用上限，可能无法生效。',
         });
     }
-    if (live.incompleteCount) {
+    else if (live.incompleteCount) {
         notices.push({ field: 'token_usage_complete', tone: 'warning',
-            text: '部分调用缺少完整计量，当前显示已知用量和成本。' });
+            text: '部分调用缺少完整计量或计价，当前显示已知用量和成本；若启用了费用上限，可能无法生效。' });
     }
     const activeInternal = live.lastAgent ?? live.lastNode;
     return {

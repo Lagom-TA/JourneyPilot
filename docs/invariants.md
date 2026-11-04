@@ -301,7 +301,7 @@ Tests:
 - `backend/tests/runtime/test_blocking_work.py::test_queue_wait_has_an_upper_bound`
 
 ### INV-BUDGET-001：预算在调用之前判，快照不受配置热更新影响
-约定：调用前按输入 token 估算、输出上限和价格表估算本次开销；价格或用量不完整时费用维不能保证硬上限。快照在 Draft 授权时封存，与 Deadline 同进同出。授权前的理解阶段不封预算快照，但受提问轮数、每轮工具迭代与单轮超时的显式上限约束；进入 Run 后的模型调用记入 `run_llm_calls`，工具调用记入 worker journal，封存时读回已花量。入口分流（`classify_route`）与提示词优化发生在 Run 创建之前，不写 Run 台账。
+约定：调用前按输入 token 估算、输出上限和价格表估算本次开销；价格或用量不完整时继续运行，费用余额显示为未知，费用面板提示费用上限可能无法生效。快照在 Draft 授权时封存，与 Deadline 同进同出。授权前的理解阶段不封预算快照，但受提问轮数、每轮工具迭代与单轮超时的显式上限约束；进入 Run 后的模型调用记入 `run_llm_calls`，工具调用记入 worker journal，封存时读回已花量。入口分流（`classify_route`）与提示词优化发生在 Run 创建之前，不写 Run 台账。
 Owner: `backend/travel_agent/runtime/budget.py`
 Storage: `RunBudgetSnapshot` 随 checkpoint；已花量的最终事实在 `run_llm_calls`。
 ADR: [ADR-0006](adr/ADR-0006-resource-budgets-and-isolation.md)

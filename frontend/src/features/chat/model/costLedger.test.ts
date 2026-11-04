@@ -24,7 +24,28 @@ describe('live token accounting', () => {
         const view = buildCostLedgerView(null, state.runCostLive);
         expect(view?.tiles.find(tile => tile.field === 'total_cost_usd')?.value).toBeNull();
         expect(view?.tiles.find(tile => tile.field === 'total_tokens')?.value).toBeNull();
-        expect(view?.notices.some(notice => notice.text.includes('缺少完整计量'))).toBe(true);
+        expect(view?.notices.some(notice => notice.text.includes('费用上限，可能无法生效'))).toBe(true);
+    });
+    it('warns when a later live call has no price', () => {
+        const first = appReducer({ runCostLive: null } as AppState, { type: 'USAGE_UPDATE', payload: event });
+        const second = appReducer(first, { type: 'USAGE_UPDATE', payload: {
+            ...event, call_id: 'unpriced', cost_usd: null,
+        } });
+        const view = buildCostLedgerView(null, second.runCostLive);
+        expect(view?.notices.some(notice => notice.text.includes('计价') && notice.text.includes('费用上限'))).toBe(true);
+    });
+    it('warns about an unreliable cost limit for partially priced settled usage', () => {
+        const summary = {
+            run_id: 'run-test', call_count: 2, unpriced_call_count: 1,
+            total_tokens: 120, total_cost_usd: 0.1, currency: 'USD',
+            estimated_call_count: 0, estimated_ratio: 0, error_call_count: 0,
+            token_usage_complete: true, cost_complete: false,
+            cost_coverage_ratio: 0.5, by_node: [],
+        } as unknown as RunCostSummary;
+        const view = buildCostLedgerView(summary, null);
+        expect(view?.notices.some(notice => notice.text.includes('费用上限，可能无法生效'))).toBe(true);
+        const complete = buildCostLedgerView({ ...summary, unpriced_call_count: 0, cost_complete: true }, null);
+        expect(complete?.notices.some(notice => notice.text.includes('费用上限'))).toBe(false);
     });
     it('shows an incomplete bill even when no captured row has committed', () => {
         const summary = {
