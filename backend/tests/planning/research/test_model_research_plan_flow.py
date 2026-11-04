@@ -182,7 +182,7 @@ async def test_confirmed_idea_and_travel_understanding_reach_research_and_delive
         gate = second["__interrupt__"][0].value
         assert "园林" in gate["plan_text"]
         assert gate["approval_token"] != first_gate["approval_token"]
-        assert not calls
+        assert not calls and not weather_calls
         from travel_agent.planning.recovery import with_worker_recovery
         from travel_agent.planning.workflow import TravelPlanningWorkflow
 
@@ -196,10 +196,10 @@ async def test_confirmed_idea_and_travel_understanding_reach_research_and_delive
         worker = with_worker_recovery("destination_researcher", destination.destination_researcher_node)
         with pytest.raises(PermissionError, match="已确认"):
             await worker(unapproved, config)
-        assert not calls
+        assert not calls and not weather_calls
         stale = await graph.ainvoke(Command(resume={"action": "approve", "approval_token": first_gate["approval_token"]}), config)
         assert stale["__interrupt__"][0].value["approval_token"] == gate["approval_token"]
-        assert not calls
+        assert not calls and not weather_calls
         current_execution_lease.set("stale-lease")
         with pytest.raises(PermissionError, match="租约无效"):
             await graph.ainvoke(Command(resume={"action": "approve", "approval_token": gate["approval_token"]}), config)

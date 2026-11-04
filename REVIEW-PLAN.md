@@ -26,7 +26,7 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 
 ## 进度总览
 
-**进度**：后端逻辑 1/6 · 前端页面 0/6 · 文字内容 0/3 · [待决事项](review-plan/decisions.md) 1 项
+**进度**：后端逻辑 2/6 · 前端页面 0/6 · 文字内容 0/3 · [待决事项](review-plan/decisions.md) 0 项
 
 状态：⬜ 未开始 · 🔍 审查中 · 🔧 修复中 · ✅ 已完成 · ↩️ 需复核 · ⏸️ 搁置
 
@@ -34,7 +34,7 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 |---|---|---|---|---|---|---|---|
 | S0 | [审查准备](review-plan/stages/S0-setup.md) | — | — | ✅ | Codex | — | 2026-11-04 |
 | B1 | [后端分层与依赖边界](review-plan/stages/B1-backend-layers.md) | `后端逻辑` | S0 | ✅ | Codex | 0 | 2026-11-04 / dc5a9e4 |
-| B2 | [规划主链（上）：理解、研究设想与确认](review-plan/stages/B2-planning-intake.md) | `后端逻辑` | B1 | 🔧 | Codex | 0 | |
+| B2 | [规划主链（上）：理解、研究设想与确认](review-plan/stages/B2-planning-intake.md) | `后端逻辑` | B1 | ✅ | Codex | 0 | 2026-11-04 / 65f8269 |
 | B3 | [规划主链（下）：调研、组合与交付](review-plan/stages/B3-planning-delivery.md) | `后端逻辑` | B2 | ⬜ | | 4 | |
 | B4 | [运行控制、会话与流式](review-plan/stages/B4-runtime-streaming.md) | `后端逻辑` | B1 | ⬜ | | 5 | |
 | B5 | [工具、模型、外部数据与用户资料](review-plan/stages/B5-tools-models-data.md) | `后端逻辑` | B1 | ⬜ | | 3 | |
