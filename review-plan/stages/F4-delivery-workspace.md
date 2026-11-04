@@ -49,9 +49,10 @@
 
 ## 收到的提醒
 
+- [ ] 来自 B3-04 至 B3-09：公开交付保留未安排日期和缺口、PDF 已展示缺口及逐事实引用，价格不再汇总、导出期间版本变化会冲突 → 请复核工作台和阅读版的缺口、来源及单项价格展示。
 - [ ] 来自 B2-03：交付后的连续追问会与回答一起传入后续分流和调整 → 请复核多轮追问、刷新和再次提交的体验。
 - [ ] 来自 S0：真实 14 日交付截图 `output/review/S0/sessions/fourteen-days-chengdu-chongqing-extended-result.png` 的地图区域出现原样 `<span style=...>` 标记文本；请检查地图标记内容与渲染。
-- [ ] 来自 S0：该 Bundle 的 `itinerary.unresolved` 包含第 6 天“尚未安排具体活动”，但 D6 交付界面显示“自由休息”，没有显示 unresolved 提示；请检查未安排项目的投影与呈现。注意：前端没有任何代码渲染 `unresolved`，`session-state.spec.ts` 的 `concise delivery keeps unlocated stops…` 还断言页面不列出缺口，需先确认这是有意设计，再决定 D1 的“含尚未安排”是否保留。该 Bundle 的 `unresolved` 共 50 条，其中 49 条是“接驳尚未核实”。
+- [ ] 来自 S0：该 Bundle 的 `itinerary.unresolved` 包含第 6 天“尚未安排具体活动”，但 D6 界面显示“自由休息”且未展示缺口；B3 已支持未安排日期并在 PDF 展示，请复核工作台与阅读版。该 Bundle 共 50 条缺口，其中 49 条是“接驳尚未核实”。
 - [ ] 来自 S0：D11 历史结果的只读素材在 `output/review/S0/states/history-readonly-*.png`（请求拦截所得）；手机端需先点“查看旅行日程”才看到只读标记。
 
 ## 问题与修复
