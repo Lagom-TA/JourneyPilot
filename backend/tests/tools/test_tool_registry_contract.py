@@ -40,7 +40,7 @@ def test_register_makes_tool_visible():
     assert [t["name"] for t in registry.list_tools()] == ["demo_tool"]
 
 
-def test_same_name_second_registration_last_one_wins():
+def test_same_name_other_origin_cannot_replace_the_first_registration():
     registry = ToolRegistry()
 
     async def first_executor(**kwargs: Any) -> Dict[str, Any]:
@@ -67,10 +67,10 @@ def test_same_name_second_registration_last_one_wins():
     assert registry.count == 1
     items = registry.get_tools_as_schemas()
     assert len(items) == 1
-    assert items[0]["source"] == "mcp"
-    assert items[0]["server_name"] == "srv-x"
-    assert items[0]["executor"] is second_executor
-    assert items[0]["schema"]["function"]["description"] == "v2"
+    assert items[0]["source"] == "local"
+    assert items[0]["server_name"] is None
+    assert items[0]["executor"] is first_executor
+    assert items[0]["schema"]["function"]["description"] == "v1"
 
 
 def test_manifest_passed_explicitly_vs_inferred():
@@ -97,7 +97,7 @@ def test_manifest_passed_explicitly_vs_inferred():
     assert _tool_entry(registry, "my_search")["manifest"]["allow_offline_fallback"] is False
 
 
-def test_global_place_search_hand_written_manifest_flips_on_overwrite():
+def test_global_place_search_keeps_its_owner_and_manifest_on_collision():
     from travel_agent.tools.builtin_tools import register_builtin_tools
     from travel_agent.tools.registry import get_tool_registry
 
@@ -116,8 +116,8 @@ def test_global_place_search_hand_written_manifest_flips_on_overwrite():
         server_name="third-party",
     )
     entry = _tool_entry(registry, "global_place_search")
-    assert entry["source"] == "mcp"
-    assert entry["manifest"]["allow_offline_fallback"] is True
+    assert entry["source"] == "builtin"
+    assert entry["manifest"]["allow_offline_fallback"] is False
 
 
 def test_collision_recorded_with_provenance():

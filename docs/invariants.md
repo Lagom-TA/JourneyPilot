@@ -115,9 +115,10 @@ Tests:
 ---
 
 ### INV-JOB-002：丢失租约的 worker 不写结果
-约定：续不上租约就取消处理器；任务结论按本次领取的唯一 `lease_owner` 和有效期过滤，丢失租约的执行者不能覆盖新结论。处理器自身的外部副作用仍由其幂等规则负责。
-Owner: `backend/travel_agent/runtime/background_jobs.py` 的 `_renew_lease`、`backend/travel_agent/storage/background_job_store.py` 的 `complete` / `fail`
+约定：续不上租约就取消处理器；任务结论按本次领取的唯一 `lease_owner` 和有效期过滤，丢失租约的执行者不能覆盖新结论。记忆抽取的事实、画像和已应用标记在同一租约保护事务中提交；重领后复用该标记。其他外部副作用由处理器自身的幂等规则负责。
+Owner: `backend/travel_agent/runtime/background_jobs.py` 的 `_renew_lease`、`backend/travel_agent/storage/background_job_store.py` 的 `complete` / `fail`、`backend/travel_agent/memory/memory_extractor.py`
 Tests:
+- `backend/tests/db/test_b5_memory_rollback.py`
 - `backend/tests/db/test_background_jobs.py`
 - `backend/tests/runtime/test_lease_races.py::test_old_job_handler_cannot_finish_after_a_new_claim`
 
@@ -369,7 +370,7 @@ Tests:
 - `backend/tests/knowledge/test_document_parse.py::test_parser_timeout_kills_the_subprocess`
 
 ### INV-TOOL-001：日期能力先于运行预算、重试和 Provider 网络调用
-约定：12306 只把上海时区 today 至 today+14 当作目标日实时余票；更远日期只查询窗口末日并标记 reference-only，不可作为证据。正式天气只在目的地本地 16 日窗口内请求精确预报；更远日期跳过预报端点，改用十个完整年份的同月历史季节基线，不生成逐日天气、概率或小时级事实。
+约定：12306 只把上海时区 today 至 today+14 当作目标日实时余票；更远日期只查询窗口末日并标记 reference-only，不可作为证据。正式天气只采用目的地本地 16 日窗口内的精确预报；确定在窗口外的日期跳过预报端点，改用十个完整年份的同月历史季节基线，不生成逐日天气、概率或小时级事实。目的地时区未知且日期靠近窗口边界时，由供应商返回时区后再判定。
 Owner: `backend/travel_agent/tools/temporal.py`、`backend/travel_agent/tools/gateway.py`、`backend/travel_agent/tools/execution.py` 的 `execute_tool`、`backend/travel_agent/integrations/weather.py`
 Tests:
 - `backend/tests/tools/test_temporal_tool_policy.py`

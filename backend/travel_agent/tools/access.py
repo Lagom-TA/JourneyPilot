@@ -98,6 +98,12 @@ def filter_tools_for_agent(
     result = []
     for t in tools:
         tool_name = t.get("schema", {}).get("function", {}).get("name", "")
+        server_name = t.get("server_name")
+
+        if t.get("source") == "mcp":
+            owner = _EXTRA_MCP_TOOL_OWNERS.get(tool_name)
+            if tool_name in _SCOPED_NON_MCP_TOOLS or (owner and server_name != owner):
+                continue
 
         if agent_name == "fast_answer_agent" and tool_name not in extra_tools:
             continue
@@ -198,4 +204,14 @@ _SCOPED_NON_MCP_TOOLS = {
     "global_place_search",
     "global_route_search",
     "knowledge_search",
+}
+
+_EXTRA_MCP_TOOL_OWNERS = {
+    "free_web_search": "duckduckgo-search",
+    "tavily_search": "tavily-search",
+    "brave_web_search": "brave-search",
+    "latest_exchange_rates": "currency-exchange-mcp",
+    "maps_text_search": "amap-maps",
+    "maps_around_search": "amap-maps",
+    "maps_search_detail": "amap-maps",
 }

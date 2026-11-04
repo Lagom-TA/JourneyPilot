@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -95,11 +96,13 @@ class MemoryStore:
         importance: int = 5,
         retention_policy: Optional[MemoryRetentionPolicy] = None,
         source_message_id: str = "",
+        db_session: Any = None,
+        prepared_embedding: Optional[List[float]] = None,
     ) -> Optional[int]:
         """计算 embedding 并把事实写入 memory_facts 表，返回该行的 ``fact_id``。
 
-        返回写入行的标识，调用方无需按内容回读确认。失败时返回 ``None``；
-        该路径非关键，不抛出异常。
+        返回写入行的标识。自行管理事务时失败返回 ``None``；调用方提供事务时
+        抛出异常，由调用方回滚整组写入。
 
         传入 ``source_message_id`` 时按 (user, 来源消息, 正文) 摘要去重，
         避免至少一次投递的任务重复写入同一句事实。
@@ -120,10 +123,12 @@ class MemoryStore:
             )
             vec_str = None
             if get_settings().embedding.enabled:
-                embedding = await self._compute_embedding(content)
+                embedding = prepared_embedding
+                if embedding is None:
+                    embedding = await self._compute_embedding(content)
                 vec_str = f"[{','.join(str(v) for v in embedding)}]"
 
-            async with get_db_session() as session:
+            async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
                 result = await session.execute(
                     text("""
                         INSERT INTO memory_facts
@@ -170,6 +175,8 @@ class MemoryStore:
             return int(fact_id)
         except Exception as e:
             logger.warning(f"记忆事实写入失败 user={user_id} category={category}: {e}")
+            if db_session is not None:
+                raise
             return None
 
     # -----------------------------------------------------------------------
@@ -263,8 +270,8 @@ class MemoryStore:
             return facts
 
         except Exception as e:
-            logger.debug(f"MemoryStore.search_facts 失败（非关键路径）: {e}")
-            return []
+            logger.warning(f"MemoryStore.search_facts 失败: {e}")
+            raise
 
     # -----------------------------------------------------------------------
     # 列表（非语义检索：直接查表，用于「记忆与偏好」页展示与手动记忆注入）
@@ -309,10 +316,12 @@ class MemoryStore:
 
             return [_fact_row(row) for row in rows]
         except Exception as e:
-            logger.debug(f"MemoryStore.list_facts 失败（非关键路径）: {e}")
-            return []
+            logger.warning(f"MemoryStore.list_facts 失败: {e}")
+            raise
 
-    async def get_fact(self, user_id: str, fact_id: str | int) -> Optional[Dict[str, Any]]:
+    async def get_fact(
+        self, user_id: str, fact_id: str | int, *, db_session: Any = None
+    ) -> Optional[Dict[str, Any]]:
         """按身份读回一条记忆事实（含已过期的）。
 
         写入返回 ``fact_id`` 后，这里可直接读取刚创建的那一条，无需扫描全量列表。
@@ -323,7 +332,7 @@ class MemoryStore:
             fact_id_int = int(fact_id)
         except (TypeError, ValueError):
             return None
-        async with get_db_session() as session:
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text("""
                     SELECT fact_id, content, category, importance, session_id, created_at, expires_at
@@ -335,7 +344,9 @@ class MemoryStore:
             row = result.mappings().first()
         return _fact_row(row) if row else None
 
-    async def find_manual_fact(self, user_id: str, content: str) -> Optional[Dict[str, Any]]:
+    async def find_manual_fact(
+        self, user_id: str, content: str, *, db_session: Any = None
+    ) -> Optional[Dict[str, Any]]:
         """查找该用户仍然有效的同一句手动记忆；不存在时返回 None。
 
         这是「同一句话只保留一条」的判定依据，作用域仅限手动记忆：抽取器写入的
@@ -343,7 +354,7 @@ class MemoryStore:
         """
         if not user_id or not content:
             return None
-        async with get_db_session() as session:
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text("""
                     SELECT fact_id, content, category, importance, session_id, created_at, expires_at
@@ -396,8 +407,8 @@ class MemoryStore:
                 for row in rows
             ]
         except Exception as e:
-            logger.debug(f"MemoryStore.list_manual_facts 失败（非关键路径）: {e}")
-            return []
+            logger.warning(f"MemoryStore.list_manual_facts 失败: {e}")
+            raise
 
     # -----------------------------------------------------------------------
     # 删除 / retention cleanup

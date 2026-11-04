@@ -505,13 +505,13 @@ class MCPManager:
         await self.close_all_sessions()
         self._server_configs = dict(mcp_servers)
         self._server_states = {}
-        async def _initialize_server(server_name: str, server_config: Any) -> int:
+        async def _initialize_server(server_name: str, server_config: Any) -> Optional[List[Dict[str, Any]]]:
             state = self._build_initial_state(server_name, server_config)
             self._server_states[server_name] = state
 
             if not state.enabled:
                 state.status = "disabled"
-                return 0
+                return None
 
             # 使用 sse_url 时（如百度地图远程接入），AK 通常已嵌入 URL，无需 env
             missing_env = [] if getattr(server_config, "sse_url", None) else self._missing_required_env(server_config)
@@ -524,14 +524,14 @@ class MCPManager:
                     server_name,
                     ", ".join(missing_env),
                 )
-                return 0
+                return None
 
             if not self._is_transport_configured(server_config):
                 state.configured = False
                 state.status = "misconfigured"
                 state.last_error = "未配置 command 或 sse_url"
                 logger.warning(f"MCP 服务器 [{server_name}] 配置不完整")
-                return 0
+                return None
 
             try:
                 tools = await self._list_server_tools(server_name, server_config)
@@ -547,52 +547,59 @@ class MCPManager:
                         "MCP 日期能力定义不匹配: "
                         + "; ".join(contract_errors)
                     )
-                tool_names: List[str] = []
-
-                for tool_meta in normalized_tools:
-                    tool_name = tool_meta["name"]
-                    if not tool_name:
-                        continue
-
-                    if registry.register(
-                        name=tool_name,
-                        description=tool_meta["description"],
-                        parameters_schema=tool_meta["parameters_schema"],
-                        executor=self._make_executor(server_name, tool_name),
-                        source="mcp",
-                        server_name=server_name,
-                    ):
-                        state.tool_name_collisions.append(tool_name)
-                    tool_names.append(tool_name)
-
-                state.healthy = True
-                state.status = "healthy"
-                state.tool_count = len(tool_names)
-                state.tools_list = tool_names
-                state.last_error = None
-                logger.info(
-                    f"MCP 服务器 [{server_name}] 已连接，注册 {len(tool_names)} 个工具"
-                )
-                return len(tool_names)
+                return normalized_tools
             except Exception as exc:
                 error = _mcp_error_message(exc)
                 state.healthy = False
                 state.status = "error"
                 state.last_error = error
                 logger.error(f"MCP 服务器 [{server_name}] 初始化失败: {error}")
-                return 0
+                return None
 
-        tool_counts = await asyncio.gather(*[
+        discovered = await asyncio.gather(*[
             _initialize_server(server_name, server_config)
             for server_name, server_config in mcp_servers.items()
         ])
-        registered_tools = sum(tool_counts)
+        registered_tools = 0
+        # 探测可以并行；注册按配置顺序执行，使同名工具的归属不受响应速度影响。
+        for (server_name, _), normalized_tools in zip(mcp_servers.items(), discovered, strict=True):
+            if normalized_tools is None:
+                continue
+            state = self._server_states[server_name]
+            tool_names: List[str] = []
+            for tool_meta in normalized_tools:
+                tool_name = tool_meta["name"]
+                if not tool_name:
+                    continue
+                collided = registry.register(
+                    name=tool_name,
+                    description=tool_meta["description"],
+                    parameters_schema=tool_meta["parameters_schema"],
+                    executor=self._make_executor(server_name, tool_name),
+                    source="mcp",
+                    server_name=server_name,
+                )
+                if collided:
+                    state.tool_name_collisions.append(tool_name)
+                    owner = registry.get_tool_metadata(tool_name)
+                    if owner.get("source") != "mcp" or owner.get("server_name") != server_name:
+                        continue
+                if tool_name not in tool_names:
+                    tool_names.append(tool_name)
+
+            state.healthy = True
+            state.status = "healthy"
+            state.tool_count = len(tool_names)
+            state.tools_list = tool_names
+            state.last_error = None
+            registered_tools += len(tool_names)
+            logger.info("MCP 服务器 [%s] 已连接，注册 %d 个工具", server_name, len(tool_names))
 
         self._initialized = True
         collisions = registry.collisions()
         if collisions:
             logger.error(
-                "工具注册同名覆盖 %s 处: %s",
+                "工具注册同名冲突 %s 处: %s",
                 len(collisions),
                 ", ".join(sorted({c["tool_name"] for c in collisions})),
             )

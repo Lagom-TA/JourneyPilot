@@ -62,6 +62,7 @@ def make_memory_extraction_handler(
             user_msg=user_message,
             existing_portrait=str(payload.get("portrait_baseline") or ""),
             source_message_id=user_message_id,
+            job=job,
         )
 
         current_revision = await user_profile_memory.get_revision(user_id)

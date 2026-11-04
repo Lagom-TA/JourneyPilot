@@ -17,6 +17,7 @@ from travel_agent.knowledge.documents import (
     require_source_document,
 )
 from travel_agent.memory.manual_facts import ManualFactSaveFailed, save_manual_fact
+from travel_agent.memory import manual_facts
 from travel_agent.memory.memory_store import (
     USER_MANUAL_IMPORTANCE,
     USER_MANUAL_SESSION_ID,
@@ -258,7 +259,22 @@ async def test_manual_fact_dedupe_does_not_write_or_create_profile():
     profile.assert_not_called()
 
 
-async def test_manual_fact_write_profile_then_identity_readback():
+@pytest.fixture
+def manual_db(monkeypatch):
+    session = SimpleNamespace(execute=AsyncMock())
+
+    @asynccontextmanager
+    async def transaction():
+        yield session
+
+    monkeypatch.setattr(manual_facts, "get_db_session", transaction)
+    monkeypatch.setattr(manual_facts, "get_settings", lambda: SimpleNamespace(
+        embedding=SimpleNamespace(enabled=False)
+    ))
+    return session
+
+
+async def test_manual_fact_write_profile_then_identity_readback(manual_db):
     events = []
     row = {"fact_id": "new-id", "content": "no seafood", "source": "user_manual"}
 
@@ -266,10 +282,10 @@ async def test_manual_fact_write_profile_then_identity_readback():
         events.append(("save", kwargs))
         return "new-id"
 
-    async def ensure(user_id):
+    async def ensure(user_id, *, db_session):
         events.append(("profile", user_id))
 
-    async def read(user_id, fact_id):
+    async def read(user_id, fact_id, *, db_session):
         events.append(("read", user_id, fact_id))
         return row
 
@@ -293,6 +309,8 @@ async def test_manual_fact_write_profile_then_identity_readback():
                 "content": "no seafood",
                 "category": "diet",
                 "importance": USER_MANUAL_IMPORTANCE,
+                "db_session": manual_db,
+                "prepared_embedding": None,
             },
         ),
         ("profile", "local"),
@@ -301,7 +319,7 @@ async def test_manual_fact_write_profile_then_identity_readback():
 
 
 @pytest.mark.parametrize("save_id,created", [(None, None), ("new-id", None)])
-async def test_manual_fact_write_and_readback_failures(save_id, created):
+async def test_manual_fact_write_and_readback_failures(save_id, created, manual_db):
     store = SimpleNamespace(
         find_manual_fact=AsyncMock(return_value=None),
         save_fact=AsyncMock(return_value=save_id),
@@ -320,7 +338,7 @@ async def test_manual_fact_write_and_readback_failures(save_id, created):
     assert store.get_fact.await_count == int(save_id is not None)
 
 
-async def test_manual_fact_http_defaults_and_identity(client, monkeypatch):
+async def test_manual_fact_http_defaults_and_identity(client, monkeypatch, manual_db):
     monkeypatch.setattr(MemoryStore, "find_manual_fact", AsyncMock(return_value=None))
     saved = AsyncMock(return_value="id-from-save")
     read = AsyncMock(
@@ -354,9 +372,25 @@ async def test_manual_fact_http_defaults_and_identity(client, monkeypatch):
         content="不吃海鲜",
         category="preference",
         importance=USER_MANUAL_IMPORTANCE,
+        db_session=manual_db,
+        prepared_embedding=None,
     )
-    read.assert_awaited_once_with(LOCAL_USER_ID, "id-from-save")
-    ensure.assert_awaited_once_with(LOCAL_USER_ID)
+    read.assert_awaited_once_with(LOCAL_USER_ID, "id-from-save", db_session=manual_db)
+    ensure.assert_awaited_once_with(LOCAL_USER_ID, db_session=manual_db)
+
+
+async def test_manual_fact_rechecks_after_acquiring_lock(manual_db):
+    row = {"fact_id": "same-id", "content": "no seafood"}
+    store = SimpleNamespace(
+        find_manual_fact=AsyncMock(side_effect=[None, row]),
+        save_fact=AsyncMock(),
+    )
+    result = await save_manual_fact(
+        store=store, user_id="local", content="no seafood", category="diet",
+        profile_for_write=Mock(side_effect=AssertionError("不应再次创建画像")),
+    )
+    assert result.status == "existing" and result.fact == row
+    store.save_fact.assert_not_called()
 
 
 async def test_preferences_unknown_fields_do_not_write(client):

@@ -239,6 +239,46 @@ async def test_weather_forecast_queries_the_last_supported_local_day() -> None:
     assert [day.date for day in response.days] == [requested]
 
 
+async def test_unknown_timezone_uses_destination_date_for_forecast_horizon() -> None:
+    requested = date(2026, 9, 4)
+    now = datetime(2026, 8, 19, 23, tzinfo=timezone.utc)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["timezone"] == "auto"
+        assert request.url.params["forecast_days"] == "16"
+        assert "end_date" not in request.url.params
+        return httpx.Response(200, json={
+            "timezone": "Asia/Tokyo",
+            "daily": {"time": [requested.isoformat()], "temperature_2m_max": [30]},
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        response = await OpenMeteoWeatherProvider(client=client, now=lambda: now).fetch_weather(
+            _far_future_request().model_copy(update={
+                "timezone": None, "start_date": requested, "end_date": requested,
+            })
+        )
+    assert [day.date for day in response.days] == [requested]
+
+
+async def test_unknown_timezone_uses_destination_date_for_seasonal_boundary() -> None:
+    requested = date(2026, 9, 4)
+    dates = [date(year, 9, day).isoformat() for year in range(2016, 2026) for day in range(1, 21)]
+    payload = {"timezone": "America/Los_Angeles", "daily": {
+        "time": dates, "temperature_2m_max": [25.0] * len(dates),
+    }}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json=payload)
+    )) as client:
+        response = await OpenMeteoSeasonalBaselineProvider(client=client, now=lambda: NOW_UTC).fetch_weather(
+            _far_future_request().model_copy(update={
+                "timezone": None, "start_date": requested, "end_date": requested,
+            })
+        )
+    assert [day.date for day in response.days] == [requested]
+    assert response.data_kind == "seasonal_baseline"
+
+
 @pytest.mark.asyncio
 async def test_forecast_provider_rejects_far_future_before_http() -> None:
     client = _NoNetworkClient()

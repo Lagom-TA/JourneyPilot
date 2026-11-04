@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from statistics import fmean
 from typing import Any, Callable, Dict, List, Literal, Optional, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -14,6 +14,12 @@ from travel_agent.integrations.weather_contracts import WeatherTimeWindow
 from travel_agent.schema import StrictModel
 
 EXACT_WEATHER_FORECAST_DAYS = 16
+
+
+def _possible_local_dates(now: datetime) -> tuple[date, date]:
+    """目的地时区未知时，覆盖实际时区的日期范围。"""
+    utc_now = now.astimezone(timezone.utc)
+    return (utc_now - timedelta(hours=12)).date(), (utc_now + timedelta(hours=14)).date()
 
 
 class WeatherProviderError(RuntimeError):
@@ -189,26 +195,19 @@ class OpenMeteoWeatherProvider:
                 raise WeatherProviderInvalidResponse(f"unknown destination timezone: {request.timezone}") from exc
 
         now = self._now()
-        local_today = (
-            now.astimezone(ZoneInfo(request.timezone)).date()
-            if request.timezone is not None
-            else now.date()
-        )
-        forecast_end = local_today + timedelta(days=self._forecast_window_days - 1)
+        local_today = now.astimezone(ZoneInfo(request.timezone)).date() if request.timezone else None
+        latest_today = local_today or _possible_local_dates(now)[1]
+        forecast_end = latest_today + timedelta(days=self._forecast_window_days - 1)
         if request.start_date > forecast_end:
             raise WeatherProviderNotApplicable(
                 "forecast provider is not applicable outside its date horizon"
             )
-        forecast_request = request.model_copy(
-            update={"end_date": min(request.end_date, forecast_end)}
-        )
+        forecast_request = request.model_copy(update={"end_date": min(request.end_date, forecast_end)})
 
         params = {
             "latitude": request.latitude,
             "longitude": request.longitude,
             "timezone": request.timezone or "auto",
-            "start_date": forecast_request.start_date.isoformat(),
-            "end_date": forecast_request.end_date.isoformat(),
             "daily": ",".join(
                 (
                     "weather_code",
@@ -229,6 +228,12 @@ class OpenMeteoWeatherProvider:
                 )
             ),
         }
+        if request.timezone:
+            params.update({"start_date": forecast_request.start_date.isoformat(),
+                           "end_date": forecast_request.end_date.isoformat()})
+        else:
+            # 由上游按目的地时区确定今天，避免把服务端日期当成目的地日期。
+            params["forecast_days"] = self._forecast_window_days
         owns_client = self._client is None
         client = self._client or httpx.AsyncClient(timeout=self._timeout_seconds)
         try:
@@ -260,6 +265,11 @@ class OpenMeteoWeatherProvider:
             ZoneInfo(resolved_timezone)
         except ZoneInfoNotFoundError as exc:
             raise WeatherProviderInvalidResponse("weather provider omitted a valid IANA timezone") from exc
+        resolved_today = now.astimezone(ZoneInfo(resolved_timezone)).date()
+        resolved_end = resolved_today + timedelta(days=self._forecast_window_days - 1)
+        if request.start_date > resolved_end:
+            raise WeatherProviderNotApplicable("forecast provider is not applicable outside its date horizon")
+        forecast_request = request.model_copy(update={"end_date": min(request.end_date, resolved_end)})
         days = self._normalize_days(
             daily,
             payload.get("hourly"),
@@ -390,12 +400,12 @@ class OpenMeteoSeasonalBaselineProvider:
         if request.end_date < request.start_date:
             raise WeatherProviderInvalidResponse("weather request end date precedes start date")
         now = self._now()
-        local_today = (
-            now.astimezone(ZoneInfo(request.timezone)).date()
-            if request.timezone is not None
-            else now.date()
-        )
-        cutoff = local_today + timedelta(days=self._forecast_window_days - 1)
+        try:
+            local_today = now.astimezone(ZoneInfo(request.timezone)).date() if request.timezone else None
+        except ZoneInfoNotFoundError as exc:
+            raise WeatherProviderInvalidResponse(f"unknown destination timezone: {request.timezone}") from exc
+        earliest_today = local_today or _possible_local_dates(now)[0]
+        cutoff = earliest_today + timedelta(days=self._forecast_window_days - 1)
         target_dates = [
             request.start_date + timedelta(days=offset)
             for offset in range((request.end_date - request.start_date).days + 1)
@@ -406,7 +416,7 @@ class OpenMeteoSeasonalBaselineProvider:
                 "seasonal baseline is not applicable inside the forecast horizon"
             )
 
-        last_complete_year = now.year - 1
+        last_complete_year = earliest_today.year - 1
         first_year = last_complete_year - self._history_years + 1
         historical_start = date(first_year, 1, 1)
         historical_end = date(last_complete_year, 12, 31)
@@ -466,6 +476,12 @@ class OpenMeteoSeasonalBaselineProvider:
             raise WeatherProviderInvalidResponse(
                 "seasonal baseline provider omitted a valid IANA timezone"
             ) from exc
+
+        resolved_today = now.astimezone(ZoneInfo(resolved_timezone)).date()
+        cutoff = resolved_today + timedelta(days=self._forecast_window_days - 1)
+        target_dates = [day for day in target_dates if day > cutoff]
+        if not target_dates:
+            raise WeatherProviderNotApplicable("seasonal baseline is not applicable inside the forecast horizon")
 
         aggregates = self._aggregate_months(daily, {item.month for item in target_dates})
         days = [

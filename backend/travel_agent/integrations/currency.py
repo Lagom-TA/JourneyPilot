@@ -8,6 +8,7 @@ from typing import Mapping
 from typing import Optional
 import httpx
 import logging
+import math
 import re
 import time
 
@@ -81,11 +82,11 @@ async def _fetch_rate_to_cny(code: str, client: httpx.AsyncClient) -> tuple[floa
         ) from exc
     rates = payload.get("rates") if isinstance(payload, Mapping) else None
     raw_rate = rates.get(CANONICAL_CURRENCY) if isinstance(rates, Mapping) else None
-    if (
-        not isinstance(raw_rate, (int, float))
-        or isinstance(raw_rate, bool)
-        or float(raw_rate) <= 0
-    ):
+    try:
+        rate = float(raw_rate) if isinstance(raw_rate, (int, float)) and not isinstance(raw_rate, bool) else 0.0
+    except OverflowError:
+        rate = 0.0
+    if not math.isfinite(rate) or rate <= 0:
         raise CurrencyConversionUnavailable(
             f"rate publisher quotes no {code}->{CANONICAL_CURRENCY} rate"
         )
@@ -94,7 +95,7 @@ async def _fetch_rate_to_cny(code: str, client: httpx.AsyncClient) -> tuple[floa
         raise CurrencyConversionUnavailable(
             f"{code}->{CANONICAL_CURRENCY} rate carries no publisher date"
         )
-    return float(raw_rate), rate_date
+    return rate, rate_date
 
 
 async def convert_to_cny(
@@ -110,12 +111,14 @@ async def convert_to_cny(
     报价」混淆。
     """
 
+    if isinstance(amount, bool):
+        raise CurrencyConversionUnavailable("a Provider amount must be a finite number")
     try:
         value = float(amount)
-    except (TypeError, ValueError) as exc:
+    except (TypeError, ValueError, OverflowError) as exc:
         raise CurrencyConversionUnavailable(f"{amount!r} is not an amount") from exc
-    if value < 0:
-        raise CurrencyConversionUnavailable("a Provider amount cannot be negative")
+    if not math.isfinite(value) or value < 0:
+        raise CurrencyConversionUnavailable("a Provider amount must be finite and non-negative")
     code = _currency_code(currency)
     if code == CANONICAL_CURRENCY:
         return ConvertedAmount(
@@ -145,8 +148,11 @@ async def convert_to_cny(
             rate,
             rate_date,
         )
+    converted = value * rate
+    if not math.isfinite(converted):
+        raise CurrencyConversionUnavailable("the converted amount is not finite")
     return ConvertedAmount(
-        amount_cny=round(value * rate, 2),
+        amount_cny=round(converted, 2),
         source_amount=value,
         source_currency=code,
         rate_to_cny=rate,

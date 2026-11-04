@@ -109,7 +109,7 @@ class ToolRegistry:
         server_name: Optional[str] = None,
         manifest: Optional[ToolManifest | Dict[str, Any]] = None,
     ) -> bool:
-        """注册一个工具；同名重复注册时照旧覆盖并返回 True（行为不变，只记账）。"""
+        """注册工具；同名跨来源冲突保留原有工具并返回 True。"""
         resolved_manifest = infer_tool_manifest(
             tool_name=name,
             description=description,
@@ -122,6 +122,9 @@ class ToolRegistry:
         if collided:
             previous = self._tools[name]
             previous_hand_written = bool(previous.get("manifest_hand_written"))
+            different_owner = (previous.get("source"), previous.get("server_name")) != (
+                source, server_name
+            )
             self._collisions.append(
                 {
                     "tool_name": name,
@@ -138,9 +141,9 @@ class ToolRegistry:
                 }
             )
             logger.warning(
-                "工具同名注册覆盖: [%s] 旧方 source=%s server=%s 手写manifest=%s "
-                "被新方 source=%s server=%s 手写manifest=%s 覆盖"
-                "%s",
+                "工具同名注册%s: [%s] 旧方 source=%s server=%s 手写manifest=%s "
+                "新方 source=%s server=%s 手写manifest=%s",
+                "拒绝" if different_owner else "更新",
                 name,
                 previous.get("source"),
                 previous.get("server_name"),
@@ -148,8 +151,9 @@ class ToolRegistry:
                 source,
                 server_name,
                 hand_written,
-                "（manifest 从手写变成推断）" if previous_hand_written and not hand_written else "",
             )
+            if different_owner:
+                return True
         self._tools[name] = {
             "name": name,
             "description": description,
@@ -164,7 +168,7 @@ class ToolRegistry:
         return collided
 
     def collisions(self) -> List[Dict[str, Any]]:
-        """返回同名覆盖台账的只读拷贝。"""
+        """返回同名注册台账的只读拷贝。"""
         return [
             {
                 "tool_name": entry["tool_name"],

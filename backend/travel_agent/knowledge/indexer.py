@@ -327,6 +327,9 @@ class KnowledgeIndexer:
             logger.error(f"向量化失败: {e}")
             raise
 
+        if len(vectors) != len(all_chunks):
+            raise RuntimeError("Embedding 返回数量与资料分块数量不一致")
+
         records = []
         for chunk, vec in zip(all_chunks, vectors):
             records.append({

@@ -111,9 +111,9 @@ uv run --project backend python backend/journeypilot.py config show
 uv run --project backend python backend/scripts/check_mcp.py
 ```
 
-默认工具包含网页搜索、OpenStreetMap/Nominatim、12306、Open-Meteo 和汇率查询；高德、百度、Tavily、Brave、Duffel 等服务可按需配置。数据覆盖范围和调用结果由各服务决定，中国境内路线查询需要高德密钥。模型及外部服务可能产生费用。
+默认工具包含网页搜索、OpenStreetMap/Nominatim、12306、Open-Meteo 和汇率查询；高德、百度、Tavily、Brave、Duffel 等服务可按需配置。工具同名时保留已注册的来源，MCP 服务按配置顺序注册。数据覆盖范围和调用结果由各服务决定，中国境内路线查询需要高德密钥。模型及外部服务可能产生费用。
 
-默认使用本地 Qwen3 ONNX 模型生成知识库向量，也可配置兼容的远程向量服务。仓库附带一份[小规模出厂语料](backend/data/corpus/factory/README.md)，可按说明导入；可选的本地二进制种子不随仓库提供。
+默认使用本地 Qwen3 ONNX 模型生成知识库向量，也可配置兼容的远程向量服务。向量结果不完整时，资料索引会失败并保留原资料。仓库附带一份[小规模出厂语料](backend/data/corpus/factory/README.md)，可按说明导入；可选的本地二进制种子不随仓库提供。
 
 数据库迁移由启动脚本或容器入口在 API 启动前执行。检查数据库状态和创建备份：
 

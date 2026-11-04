@@ -134,12 +134,14 @@ uv run --project backend python backend/scripts/check_mcp.py
 ```
 
 Built-in tools include web search, OpenStreetMap/Nominatim, China Railway 12306, Open-Meteo, and exchange
-rates. Amap, Baidu, Tavily, Brave, Duffel, and other providers can be configured as needed. Coverage and
+rates. Amap, Baidu, Tavily, Brave, Duffel, and other providers can be configured as needed. On tool-name
+collisions, the registered owner is retained; MCP servers register in configuration order. Coverage and
 results depend on each service; routes within mainland China require an Amap key. Model and provider
 calls may incur charges.
 
 The knowledge base uses a local Qwen3 ONNX embedding model by default; a compatible remote embedding
-service can also be configured. The repository includes a [small factory corpus](backend/data/corpus/factory/README.md)
+service can also be configured. Incomplete embedding results fail indexing and leave the existing document intact.
+The repository includes a [small factory corpus](backend/data/corpus/factory/README.md)
 that can be imported using its instructions. The optional local binary seed is not included.
 
 The startup script and container entrypoint run database migrations before starting the API. To inspect

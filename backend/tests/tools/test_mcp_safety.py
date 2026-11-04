@@ -22,6 +22,34 @@ from travel_agent.tools.mcp_manager import MCPManager, MCPServerState
 from travel_agent.tools.registry import ToolRegistry
 
 
+async def test_parallel_mcp_discovery_registers_collisions_in_config_order(monkeypatch):
+    from travel_agent.tools import registry as registry_module
+
+    registry = ToolRegistry()
+    monkeypatch.setattr(registry_module, "_registry", registry)
+    manager = MCPManager()
+    first_started, second_finished = asyncio.Event(), asyncio.Event()
+
+    async def discover(name, _config):
+        if name == "first":
+            first_started.set()
+            await second_finished.wait()
+        else:
+            await first_started.wait()
+            second_finished.set()
+        return [{"name": "shared", "description": name, "inputSchema": {"type": "object"}}]
+
+    monkeypatch.setattr(manager, "_list_server_tools", discover)
+    states = await manager.initialize({
+        "first": MCPServerItem(command="first"),
+        "second": MCPServerItem(command="second"),
+    })
+    assert registry.get_tool_metadata("shared")["server_name"] == "first"
+    assert states["first"]["tools_list"] == ["shared"]
+    assert states["second"]["tools_list"] == []
+    assert states["second"]["tool_name_collisions"] == ["shared"]
+
+
 @pytest.mark.parametrize(
     ("raw", "reason", "retryable"),
     [
@@ -341,3 +369,18 @@ async def test_currency_failure_keeps_status_without_response_body(monkeypatch):
         )
     assert "private-credential-value" not in str(exc.value)
     assert execution._is_retryable_tool_error(mcp_manager._mcp_error_message(exc.value))
+
+
+@pytest.mark.parametrize("tool_name,arguments", [
+    ("convert_currency", {"amount": -1, "from_currency": "USD", "to_currency": "CNY"}),
+    ("convert_currency", {"amount": "nan", "from_currency": "USD", "to_currency": "CNY"}),
+    ("latest_exchange_rates", {"base_currency": "", "to_currencies": "CNY"}),
+])
+async def test_currency_invalid_arguments_are_mcp_errors(tool_name, arguments):
+    path = Path(__file__).resolve().parents[2] / "mcp/currency/frankfurter_mcp.py"
+    spec = importlib.util.spec_from_file_location("test_frankfurter_invalid", path)
+    assert spec and spec.loader
+    currency = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(currency)
+    with pytest.raises(ValueError, match="invalid parameter"):
+        await currency.call_tool(tool_name, arguments)

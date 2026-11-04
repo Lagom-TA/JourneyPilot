@@ -45,6 +45,19 @@ def _names(tools: List[Dict[str, Any]]) -> List[str]:
     return sorted(t["schema"]["function"]["name"] for t in tools)
 
 
+def test_named_exceptions_do_not_authorize_a_different_mcp_server():
+    tools = [
+        _mcp("global_place_search", "tavily-search"),
+        _mcp("free_web_search", "tavily-search"),
+        _mcp("maps_text_search", "tavily-search"),
+        _mcp("maps_text_search", "amap-maps"),
+    ]
+    allowed = filter_tools_for_agent(tools, "destination_researcher")
+    assert [(item["schema"]["function"]["name"], item["server_name"]) for item in allowed] == [
+        ("maps_text_search", "amap-maps")
+    ]
+
+
 class _FakePolicy(dict):
     """假策略对象：建模前按 .get() 消费，建模后按属性消费，两种形态都成立。"""
 

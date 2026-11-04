@@ -13,11 +13,15 @@
 from __future__ import annotations
 
 import logging
+import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import text
 
+from travel_agent.runtime.job_contracts import BackgroundJob
+from travel_agent.storage.database import get_db_session
 from ..utils.json_helpers import safe_parse_json
 from .extraction_stats import get_memory_extraction_stats
 
@@ -98,8 +102,7 @@ def _parse_extraction_result(
 ) -> tuple[List[ExtractedFactCandidate], List[Dict[str, Any]]]:
     """解析模型结果：逐条做 Pydantic 校验，通过的事实与画像全部保留。
 
-    画像的 supporting_fact_indexes 只用于拼接证据文本；索引指向的事实未通过
-    校验时，画像仍然写入，证据文本留空。
+    画像必须引用至少一条通过校验的事实；用户原话片段可缺省。
     """
 
     facts: List[ExtractedFactCandidate] = []
@@ -109,6 +112,8 @@ def _parse_extraction_result(
         try:
             candidate = ExtractedFactCandidate.model_validate(raw_fact)
         except ValidationError:
+            continue
+        if not candidate.content.strip():
             continue
         facts.append(candidate)
         evidence_by_index[raw_index] = candidate.user_evidence.strip()
@@ -121,6 +126,10 @@ def _parse_extraction_result(
         try:
             candidate = ExtractedPortraitCandidate.model_validate(raw_portrait)
         except ValidationError:
+            continue
+        if not candidate.trait.strip() or not any(
+            index in evidence_by_index for index in candidate.supporting_fact_indexes
+        ):
             continue
         supporting = [
             evidence_by_index[index]
@@ -149,6 +158,19 @@ class MemoryExtractionOutcome:
         return self.facts_written > 0 or self.portraits_written > 0
 
 
+def _committed_outcome(result: Any) -> Optional[MemoryExtractionOutcome]:
+    if not isinstance(result, dict):
+        return None
+    committed = result.get("memory_extraction_committed")
+    if not isinstance(committed, dict):
+        return None
+    facts, portraits = committed.get("facts"), committed.get("portraits")
+    if (type(facts) is not int or facts < 0
+            or type(portraits) is not int or portraits < 0):
+        raise MemoryExtractionFailed("记忆抽取已应用标记不合法")
+    return MemoryExtractionOutcome(facts, portraits)
+
+
 class MemoryExtractionFailed(RuntimeError):
     """抽取未完成（模型调用或解析失败），可重试。"""
 
@@ -166,14 +188,20 @@ class MemoryExtractor:
         user_msg: str,
         existing_portrait: str = "",
         source_message_id: str = "",
+        job: Optional[BackgroundJob] = None,
     ) -> MemoryExtractionOutcome:
         """从一轮对话中提取事实和画像并写入存储。
 
-        `source_message_id` 是事实的幂等键来源：同一条来源消息抽出的同一句事实重复
-        执行只入库一次。失败一律抛出，由 job 层决定重试还是死信。
+        事实、画像及任务已应用标记由同一事务提交；重领时直接复用该标记。
         """
         if not user_msg:
             return MemoryExtractionOutcome()
+        if job is None or not job.lease_owner:
+            raise MemoryExtractionFailed("记忆抽取缺少有效任务租约")
+
+        committed = _committed_outcome(job.result)
+        if committed is not None:
+            return committed
 
         stats = get_memory_extraction_stats()
         stats.record_attempt()
@@ -189,41 +217,20 @@ class MemoryExtractor:
         try:
             facts, portrait = _parse_extraction_result(result)
 
-            facts_written = 0
-            portraits_written = 0
+            from travel_agent.config.loader import get_settings
+            from .memory_store import MemoryStore
 
-            if facts:
-                from .memory_store import MemoryStore
-                store = MemoryStore()
-                for fact in facts:
-                    fact_id = await store.save_fact(
-                        user_id=user_id,
-                        session_id=session_id,
-                        content=fact.content.strip(),
-                        category=fact.category,
-                        importance=fact.importance,
-                        source_message_id=source_message_id,
-                    )
-                    if fact_id is not None:
-                        facts_written += 1
-
-            # 图谱 upsert 与画像聚合均可重复执行，不会产生重复画像。
-            if portrait:
-                from .memory_graph import MemoryGraph
-                graph = MemoryGraph()
-                await graph.update_portrait(
-                    user_id=user_id,
-                    portrait_items=portrait,
-                    session_id=session_id,
-                )
-                portrait_text = await graph.aggregate_portrait(user_id)
-                await graph.save_portrait_to_profile(user_id, portrait_text)
-                portraits_written = len(portrait)
-
-            # 事实已写入且没有可聚合画像时，仍创建用户画像记录。
-            if facts_written and not portraits_written:
-                from .user_profile import UserProfileMemory
-                await UserProfileMemory().ensure_profile_for_write(user_id)
+            store = MemoryStore()
+            embeddings = [
+                await store._compute_embedding(fact.content.strip())
+                if get_settings().embedding.enabled else None
+                for fact in facts
+            ]
+            outcome = await self._commit_extraction(
+                job=job, user_id=user_id, session_id=session_id,
+                source_message_id=source_message_id, facts=facts,
+                embeddings=embeddings, portrait=portrait, store=store,
+            )
         except Exception as exc:
             stats.record_failure(exc.__class__.__name__)
             logger.warning(
@@ -231,21 +238,79 @@ class MemoryExtractor:
             )
             raise
 
-        stats.record_success(facts=facts_written, portraits=portraits_written)
-        outcome = MemoryExtractionOutcome(
-            facts_written=facts_written,
-            portraits_written=portraits_written,
-        )
+        stats.record_success(facts=outcome.facts_written, portraits=outcome.portraits_written)
         if outcome.wrote_anything:
             logger.info(
                 f"记忆抽取入库 user={user_id} session={session_id} "
-                f"facts={facts_written} portrait={portraits_written}"
+                f"facts={outcome.facts_written} portrait={outcome.portraits_written}"
             )
         else:
             logger.debug(
                 f"记忆抽取本轮无值可写 user={user_id} session={session_id}"
             )
         return outcome
+
+    async def _commit_extraction(
+        self, *, job: BackgroundJob, user_id: str, session_id: str,
+        source_message_id: str, facts: List[ExtractedFactCandidate],
+        embeddings: List[Optional[List[float]]], portrait: List[Dict[str, Any]],
+        store: Any,
+    ) -> MemoryExtractionOutcome:
+        from .memory_graph import MemoryGraph
+        from .user_profile import UserProfileMemory
+
+        async with get_db_session() as session:
+            result = await session.execute(
+                text("""
+                    SELECT result FROM background_jobs
+                    WHERE job_id = :job_id AND status = 'running'
+                      AND lease_owner = :owner AND lease_expires_at > clock_timestamp()
+                    FOR UPDATE
+                """),
+                {"job_id": job.job_id, "owner": job.lease_owner},
+            )
+            row = result.mappings().first()
+            if row is None:
+                raise MemoryExtractionFailed("记忆抽取任务租约已失效")
+            committed = _committed_outcome(row["result"])
+            if committed is not None:
+                return committed
+
+            if facts or portrait:
+                await UserProfileMemory().ensure_profile_for_write(
+                    user_id, db_session=session, lock=True
+                )
+            for fact, embedding in zip(facts, embeddings, strict=True):
+                fact_id = await store.save_fact(
+                    user_id=user_id, session_id=session_id, content=fact.content.strip(),
+                    category=fact.category, importance=fact.importance,
+                    source_message_id=source_message_id, db_session=session,
+                    prepared_embedding=embedding,
+                )
+                if fact_id is None:
+                    raise MemoryExtractionFailed("记忆事实写入失败")
+            if portrait:
+                graph = MemoryGraph()
+                await graph.update_portrait(user_id, portrait, session_id, db_session=session)
+                portrait_text = await graph.aggregate_portrait(user_id, db_session=session)
+                await graph.save_portrait_to_profile(user_id, portrait_text, db_session=session)
+
+            outcome = MemoryExtractionOutcome(len(facts), len(portrait))
+            marked = await session.execute(
+                text("""
+                    UPDATE background_jobs SET result = CAST(:result AS jsonb), updated_at = NOW()
+                    WHERE job_id = :job_id AND status = 'running' AND lease_owner = :owner
+                      AND lease_expires_at > clock_timestamp()
+                    RETURNING job_id
+                """),
+                {"job_id": job.job_id, "owner": job.lease_owner,
+                 "result": json.dumps({"memory_extraction_committed": {
+                     "facts": outcome.facts_written, "portraits": outcome.portraits_written,
+                 }})},
+            )
+            if marked.scalar_one_or_none() is None:
+                raise MemoryExtractionFailed("记忆抽取任务租约已失效")
+            return outcome
 
     # -----------------------------------------------------------------------
     # 内部实现

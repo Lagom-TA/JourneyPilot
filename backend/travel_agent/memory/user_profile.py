@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -43,17 +44,20 @@ class UserProfileMemory:
                 return None
             return self._row_to_profile(dict(row))
 
-    async def ensure_profile_for_write(self, user_id: str) -> UserProfile:
+    async def ensure_profile_for_write(
+        self, user_id: str, *, db_session: Any = None, lock: bool = False
+    ) -> UserProfile:
         """为真实写入获取画像；仅在调用方已有内容需要保存时创建。"""
-        profile = await self.get_user_profile(user_id)
-        if profile is None:
-            profile = UserProfile(
-                user_id=user_id,
-                created_at=datetime.now(timezone.utc).isoformat(),
-                updated_at=datetime.now(timezone.utc).isoformat(),
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
+            await session.execute(
+                text("INSERT INTO user_profiles (user_id) VALUES (:uid) ON CONFLICT DO NOTHING"),
+                {"uid": user_id},
             )
-            await self.save_user_profile(profile)
-        return profile
+            statement = "SELECT * FROM user_profiles WHERE user_id = :uid"
+            if lock:
+                statement += " FOR UPDATE"
+            result = await session.execute(text(statement), {"uid": user_id})
+            return self._row_to_profile(dict(result.mappings().one()))
 
     async def get_revision(self, user_id: str) -> int:
         """返回画像版本号；延迟执行的后台任务用它固定入队时的画像版本。"""
@@ -104,11 +108,37 @@ class UserProfileMemory:
 
         未更新的组保持原值；带上的列表组为覆盖而非追加。
         """
-        profile = await self.ensure_profile_for_write(user_id)
-        current = profile.preferences.model_dump()
-        current.update(updates)
-        profile.preferences = TravelPreference(**current)
-        await self.save_user_profile(profile)
+        validated = TravelPreference(**updates)
+        preferences = validated.model_dump(mode="json", include=set(updates))
+        async with get_db_session() as session:
+            await session.execute(
+                text("""
+                    INSERT INTO user_profiles (user_id, preferences, revision)
+                    VALUES (:uid, CAST(:prefs AS jsonb), 1)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        preferences = user_profiles.preferences || EXCLUDED.preferences,
+                        revision = user_profiles.revision + 1,
+                        updated_at = NOW()
+                """),
+                {"uid": user_id, "prefs": json.dumps(preferences, ensure_ascii=False)},
+            )
+
+    async def set_auto_portrait(
+        self, user_id: str, portrait_text: str, *, db_session: Any = None
+    ) -> None:
+        """只更新系统画像，保留并发保存的用户偏好。"""
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
+            await session.execute(
+                text("""
+                    INSERT INTO user_profiles (user_id, auto_portrait, revision)
+                    VALUES (:uid, :portrait, 1)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        auto_portrait = EXCLUDED.auto_portrait,
+                        revision = user_profiles.revision + 1,
+                        updated_at = NOW()
+                """),
+                {"uid": user_id, "portrait": portrait_text},
+            )
 
     async def clear_profile_memory(self, user_id: str) -> int:
         """清除画像中由系统生成的部分，用户手填的偏好保持不变。
@@ -121,14 +151,17 @@ class UserProfileMemory:
         """
         if not user_id:
             return 0
-        profile = await self.get_user_profile(user_id)
-        if profile is None:
-            return 0
-        if not profile.auto_portrait:
-            return 0
-        profile.auto_portrait = ""
-        await self.save_user_profile(profile)
-        return 1
+        async with get_db_session() as session:
+            result = await session.execute(
+                text("""
+                    UPDATE user_profiles
+                    SET auto_portrait = '', revision = revision + 1, updated_at = NOW()
+                    WHERE user_id = :uid AND auto_portrait <> ''
+                    RETURNING user_id
+                """),
+                {"uid": user_id},
+            )
+            return int(result.scalar_one_or_none() is not None)
 
     # -----------------------------------------------------------------------
     # 辅助方法

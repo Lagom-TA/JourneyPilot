@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import sys
 from datetime import date
 from pathlib import Path
@@ -131,14 +132,18 @@ async def _get_json(client: httpx.AsyncClient, url: str) -> dict[str, Any]:
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     date_error = _latest_only_date_error(arguments)
     if date_error is not None:
-        return [TextContent(type="text", text=date_error)]
+        raise ValueError(f"invalid parameter: {date_error}")
 
     if name == "convert_currency":
-        amount = float(arguments.get("amount", 0))
+        try:
+            raw_amount = arguments.get("amount", 0)
+            amount = float(raw_amount) if not isinstance(raw_amount, bool) else 0.0
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError("invalid parameter: amount 须为正数") from exc
         from_c = str(arguments.get("from_currency", "")).strip().upper()
         to_c = str(arguments.get("to_currency", "")).strip().upper()
-        if amount <= 0 or not from_c or not to_c:
-            return [TextContent(type="text", text="参数无效：amount 须为正数，货币代码不能为空。")]
+        if not math.isfinite(amount) or amount <= 0 or not from_c or not to_c:
+            raise ValueError("invalid parameter: amount 须为有限正数，货币代码不能为空")
 
         url = f"{BASE_URL}/latest?amount={amount}&from={from_c}&to={to_c}"
         try:
@@ -157,11 +162,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         base = str(arguments.get("base_currency", "")).strip().upper()
         to_raw = str(arguments.get("to_currencies", "")).strip().upper()
         if not base or not to_raw:
-            return [TextContent(type="text", text="base_currency 与 to_currencies 不能为空。")]
+            raise ValueError("invalid parameter: base_currency 与 to_currencies 不能为空")
 
         to_list = [c.strip() for c in to_raw.replace(";", ",").split(",") if c.strip()]
         if not to_list:
-            return [TextContent(type="text", text="to_currencies 解析后为空。")]
+            raise ValueError("invalid parameter: to_currencies 解析后为空")
 
         to_param = ",".join(to_list)
         url = f"{BASE_URL}/latest?from={base}&to={to_param}"
@@ -177,7 +182,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
         return [TextContent(type="text", text=_format_json(data))]
 
-    return [TextContent(type="text", text="未知工具")]
+    raise ValueError("invalid parameter: 未知工具")
 
 
 async def main() -> None:

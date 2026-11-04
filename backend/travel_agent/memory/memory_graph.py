@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
@@ -37,6 +38,7 @@ class MemoryGraph:
         name: str,
         entity_type: str,
         properties: Optional[Dict[str, Any]] = None,
+        db_session: Any = None,
     ) -> int:
         """创建或更新实体节点。
 
@@ -45,7 +47,7 @@ class MemoryGraph:
         import json as _json
         props_json = _json.dumps(properties or {}, ensure_ascii=False)
 
-        async with get_db_session() as session:
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text("""
                     INSERT INTO memory_entities
@@ -76,6 +78,7 @@ class MemoryGraph:
         session_id: str = "",
         source_properties: Optional[Dict[str, Any]] = None,
         target_properties: Optional[Dict[str, Any]] = None,
+        db_session: Any = None,
     ) -> None:
         """创建或更新关系边。
 
@@ -92,13 +95,13 @@ class MemoryGraph:
                 f"图谱只接 {sorted(_PRODUCED_RELATIONS)}，要加新的先把写入方一起加出来"
             )
 
-        source_id = await self.upsert_entity(user_id, source_name, source_type, source_properties)
-        target_id = await self.upsert_entity(user_id, target_name, target_type, target_properties)
+        source_id = await self.upsert_entity(user_id, source_name, source_type, source_properties, db_session)
+        target_id = await self.upsert_entity(user_id, target_name, target_type, target_properties, db_session)
 
         if not source_id or not target_id:
             return
 
-        async with get_db_session() as session:
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             # 插入或更新同一 (source, target, relation) 的关系
             await session.execute(
                 text("""
@@ -136,6 +139,7 @@ class MemoryGraph:
         user_id: str,
         portrait_items: List[Dict[str, Any]],
         session_id: str = "",
+        db_session: Any = None,
     ) -> None:
         """批量处理 portrait[] 提取结果。
 
@@ -150,28 +154,26 @@ class MemoryGraph:
             if not trait:
                 continue
 
-            try:
-                await self.upsert_relation(
-                    user_id=user_id,
-                    source_name="user",
-                    source_type="person",
-                    target_name=trait,
-                    target_type="trait",
-                    relation="has_trait",
-                    confidence=1.0,
-                    evidence=evidence,
-                    session_id=session_id,
-                    target_properties={"dimension": dimension},
-                )
-            except Exception as e:
-                logger.debug(f"MemoryGraph.update_portrait 单条写入失败: {e}")
+            await self.upsert_relation(
+                user_id=user_id,
+                source_name="user",
+                source_type="person",
+                target_name=trait,
+                target_type="trait",
+                relation="has_trait",
+                confidence=1.0,
+                evidence=evidence,
+                session_id=session_id,
+                target_properties={"dimension": dimension},
+                db_session=db_session,
+            )
 
     # -----------------------------------------------------------------------
     # 读取方法
     # -----------------------------------------------------------------------
 
-    async def get_relations(self, user_id: str) -> List[Dict[str, Any]]:
-        async with get_db_session() as session:
+    async def get_relations(self, user_id: str, db_session: Any = None) -> List[Dict[str, Any]]:
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text("""
                     SELECT
@@ -263,7 +265,7 @@ class MemoryGraph:
                 "entities": len(entity_result.fetchall()),
             }
 
-    async def aggregate_portrait(self, user_id: str) -> str:
+    async def aggregate_portrait(self, user_id: str, db_session: Any = None) -> str:
         """从图谱聚合用户画像文本，使用纯模板，不调用 LLM。
 
         输出示例：
@@ -273,7 +275,7 @@ class MemoryGraph:
 
         无数据时返回空字符串。
         """
-        relations = await self.get_relations(user_id)
+        relations = await self.get_relations(user_id, db_session=db_session)
         if not relations:
             return ""
 
@@ -300,11 +302,9 @@ class MemoryGraph:
 
         return "\n".join(lines)
 
-    async def save_portrait_to_profile(self, user_id: str, portrait_text: str) -> None:
+    async def save_portrait_to_profile(self, user_id: str, portrait_text: str, db_session: Any = None) -> None:
         """将已经聚合出的真实画像写入 profile；这是允许创建画像的写路径。"""
         from .user_profile import UserProfileMemory
 
         profile_memory = UserProfileMemory()
-        profile = await profile_memory.ensure_profile_for_write(user_id)
-        profile.auto_portrait = portrait_text
-        await profile_memory.save_user_profile(profile)
+        await profile_memory.set_auto_portrait(user_id, portrait_text, db_session=db_session)

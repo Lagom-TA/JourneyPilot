@@ -111,7 +111,7 @@ class OpenAICompatibleEmbedder(BaseEmbedder):
             kwargs["dimensions"] = self._dimensions
         async with self._channel().hold(wait_seconds=None):
             response = await self._client.embeddings.create(**kwargs)
-        return self._validate_vector(list(response.data[0].embedding))
+        return self._ordered_vectors(response.data, 1)[0]
 
     async def embed_batch(self, texts: List[str]) -> List[List[float]]:
         if not texts:
@@ -121,7 +121,21 @@ class OpenAICompatibleEmbedder(BaseEmbedder):
             kwargs["dimensions"] = self._dimensions
         async with self._channel().hold(wait_seconds=None):
             response = await self._client.embeddings.create(**kwargs)
-        return [self._validate_vector(list(item.embedding)) for item in response.data]
+        return self._ordered_vectors(response.data, len(texts))
+
+    def _ordered_vectors(self, data: Any, expected: int) -> List[List[float]]:
+        """按供应商返回的输入下标对应向量，拒绝缺失或重复的结果。"""
+        if len(data) != expected:
+            raise RuntimeError("Embedding 返回数量与输入数量不一致")
+        ordered: List[Optional[List[float]]] = [None] * expected
+        for item in data:
+            index = getattr(item, "index", None)
+            if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < expected:
+                raise RuntimeError("Embedding 返回的输入下标无效")
+            if ordered[index] is not None:
+                raise RuntimeError("Embedding 返回了重复的输入下标")
+            ordered[index] = self._validate_vector(list(item.embedding))
+        return [vector for vector in ordered if vector is not None]
 
     def _validate_vector(self, vector: List[float]) -> List[float]:
         if self._dimensions and len(vector) != self._dimensions:
