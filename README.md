@@ -26,7 +26,10 @@ The current product interface is in Simplified Chinese.
 
 ## Plan a trip
 
-Describe a trip in your own words or enter the destination, dates, and preferences in the form. For a
+The home page starts with a free-text description, including any travel preferences. Switch to the
+structured form to enter the route, dates, companions, budget, and travel style. Companions use
+a choice panel with custom counts. Each mode keeps its own draft;
+travel inspiration fills the current mode without submitting it. For a
 full plan, JourneyPilot reviews the request, verifies places and asks follow-up questions when needed,
 then presents a research plan for approval before researching places, stays, transport, and weather.
 If research is interrupted, completed results are retained and retries use the original plan's time limits.

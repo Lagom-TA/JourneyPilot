@@ -1,0 +1,59 @@
+{
+  "id": "print-island",
+  "file": "print-island.png",
+  "model": "openai/gpt-image-2.5-sunburst",
+  "created_at": "2026-11-04",
+  "prompt": "Use case: stylized-concept. Create ONE small landscape print illustration for the JourneyPilot travel stationery collection, on true transparent alpha with generous clear edges. Contemporary travel editorial silkscreen print: two or three confident flat ink colors, deep forest green, sun yellow, vermilion and warm cream; subtle irregular ink coverage, tactile fine-grain pigment, simple bold recognizable silhouette, delightful composition. A compact horizontal image that can be printed on a blank ticket or postcard. Close and legible at small sizes. No enclosing paper, frame, postcard, shadow, text, labels, letters, numbers, logo, watermark, map, road, coordinates, border, photographic backdrop or interface. The image describes a travel atmosphere rather than a precise named landmark. Attached reference defines palette and material family only.\n\nShape and composition: A curved tropical shore, two palm fronds and a small warm sun, bold flowing surf and quiet beach forms. Forest green, sun yellow and a vermilion accent. One compact illustration, open transparent silhouette; not a stamp or badge.\n\nFinal cutout requirement: outside the actual object, every pixel has zero alpha. No diffuse halo, colored glow, light spill or shadow around the object. Preserve real material edge only.",
+  "parameters": {
+    "model": "openai/gpt-image-2.5-sunburst",
+    "n": 1,
+    "aspect_ratio": "3:2",
+    "quality": "max",
+    "background": "transparent",
+    "output_format": "webp",
+    "output_compression": 90
+  },
+  "references": [
+    "ticket-main.png"
+  ],
+  "usage": {
+    "prompt_tokens": 1802,
+    "completion_tokens": 5488,
+    "total_tokens": 7290,
+    "cost": 0.178258,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.178258,
+      "upstream_inference_prompt_cost": 0.013618,
+      "upstream_inference_completions_cost": 0.16464
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 5488
+    }
+  },
+  "bytes": 482046,
+  "seconds": 103.7,
+  "transfer_incomplete": false,
+  "received_format": "webp",
+  "production": {
+    "file": "print-island.webp",
+    "format": "WebP",
+    "quality": 90,
+    "size": [
+      1410,
+      936
+    ],
+    "crop": [
+      63,
+      47,
+      1473,
+      983
+    ],
+    "alpha_floor": 8,
+    "source_sha256": "d363326db7998b4770e06b307ff06120ff67c317bd322158c2d3385d2dbdf9fb"
+  }
+}

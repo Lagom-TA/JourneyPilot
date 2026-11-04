@@ -1,30 +1,27 @@
 import { optimizePrompt } from "../api/prompt";
 import { copyText } from "../../../lib/platform";
-import { compactSession } from "../api/sessions";
 import { cn } from "../../../lib/utils";
 import { isTripRunCancellable } from "../../travel/types/runs";
 import { composerState } from "../model/composer";
 import { useApp } from "../../../app/state/AppContext";
 import { Button } from "../../../components/ui/Button";
 import { Tooltip } from "../../../components/ui/Tooltip";
-import { Send, Square, Check, Plus, Sparkles, Loader2, Copy, X, Archive } from "lucide-react";
+import { Send, Square, Check, Plus, Sparkles, Loader2, Copy, X } from "lucide-react";
 import { useSendMessage } from "../../../app/session/useSendMessage";
 import { useSessionManager } from "../../../app/session/useSessionManager";
 import { useStopRun } from "../../../app/session/useStopRun";
 import { abortSessionStream } from "../../../app/session/streamRegistry";
 import { usePendingFollowups } from "../../../app/session/usePendingFollowups";
 import { PresetSelector } from "../../presets/components/PresetSelector";
-import { normalizeContextCompactionEvent } from "../model/contextCompaction";
 import React, { useState, useRef, useCallback } from 'react';
 export const InputArea: React.FC<{
-    showCompaction?: boolean;
     minimal?: boolean;
     autoFocus?: boolean;
     placeholder?: string;
     initialInput?: string;
     targetRunId?: string | null;
     onInputSent?: () => void;
-}> = ({ showCompaction = true, minimal = false, autoFocus = true, placeholder, initialInput = '', targetRunId, onInputSent }) => {
+}> = ({ minimal = false, autoFocus = true, placeholder, initialInput = '', targetRunId, onInputSent }) => {
     const { state, dispatch, activeStreamsRef } = useApp();
     const { sendMessage } = useSendMessage();
     const pending = usePendingFollowups();
@@ -42,8 +39,6 @@ export const InputArea: React.FC<{
     const [optimizeError, setOptimizeError] = useState<string | null>(null);
     const [optimizeCopied, setOptimizeCopied] = useState(false);
     const [optimizeCopyFailed, setOptimizeCopyFailed] = useState(false);
-    const [isCompacting, setIsCompacting] = useState(false);
-    const [compactError, setCompactError] = useState<string | null>(null);
     const [sendStatus, setSendStatus] = useState<string | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const mode = state.inputMode;
@@ -112,13 +107,13 @@ export const InputArea: React.FC<{
         setStoppedInput('');
     }, [activeStreamsRef, dispatch, setLastSession, state]);
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (!e.nativeEvent.isComposing && e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSend();
         }
     };
     const handleStoppedKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (!e.nativeEvent.isComposing && e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleStoppedSend();
         }
@@ -175,37 +170,6 @@ export const InputArea: React.FC<{
         setOptimizedPrompt(null);
         setOptimizeError(null);
     }, []);
-    const handleCompactSession = useCallback(async () => {
-        const sessionId = state.currentSessionId;
-        if (!sessionId || isCompacting)
-            return;
-        setIsCompacting(true);
-        setCompactError(null);
-        try {
-            const result = await compactSession(sessionId);
-            const compaction = normalizeContextCompactionEvent(result);
-            if (!compaction)
-                throw new Error('incomplete compaction event');
-            dispatch({
-                type: 'ADD_MESSAGE',
-                payload: {
-                    id: compaction.id,
-                    role: 'system',
-                    content: '',
-                    displayContent: '',
-                    timestamp: new Date(compaction.occurredAt),
-                    type: 'context_compaction',
-                    contextCompaction: compaction,
-                },
-            });
-        }
-        catch {
-            setCompactError('整理失败，请稍后重试');
-        }
-        finally {
-            setIsCompacting(false);
-        }
-    }, [state.currentSessionId, isCompacting, dispatch]);
     const runInFlight = Boolean(state.currentTripRunId && isTripRunCancellable(state.currentTripRunStatus));
     const composer = composerState({
         isStreaming: state.isStreaming,
@@ -255,7 +219,7 @@ export const InputArea: React.FC<{
             <div className="input-normal-inner flex items-center gap-2 px-4 py-3">
               {mode === 'stopped' ? (<>
                   <textarea value={stoppedInput} onChange={(e) => setStoppedInput(e.target.value)} onKeyDown={handleStoppedKeyDown} aria-label="行程调整要求" placeholder={stoppedPlaceholder} rows={1} autoFocus={autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[120px] leading-relaxed')}/>
-                  <Button variant="primary" size="sm" onClick={handleStoppedSend} disabled={!stoppedInput.trim()} className="flex-shrink-0 !rounded-card !h-8 !w-8 !p-0">
+                  <Button variant="primary" size="sm" aria-label="发送调整要求" onClick={handleStoppedSend} disabled={!stoppedInput.trim()} className="flex-shrink-0 !rounded-card !h-8 !w-8 !p-0">
                     <Send size={14}/>
                   </Button>
                   {!minimal && <button onClick={handleNewChat} className={cn('flex-shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-card', 'text-xs font-medium text-ink-secondary', 'border border-stroke/60 bg-transparent', 'hover:bg-ink/5 hover:text-ink hover:border-stroke/60', 'transition-[color,background-color,opacity] duration-base ease-standard')}>
@@ -297,16 +261,7 @@ export const InputArea: React.FC<{
           </button>
         </Tooltip>
 
-        {showCompaction && (<Tooltip content="整理后的要点会继续用于规划" position="top">
-            <button data-testid="compact-session" onClick={handleCompactSession} disabled={!state.currentSessionId || isCompacting || state.isStreaming} className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-card text-xs font-medium whitespace-nowrap', 'transition-[color,background-color,opacity] duration-base ease-standard', state.currentSessionId && !isCompacting && !state.isStreaming
-                ? 'bg-warning/10 text-warning border border-warning/30 hover:bg-warning/15 hover:border-warning/40'
-                : 'bg-ink/5 text-ink-muted border border-transparent cursor-not-allowed')}>
-              {isCompacting
-                ? <Loader2 size={14} className="animate-spin"/>
-                : <Archive size={14}/>}
-              {isCompacting ? '整理中…' : '整理较早对话'}
-            </button>
-          </Tooltip>)}
+
       </div>)}
 
 
@@ -321,7 +276,7 @@ export const InputArea: React.FC<{
                     <p className="text-xs font-medium text-error mb-0.5">没能补全</p>
                     <p className="text-xs text-error leading-relaxed">{optimizeError}</p>
                   </div>
-                  <button type="button" onClick={handleCloseOptimizePreview} className="flex-shrink-0 text-ink-muted hover:text-ink-secondary transition-colors">
+                  <button type="button" aria-label="关闭补全预览" onClick={handleCloseOptimizePreview} className="flex-shrink-0 text-ink-muted hover:text-ink-secondary transition-colors">
                     <X size={14}/>
                   </button>
                 </div>) : (<div className="px-4 pt-3 pb-3">
@@ -329,7 +284,7 @@ export const InputArea: React.FC<{
                     <Sparkles size={12} className="text-accent flex-shrink-0"/>
                     <span className="text-[11px] font-medium text-accent">补全后的描述</span>
                     <div className="flex-1"/>
-                    <button type="button" onClick={handleCloseOptimizePreview} className="text-ink-muted hover:text-ink-secondary transition-colors">
+                    <button type="button" aria-label="关闭补全预览" onClick={handleCloseOptimizePreview} className="text-ink-muted hover:text-ink-secondary transition-colors">
                       <X size={13}/>
                     </button>
                   </div>
@@ -352,8 +307,6 @@ export const InputArea: React.FC<{
         </div>
       </div>
       {sendStatus && <p role="status" className="mt-2 px-1 text-xs text-ink-secondary">{sendStatus}</p>}
-      {compactError && (<p role="status" className="mt-2 px-1 text-xs text-error">
-          {compactError}
-        </p>)}
+
     </div>);
 };

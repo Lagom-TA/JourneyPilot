@@ -11,131 +11,132 @@
   background: color-mix(in srgb, var(--color-surface) 72%, transparent);
 }
 
-.new-trip-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 56%) minmax(400px, 44%);
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
+/* 首页以深绿画面承载输入，配色只作用于当前入口。 */
+.app-shell:has(.new-trip-hero) {
+  --home-forest: #102c25;
+  --home-cream: #fffdf2;
+  --home-ink: #15221b;
+  --home-yellow: #ffdf35;
+  --home-orange: #f15a34;
+  background: var(--home-forest);
 }
 
-.new-trip-main {
-  position: relative;
+.app-shell:has(.new-trip-hero) .app-topbar {
+  border-bottom-color: #c6d88a30;
+  background: var(--home-forest);
+  color: var(--home-cream);
+}
+
+.app-shell:has(.new-trip-hero) .desktop-nav-link { color: #d5dfc8; }
+.app-shell:has(.new-trip-hero) .desktop-nav-link:hover { background: #d5dfc810; color: var(--home-cream); }
+.app-shell:has(.new-trip-hero) .desktop-nav-link.is-active { color: var(--home-cream); }
+.app-shell:has(.new-trip-hero) .desktop-nav-link.is-active::after { background: var(--home-orange); }
+.app-shell:has(.new-trip-hero) .mobile-nav-opener { color: var(--home-cream); }
+.app-shell:has(.new-trip-hero) .app-brand img { filter: brightness(0) invert(1); }
+
+.new-trip-hero {
+  height: 100%;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  background: var(--home-forest);
+  color: var(--home-cream);
+  scrollbar-width: thin;
+  scrollbar-color: #8ea57c var(--home-forest);
 }
 
-.new-trip-main::-webkit-scrollbar {
-  display: none;
-}
-
-.new-trip-main::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    radial-gradient(circle at 12% 88%, color-mix(in srgb, var(--color-chart) 6%, transparent), transparent 34%),
-    repeating-linear-gradient(105deg, transparent 0 46px, color-mix(in srgb, var(--color-chart) 2.5%, transparent) 46px 47px);
-  mask-image: linear-gradient(to bottom, transparent, var(--color-mask) 32%, var(--color-mask));
+.new-trip-stage {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  min-height: 100%;
+  grid-template-columns: minmax(0, 1.7fr) minmax(220px, 1fr);
+  align-items: start;
+  gap: clamp(32px, 5vw, 96px);
+  padding: clamp(32px, 6vh, 64px) max(6vw, calc((100vw - 1600px) / 2));
 }
 
 .new-trip-content {
   position: relative;
-  z-index: 1;
-  width: min(100%, 920px);
-  margin: 0 auto;
-  padding: clamp(32px, 4vh, 52px) clamp(28px, 4vw, 68px) clamp(48px, 7vh, 80px);
-}
-
-.new-trip-copy {
-  animation: new-trip-rise var(--dur-emphasis) var(--ease-decelerate) both;
+  z-index: 2;
+  width: 100%;
+  max-width: 760px;
+  min-width: 0;
 }
 
 .new-trip-copy h1 {
-  margin-top: 0;
-  font-family: theme('fontFamily.display');
-  font-size: clamp(44px, 3.7vw, 64px);
-  font-weight: 600;
-  line-height: 1.22;
-  letter-spacing: -.055em;
-  text-wrap: balance;
+  margin: 0;
+  font-family: theme('fontFamily.sans');
+  font-size: clamp(60px, 6.5vw, 96px);
+  font-weight: 760;
+  line-height: 1.1;
+  letter-spacing: -.04em;
 }
 
-.new-trip-copy h1 > span {
-  color: var(--color-accent);
-}
+.new-trip-copy h1 > span { color: var(--home-orange); }
 
 .planner-card {
   position: relative;
-  margin-top: 32px;
+  min-width: 0;
+  margin-top: 36px;
   padding: 24px;
-  border: 1px solid rgb(var(--color-panel-rgb) / 78%);
-  border-radius: var(--radius-hero);
-  background: linear-gradient(145deg, rgb(var(--color-panel-rgb) / 88%), rgb(var(--color-panel-rgb) / 72%));
-  box-shadow: var(--shadow-planner-card);
-  -webkit-backdrop-filter: blur(18px) saturate(115%);
-  backdrop-filter: blur(18px) saturate(115%);
-  animation: new-trip-rise var(--dur-emphasis) var(--ease-decelerate) var(--delay-planner-card) both;
-}
-
-.planner-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 12%;
-  left: 12%;
-  height: 1px;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgb(var(--color-white-rgb) / 92%), transparent);
-}
-
-.planner-card-compact {
-  margin-top: 0;
-  padding: 20px;
+  border-radius: var(--radius-micro);
   background: var(--color-panel);
-  box-shadow: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  color: var(--color-ink);
+  container: planner / inline-size;
 }
 
-.planner-card-compact::before { display: none; }
+.new-trip-content .planner-card {
+  --color-panel-rgb: 255 253 242;
+  --color-bg-rgb: 255 253 242;
+  --color-surface-rgb: 239 240 226;
+  --color-ink-rgb: 21 34 27;
+  --color-ink-secondary-rgb: 83 99 85;
+  --color-ink-muted-rgb: 90 103 87;
+  --color-ink-secondary-on-paper-rgb: 83 99 85;
+  --color-accent-rgb: 39 83 61;
+  --color-accent-hover-rgb: 26 61 43;
+  --color-accent-soft-rgb: 225 234 214;
+  --color-stroke-rgb: 210 216 199;
+  box-shadow: 0 18px 40px #061e1630;
+}
+
+.new-trip-hero ::selection { background: var(--home-yellow); color: var(--home-ink); }
+.new-trip-content textarea { caret-color: var(--home-forest); }
+
+.planner-card-compact { margin-top: 0; padding: 20px; border-radius: var(--radius-card); }
+.planner-compact-label { color: var(--color-ink-secondary); font-size: 12px; }
 
 .planner-mode-tabs {
   width: 100%;
+  justify-content: flex-start;
+  gap: 28px;
+  padding: 0;
+  border-bottom: 1px solid var(--color-stroke);
+  border-radius: 0;
+  background: transparent;
 }
 
-.planner-mode-tabs > button:not([aria-selected='true']) {
-  color: var(--color-ink-secondary-on-paper);
+.planner-mode-tabs > div { display: none; }
+.planner-mode-tabs > button {
+  min-height: 44px;
+  flex: none;
+  padding: 0 0 10px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--color-ink-secondary);
 }
+.planner-mode-tabs > button[aria-selected='true'] { border-bottom-color: var(--home-orange, var(--color-accent)); color: var(--color-ink); }
+.planner-mode-tabs > button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 
-.planner-panels {
-  display: grid;
-  min-width: 0;
-}
-
-.planner-panel {
-  grid-area: 1 / 1;
-  min-width: 0;
-  padding-top: 16px;
-}
-
-.planner-panel.is-inactive {
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.planner-panel-natural {
-  display: flex;
-  flex-direction: column;
-}
+.planner-panels { min-width: 0; }
+.planner-panel { min-width: 0; padding-top: 16px; }
+.planner-panel[hidden] { display: none; }
+.planner-panel-natural { display: flex; flex-direction: column; }
 
 .planner-config-state {
   display: flex;
-  min-height: 360px;
+  min-height: 240px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -181,7 +182,7 @@
 
 .planner-config-notice p:first-child {
   color: var(--color-ink);
-  font-family: theme('fontFamily.display');
+  font-family: theme('fontFamily.sans');
   font-size: 21px;
   font-weight: 600;
   letter-spacing: -.02em;
@@ -224,116 +225,37 @@
   font-weight: 500;
 }
 
-.planner-compact-label { color: var(--color-ink-secondary); font-size: 12px; }
-
-
-.planner-natural-input {
-  position: relative;
-  display: flex;
-  flex: 1 1 auto;
-  overflow: hidden;
-  border: 1px solid var(--color-stroke);
-  border-radius: var(--radius-card);
-  background: color-mix(in srgb, var(--color-bg) 38%, var(--color-panel));
-  transition: border-color var(--dur-base) var(--ease-standard), box-shadow var(--dur-base) var(--ease-standard);
-}
-
-.planner-natural-input:focus-within {
-  border-color: var(--color-accent);
-  box-shadow: var(--shadow-focus-planner);
-}
-
+.planner-natural-input { position: relative; min-width: 0; }
+.planner-natural-input:focus-within { outline: 1px solid var(--color-accent); outline-offset: 5px; }
 .planner-natural-input textarea {
   display: block;
   width: 100%;
-  min-height: 132px;
-  flex: 1;
-  resize: none;
+  min-height: 104px;
+  max-height: 240px;
+  resize: vertical;
+  padding: 8px 0;
   border: 0;
   outline: 0;
   background: transparent;
-  padding: 16px 18px 30px;
   color: var(--color-ink);
-  font-size: 15px;
-  line-height: 1.9;
+  font-size: 16px;
+  line-height: 1.8;
 }
-
-.planner-natural-input textarea::placeholder {
-  color: var(--color-ink-secondary-on-paper);
-}
-
+.planner-natural-input textarea::placeholder { color: var(--color-ink-secondary); }
+.planner-natural-input textarea:disabled { cursor: wait; }
+.planner-natural-input:has(.planner-character-count) textarea { padding-bottom: 24px; }
 .planner-character-count {
   position: absolute;
-  right: 14px;
-  bottom: 10px;
-  color: var(--color-ink-secondary-on-paper);
-  font-family: theme('fontFamily.mono');
-  font-size: 10px;
+  right: 4px;
+  bottom: 4px;
+  padding-inline: 4px;
+  background: var(--color-panel);
+  color: var(--color-ink-secondary);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
-
-.planner-natural-tools {
-  display: grid;
-  flex: none;
-  grid-template-columns: minmax(170px, .72fr) minmax(0, 1.28fr);
-  gap: 16px;
-  margin-top: 14px;
-}
-
-.planner-natural-label {
-  color: var(--color-ink-secondary-on-paper);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.planner-natural-chip {
-  display: inline-flex;
-  min-height: 32px;
-  align-items: center;
-  gap: 3px;
-  padding: 0 9px;
-  border: 1px solid color-mix(in srgb, var(--color-stroke) 72%, transparent);
-  border-radius: var(--radius-label);
-  background: color-mix(in srgb, var(--color-surface) 62%, transparent);
-  color: var(--color-ink-secondary);
-  font-size: 12px;
-  transition: border-color var(--dur-fast), background-color var(--dur-fast), color var(--dur-fast);
-}
-
-.planner-natural-chip:hover {
-  border-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
-  background: var(--color-accent-soft);
-  color: var(--color-accent-hover);
-}
-
-.planner-natural-starter {
-  display: -webkit-box;
-  min-height: 56px;
-  overflow: hidden;
-  padding: 9px 11px;
-  border: 1px solid color-mix(in srgb, var(--color-stroke) 68%, transparent);
-  border-radius: var(--radius-label);
-  background: color-mix(in srgb, var(--color-panel) 56%, transparent);
-  color: var(--color-ink-secondary);
-  font-size: 12px;
-  line-height: 1.65;
-  text-align: left;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  transition: border-color var(--dur-fast), background-color var(--dur-fast), color var(--dur-fast);
-}
-
-.planner-natural-starter:hover {
-  border-color: color-mix(in srgb, var(--color-accent) 30%, transparent);
-  background: var(--color-accent-soft);
-  color: var(--color-ink);
-}
-
-.planner-action-area {
-  margin-top: 18px;
-}
-
-
+.planner-action-area { display: flex; flex-wrap: wrap; justify-content: flex-end; margin-top: 10px; }
+.planner-action-area .planner-error { flex-basis: 100%; }
 .planner-home-flow-status {
   display: flex;
   flex-wrap: wrap;
@@ -404,70 +326,25 @@
 }
 
 .planner-main-action {
-  position: relative;
-  width: 100%;
-  min-height: 52px;
-  margin-top: 16px;
-  overflow: hidden;
-  background: linear-gradient(110deg, var(--color-accent-hover), var(--color-accent));
-  box-shadow: var(--shadow-planner-submit);
+  width: auto;
+  min-height: 48px;
+  padding-inline: 22px;
+  border-radius: var(--radius-micro);
+  background: var(--home-orange, var(--color-accent));
+  color: var(--home-ink, var(--color-on-accent));
+  box-shadow: none;
   font-size: 14px;
-  letter-spacing: .03em;
+  font-weight: 600;
 }
-
-.planner-main-action::before {
-  content: '';
-  position: absolute;
-  inset: -40% auto -40% -32%;
-  width: 32%;
-  pointer-events: none;
-  opacity: 0;
-  background: linear-gradient(105deg, transparent, rgb(var(--color-white-rgb) / 32%), transparent);
-  transform: translateX(0) skewX(-18deg);
-  will-change: transform, opacity;
-}
-
-.planner-main-action > svg {
-  transition: transform var(--dur-base) var(--ease-decelerate);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .planner-main-action:not(:disabled):hover::before {
-    opacity: 1;
-    animation: planner-main-sweep var(--dur-planner-sweep) var(--ease-decelerate) forwards;
-  }
-  .planner-main-action:not(:disabled):hover > svg { transform: translateX(3px); }
-}
-
-.planner-main-action:disabled::before { display: none; animation: none; opacity: 0; }
-
-@keyframes planner-main-sweep {
-  from { transform: translateX(0) skewX(-18deg); opacity: 0; }
-  8% { opacity: 1; }
-  92% { opacity: 1; }
-  to { transform: translateX(415%) skewX(-18deg); opacity: 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .planner-main-action::before { display: none !important; animation: none !important; opacity: 0 !important; }
-  .planner-main-action > svg { transition: none; }
-  .planner-pending-dot { animation: none; }
-}
-
-.planner-action-area .planner-main-action { margin-top: 0; }
-
-.planner-error {
-  margin-top: 12px;
-  color: var(--color-error);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
+.planner-main-action:hover:not(:disabled) { background: var(--home-yellow, var(--color-accent-hover)); color: var(--home-ink, var(--color-on-accent)); }
+.planner-main-action:disabled { opacity: 1; background: #f8ccb9; color: #765d4b; }
+.planner-main-action:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
+.planner-error { margin-top: 12px; color: var(--color-error); font-size: 13px; line-height: 1.6; }
 .planner-route-fields {
   display: grid;
-  grid-template-columns: minmax(116px, .58fr) 16px minmax(0, 1.42fr);
+  grid-template-columns: minmax(128px, .7fr) minmax(0, 1.3fr);
   align-items: start;
-  gap: 12px;
+  gap: 24px;
 }
 
 .planner-destination-field-wrap {
@@ -751,760 +628,235 @@
   color: var(--color-accent);
 }
 
-.planner-form-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 340px) minmax(190px, 230px) minmax(128px, 150px);
-  align-items: end;
-  gap: 16px;
-  margin-top: 20px;
-  transition: margin-top var(--dur-slow) var(--ease-standard);
-}
+/* 条件字段以路线为首，日期、人数、预算与风格沿基线排列。 */
+.planner-panel-structured { padding-top: 24px; }
+.planner-route-fields > div > label { margin-bottom: 4px; font-size: 12px; }
+.planner-route-fields > div > div:has(> input) { min-height: 52px; }
+.planner-route-fields > div > div > svg { display: none; }
+.planner-route-fields > div > div > input { font-size: 20px; font-weight: 550; }
+.planner-destination-field-wrap > .planner-field-label { font-size: 12px; }
+.planner-destination-field-wrap .destination-token-flow { min-height: 52px; align-items: center; }
+.planner-destination-field-wrap .destination-search { height: 52px; padding-inline: 0; border: 0; border-bottom: 1px solid var(--color-stroke); border-radius: 0; background: transparent; box-shadow: none; }
+.planner-destination-field-wrap .destination-search-icon { display: none; }
+.planner-destination-field-wrap .destination-search-input { font-size: 17px; font-weight: 500; }
+.planner-destination-field-wrap .planner-add-destination { min-width: 44px; min-height: 44px; padding-inline: 8px; border: 0; border-radius: 0; background: transparent; font-size: 12px; }
+.planner-destination-field-wrap .destination-token { min-height: 40px; border-color: transparent; border-radius: 2px; padding-left: 10px; background: var(--color-surface); font-size: 15px; }
+.planner-condition-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 24px; margin-top: 24px; }
+.planner-condition-fields > div { min-width: 0; }
+.planner-condition-fields .planner-field-label { margin-bottom: 0; font-size: 12px; }
+.planner-date-field button { min-height: 48px; }
+.planner-date-field button > svg { display: none; }
+.planner-date-field button > span { font-size: 18px; font-weight: 550; }
+.planner-optional { margin-left: 3px; color: var(--color-ink-muted); font-size: 10px; font-weight: 400; }
+.planner-select-control { display: flex; min-height: 48px; align-items: center; border-bottom: 1px solid var(--color-stroke); }
+.planner-select-control select { width: 100%; min-width: 0; min-height: 48px; appearance: none; border: 0; outline: 0; background: transparent; color: var(--color-ink); font-size: 18px; font-weight: 550; cursor: pointer; }
+.planner-select-control svg { flex-shrink: 0; color: var(--color-ink-secondary); pointer-events: none; }
+.planner-select-control:focus-within { border-bottom-color: var(--color-accent); }
+.planner-preference-block { margin-top: 18px; }
+.planner-more-preferences { display: inline-flex; min-height: 36px; align-items: center; gap: 6px; padding: 0; color: var(--color-ink-secondary); font-size: 12px; }
+.planner-more-preferences[aria-expanded='true'] > svg { transform: rotate(180deg); }
+.planner-more-preferences:hover { color: var(--color-ink); }
+.planner-more-preferences-options { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.planner-budget-field { position: relative; }
+.planner-budget-input { display: flex; min-width: 0; min-height: 48px; align-items: center; gap: 8px; border-bottom: 1px solid var(--color-stroke); color: var(--color-ink-secondary); font-size: 16px; }
+.planner-budget-input:focus-within { border-color: var(--color-accent); }
+.planner-budget-input input { width: 100%; min-width: 0; height: 48px; appearance: none; border: 0; outline: 0; background: transparent; color: var(--color-ink); font-size: 18px; font-weight: 550; font-variant-numeric: tabular-nums; }
+.planner-budget-input input::placeholder { color: var(--color-ink-muted); font-weight: 400; }
+.planner-budget-field.is-invalid .planner-budget-input { border-color: var(--color-error); }
+.planner-field-error { position: absolute; top: 100%; right: 0; margin-top: 2px; color: var(--color-error); font-size: 11px; }
 
-/* 新增目的地收起时，把展开搜索行占用的高度均分到日期组上方和主按钮上方：
-   日期/同行/预算与旅行偏好保持原有行距，作为整体下移让位，卡片外框与主按钮不动。 */
-.planner-panel-structured {
-  transition: padding-bottom var(--dur-slow) var(--ease-standard);
-}
-
-.planner-panel-structured.is-destination-collapsed {
-  padding-bottom: 26px;
-}
-
-.planner-panel-structured.is-destination-collapsed .planner-form-grid {
-  margin-top: 46px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .destination-add-panel,
-  .planner-panel-structured,
-  .planner-form-grid {
-    transition: none;
-  }
-}
-
-.planner-form-grid .planner-party {
-  display: flex;
-  min-height: 44px;
-  min-width: 0;
-  align-items: center;
-  gap: 6px;
-  padding: 0 6px;
-  border-bottom: 1px solid var(--color-stroke);
-}
-
-.planner-party > div > span { white-space: nowrap; }
-
-.planner-stepper {
-  display: inline-grid;
-  width: 30px;
-  height: 32px;
-  place-items: center;
-  border-radius: var(--radius-label);
-  color: var(--color-ink-secondary);
-  transition: color var(--dur-fast), background-color var(--dur-fast);
-}
-
-.planner-stepper:hover {
-  background: var(--color-surface);
-  color: var(--color-ink);
-}
-
-.planner-stepper:disabled {
-  opacity: .3;
-}
-
-.planner-preference-block {
-  margin-top: 20px;
-  padding-top: 18px;
-  border-top: 1px solid color-mix(in srgb, var(--color-stroke) 70%, transparent);
-}
-
-.planner-preference-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 12px 18px;
-}
-
-.planner-style-field {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.planner-style-options {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.planner-more-preferences {
-  min-height: 40px;
-  padding-inline: 6px;
-  color: var(--color-accent);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.planner-more-preferences:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-
-.planner-more-preferences-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-}
-
-.planner-budget-field {
-  display: flex;
-  min-width: 0;
-  flex-shrink: 0;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
-}
-
-.planner-budget-input {
-  display: flex;
-  width: 100%;
-  min-height: 44px;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px;
-  border: 1px solid var(--color-stroke);
-  border-radius: var(--radius-label);
-  background: color-mix(in srgb, var(--color-panel) 76%, transparent);
-  color: var(--color-ink-secondary);
-  font-size: 12px;
-}
-
-.planner-budget-input:focus-within {
-  border-color: var(--color-accent);
-}
-
-.planner-budget-input input {
-  min-width: 0;
-  flex: 1;
-  appearance: none;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--color-ink);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.planner-budget-input input::placeholder { color: var(--color-ink-muted); }
-
-.planner-budget-input input::-webkit-inner-spin-button,
-.planner-budget-input input::-webkit-outer-spin-button {
-  appearance: none;
-  margin: 0;
-}
-
-.planner-origin-setup {
-  padding: 4px 0 2px;
-}
-
-.travel-atlas {
-  --atlas-progress: 0;
-  --atlas-frost: 4px;
-  --atlas-far-x: 0px;
-  --atlas-far-y: 0px;
-  --atlas-near-x: 0px;
-  --atlas-near-y: 0px;
-  --atlas-card-x: 0px;
-  --atlas-card-y: 0px;
-  --atlas-tilt-x: 0deg;
-  --atlas-tilt-y: 0deg;
-  --atlas-light-x: 50%;
-  --atlas-light-y: 50%;
-  position: relative;
-  min-height: 0;
-  margin: 16px 16px 16px 0;
+/* 风景铺满首屏，票据与行李签以独立纸形承载交互文字。 */
+.home-landscape {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
   overflow: hidden;
-  isolation: isolate;
-  border-radius: var(--radius-atlas);
-  background: var(--atlas-southwest);
-  color: var(--color-panel);
-  box-shadow: var(--shadow-atlas);
+  pointer-events: none;
 }
-
-.travel-atlas::after {
+.home-landscape::after {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: 40;
-  border-radius: inherit;
-  pointer-events: none;
-  box-shadow: var(--shadow-atlas-rim);
+  background: linear-gradient(90deg, var(--home-forest), #102c2599 32%, transparent 70%);
 }
-
-.atlas-panel {
-  position: absolute;
-  inset: 0;
-}
-
-.atlas-scene {
-  --atlas-heading-ink: var(--color-panel);
-  --atlas-secondary-ink: rgb(var(--color-panel-rgb) / 70%);
-  --atlas-accent-ink: var(--atlas-accent-southwest);
-  --atlas-line: rgb(var(--color-bg-rgb) / 14%);
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  color: var(--atlas-heading-ink);
-  background: var(--atlas-southwest);
-}
-
-.atlas-scene::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgb(var(--atlas-shade-rgb) / 8%), transparent 40%, rgb(var(--atlas-shade-rgb) / 24%));
-}
-
-.atlas-theme-southwest {
-  background: radial-gradient(circle at 80% 12%, var(--atlas-light-southwest), transparent 44%), var(--atlas-southwest);
-}
-
-.atlas-theme-jiangnan {
-  --atlas-heading-ink: var(--color-ink);
-  --atlas-secondary-ink: rgb(var(--color-ink-rgb) / 80%);
-  --atlas-accent-ink: var(--atlas-accent-jiangnan);
-  --atlas-line: rgb(var(--color-ink-rgb) / 17%);
-  background: radial-gradient(circle at 82% 14%, var(--atlas-light-jiangnan), transparent 46%), var(--atlas-jiangnan);
-}
-
-.atlas-theme-jiangnan::after {
-  background: linear-gradient(180deg, rgb(var(--color-panel-rgb) / 4%), transparent 44%, rgb(var(--color-ink-rgb) / 10%));
-}
-
-.atlas-theme-northwest {
-  --atlas-accent-ink: var(--atlas-accent-northwest);
-  background: radial-gradient(circle at 82% 10%, var(--atlas-light-northwest), transparent 44%), var(--atlas-northwest);
-}
-
-.atlas-theme-island {
-  --atlas-accent-ink: var(--atlas-accent-island);
-  background: radial-gradient(circle at 80% 12%, var(--atlas-light-island), transparent 46%), var(--atlas-island);
-}
-
-.atlas-scene-tabs {
-  position: absolute;
-  top: 24px;
-  right: 28px;
-  left: 28px;
-  z-index: 30;
-  padding: 4px;
-  border: 1px solid rgb(var(--color-white-rgb) / 15%);
-  background: rgb(var(--color-white-rgb) / 8%);
-  box-shadow: var(--shadow-atlas-tabs);
-  -webkit-backdrop-filter: blur(16px) saturate(125%);
-  backdrop-filter: blur(16px) saturate(125%);
-}
-
-.atlas-scene-tabs > div {
-  overflow: hidden;
-  border-color: rgb(var(--color-white-rgb) / 18%);
-  background: rgb(var(--color-panel-rgb) / 14%);
-  box-shadow: var(--shadow-atlas-tabs-inner);
-  -webkit-backdrop-filter: blur(var(--atlas-frost)) saturate(125%);
-  backdrop-filter: blur(var(--atlas-frost)) saturate(125%);
-}
-
-.atlas-scene-tabs > div::before,
-.atlas-scene-tabs > div::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  transform: scaleX(var(--atlas-progress));
-  transform-origin: left center;
-}
-
-.atlas-scene-tabs > div::before {
-  background: linear-gradient(90deg, rgb(var(--color-panel-rgb) / 4%), rgb(var(--color-panel-rgb) / 20%));
-}
-
-.atlas-scene-tabs > div::after {
-  background: repeating-linear-gradient(112deg, transparent 0 3px, rgb(var(--color-panel-rgb) / 5%) 3px 4px);
-  opacity: var(--atlas-progress);
-}
-
-.atlas-scene-tabs > button {
-  min-height: 34px;
-  color: rgb(var(--color-panel-rgb) / 66%);
-  font-size: 11px;
-  letter-spacing: .08em;
-}
-
-.atlas-scene-tabs > button:hover,
-.atlas-scene-tabs > button[aria-selected='true'] {
-  color: var(--color-panel);
-}
-
-.atlas-scene-tabs > button[aria-selected='true'] { font-weight: 600; }
-.atlas-scene-tabs > button:focus-visible { outline-color: currentColor; }
-
-.travel-atlas[data-scene='jiangnan'] .atlas-scene-tabs {
-  border-color: rgb(var(--color-ink-rgb) / 10%);
-  background: rgb(var(--color-panel-rgb) / 34%);
-}
-
-.travel-atlas[data-scene='jiangnan'] .atlas-scene-tabs > div {
-  border-color: rgb(var(--color-ink-rgb) / 8%);
-  background: rgb(var(--color-panel-rgb) / 48%);
-}
-
-.travel-atlas[data-scene='jiangnan'] .atlas-scene-tabs > button { color: rgb(var(--color-ink-rgb) / 80%); }
-.travel-atlas[data-scene='jiangnan'] .atlas-scene-tabs > button:hover,
-.travel-atlas[data-scene='jiangnan'] .atlas-scene-tabs > button[aria-selected='true'] { color: var(--color-ink); }
-
+.atlas-scene { position: absolute; inset: 0; background: var(--home-forest); }
 .atlas-artwork {
   position: absolute;
-  inset: -3%;
-  z-index: 0;
-  width: 106%;
-  height: 106%;
-  overflow: visible;
-  pointer-events: none;
-}
-
-.atlas-parallax-far,
-.atlas-parallax-near {
-  transition: transform var(--dur-slow) var(--ease-decelerate);
-  will-change: transform;
-}
-
-.atlas-parallax-far { transform: translate3d(var(--atlas-far-x), var(--atlas-far-y), 0); }
-.atlas-parallax-near { transform: translate3d(var(--atlas-near-x), var(--atlas-near-y), 0); }
-
-.atlas-lens-position {
-  position: absolute;
-  top: 24%;
-  right: 10%;
-  z-index: 2;
-  width: 126px;
-  height: 126px;
-  pointer-events: none;
-}
-
-.atlas-theme-northwest .atlas-lens-position { top: 34%; right: 16%; width: 106px; height: 106px; }
-.atlas-theme-island .atlas-lens-position { top: 32%; right: 28%; width: 148px; height: 148px; }
-.atlas-theme-jiangnan .atlas-lens-position { top: 29%; right: 15%; }
-
-.atlas-liquid-lens {
+  inset: 0;
   width: 100%;
   height: 100%;
-  border: 1px solid rgb(var(--color-white-rgb) / 22%);
-  border-radius: var(--atlas-morph-start);
-  background: linear-gradient(135deg, rgb(var(--color-white-rgb) / 15%), rgb(var(--color-white-rgb) / 2%) 58%, rgb(var(--color-white-rgb) / 8%));
-  box-shadow: var(--shadow-atlas-lens);
-  -webkit-backdrop-filter: blur(7px) saturate(135%);
-  backdrop-filter: blur(7px) saturate(135%);
-  opacity: .8;
-  animation: atlas-liquid-morph var(--dur-atlas-morph) var(--ease-loop) infinite alternate;
-}
-
-.atlas-theme-jiangnan .atlas-liquid-lens {
-  border-color: rgb(var(--color-panel-rgb) / 42%);
-  background: linear-gradient(135deg, rgb(var(--color-panel-rgb) / 25%), rgb(var(--color-panel-rgb) / 4%));
-}
-
-.atlas-pointer-light {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
+  object-fit: cover;
+  object-position: 70% center;
   pointer-events: none;
-  background: radial-gradient(circle 270px at var(--atlas-light-x) var(--atlas-light-y), rgb(var(--color-panel-rgb) / 18%), transparent 72%);
-  mix-blend-mode: soft-light;
-  opacity: 0;
-  transition: opacity var(--dur-slow) var(--ease-standard);
 }
-
-.atlas-card-position {
-  position: absolute;
-  right: 26px;
-  bottom: 26px;
-  z-index: 5;
-  width: min(336px, calc(100% - 52px));
-  transform: translate3d(var(--atlas-card-x), var(--atlas-card-y), 0);
-  transition: transform var(--dur-slow) var(--ease-decelerate);
-  will-change: transform;
+.travel-atlas {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 380px;
+  min-width: 0;
+  margin-top: clamp(72px, 9vh, 120px);
+  justify-self: center;
+  container: atlas / inline-size;
 }
-
+.atlas-examples {
+  display: grid;
+  align-items: start;
+  justify-items: start;
+  gap: 26px;
+  padding-top: 12px;
+}
 .atlas-example-card {
   position: relative;
+  isolation: isolate;
   display: block;
-  width: 100%;
-  overflow: hidden;
-  padding: 22px;
-  border: 1px solid rgb(var(--color-white-rgb) / 62%);
-  border-radius: var(--radius-panel);
-  background: linear-gradient(145deg, rgb(var(--color-panel-rgb) / 90%), rgb(var(--color-panel-rgb) / 70%));
-  color: var(--color-ink);
-  box-shadow: var(--shadow-atlas-card);
-  -webkit-backdrop-filter: blur(22px) saturate(128%);
-  backdrop-filter: blur(22px) saturate(128%);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--home-ink);
   text-align: left;
-  cursor: pointer;
-  transform: perspective(900px) rotateX(var(--atlas-tilt-x)) rotateY(var(--atlas-tilt-y)) translateY(0);
-  transition: transform var(--dur-base) var(--ease-decelerate), border-color var(--dur-base), box-shadow var(--dur-base);
-  animation: atlas-card-enter var(--dur-emphasis) var(--ease-decelerate) var(--delay-atlas-card) both;
+  transition: transform var(--dur-base) var(--ease-decelerate);
 }
-
-.atlas-example-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 10%;
-  left: 10%;
-  z-index: 0;
-  height: 1px;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgb(var(--color-white-rgb) / 96%), transparent);
+.atlas-example-card.is-primary {
+  width: 100%;
+  aspect-ratio: 1480 / 652;
+  transform: rotate(-4deg);
 }
-
-.atlas-example-card::after {
-  content: '';
+.atlas-example-card.is-secondary {
+  width: 36%;
+  aspect-ratio: 865 / 1426;
+  margin-right: 16px;
+  justify-self: end;
+  transform: rotate(6deg);
+}
+.atlas-paper-frame { position: absolute; inset: 0; display: block; pointer-events: none; }
+.atlas-paper {
   position: absolute;
+  z-index: -1;
   inset: 0;
-  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 12px #061e1647);
+  user-select: none;
   pointer-events: none;
-  background: radial-gradient(circle 150px at var(--atlas-light-x) var(--atlas-light-y), rgb(var(--color-white-rgb) / 62%), transparent 74%);
-  opacity: 0;
-  transition: opacity var(--dur-slow) var(--ease-standard);
 }
-
-.atlas-example-card > * { position: relative; z-index: 1; }
-.atlas-example-card:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
-.atlas-example-card:active {
-  transform: perspective(900px) rotateX(var(--atlas-tilt-x)) rotateY(var(--atlas-tilt-y)) translateY(-1px) scale(.985);
-}
-
-.atlas-example-top {
-  display: block;
-  color: var(--color-accent-hover);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: .04em;
-  line-height: 1.6;
-}
-
-.atlas-example-title {
-  display: block;
-  margin-top: 8px;
-  font-family: theme('fontFamily.display');
-  font-size: 23px;
-  font-weight: 600;
-}
-
-.atlas-example-description {
-  display: block;
-  margin-top: 9px;
-  color: var(--color-ink-secondary);
-  font-size: 12px;
-  line-height: 1.8;
-}
-
-.atlas-example-facts {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid rgb(var(--color-ink-rgb) / 12%);
-}
-
-.atlas-example-facts > span { display: flex; min-width: 0; flex-direction: column; }
-.atlas-example-facts small { color: var(--color-ink-secondary-on-paper); font-size: 10px; }
-.atlas-example-facts strong {
-  margin-top: 3px;
-  overflow: hidden;
-  font-size: 11px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.atlas-example-action {
+.atlas-example-body {
+  position: absolute;
+  inset: 16% 25% 14% 8%;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: space-between;
-  margin-top: 14px;
-  color: var(--color-accent-hover);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .02em;
+  gap: 8px;
 }
-
-.atlas-example-action > svg { transition: transform var(--dur-base) var(--ease-decelerate); }
-
-.atlas-terrain {
-  fill: none;
-  stroke: rgb(var(--color-bg-rgb) / 12%);
-  stroke-width: 1.1;
+.atlas-example-title {
+  font-size: clamp(36px, 13cqw, 46px);
+  font-weight: 760;
+  line-height: 1.03;
+  letter-spacing: -.04em;
 }
-
-.atlas-terrain .atlas-river { stroke: rgb(var(--atlas-river-rgb) / 30%); stroke-width: 9; }
-.atlas-terrain .atlas-mountain { fill: rgb(var(--atlas-mountain-rgb) / 24%); stroke: rgb(var(--color-bg-rgb) / 10%); }
-.atlas-terrain .atlas-mountain-far { fill: rgb(var(--atlas-mountain-far-rgb) / 20%); }
-.atlas-route { overflow: visible; }
-.atlas-route-shadow {
-  fill: none;
-  stroke: rgb(var(--color-accent-rgb) / 24%);
-  stroke-width: 8;
-  stroke-dasharray: 3 9;
-  stroke-linecap: round;
+.atlas-example-card.is-secondary .atlas-example-body { inset: 26% 14% 13%; }
+.atlas-example-card.is-secondary .atlas-example-title { font-size: clamp(32px, 11cqw, 42px); }
+.atlas-example-caption { display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 1.35; }
+.atlas-example-card.is-secondary .atlas-example-caption { font-size: 11px; }
+.atlas-example-duration { white-space: nowrap; }
+.atlas-example-action { display: flex; align-items: center; gap: 6px; }
+.atlas-ticket-arrow { position: absolute; right: 6%; bottom: 14%; }
+.atlas-example-card:focus-visible { outline: 3px solid var(--home-cream); outline-offset: 6px; }
+.atlas-example-card:active { scale: .98; }
+.atlas-scene-tabs {
+  width: fit-content;
+  max-width: 100%;
+  gap: 10px;
+  margin: 18px auto 0;
+  padding: 0 8px;
+  border-radius: 0;
+  background: var(--home-forest);
 }
-
-.atlas-route-line {
-  fill: none;
-  stroke: var(--atlas-route);
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: atlas-route-draw var(--dur-atlas-route) var(--ease-decelerate) var(--delay-atlas-route) forwards;
-}
-
-.atlas-map-pin circle {
-  fill: var(--color-accent);
-  stroke: var(--color-panel);
-  stroke-width: 3;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: atlas-pin-enter var(--dur-atlas-pin) var(--ease-decelerate) both;
-}
-
-.atlas-map-pin text {
-  fill: var(--color-panel);
-  font-family: theme('fontFamily.mono');
+.atlas-scene-tabs > div { display: none; }
+.atlas-scene-tabs > button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 4px;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: #d5dfc8;
   font-size: 12px;
-  font-weight: 700;
-  text-anchor: middle;
 }
+.atlas-scene-tabs > button[aria-selected='true'], .atlas-scene-tabs > button:hover { color: var(--home-cream); }
+.atlas-scene-tabs > button[aria-selected='true'] { border-bottom-color: var(--home-yellow); }
+.atlas-scene-tabs > button:focus-visible { outline-color: var(--home-cream); }
 
-.atlas-pin-two circle { animation-delay: var(--delay-atlas-route); }
-.atlas-pin-three circle { animation-delay: var(--delay-atlas-pin-last); }
-.atlas-plane { fill: var(--color-panel); animation: atlas-plane-float var(--dur-atlas-plane) var(--ease-loop) infinite; }
-
-.atlas-jiangnan-art,
-.atlas-northwest-art,
-.atlas-island-art { fill: none; stroke: var(--atlas-line); stroke-width: 1.4; }
-.atlas-jiangnan-moon { fill: rgb(var(--color-panel-rgb) / 46%); stroke: none; }
-.atlas-jiangnan-orbits { stroke: rgb(var(--color-ink-rgb) / 10%); }
-.atlas-willow {
-  stroke: rgb(var(--color-ink-rgb) / 26%);
-}
-
-.atlas-jiangnan-houses { fill: rgb(var(--color-panel-rgb) / 18%); stroke: rgb(var(--color-ink-rgb) / 34%); }
-.atlas-jiangnan-bridge { stroke: rgb(var(--color-panel-rgb) / 70%); stroke-width: 4; }
-.atlas-water-lines { stroke: rgb(var(--color-ink-rgb) / 22%); animation: atlas-water-drift var(--dur-atlas-water) var(--ease-loop) infinite; }
-.atlas-boat { fill: rgb(var(--color-panel-rgb) / 30%); stroke: rgb(var(--color-ink-rgb) / 42%); }
-
-.atlas-desert-orbits { stroke: rgb(var(--atlas-desert-ink-rgb) / 12%); }
-.atlas-desert-sun {
-  fill: var(--atlas-sun);
-  stroke: none;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: atlas-sun-breathe var(--dur-atlas-sun) var(--ease-loop) infinite;
-}
-
-.atlas-dune { stroke: none; }
-.atlas-dune-far { fill: var(--atlas-dune-far); }
-.atlas-dune-mid { fill: var(--atlas-dune-middle); }
-.atlas-dune-near { fill: var(--atlas-dune-near); }
-.atlas-desert-contours { stroke: rgb(var(--atlas-desert-ink-rgb) / 18%); }
-.atlas-desert-road { stroke: var(--atlas-desert-road); stroke-width: 3; stroke-dasharray: 10 12; stroke-linecap: round; }
-.atlas-desert-stars { stroke: rgb(var(--atlas-desert-ink-rgb) / 55%); }
-
-.atlas-island-sun {
-  fill: var(--atlas-route);
-  stroke: none;
-}
-
-.atlas-island-orbits { stroke: rgb(var(--atlas-island-ink-rgb) / 13%); }
-.atlas-palm { fill: rgb(var(--atlas-palm-rgb) / 30%); stroke: rgb(var(--atlas-palm-stroke-rgb) / 45%); }
-.atlas-sailboat { fill: rgb(var(--color-panel-rgb) / 74%); stroke: none; }
-.atlas-waves { fill: none; stroke-linecap: round; }
-.atlas-waves-back { stroke: rgb(var(--atlas-wave-back-rgb) / 26%); stroke-width: 2; animation: atlas-wave-drift var(--dur-atlas-wave-back) var(--ease-loop) infinite; }
-.atlas-waves-front { stroke: rgb(var(--atlas-wave-front-rgb) / 44%); stroke-width: 3; animation: atlas-wave-drift var(--dur-atlas-wave-front) var(--ease-loop) var(--delay-atlas-wave-front) infinite reverse; }
-.atlas-sea-sparkles { fill: rgb(var(--color-panel-rgb) / 70%); stroke: rgb(var(--color-panel-rgb) / 60%); }
-
-@media (prefers-reduced-motion: reduce) {
-  .atlas-liquid-lens,
-  .atlas-plane,
-  .atlas-water-lines,
-  .atlas-desert-sun,
-  .atlas-waves { animation: none !important; }
-}
-
-@media (forced-colors: active) {
-  .atlas-example-card,
-  .atlas-scene-tabs,
-  .planner-card {
-    border: 1px solid CanvasText;
-    background: Canvas;
-    color: CanvasText;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-  .atlas-liquid-lens,
-  .atlas-pointer-light { display: none; }
-  .atlas-scene-tabs > button[aria-selected='true'] { border-bottom: 2px solid Highlight; }
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .travel-atlas:hover .atlas-pointer-light,
-  .atlas-example-card:hover::after { opacity: 1; }
-  .atlas-example-card:hover {
-    border-color: rgb(var(--color-white-rgb) / 90%);
-    box-shadow: var(--shadow-atlas-card-hover);
-    transform: perspective(900px) rotateX(var(--atlas-tilt-x)) rotateY(var(--atlas-tilt-y)) translateY(-4px);
-  }
-  .atlas-example-card:hover .atlas-example-action > svg { transform: translateX(4px); }
-}
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .atlas-example-card,
-  .atlas-scene-tabs,
-  .planner-card { background: var(--color-panel); }
-  .atlas-liquid-lens { display: none; }
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  .atlas-example-card,
-  .atlas-scene-tabs,
-  .planner-card {
-    background: var(--color-panel);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-  }
-  .atlas-liquid-lens { display: none; }
-}
-
-@keyframes new-trip-rise {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes atlas-route-draw {
-  to { stroke-dashoffset: 0; }
-}
-
-@keyframes atlas-pin-enter {
-  from { opacity: 0; transform: scale(.72); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-@keyframes atlas-card-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-@keyframes atlas-liquid-morph {
-  0% { border-radius: var(--atlas-morph-start); }
-  50% { border-radius: var(--atlas-morph-middle); }
-  100% { border-radius: var(--atlas-morph-end); }
-}
-
-@keyframes atlas-plane-float {
-  0%, 100% { transform: translate(0, 0); }
-  50% { transform: translate(4px, -4px); }
-}
-
-@keyframes atlas-water-drift {
-  0%, 100% { transform: translateX(-3px); }
-  50% { transform: translateX(3px); }
-}
-
-@keyframes atlas-sun-breathe {
-  0%, 100% { opacity: .9; transform: scale(.99); }
-  50% { opacity: 1; transform: scale(1.015); }
-}
-
-@keyframes atlas-wave-drift {
-  0%, 100% { transform: translateX(-4px); }
-  50% { transform: translateX(4px); }
-}
-
-@media (min-width: 1024px) {
-  .new-trip-content {
-    display: flex;
-    min-height: 100%;
-    flex-direction: column;
-  }
-  .new-trip-copy { margin-top: auto; }
-  .new-trip-content > .planner-card { margin-bottom: auto; }
-}
-
-@media (width < 1280px) {
-  .new-trip-hero { grid-template-columns: minmax(0, 54%) minmax(380px, 46%); }
-  .new-trip-content { padding-inline: 32px; }
-  .new-trip-copy h1 { font-size: 43px; }
-  .atlas-card-position { width: 300px; }
-  .atlas-example-card { padding: 18px; }
-  .planner-route-fields { grid-template-columns: minmax(104px, .62fr) 14px minmax(0, 1fr); gap: 8px; }
-  .planner-form-grid { grid-template-columns: minmax(0, 300px) minmax(180px, 220px) minmax(128px, 150px); }
-  .planner-party { max-width: 230px; }
-}
-
-@media (width < 1024px) {
-  .new-trip-hero {
-    display: block;
-    overflow-y: auto;
-  }
-  .new-trip-main { overflow: visible; }
-  .new-trip-content { width: min(100%, 760px); padding: 40px 28px 28px; }
-  .new-trip-copy h1 { font-size: clamp(40px, 7vw, 56px); }
-  .travel-atlas { height: 560px; margin: 0 20px 20px; }
-  .planner-form-grid { grid-template-columns: minmax(0, 340px) minmax(180px, 220px) minmax(128px, 150px); }
-}
-
-@media (width < 640px) {
-  .new-trip-content { padding: 28px 16px 20px; }
-  .new-trip-copy h1 { margin-top: 0; font-size: clamp(36px, 11vw, 46px); line-height: 1.25; }
-  .planner-card { margin-top: 22px; padding: 14px; border-radius: var(--radius-card); }
-  .planner-panel { padding-top: 16px; }
-  .planner-natural-input textarea { min-height: 132px; padding: 14px 14px 28px; font-size: 14px; }
-  .planner-natural-tools { grid-template-columns: 1fr; gap: 12px; }
+@container planner (width < 520px) {
   .planner-route-fields { display: block; }
-  .planner-route-arrow { display: none; }
   .planner-route-fields > div:last-child { margin-top: 14px; }
-  .planner-form-grid { grid-template-columns: minmax(0, 1fr) minmax(116px, .52fr); gap: 10px; }
-  .planner-form-grid > :first-child { grid-column: 1 / -1; }
-  .planner-form-grid .planner-party { max-width: none; gap: 4px; padding-inline: 2px; }
-  .planner-form-grid .planner-party > svg { display: none; }
-  .planner-form-grid .planner-party .planner-stepper { width: 24px; }
-  .planner-party > div > span { margin-right: 1px; }
-  .planner-preference-row { align-items: stretch; }
-  .planner-style-options { flex-basis: 100%; }
-  .planner-budget-field { width: 100%; justify-content: space-between; margin-left: 0; }
-  .planner-budget-input { width: 100%; }
-  .travel-atlas { height: 500px; margin: 0 12px 12px; }
-  .atlas-scene-tabs { top: 18px; right: 18px; left: 18px; }
-  .atlas-lens-position { top: 32%; right: 8%; width: 90px; height: 90px; }
-  .atlas-card-position { right: 16px; bottom: 16px; width: calc(100% - 32px); }
-  .atlas-example-card { padding: 16px; }
-  .atlas-example-title { font-size: 20px; }
-  .atlas-example-description { display: none; }
-  .atlas-example-facts { margin-top: 12px; padding-top: 10px; }
 }
-
-@media (min-width: 1024px) and (max-height: 760px) {
-  .new-trip-content { padding-block: 26px; }
-  .new-trip-copy h1 { font-size: 40px; }
-  .planner-card { margin-top: 22px; }
+@container planner (width < 400px) {
+  .planner-date-field { grid-column: 1 / -1; }
+  .planner-condition-fields > .planner-style-field { grid-column: 1 / -1; }
+}
+@container planner (width < 270px) {
+  .planner-condition-fields { grid-template-columns: 1fr; }
+}
+@media (hover: hover) and (pointer: fine) {
+  .atlas-example-card.is-primary:hover { transform: rotate(-3deg) translateY(-4px); }
+  .atlas-example-card.is-secondary:hover { transform: rotate(4deg) translateY(-4px); }
+}
+@media (width < 1024px) and (width >= 640px) {
+  .new-trip-stage { gap: 28px; grid-template-columns: minmax(0, 1.65fr) minmax(172px, 1fr); padding: 40px 28px; }
+  .new-trip-copy h1 { font-size: clamp(48px, 8vw, 72px); }
+  .planner-card { padding: 20px; }
+  .travel-atlas { max-width: 220px; }
+  .atlas-examples { gap: 24px; }
+  .atlas-example-card.is-secondary { width: 46%; margin-right: 6px; }
+  .atlas-example-title { font-size: clamp(25px, 13cqw, 28px); }
+  .atlas-example-caption { gap: 4px; font-size: 11px; line-height: 1.25; }
+  .atlas-example-card.is-secondary .atlas-example-title { font-size: 32px; }
+  .atlas-example-body { gap: 2px; }
+  .atlas-ticket-arrow { right: 5%; width: 16px; height: 16px; }
+  .atlas-scene-tabs { gap: 2px; }
+  .atlas-artwork { object-position: 72% center; }
+}
+@media (width < 640px) {
+  .new-trip-stage { display: block; padding: 36px 22px max(36px, env(safe-area-inset-bottom)); }
+  .new-trip-copy h1 { font-size: clamp(44px, 13vw, 58px); }
+  .planner-card { margin-top: 28px; padding: 18px; }
+  .planner-mode-tabs { gap: 25px; }
+  .planner-panel { padding-top: 18px; }
+  .planner-condition-fields { gap: 18px; margin-top: 20px; }
   .planner-natural-input textarea { min-height: 112px; }
-  .atlas-lens-position { width: 96px; height: 96px; }
+  .travel-atlas { width: 100%; max-width: 400px; margin: 36px auto 0; }
+  .atlas-examples { gap: 20px; padding: 6px 3px 0; }
+  .atlas-example-card.is-primary { transform: rotate(-2deg); }
+  .atlas-example-card.is-secondary { width: 74%; aspect-ratio: 1484 / 736; margin-right: 0; transform: rotate(3deg); }
+  .atlas-example-card.is-secondary .atlas-example-body { inset: 16% 9% 14% 22%; gap: 6px; }
+  .atlas-example-card.is-secondary .atlas-example-title { font-size: 32px; }
+  .atlas-example-caption, .atlas-example-card.is-secondary .atlas-example-caption { gap: 5px; font-size: 12px; }
+  .atlas-ticket-arrow { right: 6%; }
+  .atlas-scene-tabs { gap: 12px; margin-top: 18px; }
+  .atlas-artwork { object-position: 76% center; }
+  .home-landscape::after { background: linear-gradient(180deg, #102c2566, #102c2533 45%, #102c2580); }
+}
+@media (width < 350px) {
+  .new-trip-stage { padding-inline: 16px; }
+  .planner-card { padding: 16px; }
+  .atlas-example-card.is-secondary { width: 82%; }
+  .atlas-example-title { font-size: 42px; }
+  .atlas-example-card.is-secondary .atlas-example-title { font-size: 30px; }
+}
+@media (width >= 1024px) and (height < 760px) {
+  .new-trip-stage { padding-block: 28px; }
+  .new-trip-copy h1 { font-size: clamp(56px, 6.3vw, 80px); }
+  .planner-card { margin-top: 26px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .atlas-example-card, .planner-pending-dot { animation: none; transition: none; }
+}
+@media (forced-colors: active) {
+  .planner-card { border: 1px solid CanvasText; background: Canvas; color: CanvasText; box-shadow: none; }
+  .atlas-example-card { outline: 1px solid CanvasText; color: CanvasText; }
+  .atlas-paper { forced-color-adjust: none; }
+  .atlas-scene-tabs > button[aria-selected='true'], .planner-mode-tabs > button[aria-selected='true'] { border-bottom-color: Highlight; }
 }

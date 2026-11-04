@@ -410,7 +410,7 @@ export const GenerationJourneyPanel: React.FC = () => {
               <div className="generation-followup" data-testid="generation-followup-composer">
                 <div className="generation-followup-inner">
                   <p className="generation-followup-hint">{followup.hint}</p>
-                  <InputArea minimal showCompaction={false} autoFocus={false} placeholder={followup.placeholder} />
+                  <InputArea minimal autoFocus={false} placeholder={followup.placeholder} />
                 </div>
               </div>
             )}

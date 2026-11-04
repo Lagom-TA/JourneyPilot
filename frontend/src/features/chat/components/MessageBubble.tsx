@@ -5,12 +5,9 @@ import { useApp } from "../../../app/state/AppContext";
 import { type Message } from "../types/messages";
 import { Markdown } from "./Markdown";
 import { ThinkingChain } from "./ThinkingChain";
-import { Hallmark } from "./hallmark/Hallmark";
-import { InspectHint, InspectSectionTitle } from "../../../components/ui/InspectHint";
-import { buildCostLedgerView } from "../model/costLedger";
 import { copyText } from "../../../lib/platform";
 import React from 'react';
-const SHELL_ANSWER = 'rounded-card rounded-bl-label px-4 py-3 max-w-full break-words bg-panel border border-stroke/60 shadow-sm';
+const SHELL_ANSWER = 'max-w-full break-words px-1 py-2';
 interface MessageBubbleProps {
     message: Message;
     isGenerating?: boolean;
@@ -53,11 +50,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerat
     const runSummary = React.useMemo(() => !isUser && isLast && state.runCostSummary && state.runCostSummary.run_id === state.currentTripRunId
         ? state.runCostSummary
         : null, [isUser, isLast, state.runCostSummary, state.currentTripRunId]);
-    const runCostLive = React.useMemo(() => !isUser && isLast && state.runCostLive && state.runCostLive.runId === state.currentTripRunId
-        ? state.runCostLive
-        : null, [isUser, isLast, state.runCostLive, state.currentTripRunId]);
     const serverTotalMs = isGenerating ? null : runSummary?.wall_ms ?? null;
-    const costLedger = React.useMemo(() => buildCostLedgerView(runSummary, runCostLive), [runSummary, runCostLive]);
     const rawErrorText = (message.content || message.displayContent || '').trim();
     const handleCopy = async () => {
         const ok = await copyText(message.content);
@@ -71,7 +64,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerat
     if (isWaitingApproval && state.planApprovalGate)
         return null;
     return (<div className={cn('flex w-full', isUser ? 'flex-row-reverse animate-slide-in-right' : 'flex-row animate-slide-up')}>
-      <div className={cn('flex min-w-0 flex-col', isUser ? 'items-end max-w-[85%]' : 'items-start gap-2', !isUser && (hasThinking ? 'w-full max-w-full' : 'max-w-[85%]'))}>
+      <div className={cn('flex min-w-0 flex-col', isUser ? 'items-end max-w-[85%]' : 'items-start gap-2 w-full max-w-full')}>
         {isUser && (<div data-user-bubble className="rounded-card rounded-br-label bg-accent px-4 py-3 text-white">
             <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.displayContent}</p>
           </div>)}
@@ -113,22 +106,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerat
                         <RefreshCw size={13}/>
                         {errorGuidance.actionLabel}
                       </button>)}
-                    {rawErrorText && (<InspectHint label="技术详情" testId="error-inspect" placement="bottom-start">
-                        <InspectSectionTitle>错误技术详情</InspectSectionTitle>
-                        <p className="mt-2 max-h-40 overflow-y-auto break-words font-mono text-[11px] leading-relaxed text-ink-secondary">
-                          {rawErrorText}
-                        </p>
-                      </InspectHint>)}
+
                   </div>)}
               </div>
             </div>
           </div>)}
 
         {!isUser && !isAlertCard && !isWaiting && hasDisplay && (<div data-assistant-answer className={cn(SHELL_ANSWER, 'relative')}>
-            {(message.contextReport || costLedger) && (<div className="absolute right-3 top-2.5 z-10 flex items-center gap-0.5">
-                <Hallmark glyph="context" data={message.contextReport}/>
-                <Hallmark glyph="cost" data={costLedger}/>
-              </div>)}
             <Markdown content={message.displayContent} streaming={streaming}/>
             {isInterrupted && (<div className="mt-2 flex items-center gap-1.5 border-t border-stroke pt-2">
                 <Square size={10} className="text-ink-muted"/>

@@ -2490,19 +2490,22 @@ test('keyboard focus stays within the mobile itinerary sheet', async ({ page }) 
   await assertOffline(page, fixture);
 });
 
-test('tooltip associates its description with the focused control', async ({ page }) => {
+test('普通旅行对话隐藏诊断信息，错误保留恢复操作', async ({ page }) => {
   const fixture = await offlineApp(page);
   await page.goto('/');
   await page.getByTestId('brief-input').fill('希望安排轻松的旅行');
   await page.getByTestId('send-button').click();
   await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
   await sendFrames(page, [{ type: 'error', message: '离线模拟错误' }], true);
-  const trigger = page.getByTestId('error-inspect');
-  await trigger.focus();
-  await expect(page.getByRole('tooltip')).toHaveText('技术详情');
-  await expect(trigger).toHaveAccessibleDescription('技术详情');
-  await page.getByTestId('brief-input').focus();
-  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await expect(page.getByTestId('error-inspect')).toHaveCount(0);
+  await expect(page.getByTestId('context-lens')).toHaveCount(0);
+  await expect(page.getByTestId('cost-ledger')).toHaveCount(0);
+  await expect(page.getByTestId('compact-session')).toHaveCount(0);
+  await expect(page.getByText('离线模拟错误', { exact: true })).toHaveCount(0);
+  const retry = page.getByRole('button', { name: '再试一次', exact: true });
+  await expect(retry).toBeEnabled();
+  await retry.focus();
+  await expect(retry).toBeFocused();
   await assertOffline(page, fixture);
 });
 

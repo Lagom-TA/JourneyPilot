@@ -51,7 +51,7 @@ export const PresetSelector: React.FC<PresetSelectorProps> = ({ className }) => 
     const customPresets = presets.filter((p) => !p.is_preset);
     const renderOption = (preset: TravelPreset, onSelect: () => void) => {
         const selected = state.activePresetId === preset.id;
-        return (<button key={preset.id} onClick={onSelect} className={cn('w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors duration-fast ease-standard', selected
+        return (<button key={preset.id} type="button" aria-pressed={selected} onClick={onSelect} className={cn('w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors duration-fast ease-standard', selected
                 ? 'bg-accent-soft text-accent font-medium'
                 : 'hover:bg-ink/[0.03]')}>
         <span className={cn('flex-shrink-0', selected ? 'text-accent' : 'text-ink-secondary')}>
@@ -73,16 +73,16 @@ export const PresetSelector: React.FC<PresetSelectorProps> = ({ className }) => 
                 p.toggle();
             };
             return state.activePresetId ? (<div className="flex items-center gap-0.5">
-              <button ref={p.ref} type="button" data-testid="preset-active-chip" onClick={onTriggerClick} className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-card text-xs font-medium', 'transition-[transform,opacity,border-color,background-color] duration-slow ease-standard', 'bg-accent-soft text-accent border border-accent/30', 'hover:bg-accent/15 hover:border-accent/40')}>
+              <button ref={p.ref} type="button" aria-expanded={p.open} aria-haspopup="dialog" data-testid="preset-active-chip" onClick={onTriggerClick} className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-card text-xs font-medium', 'transition-[transform,opacity,border-color,background-color] duration-slow ease-standard', 'bg-accent-soft text-accent border border-accent/30', 'hover:bg-accent/15 hover:border-accent/40')}>
                 <span className="text-accent">
                   {getPresetIcon(activePreset?.icon ?? '', 14)}
                 </span>
                 <span className="max-w-[80px] truncate">{state.activePresetName}</span>
               </button>
-              <button type="button" data-testid="preset-active-clear" onClick={handleClear} className="p-1.5 rounded-card hover:bg-accent/15 transition-colors duration-fast ease-standard text-accent">
+              <button type="button" aria-label="取消旅行风格" data-testid="preset-active-clear" onClick={handleClear} className="p-1.5 rounded-card hover:bg-accent/15 transition-colors duration-fast ease-standard text-accent">
                 <X size={10}/>
               </button>
-            </div>) : (<button ref={p.ref} type="button" onClick={onTriggerClick} className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-card text-xs font-medium', 'transition-[transform,opacity,border-color,background-color] duration-slow ease-standard', 'bg-transparent text-ink-secondary border border-[rgb(var(--color-outline-neutral-rgb)/0.14)]', 'hover:border-[rgb(var(--color-outline-neutral-rgb)/0.32)] hover:text-ink')}>
+            </div>) : (<button ref={p.ref} type="button" aria-expanded={p.open} aria-haspopup="dialog" onClick={onTriggerClick} className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-card text-xs font-medium', 'transition-[transform,opacity,border-color,background-color] duration-slow ease-standard', 'bg-transparent text-ink-secondary border border-[rgb(var(--color-outline-neutral-rgb)/0.14)]', 'hover:border-[rgb(var(--color-outline-neutral-rgb)/0.32)] hover:text-ink')}>
               <Compass size={14}/>
               旅行风格
               <ChevronDown size={12} className={cn('transition-transform', p.open && 'rotate-180')}/>
@@ -103,7 +103,7 @@ export const PresetSelector: React.FC<PresetSelectorProps> = ({ className }) => 
                   {state.activePresetId && activePreset && (<div className="px-3 py-2 border-b border-stroke/60">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-ink-secondary font-medium uppercase tracking-wide">
-                          当前激活
+                          已选择
                         </span>
                         <button onClick={handleClear} className="text-[11px] text-ink-secondary hover:text-error transition-colors">
                           取消
@@ -118,7 +118,7 @@ export const PresetSelector: React.FC<PresetSelectorProps> = ({ className }) => 
                   {builtinPresets.length > 0 && (<div>
                       <div className="px-3 py-1.5">
                         <span className="text-[11px] text-ink-secondary font-medium uppercase tracking-wide">
-                          官方风格
+                          内置风格
                         </span>
                       </div>
                       {builtinPresets.map((preset) => renderOption(preset, () => {

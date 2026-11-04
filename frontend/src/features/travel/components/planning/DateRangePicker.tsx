@@ -97,7 +97,8 @@ export const DateRangePicker: React.FC<{
     end: string;
     onChange: (start: string, end: string) => void;
     hideLabel?: boolean;
-}> = ({ start, end, onChange, hideLabel = false }) => {
+    condensed?: boolean;
+}> = ({ start, end, onChange, hideLabel = false, condensed = false }) => {
     const [open, setOpen] = React.useState(false);
     const [visibleMonth, setVisibleMonth] = React.useState(() => fromIso(start) || new Date());
     const today = localToday();
@@ -110,6 +111,12 @@ export const DateRangePicker: React.FC<{
     const days = daysBetween(start, end);
     const todayDay = calendarDay(today);
     const startDay = calendarDay(start);
+    const displayDate = (value: string) => {
+        const date = fromIso(value);
+        if (!date) return '';
+        const year = date.getFullYear() === new Date().getFullYear() ? '' : `${date.getFullYear()}/`;
+        return `${year}${date.getMonth() + 1}月${date.getDate()}日`;
+    };
     const updateAnchor = React.useCallback(() => {
         const trigger = triggerRef.current?.getBoundingClientRect();
         if (!trigger) return;
@@ -181,7 +188,9 @@ export const DateRangePicker: React.FC<{
       <button ref={triggerRef} type="button" data-testid="date-range-trigger" aria-haspopup="dialog" aria-expanded={open} aria-label={`旅行日期：${start || '开始日期'} → ${end || '结束日期'}${days > 0 ? ` · ${days} 天 ${days - 1} 晚` : ''}`} onClick={openPicker} className={cn(RULED_FIELD, 'text-left')}>
         <CalendarDays size={17} className="shrink-0 text-chart"/>
         <span className={cn('min-w-0 flex-1 truncate', FIELD_VALUE)}>
-          {start || '开始日期'} <span className="text-chart">→</span> {end || '结束日期'}
+          {condensed
+            ? (start ? `${displayDate(start)} — ${end ? displayDate(end) : '返程日期'}` : '选择日期')
+            : <>{start || '开始日期'} <span className="text-chart">→</span> {end || '结束日期'}</>}
         </span>
       </button>
 

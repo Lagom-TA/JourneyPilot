@@ -1,0 +1,54 @@
+{
+  "id": "ticket-main",
+  "file": "ticket-main.png",
+  "model": "openai/gpt-image-2.5-sunburst",
+  "created_at": "2026-11-04",
+  "prompt": "Use case: product-mockup. Create ONE production-ready isolated paper object for the JourneyPilot travel interface, part of a cohesive contemporary travel stationery collection. True transparent alpha background. Orthographic front-facing view, parallel to the image plane, straight upright edges, no perspective tilt and no rotation. Fill the canvas with the single object while leaving a small transparent safety margin. Beautiful thin uncoated paper, fine natural cellulose fibers, believable cut edge and subtle material thickness. Contemporary editorial print craft, warm cream, deep forest green, sun yellow and vermilion palette. Soft broad light from upper left; restrained material relief. The main writing area is perfectly flat, clean and completely empty. Preserve at least 70 percent useful blank writing area. No cast shadow outside the object; external shadows and rotation will be applied in the website. No text, lettering, numbers, symbols, logos, QR codes, barcodes, interface controls, watermarks, desk, props or background. No dirt, vintage stains, heavy crumpling, multiple objects, layout sheet, montage, checkerboard or opaque background. Attached references define only the shared paper material, edge quality, palette and lighting; create the one new shape described below, not the reference's whole object or color blocking.\n\nShape and composition: One wide horizontal warm ivory travel ticket, physical paper aspect ratio approximately 1.85:1. The rightmost 18 percent is a solid vermilion printed detachable stub, separated by a delicate realistic vertical perforation. One small shallow semicircular notch at the top and bottom where the perforation meets the edge. The rest is a beautifully plain ivory writing surface, no rules or markings. Edges mostly straight with extremely subtle natural fibers. No tape, no curl, no folded corner.",
+  "parameters": {
+    "model": "openai/gpt-image-2.5-sunburst",
+    "n": 1,
+    "aspect_ratio": "3:2",
+    "quality": "max",
+    "background": "transparent",
+    "output_format": "png"
+  },
+  "references": [],
+  "usage": {
+    "prompt_tokens": 364,
+    "completion_tokens": 5488,
+    "total_tokens": 5852,
+    "cost": 0.16646,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.16646,
+      "upstream_inference_prompt_cost": 0.00182,
+      "upstream_inference_completions_cost": 0.16464
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 5488
+    }
+  },
+  "bytes": 2050853,
+  "seconds": 93.9,
+  "production": {
+    "file": "ticket-main.webp",
+    "format": "WebP",
+    "quality": 90,
+    "size": [
+      1480,
+      652
+    ],
+    "crop": [
+      28,
+      202,
+      1508,
+      854
+    ],
+    "alpha_floor": 8,
+    "source_sha256": "37a85f9f14de0c4a87c9a07b488403bbc835d95ccba8cfb84ee4e1a4ec06eb0f"
+  }
+}

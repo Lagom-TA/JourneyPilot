@@ -15,7 +15,9 @@ export const PlaceField: React.FC<{
   onQueryChange?: (query: string) => void;
   className?: string;
 }> = ({ role, value, onChange, label, frequent, initialQuery = '', onQueryChange, className }) => {
+  const rootRef = React.useRef<HTMLDivElement>(null);
   const [query, setQuery] = React.useState(value?.name || initialQuery);
+  const [focused, setFocused] = React.useState(false);
   const valueRef = React.useRef(value);
   valueRef.current = value;
   const [candidates, setCandidates] = React.useState<PlaceSearchCandidate[]>([]);
@@ -23,6 +25,13 @@ export const PlaceField: React.FC<{
   const [error, setError] = React.useState('');
   const runner = React.useMemo(() => createPlaceSearchRunner(role), [role]);
   React.useEffect(() => () => runner.cancel(), [runner]);
+  const closeCandidates = () => {
+    runner.cancel();
+    setCandidates([]);
+    setError('');
+    setLoading(false);
+    setFocused(false);
+  };
 
   const search = React.useCallback(async (raw: string) => {
     const q = raw.trim();
@@ -40,7 +49,7 @@ export const PlaceField: React.FC<{
 
   React.useEffect(() => {
     const q = query.trim();
-    if (q.length < 2 || q === value?.name) {
+    if (!focused || q.length < 2 || q === value?.name) {
       runner.cancel();
       setCandidates([]);
       setError('');
@@ -49,24 +58,35 @@ export const PlaceField: React.FC<{
     }
     const timer = window.setTimeout(() => void search(q), 280);
     return () => window.clearTimeout(timer);
-  }, [query, value?.name, search, runner]);
+  }, [focused, query, value?.name, search, runner]);
 
   return (
-    <div className={cn('relative min-w-0 flex-1', className)}>
+    <div ref={rootRef} className={cn('relative min-w-0 flex-1', className)}>
       <label className={FIELD_LABEL}>{label}</label>
       <div className={RULED_FIELD}>
         <MapPin size={15} className="shrink-0 text-accent" />
         <input
           value={query}
-          onChange={(event) => { setQuery(event.target.value); onQueryChange?.(event.target.value); if (value) onChange(null); }}
+          onChange={(event) => { setFocused(true); setQuery(event.target.value); onQueryChange?.(event.target.value); if (value) onChange(null); }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => {
+            window.setTimeout(() => {
+              if (!rootRef.current?.contains(document.activeElement)) closeCandidates();
+            }, 0);
+          }}
           onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              closeCandidates();
+              return;
+            }
             if (event.key === 'Enter') {
               event.preventDefault();
               void search(query);
             }
           }}
           className={cn('min-w-0 flex-1 bg-transparent py-2', FIELD_VALUE)}
-          placeholder={role === 'origin' ? '城市、机场或火车站' : '城市或区域'}
+          placeholder={role === 'origin' ? '选择城市' : '城市或区域'}
           aria-label={label}
           autoComplete="off"
         />

@@ -1,0 +1,36 @@
+{
+  "prompt": "Use case: stylized-concept. Asset type: production background artwork for JourneyPilot, an expressive contemporary travel-planning homepage. Generate ONLY a continuous landscape artwork, never a website mockup or a poster layout. Art direction: exquisite cinematic photographic realism blended with deliberate fine-art color grading, tangible atmospheric depth and richly detailed natural surfaces, composed like a contemporary travel magazine cover without any typography. Strong visual character and monumental scale, sophisticated and adventurous, not a generic stock travel advertisement and not a flat vector illustration. Deep forest green (#102c25) shadows, warm mineral and sun-yellow highlights, restrained natural local colors; avoid neon oversaturation. Landscape 16:9 composition. The leftmost 40 percent must be very dark, quiet, low-detail forest-green atmospheric negative space for separate live white headings and a cream input panel; DO NOT draw any text or panels there. The main recognizable subject sits in the rightmost 45 percent, from x=55 to 95 percent, with strong middle-distance forms and a compelling upper-right focal point. Let the setting flow naturally through the whole frame, not a hard split-screen. The central-right 50-80 percent must also work as a portrait crop. Finest print-quality details, authentic natural light and clear layered silhouettes, generous scale, no busy tourist collage. No people, lettering, logos, watermarks, markers, maps, routes, interface elements, frames, border, travel tickets, typography, geometric orbit rings, artificial grain overlay, or sticker graphics. This is original evocative travel artwork, not documentary proof of a particular landmark. Produce a polished final artwork.\n\nSubject: a magnificent quiet tropical coastline inspired by Hainan, seen from a low aerial viewpoint along a curving shore. The right half holds a crisp sculptural palm silhouette above pale warm sand and a cove of richly layered turquoise water, soft ivory surf and deep emerald coastal foliage. Warm late-afternoon sunlight reveals intricate natural water textures. The shore curves from lower right toward a distant right-side headland, a strong spacious editorial composition. The left 40 percent falls into very dark green-blue open-water shade with almost no small detail for live interface text. Keep the main palm and cove in x=60-90 percent so a portrait crop remains meaningful. No hotels, parasols, boats, people, logos, beach furniture or oversaturated postcard clichés.",
+  "model": "openai/gpt-image-2.5-sunburst",
+  "provider": "OpenRouter",
+  "generated_at": "2026-11-04",
+  "parameters": {
+    "quality": "max",
+    "aspect_ratio": "16:9",
+    "background": "opaque",
+    "n": 1
+  },
+  "source_size": [
+    1536,
+    864
+  ],
+  "webp_quality": 88,
+  "usage": {
+    "prompt_tokens": 485,
+    "completion_tokens": 4312,
+    "total_tokens": 4797,
+    "cost": 0.131785,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.131785,
+      "upstream_inference_prompt_cost": 0.002425,
+      "upstream_inference_completions_cost": 0.12936
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 4312
+    }
+  }
+}

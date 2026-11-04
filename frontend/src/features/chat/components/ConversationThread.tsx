@@ -7,7 +7,6 @@ import { duration, easing } from "../../../lib/motion";
 import { projectVisibleMessages } from "../model/conversationFlow";
 import { InputArea } from "./InputArea";
 import { MessageBubble } from "./MessageBubble";
-import { ContextCompactionNotice } from "./ContextCompactionNotice";
 import { TripPlanner, type PlannerInspiration } from "../../travel/components/planning/TripPlanner";
 import { TripBriefPlanGate } from "../../travel/components/planning/TripBriefPlanGate";
 import { DiscoveryToIntake } from "../../travel/components/planning/DiscoveryToIntake";
@@ -25,10 +24,10 @@ export const HeroEmptyState: React.FC<{
         setInspiration((previous) => ({ id: (previous?.id ?? 0) + 1, text: scene.prompt, scene }));
     };
     return (<div className="new-trip-hero" data-testid="new-trip-hero">
-      <div className="new-trip-main hero-scroll">
+      <div className="new-trip-stage">
         <div className="new-trip-content">
           <header className="new-trip-copy">
-            <h1>想去哪里，告诉我<span>。</span></h1>
+            <h1>想去哪里，<br />告诉我<span>。</span></h1>
           </header>
           <TripPlanner
             inspiration={inspiration}
@@ -38,8 +37,8 @@ export const HeroEmptyState: React.FC<{
             onHomePlanSubmitted={onHomePlanSubmitted}
           />
         </div>
+        <TravelAtlas onUseExample={useInspiration} />
       </div>
-      <TravelAtlas onUseExample={useInspiration} />
     </div>);
 };
 export const ConversationThread: React.FC<{
@@ -54,7 +53,8 @@ export const ConversationThread: React.FC<{
     const isPresent = useIsPresent();
     const messages = state.currentMessages;
     const planGatePending = Boolean(state.planApprovalGate && state.planApprovalGate.status !== 'cancelled');
-    const visibleMessages = React.useMemo(() => projectVisibleMessages(messages, { planGatePending }), [messages, planGatePending]);
+    const visibleMessages = React.useMemo(() => projectVisibleMessages(messages, { planGatePending })
+        .filter((message) => message.type !== 'context_compaction'), [messages, planGatePending]);
     const isEmpty = messages.length === 0 && !state.pendingRouteConfirmation;
     const hasJourneyWorkspace = state.workspaceActive || state.deliveryBundle !== null || state.currentTripRunId !== null;
     const [homePlanning, setHomePlanning] = React.useState(false);
@@ -155,16 +155,13 @@ export const ConversationThread: React.FC<{
     </div>) : (<div className="flex h-full min-h-0 flex-col">
       <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
 
-        <div className={cn('mx-auto flex flex-col gap-6', embedded ? 'max-w-none' : 'max-w-3xl')}>
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
           {hasEarlierHistory && (<div className="flex justify-center">
               <button type="button" onClick={requestEarlierHistory} disabled={loadingEarlierHistory} className="min-h-9 rounded-card border border-stroke px-3 text-xs text-ink-secondary hover:border-accent hover:text-accent disabled:opacity-60">
                 {loadingEarlierHistory ? '正在载入更早的对话…' : '载入更早的对话'}
               </button>
             </div>)}
           {visibleMessages.map((message, index) => {
-            if (message.type === 'context_compaction' && message.contextCompaction) {
-                return (<ContextCompactionNotice key={message.id} event={message.contextCompaction}/>);
-            }
             const isLast = index === visibleMessages.length - 1;
             const isGenerating = isLast && state.isStreaming && message.role === 'assistant';
             const canRetry = message.type === 'error' && !!lastUserText;
@@ -173,7 +170,6 @@ export const ConversationThread: React.FC<{
           {planGatePending && <TripBriefPlanGate />}
           {state.pendingRouteConfirmation && (<section className="rounded-card border border-stroke bg-panel p-4 shadow-sm sm:p-5" aria-labelledby="route-confirmation-title">
               <h2 id="route-confirmation-title" className="text-xl font-semibold text-ink">你希望我先做哪件事？</h2>
-              <p className="mt-1 text-sm text-ink-secondary">这句话可能有两种理解。</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {[state.pendingRouteConfirmation.decision.route, ...state.pendingRouteConfirmation.decision.alternatives.map((item) => item.route)]
                 .filter((route, index, all) => all.indexOf(route) === index)
@@ -206,7 +202,7 @@ export const ConversationThread: React.FC<{
 
       {!planGatePending && (<div className={cn('px-4 py-3 sm:px-6', showCanvas && 'border-t border-stroke bg-surface/50')}>
           <div className="mx-auto max-w-3xl">
-            {!state.pendingRouteConfirmation && <InputArea minimal={embedded} showCompaction={!embedded} initialInput={initialInput} targetRunId={targetRunId} onInputSent={onInputSent}/>}
+            {!state.pendingRouteConfirmation && <InputArea minimal={embedded} initialInput={initialInput} targetRunId={targetRunId} onInputSent={onInputSent}/>}
           </div>
         </div>)}
     </div>);

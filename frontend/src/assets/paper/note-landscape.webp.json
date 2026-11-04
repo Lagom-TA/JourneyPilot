@@ -1,0 +1,59 @@
+{
+  "id": "note-landscape",
+  "file": "note-landscape.png",
+  "model": "openai/gpt-image-2.5-sunburst",
+  "created_at": "2026-11-04",
+  "prompt": "Use case: product-mockup. Create ONE production-ready isolated paper object for the JourneyPilot travel interface, part of a cohesive contemporary travel stationery collection. True transparent alpha background. Orthographic front-facing view, parallel to the image plane, straight upright edges, no perspective tilt and no rotation. Fill the canvas with the single object while leaving a small transparent safety margin. Beautiful thin uncoated paper, fine natural cellulose fibers, believable cut edge and subtle material thickness. Contemporary editorial print craft, warm cream, deep forest green, sun yellow and vermilion palette. Soft broad light from upper left; restrained material relief. The main writing area is perfectly flat, clean and completely empty. Preserve at least 70 percent useful blank writing area. No cast shadow outside the object; external shadows and rotation will be applied in the website. No text, lettering, numbers, symbols, logos, QR codes, barcodes, interface controls, watermarks, desk, props or background. No dirt, vintage stains, heavy crumpling, multiple objects, layout sheet, montage, checkerboard or opaque background. Attached references define only the shared paper material, edge quality, palette and lighting; create the one new shape described below, not the reference's whole object or color blocking.\n\nShape and composition: One horizontal blank note made of sun yellow dyed paper, aspect ratio 1.55:1, soft clean cut edges, flat useful center and a single very slight edge undulation. No stub, perforation or tape.\n\nFinal cutout requirement: outside the actual object, every pixel has zero alpha. No diffuse halo, colored glow, light spill or shadow around the object. Preserve real material edge only.",
+  "parameters": {
+    "model": "openai/gpt-image-2.5-sunburst",
+    "n": 1,
+    "aspect_ratio": "3:2",
+    "quality": "max",
+    "background": "transparent",
+    "output_format": "webp",
+    "output_compression": 90
+  },
+  "references": [
+    "ticket-main.png"
+  ],
+  "usage": {
+    "prompt_tokens": 1893,
+    "completion_tokens": 5488,
+    "total_tokens": 7381,
+    "cost": 0.178713,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.178713,
+      "upstream_inference_prompt_cost": 0.014073,
+      "upstream_inference_completions_cost": 0.16464
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 5488
+    }
+  },
+  "bytes": 337470,
+  "seconds": 96.4,
+  "transfer_incomplete": false,
+  "received_format": "webp",
+  "production": {
+    "file": "note-landscape.webp",
+    "format": "WebP",
+    "quality": 90,
+    "size": [
+      1506,
+      778
+    ],
+    "crop": [
+      15,
+      123,
+      1521,
+      901
+    ],
+    "alpha_floor": 8,
+    "source_sha256": "e55e94dd96b6d0d145e4bd22b90ff5fc70ec77f24ae4c1a24770dc4c20f056c8"
+  }
+}
