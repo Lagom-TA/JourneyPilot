@@ -10,7 +10,7 @@ import { type StreamOwnership } from "./streamOwnership";
 import { createStreamPresentation } from "../../features/chat/model/streamPresentation";
 import { createDeliveryProtocol } from "../../features/travel/model/deliveryProtocol";
 import { type StreamFrameBatch } from "../../features/chat/model/streamFrameBatch";
-export function createStreamEvents(ownership: StreamOwnership, assistantMessage: Message, text: string, initialCurrentTripRunId: string | null, pendingLabel: string | undefined, currentStateRef: MutableRefObject<AppState>, setLastSession: (id: string | null) => void, frame: StreamFrameBatch, gateAction?: PlanGateDecisionAction, resumeSameRun = false) {
+export function createStreamEvents(ownership: StreamOwnership, assistantMessage: Message, text: string, initialCurrentTripRunId: string | null, pendingLabel: string | undefined, currentStateRef: MutableRefObject<AppState>, setLastSession: (id: string | null) => void, frame: StreamFrameBatch, gateAction?: PlanGateDecisionAction) {
     const { identity, scopedDispatch, isStreamVisible, updateActiveStreamHandle } = ownership;
     const { flushFrameNow } = frame;
     let streamFailed = false;
@@ -111,11 +111,9 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                         }
                     }
                     if (event.message_id && event.message_id !== assistantMessage.id) {
-                        // 同 Run 的失败/中断续跑会复用原 assistant_message_id。
-                        // 旧消息已经带着上一段记录，先移除再重映射，避免同一 id
-                        // 出现两条助手消息；thinkingSteps 已在发送时保留。
-                        if (resumeSameRun)
-                            scopedDispatch({ type: 'REMOVE_MESSAGE_BY_ID', payload: event.message_id });
+                        // 续跑与已完成回答的重放都可能复用助手消息 ID。
+                        // 先移除旧消息，避免重映射后出现两条相同 ID 的消息。
+                        scopedDispatch({ type: 'REMOVE_MESSAGE_BY_ID', payload: event.message_id });
                         scopedDispatch({
                             type: 'REMAP_MESSAGE_ID',
                             payload: { fromId: assistantMessage.id, toId: event.message_id },
@@ -344,10 +342,14 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                         payload: {
                             content: event.message || '发生错误',
                             displayContent: event.message || '发生错误',
-                            type: 'error',
+                            type: event.run_status === 'interrupted' ? 'interrupted' : 'error',
                             streamCompleted: true,
+                            pendingStatusText: undefined,
                         },
                     });
+                    if (event.run_cost_summary !== undefined) {
+                        scopedDispatch({ type: 'SET_RUN_COST_SUMMARY', payload: event.run_cost_summary });
+                    }
                     scopedDispatch({ type: 'SET_SYNTHESIZING', payload: false });
                     scopedDispatch({ type: 'SET_STREAMING', payload: false });
                     if (isTripRunStatus(event.run_status)

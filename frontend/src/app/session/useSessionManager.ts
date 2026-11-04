@@ -14,20 +14,22 @@ import { type ChatSession } from "../../features/chat/types/messages";
 import { tripRunRecoveryFromDetail, type TripRunDetailResponse } from "../../features/travel/types/runs";
 import { isPublicDeliveryBundle } from "../../features/travel/types/delivery";
 import { planRequestedRun, sessionLoadFailureMessage } from "./sessionRestore";
+import { findSessionStream, pendingStreamCacheKey } from "./streamRegistry";
+import { appReducer } from "../state/appReducer";
 export function useSessionManager() {
-    const { state, dispatch, activeStreamRef, currentStateRef, sessionRuntimeCacheRef, setPendingFollowups } = useApp();
+    const { state, dispatch, activeStreamsRef, currentStateRef, sessionRuntimeCacheRef, setPendingFollowups } = useApp();
     const openSessionSeqRef = useRef(0);
     const earlierHistoryInFlightRef = useRef(false);
     const cacheCurrentRuntimeIfStreaming = useCallback((nextSessionId: string) => {
         const current = currentStateRef.current;
-        const activeStream = activeStreamRef.current;
         const currentSessionId = current.currentSessionId;
-        if (!currentSessionId || currentSessionId === nextSessionId)
+        if (currentSessionId === nextSessionId)
             return;
-        if (activeStream?.sessionId !== currentSessionId)
+        const activeStream = findSessionStream(activeStreamsRef.current, currentSessionId, current.conversationEpoch);
+        if (!activeStream)
             return;
-        sessionRuntimeCacheRef.current.set(currentSessionId, createSessionRuntimeSnapshot(current));
-    }, [activeStreamRef, currentStateRef, sessionRuntimeCacheRef]);
+        sessionRuntimeCacheRef.current.set(currentSessionId ?? pendingStreamCacheKey(activeStream.token), createSessionRuntimeSnapshot(current));
+    }, [activeStreamsRef, currentStateRef, sessionRuntimeCacheRef]);
     const refreshSessions = useCallback(async (): Promise<ChatSession[]> => {
         const rawSessions = await listSessions();
         const sessions = rawSessions.map(mapSummary);
@@ -38,14 +40,15 @@ export function useSessionManager() {
         const seq = openSessionSeqRef.current + 1;
         openSessionSeqRef.current = seq;
         const currentBeforeOpen = currentStateRef.current;
-        if (!requestedRunId && currentBeforeOpen.currentSessionId === sessionId && activeStreamRef.current?.sessionId === sessionId) {
+        const activeStream = findSessionStream(activeStreamsRef.current, sessionId, currentBeforeOpen.conversationEpoch);
+        const useLiveStream = Boolean(activeStream && (!requestedRunId || requestedRunId === activeStream.runId));
+        if (useLiveStream && currentBeforeOpen.currentSessionId === sessionId) {
             setLastSession(sessionId);
             return;
         }
         cacheCurrentRuntimeIfStreaming(sessionId);
         const cachedRuntime = sessionRuntimeCacheRef.current.get(sessionId);
-        const activeStream = activeStreamRef.current;
-        if (!requestedRunId && cachedRuntime && activeStream?.sessionId === sessionId) {
+        if (useLiveStream && cachedRuntime) {
             currentStateRef.current = {
                 ...currentStateRef.current,
                 ...cachedRuntime,
@@ -183,7 +186,10 @@ export function useSessionManager() {
             mobileCanvasOpen: false,
             inputMode: 'normal',
         };
-        dispatch({ type: 'RESTORE_SESSION_RUNTIME', payload: restoredRuntime });
+        cacheCurrentRuntimeIfStreaming(sessionId);
+        const restoreAction = { type: 'RESTORE_SESSION_RUNTIME' as const, payload: restoredRuntime };
+        currentStateRef.current = appReducer(currentStateRef.current, restoreAction);
+        dispatch(restoreAction);
         if (runPlan.failure) {
             dispatch({
                 type: 'SET_SESSION_LOAD_ERROR',
@@ -209,20 +215,20 @@ export function useSessionManager() {
                 },
             });
         }
-    }, [activeStreamRef, cacheCurrentRuntimeIfStreaming, currentStateRef, dispatch, sessionRuntimeCacheRef]);
+    }, [activeStreamsRef, cacheCurrentRuntimeIfStreaming, currentStateRef, dispatch, sessionRuntimeCacheRef]);
     const initializeSessions = useCallback(async () => {
         try {
             const sessions = await refreshSessions();
-            if (sessions.length === 0) {
-                return;
-            }
             if (currentStateRef.current.activeView !== 'chat') {
                 return;
             }
             const params = new URLSearchParams(window.location.search);
             const deepLinkedSession = params.get('session_id');
-            if (deepLinkedSession && sessions.some((session) => session.id === deepLinkedSession)) {
+            if (deepLinkedSession) {
                 await openSession(deepLinkedSession, params.get('run_id') ?? undefined);
+                return;
+            }
+            if (sessions.length === 0) {
                 return;
             }
             const stored = getLastSession();
@@ -230,7 +236,7 @@ export function useSessionManager() {
             if (!targetId) {
                 return;
             }
-            if (currentStateRef.current.currentMessages.length || activeStreamRef.current) return;
+            if (currentStateRef.current.currentMessages.length || activeStreamsRef.current.size) return;
             await openSession(targetId);
         }
         catch {
@@ -242,7 +248,7 @@ export function useSessionManager() {
         finally {
             dispatch({ type: 'SESSION_INITIALIZED' });
         }
-    }, [activeStreamRef, currentStateRef, dispatch, openSession, refreshSessions]);
+    }, [activeStreamsRef, currentStateRef, dispatch, openSession, refreshSessions]);
     const deleteSession = useCallback(async (sessionId: string) => {
         await deleteSessionRequest(sessionId);
         setPendingFollowups(previous => {

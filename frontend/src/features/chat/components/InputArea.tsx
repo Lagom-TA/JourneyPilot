@@ -11,6 +11,7 @@ import { Send, Square, Check, Plus, Sparkles, Loader2, Copy, X, Archive } from "
 import { useSendMessage } from "../../../app/session/useSendMessage";
 import { useSessionManager } from "../../../app/session/useSessionManager";
 import { useStopRun } from "../../../app/session/useStopRun";
+import { abortSessionStream } from "../../../app/session/streamRegistry";
 import { usePendingFollowups } from "../../../app/session/usePendingFollowups";
 import { PresetSelector } from "../../presets/components/PresetSelector";
 import { normalizeContextCompactionEvent } from "../model/contextCompaction";
@@ -24,7 +25,7 @@ export const InputArea: React.FC<{
     targetRunId?: string | null;
     onInputSent?: () => void;
 }> = ({ showCompaction = true, minimal = false, autoFocus = true, placeholder, initialInput = '', targetRunId, onInputSent }) => {
-    const { state, dispatch, activeStreamAbortRef } = useApp();
+    const { state, dispatch, activeStreamsRef } = useApp();
     const { sendMessage } = useSendMessage();
     const pending = usePendingFollowups();
     const { setLastSession } = useSessionManager();
@@ -105,14 +106,11 @@ export const InputArea: React.FC<{
         if (!sent) setInput(text);
     }, [dispatch, onInputSent, pending, sendMessage, state.currentTripRunId, state.currentTripRunStatus, state.deliveryBundle, state.isStreaming, stoppedInput, targetRunId]);
     const handleNewChat = useCallback(() => {
-        if (activeStreamAbortRef.current) {
-            activeStreamAbortRef.current.abort();
-            activeStreamAbortRef.current = null;
-        }
+        abortSessionStream(activeStreamsRef.current, state);
         dispatch({ type: 'CLEAR_CHAT' });
         setLastSession(null);
         setStoppedInput('');
-    }, [activeStreamAbortRef, dispatch, setLastSession]);
+    }, [activeStreamsRef, dispatch, setLastSession, state]);
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -288,7 +286,7 @@ export const InputArea: React.FC<{
 
         <Tooltip content="把描述补全成更清楚的行程需求" position="top">
           <button onClick={handleOptimizePrompt} disabled={!input.trim() || isOptimizing} className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-card text-xs font-medium whitespace-nowrap', 'transition-[color,background-color,opacity] duration-base ease-standard', input.trim() && !isOptimizing
-            ? 'bg-transparent text-ink-secondary border border-[rgba(38,36,32,0.14)] hover:text-accent hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)]'
+            ? 'bg-transparent text-ink-secondary border border-[rgb(var(--color-outline-neutral-rgb)/0.14)] hover:text-accent hover:border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)]'
             : isOptimizing
                 ? 'bg-transparent text-accent border border-[color-mix(in_srgb,var(--color-accent)_40%,transparent)] cursor-not-allowed'
                 : 'bg-ink/5 text-ink-muted border border-transparent cursor-not-allowed')}>
@@ -314,7 +312,7 @@ export const InputArea: React.FC<{
 
       <div className={cn('input-expand', (optimizedPrompt !== null || optimizeError !== null) && 'expanded')}>
         <div className="input-expand-content">
-          {(optimizedPrompt !== null || optimizeError !== null) && (<div className={cn('mt-2 overflow-hidden rounded-card border bg-panel', 'shadow-[0_1px_0_rgba(42,38,26,0.03),0_8px_22px_rgba(42,38,26,0.07)]', optimizeError
+          {(optimizedPrompt !== null || optimizeError !== null) && (<div className={cn('mt-2 overflow-hidden rounded-card border bg-panel', 'shadow-[var(--shadow-prompt-optimization)]', optimizeError
                 ? 'border-error/20 bg-error/[0.02]'
                 : 'border-accent/15')}>
               {optimizeError ? (<div className="px-4 py-3 flex items-start gap-2.5">

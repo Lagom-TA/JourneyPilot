@@ -7,12 +7,16 @@ import { createStreamOwnership } from './streamOwnership';
 import { createStreamEvents } from './streamEvents';
 import { createStreamFrameBatch } from '../../features/chat/model/streamFrameBatch';
 import { createDeliveryProtocol } from '../../features/travel/model/deliveryProtocol';
+import { pendingStreamCacheKey } from './streamRegistry';
 import type { Message } from '../../features/chat/types/messages';
-import type { UsageUpdateEvent } from '../../features/chat/types/cost';
+import type { RunCostSummary, UsageUpdateEvent } from '../../features/chat/types/cost';
 import { type PublicDeliveryBundle } from '../../features/travel/types/delivery';
 
 const message = (id: string, content = id): Message => ({ id, role: 'assistant', content, displayContent: content, timestamp: new Date('2026-10-25T08:00:00Z') });
 const stateFor = (id: string): AppState => ({ ...initialState, currentSessionId: id, currentMessages: [message(id)], currentTripRunId: `run-${id}`, currentTripRunStatus: 'running', isStreaming: true });
+const activeStreams = (...streams: Omit<ActiveStreamHandle, 'conversationEpoch'>[]) => ({
+  current: new Map(streams.map(stream => [stream.token, { ...stream, conversationEpoch: 0 }])),
+});
 const usage: UsageUpdateEvent = { type: 'usage_update', run_id: 'run-A', call_id: 'call-1', node: null, agent: null, input_tokens: 10, output_tokens: 5, total_tokens: 15, cost_usd: 0.03, estimated: false };
 const deliveryBundle = (revision = 1): PublicDeliveryBundle => {
   const cost = { known_subtotal_cny: null, estimated_total_cny: null, priced_component_count: 0, budget_relevant_component_count: 0, coverage: 'none' as const };
@@ -43,7 +47,7 @@ describe('session runtime behavior', () => {
 
   it('keeps hidden stream updates and delivery in its cached session using the root reducer', () => {
     const currentStateRef = { current: stateFor('B') };
-    const activeStreamRef = { current: { token: 'stream-A', sessionId: 'A', runId: 'run-A', controller: null } as ActiveStreamHandle | null };
+    const activeStreamRef = activeStreams({ token: 'stream-A', sessionId: 'A', runId: 'run-A', controller: null });
     const cache = { current: new Map<string, SessionRuntimeSnapshot>([['A', createSessionRuntimeSnapshot(stateFor('A'))]]) };
     const dispatch = vi.fn();
     const owner = createStreamOwnership('stream-A', 'A', 0, 'run-A', null, activeStreamRef, currentStateRef, cache, dispatch);
@@ -61,7 +65,7 @@ describe('session runtime behavior', () => {
 
   it('understanding questions bind to the run, survive awaiting completion and clear on resume', () => {
     const currentStateRef: { current: AppState } = { current: { ...stateFor('A'), isStreaming: false, currentTripRunStatus: null } };
-    const activeStreamRef = { current: { token: 'stream-A', sessionId: 'A', runId: null, controller: null } as ActiveStreamHandle | null };
+    const activeStreamRef = activeStreams({ token: 'stream-A', sessionId: 'A', runId: null, controller: null });
     const cache = { current: new Map<string, SessionRuntimeSnapshot>() };
     const dispatches: AppAction[] = [];
     const dispatch = vi.fn((action: AppAction) => dispatches.push(action));
@@ -95,11 +99,30 @@ describe('session runtime behavior', () => {
   it('does not publish stale-token frames into the visible session', () => {
     const current = stateFor('A');
     const dispatch = vi.fn();
-    const owner = createStreamOwnership('old', 'A', 0, 'run-A', null, { current: { token: 'new', sessionId: 'A', runId: 'run-A', controller: null } }, { current }, { current: new Map() }, dispatch);
+    const owner = createStreamOwnership('old', 'A', 0, 'run-A', null, activeStreams({ token: 'new', sessionId: 'A', runId: 'run-A', controller: null }), { current }, { current: new Map() }, dispatch);
     owner.scopedDispatch({ type: 'ADD_MESSAGE', payload: message('late') });
     owner.updateActiveStreamHandle({ runId: 'stale' });
     expect(dispatch).not.toHaveBeenCalled();
     expect(owner.isCurrentStream()).toBe(false);
+  });
+
+  it('binds a new hidden stream to its session without losing the pending snapshot', () => {
+    const assistant = message('temporary', '');
+    const pending = { ...stateFor('A'), currentSessionId: null, currentTripRunId: null, currentMessages: [assistant] };
+    const cache = { current: new Map([[pendingStreamCacheKey('new-stream'), createSessionRuntimeSnapshot(pending)]]) };
+    const currentStateRef = { current: { ...stateFor('B'), conversationEpoch: 1 } };
+    const active = activeStreams({ token: 'new-stream', sessionId: null, runId: null, controller: null });
+    const owner = createStreamOwnership('new-stream', null, 0, null, null, active, currentStateRef, cache, vi.fn());
+    const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);
+    const events = createStreamEvents(owner, assistant, '新旅行', null, undefined, currentStateRef, () => {}, frame);
+
+    events.handleEvent({ type: 'chat_start', session_id: 'C', message_id: 'persisted-C' });
+    events.handleEvent({ type: 'chat_chunk', content: '后台回答' });
+
+    expect(cache.current.has(pendingStreamCacheKey('new-stream'))).toBe(false);
+    expect(cache.current.get('C')?.currentSessionId).toBe('C');
+    expect(cache.current.get('C')?.currentMessages[0]).toMatchObject({ id: 'persisted-C', content: '后台回答' });
+    expect(currentStateRef.current.currentSessionId).toBe('B');
   });
 
   it.each([
@@ -110,7 +133,7 @@ describe('session runtime behavior', () => {
     let state: AppState = { ...stateFor('A'), currentTripRunStatus: 'completed', currentMessages: [assistant], deliveryBundle: deliveryBundle() };
     const currentStateRef = { current: state };
     const dispatch = (action: AppAction) => { state = appReducer(state, action); currentStateRef.current = state; };
-    const active = { current: { token: 'followup', sessionId: 'A', runId: 'run-A', controller: null } };
+    const active = activeStreams({ token: 'followup', sessionId: 'A', runId: 'run-A', controller: null });
     const owner = createStreamOwnership('followup', 'A', 0, 'run-A', null, active, currentStateRef, { current: new Map() }, dispatch);
     const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);
     const events = createStreamEvents(owner, assistant, '补充要求', 'run-A', undefined, currentStateRef, () => {}, frame);
@@ -130,7 +153,7 @@ describe('session runtime behavior', () => {
     let state: AppState = { ...stateFor('A'), deliveryBundle: deliveryBundle() };
     const currentStateRef = { current: state };
     const dispatch = (action: AppAction) => { state = appReducer(state, action); currentStateRef.current = state; };
-    const active = { current: { token: 'answer', sessionId: 'A', runId: 'run-A', controller: null } };
+    const active = activeStreams({ token: 'answer', sessionId: 'A', runId: 'run-A', controller: null });
     const owner = createStreamOwnership('answer', 'A', 0, 'run-A', null, active, currentStateRef, { current: new Map() }, dispatch);
     const assistant = message('answer', '');
     const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);
@@ -140,6 +163,42 @@ describe('session runtime behavior', () => {
     expect(state.currentTripRunId).toBe('run-A');
     expect(state.currentTripRunStatus).toBe('running');
     expect(events.completed).toBe(true);
+  });
+
+  it('reuses a completed fast answer without leaving two messages with the same id', () => {
+    const existing = message('saved-answer', '保存的回答');
+    const assistant = message('temporary-answer', '');
+    let state: AppState = { ...stateFor('A'), currentMessages: [existing, assistant] };
+    const currentStateRef = { current: state };
+    const dispatch = (action: AppAction) => { state = appReducer(state, action); currentStateRef.current = state; };
+    const active = activeStreams({ token: 'replay', sessionId: 'A', runId: null, controller: null });
+    const owner = createStreamOwnership('replay', 'A', 0, null, null, active, currentStateRef, { current: new Map() }, dispatch);
+    const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);
+    const events = createStreamEvents(owner, assistant, '问题', 'run-A', undefined, currentStateRef, () => {}, frame);
+
+    events.handleEvent({ type: 'chat_start', session_id: 'A', run_id: 'answer-run', message_id: 'saved-answer' });
+    events.handleEvent({ type: 'chat_complete', run_id: 'answer-run', run_status: 'completed', final_content: '保存的回答' });
+
+    expect(state.currentMessages.filter(item => item.id === 'saved-answer')).toHaveLength(1);
+    expect(state.currentMessages.at(-1)).toMatchObject({ id: 'saved-answer', content: '保存的回答', streamCompleted: true });
+  });
+
+  it('renders an interrupted frame as an interruption and keeps its cost summary', () => {
+    const assistant = message('assistant', '');
+    let state: AppState = { ...stateFor('A'), currentMessages: [assistant] };
+    const currentStateRef = { current: state };
+    const dispatch = (action: AppAction) => { state = appReducer(state, action); currentStateRef.current = state; };
+    const active = activeStreams({ token: 'interrupted', sessionId: 'A', runId: 'run-A', controller: null });
+    const owner = createStreamOwnership('interrupted', 'A', 0, 'run-A', null, active, currentStateRef, { current: new Map() }, dispatch);
+    const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);
+    const events = createStreamEvents(owner, assistant, '规划', 'run-A', undefined, currentStateRef, () => {}, frame);
+    const summary = { run_id: 'run-A' } as RunCostSummary;
+
+    events.handleEvent({ type: 'error', run_id: 'run-A', run_status: 'interrupted', message: '这次规划被中断了，可以稍后继续。', run_cost_summary: summary });
+
+    expect(state.currentTripRunStatus).toBe('interrupted');
+    expect(state.currentMessages[0]).toMatchObject({ type: 'interrupted', content: '这次规划被中断了，可以稍后继续。', streamCompleted: true });
+    expect(state.runCostSummary).toBe(summary);
   });
 
   it('deduplicates cost replay with identity preservation and resets accounting on a new run', () => {
@@ -184,7 +243,7 @@ describe('session runtime behavior', () => {
     let state = { ...stateFor('A'), currentMessages: [message('temporary', '')] };
     const currentStateRef = { current: state };
     const dispatch = (action: AppAction) => { state = appReducer(state, action); currentStateRef.current = state; };
-    const owner = createStreamOwnership('token', 'A', 0, null, null, { current: { token: 'token', sessionId: 'A', runId: null, controller: null } }, currentStateRef, { current: new Map() }, dispatch);
+    const owner = createStreamOwnership('token', 'A', 0, null, null, activeStreams({ token: 'token', sessionId: 'A', runId: null, controller: null }), currentStateRef, { current: new Map() }, dispatch);
     const assistant = { ...message('temporary', ''), pendingStatusText: '准备中' };
     state.currentMessages[0] = assistant;
     const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);

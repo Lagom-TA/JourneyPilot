@@ -1,5 +1,6 @@
 import { type ActiveView, isActiveView, type AppState } from "./state";
 import { readStoredActivePreset } from "../../features/presets/model/activePresetStorage";
+import { VIEWPORT_QUERIES } from "../../lib/breakpoints";
 function getInitialActiveView(): ActiveView {
     if (typeof window === 'undefined')
         return 'chat';
@@ -9,7 +10,7 @@ function getInitialActiveView(): ActiveView {
 export const initialState: AppState = {
     activeView: getInitialActiveView(),
     sessionInitialized: false,
-    sidebarCollapsed: typeof window !== 'undefined' && window.innerWidth < 1024,
+    sidebarCollapsed: typeof window !== 'undefined' && window.matchMedia(VIEWPORT_QUERIES.mobile).matches,
     historyPaging: { nextBefore: null, hasMore: false, loading: false },
     currentSessionId: null,
     conversationEpoch: 0,

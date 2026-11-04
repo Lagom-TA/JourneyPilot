@@ -9,7 +9,7 @@ const baseURL = process.env.JOURNEYPILOT_APP_URL || '';
 if (process.env.JP_SESSION_STATE_E2E === '1' && !/^http:\/\/127\.0\.0\.1:\d+$/.test(baseURL)) throw new Error('Offline suite requires an explicit loopback Vite URL');
 
 type StreamHarness = { send: (events: unknown[]) => void; close: () => void };
-type FixtureWindow = Window & { offlineStream?: StreamHarness; __offlineChatBodies?: unknown[]; __offlineFailChatAttempts?: number; __offlineStaleGateOnce?: boolean };
+type FixtureWindow = Window & { offlineStream?: StreamHarness; offlineStreams?: Record<string, StreamHarness>; __offlineChatBodies?: unknown[]; __offlineFailChatAttempts?: number; __offlineStaleGateOnce?: boolean };
 type TerminalRunStatus = 'completed' | 'failed' | 'cancelled' | 'interrupted';
 
 const STAGED_RESEARCH_STEPS = [
@@ -55,10 +55,16 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
     const originalFetch = window.fetch.bind(window);
     const fixtureWindow = window as FixtureWindow;
     fixtureWindow.__offlineChatBodies = [];
+    fixtureWindow.offlineStreams = {};
     window.fetch = (input, init) => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
       if (url.pathname !== '/api/chat-stream') return originalFetch(input, init);
-      try { fixtureWindow.__offlineChatBodies?.push(JSON.parse(String(init?.body ?? '{}'))); } catch { /* ignore non-JSON bodies */ }
+      let streamSession = 'new';
+      try {
+        const body = JSON.parse(String(init?.body ?? '{}'));
+        fixtureWindow.__offlineChatBodies?.push(body);
+        if (typeof body.session_id === 'string') streamSession = body.session_id;
+      } catch { /* ignore non-JSON bodies */ }
       if (fixtureWindow.__offlineStaleGateOnce) {
         fixtureWindow.__offlineStaleGateOnce = false;
         return Promise.resolve(new Response(JSON.stringify({ detail: { code: 'plan_gate_version_stale', message: '计划版本已变化' } }), { status: 409, headers: { 'content-type': 'application/json' } }));
@@ -69,11 +75,17 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
       }
       const encoder = new TextEncoder();
       const stream = new ReadableStream<Uint8Array>({ start(controller) {
-        (window as FixtureWindow).offlineStream = {
+        const handle: StreamHarness = {
           send(events) { for (const event of events) controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`)); },
-          close() { controller.close(); delete (window as FixtureWindow).offlineStream; },
+          close() { controller.close(); release(); },
         };
-        init?.signal?.addEventListener('abort', () => { controller.error(new DOMException('Aborted', 'AbortError')); delete (window as FixtureWindow).offlineStream; }, { once: true });
+        const release = () => {
+          if (fixtureWindow.offlineStream === handle) delete fixtureWindow.offlineStream;
+          if (fixtureWindow.offlineStreams?.[streamSession] === handle) delete fixtureWindow.offlineStreams[streamSession];
+        };
+        fixtureWindow.offlineStream = handle;
+        if (fixtureWindow.offlineStreams) fixtureWindow.offlineStreams[streamSession] = handle;
+        init?.signal?.addEventListener('abort', () => { controller.error(new DOMException('Aborted', 'AbortError')); release(); }, { once: true });
       } });
       return Promise.resolve(new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } }));
     };
@@ -188,6 +200,9 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
 }
 async function sendFrames(page: Page, events: unknown[], close = false) {
   await page.evaluate(({ events, close }) => { const stream = (window as FixtureWindow).offlineStream; if (!stream) throw new Error('No mocked SSE stream'); stream.send(events); if (close) stream.close(); }, { events, close });
+}
+async function sendSessionFrames(page: Page, sessionId: string, events: unknown[], close = false) {
+  await page.evaluate(({ sessionId, events, close }) => { const stream = (window as FixtureWindow).offlineStreams?.[sessionId]; if (!stream) throw new Error(`No mocked SSE stream for ${sessionId}`); stream.send(events); if (close) stream.close(); }, { sessionId, events, close });
 }
 async function selectSession(page: Page, id: string) {
   const mobile = page.getByTestId('sidebar-open');
@@ -383,6 +398,14 @@ async function expectCameraHeld(page: Page, expected: MapCamera, markerIds = Obj
   expect(await mapCamera(page, markerIds), 'map camera must not move').toEqual(expected);
 }
 
+test('直接链接可打开列表中缺失的会话', async ({ page }) => {
+  const fixture = await offlineApp(page);
+  await page.route('**/api/user/sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
+  await page.goto('/?view=chat&session_id=A');
+  await expect(page.getByText('A 的历史回答', { exact: true })).toBeVisible();
+  await assertOffline(page, fixture);
+});
+
 test('restores persisted history and switches sessions without carrying the other answer', async ({ page }) => {
   const fixture = await offlineApp(page);
   await page.goto('/');
@@ -418,6 +441,7 @@ test('continues a hidden stream in its own cache and restores it while still str
   await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
   await sendFrames(page, [{ type: 'chat_start', session_id: 'A', message_id: 'stream-A' }, { type: 'chat_chunk', content: 'A 可见草稿' }]);
   await expect(page.getByText('A 可见草稿', { exact: true })).toBeVisible();
+  await expect(page.getByText('离线回答测试', { exact: true })).toBeVisible();
   await selectSession(page, 'B');
   await expect(page.getByText('B 的历史回答', { exact: true })).toBeVisible();
   await sendFrames(page, [{ type: 'chat_chunk', content: '，后台继续' }, { type: 'usage_update', run_id: 'run-A', call_id: 'offline-call', input_tokens: 10, output_tokens: 5, total_tokens: 15, cost_usd: 0.01 }]);
@@ -429,6 +453,33 @@ test('continues a hidden stream in its own cache and restores it while still str
   await expect(page.getByText('A 离线最终回答', { exact: true })).toBeVisible();
   await expect(page.getByTestId('send-button')).toHaveAttribute('data-streaming', 'false');
   await assertOffline(page, fixture);
+});
+
+test('不同会话并行发送时仍能返回第一条进行中的流', async ({ page }) => {
+  await offlineApp(page);
+  await page.goto('/');
+  await expect(page.getByText('A 的历史回答', { exact: true })).toBeVisible();
+  await page.getByTestId('brief-input').fill('会话 A 的问题');
+  await page.getByTestId('send-button').click();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
+  await sendFrames(page, [{ type: 'chat_start', session_id: 'A', message_id: 'parallel-A' }, { type: 'chat_chunk', content: 'A 正在生成' }]);
+  await expect(page.getByText('A 正在生成', { exact: true })).toBeVisible();
+  await selectSession(page, 'B');
+  await expect(page.getByText('B 的历史回答', { exact: true })).toBeVisible();
+  await page.getByTestId('brief-input').fill('会话 B 的问题');
+  await page.getByTestId('send-button').click();
+  await expect.poll(() => page.evaluate(() => (window as FixtureWindow).__offlineChatBodies?.length)).toBe(2);
+  await sendFrames(page, [{ type: 'chat_start', session_id: 'B', message_id: 'parallel-B' }, { type: 'chat_chunk', content: 'B 正在生成' }]);
+  await sendSessionFrames(page, 'A', [{ type: 'chat_chunk', content: '，后台继续' }]);
+  await selectSession(page, 'A');
+  await expect(page.getByText('A 正在生成，后台继续', { exact: true })).toBeVisible();
+  await page.getByTestId('send-button').click();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.A))).toBe(false);
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.B))).toBe(true);
+  await selectSession(page, 'B');
+  await expect(page.getByText('B 正在生成', { exact: true })).toBeVisible();
+  await sendSessionFrames(page, 'B', [{ type: 'chat_complete', session_id: 'B', final_content: 'B 已完成', run_status: 'completed' }], true);
+  await expect(page.getByText('B 已完成', { exact: true })).toBeVisible();
 });
 
 test('cancels through HTTP control and leaves the composer usable', async ({ page }) => {
@@ -445,7 +496,7 @@ test('cancels through HTTP control and leaves the composer usable', async ({ pag
   await expect(workspace.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
   await expect(workspace.getByRole('textbox', { name: '行程调整要求' })).toBeEditable();
   expect(fixture.requests.some(request => request.startsWith('POST /api/trip-runs/run-A/control'))).toBe(true);
-  await workspace.getByRole('button', { name: /查找旅行资料/ }).click();
+  await workspace.locator('.generation-stage-button').filter({ hasText: '查找旅行资料' }).click();
   await expect(workspace.locator('.research-panel-title')).toHaveText('查找旅行资料');
   await expect(workspace.getByTestId('thinking-chain')).toBeVisible();
   await assertOffline(page, fixture);

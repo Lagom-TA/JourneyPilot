@@ -60,7 +60,7 @@ export const Modal: React.FC<ModalProps> = ({
   return (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 1200 }}>
+        <div className="fixed inset-0 flex items-center justify-center p-4" style={{ zIndex: 'var(--z-dialog)' }}>
           <m.button
             type="button"
             data-testid="modal-scrim"

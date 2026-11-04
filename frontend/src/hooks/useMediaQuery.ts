@@ -1,9 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react';
+import { VIEWPORT_QUERIES } from '../lib/breakpoints';
 
 /* 入口与 Sheet 共用断点，避免移动端触点与容器形态不一致。 */
-const MOBILE_QUERY = '(max-width: 1023.98px)';
-const COMPACT_QUERY = '(max-width: 639.98px)';
-
 export function useMediaQuery(query: string): boolean {
   const subscribe = useMemo(() => (callback: () => void) => {
     const mql = window.matchMedia(query);
@@ -15,9 +13,9 @@ export function useMediaQuery(query: string): boolean {
 }
 
 export function useIsMobileViewport(): boolean {
-  return useMediaQuery(MOBILE_QUERY);
+  return useMediaQuery(VIEWPORT_QUERIES.mobile);
 }
 
 export function useIsCompactViewport(): boolean {
-  return useMediaQuery(COMPACT_QUERY);
+  return useMediaQuery(VIEWPORT_QUERIES.compact);
 }

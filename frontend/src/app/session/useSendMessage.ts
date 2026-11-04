@@ -1,7 +1,7 @@
 import { createStreamOwnership } from "./streamOwnership";
 import { createStreamEvents } from "./streamEvents";
 import { createStreamFrameBatch } from "../../features/chat/model/streamFrameBatch";
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import { useApp } from "../state/AppContext";
 import { streamChat } from "../../features/chat/api/streamChat";
 import { generateId } from "../../lib/utils";
@@ -9,10 +9,10 @@ import { useSessionManager } from "./useSessionManager";
 import { type Message } from "../../features/chat/types/messages";
 import { type ChatRequest } from "../../features/chat/types/requests";
 import { type ControlledTripIdentity, type JourneyRoute, type PlanGateDecisionAction, type RouteDecision, type UnderstandingAnswer } from "../../features/travel/types/planner";
+import { findSessionStream, pendingStreamCacheKey } from "./streamRegistry";
 export function useSendMessage() {
-    const { state, dispatch, activeStreamAbortRef, activeStreamRef, currentStateRef, sessionRuntimeCacheRef, pendingFollowupsRef, setPendingFollowups } = useApp();
+    const { state, dispatch, activeStreamsRef, currentStateRef, sessionRuntimeCacheRef, pendingFollowupsRef, setPendingFollowups } = useApp();
     const { refreshSessions, setLastSession } = useSessionManager();
-    const sendInFlightRef = useRef(false);
     const sendMessage = useCallback(async (text: string, options?: {
         displayText?: string;
         messageId?: string;
@@ -31,22 +31,21 @@ export function useSendMessage() {
         requireResponse?: boolean;
         newTrip?: boolean;
     }) => {
-        if (!text.trim() || state.isStreaming || sendInFlightRef.current || (options?.requireResponse && activeStreamRef.current))
+        const startSessionId = state.currentSessionId || null;
+        if (!text.trim() || state.isStreaming || findSessionStream(activeStreamsRef.current, startSessionId, state.conversationEpoch))
             return false;
-        sendInFlightRef.current = true;
         const ownedController = new AbortController();
         const effectiveSignal = ownedController.signal;
-        activeStreamAbortRef.current = ownedController;
         const streamToken = generateId();
-        const startSessionId = state.currentSessionId || null;
         const startEpoch = state.conversationEpoch;
         const initialRunId = options?.resumeRunId || null;
-        activeStreamRef.current = {
+        activeStreamsRef.current.set(streamToken, {
             token: streamToken,
             sessionId: startSessionId,
             runId: initialRunId,
             controller: ownedController,
-        };
+            conversationEpoch: startEpoch,
+        });
         const userMessage: Message = {
             id: options?.messageId ?? generateId(),
             role: 'user',
@@ -108,12 +107,13 @@ export function useSendMessage() {
             timestamp: new Date(),
             pendingStatusText: options?.assistantPendingLabel,
         };
-        dispatch({ type: 'ADD_MESSAGE', payload: assistantMessage });
-        const ownership = createStreamOwnership(streamToken, startSessionId, startEpoch, initialRunId, ownedController, activeStreamRef, currentStateRef, sessionRuntimeCacheRef, dispatch);
+        // 流处理器会更新本地消息对象，reducer 必须持有独立快照。
+        dispatch({ type: 'ADD_MESSAGE', payload: { ...assistantMessage } });
+        const ownership = createStreamOwnership(streamToken, startSessionId, startEpoch, initialRunId, ownedController, activeStreamsRef, currentStateRef, sessionRuntimeCacheRef, dispatch);
         const { identity, scopedDispatch, isStreamVisible } = ownership;
         const frame = createStreamFrameBatch(scopedDispatch, assistantMessage);
         const { flushFrameNow } = frame;
-        const events = createStreamEvents(ownership, assistantMessage, text, state.currentTripRunId, options?.assistantPendingLabel, currentStateRef, setLastSession, frame, options?.gateDecision?.action, resumingSameRun);
+        const events = createStreamEvents(ownership, assistantMessage, text, state.currentTripRunId, options?.assistantPendingLabel, currentStateRef, setLastSession, frame, options?.gateDecision?.action);
         const { protocol } = events;
         let requestFailed = false;
         let deliveryStreamInterrupted = false;
@@ -145,19 +145,14 @@ export function useSendMessage() {
             }
         }
         finally {
-            sendInFlightRef.current = false;
             flushFrameNow();
             if (!effectiveSignal.aborted) {
                 scopedDispatch({ type: 'SET_STREAMING', payload: false });
             }
             const completedWhileVisible = isStreamVisible();
             const completedSessionId = identity.sessionId || startSessionId;
-            if (activeStreamAbortRef.current === ownedController) {
-                activeStreamAbortRef.current = null;
-            }
-            if (activeStreamRef.current?.token === streamToken) {
-                activeStreamRef.current = null;
-            }
+            activeStreamsRef.current.delete(streamToken);
+            sessionRuntimeCacheRef.current.delete(pendingStreamCacheKey(streamToken));
             if (completedSessionId && pendingFollowupsRef.current[completedSessionId]?.length) {
                 const status = events.completed && !events.awaitingInput && !requestFailed && !events.failed && !effectiveSignal.aborted
                     && completedWhileVisible
@@ -182,8 +177,7 @@ export function useSendMessage() {
         return !requestFailed && !events.failed && !effectiveSignal.aborted
             && (!options?.requireResponse || events.completed || events.awaitingInput);
     }, [
-        activeStreamAbortRef,
-        activeStreamRef,
+        activeStreamsRef,
         currentStateRef,
         dispatch,
         refreshSessions,

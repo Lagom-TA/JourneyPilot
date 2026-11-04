@@ -181,7 +181,7 @@ export const Popover: React.FC<PopoverProps> = ({
           data-testid={testId}
           className={cn('fixed rounded-card border border-stroke bg-panel', className)}
           style={{
-            zIndex: 1200,
+            zIndex: 'var(--z-dialog)',
             top: position?.top ?? 0,
             left: position?.left ?? 0,
             width: position?.width ?? MIN_WIDTH,

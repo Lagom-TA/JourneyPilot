@@ -101,6 +101,19 @@ function expectCleanFixture(fixture: { pageErrors: string[]; unmocked: string[] 
   expect(fixture.unmocked).toEqual([]);
 }
 
+test('同一视图内后退后，切换视图仍同步地址栏', async ({ page }) => {
+  await openHome(page);
+  await page.evaluate(() => {
+    window.history.pushState(null, '', '?view=chat&position=first');
+    window.history.pushState(null, '', '?view=chat&position=second');
+  });
+  await page.goBack();
+  await expect(page).toHaveURL(/position=first/);
+  await page.getByRole('link', { name: '偏好与资料', exact: true }).first().click();
+  await expect(page).toHaveURL(/view=user-preferences/);
+  await expect(page.getByRole('heading', { name: '我的偏好', exact: true })).toBeVisible();
+});
+
 function writeDestinationEvidence(name: string, data: unknown) {
   const directory = '../test-results/e2e-evidence/destination-tokens';
   mkdirSync(directory, { recursive: true });

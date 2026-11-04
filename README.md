@@ -32,6 +32,7 @@ then presents a research plan for approval before researching places, stays, tra
 If research is interrupted, completed results are retained and retries use the original plan's time limits.
 Disconnecting interrupts the current execution. Reopening restores saved state and content; resumable
 plans continue only when you choose to resume them.
+Different sessions can run at the same time; switching sessions leaves their ongoing runs active.
 When a run budget is enabled, model calls are checked against an estimate; incomplete pricing or usage
 means the cost limit cannot be guaranteed precisely.
 

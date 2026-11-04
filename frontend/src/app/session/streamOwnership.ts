@@ -2,9 +2,10 @@ import { type Dispatch, type MutableRefObject } from "react";
 import { appReducer } from "../state/appReducer";
 import { type AppAction, type AppState } from "../state/state";
 import { createSessionRuntimeSnapshot, type ActiveStreamHandle, type SessionRuntimeSnapshot } from "./runtimeSnapshot";
-export function createStreamOwnership(streamToken: string, startSessionId: string | null, startEpoch: number, initialRunId: string | null, ownedController: AbortController | null, activeStreamRef: MutableRefObject<ActiveStreamHandle | null>, currentStateRef: MutableRefObject<AppState>, sessionRuntimeCacheRef: MutableRefObject<Map<string, SessionRuntimeSnapshot>>, dispatch: Dispatch<AppAction>) {
+import { pendingStreamCacheKey } from "./streamRegistry";
+export function createStreamOwnership(streamToken: string, startSessionId: string | null, startEpoch: number, initialRunId: string | null, ownedController: AbortController | null, activeStreamsRef: MutableRefObject<Map<string, ActiveStreamHandle>>, currentStateRef: MutableRefObject<AppState>, sessionRuntimeCacheRef: MutableRefObject<Map<string, SessionRuntimeSnapshot>>, dispatch: Dispatch<AppAction>) {
     const identity = { sessionId: startSessionId, runId: initialRunId };
-    const isCurrentStream = () => activeStreamRef.current?.token === streamToken;
+    const isCurrentStream = () => activeStreamsRef.current.has(streamToken);
     const isStreamVisible = () => {
         if (!isCurrentStream())
             return false;
@@ -17,10 +18,8 @@ export function createStreamOwnership(streamToken: string, startSessionId: strin
         return current.conversationEpoch === startEpoch;
     };
     const reduceHiddenRuntime = (action: AppAction) => {
-        const sessionId = identity.sessionId || startSessionId;
-        if (!sessionId)
-            return;
-        const cached = sessionRuntimeCacheRef.current.get(sessionId);
+        const cacheKey = identity.sessionId || startSessionId || pendingStreamCacheKey(streamToken);
+        const cached = sessionRuntimeCacheRef.current.get(cacheKey);
         if (!cached)
             return;
         const baseState: AppState = {
@@ -28,9 +27,11 @@ export function createStreamOwnership(streamToken: string, startSessionId: strin
             ...cached,
         };
         const nextState = appReducer(baseState, action);
-        sessionRuntimeCacheRef.current.set(sessionId, createSessionRuntimeSnapshot(nextState));
+        sessionRuntimeCacheRef.current.set(cacheKey, createSessionRuntimeSnapshot(nextState));
     };
     const scopedDispatch = (action: AppAction) => {
+        if (!isCurrentStream())
+            return;
         if (isStreamVisible()) {
             dispatch(action);
         }
@@ -42,14 +43,23 @@ export function createStreamOwnership(streamToken: string, startSessionId: strin
         sessionId: string | null;
         runId: string | null;
     }>) => {
-        if (!isCurrentStream())
+        const activeStream = activeStreamsRef.current.get(streamToken);
+        if (!activeStream)
             return;
-        activeStreamRef.current = {
-            token: streamToken,
-            sessionId: updates.sessionId !== undefined ? updates.sessionId : activeStreamRef.current?.sessionId ?? identity.sessionId,
-            runId: updates.runId !== undefined ? updates.runId : activeStreamRef.current?.runId ?? identity.runId,
-            controller: activeStreamRef.current?.controller ?? ownedController,
-        };
+        if (updates.sessionId) {
+            const pendingKey = pendingStreamCacheKey(streamToken);
+            const pending = sessionRuntimeCacheRef.current.get(pendingKey);
+            if (pending) {
+                sessionRuntimeCacheRef.current.delete(pendingKey);
+                sessionRuntimeCacheRef.current.set(updates.sessionId, pending);
+            }
+        }
+        activeStreamsRef.current.set(streamToken, {
+            ...activeStream,
+            sessionId: updates.sessionId !== undefined ? updates.sessionId : activeStream.sessionId ?? identity.sessionId,
+            runId: updates.runId !== undefined ? updates.runId : activeStream.runId ?? identity.runId,
+            controller: activeStream.controller ?? ownedController,
+        });
     };
     return { identity, isCurrentStream, isStreamVisible, scopedDispatch, updateActiveStreamHandle };
 }

@@ -21,6 +21,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { getMapTileConfig } from '../../../../lib/mapConfig';
 import { buildGroupPinHtml, buildPlacePinHtml } from '../../model/mapPinHtml';
+import { cssEasing, duration } from '../../../../lib/motion';
 
 type ProjectedRoute = MapProjection['content']['routes'][number];
 interface BundleMapLeafletProps {
@@ -33,7 +34,7 @@ interface BundleMapLeafletProps {
     overlayOffset?: number;
 }
 const TILE = getMapTileConfig();
-const FALLBACK_COLOR = '#D65F3D';
+const FALLBACK_COLOR = 'var(--color-accent)';
 function placeColor(): string {
     if (typeof window === 'undefined') return FALLBACK_COLOR;
     const token = window.getComputedStyle(document.documentElement)
@@ -50,22 +51,22 @@ function useRouteLines(routes: ProjectedRoute[]): RouteLines[] {
 }
 const placePoint = pointOnTileDatum;
 type PinState = 'selected' | 'linked' | 'idle';
-const PIN_STATE_STYLE: Record<PinState, (color: string) => {
+const PIN_STATE_STYLE: Record<PinState, {
     transform: string;
     boxShadow: string;
 }> = {
-    selected: (color) => ({
+    selected: {
         transform: 'scale(1.22)',
-        boxShadow: `0 0 0 4px color-mix(in srgb, ${color} 33%, transparent),0 4px 14px rgba(0,0,0,.24)`,
-    }),
-    linked: (color) => ({
+        boxShadow: 'var(--shadow-map-pin-selected)',
+    },
+    linked: {
         transform: 'scale(1.14)',
-        boxShadow: `0 0 0 3px color-mix(in srgb, ${color} 27%, transparent),0 4px 12px rgba(0,0,0,.24)`,
-    }),
-    idle: () => ({ transform: 'scale(1)', boxShadow: '0 3px 10px rgba(0,0,0,.22)' }),
+        boxShadow: 'var(--shadow-map-pin-linked)',
+    },
+    idle: { transform: 'scale(1)', boxShadow: 'var(--shadow-map-pin-idle)' },
 };
 function placeIcon(place: BundleMapPlace, color: string, offset: [number, number] = [0, 0]): L.DivIcon {
-    const idle = PIN_STATE_STYLE.idle(color);
+    const idle = PIN_STATE_STYLE.idle;
     const endpoint = place.markerKind === 'transport_endpoint';
     const size = endpoint ? 18 : 30;
     const center = size / 2;
@@ -100,7 +101,7 @@ function groupIcon(group: BundleMapPlaceGroup, color: string): L.DivIcon {
     });
 }
 function applyPinState(pin: HTMLElement, state: PinState): void {
-    const { transform, boxShadow } = PIN_STATE_STYLE[state](pin.dataset.pinColor || FALLBACK_COLOR);
+    const { transform, boxShadow } = PIN_STATE_STYLE[state];
     pin.style.transform = transform;
     pin.style.boxShadow = boxShadow;
     if (state === 'linked') pin.dataset.linked = 'on';
@@ -200,7 +201,7 @@ function RouteSegment({ routeId, segmentIndex, segment, color, selected, linked,
             const animation = path.animate([
                 { strokeDashoffset: length },
                 { strokeDashoffset: 0 },
-            ], { duration: 400, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
+            ], { duration: duration.emphasis * 1000, easing: cssEasing.decelerate });
             animation.onfinish = () => {
                 path.style.strokeDasharray = '';
                 path.style.strokeDashoffset = '';
@@ -212,7 +213,7 @@ function RouteSegment({ routeId, segmentIndex, segment, color, selected, linked,
     return (<React.Fragment>
       <Polyline positions={points} interactive={false} pathOptions={{
             className: `journey-route-halo is-${geometryKind}`,
-            color: '#FFFEFA',
+            color: 'var(--color-panel)',
             weight: selected ? 10 : linked ? 8.5 : 6.5,
             opacity: selected ? 0.95 : 0.78,
             dashArray: geometryKind === 'endpoint' ? '8 8' : undefined,
@@ -247,7 +248,7 @@ function EntranceMarker({ pin, selected, linked, seen, onSelect, onLink, onUnlin
             element.animate([
                 { opacity: 0, transform: 'scale(.78)' },
                 { opacity: 1, transform: 'scale(1)' },
-            ], { duration: 220, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
+            ], { duration: duration.page * 1000, easing: cssEasing.decelerate });
         });
         return () => window.cancelAnimationFrame(frame);
     }, [pin.place.markerId, reducedMotion, seen]);
@@ -294,7 +295,7 @@ function MapViewport({ places, lines, selectedEntityId, overlayOffset = 0, }: Pi
             const target = map.unproject(map.project(L.latLng(focusedPoint), FOCUS_ZOOM).subtract([overlayOffset / 2, 0]), FOCUS_ZOOM);
             if (map.getZoom() >= CLOSE_ENOUGH_ZOOM) map.panTo(target, { animate: !reducedMotion });
             else if (reducedMotion) map.setView(target, FOCUS_ZOOM, { animate: false });
-            else map.flyTo(target, FOCUS_ZOOM, { duration: 0.35 });
+            else map.flyTo(target, FOCUS_ZOOM, { duration: duration.mapFocus });
             return;
         }
         if (focusedRoute && focusedPoints.length > 0) {
@@ -382,7 +383,7 @@ export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, rout
     if (firstPoint) anchor.current = firstPoint;
     if (!anchor.current) return null;
     return (<div ref={pinRoot} className="relative h-full w-full" data-testid="bundle-leaflet-map" data-basemap-state={basemap}>
-      {BASEMAP_NOTICE[basemap] && (<p data-testid="bundle-map-basemap-state" role={basemap === 'degraded' ? 'status' : undefined} className="pointer-events-none absolute left-1/2 top-3 z-[1000] max-w-[92%] -translate-x-1/2 truncate rounded-label bg-panel/90 px-2.5 py-1 text-[11px] font-medium text-ink-secondary shadow-sm backdrop-blur">
+      {BASEMAP_NOTICE[basemap] && (<p data-testid="bundle-map-basemap-state" role={basemap === 'degraded' ? 'status' : undefined} className="pointer-events-none absolute left-1/2 top-3 z-map-controls max-w-[92%] -translate-x-1/2 truncate rounded-label bg-panel/90 px-2.5 py-1 text-[11px] font-medium text-ink-secondary shadow-sm backdrop-blur">
           {BASEMAP_NOTICE[basemap]}
         </p>)}
     <MapContainer ref={guardTeardown} center={anchor.current} zoom={12} zoomControl={false} attributionControl preferCanvas={false} className="h-full w-full">

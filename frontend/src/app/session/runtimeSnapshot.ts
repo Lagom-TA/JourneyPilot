@@ -5,6 +5,7 @@ export interface ActiveStreamHandle {
     sessionId: string | null;
     runId: string | null;
     controller: AbortController | null;
+    conversationEpoch: number;
 }
 export function createSessionRuntimeSnapshot(state: AppState): SessionRuntimeSnapshot {
     return {

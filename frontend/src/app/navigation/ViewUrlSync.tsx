@@ -33,8 +33,10 @@ export function ViewUrlSync() {
             const params = new URLSearchParams(window.location.search);
             const view = params.get('view');
             const nextView = isActiveView(view) ? view : 'chat';
-            fromPopRef.current = true;
-            dispatch({ type: 'SET_ACTIVE_VIEW', payload: nextView });
+            if (nextView !== currentStateRef.current.activeView) {
+                fromPopRef.current = true;
+                dispatch({ type: 'SET_ACTIVE_VIEW', payload: nextView });
+            }
             const sessionId = params.get('session_id');
             const runId = params.get('run_id') ?? undefined;
             if (nextView === 'chat' && sessionId) {

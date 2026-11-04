@@ -82,7 +82,7 @@ export const PresetSelector: React.FC<PresetSelectorProps> = ({ className }) => 
               <button type="button" data-testid="preset-active-clear" onClick={handleClear} className="p-1.5 rounded-card hover:bg-accent/15 transition-colors duration-fast ease-standard text-accent">
                 <X size={10}/>
               </button>
-            </div>) : (<button ref={p.ref} type="button" onClick={onTriggerClick} className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-card text-xs font-medium', 'transition-[transform,opacity,border-color,background-color] duration-slow ease-standard', 'bg-transparent text-ink-secondary border border-[rgba(38,36,32,0.14)]', 'hover:border-[rgba(38,36,32,0.32)] hover:text-ink')}>
+            </div>) : (<button ref={p.ref} type="button" onClick={onTriggerClick} className={cn('flex items-center gap-1.5 px-2.5 py-1.5 rounded-card text-xs font-medium', 'transition-[transform,opacity,border-color,background-color] duration-slow ease-standard', 'bg-transparent text-ink-secondary border border-[rgb(var(--color-outline-neutral-rgb)/0.14)]', 'hover:border-[rgb(var(--color-outline-neutral-rgb)/0.32)] hover:text-ink')}>
               <Compass size={14}/>
               旅行风格
               <ChevronDown size={12} className={cn('transition-transform', p.open && 'rotate-180')}/>

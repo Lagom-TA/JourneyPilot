@@ -1,6 +1,6 @@
 import { type RunCostLive, type CostGroupBreakdown, type RunCostSummary, type ToolContextSaving } from "../types/cost";
 import { formatCost, formatCount, formatDuration, formatPercent, formatTokens, formatTokensCompact, READOUT_PLACEHOLDER } from "../../../lib/format";
-import { formatAgentLabel } from "../../travel/model/travelProgress";
+import { formatAgentLabel } from "./agentLabels";
 export type LedgerField = keyof RunCostSummary;
 export type CostLedgerSource = 'settled' | 'live';
 export interface CostLedgerTile {

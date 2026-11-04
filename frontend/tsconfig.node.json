@@ -4,6 +4,7 @@
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     /*
      * `composite` 会 emit，而 `noEmit` 只写在 `package.json` 的命令行上；裸
@@ -26,6 +27,7 @@
     "vitest.config.ts",
     "playwright.config.ts",
     "tailwind.config.ts",
+    "breakpoints.json",
     "e2e/**/*.ts"
   ]
-} 
+}

@@ -9,6 +9,7 @@ import { BrandMark, BrandWordmark } from '../components/BrandMark';
 import { useSessionManager } from '../session/useSessionManager';
 import { duration, easing } from '../../lib/motion';
 import { getViewHref } from '../../lib/viewHref';
+import { abortSessionStream } from '../session/streamRegistry';
 import React from 'react';
 
 interface MainLayoutProps {
@@ -24,7 +25,7 @@ const PREFERENCE_LINKS: Array<{ view: ActiveView; label: string }> = [
 ];
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
-  const { state, dispatch, activeStreamAbortRef } = useApp();
+  const { state, dispatch, activeStreamsRef } = useApp();
   const { setLastSession } = useSessionManager();
   const isMobile = useIsMobileViewport();
   const drawerOpen = isMobile && !state.sidebarCollapsed;
@@ -44,8 +45,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   }, [closeSidebar, dispatch, isMobile]);
 
   const startNewTrip = React.useCallback(() => {
-    activeStreamAbortRef.current?.abort();
-    activeStreamAbortRef.current = null;
+    abortSessionStream(activeStreamsRef.current, state);
     dispatch({ type: 'CLEAR_CHAT' });
     setLastSession(null);
     const url = new URL(window.location.href);
@@ -54,7 +54,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     url.searchParams.set('view', 'chat');
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
     changeView('chat');
-  }, [activeStreamAbortRef, changeView, dispatch, setLastSession]);
+  }, [activeStreamsRef, changeView, dispatch, setLastSession, state]);
 
   const keepFocusInDrawer = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!drawerOpen || event.key !== 'Tab') return;

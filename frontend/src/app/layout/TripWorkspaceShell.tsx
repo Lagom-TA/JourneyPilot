@@ -110,7 +110,7 @@ export const TripWorkspaceShell: React.FC = () => {
             </PresenceFrame>
           ) : (
             <PresenceFrame key="workspace-conversation" className="h-full min-h-0 w-full" data-testid="workspace-conversation" variants={reducedMotion ? directHandoff : slideUp} initial="hidden" animate="visible" exit="exit">
-              <ConversationThread />
+              <ConversationThread key={state.conversationEpoch} />
             </PresenceFrame>
           )}
         </AnimatePresence>

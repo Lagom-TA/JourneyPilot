@@ -1,8 +1,10 @@
 import type { Config } from 'tailwindcss'
+import screenWidths from './breakpoints.json'
 
 export default {
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
+    screens: Object.fromEntries(Object.entries(screenWidths).map(([name, width]) => [name, `${width}px`])),
     // 替换而非扩展默认表，防止表外圆角回落到 Tailwind 默认值。
     borderRadius: {
       none: '0',
@@ -38,8 +40,12 @@ export default {
     },
 
     extend: {
+      zIndex: {
+        'map-controls': 'var(--z-map-controls)',
+      },
       colors: {
         // RGB 三元组允许 Tailwind 为颜色组合透明度。
+        white: 'rgb(var(--color-white-rgb) / <alpha-value>)',
         bg: 'rgb(var(--color-bg-rgb) / <alpha-value>)',
         panel: 'rgb(var(--color-panel-rgb) / <alpha-value>)',
         surface: 'rgb(var(--color-surface-rgb) / <alpha-value>)',

@@ -8,6 +8,7 @@ export const duration = {
   slow: 0.25,
   page: 0.22,
   detail: 0.3,
+  mapFocus: 0.35,
   emphasis: 0.4,
   numberRoll: 0.4,
   loop: 1.2,
@@ -18,6 +19,10 @@ export const easing = {
   standard: [0.2, 0, 0.38, 0.9],
   decelerate: [0.16, 1, 0.3, 1],
   accelerate: [0.7, 0, 0.84, 0],
+} as const;
+
+export const cssEasing = {
+  decelerate: `cubic-bezier(${easing.decelerate.join(', ')})`,
 } as const;
 
 // 弹簧只用于空间移动，不能让透明度与颜色过冲。

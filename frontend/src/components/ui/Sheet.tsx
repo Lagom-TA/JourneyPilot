@@ -112,7 +112,7 @@ export const Sheet: React.FC<SheetProps> = ({
   return (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0" style={{ zIndex: 1100 }}>
+        <div className="fixed inset-0" style={{ zIndex: 'var(--z-sheet)' }}>
           <CanvasMotion>
             <m.div
               data-testid="sheet-scrim"

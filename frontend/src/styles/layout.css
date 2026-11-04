@@ -1,0 +1,284 @@
+/* 应用壳与主导航 */
+.app-shell {
+  display: flex;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.app-topbar {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  height: 64px;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  border-bottom: 1px solid var(--color-stroke);
+  background: var(--color-panel);
+}
+
+.app-brand {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 10px;
+  border-radius: var(--radius-label);
+}
+
+.app-brand-word {
+  margin-top: 1px;
+}
+
+.desktop-main-nav {
+  display: flex;
+  height: 100%;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.desktop-nav-link {
+  position: relative;
+  display: inline-flex;
+  min-width: 108px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 16px;
+  color: var(--color-ink-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  transition: color var(--dur-base) var(--ease-standard), background-color var(--dur-base) var(--ease-standard);
+}
+
+.desktop-nav-link::after {
+  content: '';
+  position: absolute;
+  right: 18px;
+  bottom: -1px;
+  left: 18px;
+  height: 2px;
+  border-radius: var(--radius-micro) var(--radius-micro) 0 0;
+  background: var(--color-accent);
+  opacity: 0;
+  transform: scaleX(.4);
+  transition: opacity var(--dur-base), transform var(--dur-base) var(--ease-decelerate);
+}
+
+.desktop-nav-link:hover {
+  background: color-mix(in srgb, var(--color-accent-soft) 35%, transparent);
+  color: var(--color-ink);
+}
+
+.desktop-nav-link.is-active {
+  color: var(--color-accent);
+}
+
+.desktop-nav-link.is-active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.app-main {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* 恢复提示是覆盖在工作区上方的非模态状态层：脱离文档流，不影响工作区尺寸与滚动。
+   提示本体只做状态展示，指针事件穿透到下方工作区；仅“重试”按钮恢复交互。 */
+.recovery-notice {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: var(--z-recovery);
+  width: min(46rem, calc(100% - 48px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.recovery-notice > button {
+  pointer-events: auto;
+}
+
+@media (min-width: 1024px) {
+  .recovery-notice {
+    top: 16px;
+    /* 桌面端盖住地图顶栏与行程浮面板，但仍低于 Sheet、移动抽屉与模态框。 */
+    z-index: var(--z-recovery-desktop);
+  }
+}
+
+.mobile-nav-opener {
+  display: none;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: var(--radius-label);
+  color: var(--color-ink-secondary);
+}
+
+.preference-section-nav {
+  position: relative;
+  z-index: 10;
+  height: 46px;
+  flex: none;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--color-stroke);
+  background: color-mix(in srgb, var(--color-panel) 70%, var(--color-bg));
+}
+
+.preference-section-nav > div {
+  display: flex;
+  width: min(100%, 1024px);
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.preference-section-nav a {
+  position: relative;
+  display: inline-flex;
+  min-width: 112px;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-ink-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.preference-section-nav a::after {
+  content: '';
+  position: absolute;
+  right: 20px;
+  bottom: 0;
+  left: 20px;
+  height: 2px;
+  background: var(--color-accent);
+  opacity: 0;
+  transform: scaleX(.4);
+  transition: opacity var(--dur-base), transform var(--dur-base) var(--ease-decelerate);
+}
+
+.preference-section-nav a.is-active {
+  color: var(--color-accent);
+}
+
+.preference-section-nav a.is-active::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.mobile-navigation-drawer,
+.mobile-nav-scrim {
+  display: none;
+}
+
+@media (width < 1024px) {
+  .app-topbar { height: 56px; padding: 0 14px 0 16px; }
+  .app-brand { gap: 8px; }
+  .app-brand-word { height: 13px !important; }
+  .desktop-main-nav { display: none; }
+  .mobile-nav-opener { display: grid; }
+  .preference-section-nav { height: 44px; }
+  .preference-section-nav > div { padding: 0 12px; }
+  .preference-section-nav a { min-width: 100px; }
+  .mobile-nav-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-navigation-scrim);
+    display: block;
+    background: rgb(var(--color-ink-rgb) / 25%);
+  }
+  .mobile-navigation-drawer {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: var(--z-navigation-drawer);
+    display: flex;
+    width: min(320px, 88vw);
+    flex-direction: column;
+    border-right: 1px solid var(--color-stroke);
+    background: var(--color-panel);
+    box-shadow: var(--shadow-lg);
+    transition: transform var(--dur-slow) var(--ease-decelerate);
+  }
+  .mobile-navigation-drawer.is-open { transform: translateX(0); }
+  .mobile-navigation-drawer.is-closed {
+    transform: translateX(-105%);
+    pointer-events: none;
+    transition-duration: var(--dur-base);
+    transition-timing-function: var(--ease-accelerate);
+  }
+  .mobile-drawer-heading {
+    display: flex;
+    height: 64px;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px 0 20px;
+    border-bottom: 1px solid var(--color-stroke);
+  }
+  .mobile-drawer-close {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    place-items: center;
+    border-radius: var(--radius-label);
+    color: var(--color-ink-secondary);
+  }
+  .mobile-drawer-nav {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 14px;
+  }
+  .mobile-drawer-nav > p {
+    padding: 0 12px 8px;
+    color: var(--color-ink-muted);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .12em;
+  }
+  .mobile-drawer-nav > p.mobile-drawer-section-label { margin-top: 24px; }
+  .mobile-nav-link {
+    display: flex;
+    min-height: 48px;
+    align-items: center;
+    gap: 12px;
+    padding: 0 12px;
+    border-radius: var(--radius-label);
+    color: var(--color-ink-secondary);
+    font-size: 14px;
+    transition: color var(--dur-fast), background-color var(--dur-fast);
+  }
+  .mobile-nav-link:hover,
+  .mobile-nav-link.is-active {
+    background: var(--color-accent-soft);
+    color: var(--color-accent);
+  }
+  .mobile-preference-links {
+    margin: 6px 0 0 18px;
+    padding-left: 10px;
+    border-left: 1px solid var(--color-stroke);
+  }
+  .mobile-preference-links .mobile-nav-link { min-height: 44px; font-size: 13px; }
+  .mobile-drawer-footnote {
+    flex: none;
+    padding: 20px 26px calc(22px + env(safe-area-inset-bottom));
+    color: var(--color-ink-muted);
+    font-family: theme('fontFamily.display');
+    font-size: 12px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .mobile-navigation-drawer { display: none; }
+}
+

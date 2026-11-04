@@ -13,8 +13,29 @@ JourneyPilot 的旅行工作台前端：React 18 + TypeScript + Vite + Tailwind 
 
 - 所有 REST 请求经 `src/lib/http.ts`；`src/lib/runtimeConfig.ts` 用 `VITE_API_BASE` 解析 API 前缀（默认 `/api`）。
 - 聊天流：`src/features/chat/api/streamChat.ts` 消费 `POST /api/chat-stream`（SSE）；`src/app/session/` 负责流归属、断线恢复与事件处理。
+- 不同会话的运行流独立保存；切换会话时保留各自的实时快照，停止当前会话不会中断其他会话。
 - 状态：`src/app/state/` 只有唯一 reducer 与 provider；会话切换、恢复、清空与正式 Bundle 确认都经过同一更新边界。
 - 正式交付只接受完整 `DeliveryBundle`，过程事件可以流式；报告、行程、地图、来源与天气来自同一份交付记录。
+
+## 样式与视口
+
+- `src/index.css` 定义全局 token、基础样式和共享过程样式；`src/styles/` 按首页、应用壳、行程列表与工作台分文件，由 `src/main.tsx` 按顺序加载。全局组件和复杂布局使用语义类，组件内部的简单排列使用 Tailwind 工具类。
+- 颜色、圆角、阴影、CSS 动效和全局层级使用 `src/index.css` 的 token；Motion 使用 `src/lib/motion.ts` 中的秒制时长与缓动，交通方式颜色集中在 `src/features/travel/model/transportPresentation.ts`。
+- `breakpoints.json` 定义 Tailwind 与 JS 共用的 `sm` 640、`md` 768、`lg` 1024、`xl` 1280 和 `2xl` 1536 像素断点。CSS 媒体查询使用相同边界；480、1440、1800 像素和高度 760 像素是局部布局的补充条件。
+- 字体通过 Fontsource 本地加载：Inter 处理拉丁字符，Noto Sans SC 处理中文正文；标题优先使用本地 14 字子集，缺失字符回退到完整的 Noto Serif SC，最后回退系统字体。字体使用 `font-display: swap`。
+
+全局层级以同一层叠上下文内的数值为准；组件内部的 0–50 只控制局部层叠。
+
+| token | 值 | 用途 |
+|---|---:|---|
+| `--z-map-empty` | 900 | 地图空状态 |
+| `--z-map-controls` / `--z-map-detail` | 1000 / 1001 | 地图控件和地点详情 |
+| `--z-recovery` | 1050 | 移动端恢复提示 |
+| `--z-workspace-panel` / `--z-sheet` | 1100 | 行程浮面板和底部抽屉 |
+| `--z-navigation-scrim` / `--z-navigation-drawer` | 1110 / 1120 | 移动导航遮罩和抽屉 |
+| `--z-recovery-desktop` | 1150 | 桌面端恢复提示 |
+| `--z-reading` / `--z-dialog` | 1200 | 阅读层、模态框、弹出层和日历 |
+| `--z-destination-menu` | 1400 | 目的地搜索候选 |
 
 ## 本地运行
 

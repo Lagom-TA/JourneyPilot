@@ -485,6 +485,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
       </header>
       {(state.planApprovalGate || state.understandingQuestions) ? <GenerationJourneyPanel /> : (
         <ConversationThread
+          key={state.conversationEpoch}
           embedded
           initialInput={conversationDraft}
           targetRunId={conversationRunId}
@@ -657,7 +658,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
                 ? mapRegion
                 : state.currentTripRunId
                   ? <div className="generation-workspace"><GenerationJourneyPanel /></div>
-                  : <div className="generation-workspace generation-workspace-conversation"><ConversationThread embedded /></div>}
+                  : <div className="generation-workspace generation-workspace-conversation"><ConversationThread key={state.conversationEpoch} embedded /></div>}
               {bundle && !isMobile && <PresenceFrame ref={floatingPanelRef} className="journey-floating-panel" initial={{ opacity: 0, x: reducedMotion ? 0 : -18 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reducedMotion ? 0 : duration.page, ease: easing.decelerate }}>{navigation}{content}</PresenceFrame>}
               {isMobile && bundle && (
                 <Sheet open={state.mobileCanvasOpen} onClose={() => dispatch({ type: 'SET_MOBILE_CANVAS_OPEN', payload: false })} testId="canvas-sheet">

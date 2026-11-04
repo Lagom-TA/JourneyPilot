@@ -4,8 +4,9 @@ import { useApp } from "../state/AppContext";
 import { stopOutcomeFromError } from "../../features/travel/model/stopOutcome";
 import { isTripRunStatus } from "../../features/travel/types/runs";
 import { stopRunUiState } from "./stopRunUi";
+import { abortSessionStream } from "./streamRegistry";
 export function useStopRun() {
-    const { state, dispatch, activeStreamAbortRef, currentStateRef } = useApp();
+    const { state, dispatch, activeStreamsRef, currentStateRef } = useApp();
     const stopRun = useCallback(async () => {
         const runId = state.currentTripRunId;
         const sessionId = state.currentSessionId;
@@ -36,10 +37,7 @@ export function useStopRun() {
         if (currentStateRef.current.currentTripRunId !== runId || currentStateRef.current.currentSessionId !== sessionId) {
             return;
         }
-        if (activeStreamAbortRef.current) {
-            activeStreamAbortRef.current.abort();
-            activeStreamAbortRef.current = null;
-        }
+        abortSessionStream(activeStreamsRef.current, currentStateRef.current);
         dispatch({ type: 'SET_STREAMING', payload: false });
         if (cancelAccepted && hadPendingDecision) {
             dispatch({ type: 'MARK_PENDING_DECISIONS_CANCELLED' });
@@ -63,7 +61,7 @@ export function useStopRun() {
             });
         }
     }, [
-        activeStreamAbortRef,
+        activeStreamsRef,
         currentStateRef,
         state.currentMessages,
         state.currentTripRunId,

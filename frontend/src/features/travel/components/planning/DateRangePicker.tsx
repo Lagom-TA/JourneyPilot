@@ -190,8 +190,8 @@ export const DateRangePicker: React.FC<{
           <div
             className={isCompact ? 'fixed inset-0 flex items-end' : 'fixed'}
             style={isCompact
-              ? { zIndex: 1200 }
-              : { zIndex: 1200, top: anchor?.top ?? 0, left: anchor?.left ?? 0, width: anchor?.width ?? 680, visibility: anchor ? 'visible' : 'hidden' }}
+              ? { zIndex: 'var(--z-dialog)' }
+              : { zIndex: 'var(--z-dialog)', top: anchor?.top ?? 0, left: anchor?.left ?? 0, width: anchor?.width ?? 680, visibility: anchor ? 'visible' : 'hidden' }}
           >
             <m.button
               type="button"

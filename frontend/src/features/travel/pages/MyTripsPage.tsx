@@ -2,6 +2,7 @@ import { AnimatePresence, m } from 'motion/react';
 import { ArrowRight, BookOpen, ChevronDown, Clock3, MapPin, Plus, Search } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { useApp } from '../../../app/state/AppContext';
+import { abortSessionStream } from '../../../app/session/streamRegistry';
 import { useSessionManager } from '../../../app/session/useSessionManager';
 import { listTripRuns } from '../api/runs';
 import { type TripRunResponse, type TripRunStatus } from '../types/runs';
@@ -76,7 +77,7 @@ function TripMiniCover({ title, count }: { title: string; count: number }) {
 }
 
 export const MyTripsPage: React.FC = () => {
-  const { state, dispatch, activeStreamAbortRef } = useApp();
+  const { state, dispatch, activeStreamsRef } = useApp();
   const { openSession, setLastSession } = useSessionManager();
   const [runs, setRuns] = React.useState<TripRunResponse[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -129,8 +130,7 @@ export const MyTripsPage: React.FC = () => {
   }, [groups, query]);
 
   const startNewTrip = () => {
-    activeStreamAbortRef.current?.abort();
-    activeStreamAbortRef.current = null;
+    abortSessionStream(activeStreamsRef.current, state);
     dispatch({ type: 'CLEAR_CHAT' });
     setLastSession(null);
     const url = new URL(window.location.href);

@@ -5,8 +5,7 @@ import { type PendingFollowups } from "../session/pendingFollowups";
 export const AppContext = createContext<{
     state: AppState;
     dispatch: React.Dispatch<AppAction>;
-    activeStreamAbortRef: React.MutableRefObject<AbortController | null>;
-    activeStreamRef: React.MutableRefObject<ActiveStreamHandle | null>;
+    activeStreamsRef: React.MutableRefObject<Map<string, ActiveStreamHandle>>;
     currentStateRef: React.MutableRefObject<AppState>;
     sessionRuntimeCacheRef: React.MutableRefObject<Map<string, SessionRuntimeSnapshot>>;
     pendingFollowups: PendingFollowups;

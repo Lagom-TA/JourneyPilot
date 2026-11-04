@@ -1,0 +1,28 @@
+const AGENT_LABELS: Record<string, {
+    label: string;
+    summary: string;
+}> = {
+    scope_clarifier: { label: '确认旅行信息', summary: '检查目的地、日期、同行人和旅行要求是否明确' },
+    requirements_preparer: { label: '整理旅行需求', summary: '把本次要求和个人偏好整理成清晰的旅行信息' },
+    research_plan_generator: { label: '生成研究方案', summary: '根据当前旅行需求写出研究和安排设想' },
+    intent_amendment_router: { label: '处理新增要求', summary: '判断新增要求的影响范围并更新当前计划' },
+    destination_geo_resolver: { label: '确认目的地', summary: '解析目的地位置、时区和旅行范围' },
+    weather_context_builder: { label: '准备天气信息', summary: '在安排前准备预报或季节参考' },
+    planner: { label: '制定计划', summary: '把旅行需求拆成目的地、交通、住宿和每日安排' },
+    dispatcher: { label: '安排调研', summary: '把不同主题交给对应调研分支处理' },
+    research_gate: { label: '等待重试研究', summary: '保留已有成果，等待重试未完成的研究' },
+    destination_researcher: { label: '调研目的地体验', summary: '查找景点、美食、文化体验和本地注意事项' },
+    transport_researcher: { label: '核对交通衔接', summary: '检查城际和市内交通是否顺路、可执行' },
+    accommodation_researcher: { label: '筛选住宿区域', summary: '对比住宿位置、价格、评价和出行便利性' },
+    itinerary_planner: { label: '编排每日行程', summary: '把活动、交通和休息节奏排进每天的时间线' },
+    delivery_projector: { label: '生成行程内容', summary: '整理每日安排、旅行地图、阅读版和参考资料' },
+    delivery_finalizer: { label: '保存行程', summary: '完整保存行程后结束本次规划' },
+    fast_answer_agent: { label: '快速回答', summary: '用较轻路径回答简单旅行问题' },
+};
+export function formatAgentLabel(agentName: string): {
+    label: string;
+    summary: string;
+} {
+    const base = agentName.replace(/_r\d+$/, '');
+    return AGENT_LABELS[base] || { label: '推进规划任务', summary: '处理本轮旅行规划中的一个步骤' };
+}

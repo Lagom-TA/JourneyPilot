@@ -6,12 +6,12 @@ import { type AppState } from "./state";
 import { type PendingFollowups } from "../session/pendingFollowups";
 import { AppContext } from "./AppContext";
 import React, { type ReactNode } from 'react';
+import { useIsMobileViewport } from '../../hooks/useMediaQuery';
 export const AppProvider: React.FC<{
     children: ReactNode;
 }> = ({ children }) => {
     const [state, dispatch] = useReducer(appReducer, initialState);
-    const activeStreamAbortRef = React.useRef<AbortController | null>(null);
-    const activeStreamRef = React.useRef<ActiveStreamHandle | null>(null);
+    const activeStreamsRef = React.useRef<Map<string, ActiveStreamHandle>>(new Map());
     const currentStateRef = React.useRef<AppState>(state);
     const sessionRuntimeCacheRef = React.useRef<Map<string, SessionRuntimeSnapshot>>(new Map());
     const [pendingFollowups, setPendingFollowupsState] = React.useState<PendingFollowups>({});
@@ -25,23 +25,17 @@ export const AppProvider: React.FC<{
         currentStateRef.current = state;
     }, [state]);
     const mobileViewportRef = React.useRef<boolean | null>(null);
+    const isMobile = useIsMobileViewport();
     React.useEffect(() => {
-        const handleResize = () => {
-            const isMobile = window.innerWidth < 1024;
-            if (isMobile && mobileViewportRef.current === false) {
-                dispatch({ type: 'SET_SIDEBAR_COLLAPSED', payload: true });
-            }
-            mobileViewportRef.current = isMobile;
-        };
-        handleResize();
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
+        if (isMobile && mobileViewportRef.current === false) {
+            dispatch({ type: 'SET_SIDEBAR_COLLAPSED', payload: true });
+        }
+        mobileViewportRef.current = isMobile;
+    }, [isMobile]);
     const value = React.useMemo(() => ({
         state,
         dispatch,
-        activeStreamAbortRef,
-        activeStreamRef,
+        activeStreamsRef,
         currentStateRef,
         sessionRuntimeCacheRef,
         pendingFollowups,
