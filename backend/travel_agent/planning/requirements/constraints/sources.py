@@ -151,6 +151,7 @@ def _map_manual_memory_facts(
                 source="manual_memory",
                 confidence="high",
                 visibility="user_visible",
+                # created_at 在事实被明确意愿更新时刷新，代表最近一次确认的时间。
                 updated_at=_iso(fact.get("created_at")) or updated_at,
                 origin_ref=f"memory_facts.{fact_id}"
                 if fact_id is not None
@@ -266,6 +267,7 @@ def constraint_free_text_sources(
                     "id": f"fact_{index}",
                     "source": "memory_fact",
                     "text": str(fact.get("content") or ""),
+                    # 同上：created_at 是事实最近一次被确认的时间。
                     "updated_at": _iso(fact.get("created_at")) or now,
                     "category_meta": fact.get("category"),
                     "importance": int(fact.get("importance") or 0),

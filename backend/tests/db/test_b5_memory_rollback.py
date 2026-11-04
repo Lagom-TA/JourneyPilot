@@ -178,10 +178,11 @@ async def test_explicit_change_updates_fact_and_removes_stale_portrait(memory_da
     from travel_agent.memory.user_profile import UserProfileMemory
 
     session = memory_database
-    fact_id = (await session.execute(text("""
-        INSERT INTO memory_facts (user_id, session_id, content, category, importance)
-        VALUES ('local', :manual, '吃素', 'preference', 5) RETURNING fact_id
-    """), {"manual": USER_MANUAL_SESSION_ID})).scalar_one()
+    fact_id, created_before = (await session.execute(text("""
+        INSERT INTO memory_facts (user_id, session_id, content, category, importance, created_at)
+        VALUES ('local', :manual, '吃素', 'preference', 5, NOW() - INTERVAL '30 days')
+        RETURNING fact_id, created_at
+    """), {"manual": USER_MANUAL_SESSION_ID})).one()
     graph = MemoryGraph()
     await graph.update_portrait("local", [{"trait": "素食", "dimension": "lifestyle"}], db_session=session)
     await UserProfileMemory().set_auto_portrait("local", "生活方式：素食", db_session=session)
@@ -196,8 +197,10 @@ async def test_explicit_change_updates_fact_and_removes_stale_portrait(memory_da
         embeddings=[None], portrait=[], store=store, context=context, deleted_relation_ids=[relation_id],
     )
     row = (await session.execute(text(
-        "SELECT content, session_id, memory_revision FROM memory_facts WHERE fact_id = :id"
+        "SELECT content, session_id, memory_revision, created_at FROM memory_facts WHERE fact_id = :id"
     ), {"id": fact_id})).one()
     assert row.content == "不再吃素" and row.session_id == USER_MANUAL_SESSION_ID and row.memory_revision > 0
+    # 被明确意愿更新的事实按更新时间参与新近度排序和冲突仲裁，而不是停留在首次创建时间。
+    assert row.created_at > created_before
     assert (await UserProfileMemory().get_user_profile("local")).auto_portrait == ""
     assert outcome.facts_written == 1 and outcome.portraits_deleted == 1

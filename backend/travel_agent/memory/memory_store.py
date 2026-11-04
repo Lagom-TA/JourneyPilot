@@ -429,7 +429,11 @@ class MemoryStore:
         category: str, importance: int, source_message_id: str,
         prepared_embedding: Optional[List[float]], memory_revision: int, db_session: Any,
     ) -> bool:
-        """按事实身份更新内容，保留手动记忆的来源标记。"""
+        """按事实身份更新内容，保留手动记忆的来源标记。
+
+        更新表示用户刚刚重新确认了这条事实，所以 ``created_at`` 一并刷新：它同时是检索新近度和
+        约束冲突仲裁（单值约束取最新）的依据，不刷新的话，被更新的旧事实会输给更晚创建的另一条。
+        """
         policy = MemoryRetentionPolicy()
         embedding = None
         if prepared_embedding is not None:
@@ -441,7 +445,7 @@ class MemoryStore:
                 SET content = :content, category = :category, importance = :importance,
                     session_id = CASE WHEN session_id = :manual_session THEN session_id ELSE :session END,
                     source_message_id = :source_message_id, fact_digest = :digest,
-                    memory_revision = :memory_revision,
+                    memory_revision = :memory_revision, created_at = NOW(),
                     embedding = CAST(:embedding AS vector), expires_at = :expires_at,
                     retention_category = :category, retention_policy = CAST(:policy AS jsonb)
                 WHERE user_id = :uid AND fact_id = :fact_id
