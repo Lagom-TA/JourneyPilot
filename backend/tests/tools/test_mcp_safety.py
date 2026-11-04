@@ -50,6 +50,31 @@ async def test_parallel_mcp_discovery_registers_collisions_in_config_order(monke
     assert states["second"]["tool_name_collisions"] == ["shared"]
 
 
+async def test_uninstalled_node_program_is_reported_without_starting_it(monkeypatch, tmp_path, caplog):
+    import sys
+
+    from travel_agent.tools import registry as registry_module
+
+    monkeypatch.setattr(registry_module, "_registry", ToolRegistry())
+    manager = MCPManager()
+    probe = AsyncMock(return_value=[])
+    monkeypatch.setattr(manager, "_list_server_tools", probe)
+    absent = tmp_path / "node_modules" / ".bin" / "tavily-mcp"
+
+    with caplog.at_level(logging.WARNING, logger="travel_agent.tools.mcp_manager"):
+        states = await manager.initialize({
+            "node-service": MCPServerItem(command=str(absent)),
+            "installed": MCPServerItem(command=sys.executable),
+        })
+
+    assert [call.args[0] for call in probe.call_args_list] == ["installed"]
+    assert states["node-service"]["status"] == "misconfigured"
+    assert "npm ci" in states["node-service"]["last_error"]
+    assert str(tmp_path) not in states["node-service"]["last_error"]
+    assert any(str(absent) in record.getMessage() for record in caplog.records)
+    assert states["installed"]["status"] == "healthy"
+
+
 @pytest.mark.parametrize(
     ("raw", "reason", "retryable"),
     [

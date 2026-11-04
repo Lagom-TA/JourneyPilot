@@ -76,13 +76,18 @@ class SeedManifest:
 
 @dataclass
 class LoadReport:
-    """一次开机自举的结果。`problems` 非空 = 该报降级。"""
+    """一次开机自举的结果。`problems` 非空 = 该报降级。
+
+    `seed_absent` 表示没有提供种子目录：种子是可选数据，公开仓库默认不带，
+    这是预期状态而不是故障，调用方不应按降级处理。
+    """
 
     loaded: Dict[str, int] = field(default_factory=dict)
     present: Dict[str, int] = field(default_factory=dict)
     reembedded: bool = False
     skipped_non_empty: List[str] = field(default_factory=list)
     problems: List[str] = field(default_factory=list)
+    seed_absent: bool = False
 
 
 def _sha256(path: Path) -> str:
@@ -433,6 +438,7 @@ async def ensure_factory_corpus(seed_dir: Optional[Path] = None) -> LoadReport:
     if manifest is None:
         # 种子目录不存在时只报一条结论，而不是分别报告缺 manifest、缺 chunks
         # 与缺 vectors 三行。
+        report.seed_absent = True
         report.problems = [
             f"未提供本地出厂语料种子（{Path(seed_dir or DEFAULT_SEED_DIR)}）——知识库将是空的，"
             "检索会静默返回 0 条；需要时运行 `python backend/scripts/factory_corpus_seed.py --export` 生成"

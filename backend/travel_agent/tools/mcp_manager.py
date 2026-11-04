@@ -533,6 +533,17 @@ class MCPManager:
                 logger.warning(f"MCP 服务器 [{server_name}] 配置不完整")
                 return None
 
+            missing_program = self._missing_program(server_config)
+            if missing_program:
+                state.configured = False
+                state.status = "misconfigured"
+                state.last_error = (
+                    "未找到 MCP 程序：Node 服务需先安装依赖"
+                    "（./run.sh start 会自动安装，或在 backend/mcp 执行 npm ci）"
+                )
+                logger.warning("MCP 服务器 [%s] 程序不存在: %s", server_name, missing_program)
+                return None
+
             try:
                 tools = await self._list_server_tools(server_name, server_config)
                 normalized_tools = [
@@ -628,6 +639,20 @@ class MCPManager:
         if getattr(server_config, "sse_url", None):
             return True
         return bool(getattr(server_config, "command", None))
+
+    @staticmethod
+    def _missing_program(server_config: Any) -> Optional[str]:
+        """stdio 服务的启动程序是绝对路径却不可执行时返回该路径；裸命令名交给 PATH 解析。
+
+        Node 服务只从锁文件安装的 node_modules 启动，依赖没装时启动子进程只会得到
+        笼统的调用失败，这里提前给出可操作的原因。
+        """
+        if getattr(server_config, "sse_url", None):
+            return None
+        command = str(getattr(server_config, "command", "") or "")
+        if os.path.isabs(command) and not os.access(command, os.X_OK):
+            return command
+        return None
 
     def _missing_required_env(self, server_config: Any) -> List[str]:
         env = getattr(server_config, "env", None) or {}

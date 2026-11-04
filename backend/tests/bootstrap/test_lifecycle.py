@@ -132,9 +132,7 @@ async def test_startup_ensures_product_then_corpus_before_recovery(lifecycle):
     f = lifecycle
     f.settings.embedding.enabled = True
     f.settings.embedding.provider = "openai"
-    f.corpus.side_effect = f.action(
-        "corpus.bootstrap", result=SimpleNamespace(loaded={}, problems=[], present={})
-    )
+    f.corpus.side_effect = f.action("corpus.bootstrap", result=factory_seed.LoadReport())
     async with startup.application_lifespan():
         f.corpus.assert_awaited_once()
         assert f.events == [

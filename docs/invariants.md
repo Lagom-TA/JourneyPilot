@@ -389,6 +389,14 @@ Owner: `backend/travel_agent/tools/temporal.py`、`backend/travel_agent/tools/ga
 Tests:
 - `backend/tests/tools/test_temporal_tool_policy.py`
 
+### INV-TOOL-002：工具名的归属不会被后注册者改写，授权按服务来源判定
+约定：同名工具跨来源注册时保留先注册者及其说明，后来者只记入冲突清单；MCP 服务按配置顺序注册，归属不取决于探测先后。Agent 的工具授权同时核对工具名与所属服务，同名但来自其他 MCP 服务的工具不会被放行；执行时仍按本轮授权清单再核对一次工具名。
+Owner: `backend/travel_agent/tools/registry.py` 的 `ToolRegistry.register`、`backend/travel_agent/tools/mcp_manager.py` 的 `MCPManager.initialize`、`backend/travel_agent/tools/access.py` 的 `filter_tools_for_agent`、`backend/travel_agent/tools/execution.py`
+Tests:
+- `backend/tests/tools/test_mcp_safety.py::test_parallel_mcp_discovery_registers_collisions_in_config_order`
+- `backend/tests/tools/test_tool_policy_contract.py::test_named_exceptions_do_not_authorize_a_different_mcp_server`
+- `backend/tests/tools/test_tool_registry_contract.py::test_same_name_other_origin_cannot_replace_the_first_registration`
+
 ## 配置与交付
 
 ### INV-CFG-001：未知配置字段与拼错的环境变量都是错误
