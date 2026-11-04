@@ -37,6 +37,7 @@
 
 ## 收到的提醒
 
+- [ ] 来自 B2-03：重新规划的理解输入包含交付后的连续追问上下文 → 请复核内容保真与重复注入。
 - [ ] 来自 S0：目的地调研的模型产出缺少 `candidate_kind` 判别字段，导致 `ResearchPacket` 校验失败（run `trip_93ae8b4793d0597f813cbf36c4985f35`，6 处，详见 B3 提醒）；重试后另一次失败是 `weather_sensitivity` 的 `cold_sensitivity`、`wind_sensitivity` 填了 `medium`（只允许 `none/low/high`）。请检查对应提示词和输出示例是否明确要求每个候选带 `candidate_kind`，并写清这两个字段的取值范围。
 
 ## 问题与修复
