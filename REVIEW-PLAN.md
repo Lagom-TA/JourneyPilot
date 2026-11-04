@@ -35,20 +35,20 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 |---|---|---|---|---|---|---|---|
 | S0 | [审查准备](review-plan/stages/S0-setup.md) | — | — | ✅ | Codex | — | 2026-11-04 |
 | B1 | [后端分层与依赖边界](review-plan/stages/B1-backend-layers.md) | `后端逻辑` | S0 | ✅ | Codex | 0 | 2026-11-04 / dc5a9e4 |
-| B2 | [规划主链（上）：理解、研究设想与确认](review-plan/stages/B2-planning-intake.md) | `后端逻辑` | B1 | ↩️ | Codex | 1 | 2026-11-04 / 65f8269 |
+| B2 | [规划主链（上）：理解、研究设想与确认](review-plan/stages/B2-planning-intake.md) | `后端逻辑` | B1 | ↩️ | Codex | 2 | 2026-11-04 / 65f8269 |
 | B3 | [规划主链（下）：调研、组合与交付](review-plan/stages/B3-planning-delivery.md) | `后端逻辑` | B2 | ↩️ | Codex | 1 | 2026-11-04 / 8a92eb4 |
 | B4 | [运行控制、会话与流式](review-plan/stages/B4-runtime-streaming.md) | `后端逻辑` | B1 | ✅ | Codex | 0 | 2026-11-04 / b8a073d、c76a8aa、b8af718 |
-| B5 | [工具、模型、外部数据与用户资料](review-plan/stages/B5-tools-models-data.md) | `后端逻辑` | B1 | ↩️ | Codex | 2 | 2026-11-04 / 0373c45 |
-| B6 | [数据、配置与工程发布](review-plan/stages/B6-data-config-release.md) | `后端逻辑` | B1 | ✅ | Codex | 0 | 2026-11-04 / 8d994d8、9d9a185、3a61d1c |
+| B5 | [工具、模型、外部数据与用户资料](review-plan/stages/B5-tools-models-data.md) | `后端逻辑` | B1 | ✅ | Codex | 0 | 2026-11-04 / 0373c45、9c8f755、6678aff |
+| B6 | [数据、配置与工程发布](review-plan/stages/B6-data-config-release.md) | `后端逻辑` | B1 | ↩️ | Codex | 1 | 2026-11-04 / 8d994d8、9d9a185、3a61d1c |
 | F1 | [前端结构、状态与样式体系](review-plan/stages/F1-frontend-foundation.md) | `前端页面` | S0、B4 | ✅ | Codex（采集 / 修复） | 0 | 2026-11-04 / 38bd919、286d9e8 |
 | F2 | [首页与需求输入](review-plan/stages/F2-home-input.md) | `前端页面` | F1 | ⬜ | | 1 | |
 | F3 | [生成工作台](review-plan/stages/F3-generation-workspace.md) | `前端页面` | F1、B2、B4 | ⬜ | | 8 | |
 | F4 | [交付工作台](review-plan/stages/F4-delivery-workspace.md) | `前端页面` | F1、B3 | ⬜ | | 7 | |
-| F5 | [我的行程与偏好资料](review-plan/stages/F5-trips-preferences.md) | `前端页面` | F1、B5 | ⬜ | | 3 | |
+| F5 | [我的行程与偏好资料](review-plan/stages/F5-trips-preferences.md) | `前端页面` | F1、B5 | ⬜ | | 4 | |
 | F6 | [动效与交互](review-plan/stages/F6-motion-a11y.md) | `前端页面` | F2–F5 | ⬜ | | 1 | |
 | T1 | [界面文案](review-plan/stages/T1-ui-copy.md) | `文字内容` | F1 | ⬜ | | 4 | |
-| T2 | [提示词与模型产出](review-plan/stages/T2-prompts-outputs.md) | `文字内容` | B2、B3 | ⬜ | | 4 | |
-| T3 | [文档与开源门面](review-plan/stages/T3-docs-showcase.md) | `文字内容` | 其余全部 | ⬜ | | 5 | |
+| T2 | [提示词与模型产出](review-plan/stages/T2-prompts-outputs.md) | `文字内容` | B2、B3 | ⬜ | | 5 | |
+| T3 | [文档与开源门面](review-plan/stages/T3-docs-showcase.md) | `文字内容` | 其余全部 | ⬜ | | 6 | |
 
 三类标签可以并行推进；同一标签内按编号顺序进行；前置阶段完成后才能开始。状态只在这张表里维护。
 
