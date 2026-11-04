@@ -120,9 +120,9 @@ class RunExecutionStore:
                     ON CONFLICT (run_id) DO UPDATE
                     SET executor_id = EXCLUDED.executor_id,
                         lease_token = EXCLUDED.lease_token,
-                        lease_acquired_at = NOW(),
-                        lease_expires_at = EXCLUDED.lease_expires_at,
-                        heartbeat_at = NOW(),
+                        lease_acquired_at = clock_timestamp(),
+                        lease_expires_at = clock_timestamp() + (:lease_seconds * INTERVAL '1 second'),
+                        heartbeat_at = clock_timestamp(),
                         process_started_at = EXCLUDED.process_started_at,
                         last_safe_checkpoint_id = COALESCE(
                             EXCLUDED.last_safe_checkpoint_id,
