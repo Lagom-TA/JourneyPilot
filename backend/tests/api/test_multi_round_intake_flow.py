@@ -382,3 +382,45 @@ async def test_always_asking_model_fails_visibly_at_the_round_cap(offline_graph,
             await graph.ainvoke(state, config)
     finally:
         current_execution_lease.reset(token)
+
+
+@pytest.mark.parametrize("missing", ["dates", "destination"])
+async def test_automatic_questions_and_place_retries_respect_the_round_cap(
+    offline_graph, monkeypatch, missing
+):
+    from travel_agent.planning.requirements.understanding import agent as understanding_agent
+
+    class IncompleteModel(UnderstandingModel):
+        async def ainvoke_with_tools_events(self, messages, tools):
+            identity = dict(IDENTITY)
+            if missing == "dates":
+                identity.update(start_date=None, end_date=None)
+            else:
+                identity["destinations"] = []
+            yield {"type": "finish", "content": json.dumps({
+                "action": "ready",
+                "trip_identity": identity,
+                "requirements": "从上海去青岛放松几天",
+            }, ensure_ascii=False), "tool_calls": []}
+
+    monkeypatch.setattr(understanding_agent, "llm_for_task", lambda *args, **kwargs: IncompleteModel())
+    graph, config = offline_graph.graph, offline_graph.config
+    token = current_execution_lease.set("lease")
+    try:
+        state = _initial_state()
+        for _ in range(understanding_agent.UNDERSTANDING_MAX_ROUNDS):
+            result = await graph.ainvoke(state, config)
+            gate = result["__interrupt__"][0].value
+            assert gate["gate"] == "understanding"
+            decision = {"approval_token": gate["approval_token"]}
+            if missing == "dates":
+                decision.update(action="answer", answers=[
+                    {"question_id": "travel_dates", "text": "玩三天"}
+                ])
+            else:
+                decision["action"] = "retry"
+            state = Command(resume=decision)
+        with pytest.raises(understanding_agent.UnderstandingFailed, match="上限"):
+            await graph.ainvoke(state, config)
+    finally:
+        current_execution_lease.reset(token)

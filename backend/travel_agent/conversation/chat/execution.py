@@ -164,6 +164,8 @@ async def execute_chat(
                 if prepared.refinement_action:
                     workflow_kwargs["refinement_action"] = prepared.refinement_action
                     workflow_kwargs["refinement_bundle"] = prepared.refinement_bundle
+                    if prepared.refinement_instruction:
+                        workflow_kwargs["refinement_instruction"] = prepared.refinement_instruction
                 workflow_kwargs["resume_from_checkpoint"] = checkpoint_resume
                 workflow_kwargs["resume_payload"] = resume_payload
                 workflow_kwargs["plan_gate_enabled"] = request.plan_gate

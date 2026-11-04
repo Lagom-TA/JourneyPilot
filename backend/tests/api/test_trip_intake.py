@@ -174,6 +174,34 @@ async def test_answer_resumes_the_same_run_and_next_round_streams_back(
     assert detail.state.pending_user_choice["payload"]["revision"] == 2
 
 
+@pytest.mark.parametrize("route", [None, "fast_answer"])
+async def test_gate_answer_resumes_without_semantic_routing(
+    resources, deep_workflow, planning_route, monkeypatch, route
+):
+    first = decode(await request("POST", "/api/chat-stream", _planning_body("m1")))
+
+    async def forbidden(*_args, **_kwargs):
+        pytest.fail("明确的门控操作不应调用意图分流模型")
+
+    monkeypatch.setattr("travel_agent.conversation.chat.preparation.classify_route", forbidden)
+    body = {
+        "messages": [{"role": "user", "content": "慢慢逛", "message_id": "m2"}],
+        "session_id": first[0]["session_id"],
+        "run_id": first[0]["run_id"],
+        "gate_decision": {
+            "action": "answer",
+            "approval_token": first[1]["payload"]["approval_token"],
+            "answers": [{"question_id": "pace", "text": "慢慢逛"}],
+        },
+    }
+    if route is not None:
+        body["route"] = route
+    response = await request("POST", "/api/chat-stream", body)
+    assert response.status_code == 200, response.text
+    assert deep_workflow.resume_payloads[0]["action"] == "answer"
+    assert decode(response)[1]["payload"]["revision"] == 2
+
+
 async def test_stale_answer_token_is_rejected_before_execution(
     resources, deep_workflow, planning_route
 ):

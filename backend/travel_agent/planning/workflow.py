@@ -155,6 +155,7 @@ class TravelPlanningWorkflow:
         route_decision: Optional[Dict[str, Any]] = None,
         refinement_action: str = "",
         refinement_bundle: Any = None,
+        refinement_instruction: str = "",
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """流式执行深度调研工作流。"""
         import datetime
@@ -182,6 +183,7 @@ class TravelPlanningWorkflow:
                 controlled_trip_identity=controlled_trip_identity or {},
                 route_decision=route_decision or {},
                 refinement_action=refinement_action,
+                refinement_context=refinement_instruction,
             )
             if refinement_bundle is not None:
                 from travel_agent.planning.requirements.refinement import seed_refinement_state

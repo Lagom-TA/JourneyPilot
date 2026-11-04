@@ -50,7 +50,10 @@ def invocation_scope(state, node, config=None):
             "composition_reschedule_rounds", "research_redo_requests", "research_redo_rounds",
         })
     if node == NODE_UNDERSTANDING_AGENT:
-        keys.update({"current_time", "plan_gate_amendment", "pending_intent_amendments"})
+        keys.update({
+            "current_time", "plan_gate_amendment", "pending_intent_amendments",
+            "refinement_context",
+        })
     fields = state.model_dump(mode="json", include=keys)
     if node != NODE_UNDERSTANDING_AGENT:
         fields["assignment"] = resolve_agent_assignment(state.agent_assignments, node)

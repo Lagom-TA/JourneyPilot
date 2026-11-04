@@ -165,7 +165,7 @@ Tests:
 ## 意图与编排
 
 ### INV-INTENT-004：supplement 追加到同一条当前需求
-约定：计划门修改、理解问答与运行中 supplement 都进入同一条当前需求文字并推进规划代际；理解问答由 `requirements_preparer` 首次整理时并入，研究相关修改失效旧方案与旧产物并返回需求整理节点。
+约定：计划门修改、理解问答与已接收的运行中 supplement 进入同一条当前需求文字并推进规划代际；理解阶段由模型结合问答整理需求，`requirements_preparer` 校验并记录已处理的补充。研究相关修改失效旧方案与旧产物并返回理解节点。
 Owner: `backend/travel_agent/planning/requirements/amendments.py`、`backend/travel_agent/planning/requirements/supplements.py`、`backend/travel_agent/planning/requirements/natural_language.py`、`backend/travel_agent/planning/graph.py`
 Tests:
 - `backend/tests/planning/requirements/test_control_plane.py::test_supplement_updates_one_current_text_and_changes_generation`
@@ -179,12 +179,13 @@ Tests:
 - `backend/tests/planning/test_node_presentation.py::test_intent_amendments_can_resume_at_every_runtime_node_that_accepts_them`
 
 ### INV-INTENT-007：理解问题绑定当轮凭据，回答进入同一理解
-约定：`understanding_gate` 下发的每个问题轮次携带 `approval_token`；回答必须引用当前待答问题并回传同一凭据，凭据不匹配时原样重发问题，不消费状态、不重跑模型。回答以完整文字进入当前需求与理解消息历史，后续轮次不重复询问已答内容。
+约定：`understanding_gate` 下发的每个问题轮次携带 `approval_token`；回答必须引用当前待答问题并回传同一凭据，凭据不匹配时原样重发问题，不消费状态、不重跑模型。回答全文保存在理解问答与消息历史中，模型据此整理当前需求；模型提问、日期补问和地点重试共用轮次上限。
 Owner: `backend/travel_agent/planning/requirements/understanding/gate.py`、`backend/travel_agent/conversation/chat/contracts.py`、`backend/travel_agent/conversation/chat/preparation.py`
 Tests:
 - `backend/tests/api/test_multi_round_intake_flow.py::test_understanding_rounds_reach_the_plan_gate_with_answers_in_requirements`
 - `backend/tests/api/test_trip_intake.py::test_stale_answer_token_is_rejected_before_execution`
 - `backend/tests/api/test_trip_intake.py::test_answer_resumes_the_same_run_and_next_round_streams_back`
+- `backend/tests/api/test_multi_round_intake_flow.py::test_automatic_questions_and_place_retries_respect_the_round_cap`
 
 ### INV-NODE-001：运行图节点都有用户可见元数据
 约定：运行图的每个节点都出现在后端三张运行时表（trace phase、agent 显示名、step 显示名）中；前端阶段表覆盖同一组节点并接受 `_rN` 与「（第N轮补充）」后缀，进度摘要表为可展示的节点提供标签与说明。
@@ -197,7 +198,7 @@ Tests:
 约定：`ResearchPlan`、`PlanningGeneration` 与 `execution_plan` 绑定同一次方案确认；Worker 与行程组合消费确认后的自然语言任务和当前需求文字。
 Owner: `backend/travel_agent/planning/requirements/natural_language.py`、`backend/travel_agent/planning/research/research_plan_node.py`、`backend/travel_agent/planning/research/plan.py`
 Tests:
-- `backend/tests/planning/research/test_model_research_plan_flow.py::test_latest_user_words_and_confirmed_tasks_reach_research_and_delivery`
+- `backend/tests/planning/research/test_model_research_plan_flow.py::test_confirmed_idea_and_travel_understanding_reach_research_and_delivery`
 
 ### INV-WEP-002：provider_empty: 前缀固定判 (incomplete, provider_empty_result)
 约定：持久化的 `provider_empty:` 前缀映射为 incomplete / provider_empty_result，`is_provider_or_model_failure` 返回 True；Provider 完成调用但零命中属于空结果。前缀字符串是持久化格式，逐字符稳定。

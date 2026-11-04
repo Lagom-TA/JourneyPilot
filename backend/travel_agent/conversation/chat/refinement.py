@@ -8,12 +8,51 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from travel_agent.llm.router import get_model_router
+from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from travel_agent.utils.json_helpers import safe_parse_json
+
+
+REFINEMENT_CLARIFICATION = "refinement_clarification"
 
 
 class RefinementDecision(BaseModel):
     action: Literal["answer", "revise", "replan", "clarify"]
     response: str = Field(default="")
+
+
+async def pending_clarification_context(memory, session_id: str, run_id: str, text: str) -> str:
+    """读取当前旅行连续的追问，供下一次分流和执行共同使用。"""
+    exchanges = []
+    before_turn = None
+    while True:
+        page = await memory.list_turns(LOCAL_USER_ID, session_id, before_turn=before_turn)
+        turns = page.get("turns") or []
+        for turn in reversed(turns):
+            messages = turn.get("messages") or []
+            user = next((item for item in messages if item.get("role") == "user"), None)
+            assistant = next((item for item in messages if item.get("role") == "assistant"), None)
+            if (
+                not user
+                or not assistant
+                or assistant.get("task_type") != REFINEMENT_CLARIFICATION
+                or assistant.get("run_id") != run_id
+            ):
+                break
+            exchanges.append((str(user.get("content") or ""), str(assistant.get("content") or "")))
+        else:
+            cursor = page.get("next_before")
+            if turns and page.get("has_more") and cursor and cursor != before_turn:
+                before_turn = cursor
+                continue
+            break
+        break
+    if not exchanges:
+        return ""
+    lines = []
+    for user_text, question in reversed(exchanges):
+        lines.extend((f"旅行者：{user_text}", f"追问：{question}"))
+    lines.append(f"旅行者：{text}")
+    return "\n".join(lines)
 
 
 async def understand_followup(text, identity, bundle) -> RefinementDecision:

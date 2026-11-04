@@ -67,6 +67,8 @@ def understanding_context_payload(state: Any) -> Dict[str, Any]:
         payload["已知基础信息"] = state.controlled_trip_identity
     if state.current_requirements:
         payload["已有旅行理解"] = state.current_requirements
+    if state.refinement_context:
+        payload["本轮追问上下文"] = state.refinement_context
     if state.understanding_qa:
         payload["此前问答"] = state.understanding_qa
     preferences = format_constraint_pack_for_prompt(state.constraint_pack or {})

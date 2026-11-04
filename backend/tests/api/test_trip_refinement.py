@@ -121,6 +121,64 @@ async def test_clarification_requires_input_without_changing_delivered_run(resou
     assert await resources.delivery_bundle_store.get_current(run.run_id) == bundle
 
 
+async def test_clarification_answers_reach_routing_and_local_revision(resources, delivered, monkeypatch):
+    run, _bundle = delivered
+    routed = []
+
+    async def decide(text, *_args):
+        routed.append(text)
+        if len(routed) == 1:
+            return RefinementDecision(action="clarify", response="想调整哪一天？")
+        if len(routed) == 2:
+            return RefinementDecision(action="clarify", response="想换成什么？")
+        return RefinementDecision(action="revise")
+
+    monkeypatch.setattr(preparation, "understand_followup", decide)
+    from travel_agent.planning.itinerary import node as itinerary_node
+
+    class Model:
+        async def ainvoke_with_tools_events(self, messages, tools):
+            text = "\n".join(str(message.get("content", "")) for message in messages)
+            assert all(part in text for part in ("把原有景点换掉", "第一天", "候选公园"))
+            draft = itinerary_draft([{**visit_entry(), "candidate_id": "candidate_alternative"}])
+            yield {"type": "finish", "content": json.dumps(draft), "tool_calls": []}
+
+        async def ainvoke(self, *args, **kwargs):
+            return "{}"
+
+    monkeypatch.setattr(itinerary_node, "get_model_router", lambda: object())
+    monkeypatch.setattr(itinerary_node, "llm_for_task", lambda *args, **kwargs: Model())
+
+    async def tools():
+        return []
+
+    async def keep_copy(workspace, _llm):
+        return workspace
+
+    monkeypatch.setattr(itinerary_node, "get_available_tools", tools)
+    monkeypatch.setattr(itinerary_node, "write_itinerary_copy", keep_copy)
+    monkeypatch.setattr("travel_agent.planning.execution.ensure_budget_baseline", lambda: _nothing())
+    from travel_agent.planning.workflow import TravelPlanningWorkflow
+
+    resources.travel_workflow = TravelPlanningWorkflow(
+        resources.checkpointer,
+        delivery_bundle_store=resources.delivery_bundle_store,
+        trip_run_store=resources.trip_run_store,
+    )
+    for index, message in enumerate(("把原有景点换掉", "第一天", "候选公园")):
+        response = await request("POST", "/api/chat-stream", {
+            "messages": [{"role": "user", "content": message, "message_id": f"clarify-{index}"}],
+            "session_id": "trip-session", "run_id": run.run_id,
+        })
+        assert response.status_code == 200, response.text
+    assert all(part in routed[-1] for part in ("把原有景点换掉", "第一天", "候选公园"))
+    events = decode(response)
+    new_run_id = next(event["run_id"] for event in events if event["type"] == "delivery_ready")
+    updated = await resources.delivery_bundle_store.get_current(new_run_id)
+    assert updated.workspace.itinerary.visit_stops[0].name == "候选公园"
+    assert "把原有景点换掉" in updated.workspace.requirements
+
+
 async def test_question_uses_current_trip_without_changing_delivery(resources, delivered, monkeypatch):
     run, bundle = delivered
     seen = {}

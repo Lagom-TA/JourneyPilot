@@ -15,7 +15,10 @@ async def seed_refinement_state(state: TravelAgentState, bundle, action: str) ->
     if action != "revise":
         return state.model_copy(update={"current_requirements": bundle.workspace.requirements})
     requirements = "\n".join(
-        part for part in (bundle.workspace.requirements, f"后续补充：{state.user_query}") if part
+        part for part in (
+            bundle.workspace.requirements,
+            f"后续补充：{state.refinement_context or state.user_query}",
+        ) if part
     )
     state = state.model_copy(update={"current_requirements": requirements})
 

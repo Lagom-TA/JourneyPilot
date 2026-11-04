@@ -22,9 +22,14 @@ from travel_agent.conversation.intake_contracts import RouteDecision, RouteName
 from travel_agent.conversation.intake_lock import intake_session_lock
 from travel_agent.conversation.session_history import load_session_history
 from travel_agent.conversation.input_safety import InputGuard
-from travel_agent.conversation.chat.refinement import answer_context, understand_followup
+from travel_agent.conversation.chat.refinement import (
+    REFINEMENT_CLARIFICATION,
+    answer_context,
+    pending_clarification_context,
+    understand_followup,
+)
 from travel_agent.conversation.routing import explicit_route_decision
-from travel_agent.conversation.chat.errors import SessionAccessDenied
+from travel_agent.conversation.chat.errors import SessionAccessDenied, SessionHistoryUnavailable
 from .preset import load_preset_context
 from dataclasses import dataclass
 from typing import AsyncIterator
@@ -64,6 +69,7 @@ class PreparedChat:
     refinement_action: Optional[str] = None
     refinement_bundle: Any = None
     refinement_context: str = ""
+    refinement_instruction: str = ""
 
 
 def _last_user_message(request: ChatRequest) -> Optional[ChatMessage]:
@@ -244,6 +250,8 @@ async def _prepare_chat(
     user_msg = _last_user_message(request)
     if not user_msg:
         raise PreparationRefused(PreparationRejection.EMPTY_MESSAGE)
+    if request.gate_decision is not None and not request.run_id:
+        raise PreparationRefused(PreparationRejection.GATE_REQUIRES_RUN)
 
     user_message = user_msg.content.strip()
     user_message_id = user_msg.message_id or str(uuid.uuid4())
@@ -254,6 +262,7 @@ async def _prepare_chat(
     refinement_bundle = None
     refinement_action = None
     refinement_context = ""
+    refinement_instruction = ""
     if request.run_id and request.gate_decision is None:
         parent_detail = await trip_run_store.get_detail(request.run_id, event_limit=1)
         if parent_detail is None:
@@ -268,9 +277,18 @@ async def _prepare_chat(
             if refinement_bundle is None:
                 raise PreparationRefused(PreparationRejection.CHECKPOINT_NOT_FOUND)
             try:
+                refinement_instruction = await pending_clarification_context(
+                    chat_session_memory, session_id, request.run_id, user_message
+                )
+            except PermissionError as exc:
+                raise SessionAccessDenied() from exc
+            except Exception as exc:
+                logger.error("读取旅行追问失败 session=%s: %s", session_id, exc)
+                raise SessionHistoryUnavailable() from exc
+            try:
                 decision = await _understand_followup_attributed(
                     request.run_id,
-                    user_message,
+                    refinement_instruction or user_message,
                     parent_detail.run.controlled_trip_identity or {},
                     refinement_bundle,
                 )
@@ -287,7 +305,8 @@ async def _prepare_chat(
                     session_id=session_id, user_id=LOCAL_USER_ID, mode="fast",
                     user_message=user_message, user_message_id=user_message_id,
                     assistant_message_id=message_id, assistant_content=reply,
-                    assistant_display_content=reply, assistant_type="normal", task_type=None,
+                    assistant_display_content=reply, assistant_type="normal",
+                    task_type=REFINEMENT_CLARIFICATION,
                     agent_name="", step_name="", thinking_steps=[], run_id=request.run_id,
                     controlled_trip_identity=None,
                 )
@@ -295,7 +314,9 @@ async def _prepare_chat(
                     yield {"type": "chat_start", "message_id": message_id, "session_id": session_id}
                     yield {"type": "chat_complete", "message_id": message_id, "final_content": reply, "requires_input": True}
                 return ImmediateChat(_clarification_sse())
-    if refinement_action:
+    if request.gate_decision is not None:
+        route_decision = explicit_route_decision(RouteName.TRIP_PLANNING)
+    elif refinement_action:
         route_decision = explicit_route_decision(
             RouteName.FAST_ANSWER if refinement_action == "answer" else RouteName.TRIP_REFINEMENT
         )
@@ -461,8 +482,6 @@ async def _prepare_chat(
     lease_keeper = None
     gate_resume = request.gate_decision is not None
 
-    if gate_resume and not request.run_id:
-        raise PreparationRefused(PreparationRejection.GATE_REQUIRES_RUN)
     if request.run_id and not refinement_action:
         detail = parent_detail or await trip_run_store.get_detail(request.run_id, event_limit=1)
         if detail is None:
@@ -651,6 +670,7 @@ async def _prepare_chat(
             refinement_action=refinement_action,
             refinement_bundle=refinement_bundle,
             refinement_context=refinement_context,
+            refinement_instruction=refinement_instruction,
         )
     except BaseException:
         # 准备阶段失败时立刻归还租约，避免留下仍算“活着”的幽灵执行器。

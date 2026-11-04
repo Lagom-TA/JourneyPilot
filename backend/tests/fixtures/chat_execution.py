@@ -100,6 +100,19 @@ class ChatMemory:
     async def save_turn(self, **kwargs):
         self.turns.append(kwargs)
 
+    async def list_turns(self, user_id, session_id, *, before_turn=None, limit=30):
+        turns = []
+        for turn in self.turns:
+            if turn["session_id"] != session_id or turn["user_id"] != user_id:
+                continue
+            turns.append({"messages": [
+                {"role": "user", "content": turn["user_message"]},
+                {"role": "assistant", "content": turn["assistant_content"],
+                 "task_type": turn.get("task_type"), "run_id": turn.get("run_id")},
+            ]})
+        assert before_turn is None
+        return {"turns": turns[-limit:], "has_more": False, "next_before": None}
+
 
 class Profiles:
     async def get_user_profile(self, user_id):

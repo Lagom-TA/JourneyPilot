@@ -305,24 +305,12 @@ class TravelAgentState(BaseModel):
     rejected_intent_amendments: Annotated[
         List[IntentAmendmentRejection], _merge_amendment_rejections
     ] = Field(default_factory=list)
-    prompt_versions: Annotated[Dict[str, str], _merge_dicts] = Field(
-        default_factory=dict
-    )
-    policy_versions: Annotated[Dict[str, str], _merge_dicts] = Field(
-        default_factory=dict
-    )
-    model_versions: Annotated[Dict[str, str], _merge_dicts] = Field(
-        default_factory=dict
-    )
-
     preset_context: str = ""
     preset_pack_constraints: Dict[str, str] = Field(default_factory=dict)
 
     session_anchor: Optional[Dict[str, Any]] = None
 
     session_compressed: bool = False
-
-    session_compacted_this_turn: Annotated[bool, _or_bool] = False
 
     current_time: str = ""
 

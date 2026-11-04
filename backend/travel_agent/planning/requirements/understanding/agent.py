@@ -147,8 +147,10 @@ async def understanding_agent_node(state: Any, config: Optional[RunnableConfig] 
                 "options": [],
             }]
         needs_retry = action == "ready" and not missing_dates and not identity.destinations
-        if action == "ask" and rounds >= UNDERSTANDING_MAX_ROUNDS:
-            raise UnderstandingFailed("已达到理解阶段的提问上限，请整理要求后重新开始规划。")
+        if (pending or needs_retry) and rounds >= UNDERSTANDING_MAX_ROUNDS:
+            raise UnderstandingFailed(
+                "已达到理解阶段的提问上限或地点重试上限，请整理要求后重新开始规划。"
+            )
         _append_final_answer(messages, react.content)
         await _persist_run_identity(config, state.run_id, identity)
         update = {

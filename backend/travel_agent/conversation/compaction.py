@@ -81,7 +81,6 @@ async def _check_and_handle_compaction_deep(
             compaction_updates = {
                 "session_anchor": result.anchor.to_dict(),
                 "session_compressed": True,
-                "session_compacted_this_turn": True,
             }
 
     return compaction_updates
