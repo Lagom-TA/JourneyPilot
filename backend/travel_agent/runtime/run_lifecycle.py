@@ -9,6 +9,7 @@ from travel_agent.runtime.run_contracts import coerce_status
 from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Any
 
 
 TERMINAL_TRIP_RUN_STATUSES: set[TripRunStatus] = {
@@ -17,6 +18,26 @@ TERMINAL_TRIP_RUN_STATUSES: set[TripRunStatus] = {
     TripRunStatus.INTERRUPTED,
     TripRunStatus.CANCELLED,
 }
+
+
+def with_pending_choice_summary(
+    summary: Any, *, pending: bool
+) -> Dict[str, Any]:
+    """返回修正过交互标记的追踪摘要副本。"""
+    data = dict(summary) if isinstance(summary, dict) else {}
+    data["pending_user_choice"] = bool(pending)
+    return data
+
+
+def mark_cancelled_pending_choice(value: Any) -> Optional[Dict[str, Any]]:
+    """把当前决策保存为取消终态的只读审计快照。"""
+    if not isinstance(value, dict) or not value:
+        return None
+    return {
+        **value,
+        "read_only": True,
+        "terminal_status": TripRunStatus.CANCELLED.value,
+    }
 
 
 ALLOWED_STATUS_TRANSITIONS: Dict[TripRunStatus, set[TripRunStatus]] = {

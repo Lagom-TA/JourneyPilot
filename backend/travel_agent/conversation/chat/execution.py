@@ -32,6 +32,7 @@ from .progress_events import (
     _handle_work_explanation,
 )
 from travel_agent.planning.nodes import NODE_RESEARCH_GATE, NODE_UNDERSTANDING_GATE
+from travel_agent.planning.run_summary import build_trip_run_state_summary
 
 logger = logging.getLogger(__name__)
 
@@ -264,9 +265,9 @@ async def execute_chat(
                 continue
             if kind == "state_snapshot":
                 _, state_snapshot = item
-                await trip_run_store.record_state_snapshot(
+                await trip_run_store.record_state_summary(
                     trip_run.run_id,
-                    state_snapshot=state_snapshot,
+                    summary=build_trip_run_state_summary(state_snapshot),
                 )
                 continue
             if kind == "gate":
@@ -336,9 +337,9 @@ async def execute_chat(
             if kind == "state":
                 _, node_name, state_update = item
                 if node_name == "__final_state__":
-                    await trip_run_store.record_state_snapshot(
+                    await trip_run_store.record_state_summary(
                         trip_run.run_id,
-                        state_snapshot=state_update,
+                        summary=build_trip_run_state_summary(state_update),
                     )
                 else:
                     await trip_run_store.record_node_update(

@@ -44,10 +44,8 @@ from travel_agent.planning.requirements.approval import (
 )
 from travel_agent.planning.requirements.entry import clarifier_node
 from travel_agent.planning.requirements.natural_language import prepare_requirements_node
-from travel_agent.planning.requirements.understanding import (
-    understanding_agent_node,
-    understanding_gate_node,
-)
+from travel_agent.planning.requirements.understanding.agent import understanding_agent_node
+from travel_agent.planning.requirements.understanding.gate import understanding_gate_node
 from travel_agent.planning.requirements.summary import (
     trip_summary_card_after_brief_node,
 )

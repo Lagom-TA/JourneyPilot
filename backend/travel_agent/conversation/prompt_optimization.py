@@ -1,5 +1,33 @@
 from __future__ import annotations
 
+import logging
+
+from travel_agent.conversation.chat.preparation import check_input_guard
+
+logger = logging.getLogger(__name__)
+
+
+async def prepare_prompt_optimization(prompt: str) -> tuple[str, dict | None]:
+    """校验输入后返回待优化文本，或返回可直接展示的拒绝结果。"""
+    prompt = prompt.strip()
+    if len(prompt) < 4:
+        return prompt, {
+            "success": False,
+            "optimized_prompt": "",
+            "error_message": "提示词太短，请补充更多信息后重试",
+        }
+
+    guard_result = await check_input_guard(prompt)
+    if guard_result.is_blocked:
+        logger.warning("InputGuard blocked optimize-prompt: %s", guard_result.reason)
+        return prompt, {
+            "success": False,
+            "optimized_prompt": "",
+            "error_message": guard_result.blocked_reply
+            or "请求未通过安全检查，请修改后重试",
+        }
+    return prompt, None
+
 
 async def optimize_travel_prompt(prompt: str, model_router) -> dict:
     """优化提示词；入口没有 Run，这次调用不写 ``run_llm_calls``（run_id 是外键）。"""

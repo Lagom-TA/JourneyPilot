@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from travel_agent.config.models import Settings
+from travel_agent.config.models import MCPServerItem, Settings
 from travel_agent.config.loader import ConfigError, env_variable_reference, load_effective_config
 from travel_agent.config.providers import available_presets, capabilities_for, get_preset, preset_model_section
 from travel_agent.config.redaction import redact
@@ -77,12 +77,12 @@ def test_mcp_servers_merge_rather_than_replace():
     )
     server = settings.mcp_servers["tavily-search"]
     # 与内置默认比，而不是与 "npx" 比：装了根 node_modules 之后 command 是本地 bin。
-    builtin = default_mcp_servers()["tavily-search"]
+    builtin = default_mcp_servers(MCPServerItem)["tavily-search"]
     assert server.command == builtin.command
     assert server.args == builtin.args
     assert server.required_env == ["TAVILY_API_KEY"]
     assert server.env == {"TAVILY_API_KEY": "x"}
-    assert set(settings.mcp_servers) == set(default_mcp_servers())
+    assert set(settings.mcp_servers) == set(default_mcp_servers(MCPServerItem))
 
 
 def test_top_level_mcp_servers_is_refused():

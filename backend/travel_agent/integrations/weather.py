@@ -12,7 +12,8 @@ from pydantic import Field, model_validator
 
 from travel_agent.integrations.weather_contracts import WeatherTimeWindow
 from travel_agent.schema import StrictModel
-from travel_agent.tools.temporal import EXACT_WEATHER_FORECAST_DAYS
+
+EXACT_WEATHER_FORECAST_DAYS = 16
 
 
 class WeatherProviderError(RuntimeError):

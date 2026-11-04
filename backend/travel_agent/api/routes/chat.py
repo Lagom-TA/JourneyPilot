@@ -8,10 +8,12 @@ from travel_agent.conversation.chat.contracts import ChatRequest
 from travel_agent.conversation.chat.preparation import (
     prepare_chat,
     ImmediateChat,
-    check_input_guard,
 )
 from travel_agent.conversation.chat.execution import execute_chat
-from travel_agent.conversation.prompt_optimization import optimize_travel_prompt
+from travel_agent.conversation.prompt_optimization import (
+    optimize_travel_prompt,
+    prepare_prompt_optimization,
+)
 from travel_agent.api.chat_errors import raise_chat_preparation_error
 from travel_agent.api.schemas.chat import OptimizePromptRequest
 from travel_agent.api.sse import sse_event as encode_sse_event
@@ -112,25 +114,9 @@ async def optimize_prompt(request: OptimizePromptRequest):
     请求体由 ``OptimizePromptRequest`` 约束：过长、非字符串或缺字段返回 422。
     过短（<4）仍返回 200 + success=false 的内联提示；依赖不可用返回 503。
     """
-    prompt = request.prompt.strip()
-
-    if len(prompt) < 4:
-        return {
-            "success": False,
-            "optimized_prompt": "",
-            "error_message": "提示词太短，请补充更多信息后重试",
-        }
-
-    # 与聊天入口共用同一 InputGuard，提示词优化不能绕过注入检查。
-    guard_result = await check_input_guard(prompt)
-    if guard_result.is_blocked:
-        logger.warning("InputGuard blocked optimize-prompt: %s", guard_result.reason)
-        return {
-            "success": False,
-            "optimized_prompt": "",
-            "error_message": guard_result.blocked_reply
-            or "请求未通过安全检查，请修改后重试",
-        }
+    prompt, rejection = await prepare_prompt_optimization(request.prompt)
+    if rejection is not None:
+        return rejection
     try:
         return await optimize_travel_prompt(prompt, get_components().model_router)
     except Exception as e:

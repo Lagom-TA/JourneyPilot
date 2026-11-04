@@ -184,8 +184,9 @@ def test_policy_keys_equal_worker_nodes():
 
 def test_policy_servers_are_configured_mcp_servers():
     from travel_agent.config.mcp_defaults import default_mcp_servers
+    from travel_agent.config.models import MCPServerItem
 
-    configured = set(default_mcp_servers())
+    configured = set(default_mcp_servers(MCPServerItem))
     referenced = set().union(
         *(policy.servers for policy in access._AGENT_TOOL_POLICY.values())
     )

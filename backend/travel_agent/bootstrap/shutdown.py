@@ -1,22 +1,48 @@
 """先停止生产者，再关闭其持久化资源。"""
 
-import logging
+from __future__ import annotations
 
-from travel_agent.bootstrap.registry import registered_components
+import logging
+from typing import TYPE_CHECKING
+
+from travel_agent.bootstrap.registry import clear_components, registered_components
 from travel_agent.runtime.run_lease import release_all_leases
+
+if TYPE_CHECKING:
+    from travel_agent.bootstrap.components import AppComponents
 
 logger = logging.getLogger(__name__)
 
 
-async def shutdown_components() -> None:
+async def shutdown_components(components: AppComponents | None = None) -> None:
     """交还租约与停止生产者都发生在数据库连接池关闭之前。"""
-    components = registered_components()
-    if components and components.usage_flush_service is not None:
-        await components.usage_flush_service.stop()
-    if components and components.background_job_worker is not None:
-        await components.background_job_worker.stop()
-    if components and components.run_recovery_service is not None:
-        await components.run_recovery_service.stop()
+    if components is None:
+        components = registered_components()
+    failures: list[Exception] = []
+    if components:
+        for name, service in (
+            ("后台任务", components.background_job_worker),
+            ("运行恢复", components.run_recovery_service),
+        ):
+            if service is None:
+                continue
+            try:
+                await service.stop()
+            except Exception as exc:
+                logger.error("%s停止失败: %s", name, exc, exc_info=True)
+                failures.append(exc)
+
+        try:
+            await components.mcp_manager.close_all_sessions()
+        except Exception as exc:
+            logger.warning("MCP 会话关闭失败: %s", exc)
+
+        if components.usage_flush_service is not None:
+            try:
+                await components.usage_flush_service.stop()
+            except Exception as exc:
+                logger.error("用量刷写停止失败: %s", exc, exc_info=True)
+                failures.append(exc)
     try:
         released = await release_all_leases()
         if released:
@@ -43,3 +69,8 @@ async def shutdown_components() -> None:
         await close_redis()
     except Exception as e:
         logger.warning(f"Redis 关闭失败: {e}")
+
+    if registered_components() is components:
+        clear_components()
+    if failures:
+        raise failures[0]

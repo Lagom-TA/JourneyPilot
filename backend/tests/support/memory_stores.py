@@ -15,11 +15,6 @@ from typing import Any, Dict, List, Optional
 from travel_agent.config.models import ModelPricingItem
 from travel_agent.llm.usage import LLMCallRecord
 from travel_agent.planning.delivery.bundle import DeliveryBundle
-from travel_agent.planning.run_summary import (
-    build_trip_run_state_summary,
-    mark_cancelled_pending_choice,
-    with_pending_choice_summary,
-)
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from travel_agent.runtime.run_contracts import (
     TripRun,
@@ -37,6 +32,8 @@ from travel_agent.runtime.run_contracts import (
 from travel_agent.runtime.run_lifecycle import (
     assert_status_transition_allowed,
     is_terminal_status,
+    mark_cancelled_pending_choice,
+    with_pending_choice_summary,
 )
 from travel_agent.runtime.time import utc_now_iso
 from travel_agent.storage.cost_ledger_store import (
@@ -991,17 +988,16 @@ class InMemoryTripRunStore(TripRunStore):
         run.updated_at = state.updated_at
         return state
 
-    async def record_state_snapshot(
+    async def record_state_summary(
         self,
         run_id: str,
         *,
-        state_snapshot: Any,
+        summary: Dict[str, Any],
     ) -> TripRunState:
         state = self.states.get(run_id)
         run = self.runs.get(run_id)
         if state is None or run is None:
             raise KeyError(f"TripRunState not found: {run_id}")
-        summary = build_trip_run_state_summary(state_snapshot)
         state.latest_state_summary = with_pending_choice_summary(
             summary,
             pending=(

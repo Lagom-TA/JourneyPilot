@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from travel_agent.bootstrap.components import AppComponents
 from travel_agent.bootstrap.jobs import build_job_handlers
@@ -80,6 +80,33 @@ async def build_components(settings: Optional[Settings] = None) -> AppComponents
             e,
         )
 
+    try:
+        return await _build_remaining_components(
+            settings,
+            schema_report=schema_report,
+            checkpointer=checkpointer,
+            checkpointer_pool=checkpointer_pool,
+            checkpointer_available=checkpointer_available,
+            checkpointer_init_error=checkpointer_init_error,
+        )
+    except BaseException:
+        if checkpointer_pool is not None:
+            try:
+                await checkpointer_pool.close()
+            except Exception as exc:
+                logger.warning("装配失败后关闭 checkpointer 连接池失败: %s", exc)
+        raise
+
+
+async def _build_remaining_components(
+    settings: Settings,
+    *,
+    schema_report: Any,
+    checkpointer: Any,
+    checkpointer_pool: Any,
+    checkpointer_available: bool,
+    checkpointer_init_error: Optional[str],
+) -> AppComponents:
     try:
         from travel_agent.tools.builtin_tools import register_builtin_tools
 

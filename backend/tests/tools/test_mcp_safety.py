@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import logging
@@ -85,6 +86,152 @@ async def test_stdio_server_receives_allowlisted_and_explicit_environment(monkey
         "HTTPS_PROXY": "http://proxy.example",
         "SERVICE_KEY": "service-key",
     }
+
+
+async def test_reused_mcp_session_closes_in_its_owner_task(monkeypatch):
+    events = []
+
+    class Session:
+        async def initialize(self):
+            events.append("initialized")
+
+        def take_output_schema_violation(self):
+            return None
+
+        async def call_tool(self, name, arguments):
+            events.append(name)
+            return {"content": [{"type": "text", "text": "ok"}]}
+
+    @asynccontextmanager
+    async def open_session(_name, _config):
+        owner = asyncio.current_task()
+        events.append("opened")
+        try:
+            yield Session()
+        finally:
+            assert asyncio.current_task() is owner
+            events.append("closed")
+
+    manager = MCPManager()
+    manager._server_configs["fixture"] = MCPServerItem(command="fixture")
+    monkeypatch.setattr(manager, "_open_session", open_session)
+
+    assert (await manager._execute_tool("fixture", "first", {}))["success"]
+    assert (await manager._execute_tool("fixture", "second", {}))["success"]
+    await manager.close_all_sessions()
+
+    assert events == ["opened", "initialized", "first", "second", "closed"]
+    assert not manager._session_leases
+
+
+async def test_cancelled_mcp_call_closes_its_session(monkeypatch):
+    started = asyncio.Event()
+    closed = asyncio.Event()
+
+    class Session:
+        async def initialize(self):
+            pass
+
+        def take_output_schema_violation(self):
+            return None
+
+        async def call_tool(self, _name, _arguments):
+            started.set()
+            await asyncio.Event().wait()
+
+    @asynccontextmanager
+    async def open_session(_name, _config):
+        try:
+            yield Session()
+        finally:
+            closed.set()
+
+    manager = MCPManager()
+    manager._server_configs["fixture"] = MCPServerItem(command="fixture")
+    monkeypatch.setattr(manager, "_open_session", open_session)
+
+    call = asyncio.create_task(manager._execute_tool("fixture", "wait", {}))
+    await started.wait()
+    call.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await call
+    assert closed.is_set()
+    assert not manager._session_leases
+
+
+async def test_mcp_shutdown_waits_for_inflight_session_open(monkeypatch):
+    opening = asyncio.Event()
+    proceed = asyncio.Event()
+    closed = asyncio.Event()
+
+    class Session:
+        async def initialize(self):
+            pass
+
+        def take_output_schema_violation(self):
+            return None
+
+        async def call_tool(self, _name, _arguments):
+            return {"content": [{"type": "text", "text": "ok"}]}
+
+    @asynccontextmanager
+    async def open_session(_name, _config):
+        opening.set()
+        await proceed.wait()
+        try:
+            yield Session()
+        finally:
+            closed.set()
+
+    manager = MCPManager()
+    manager._server_configs["fixture"] = MCPServerItem(command="fixture")
+    monkeypatch.setattr(manager, "_open_session", open_session)
+
+    call = asyncio.create_task(manager._execute_tool("fixture", "call", {}))
+    await opening.wait()
+    shutdown = asyncio.create_task(manager.close_all_sessions())
+    await asyncio.sleep(0)
+    assert not shutdown.done()
+    proceed.set()
+    assert (await call)["success"]
+    await shutdown
+    assert closed.is_set()
+    assert not manager._session_leases
+
+
+async def test_cancelled_mcp_session_owner_is_reopened_on_next_call(monkeypatch):
+    events = []
+
+    class Session:
+        async def initialize(self):
+            pass
+
+        def take_output_schema_violation(self):
+            return None
+
+        async def call_tool(self, _name, _arguments):
+            return {"content": [{"type": "text", "text": "ok"}]}
+
+    @asynccontextmanager
+    async def open_session(_name, _config):
+        events.append("opened")
+        try:
+            yield Session()
+        finally:
+            events.append("closed")
+
+    manager = MCPManager()
+    manager._server_configs["fixture"] = MCPServerItem(command="fixture")
+    monkeypatch.setattr(manager, "_open_session", open_session)
+
+    assert (await manager._execute_tool("fixture", "call", {}))["success"]
+    owner = manager._session_leases["fixture"].owner_task
+    owner.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await owner
+    assert (await manager._execute_tool("fixture", "call", {}))["success"]
+    await manager.close_all_sessions()
+    assert events == ["opened", "closed", "opened", "closed"]
 
 
 async def test_mcp_failure_is_safe_in_status_results_logs_and_audit(monkeypatch, caplog):

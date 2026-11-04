@@ -11,7 +11,7 @@ import logging
 import os
 import re
 import time
-from contextlib import AsyncExitStack, asynccontextmanager
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -154,7 +154,8 @@ class _ServerSessionLease:
 
     server_name: str
     session: Any
-    stack: AsyncExitStack
+    owner_task: asyncio.Task[None]
+    close_requested: asyncio.Event
     last_used_monotonic: float
 
 
@@ -670,7 +671,12 @@ class MCPManager:
         if lease is None:
             return
         try:
-            await lease.stack.aclose()
+            lease.close_requested.set()
+            await lease.owner_task
+        except asyncio.CancelledError:
+            if asyncio.current_task().cancelling():
+                raise
+            logger.debug("MCP session owner cancelled | server=%s", server_name)
         except Exception as exc:
             logger.debug(
                 "MCP session lease close error | server=%s error=%s",
@@ -680,9 +686,12 @@ class MCPManager:
 
     async def close_all_sessions(self) -> None:
         """关闭所有已租用的 MCP 会话（重新初始化 / 进程退出）。"""
-        names = list(self._session_leases.keys())
+        async with self._lease_meta_lock:
+            names = list(self._server_call_locks)
         for name in names:
-            await self._close_session_lease(name)
+            lock = await self._server_call_lock(name)
+            async with lock:
+                await self._close_session_lease(name)
 
     async def _acquire_session_lease(
         self,
@@ -691,31 +700,54 @@ class MCPManager:
     ) -> _ServerSessionLease:
         """返回一个存活的 per-server 会话；调用方必须持有该 server 的调用锁。"""
         existing = self._session_leases.get(server_name)
-        if existing is not None and not self._lease_is_idle_expired(existing):
+        if (
+            existing is not None
+            and not existing.owner_task.done()
+            and not self._lease_is_idle_expired(existing)
+        ):
             existing.last_used_monotonic = time.monotonic()
             return existing
 
         if existing is not None:
             await self._close_session_lease(server_name)
 
-        stack = AsyncExitStack()
-        await stack.__aenter__()
-        try:
-            session = await stack.enter_async_context(
-                self._open_session(server_name, server_config)
-            )
-            await asyncio.wait_for(session.initialize(), timeout=INIT_TIMEOUT_SECONDS)
-        except Exception:
+        ready = asyncio.get_running_loop().create_future()
+        close_requested = asyncio.Event()
+
+        async def own_session() -> None:
             try:
-                await stack.aclose()
-            except Exception:
+                # MCP 的上下文必须由打开它的同一个任务退出。
+                async with self._open_session(server_name, server_config) as session:
+                    await asyncio.wait_for(session.initialize(), timeout=INIT_TIMEOUT_SECONDS)
+                    if ready.done():
+                        return
+                    ready.set_result(session)
+                    await close_requested.wait()
+            except BaseException as exc:
+                if not ready.done():
+                    if isinstance(exc, asyncio.CancelledError):
+                        ready.cancel()
+                    else:
+                        ready.set_exception(exc)
+                else:
+                    raise
+
+        owner_task = asyncio.create_task(own_session())
+        try:
+            session = await ready
+        except BaseException:
+            owner_task.cancel()
+            try:
+                await owner_task
+            except BaseException:
                 pass
             raise
 
         lease = _ServerSessionLease(
             server_name=server_name,
             session=session,
-            stack=stack,
+            owner_task=owner_task,
+            close_requested=close_requested,
             last_used_monotonic=time.monotonic(),
         )
         self._session_leases[server_name] = lease
@@ -859,6 +891,9 @@ class MCPManager:
                 if schema_violation is not None:
                     answer[PROVIDER_OUTPUT_SCHEMA_VIOLATION_KEY] = schema_violation
                 return answer
+            except asyncio.CancelledError:
+                await self._close_session_lease(server_name)
+                raise
             except Exception as exc:
                 # 传输/超时/运行时失败：关闭租约，下次调用重建。
                 await self._close_session_lease(server_name)

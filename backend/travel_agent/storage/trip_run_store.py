@@ -16,8 +16,7 @@ from sqlalchemy import bindparam, text
 from travel_agent.planning.delivery.bundle import DeliveryRevisionManifest
 
 from travel_agent.runtime.run_contracts import TripRun, TripRunDetail, TripRunEvent, TripRunMode, TripRunResumePolicy, TripRunState, TripRunStatus, coerce_mode, coerce_resume_policy, coerce_status, generate_trip_run_id
-from travel_agent.runtime.run_lifecycle import assert_status_transition_allowed, is_terminal_status
-from travel_agent.planning.run_summary import build_trip_run_state_summary, mark_cancelled_pending_choice, with_pending_choice_summary
+from travel_agent.runtime.run_lifecycle import assert_status_transition_allowed, is_terminal_status, mark_cancelled_pending_choice, with_pending_choice_summary
 from travel_agent.runtime.time import utc_now_iso
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from .database import get_db_session
@@ -1160,13 +1159,12 @@ class TripRunStore:
             )
             return _state_from_row(dict(refreshed.mappings().first()))
 
-    async def record_state_snapshot(
+    async def record_state_summary(
         self,
         run_id: str,
         *,
-        state_snapshot: Any,
+        summary: Dict[str, Any],
     ) -> TripRunState:
-        summary = build_trip_run_state_summary(state_snapshot)
         async with get_db_session() as session:
             # 保持父 Run → state 的加锁顺序，与 complete_delivery()、
             # transition_status() 及节点生命周期一致。

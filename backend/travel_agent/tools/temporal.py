@@ -14,7 +14,6 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict
 
 
-EXACT_WEATHER_FORECAST_DAYS = 16
 RAIL_LIVE_INVENTORY_DAYS = 15
 AMAP_WEATHER_FORECAST_DAYS = 4
 

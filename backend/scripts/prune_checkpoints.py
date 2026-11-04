@@ -34,7 +34,7 @@ async def main() -> None:
         result = await service.prune_once()
         print(json.dumps(result.__dict__, ensure_ascii=False, indent=2))
     finally:
-        await shutdown_components()
+        await shutdown_components(components)
 
 
 if __name__ == "__main__":

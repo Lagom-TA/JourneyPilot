@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from travel_agent.bootstrap import registry, shutdown, startup
+from travel_agent.bootstrap import assembly, registry, shutdown, startup
 from travel_agent.config.models import Settings
 from travel_agent.config import loader
 from travel_agent.knowledge import factory_seed
-from travel_agent.storage import database, redis_client
+from travel_agent.storage import checkpointer, database, redis_client
 
 
 @pytest.fixture
@@ -37,6 +37,7 @@ def lifecycle(monkeypatch):
         checkpointer_available=True,
         checkpointer_init_error=None,
         tool_registry=SimpleNamespace(count=0),
+        mcp_manager=SimpleNamespace(close_all_sessions=action("mcp.close")),
         usage_flush_service=SimpleNamespace(stop=action("usage.stop")),
         background_job_worker=SimpleNamespace(
             cleanup=action("jobs.cleanup"),
@@ -97,9 +98,10 @@ async def test_incompatible_schema_blocks_writes_but_not_pdf(lifecycle, missing)
         assert registry.get_components() is f.components
         assert f.events == ["construct", "pdf.probe"]
     assert f.events[2:] == [
-        "usage.stop",
         "jobs.stop",
         "recovery.stop",
+        "mcp.close",
+        "usage.stop",
         "leases.release",
         "pool.close",
         "db.close",
@@ -183,9 +185,10 @@ async def test_shutdown_reads_latest_registry_value(lifecycle):
     await shutdown.shutdown_components()
     obsolete.usage_flush_service.stop.assert_not_called()
     assert f.events == [
-        "usage.stop",
         "jobs.stop",
         "recovery.stop",
+        "mcp.close",
+        "usage.stop",
         "leases.release",
         "pool.close",
         "db.close",
@@ -200,15 +203,31 @@ async def test_uninitialized_shutdown_still_releases_and_closes(lifecycle):
     assert lifecycle.events == ["leases.release", "db.close", "redis.close"]
 
 
+async def test_shutdown_closes_explicit_unregistered_components(lifecycle):
+    await shutdown.shutdown_components(lifecycle.components)
+    assert lifecycle.events == [
+        "jobs.stop",
+        "recovery.stop",
+        "mcp.close",
+        "usage.stop",
+        "leases.release",
+        "pool.close",
+        "db.close",
+        "redis.close",
+    ]
+
+
 @pytest.mark.parametrize(
-    "failing", ["leases.release", "pool.close", "db.close", "redis.close"]
+    "failing", ["mcp.close", "leases.release", "pool.close", "db.close", "redis.close"]
 )
 async def test_close_failures_do_not_skip_later_resources(
     lifecycle, monkeypatch, failing
 ):
     f = lifecycle
     registry.set_components(f.components)
-    if failing == "leases.release":
+    if failing == "mcp.close":
+        f.components.mcp_manager.close_all_sessions = f.action(failing, fail=True)
+    elif failing == "leases.release":
         monkeypatch.setattr(
             shutdown, "release_all_leases", f.action(failing, fail=True)
         )
@@ -220,9 +239,10 @@ async def test_close_failures_do_not_skip_later_resources(
         monkeypatch.setattr(redis_client, "close_redis", f.action(failing, fail=True))
     await shutdown.shutdown_components()
     assert f.events == [
-        "usage.stop",
         "jobs.stop",
         "recovery.stop",
+        "mcp.close",
+        "usage.stop",
         "leases.release",
         "pool.close",
         "db.close",
@@ -233,14 +253,35 @@ async def test_close_failures_do_not_skip_later_resources(
 @pytest.mark.parametrize(
     "producer", ["usage_flush_service", "background_job_worker", "run_recovery_service"]
 )
-async def test_producer_stop_exception_is_not_swallowed(lifecycle, producer):
+async def test_producer_stop_exception_is_raised_after_remaining_cleanup(lifecycle, producer):
     f = lifecycle
     registry.set_components(f.components)
     getattr(f.components, producer).stop = f.action("producer.failed", fail=True)
     with pytest.raises(RuntimeError, match="producer.failed"):
         await shutdown.shutdown_components()
-    assert "leases.release" not in f.events
-    assert "pool.close" not in f.events
+    assert "mcp.close" in f.events
+    assert "leases.release" in f.events
+    assert f.events[-3:] == ["pool.close", "db.close", "redis.close"]
+    assert registry.registered_components() is None
+
+
+async def test_assembly_failure_closes_open_checkpointer_pool(monkeypatch):
+    report = SimpleNamespace(log_summary=Mock())
+    pool = SimpleNamespace(close=AsyncMock())
+    monkeypatch.setattr(database, "get_engine", lambda: object())
+    monkeypatch.setattr(
+        assembly, "verify_database_contract", AsyncMock(return_value=report)
+    )
+    monkeypatch.setattr(
+        checkpointer, "build_checkpointer", AsyncMock(return_value=(object(), pool))
+    )
+    monkeypatch.setattr(
+        assembly, "_build_remaining_components", AsyncMock(side_effect=RuntimeError("装配失败"))
+    )
+
+    with pytest.raises(RuntimeError, match="装配失败"):
+        await assembly.build_components(Settings(embedding={"enabled": False}))
+    pool.close.assert_awaited_once()
 
 
 async def test_pdf_startup_records_failed_probe_without_real_render(monkeypatch):

@@ -33,12 +33,12 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 | 编号 | 阶段 | 标签 | 前置 | 状态 | 负责人 | 未处理提醒 | 完成日期 / 提交 |
 |---|---|---|---|---|---|---|---|
 | S0 | [审查准备](review-plan/stages/S0-setup.md) | — | — | ✅ | Codex | — | 2026-11-04 |
-| B1 | [后端分层与依赖边界](review-plan/stages/B1-backend-layers.md) | `后端逻辑` | S0 | ⬜ | | 0 | |
-| B2 | [规划主链（上）：理解、研究设想与确认](review-plan/stages/B2-planning-intake.md) | `后端逻辑` | B1 | ⬜ | | 0 | |
-| B3 | [规划主链（下）：调研、组合与交付](review-plan/stages/B3-planning-delivery.md) | `后端逻辑` | B2 | ⬜ | | 2 | |
-| B4 | [运行控制、会话与流式](review-plan/stages/B4-runtime-streaming.md) | `后端逻辑` | B1 | ⬜ | | 0 | |
-| B5 | [工具、模型、外部数据与用户资料](review-plan/stages/B5-tools-models-data.md) | `后端逻辑` | B1 | ⬜ | | 0 | |
-| B6 | [数据、配置与工程发布](review-plan/stages/B6-data-config-release.md) | `后端逻辑` | B1 | ⬜ | | 0 | |
+| B1 | [后端分层与依赖边界](review-plan/stages/B1-backend-layers.md) | `后端逻辑` | S0 | 🔧 | Codex | 0 | |
+| B2 | [规划主链（上）：理解、研究设想与确认](review-plan/stages/B2-planning-intake.md) | `后端逻辑` | B1 | ⬜ | | 2 | |
+| B3 | [规划主链（下）：调研、组合与交付](review-plan/stages/B3-planning-delivery.md) | `后端逻辑` | B2 | ⬜ | | 3 | |
+| B4 | [运行控制、会话与流式](review-plan/stages/B4-runtime-streaming.md) | `后端逻辑` | B1 | ⬜ | | 2 | |
+| B5 | [工具、模型、外部数据与用户资料](review-plan/stages/B5-tools-models-data.md) | `后端逻辑` | B1 | ⬜ | | 3 | |
+| B6 | [数据、配置与工程发布](review-plan/stages/B6-data-config-release.md) | `后端逻辑` | B1 | ⬜ | | 4 | |
 | F1 | [前端结构、状态与样式体系](review-plan/stages/F1-frontend-foundation.md) | `前端页面` | S0、B4 | ⬜ | | 0 | |
 | F2 | [首页与需求输入](review-plan/stages/F2-home-input.md) | `前端页面` | F1 | ⬜ | | 0 | |
 | F3 | [生成工作台](review-plan/stages/F3-generation-workspace.md) | `前端页面` | F1、B2、B4 | ⬜ | | 2 | |
@@ -47,7 +47,7 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 | F6 | [动效、键盘与无障碍](review-plan/stages/F6-motion-a11y.md) | `前端页面` | F2–F5 | ⬜ | | 0 | |
 | T1 | [界面文案](review-plan/stages/T1-ui-copy.md) | `文字内容` | F1 | ⬜ | | 0 | |
 | T2 | [提示词与模型产出](review-plan/stages/T2-prompts-outputs.md) | `文字内容` | B2、B3 | ⬜ | | 1 | |
-| T3 | [文档与开源门面](review-plan/stages/T3-docs-showcase.md) | `文字内容` | 其余全部 | ⬜ | | 0 | |
+| T3 | [文档与开源门面](review-plan/stages/T3-docs-showcase.md) | `文字内容` | 其余全部 | ⬜ | | 1 | |
 
 三类标签可以并行推进；同一标签内按编号顺序进行；前置阶段完成后才能开始。状态只在这张表里维护。
 

@@ -87,7 +87,8 @@ migrations, and launches the API and web app. The default local embedding model 
 ```
 
 The database and Redis ports above match the included Compose configuration. Pass those environment
-variables again when using `./run.sh restart`, or set the ports in `config.yaml`. See
+variables again when using `./run.sh restart`, or set the ports in `config.yaml`. On shutdown, the API
+stops background work and MCP sessions, flushes usage, and closes database and Redis connections. See
 [local development troubleshooting](docs/local-development-troubleshooting.md) if startup fails.
 
 ## Run with Docker Compose

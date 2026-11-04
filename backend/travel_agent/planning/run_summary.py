@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from travel_agent.runtime.run_contracts import TripRunStatus
 from typing import Any
 from typing import Dict
-from typing import Optional
 
 
 def build_trip_run_state_summary(state: Any) -> Dict[str, Any]:
@@ -44,25 +42,3 @@ def build_trip_run_state_summary(state: Any) -> Dict[str, Any]:
         "identity_locked": identity_ready,
     }
     return summary
-
-
-def with_pending_choice_summary(
-    summary: Any,
-    *,
-    pending: bool,
-) -> Dict[str, Any]:
-    """返回修正过交互标记的追踪摘要副本。"""
-    data = dict(summary) if isinstance(summary, dict) else {}
-    data["pending_user_choice"] = bool(pending)
-    return data
-
-
-def mark_cancelled_pending_choice(value: Any) -> Optional[Dict[str, Any]]:
-    """把当前决策保存为取消终态的只读审计快照。"""
-    if not isinstance(value, dict) or not value:
-        return None
-    return {
-        **value,
-        "read_only": True,
-        "terminal_status": TripRunStatus.CANCELLED.value,
-    }

@@ -1,8 +1,11 @@
 """进程内应用组件注册表。"""
 
-from typing import Optional
+from __future__ import annotations
 
-from travel_agent.bootstrap.components import AppComponents
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from travel_agent.bootstrap.components import AppComponents
 
 _components: Optional[AppComponents] = None
 
@@ -25,3 +28,9 @@ def set_components(components: AppComponents) -> None:
 def registered_components() -> Optional[AppComponents]:
     """读取当前注册表；关闭阶段允许尚未初始化。"""
     return _components
+
+
+def clear_components() -> None:
+    """撤销已关闭的组件注册。"""
+    global _components
+    _components = None

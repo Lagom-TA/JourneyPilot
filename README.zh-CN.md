@@ -78,7 +78,7 @@ JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
 ./run.sh stop
 ```
 
-上面的数据库和 Redis 端口与仓库 Compose 配置一致。再次执行 `./run.sh restart` 时，需要重新提供这两个环境变量，或将端口写入 `config.yaml`。启动问题见[本地开发排障](docs/local-development-troubleshooting.md)。
+上面的数据库和 Redis 端口与仓库 Compose 配置一致。再次执行 `./run.sh restart` 时，需要重新提供这两个环境变量，或将端口写入 `config.yaml`。停止时，API 会关闭后台任务和 MCP 会话，刷写用量后再关闭数据库与 Redis 连接。启动问题见[本地开发排障](docs/local-development-troubleshooting.md)。
 
 ## 使用 Docker Compose
 

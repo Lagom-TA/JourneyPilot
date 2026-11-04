@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional, TypeVar
 
 from ..paths import BACKEND_DIR
-from .models import MCPServerItem
+
+ServerConfig = TypeVar("ServerConfig")
 
 _MCP_DIR = BACKEND_DIR / "mcp"
 
@@ -104,10 +105,10 @@ def _server_env(required_env: tuple[str, ...]) -> Optional[Dict[str, str]]:
     return {name: value for name in required_env if (value := os.getenv(name))}
 
 
-def default_mcp_servers() -> Dict[str, MCPServerItem]:
+def default_mcp_servers(factory: Callable[..., ServerConfig]) -> Dict[str, ServerConfig]:
     """基于本模块内的声明构建默认 MCP 服务器映射。"""
 
-    servers: Dict[str, MCPServerItem] = {}
+    servers: Dict[str, ServerConfig] = {}
     for name, declaration in _DEFAULT_SERVERS.items():
         node = declaration.get("node")
         if node is not None:
@@ -118,7 +119,7 @@ def default_mcp_servers() -> Dict[str, MCPServerItem]:
                 module=declaration.get("python_module"),
             )
         required_env = tuple(declaration.get("required_env", ()))
-        servers[name] = MCPServerItem(
+        servers[name] = factory(
             **launch,
             env=_server_env(required_env),
             description=declaration["description"],

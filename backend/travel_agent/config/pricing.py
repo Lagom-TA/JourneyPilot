@@ -8,12 +8,15 @@
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import TYPE_CHECKING, Callable, List, Optional, TypeVar
 
-from .models import ModelPricingItem
+if TYPE_CHECKING:
+    from .models import ModelPricingItem
+
+PricingItem = TypeVar("PricingItem")
 
 
-def default_model_pricing() -> List["ModelPricingItem"]:
+def default_model_pricing(factory: Callable[..., PricingItem]) -> List[PricingItem]:
     """内置定价快照（USD / 1M tokens，国际站口径）。
 
     分层定价（Qwen）取基础档；价格随时变动，用户可在
@@ -27,43 +30,43 @@ def default_model_pricing() -> List["ModelPricingItem"]:
     day = "2026-07-03"
     return [
         # MiniMax（M2.7 有显式缓存写入费；本卡读折扣公式不计 write，仅登记）
-        ModelPricingItem(pattern="MiniMax-M2.7", provider="minimax", input_per_1m=0.30,
+        factory(pattern="MiniMax-M2.7", provider="minimax", input_per_1m=0.30,
                          cached_input_per_1m=0.06, cache_write_per_1m=0.375, output_per_1m=1.20,
                          effective_from=day, source_url=mm),
-        ModelPricingItem(pattern="MiniMax-M3", provider="minimax", input_per_1m=0.30,
+        factory(pattern="MiniMax-M3", provider="minimax", input_per_1m=0.30,
                          cached_input_per_1m=0.06, output_per_1m=1.20,
                          effective_from=day, source_url=mm),
         # DeepSeek（缓存命中价≈未命中 1/50）
-        ModelPricingItem(pattern="deepseek-v4-flash", provider="deepseek", input_per_1m=0.14,
+        factory(pattern="deepseek-v4-flash", provider="deepseek", input_per_1m=0.14,
                          cached_input_per_1m=0.0028, output_per_1m=0.28,
                          effective_from=day, source_url=ds),
-        ModelPricingItem(pattern="deepseek-v4-pro", provider="deepseek", input_per_1m=0.435,
+        factory(pattern="deepseek-v4-pro", provider="deepseek", input_per_1m=0.435,
                          cached_input_per_1m=0.003625, output_per_1m=0.87,
                          effective_from=day, source_url=ds),
         # 经 OpenRouter 访问的同两个模型。模型 id 带 `deepseek/` 前缀，因此需要
         # 单独的前缀项；缓存读价也与直连不同（OpenRouter 为未命中价的 1/5，
         # 直连为 1/50）。缺少这些行时 resolve_price 返回 None，成本读数全为空。
-        ModelPricingItem(pattern="deepseek/deepseek-v4-flash", provider="deepseek",
+        factory(pattern="deepseek/deepseek-v4-flash", provider="deepseek",
                          input_per_1m=0.14, cached_input_per_1m=0.028, output_per_1m=0.28,
                          effective_from="2026-07-31", source_url=orouter),
-        ModelPricingItem(pattern="deepseek/deepseek-v4-pro", provider="deepseek",
+        factory(pattern="deepseek/deepseek-v4-pro", provider="deepseek",
                          input_per_1m=0.435, cached_input_per_1m=0.003625, output_per_1m=0.87,
                          effective_from="2026-07-31", source_url=orouter),
         # Qwen / 阿里云（分层定价取基础档；隐式缓存命中 20%）
-        ModelPricingItem(pattern="Qwen-Flash", provider="qwen", input_per_1m=0.05,
+        factory(pattern="Qwen-Flash", provider="qwen", input_per_1m=0.05,
                          cached_input_per_1m=0.01, output_per_1m=0.40,
                          effective_from=day, source_url=qwen),
-        ModelPricingItem(pattern="Qwen3.7-Plus", provider="qwen", input_per_1m=0.40,
+        factory(pattern="Qwen3.7-Plus", provider="qwen", input_per_1m=0.40,
                          cached_input_per_1m=0.08, output_per_1m=1.60,
                          effective_from=day, source_url=qwen),
         # OpenAI 5.4 系
-        ModelPricingItem(pattern="gpt-5.4-nano", provider="openai", input_per_1m=0.20,
+        factory(pattern="gpt-5.4-nano", provider="openai", input_per_1m=0.20,
                          cached_input_per_1m=0.02, output_per_1m=1.25,
                          effective_from=day, source_url=oai),
-        ModelPricingItem(pattern="gpt-5.4-mini", provider="openai", input_per_1m=0.75,
+        factory(pattern="gpt-5.4-mini", provider="openai", input_per_1m=0.75,
                          cached_input_per_1m=0.075, output_per_1m=4.50,
                          effective_from=day, source_url=oai),
-        ModelPricingItem(pattern="gpt-5.4", provider="openai", input_per_1m=2.50,
+        factory(pattern="gpt-5.4", provider="openai", input_per_1m=2.50,
                          cached_input_per_1m=0.25, output_per_1m=15.00,
                          effective_from=day, source_url=oai),
     ]

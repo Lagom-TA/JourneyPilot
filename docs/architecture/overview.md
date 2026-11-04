@@ -53,21 +53,34 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
 - `planning/delivery/`：事实、来源、引用、报告与地图投影，以及交付持久化。`assembly.py` 组装
   Bundle，`projection_builder.py` 生成报告/地图/来源索引，`persistence.py` 在同一事务里提交
   Bundle、读回确认、完成状态与终态事件，`finalizer.py` 负责重试与失败转换。PDF 排版属于交付，
-  渲染器就绪检查属于 integrations。
+  渲染器就绪检查属于 integrations。`public/` 是 Bundle 及其子项的共享公开投影；API 的
+  `presenters/` 则将 Run、执行状态和事件投影为 HTTP 响应。
 - `conversation/`：路由、输入安全、回答展示与会话合同。`graph.py` 拥有快答图缓存，`workflow.py`
   负责流式更新与生命周期；`answer/` 分开汇率上下文、实时工具上下文和快答节点；`chat/` 负责
-  请求准备、费用记录、消息保存、租约、断连清理与已持久化交付读取。
+  请求准备、费用记录、消息保存、租约、断连清理与已持久化交付读取。会话入口判断是否触发自动
+  整理，具体摘要、边界提交和历史存取由 `memory/` 实现。
 - `api/`：HTTP 参数、错误映射、公开投影与 SSE 编码。`api/schemas/` 与 `api/routes/trip_runs/`
   按资源划分，不承担工作流执行、运行取消或交付事务；聊天请求合同归 `conversation/chat/contracts.py`。
 - `bootstrap/`：组件构建、唯一注册、启动/关闭、后台任务装配与诊断（`bootstrap/jobs.py`）。
 - `runtime/`：运行与命令合同、状态转换、租约、恢复、后台任务、并发、预算、时限、事件缓冲与
-  时间函数。恢复只读取持久化的 Run 记录、checkpoint 与交付 Bundle，不依赖 planning。
+  时间函数。恢复只读取持久化的 Run 记录、checkpoint 与交付 Bundle，不依赖 planning；规划图的
+  节点编排和各节点的截止窗口仍由 `planning/` 负责。
 - `integrations/`：地点、路线、航班、铁路、汇率和天气供应商访问，以及供应商就绪检查；
-  适配器不导入规划状态。`storage/` 负责持久化与缓存，`memory/` 负责偏好、生命周期合同与
-  记忆提取任务。
+  适配器不导入规划状态。`tools/` 负责工具注册、授权、执行和 MCP 会话，在需要时调用外部适配器。
+- `storage/` 负责持久化与缓存，包括 Run、交付、命令、用量、审计及维护操作；`memory/` 负责
+  会话历史及摘要存取、偏好、生命周期合同与记忆提取任务。
+- `knowledge/` 负责资料解析、分块、索引、检索与出厂语料；`llm/` 负责模型请求、路由、
+  用量记录及定价所需数据。
 - `config/`：`models.py`（唯一 schema）、`loader.py`（加载与来源）、`providers.py`（preset 能力）、
   `redaction.py`（脱敏）、`capabilities.py`（依赖检查）。`utils/` 只放通用坐标、文本、JSON 与
   日志脱敏工具；`cli/` 按命令拆分，`cli/main.py` 只负责启动顺序与分派。
+- 根目录的 `schema.py` 定义共用严格模型基类，`paths.py` 提供仓库路径，`public_note.py` 校验
+  模型主动写出的公开工作说明。
+
+请求通常由 API 进入对话或规划，再访问运行时、仓储和外部适配器；简单资源读写可直接调用仓储。
+仓储实现会导入它所持久化的领域合同和运行状态类型，因此模块导入关系并非按目录划分的严格
+单向链。组件注册表只在类型检查时引用组件容器，运行时可由各层读取已装配的组件。
+关闭时先停止后台任务与恢复扫描，再关闭复用的 MCP 会话、刷写用量，最后交还租约并关闭连接池。
 
 ## 三条边界
 

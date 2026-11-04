@@ -567,13 +567,12 @@ class Settings(StrictConfig):
 
 
 def _pricing() -> List[ModelPricingItem]:
-    # 延迟到这里 import：两份默认数据都要 import 本模块的类型，模块级引用会成环。
     from .pricing import default_model_pricing
 
-    return default_model_pricing()
+    return default_model_pricing(ModelPricingItem)
 
 
 def _mcp_servers() -> Dict[str, MCPServerItem]:
     from .mcp_defaults import default_mcp_servers
 
-    return default_mcp_servers()
+    return default_mcp_servers(MCPServerItem)

@@ -9,6 +9,7 @@ import pytest
 
 from travel_agent.config import mcp_defaults
 from travel_agent.config.mcp_defaults import default_mcp_servers
+from travel_agent.config.models import MCPServerItem
 
 _EXPECTED_KEYS = {
     "tavily-search",
@@ -49,7 +50,7 @@ def test_defaults_expose_real_servers_and_launch_paths(monkeypatch: pytest.Monke
         monkeypatch.delenv(name, raising=False)
     _force_local_bins(monkeypatch, present=False)
 
-    servers = default_mcp_servers()
+    servers = default_mcp_servers(MCPServerItem)
 
     assert set(servers) == _EXPECTED_KEYS
     assert servers["tavily-search"].command == "npx"
@@ -64,12 +65,12 @@ def test_node_servers_prefer_local_bin_and_fall_back_to_versioned_npx(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _force_local_bins(monkeypatch, present=True)
-    local = default_mcp_servers()["tavily-search"]
+    local = default_mcp_servers(MCPServerItem)["tavily-search"]
     assert local.command.endswith("node_modules/.bin/tavily-mcp")
     assert local.args == []
 
     _force_local_bins(monkeypatch, present=False)
-    fallback = default_mcp_servers()["tavily-search"]
+    fallback = default_mcp_servers(MCPServerItem)["tavily-search"]
     assert fallback.command == "npx"
     assert fallback.args == ["-y", "tavily-mcp@0.2.21"]
 
@@ -79,12 +80,12 @@ def test_provider_env_is_fresh_and_limited_to_required_keys(
 ) -> None:
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
     _force_local_bins(monkeypatch, present=False)
-    first = default_mcp_servers()
+    first = default_mcp_servers(MCPServerItem)
     assert first["tavily-search"].env == {}
     assert first["duckduckgo-search"].env is None
 
     monkeypatch.setenv("TAVILY_API_KEY", "set-later")
-    second = default_mcp_servers()
+    second = default_mcp_servers(MCPServerItem)
     assert second["tavily-search"].env == {"TAVILY_API_KEY": "set-later"}
     assert first["tavily-search"].env == {}
     assert all(set(item.env or {}) <= set(item.required_env) for item in second.values())
