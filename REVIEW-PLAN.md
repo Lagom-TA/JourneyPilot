@@ -26,7 +26,7 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 
 ## 进度总览
 
-**进度**：后端逻辑 3/6 · 前端页面 0/6 · 文字内容 0/3 · [待决事项](review-plan/decisions.md) 0 项
+**进度**：后端逻辑 4/6 · 前端页面 0/6 · 文字内容 0/3 · [待决事项](review-plan/decisions.md) 0 项
 
 状态：⬜ 未开始 · 🔍 审查中 · 🔧 修复中 · ✅ 已完成 · ↩️ 需复核 · ⏸️ 搁置
 
@@ -36,18 +36,18 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 | B1 | [后端分层与依赖边界](review-plan/stages/B1-backend-layers.md) | `后端逻辑` | S0 | ✅ | Codex | 0 | 2026-11-04 / dc5a9e4 |
 | B2 | [规划主链（上）：理解、研究设想与确认](review-plan/stages/B2-planning-intake.md) | `后端逻辑` | B1 | ✅ | Codex | 0 | 2026-11-04 / 65f8269 |
 | B3 | [规划主链（下）：调研、组合与交付](review-plan/stages/B3-planning-delivery.md) | `后端逻辑` | B2 | ✅ | Codex | 0 | 2026-11-04 / 8a92eb4 |
-| B4 | [运行控制、会话与流式](review-plan/stages/B4-runtime-streaming.md) | `后端逻辑` | B1 | ⬜ | | 6 | |
-| B5 | [工具、模型、外部数据与用户资料](review-plan/stages/B5-tools-models-data.md) | `后端逻辑` | B1 | ⬜ | | 4 | |
-| B6 | [数据、配置与工程发布](review-plan/stages/B6-data-config-release.md) | `后端逻辑` | B1 | ⬜ | | 5 | |
-| F1 | [前端结构、状态与样式体系](review-plan/stages/F1-frontend-foundation.md) | `前端页面` | S0、B4 | ⬜ | | 0 | |
+| B4 | [运行控制、会话与流式](review-plan/stages/B4-runtime-streaming.md) | `后端逻辑` | B1 | ✅ | Codex | 0 | 2026-11-04 / b8a073d、c76a8aa |
+| B5 | [工具、模型、外部数据与用户资料](review-plan/stages/B5-tools-models-data.md) | `后端逻辑` | B1 | ⬜ | | 6 | |
+| B6 | [数据、配置与工程发布](review-plan/stages/B6-data-config-release.md) | `后端逻辑` | B1 | ⬜ | | 7 | |
+| F1 | [前端结构、状态与样式体系](review-plan/stages/F1-frontend-foundation.md) | `前端页面` | S0、B4 | ⬜ | | 1 | |
 | F2 | [首页与需求输入](review-plan/stages/F2-home-input.md) | `前端页面` | F1 | ⬜ | | 0 | |
-| F3 | [生成工作台](review-plan/stages/F3-generation-workspace.md) | `前端页面` | F1、B2、B4 | ⬜ | | 4 | |
-| F4 | [交付工作台](review-plan/stages/F4-delivery-workspace.md) | `前端页面` | F1、B3 | ⬜ | | 5 | |
+| F3 | [生成工作台](review-plan/stages/F3-generation-workspace.md) | `前端页面` | F1、B2、B4 | ⬜ | | 6 | |
+| F4 | [交付工作台](review-plan/stages/F4-delivery-workspace.md) | `前端页面` | F1、B3 | ⬜ | | 6 | |
 | F5 | [我的行程与偏好资料](review-plan/stages/F5-trips-preferences.md) | `前端页面` | F1、B5 | ⬜ | | 0 | |
 | F6 | [动效、键盘与无障碍](review-plan/stages/F6-motion-a11y.md) | `前端页面` | F2–F5 | ⬜ | | 0 | |
-| T1 | [界面文案](review-plan/stages/T1-ui-copy.md) | `文字内容` | F1 | ⬜ | | 2 | |
+| T1 | [界面文案](review-plan/stages/T1-ui-copy.md) | `文字内容` | F1 | ⬜ | | 3 | |
 | T2 | [提示词与模型产出](review-plan/stages/T2-prompts-outputs.md) | `文字内容` | B2、B3 | ⬜ | | 3 | |
-| T3 | [文档与开源门面](review-plan/stages/T3-docs-showcase.md) | `文字内容` | 其余全部 | ⬜ | | 2 | |
+| T3 | [文档与开源门面](review-plan/stages/T3-docs-showcase.md) | `文字内容` | 其余全部 | ⬜ | | 3 | |
 
 三类标签可以并行推进；同一标签内按编号顺序进行；前置阶段完成后才能开始。状态只在这张表里维护。
 
