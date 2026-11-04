@@ -77,6 +77,8 @@ JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
 
 On first start, the script installs dependencies, starts PostgreSQL and Redis with Compose, runs database
 migrations, and launches the API and web app. The default local embedding model downloads on first use.
+The script reuses existing PostgreSQL and Redis containers and does not recreate them when Compose
+configuration changes. To apply container configuration changes, check their impact and run Compose yourself.
 
 | Service | URL |
 | --- | --- |

@@ -638,8 +638,9 @@ step_infra() {
   # 输出不能丢：这一步失败时（撞名、端口被占、镜像拉不动）它是唯一说明原因的地方。
   # 没有守卫的话 set -e 会让整个 start 在这里无声退出。
   local compose_out
-  if ! compose_out=$(docker compose -f "$compose_file" up -d postgres redis 2>&1); then
-    print_item "docker" fail "compose up 失败 — 未启动任何服务"
+  # 复用已有容器，避免另一个工作区的配置差异中断正在使用的数据库。
+  if ! compose_out=$(docker compose -f "$compose_file" up -d --no-recreate postgres redis 2>&1); then
+    print_item "docker" fail "compose up 失败"
     while IFS= read -r line; do
       [[ -z "$line" ]] && continue
       printf "  ${DIM}│${RESET}      ${DIM}%s${RESET}\n" "$line"
@@ -882,12 +883,11 @@ cmd_start() {
   refuse_running_instance || exit 1
 
   step_config
-  step_infra || exit 1
   step_python || exit 1
-  # 端口先解析再迁移: 端口被占时应该在动数据库之前就被拒绝, 而不是先跑完一次
-  # 迁移再失败, 留下一次无意义的副作用。
+  # 端口冲突时先拒绝，避免触碰现有基础服务或执行数据库迁移。
   resolve_backend_port || exit 1
   resolve_frontend_port || exit 1
+  step_infra || exit 1
   step_migrate || exit 1
   step_mcp
   step_frontend_deps || exit 1
@@ -929,6 +929,37 @@ supervise_services() {
   return 1
 }
 
+# 同时检查两个进程后，停止其中一个可能让监督进程开始关闭另一个。
+# 已确认的进程只有在启动时间仍一致时才可停止；身份变化时保留记录。
+stop_recorded_service() {
+  local label="$1" pid="$2" port="$3" state="$4" started_at="$5"
+  case "$state" in
+    owned)
+      if [[ -n "$started_at" ]] && _pid_is_same_process "$pid" "$started_at"; then
+        stop_tree "$pid" || true
+        print_item "$label" ok "stopped  pid ${pid}"
+        stopped=1
+      elif ! kill -0 "$pid" 2>/dev/null; then
+        print_item "$label" warn "not running"
+      else
+        print_item "$label" fail "pid ${pid} identity changed"
+        unsure=1
+      fi
+      ;;
+    unsure)
+      print_item "$label" fail "pid ${pid} alive but not listening on :${port:-?}"
+      unsure=1
+      ;;
+    dead)
+      print_item "$label" warn "not running"
+      ;;
+    *)
+      print_item "$label" fail "pid ${pid:-?} 状态无法判定"
+      unsure=1
+      ;;
+  esac
+}
+
 cmd_stop() {
   require_command lsof "needed to verify process ownership before stopping anything"
 
@@ -945,50 +976,13 @@ cmd_stop() {
 
   print_section "Services"
 
-  local stopped=0 unsure=0
-
-  case "$(managed_pid_state "$rec_frontend_pid" "$rec_frontend_port")" in
-    owned)
-      stop_tree "$rec_frontend_pid" || true
-      print_item "frontend" ok "stopped  pid ${rec_frontend_pid}"
-      stopped=1
-      ;;
-    unsure)
-      print_item "frontend" fail \
-        "pid ${rec_frontend_pid} alive but not listening on :${rec_frontend_port:-?}"
-      unsure=1
-      ;;
-    dead)
-      print_item "frontend" warn "not running"
-      ;;
-    *)
-      # 三态之外的任何输出都按 unsure 处理。这不是理论洁癖: managed_pid_state 是在
-      # $( ) 里调用的, 里面的 require_command 只能 exit 掉子 shell, 输出就变成空串。
-      # 「没判出来」若落进 not running 分支, 就会重新变成删记录 + 留孤儿。
-      print_item "frontend" fail "pid ${rec_frontend_pid:-?} 状态无法判定"
-      unsure=1
-      ;;
-  esac
-
-  case "$(managed_pid_state "$rec_backend_pid" "$rec_backend_port")" in
-    owned)
-      stop_tree "$rec_backend_pid" || true
-      print_item "backend" ok "stopped  pid ${rec_backend_pid}"
-      stopped=1
-      ;;
-    unsure)
-      print_item "backend" fail \
-        "pid ${rec_backend_pid} alive but not listening on :${rec_backend_port:-?}"
-      unsure=1
-      ;;
-    dead)
-      print_item "backend" warn "not running"
-      ;;
-    *)
-      print_item "backend" fail "pid ${rec_backend_pid:-?} 状态无法判定"
-      unsure=1
-      ;;
-  esac
+  local stopped=0 unsure=0 frontend_started_at backend_started_at frontend_state backend_state
+  frontend_started_at="$(_pid_start_time "$rec_frontend_pid" 2>/dev/null || true)"
+  backend_started_at="$(_pid_start_time "$rec_backend_pid" 2>/dev/null || true)"
+  frontend_state="$(managed_pid_state "$rec_frontend_pid" "$rec_frontend_port")"
+  backend_state="$(managed_pid_state "$rec_backend_pid" "$rec_backend_port")"
+  stop_recorded_service "frontend" "$rec_frontend_pid" "$rec_frontend_port" "$frontend_state" "$frontend_started_at"
+  stop_recorded_service "backend" "$rec_backend_pid" "$rec_backend_port" "$backend_state" "$backend_started_at"
 
   echo
   if (( unsure == 1 )); then

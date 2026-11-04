@@ -67,6 +67,8 @@ JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
 
 首次启动会安装依赖，通过 Compose 启动 PostgreSQL 和 Redis，执行数据库迁移，再启动 API 和网页。默认本地向量模型会在首次使用时下载。
 
+启动脚本会复用已有的 PostgreSQL 和 Redis 容器，不会因 Compose 配置变化自动重建它们。如需应用容器配置变更，请先检查影响，再自行运行 Compose。
+
 | 服务 | 地址 |
 | --- | --- |
 | 网页 | <http://localhost:8080> |
