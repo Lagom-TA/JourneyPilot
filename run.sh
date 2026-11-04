@@ -718,6 +718,38 @@ step_python() {
   print_item "imports" ok "verified"
 }
 
+step_mcp_deps() {
+  local mcp_dir="$BACKEND_DIR/mcp"
+  local lock_file="$mcp_dir/package-lock.json"
+  local lock_stamp="$mcp_dir/node_modules/.package-lock.json"
+  local binary needs_install=0
+  if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' >/dev/null 2>&1; then
+    print_item "mcp packages" warn "Node 22 or newer required for Node MCP servers"
+    return 0
+  fi
+  for binary in tavily-mcp brave-search-mcp-server firecrawl-mcp mcp-server-baidu-map mcp-amap weather-mcp; do
+    [[ -x "$mcp_dir/node_modules/.bin/$binary" ]] || needs_install=1
+  done
+  if [[ -f "$lock_file" ]] && [[ "$lock_file" -nt "$lock_stamp" ]]; then
+    needs_install=1
+  fi
+
+  if (( needs_install == 1 )); then
+    start_spinner "installing locked MCP dependencies..."
+    local npm_out npm_ok=0
+    npm_out=$(npm --prefix "$mcp_dir" ci --omit=dev --no-audit --no-fund 2>&1) && npm_ok=1 || true
+    stop_spinner
+    if (( npm_ok == 0 )); then
+      print_item "mcp packages" warn "install failed — Node MCP servers unavailable"
+      printf "  ${DIM}│${RESET}      ${DIM}%s${RESET}\n" "$(echo "$npm_out" | tail -5)"
+      return 0
+    fi
+    print_item "mcp packages" ok "locked dependencies installed"
+  else
+    print_item "mcp packages" ok "node_modules OK"
+  fi
+}
+
 step_mcp() {
   local mcp_out
   mcp_out=$(run_in_env python "$BACKEND_DIR/scripts/check_mcp.py" 2>&1 || true)
@@ -889,6 +921,7 @@ cmd_start() {
   resolve_frontend_port || exit 1
   step_infra || exit 1
   step_migrate || exit 1
+  step_mcp_deps
   step_mcp
   step_frontend_deps || exit 1
   step_start_backend || exit 1

@@ -41,7 +41,7 @@ JourneyPilot 是一个开源、自托管的 AI 旅行规划工作台。告诉它
 
 ## 快速开始
 
-需要 [uv](https://docs.astral.sh/uv/)、Python 3.11、Node.js 22（最低 20.19）和 npm，以及带 Compose 的 Docker Desktop 或 Docker Engine。还需要一个可用的模型服务及其凭据。
+需要 [uv](https://docs.astral.sh/uv/)、Python 3.11、Node.js 22 或更高版本和 npm，以及带 Compose 的 Docker Desktop 或 Docker Engine。还需要一个可用的模型服务及其凭据。
 
 ```bash
 git clone https://github.com/Lagom-TA/JourneyPilot.git
@@ -115,6 +115,8 @@ uv run --project backend python backend/scripts/check_mcp.py
 ```
 
 默认工具包含网页搜索、OpenStreetMap/Nominatim、12306 和汇率查询；规划天气使用内置的 Open-Meteo 适配器。第三方 Open-Meteo MCP 默认禁用：该包启动时会向第三方域名发送运行通知，可将 `mcp.servers.open-meteo.disabled` 设为 `false` 显式启用。高德、百度、Tavily、Brave、Duffel 等服务可按需配置。工具同名时保留已注册的来源，MCP 服务按配置顺序注册。数据覆盖范围和调用结果由各服务决定，中国境内路线查询需要高德密钥。模型及外部服务可能产生费用。
+
+`run.sh` 会安装锁定的 Node MCP 依赖；直接启动后端前，可运行 `npm --prefix backend/mcp ci --omit=dev` 安装这些依赖。
 
 默认使用本地 Qwen3 ONNX 模型生成知识库向量，也可配置兼容的远程向量服务。向量结果不完整时，资料索引会失败并保留原资料。仓库附带一份[小规模出厂语料](backend/data/corpus/factory/README.md)，可按说明导入；可选的本地二进制种子不随仓库提供。
 

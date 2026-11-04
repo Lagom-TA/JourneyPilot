@@ -1,8 +1,8 @@
 """JourneyPilot 内置 MCP server 配置。
 
 这里直接维护仓库实际支持的 server 声明；只有依赖运行环境的部分留在求值阶段：
-本地 Node bin 与 ``npx`` 的选择、仓内 Python 脚本路径、当前解释器以及 provider
-原生环境变量。每次调用都会重新读取这些运行时值。
+本地 Node bin、仓内 Python 脚本路径、当前解释器以及 provider 原生环境变量。
+每次调用都会重新读取这些运行时值。
 """
 
 from __future__ import annotations
@@ -24,17 +24,17 @@ _DEFAULT_SERVERS: dict[str, dict[str, Any]] = {
     "tavily-search": {
         "description": "Tavily agent 原生检索（搜索/提取/爬取，返回带引用结果，https://tavily.com）",
         "required_env": ("TAVILY_API_KEY",),
-        "node": ("tavily-mcp@0.2.21", "tavily-mcp"),
+        "node": "tavily-mcp",
     },
     "brave-search": {
         "description": "Brave 独立索引网络搜索（备份检索源，https://brave.com/search/api）",
         "required_env": ("BRAVE_API_KEY",),
-        "node": ("@brave/brave-search-mcp-server@2.1.0", "brave-search-mcp-server"),
+        "node": "brave-search-mcp-server",
     },
     "firecrawl": {
         "description": "Firecrawl 深度网页抓取与正文提取（反爬强，https://firecrawl.dev）",
         "required_env": ("FIRECRAWL_API_KEY",),
-        "node": ("firecrawl-mcp@3.23.0", "firecrawl-mcp"),
+        "node": "firecrawl-mcp",
     },
     "duckduckgo-search": {
         "description": "DuckDuckGo 免费网络搜索（零 Key，作为 free_web_search 的备用检索通道）",
@@ -48,12 +48,12 @@ _DEFAULT_SERVERS: dict[str, dict[str, Any]] = {
     "baidu-maps": {
         "description": "百度地图（国内）：地理编码、POI、路线、天气、路况（https://lbsyun.baidu.com）",
         "required_env": ("BAIDU_MAP_API_KEY",),
-        "node": ("@baidumap/mcp-server-baidu-map@1.0.5", "mcp-server-baidu-map"),
+        "node": "mcp-server-baidu-map",
     },
     "amap-maps": {
         "description": "高德地图（国内）：地理编码 maps_geo、天气 maps_weather、路线、POI（https://lbs.amap.com）",
         "required_env": ("AMAP_MAPS_API_KEY",),
-        "node": ("@amap/amap-maps-mcp-server@0.0.8", "mcp-amap"),
+        "node": "mcp-amap",
     },
     # 航班：仓库内实现的 Duffel v2 MCP。
     "duffel-flights": {
@@ -69,7 +69,7 @@ _DEFAULT_SERVERS: dict[str, dict[str, Any]] = {
     # 天气：Open-Meteo，零 Key。
     "open-meteo": {
         "description": "Open-Meteo MCP：当前天气、固定 7 日预报、历史天气与空气质量（零 Key，https://open-meteo.com）",
-        "node": ("open-meteo-mcp@0.1.0", "weather-mcp"),
+        "node": "weather-mcp",
         "disabled": True,
     },
     # 汇率：仓库内实现的 Frankfurter 服务，零 Key。
@@ -80,13 +80,11 @@ _DEFAULT_SERVERS: dict[str, dict[str, Any]] = {
 }
 
 
-def _node_fields(package: str, binary: str) -> Dict[str, object]:
-    """优先使用仓库内已安装的 Node 可执行文件，否则使用带版本号的 npx。"""
+def _node_fields(binary: str) -> Dict[str, object]:
+    """只运行锁文件安装的包，确保传递依赖的覆盖配置生效。"""
 
     local_bin = _MCP_DIR / "node_modules" / ".bin" / binary
-    if local_bin.exists():
-        return {"command": str(local_bin), "args": []}
-    return {"command": "npx", "args": ["-y", package]}
+    return {"command": str(local_bin), "args": []}
 
 
 def _python_fields(*, script: Optional[str] = None, module: Optional[str] = None) -> Dict[str, object]:
@@ -113,7 +111,7 @@ def default_mcp_servers(factory: Callable[..., ServerConfig]) -> Dict[str, Serve
     for name, declaration in _DEFAULT_SERVERS.items():
         node = declaration.get("node")
         if node is not None:
-            launch = _node_fields(*node)
+            launch = _node_fields(node)
         else:
             launch = _python_fields(
                 script=declaration.get("python_script"),

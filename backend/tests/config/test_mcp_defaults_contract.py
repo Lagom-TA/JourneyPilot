@@ -53,8 +53,8 @@ def test_defaults_expose_real_servers_and_launch_paths(monkeypatch: pytest.Monke
     servers = default_mcp_servers(MCPServerItem)
 
     assert set(servers) == _EXPECTED_KEYS
-    assert servers["tavily-search"].command == "npx"
-    assert servers["tavily-search"].args == ["-y", "tavily-mcp@0.2.21"]
+    assert servers["tavily-search"].command.endswith("node_modules/.bin/tavily-mcp")
+    assert servers["tavily-search"].args == []
     assert servers["duckduckgo-search"].command == sys.executable
     assert servers["duckduckgo-search"].args[0].endswith("backend/mcp/search/free_search.py")
     assert servers["fetch"].args == ["-m", "mcp_server_fetch"]
@@ -62,7 +62,7 @@ def test_defaults_expose_real_servers_and_launch_paths(monkeypatch: pytest.Monke
     assert servers["open-meteo"].disabled is True
 
 
-def test_node_servers_prefer_local_bin_and_fall_back_to_versioned_npx(
+def test_node_servers_require_the_locked_local_bin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _force_local_bins(monkeypatch, present=True)
@@ -71,9 +71,9 @@ def test_node_servers_prefer_local_bin_and_fall_back_to_versioned_npx(
     assert local.args == []
 
     _force_local_bins(monkeypatch, present=False)
-    fallback = default_mcp_servers(MCPServerItem)["tavily-search"]
-    assert fallback.command == "npx"
-    assert fallback.args == ["-y", "tavily-mcp@0.2.21"]
+    missing = default_mcp_servers(MCPServerItem)["tavily-search"]
+    assert missing.command == local.command
+    assert missing.args == []
 
 
 def test_open_meteo_mcp_requires_explicit_enablement():

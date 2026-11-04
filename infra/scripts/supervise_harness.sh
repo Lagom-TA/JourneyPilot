@@ -141,6 +141,22 @@ check_infra_reuse() (
   }
 )
 
+check_mcp_locked_install() (
+  local temp_dir
+  # shellcheck source=../../run.sh
+  source "$ROOT/run.sh"
+  trap - INT TERM EXIT
+  temp_dir="$(mktemp -d)"
+  trap 'rm -rf "$temp_dir"' EXIT
+  BACKEND_DIR="$temp_dir"
+  mkdir -p "$temp_dir/mcp"
+  : > "$temp_dir/mcp/package-lock.json"
+  npm() { printf '%s\n' "$@" > "$temp_dir/npm-args"; }
+  step_mcp_deps >/dev/null
+  grep -Fx -- ci "$temp_dir/npm-args" >/dev/null
+  grep -Fx -- '--omit=dev' "$temp_dir/npm-args" >/dev/null
+)
+
 check_exit backend
 check_exit frontend
 check_direct_service backend
@@ -148,4 +164,5 @@ check_direct_service frontend
 check_stop_race
 check_changed_identity
 check_infra_reuse
+check_mcp_locked_install
 printf '%s\n' '服务退出监督检查通过'

@@ -49,7 +49,7 @@ and availability can change. JourneyPilot does not make bookings or process paym
 
 ## Quick start
 
-You will need [uv](https://docs.astral.sh/uv/), Python 3.11, Node.js 22 (minimum 20.19) and npm,
+You will need [uv](https://docs.astral.sh/uv/), Python 3.11, Node.js 22 or newer and npm,
 Docker Desktop or Docker Engine with Compose, and credentials for a model service.
 
 ```bash
@@ -144,6 +144,9 @@ providers can be configured as needed.
 On tool-name collisions, the registered owner is retained; MCP servers register in configuration order.
 Coverage and results depend on each service; routes within mainland China require an Amap key. Model and
 provider calls may incur charges.
+
+`run.sh` installs the locked Node MCP dependencies. Before starting the backend directly, run
+`npm --prefix backend/mcp ci --omit=dev` to install them.
 
 The knowledge base uses a local Qwen3 ONNX embedding model by default; a compatible remote embedding
 service can also be configured. Incomplete embedding results fail indexing and leave the existing document intact.
