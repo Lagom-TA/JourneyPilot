@@ -18,7 +18,7 @@
 | `delivery_ready`、`run_terminal` | `chat/completion.py`、`chat/failures.py` | 会话的 `deliveryProtocol`：按持久序号确认交付 |
 | `run_cancelled`、`run_failed`、`error` | `chat/failures.py` | 会话：停止、失败和错误详情 |
 
-`agent_thinking` 只存在于前端类型及后端丢弃分支，没有当前生产者或消费分支。`trace_event` 由 `chat/presentation.py` 产生并保存为 `trace.event`，SSE 投影不下发；`trace_summary` 没有当前生产者。工作流队列中的 `state_snapshot` 由执行层写入 Run 状态摘要，不直接发送给浏览器；`context_compaction` 的持久快照由整理服务写入，实时事件和历史均有消费者。
+`agent_thinking` 只存在于后端丢弃分支，没有当前生产者，前端也不声明该事件。`trace_event` 由 `chat/presentation.py` 产生并保存为 `trace.event`，SSE 投影不下发；`trace_summary` 没有当前生产者。工作流队列中的 `state_snapshot` 由执行层写入 Run 状态摘要，不直接发送给浏览器；`context_compaction` 的持久快照由整理服务写入，实时事件和历史均有消费者。
 
 一次运行段的主要结束帧是 `chat_complete`、`run_terminal`、`run_cancelled`、`run_failed` 或中断时的 `error`。深度交付先发 `delivery_ready` 再发 `run_terminal`；失败可以在 `run_failed` 后附带 `error` 详情。等待输入时的 `chat_complete` 只结束本次请求，Run 仍为 `awaiting_input`。断线时无法保证客户端收到结束帧，以持久状态为准。
 

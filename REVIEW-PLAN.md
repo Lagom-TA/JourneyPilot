@@ -12,6 +12,7 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 - **手感**：过渡、反馈、加载和动效流畅，有质感，不像模板拼装。
 - **演示路径**：打开仓库 → 读 README → 本地跑起来 → 完成一次规划 → 导出 PDF，全程没有断点，也没有粗糙的地方。
 - **经得起细看**：读代码的人看到的分层、命名和文档清楚可信。
+- **设计原则**：只使用一套界面主题；不安排减少动态效果等无障碍专项设计与验收。
 
 界面、设计和动效按展示级标准审查；后端和文字以支撑演示、经得起细看为准。只有商用产品才需要的运维、容量、计费与合规不在本次范围内。
 
@@ -26,7 +27,7 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 
 ## 进度总览
 
-**进度**：后端逻辑 3/6 · 前端页面 0/6 · 文字内容 0/3 · [待决事项](review-plan/decisions.md) 0 项
+**进度**：后端逻辑 3/6 · 前端页面 1/6 · 文字内容 0/3 · [待决事项](review-plan/decisions.md) 0 项
 
 状态：⬜ 未开始 · 🔍 审查中 · 🔧 修复中 · ✅ 已完成 · ↩️ 需复核 · ⏸️ 搁置
 
@@ -39,12 +40,12 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 | B4 | [运行控制、会话与流式](review-plan/stages/B4-runtime-streaming.md) | `后端逻辑` | B1 | ✅ | Codex | 0 | 2026-11-04 / b8a073d、c76a8aa、b8af718 |
 | B5 | [工具、模型、外部数据与用户资料](review-plan/stages/B5-tools-models-data.md) | `后端逻辑` | B1 | ✅ | Codex | 0 | 2026-11-04 / 0373c45 |
 | B6 | [数据、配置与工程发布](review-plan/stages/B6-data-config-release.md) | `后端逻辑` | B1 | ⬜ | | 8 | |
-| F1 | [前端结构、状态与样式体系](review-plan/stages/F1-frontend-foundation.md) | `前端页面` | S0、B4 | ⬜ | | 1 | |
-| F2 | [首页与需求输入](review-plan/stages/F2-home-input.md) | `前端页面` | F1 | ⬜ | | 0 | |
-| F3 | [生成工作台](review-plan/stages/F3-generation-workspace.md) | `前端页面` | F1、B2、B4 | ⬜ | | 7 | |
-| F4 | [交付工作台](review-plan/stages/F4-delivery-workspace.md) | `前端页面` | F1、B3 | ⬜ | | 6 | |
-| F5 | [我的行程与偏好资料](review-plan/stages/F5-trips-preferences.md) | `前端页面` | F1、B5 | ⬜ | | 1 | |
-| F6 | [动效、键盘与无障碍](review-plan/stages/F6-motion-a11y.md) | `前端页面` | F2–F5 | ⬜ | | 0 | |
+| F1 | [前端结构、状态与样式体系](review-plan/stages/F1-frontend-foundation.md) | `前端页面` | S0、B4 | ✅ | Codex（采集 / 修复） | 0 | 2026-11-04 / 38bd919、286d9e8 |
+| F2 | [首页与需求输入](review-plan/stages/F2-home-input.md) | `前端页面` | F1 | ⬜ | | 1 | |
+| F3 | [生成工作台](review-plan/stages/F3-generation-workspace.md) | `前端页面` | F1、B2、B4 | ⬜ | | 8 | |
+| F4 | [交付工作台](review-plan/stages/F4-delivery-workspace.md) | `前端页面` | F1、B3 | ⬜ | | 7 | |
+| F5 | [我的行程与偏好资料](review-plan/stages/F5-trips-preferences.md) | `前端页面` | F1、B5 | ⬜ | | 2 | |
+| F6 | [动效与交互](review-plan/stages/F6-motion-a11y.md) | `前端页面` | F2–F5 | ⬜ | | 1 | |
 | T1 | [界面文案](review-plan/stages/T1-ui-copy.md) | `文字内容` | F1 | ⬜ | | 4 | |
 | T2 | [提示词与模型产出](review-plan/stages/T2-prompts-outputs.md) | `文字内容` | B2、B3 | ⬜ | | 4 | |
 | T3 | [文档与开源门面](review-plan/stages/T3-docs-showcase.md) | `文字内容` | 其余全部 | ⬜ | | 3 | |
@@ -56,7 +57,7 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 | 标签 | 覆盖内容 | 适合的审查者 | 需要的环境 |
 |---|---|---|---|
 | `后端逻辑` | 分层与依赖、流程编排、状态与并发、数据一致性、工程与发布 | 擅长长链路代码推理，能在大量文件之间追踪调用和状态流转，对边界条件敏感 | Python 环境、pytest、ruff、本地服务、当前数据库 |
-| `前端页面` · 采集与修复 | 驱动浏览器截图和录屏、写素材清单、修改前端代码、复拍；F1 的代码结构审查 | 工具操作稳定，熟悉 CSS 布局和 React 状态，命名和记录规范 | 本地服务、Playwright、多视口、系统级“减少动态效果”开关、ffmpeg |
+| `前端页面` · 采集与修复 | 驱动浏览器截图和录屏、写素材清单、修改前端代码、复拍；F1 的代码结构审查 | 工具操作稳定，熟悉 CSS 布局和 React 状态，命名和记录规范 | 本地服务、Playwright、多视口、ffmpeg |
 | `前端页面` · 分析与复核 | 看截图和录屏，判断视觉、布局、动效和交互是否达到展示级；对照参考库；复核修复结果 | 视觉判断力强、审美在线，能看出像素级偏移和节奏问题 | 素材包、参考库；不需要操作浏览器 |
 | `文字内容` | 界面文案、提示词、模型产出的文字、项目文档 | 中文表达好，对语气、术语和信息密度敏感；审提示词还需要理解模型上下文的组织方式 | 截图（来自前端页面阶段）、源码、真实运行样例 |
 
