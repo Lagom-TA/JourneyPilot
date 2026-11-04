@@ -98,6 +98,42 @@ async def _available():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("tool_status", "expected_status"), [
+    ("success", "success"),
+    ("failed", "failed"),
+])
+async def test_followup_distinguishes_empty_result_from_tool_failure(
+    monkeypatch, tool_status, expected_status
+):
+    state = _state()
+    monkeypatch.setattr(followup, "get_model_router", lambda: None)
+    monkeypatch.setattr(followup, "llm_for_task", lambda *args, **kwargs: object())
+    monkeypatch.setattr(followup, "get_available_tools", lambda: _available())
+    monkeypatch.setattr(followup, "filter_tools_for_agent", lambda tools, agent: tools)
+
+    async def react(**kwargs):
+        envelope = build_tool_execution_envelope(
+            tool_name="global_route_search", arguments={}, status=tool_status,
+            result={"routes": []} if tool_status == "success" else None,
+            error="查询失败" if tool_status == "failed" else None,
+        )
+        return SimpleNamespace(
+            outcome=followup.ReactOutcome.FINAL_ANSWER, content="没有可用路线",
+            tool_results=[envelope], error=None,
+        )
+
+    monkeypatch.setattr(followup, "streaming_react_loop", react)
+    result, catalog = await followup.research_transport_followup(
+        state, question="怎么去？", arrangement="上午"
+    )
+
+    assert result["status"] == expected_status
+    assert result["sanitized_result"]["success"] is (expected_status == "success")
+    assert result["sanitized_result"]["routes"] == []
+    assert catalog == state.recommendation_catalog
+
+
+@pytest.mark.asyncio
 async def test_missing_route_remains_unresolved(monkeypatch):
     state = _state()
     monkeypatch.setattr(node, "get_model_router", lambda: None)

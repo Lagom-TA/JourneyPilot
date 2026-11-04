@@ -116,17 +116,18 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
    `plan_gate_disabled`），快问快答不受影响。确认时封存 Draft、`RunDeadlineSnapshot` 与
    `RunBudgetSnapshot`；修改转成 `IntentAmendment`，进入当前需求文字并失效旧方案与旧研究结果。
 6. **研究**：批准并封存预算后，`weather_context_builder` 获取规划天气；研究按
-   `destination_researcher` → `transport_researcher` → `accommodation_researcher` 串行推进，
-   `dispatcher` 逐个派发，后一位角色通过上游研究视图读取前序成果。Worker 接收基础信息、当前
-   需求和自己的任务，在自身工具范围内决定查询，并按运行租约、取消与预算控制调用工具，返回
-   带字段和来源的 `ResearchPacket`。
+   `destination_researcher` 先完成，`transport_researcher` 和 `accommodation_researcher` 并行进行，
+   两者通过上游研究视图读取目的地成果。Worker 按运行租约、取消与预算控制调用工具，返回
+   带字段和来源的 `ResearchPacket`。研究失败或超时时保留已有成果，在研究门等待重试或取消；
+   重试沿用本次 Run 的时限设置，查无候选且研究正常完成时继续组合。
 7. **候选目录**：Worker 完成后，`dispatcher` 收齐 packet 并构建 `RecommendationCatalog`；
    catalog 保留 generation 一致性检查，拦截过期产物。
 8. **组合**：`itinerary_planner` 读取 catalog，由模型直接写出完整行程草稿，再物化为
-   `TripWorkspace`。服务端负责结构解析、身份绑定与时间线物化，不做内容质量裁决；接驳缺口
-   由服务端按真实路线补齐。
+   `TripWorkspace`。服务端检查草稿日期与已确认日期一致；无法安排的日期可保留空行程并记录
+   缺口。服务端负责结构解析、身份绑定与时间线物化，接驳缺口由服务端按真实路线补齐。
 9. **交付**：`delivery_projector` 从同一 Workspace 生成报告、地图与来源索引；`delivery_finalizer`
-   原子提交唯一的 `DeliveryBundle`。工作台、报告、PDF 与来源列表都来自这份记录。
+   原子提交唯一的 `DeliveryBundle`。工作台、报告、PDF 与来源列表都来自这份记录；PDF 导出
+   前后检查 Bundle 修订，并显示待安排事项。不同计价口径的单项价格不对外汇总。
 
 计划门修改由理解阶段结合已有基础信息与最新表达处理，随后生成新的研究设想。首份正式行程
 交付前不接受运行中追加要求。已交付旅行的后续输入先结合当前安排判断：问答读取现有结果，局部调整复用

@@ -390,6 +390,7 @@ async def test_failed_worker_waits_and_retries_without_repeating_sibling(monkeyp
     _, result = await _run_research(monkeypatch, model, IDENTITY)
     assert model.retry_gate["gate"] == "research"
     assert model.retry_gate["failed_workers"] == ["transport_researcher"]
+    assert "重试沿用本次规划的时限设置" in model.retry_gate["message"]
     assert model.worker_order.count("transport_researcher") == 2
     assert model.worker_order.count("accommodation_researcher") == 1
     assert result["agent_status"]["transport_researcher"] == "completed"

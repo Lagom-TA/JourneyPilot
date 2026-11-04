@@ -298,37 +298,87 @@ def _day_weather_label(day: Any, citation_numbers: dict[str, int]) -> tuple[str,
     )
 
 
+_TITLE_CITATION_FIELDS = {
+    "visit": {"name"},
+    "dining": {"branch_name"},
+    "lodging": {"property_name"},
+    "transport": {"from_endpoint", "to_endpoint", "selected_mode", "segments"},
+}
+_PRICE_CITATION_FIELDS = {
+    "visit": {"estimated_cost_cny"},
+    "dining": {"average_spend_cny", "estimated_cost_cny"},
+    "lodging": {"nightly_price_cny"},
+    "transport": {"total_cost_cny"},
+}
+_FACT_CITATION_FIELDS = {
+    "类型": {"visit_type"}, "开放": {"opening_window"}, "营业": {"opening_window"},
+    "预约": {"reservation_required"}, "地址": {"address"}, "菜系": {"cuisine_types"},
+    "入住": {"check_in_date"}, "退房": {"check_out_date"}, "晚数": {"nights"},
+    "房型": {"room_type"}, "参考整段约": {"total_price_cny"}, "整段": {"total_price_cny"},
+    "出发": {"departure_at"}, "抵达": {"arrival_at"}, "距离": {"distance_meters"},
+    "换乘": {"transfer_count"}, "预订": {"booking_status"},
+}
+
+
+def _field_citation_marks(
+    block: Any,
+    fields: set[str],
+    citations: dict[str, PublicCitationProjection],
+    citation_numbers: dict[str, int],
+) -> str:
+    ids = [
+        item for item in block.citation_ids
+        if item in citations and fields.intersection(citations[item].field_paths)
+    ]
+    return _citation_marks(ids, citation_numbers)
+
+
 def _timeline_row(
     block: Any,
     citation_numbers: dict[str, int],
+    citations: dict[str, PublicCitationProjection],
     styles: dict[str, ParagraphStyle],
     evidence_basis: EvidenceBasisView,
 ) -> Table:
     details = block.details
-    marks = _citation_marks(block.citation_ids, citation_numbers)
+    marks = _field_citation_marks(
+        block, _TITLE_CITATION_FIELDS.get(block.entity_kind, set()), citations, citation_numbers
+    )
     marks += _evidence_basis_mark(block, evidence_basis)
     body = f"<b>{escape(block.title)}</b>{marks}"
 
-    header = [
-        _rendered_text(details, "duration_label"),
-        _rendered_text(details, "price_label"),
-    ]
-    header_text = " · ".join(item for item in header if item)
+    duration = _rendered_text(details, "duration_label")
+    price = _rendered_text(details, "price_label")
+    header = [escape(duration)] if duration else []
+    if price:
+        header.append(escape(price) + _field_citation_marks(
+            block, _PRICE_CITATION_FIELDS.get(block.entity_kind, set()), citations, citation_numbers
+        ))
+    header_text = " · ".join(header)
     if header_text:
-        body += f'<br/><font color="#626B75">{escape(header_text)}</font>'
+        body += f'<br/><font color="#626B75">{header_text}</font>'
     if block.entity_kind in {"visit", "dining"}:
         body += f"<br/>{escape(block.summary)}"
     elif _rendered_text(details, "node_summary"):
         body += f"<br/>{escape(_rendered_text(details, 'node_summary'))}"
-    detail_lines = [
-        *_rendered_lines(details, "facts"),
-        *_rendered_lines(details, "notes"),
-        *_rendered_lines(details, "segment_lines"),
-    ]
+        if block.entity_kind == "lodging":
+            body += _field_citation_marks(block, {"address"}, citations, citation_numbers)
+    detail_lines = []
+    for fact in _rendered_lines(details, "facts"):
+        label = fact.split("：", 1)[0]
+        marks = _field_citation_marks(
+            block, _FACT_CITATION_FIELDS.get(label, set()), citations, citation_numbers
+        )
+        detail_lines.append(escape(fact) + marks)
+    detail_lines.extend(escape(item) for item in _rendered_lines(details, "notes"))
+    for line in _rendered_lines(details, "segment_lines"):
+        detail_lines.append(escape(line) + _field_citation_marks(
+            block, {"segments"}, citations, citation_numbers
+        ))
     if detail_lines:
         body += (
             '<br/><font color="#626B75">'
-            + "<br/>".join(escape(item) for item in detail_lines)
+            + "<br/>".join(detail_lines)
             + "</font>"
         )
     row = Table(
@@ -371,6 +421,7 @@ def render_trip_report_pdf(
     citation_numbers = {
         citation.citation_id: index for index, citation in enumerate(citations, start=1)
     }
+    citations_by_id = {citation.citation_id: citation for citation in citations}
 
     evidence_basis = EvidenceBasisView.from_itinerary(bundle.workspace.itinerary)
     styles = _styles()
@@ -405,7 +456,6 @@ def render_trip_report_pdf(
         item
         for item in (
             f"{document.duration_days} 天",
-            document.cost_coverage_statement,
             f"导出于 {exported_at.astimezone().strftime('%Y-%m-%d %H:%M')}",
         )
         if item
@@ -417,6 +467,11 @@ def render_trip_report_pdf(
         for highlight in document.highlights:
             story.append(Paragraph(escape(highlight), styles["body"]))
         story.append(Spacer(1, 2 * mm))
+
+    if document.unresolved:
+        story.append(Paragraph("待安排事项", styles["h1"]))
+        for item in document.unresolved:
+            story.append(Paragraph(escape(item), styles["body"]))
 
     for day in document.days:
         heading = f"第 {day.day} 天"
@@ -446,15 +501,16 @@ def render_trip_report_pdf(
         )
         if not day.blocks:
             story.append(heading_story)
+            story.append(Paragraph("当日尚未安排", styles["body"]))
             continue
         first_row = _timeline_row(
-            day.blocks[0], citation_numbers, styles, evidence_basis
+            day.blocks[0], citation_numbers, citations_by_id, styles, evidence_basis
         )
         story.append(KeepTogether([heading_story, first_row, Spacer(1, 2 * mm)]))
         for block in day.blocks[1:]:
             story.extend(
                 [
-                    _timeline_row(block, citation_numbers, styles, evidence_basis),
+                    _timeline_row(block, citation_numbers, citations_by_id, styles, evidence_basis),
                     Spacer(1, 2 * mm),
                 ]
             )

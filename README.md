@@ -29,6 +29,7 @@ The current product interface is in Simplified Chinese.
 Describe a trip in your own words or enter the destination, dates, and preferences in the form. For a
 full plan, JourneyPilot reviews the request, verifies places and asks follow-up questions when needed,
 then presents a research plan for approval before researching places, stays, transport, and weather.
+If research is interrupted, completed results are retained and retries use the original plan's time limits.
 
 Once a plan is ready, you can:
 
@@ -37,7 +38,8 @@ Once a plan is ready, you can:
 - Continue the conversation to request changes and clarify them over several turns, including adjustments suggested by a weather update.
 - Save travel styles and your own reference material for later planning.
 
-Sources, prices, and live information depend on the services used. Some local routes may be estimates,
+Sources, prices, and live information depend on the services used. Prices are shown for individual items
+without a combined total, and the PDF identifies items that remain unplanned. Some local routes may be estimates,
 and availability can change. JourneyPilot does not make bookings or process payments.
 
 ## Quick start

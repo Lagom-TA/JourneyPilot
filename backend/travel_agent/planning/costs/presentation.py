@@ -12,10 +12,6 @@ def format_cny(value: float) -> str:
 
 
 def cost_coverage_statement(summary: CostCoverageSummary) -> str | None:
-    """用约数呈现费用，不混入预订或核查状态。"""
+    """不同计价口径不合并为对外费用总额。"""
 
-    if summary.estimated_total_cny is not None:
-        return f"全程约 {format_cny(summary.estimated_total_cny)}"
-    if summary.known_subtotal_cny is not None:
-        return f"已列费用约 {format_cny(summary.known_subtotal_cny)}"
     return None

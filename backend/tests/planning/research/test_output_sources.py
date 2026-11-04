@@ -2,6 +2,7 @@
 
 from travel_agent.planning.research.output.sources import _drop_dangling_source_links
 from travel_agent.planning.research.output.sources import _sanitize_model_source_records
+from travel_agent.planning.research.output.transcript import _retrieved_source_snapshots
 
 
 def test_sanitize_drops_tool_call_shaped_sources_and_cleans_links():
@@ -66,3 +67,19 @@ def test_dangling_source_links_are_dropped_without_rejecting_the_packet():
 
     assert [link["source_record_id"] for link in payload["fact_assertions"][0]["source_links"]] == ["sr_known"]
     assert payload["candidates"][0]["source_record_ids"] == ["sr_known"]
+
+
+def test_only_evidence_allowed_search_results_ground_web_sources():
+    def message(url, *, allowed, quarantined=False):
+        return {"role": "tool", "content": {
+            "status": "success", "sanitized_result": {"url": url},
+            "metadata": {"evidence_allowed": allowed, "quarantine_result": quarantined},
+        }}
+
+    sources = _retrieved_source_snapshots([
+        message("https://example.com/valid", allowed=True),
+        message("https://example.com/blocked", allowed=False),
+        message("https://example.com/quarantined", allowed=True, quarantined=True),
+    ])
+
+    assert set(sources) == {"https://example.com/valid"}

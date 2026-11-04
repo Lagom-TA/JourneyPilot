@@ -28,13 +28,14 @@ from .metadata import (
     _bind_authoritative_packet_metadata,
     _payload_generated_at,
 )
-from .policy import ResearchPacketOutputError, ResearchWorkerKind
+from .policy import _WORKER_CANDIDATE_MODELS, ResearchPacketOutputError, ResearchWorkerKind
 from .sources import (
     _authoritative_tool_source_records,
     _bind_source_content_hashes,
     _drop_dangling_source_links,
     _ground_rag_chunk_sources,
     _ground_retrieved_sources_in_the_transcript,
+    _ground_model_tool_sources,
     _sanitize_model_source_records,
 )
 from .transcript import authoritative_tool_messages
@@ -72,6 +73,32 @@ def _sanitize_packet_nested_models(payload: dict[str, Any]) -> None:
         items = payload.get(key)
         if isinstance(items, list):
             payload[key] = [_filter_model_fields(item, fields) for item in items]
+
+
+def _restore_candidate_kinds(
+    payload: dict[str, Any], *, expected_worker: ResearchWorkerKind
+) -> None:
+    """只从互不冲突的专属字段恢复缺失类型，无法判断时保留校验错误。"""
+    markers = {
+        "visit": ("visit_type", "recommended_duration_minutes"),
+        "dining": ("branch_name", "meal_types"),
+        "lodging": ("property_name", "check_in_date", "check_out_date"),
+        "transport": ("route_id", "transport_class", "selected_mode", "segments"),
+    }
+    allowed = {kind for kind, _ in _WORKER_CANDIDATE_MODELS[expected_worker]}
+    candidates = payload.get("candidates")
+    if not isinstance(candidates, list):
+        return
+    for candidate in candidates:
+        if not isinstance(candidate, dict) or candidate.get("candidate_kind") is not None:
+            continue
+        matched = {
+            kind
+            for kind, fields in markers.items()
+            if any(candidate.get(field) not in (None, "", [], {}) for field in fields)
+        }
+        if len(matched) == 1 and matched <= allowed:
+            candidate["candidate_kind"] = matched.pop()
 
 
 def _isolate_json_object(text: str) -> Optional[dict]:
@@ -148,6 +175,7 @@ def parse_research_packet_output(
         payload, default_retrieved_at=_payload_generated_at(payload)
     )
     _sanitize_packet_nested_models(payload)
+    _restore_candidate_kinds(payload, expected_worker=expected_worker)
     _bind_authoritative_packet_metadata(payload, authoritative_packet_metadata)
     # worker 域由服务端绑定，不采用模型自报值。
     payload["worker_kind"] = expected_worker
@@ -166,6 +194,9 @@ def parse_research_packet_output(
     )
     authoritative_sources.update(
         _bind_successful_place_identity(payload, evidence_messages)
+    )
+    _ground_model_tool_sources(
+        payload, evidence_messages, authoritative_sources=authoritative_sources
     )
     _ground_retrieved_sources_in_the_transcript(
         payload, evidence_messages, expected_worker=expected_worker

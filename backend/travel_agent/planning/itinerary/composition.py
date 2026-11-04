@@ -119,6 +119,9 @@ async def _compose_draft(
             draft = _reuse_located_places(
                 _parse_exact_llm_composition(content), previous
             )
+            expected_dates = [day.date for day in state.minimum_delivery_draft.day_shells]
+            if [day.date for day in draft.days] != expected_dates:
+                raise ValueError("行程日期必须与已确认的旅行日期逐日一致")
         except ValueError as exc:
             if attempt:
                 raise

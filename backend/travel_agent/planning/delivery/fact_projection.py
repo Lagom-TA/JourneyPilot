@@ -80,13 +80,13 @@ _OPTIONAL_FIELD_SOURCES = {
 def workspace_for_public_projection(
     workspace: TripWorkspace, facts: FactStoreSnapshot
 ) -> TripWorkspace:
-    """在公开副本中清除缺失事实对应的无依据值，保留独立来源支持的值。"""
+    """在公开副本中只保留有对应来源支持的可选事实值。"""
 
     fact_index = {fact.fact_assertion_id: fact for fact in facts.fact_assertions}
     source_ids = {source.source_record_id for source in facts.source_records}
     candidates = workspace.recommendation_catalog.candidate_index()
 
-    def is_missing_value(
+    def lacks_supported_value(
         value: object, paths: Sequence[str], assertion_ids: Sequence[str],
         entity_type: EntityType, candidate_id: str,
     ) -> bool:
@@ -98,8 +98,6 @@ def workspace_for_public_projection(
             and fact.entity_ref.entity_id == candidate_id
             and fact.field_path in paths
         ]
-        if not any(fact.status == "missing" and fact.asserted_value is None for fact in relevant):
-            return False
         return not any(
             fact.status not in {"missing", "superseded"}
             and fact.asserted_value is not None
@@ -123,7 +121,7 @@ def workspace_for_public_projection(
             field: None
             for field, paths in _OPTIONAL_FIELD_SOURCES[entity_type].items()
             if getattr(entity, field) is not None
-            and is_missing_value(
+            and lacks_supported_value(
                 getattr(entity, field), paths, lineage.fact_assertion_ids,
                 entity_type, candidate_id,
             )
@@ -155,7 +153,7 @@ def workspace_for_public_projection(
             candidate = candidates[option.candidate_id]
             comparison = [
                 field for field in option.comparison_facts
-                if field not in fields or not is_missing_value(
+                if field not in fields or not lacks_supported_value(
                     getattr(candidate, field, None), fields[field],
                     option.fact_assertion_ids, entity_type, option.candidate_id,
                 )

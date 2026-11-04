@@ -238,7 +238,6 @@ async def research_transport_followup(
             "observed_at": candidate.observed_at.isoformat() if candidate.observed_at else None,
         } for packet in packets for candidate in packet.candidates]
         complete = result.outcome is ReactOutcome.FINAL_ANSWER
-        status = "success" if complete else "failed"
         observations = [{
             "tool": item.get("tool_name"),
             "status": item.get("status"),
@@ -262,8 +261,14 @@ async def research_transport_followup(
         else:
             summary = "交通补查没有取得工具资料。"
             uncertainty = "交通角色未提供可核实来源，相关内容仍待确认。"
+        failed_tools = any(
+            str(item.get("status") or "") in {"failed", "blocked"}
+            for item in result.tool_results
+        )
+        tool_failure = failed_tools and not routes
+        status = "success" if complete and not tool_failure else "failed"
         payload = {
-            "success": complete,
+            "success": status == "success",
             "summary": summary if complete else "交通补查未完成，相关路线仍待确认。",
             "research_notes": result.content if complete else "",
             "routes": routes,
@@ -277,7 +282,11 @@ async def research_transport_followup(
             result=payload,
             status=status,
             source="local",
-            error=None if complete else (result.error or result.outcome.value),
+            error=(
+                None if status == "success"
+                else summary if tool_failure and complete
+                else (result.error or result.outcome.value)
+            ),
             category="internal",
         )
         response["followup_packets"] = [packet.model_dump(mode="json") for packet in packets]

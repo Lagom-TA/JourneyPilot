@@ -52,7 +52,12 @@ def _public_entity_ref(entity_ref: Any) -> Dict[str, Any]:
 
 
 def _public_cost_summary(summary: CostCoverageSummary) -> Dict[str, Any]:
-    return summary.model_dump(mode="json")
+    # 单项价格可能按人、晚或整段计价，不能相加作为用户可见的金额。
+    return {
+        **summary.model_dump(mode="json"),
+        "known_subtotal_cny": None,
+        "estimated_total_cny": None,
+    }
 
 
 def _public_intent_explanations(items: Sequence[Any]) -> List[Dict[str, Any]]:
@@ -211,7 +216,7 @@ def _public_day_plan(day: DayPlan) -> Dict[str, Any]:
             for entry in day.timeline
         ],
         "time_structure": list(day.time_structure),
-        "estimated_cost_cny": day.estimated_cost_cny,
+        "estimated_cost_cny": None,
     }
 
 

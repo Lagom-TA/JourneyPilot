@@ -13,8 +13,10 @@ from travel_agent.planning.research.evidence import (
 
 from .failures import _failed_tool_sources
 from .identifiers import _canonical_snapshot_hash, _provider_entity_source_id
+from .metadata import _payload_generated_at
 from .transcript import (
     _normalized_source_url,
+    _parse_tool_envelope,
     _retrieved_source_snapshots,
     _successful_place_records,
 )
@@ -24,6 +26,117 @@ logger = logging.getLogger(__name__)
 _SOURCE_CORE_FIELDS = frozenset(
     {"source_record_id", "title", "provider_name", "public_excerpt", "snapshot"}
 )
+
+
+def _ground_model_tool_sources(
+    payload: dict[str, Any],
+    evidence_messages: Sequence[Mapping[str, Any]],
+    *,
+    authoritative_sources: Mapping[str, SourceRecord | Mapping[str, Any]],
+) -> None:
+    """工具来源必须对应本轮可作为证据的真实调用，快照由服务端绑定。"""
+    envelopes: dict[str, Mapping[str, Any]] = {}
+    for message in evidence_messages:
+        envelope = _parse_tool_envelope(message)
+        if not envelope or envelope.get("status") not in {"success", "degraded"}:
+            continue
+        metadata = envelope.get("metadata")
+        audit_id = str(envelope.get("audit_id") or "").strip()
+        if (
+            audit_id and isinstance(metadata, Mapping)
+            and metadata.get("evidence_allowed") is True
+            and not metadata.get("quarantine_result")
+            and isinstance(envelope.get("sanitized_result"), Mapping)
+        ):
+            envelopes[audit_id] = envelope
+
+    sources = payload.get("source_records")
+    if not isinstance(sources, list):
+        return
+    kept: list[Any] = []
+    dropped: set[str] = set()
+    for source in sources:
+        if not isinstance(source, dict) or source.get("source_kind") != "external_tool":
+            kept.append(source)
+            continue
+        source_id = str(source.get("source_record_id") or "")
+        authoritative = authoritative_sources.get(source_id)
+        if authoritative is not None:
+            lifecycle = (
+                authoritative.get("lifecycle_status", "active")
+                if isinstance(authoritative, Mapping)
+                else authoritative.lifecycle_status
+            )
+            if lifecycle == "active":
+                kept.append(source)
+            else:
+                dropped.add(source_id)
+            continue
+        snapshot = source.get("snapshot")
+        audit_id = str(
+            source.get("tool_audit_id")
+            or (snapshot.get("audit_id") if isinstance(snapshot, Mapping) else "")
+            or ""
+        ).strip()
+        envelope = envelopes.get(audit_id)
+        if envelope is None:
+            dropped.add(source_id)
+            continue
+        tool_name = str(envelope.get("tool_name") or "external_tool")
+        observed_at = _source_retrieved_at(envelope, _payload_generated_at(payload))
+        actual_snapshot = dict(envelope)
+        kept.append({
+            "source_record_id": source_id,
+            "source_kind": "external_tool",
+            "title": f"{tool_name} 查询结果",
+            "provider_name": str(envelope.get("server_name") or tool_name),
+            "public_excerpt": str(envelope.get("result_summary") or "")[:900],
+            "retrieved_at": observed_at,
+            "observed_at": observed_at,
+            "content_hash": _canonical_snapshot_hash(actual_snapshot),
+            "snapshot": actual_snapshot,
+            "tool_audit_id": audit_id,
+        })
+    payload["source_records"] = kept
+    if not dropped:
+        return
+
+    removed_facts: set[str] = set()
+    facts = payload.get("fact_assertions")
+    if isinstance(facts, list):
+        retained = []
+        for fact in facts:
+            if not isinstance(fact, dict) or not isinstance(fact.get("source_links"), list):
+                retained.append(fact)
+                continue
+            links = fact["source_links"]
+            survivors = [
+                link for link in links
+                if not isinstance(link, Mapping) or str(link.get("source_record_id") or "") not in dropped
+            ]
+            lost_source = len(survivors) != len(links)
+            if lost_source and fact.get("status") != "missing" and not any(
+                isinstance(link, Mapping) and link.get("relation") in {"supports", "qualifies"}
+                for link in survivors
+            ):
+                removed_facts.add(str(fact.get("fact_assertion_id") or ""))
+                continue
+            fact["source_links"] = survivors
+            retained.append(fact)
+        payload["fact_assertions"] = retained
+
+    for candidate in payload.get("candidates") or []:
+        if not isinstance(candidate, dict):
+            continue
+        for evaluation in candidate.get("constraint_evaluations") or []:
+            if not isinstance(evaluation, dict) or not isinstance(evaluation.get("fact_assertion_ids"), list):
+                continue
+            evaluation["fact_assertion_ids"] = [
+                item for item in evaluation["fact_assertion_ids"] if str(item) not in removed_facts
+            ]
+            if evaluation.get("status") in {"passed", "failed"} and not evaluation["fact_assertion_ids"]:
+                evaluation.update(status="unknown", reason_code="missing_evidence")
+    logger.warning("丢弃未经本轮工具调用证实的来源 %d 条", len(dropped))
 
 
 def _sanitize_model_source_records(payload: dict[str, Any], *, default_retrieved_at) -> None:

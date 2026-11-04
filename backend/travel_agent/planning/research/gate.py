@@ -37,6 +37,7 @@ def research_gate_payload(state: TravelAgentState) -> Dict[str, Any]:
     message = f"{failed_labels}未完成，已保留其他研究成果。"
     if completed_labels:
         message = f"{failed_labels}未完成；{completed_labels}的成果已保留。"
+    message += "重试沿用本次规划的时限设置，可用研究时间可能少于首次；调整时限后需取消并重新规划。"
     material = {
         "run_id": state.run_id,
         "generation": state.planning_generation.generation_id if state.planning_generation else "",

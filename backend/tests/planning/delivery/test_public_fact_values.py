@@ -10,6 +10,7 @@ from travel_agent.planning.delivery.projection_builder import build_delivery_pro
 from travel_agent.planning.delivery.projection_errors import DeliveryProjectionError
 from travel_agent.planning.delivery.public.bundle import public_delivery_bundle
 from travel_agent.planning.itinerary.draft import ItineraryCompositionDraft
+from travel_agent.planning.itinerary.day_design import apply_day_design
 from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
 from travel_agent.planning.references import EntityRef, EntityType
 from travel_agent.planning.requirements.inputs import UserInputAnchor
@@ -124,6 +125,48 @@ def _delivery(*packets, placements=None, lodging_ids=()):
     return bundle, public_delivery_bundle(bundle)
 
 
+def test_unplanned_day_and_missing_items_survive_delivery_projections():
+    packet = _packet("visit", "candidate_visit", {}, [])
+    catalog = RecommendationCatalog(
+        generation_id="generation_test", fact_data_revision=1, weather_data_revision=0,
+        research_packets=[packet],
+    )
+    payload = itinerary_draft([visit_entry()])
+    payload["duration_days"] = 2
+    payload["days"].append({
+        "day_id": "day_2", "day": 2, "date": "2026-10-11",
+        "destination_id": "destination_tokyo", "placements": [],
+        "day_design": {"unresolved": ["第二天尚未安排"]},
+    })
+    composition = ItineraryCompositionDraft.model_validate(payload)
+    workspace = materialize_trip_workspace(
+        run_id="run_test", workspace_revision=0, composition=composition,
+        catalog=catalog, requirements="", composition_mutations=[],
+        user_input_anchors=[UserInputAnchor(
+            anchor_id="destination", field_path=f"{CONTROLLED_DESTINATION_ANCHOR_PREFIX}destination_tokyo",
+            value={"place_id": "destination_tokyo", "name": "东京"}, input_kind="controlled_identity",
+        )],
+    )
+    workspace = apply_day_design(workspace, composition)
+    facts = build_fact_snapshot(workspace)
+    weather = WeatherContextSnapshot(
+        weather_data_revision=0, trip_start_date=workspace.itinerary.day_plans[0].date,
+        trip_end_date=workspace.itinerary.day_plans[-1].date, days=[], retrieved_at=NOW,
+    )
+    report, map_projection, source_index = build_delivery_projections(workspace, facts, weather, generated_at=NOW)
+    bundle = assemble_delivery_bundle(TravelAgentState(
+        run_id="run_test", trip_workspace=workspace, fact_store_snapshot=facts,
+        weather_context=weather, report_projection=report, map_projection=map_projection,
+        source_index_projection=source_index,
+    ))
+    public = public_delivery_bundle(bundle)
+
+    assert public["workspace"]["itinerary"]["day_plans"][1]["timeline"] == []
+    assert public["report_projection"]["document"]["days"][1]["blocks"] == []
+    assert public["workspace"]["itinerary"]["unresolved"] == ["第二天尚未安排"]
+    assert public["report_projection"]["document"]["unresolved"] == ["第二天尚未安排"]
+
+
 def test_missing_optional_facts_are_not_published_or_counted(caplog):
     packet = _packet("visit", "candidate_visit", {
         "opening_window": "09:00–17:00", "estimated_cost_cny": 88,
@@ -156,6 +199,20 @@ def test_missing_optional_facts_are_not_published_or_counted(caplog):
     assert not [record for record in caplog.records if record.levelname in {"WARNING", "ERROR"}]
 
 
+def test_optional_values_without_any_fact_are_not_published_or_counted():
+    packet = _packet("visit", "candidate_visit", {
+        "opening_window": "09:00–17:00", "estimated_cost_cny": 88,
+    }, [])
+    _, public = _delivery(packet)
+
+    stop = public["workspace"]["itinerary"]["visit_stops"][0]
+    report = public["report_projection"]["document"]
+    assert stop["opening_window"] is None
+    assert stop["estimated_cost_cny"] is None
+    assert report["days"][0]["blocks"][0]["details"]["opening_window"] is None
+    assert report["cost_summary"]["known_subtotal_cny"] is None
+
+
 def test_independently_sourced_values_survive_missing_facts_including_zero_and_false():
     packet = _packet("visit", "candidate_visit", {
         "opening_window": "09:00–17:00", "estimated_cost_cny": 0,
@@ -176,7 +233,7 @@ def test_independently_sourced_values_survive_missing_facts_including_zero_and_f
     assert "开放：09:00–17:00" in details["facts"]
     assert "预约：无需预约" in details["facts"]
     assert details["price_label"] is not None
-    assert report["cost_summary"]["known_subtotal_cny"] == 0
+    assert report["cost_summary"]["known_subtotal_cny"] is None
     assert "营业时间" in report["selections"][0]["options"][0]["comparison_facts"]
 
 
@@ -237,7 +294,7 @@ def test_dining_and_lodging_prices_are_checked_independently():
     assert stay["nightly_price_cny"] == 300 and stay["total_price_cny"] is None
     report = public["report_projection"]["document"]
     assert itinerary["cost_summary"] == report["cost_summary"]
-    assert report["cost_summary"]["known_subtotal_cny"] == 66
+    assert report["cost_summary"]["known_subtotal_cny"] is None
     assert report["cost_summary"]["estimated_total_cny"] is None
     blocks = {block["entity_kind"]: block for block in report["days"][0]["blocks"]}
     assert blocks["dining"]["details"]["opening_window"] is None

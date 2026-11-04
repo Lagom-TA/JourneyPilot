@@ -194,7 +194,7 @@ class DayComposition(StrictModel):
     date: date
     destination_id: str = Field(min_length=1)
     day_design: Optional[DayDesign] = None
-    placements: list[CompositionPlacement] = Field(min_length=1)
+    placements: list[CompositionPlacement] = Field(default_factory=list)
     time_structure: list[Literal["morning", "lunch", "afternoon", "evening"]] = Field(
         default_factory=lambda: ["morning", "lunch", "afternoon", "evening"]
     )
@@ -205,6 +205,10 @@ class DayComposition(StrictModel):
             raise ValueError(
                 "composition day must retain the four canonical time blocks"
             )
+        if not self.placements and not (
+            self.day_design and any(item.strip() for item in self.day_design.unresolved)
+        ):
+            raise ValueError("an unplanned day needs an unresolved explanation")
         return self
 
 

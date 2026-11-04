@@ -20,10 +20,10 @@ from travel_agent.integrations.weather_contracts import WeatherTimeWindow
 
 class WeatherSensitivity(StrictModel):
     exposure: Literal["indoor", "outdoor", "mixed"]
-    rain_sensitivity: Literal["none", "low", "high"]
-    heat_sensitivity: Literal["none", "low", "high"]
-    cold_sensitivity: Literal["none", "low", "high"]
-    wind_sensitivity: Literal["none", "low", "high"]
+    rain_sensitivity: Literal["none", "low", "medium", "high"]
+    heat_sensitivity: Literal["none", "low", "medium", "high"]
+    cold_sensitivity: Literal["none", "low", "medium", "high"]
+    wind_sensitivity: Literal["none", "low", "medium", "high"]
     requires_clear_visibility: bool
 
 

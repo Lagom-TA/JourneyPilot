@@ -4,14 +4,14 @@ from travel_agent.planning.costs.coverage import build_cost_coverage_summary
 from travel_agent.planning.costs.presentation import cost_coverage_statement
 
 
-def test_complete_cost_is_presented_as_trip_estimate():
+def test_complete_cost_is_not_combined_for_display():
     summary = build_cost_coverage_summary([100, 200])
-    assert cost_coverage_statement(summary) == "全程约 ¥300"
+    assert cost_coverage_statement(summary) is None
 
 
-def test_partial_cost_is_not_presented_as_trip_total():
+def test_partial_cost_is_not_combined_for_display():
     summary = build_cost_coverage_summary([100, None])
-    assert cost_coverage_statement(summary) == "已列费用约 ¥100"
+    assert cost_coverage_statement(summary) is None
 
 
 def test_empty_cost_has_no_booking_or_confirmation_copy():

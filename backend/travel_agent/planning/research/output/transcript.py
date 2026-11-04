@@ -69,6 +69,13 @@ def _retrieved_source_snapshots(
         envelope = _parse_tool_envelope(message)
         if envelope is None or envelope.get("status") not in countable:
             continue
+        metadata = envelope.get("metadata")
+        if (
+            not isinstance(metadata, Mapping)
+            or metadata.get("evidence_allowed") is not True
+            or metadata.get("quarantine_result")
+        ):
+            continue
         result = envelope.get("sanitized_result")
         if isinstance(result, Mapping):
             walk(result, result)

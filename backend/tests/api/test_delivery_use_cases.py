@@ -118,6 +118,38 @@ async def test_pdf_uses_immutable_snapshot_utc_time_and_api_headers(
     assert response.headers["x-journeypilot-weather-revision"] == "4"
 
 
+async def test_pdf_rejects_bundle_changed_while_rendering(
+    resources, revision_bundle, monkeypatch
+):
+    run = await resources.trip_run_store.create_run(
+        session_id="pdf", user_id="local", mode="fast"
+    )
+    updated = SimpleNamespace(manifest=SimpleNamespace(
+        bundle_id="new-bundle",
+        workspace_revision=3,
+        fact_data_revision=3,
+        weather_data_revision=4,
+    ))
+    reads = iter([revision_bundle, updated])
+
+    async def current(run_id):
+        return next(reads)
+
+    async def render(*args, **kwargs):
+        return SimpleNamespace(content=b"stale-pdf")
+
+    monkeypatch.setattr(resources.delivery_bundle_store, "get_current", current)
+    monkeypatch.setattr(export, "run_blocking", render)
+    response = await request(
+        "POST", f"/api/trip-runs/{run.run_id}/bundle/current/pdf", pdf_body()
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {
+        "code": "report_out_of_date", "current_bundle_id": "new-bundle"
+    }
+
+
 @pytest.mark.parametrize(
     "exception,status,detail",
     [
