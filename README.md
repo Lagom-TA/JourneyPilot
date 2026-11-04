@@ -126,7 +126,8 @@ docker compose -f infra/compose.yml logs -f api
 
 The web app and API are both available at <http://localhost:8001>. Compose reads the root `.env` file;
 model keys exported only in the host shell are not automatically passed to the API container. PostgreSQL
-and Redis also publish host ports `55433` and `16379` respectively.
+and Redis also publish host ports `55433` and `16379` respectively; setting `JOURNEYPILOT_DATABASE__PORT`
+publishes PostgreSQL on a different host port.
 
 JourneyPilot is designed for self-hosted, single-user use and has no built-in accounts or authentication.
 Run it on a trusted network; before exposing it to an untrusted network, configure access controls and

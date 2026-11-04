@@ -44,6 +44,8 @@ JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
 
 也可以把 `database.port: 55433`、`redis.port: 16379` 写进 `config.yaml`，之后直接用 `./run.sh`。容器内互联端口不同，不要改 Compose 的容器端口来解决宿主机连接问题。
 
+Compose 发布 PostgreSQL 宿主机端口时读取同一个 `JOURNEYPILOT_DATABASE__PORT`（未设置时为 55433）。55433 已被其他项目占用时，设置该变量即可换端口，应用与 Compose 会保持一致。
+
 ## PostgreSQL / Redis 连接失败
 
 确认连接参数（`config.yaml` 的 `database.*` / `redis.*`，或对应的 `JOURNEYPILOT_*` 环境变量）与 Compose 端口一致。Compose 不可用时也可以使用本机 PostgreSQL/Redis，但需要：

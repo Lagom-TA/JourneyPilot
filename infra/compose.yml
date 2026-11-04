@@ -33,10 +33,8 @@ services:
       POSTGRES_USER: travel_agent
       POSTGRES_PASSWORD: travel_agent_pwd
     ports:
-      # Host 55433 (not 5433): isolate from other local Postgres. Processes on the
-      # host that use this compose stack must set JOURNEYPILOT_DATABASE__PORT=55433
-      # (or database.port: 55433 in config.yaml).
-      - "55433:5432"
+      # 宿主机默认端口 55433；与应用配置使用同一个环境变量，便于本机并行运行多个数据库。
+      - "${JOURNEYPILOT_DATABASE__PORT:-55433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:

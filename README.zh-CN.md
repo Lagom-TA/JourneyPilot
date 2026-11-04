@@ -102,7 +102,7 @@ docker compose -f infra/compose.yml up -d --build
 docker compose -f infra/compose.yml logs -f api
 ```
 
-网页和 API 均通过 <http://localhost:8001> 访问。Compose 会读取根目录的 `.env`；仅在宿主 shell 中导出模型密钥，不会自动传入 API 容器。数据库和 Redis 也分别向宿主机发布 `55433`、`16379` 端口。
+网页和 API 均通过 <http://localhost:8001> 访问。Compose 会读取根目录的 `.env`；仅在宿主 shell 中导出模型密钥，不会自动传入 API 容器。数据库和 Redis 也分别向宿主机发布 `55433`、`16379` 端口；设置 `JOURNEYPILOT_DATABASE__PORT` 可让数据库改用其他宿主机端口。
 
 JourneyPilot 面向单用户自托管场景，目前没有账户系统或内建鉴权。请在可信网络中运行；部署到不可信网络前，请配置访问控制，并检查 API、数据库和 Redis 的监听地址。详见[安全策略](SECURITY.md)。
 
