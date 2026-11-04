@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Iterator
 
 import pytest
+
+_USAGE_SPOOL_DIR = pytest.StashKey[str]()
 
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(_BACKEND_DIR) not in sys.path:
@@ -19,6 +23,33 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", "postgres: requires a reachable PostgreSQL instance (skipped when absent)"
     )
+    # 用量 spool 默认落在仓库的 data/usage 下，与本机运行中的后端共用；测试里的假 run
+    # 一旦写进去，会被后端反复重试入库并因外键失败。整个测试会话改用一次性目录。
+    spool_dir = tempfile.mkdtemp(prefix="jp_test_usage_")
+    config.stash[_USAGE_SPOOL_DIR] = spool_dir
+    os.environ["JOURNEYPILOT_USAGE__SPOOL_PATH"] = str(Path(spool_dir) / "outbox.sqlite3")
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolated_usage_recorder():
+    """进程级用量记录器在整个测试会话里固定指向一次性 spool。
+
+    只设环境变量不够：个别配置用例会替换全局配置缓存，之后才创建的记录器会
+    回到默认路径，写进本机后端共用的真实 spool。
+    """
+
+    from travel_agent.llm import usage
+
+    recorder = usage.UsageRecorder(spool_path=Path(os.environ["JOURNEYPILOT_USAGE__SPOOL_PATH"]))
+    usage._recorder_singleton = recorder
+    yield recorder
+    usage._recorder_singleton = None
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    spool_dir = config.stash.get(_USAGE_SPOOL_DIR, None)
+    if spool_dir:
+        shutil.rmtree(spool_dir, ignore_errors=True)
 
 
 @pytest.fixture(scope="session")

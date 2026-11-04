@@ -171,7 +171,7 @@ async def test_node_scope_shares_budget_attribution_and_lifecycle_with_low_level
     async def node(_state):
         assert usage.read_attribution() == (run_id, "planner", "planner")
         assert budget.current_budget_ledger() is router.current_budget_ledger() is ledger
-        router.guard_run_budget("model.fixture", llm_calls=1)
+        budget.guard_run_budget("model.fixture", llm_calls=1)
         ledger.record_llm_call(input_tokens=2, output_tokens=3, cost_usd=None)
         with pytest.raises(budget.RunBudgetExhausted):
             budget.guard_run_budget("model.fixture", llm_calls=1)

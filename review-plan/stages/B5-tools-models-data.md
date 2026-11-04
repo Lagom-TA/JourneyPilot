@@ -1,0 +1,39 @@
+# B5 工具、模型、外部数据与用户资料
+
+`后端逻辑` · 前置 [B1](B1-backend-layers.md) · [返回总览](../../REVIEW-PLAN.md) · 开工前阅读：[工作规则](../rules.md)
+
+## 范围
+
+- `backend/travel_agent/tools/`
+- `backend/travel_agent/llm/`
+- `backend/travel_agent/integrations/`
+- `backend/mcp/`
+- `backend/travel_agent/knowledge/`
+- `backend/travel_agent/memory/`（`chat_session.py` 除外）
+- `backend/travel_agent/config/` 中的服务商、定价和 MCP 默认值，以及 `backend/travel_agent/resources/providers/`
+- `backend/travel_agent/api/routes/`：用户、记忆、风格、地点、资料来源、系统
+
+## 审查项
+
+- [ ] **工具授权**：每个角色的工具授权清单与实际注册的工具一致；按需暴露和完整加载的切换条件。
+- [ ] **工具执行**：超时、重试、失败时返回给模型的形状；“查无结果”和“技术失败”区分开。
+- [ ] **MCP 服务**：启动方式、环境变量白名单、没有密钥时的降级；四个自带服务各自的边界。
+- [ ] **模型路由**：主模型与快速模型的分工、任务到模型的映射、用量与费用的记账。
+- [ ] **外部数据源**：地点、路线、铁路、航班、天气、汇率各适配器的错误处理、限流和缓存。
+- [ ] **知识库**：上传 → 解析 → 分块 → 索引 → 检索 → 重排，以及体积、页数、压缩包展开量这几道上传边界。
+- [ ] **记忆与偏好**：自动提取、手动添加、去重、过期清理、全部删除；偏好和常用出发地的读写。
+- [ ] **旅行风格**：增删改查、AI 生成指令、规划时如何注入。
+
+## 影响下游
+
+- 改动工具授权或返回形状 → [B2](B2-planning-intake.md)、[B3](B3-planning-delivery.md)、[T2](T2-prompts-outputs.md)
+- 改动偏好、记忆、风格、资料来源接口 → [F5](F5-trips-preferences.md)
+- 改动工具展示信息 → [F3](F3-generation-workspace.md)、[T1](T1-ui-copy.md)
+
+## 收到的提醒
+
+- （暂无）
+
+## 问题与修复
+
+- （暂无）
