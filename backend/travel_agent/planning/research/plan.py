@@ -1,4 +1,4 @@
-"""把研究方案中的任务交给对应角色。"""
+"""把已确认的研究设想交给各角色。"""
 
 from __future__ import annotations
 
@@ -14,12 +14,10 @@ from travel_agent.planning.research.provider_assignments import (
 from travel_agent.planning.state import TravelAgentState
 
 
-# 研究执行计划的唯一真值：目的地 → 交通 → 住宿 → 组合，串行推进，
-# 后一位角色读取前序成果。计划门禁展示与批准落章都使用同一份定义。
+# 确认展示与实际分发使用同一份计划；同组角色并行研究。
 RESEARCH_EXECUTION_PLAN: list[list[str]] = [
     ["destination_researcher"],
-    ["transport_researcher"],
-    ["accommodation_researcher"],
+    ["transport_researcher", "accommodation_researcher"],
     ["itinerary_planner"],
 ]
 
@@ -58,11 +56,12 @@ async def planner_node(state: TravelAgentState) -> Dict[str, Any]:
     if plan is None or state.planning_generation is None:
         raise ValueError("任务分派需要当前研究方案")
     assignments = {
-        worker: build_worker_assignment(state, worker, task)
-        for worker, task in plan.tasks().items()
+        worker: build_worker_assignment(state, worker, plan.summary)
+        for group in RESEARCH_EXECUTION_PLAN
+        for worker in group
         if worker != "itinerary_planner"
     }
-    assignments["itinerary_planner"] = {"objective": plan.tasks()["itinerary_planner"]}
+    assignments["itinerary_planner"] = {"objective": plan.summary}
     return {
         "execution_plan": RESEARCH_EXECUTION_PLAN,
         "current_plan_step": 0,

@@ -19,7 +19,6 @@ from travel_agent.planning.research.feedback import (
     latest_worker_packet,
     redo_assignment_key,
 )
-from travel_agent.planning.itinerary.connector_estimates import _author_connector_routes
 from travel_agent.planning.itinerary.connectors import (
     connector_mode_requests_from_constraint_pack,
     extract_local_connector_gaps,
@@ -36,12 +35,11 @@ from travel_agent.planning.nodes import NODE_ITINERARY
 from travel_agent.planning.workspace import TripWorkspace
 from travel_agent.runtime.deadlines import observe_run_deadline
 from travel_agent.runtime.cancellation import RunCancelled
+from travel_agent.storage.worker_journal_store import JournalConflict
 from travel_agent.tools.access import filter_tools_for_agent, get_available_tools
 from travel_agent.planning.itinerary.day_design import apply_day_design
 from travel_agent.planning.itinerary.dispersion import itinerary_dispersion
-from travel_agent.planning.research.transport.local_routes import (
-    complete_local_connector_routes,
-)
+from travel_agent.planning.research.transport.followup import research_transport_followup
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +85,7 @@ def _composition_failure_context(stage: str, exc: BaseException) -> str:
 
 def _connector_overtime_context(
     overtimed: list[tuple[Any, int, int]],
+    response: dict[str, Any] | None = None,
 ) -> str:
     """把超窗相邻关系压成回炉修正的提示，供下一轮组合使用。"""
     parts = [
@@ -97,8 +96,15 @@ def _connector_overtime_context(
         f"路线约 {duration} 分钟、可用窗口 {window} 分钟"
         for gap, duration, window in overtimed
     ]
+    payload = (response or {}).get("sanitized_result")
+    response_text = str(payload.get("summary") or "") if isinstance(payload, dict) else ""
+    prefix = (
+        "交通研究员补查结果：" + response_text + "。相邻停留点的实际路线超出可用时间窗口："
+        if response is not None
+        else "上一轮相邻停留点的路线耗时超出可用时间窗口："
+    )
     text = (
-        "上一轮相邻停留点的路线耗时超出可用时间窗口："
+        prefix
         + "；".join(parts)
         + "。请调整停留时间或改用更近的候选，为门到门接驳留出足够时间。"
     )
@@ -200,9 +206,10 @@ async def itinerary_planner_node(
         if phase == "placement_skeleton":
             configurable = (config or {}).get("configurable", {})
             available_tools = filter_tools_for_agent(
-                await get_available_tools(state.selected_mcp_servers or []),
+                await get_available_tools(),
                 NODE_ITINERARY,
             )
+            catalog_updates = []
             result = await _compose_draft(
                 state,
                 str(assignment["objective"]),
@@ -211,9 +218,14 @@ async def itinerary_planner_node(
                 tool_context=build_tool_context_from_state(state),
                 stream_queue=configurable.get("stream_queue"),
                 tool_cache=dict(state.tool_cache) if state.tool_cache else None,
+                catalog_updates=catalog_updates,
             )
+            catalog = catalog_updates[-1] if catalog_updates else state.recommendation_catalog
             if isinstance(result, ResearchRedoRequest):
-                return _research_redo_update(state, result, output_key, deadline_update)
+                return {
+                    **_research_redo_update(state, result, output_key, deadline_update),
+                    "recommendation_catalog": catalog,
+                }
             draft = result
             from travel_agent.planning.invalidation import workspace_acceptance_invalidation
 
@@ -224,6 +236,7 @@ async def itinerary_planner_node(
                 "agent_status": {output_key: "pending"},
                 "next_agent": None,
                 "placement_skeleton": draft,
+                "recommendation_catalog": catalog,
                 "trip_workspace": None,
                 "local_connector_gaps": [],
                 "composition_failure_context": None,
@@ -243,26 +256,26 @@ async def itinerary_planner_node(
         )
         catalog = state.recommendation_catalog
         unfilled = unfilled_connector_gaps(catalog, gaps)
+        response = None
         if unfilled:
-            catalog = await complete_local_connector_routes(state, unfilled)
+            configurable = (config or {}).get("configurable", {})
+            groups: dict[str, list] = {}
+            for gap in unfilled:
+                groups.setdefault(gap.destination_id, []).append(gap)
+            for destination_id, destination_gaps in groups.items():
+                response, catalog = await research_transport_followup(
+                    state.model_copy(update={"placement_skeleton": skeleton, "recommendation_catalog": catalog}),
+                    question="请查询这些相邻安排之间的市内接驳，说明可用路线和未能核实的部分。",
+                    arrangement=skeleton.model_dump(mode="json"),
+                    destination_id=destination_id,
+                    gaps=destination_gaps,
+                    stream_queue=configurable.get("stream_queue"),
+                    request_id=f"skeleton_connectors:{destination_id}",
+                )
             unfilled = unfilled_connector_gaps(catalog, gaps)
-        authored = (
-            await _author_connector_routes(
-                llm_for_task(get_model_router(), TaskKind.COMPOSITION),
-                unfilled,
-            )
-            if unfilled
-            else {}
-        )
-        composition = materialize_skeleton_connectors(
-            skeleton,
-            catalog,
-            gaps,
-            authored,
-        )
-        # 实际路线超出相邻停留点可用窗口时，回炉让组合按真实耗时修正一次
-        # 排程；次数用尽后按真实耗时照常物化，不压缩分钟数。
-        overtimed = overtimed_connector_gaps(catalog, gaps, authored)
+        composition = materialize_skeleton_connectors(skeleton, catalog, gaps, {})
+        # 路线超出可用窗口时，回炉让组合按实际耗时修正排程。
+        overtimed = overtimed_connector_gaps(catalog, gaps, {})
         if overtimed and (state.composition_reschedule_rounds or 0) < _COMPOSITION_RESCHEDULE_LIMIT:
             logger.info(
                 "ItineraryPlanner 实际路线超出时间窗口，回炉修正排程: %s",
@@ -274,13 +287,14 @@ async def itinerary_planner_node(
                 "agent_status": {output_key: "pending"},
                 "next_agent": None,
                 "placement_skeleton": skeleton,
+                "recommendation_catalog": catalog,
                 "trip_workspace": None,
                 "local_connector_gaps": [],
                 "composition_reschedule_rounds": (
                     state.composition_reschedule_rounds or 0
                 )
                 + 1,
-                "composition_failure_context": _connector_overtime_context(overtimed),
+                "composition_failure_context": _connector_overtime_context(overtimed, response),
             }
         stage = "materialize_connectors/workspace_materialization"
         workspace = materialize_trip_workspace(
@@ -299,19 +313,31 @@ async def itinerary_planner_node(
             tool_context=build_tool_context_from_state(state),
         )
         workspace = apply_day_design(workspace, composition)
+        if unfilled:
+            itinerary = workspace.itinerary
+            unresolved = list(itinerary.unresolved)
+            for gap in unfilled:
+                origin = gap.from_endpoint.name if gap.from_endpoint else gap.from_place_id
+                destination = gap.to_endpoint.name if gap.to_endpoint else gap.to_place_id
+                unresolved.append(f"{gap.day_date.isoformat()} {origin}至{destination}的接驳尚未核实。")
+            workspace = workspace.model_copy(update={
+                "itinerary": itinerary.model_copy(update={"unresolved": list(dict.fromkeys(unresolved))})
+            })
         try:
             workspace = await write_itinerary_copy(
                 workspace,
                 llm_for_task(get_model_router(), TaskKind.SUMMARY),
             )
-        except RunCancelled:
+        except (RunCancelled, JournalConflict):
             raise
         except Exception as exc:
             logger.warning("itinerary title writing unavailable: %s", exc)
         _log_composition_dispersion(workspace)
         return {
             **deadline_update,
-            "messages": [AIMessage(content="精确相邻路线已物化为正式行程")],
+                "messages": [AIMessage(content=(
+                    "行程已整理，部分接驳仍待确认" if unfilled else "已根据路线整理正式行程"
+                ))],
             "agent_status": {output_key: "completed"},
             "next_agent": None,
             "trip_workspace": workspace,
@@ -319,7 +345,7 @@ async def itinerary_planner_node(
             "local_connector_gaps": gaps,
             "composition_failure_context": None,
         }
-    except RunCancelled:
+    except (RunCancelled, JournalConflict):
         raise
     except Exception as exc:
         logger.error("ItineraryPlanner failed: %s", exc, exc_info=True)

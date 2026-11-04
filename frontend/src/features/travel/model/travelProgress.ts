@@ -12,6 +12,7 @@ const AGENT_LABELS: Record<string, {
     weather_context_builder: { label: '准备天气信息', summary: '在安排前准备预报或季节参考' },
     planner: { label: '制定计划', summary: '把旅行需求拆成目的地、交通、住宿和每日安排' },
     dispatcher: { label: '安排调研', summary: '把不同主题交给对应调研分支处理' },
+    research_gate: { label: '等待重试研究', summary: '保留已有成果，等待重试未完成的研究' },
     destination_researcher: { label: '调研目的地体验', summary: '查找景点、美食、文化体验和本地注意事项' },
     transport_researcher: { label: '核对交通衔接', summary: '检查城际和市内交通是否顺路、可执行' },
     accommodation_researcher: { label: '筛选住宿区域', summary: '对比住宿位置、价格、评价和出行便利性' },

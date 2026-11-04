@@ -6,12 +6,6 @@ export async function controlTripRun(runId: string, request: TripRunControlReque
         body: JSON.stringify(request),
     });
 }
-export async function addTripRunSupplement(runId: string, content: string, sessionId: string | null): Promise<{ message: string }> {
-    return fetchJson(`/trip-runs/${encodeURIComponent(runId)}/supplements`, {
-        method: 'POST',
-        body: JSON.stringify({ category: 'other', content, session_id: sessionId }),
-    });
-}
 export async function listTripRuns(options?: {
     sessionId?: string;
     mode?: 'deep' | 'fast';

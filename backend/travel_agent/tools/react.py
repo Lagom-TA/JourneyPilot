@@ -7,8 +7,14 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
+from ..public_note import (
+    MAX_NOTE_CHARS_PER_RUN,
+    WORK_EXPLANATION_SOURCE,
+    PublicNoteStream,
+    work_explanation_step_id,
+)
 from ..runtime.budget import RunBudgetExhausted
-from ..runtime.cancellation import check_cancel_requested
+from ..runtime.cancellation import RunCancelled, check_cancel_requested
 from ..runtime.events import run_ts_ms
 from ..runtime.operations import ModelWindowClosed, remaining_model_seconds
 from .builtin_tools import SEARCH_TOOLS_NAME
@@ -116,8 +122,43 @@ async def streaming_react_loop(
     tool_context: Optional[Dict[str, Any]] = None,
     final_round_notice: Optional[str] = _FINAL_ROUND_NOTICE,
     journal_key: str = "react",
+    public_note: bool = False,
+    local_tool_handlers: Optional[Dict[str, Any]] = None,
 ) -> ReactResult:
     "通用流式 ReAct 循环。"
+
+    note_budget = MAX_NOTE_CHARS_PER_RUN if public_note and stream_queue is not None else 0
+    note_budget_used = 0
+
+    async def publish_notes(items, *, iteration: int, call_id: str) -> None:
+        """把已通过整句校验的公开说明送到 SSE；调用方保证只在工具轮发布。"""
+        nonlocal note_budget_used
+        if stream_queue is None:
+            return
+        for seq, text in items:
+            await stream_queue.put(
+                (
+                    "work_explanation",
+                    node_name,
+                    {
+                        "step_id": work_explanation_step_id(
+                            run_id=str(tool_context.get("run_id") or ""),
+                            node=node_name,
+                            round_number=iteration + 1,
+                            call_id=call_id,
+                            seq=seq,
+                        ),
+                        "content": text,
+                        "round": iteration + 1,
+                        "call_id": call_id,
+                        "seq": seq,
+                        "source": WORK_EXPLANATION_SOURCE,
+                        "ts_ms": run_ts_ms(),
+                    },
+                )
+            )
+            note_budget_used += len(text)
+
     if stream_queue is not None:
         await stream_queue.put(("agent_activity", node_name, None))
     tool_results_summary: List[str] = []
@@ -143,6 +184,8 @@ async def streaming_react_loop(
     )
 
     effective_max_iterations = max_iterations + (1 if exposure_plan.deferred else 0)
+    local_tool_call_limit = max_iterations * 2
+    local_tool_calls = 0
 
     from copy import deepcopy
 
@@ -172,6 +215,7 @@ async def streaming_react_loop(
         tool_results_summary[:] = saved["summaries"]
         authoritative_tool_results[:] = deepcopy(saved["results"])
         last_text_content = saved["last_text"]
+        local_tool_calls = int(saved.get("local_tool_calls", 0))
         exposure.restore(saved["activated"])
         journal.tool_cursor = saved["tool_cursor"]
         if saved.get("done"):
@@ -196,6 +240,7 @@ async def streaming_react_loop(
                 "last_text": last_text_content,
                 "activated": exposure.activated_names,
                 "tool_cursor": journal.tool_cursor,
+                "local_tool_calls": local_tool_calls,
                 "round_counts": deepcopy(round_counts),
                 **phase,
             }
@@ -257,25 +302,79 @@ async def streaming_react_loop(
         else:
             await save_round(iteration, phase="request_started")
             finished = False
+            # 本轮可见正文先缓冲，直到上游给出第一个工具调用增量才发布。
+            # 最终轮（没有工具调用）的正文是 Research Packet/最终答案，必须丢弃，
+            # 不能当作“工作说明”展示。
+            round_visible = ""
+            tool_round_started = False
+            note_call_id = ""
+            note_stream = (
+                PublicNoteStream(max_chars=max(0, note_budget - note_budget_used))
+                if note_budget > note_budget_used
+                else None
+            )
+
+            async def publish_round_visible() -> None:
+                nonlocal tool_round_started
+                if note_stream is None:
+                    return
+                if round_visible:
+                    await publish_notes(
+                        note_stream.feed(round_visible),
+                        iteration=iteration,
+                        call_id=note_call_id,
+                    )
+                tool_round_started = True
+
             try:
                 async for event in llm.ainvoke_with_tools_events(
                     messages, exposure.tool_schemas
                 ):
-                    if event["type"] == "text_delta":
-                        content += event["content"]
-                    elif event["type"] == "reasoning_delta":
+                    event_type = event["type"]
+                    if event_type == "stream_start":
+                        note_call_id = str(event.get("call_id") or "")
+                    elif event_type == "text_delta":
+                        delta = str(event.get("content") or "")
+                        content += delta
+                        round_visible += delta
+                        if tool_round_started and note_stream is not None:
+                            await publish_notes(
+                                note_stream.feed(delta),
+                                iteration=iteration,
+                                call_id=note_call_id,
+                            )
+                    elif event_type == "tool_call_delta":
+                        if not tool_round_started:
+                            await publish_round_visible()
+                    elif event_type == "reasoning_delta":
                         pass
-                    elif event["type"] == "finish":
+                    elif event_type == "finish":
                         finished = True
                         finish_content = event.get("content")
                         if finish_content is not None:
                             content = finish_content
                         tool_calls = event.get("tool_calls", [])
                         assistant_replay = event.get("assistant_replay") or {}
+                        note_call_id = str(event.get("call_id") or note_call_id)
+                        if tool_calls and note_stream is not None:
+                            # 供应商没有逐段给出 tool_call_chunks 时，到 finish
+                            # 才确认这是工具轮；此时发布缓冲的完整句子。
+                            if not tool_round_started:
+                                await publish_round_visible()
+                            await publish_notes(
+                                note_stream.flush(),
+                                iteration=iteration,
+                                call_id=note_call_id,
+                            )
+                        elif note_stream is not None and not tool_calls:
+                            # 最终轮：不发布、不保留半句。
+                            note_stream = None
             except (ModelWindowClosed, RunBudgetExhausted) as exc:
                 return await terminate(
                     iteration, ReactOutcome.BUDGET_LIMIT, error=str(exc)
                 )
+            except RunCancelled:
+                raise
             except Exception as e:
                 logger.error(f"[{node_name}] 流式 LLM 调用失败 (迭代 {iteration}): {e}")
                 return await terminate(
@@ -459,20 +558,35 @@ async def streaming_react_loop(
                             },
                         )
                     )
-                tool_result = await execute_tool(
-                    tc_name,
-                    tc_args,
-                    available_tools,
-                    run_id=tool_context.get("run_id"),
-                    node_name=node_name,
-                    tool_audit_store=tool_context.get("tool_audit_store"),
-                    tool_gateway=tool_context.get("tool_gateway"),
-                    activation_source="searched"
-                    if exposure.was_activated(tc_name)
-                    else "preloaded",
-                    provider_snapshot_cache=tool_context.get("provider_snapshot_cache"),
-                )
-                if _cacheable_tool_result(tc_name, tool_result):
+                handler = (local_tool_handlers or {}).get(tc_name)
+                if handler is not None and tc_name in allowed_names:
+                    if local_tool_calls >= local_tool_call_limit:
+                        from .governance import build_tool_execution_envelope
+
+                        tool_result = build_tool_execution_envelope(
+                            tool_name=tc_name,
+                            arguments=tc_args if isinstance(tc_args, dict) else {},
+                            status="failed",
+                            error="本轮补查次数已用完，请基于已有资料安排并说明未知。",
+                        )
+                    else:
+                        local_tool_calls += 1
+                        tool_result = await handler(tc_args, f"{journal_key}:{iteration}:{tc_id}")
+                else:
+                    tool_result = await execute_tool(
+                        tc_name,
+                        tc_args,
+                        available_tools,
+                        run_id=tool_context.get("run_id"),
+                        node_name=node_name,
+                        tool_audit_store=tool_context.get("tool_audit_store"),
+                        tool_gateway=tool_context.get("tool_gateway"),
+                        activation_source="searched"
+                        if exposure.was_activated(tc_name)
+                        else "preloaded",
+                        provider_snapshot_cache=tool_context.get("provider_snapshot_cache"),
+                    )
+                if handler is None and _cacheable_tool_result(tc_name, tool_result):
                     invocation_cache[cache_key] = tool_result
             if isinstance(tool_result, dict):
                 authoritative_tool_results.append(tool_result)

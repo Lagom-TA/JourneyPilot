@@ -144,10 +144,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         try:
             async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
                 data = await _get_json(client, url)
-        except httpx.HTTPStatusError as e:
-            return [TextContent(type="text", text=f"汇率 API 错误: {e.response.status_code} {e.response.text[:500]}")]
-        except Exception as e:
-            return [TextContent(type="text", text=f"请求失败: {e}")]
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(f"HTTP {exc.response.status_code}: 汇率服务请求失败") from exc
+        except httpx.TimeoutException as exc:
+            raise RuntimeError("timeout: 汇率服务请求超时") from exc
+        except httpx.RequestError as exc:
+            raise RuntimeError("connection: 汇率服务连接失败") from exc
 
         return [TextContent(type="text", text=_format_json(data))]
 
@@ -166,10 +168,12 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         try:
             async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
                 data = await _get_json(client, url)
-        except httpx.HTTPStatusError as e:
-            return [TextContent(type="text", text=f"汇率 API 错误: {e.response.status_code} {e.response.text[:500]}")]
-        except Exception as e:
-            return [TextContent(type="text", text=f"请求失败: {e}")]
+        except httpx.HTTPStatusError as exc:
+            raise RuntimeError(f"HTTP {exc.response.status_code}: 汇率服务请求失败") from exc
+        except httpx.TimeoutException as exc:
+            raise RuntimeError("timeout: 汇率服务请求超时") from exc
+        except httpx.RequestError as exc:
+            raise RuntimeError("connection: 汇率服务连接失败") from exc
 
         return [TextContent(type="text", text=_format_json(data))]
 

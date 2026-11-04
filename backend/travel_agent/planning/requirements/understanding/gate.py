@@ -18,17 +18,21 @@ from travel_agent.runtime.cancellation import RunCancelled
 
 
 def _build_understanding_gate_payload(state: Any) -> Dict[str, Any]:
-    questions = validate_understanding_questions(state.understanding_pending_questions)
+    questions = (
+        validate_understanding_questions(state.understanding_pending_questions)
+        if state.understanding_pending_questions else []
+    )
     payload: Dict[str, Any] = {
         "gate": "understanding",
         "revision": int(state.understanding_rounds or 0),
         "questions": [item.model_dump(mode="json") for item in questions],
-        "decision_options": ["answer", "cancel"],
+        "decision_options": ["answer", "cancel"] if questions else ["retry", "cancel"],
     }
     material = {
         "run_id": state.run_id,
         "revision": payload["revision"],
         "questions": payload["questions"],
+        "decision_options": payload["decision_options"],
     }
     digest = hashlib.sha256(
         json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(":", ":")).encode()
@@ -39,7 +43,9 @@ def _build_understanding_gate_payload(state: Any) -> Dict[str, Any]:
 
 async def understanding_gate_node(state: Any) -> Dict[str, Any]:
     payload = _build_understanding_gate_payload(state)
-    questions = {item.id: item for item in validate_understanding_questions(payload["questions"])}
+    questions = {
+        item.id: item for item in validate_understanding_questions(payload["questions"])
+    } if payload["questions"] else {}
     while True:
         decision = interrupt(payload)
         if not isinstance(decision, dict):
@@ -47,7 +53,7 @@ async def understanding_gate_node(state: Any) -> Dict[str, Any]:
         action = str(decision.get("action") or "").lower()
         if action == "cancel":
             raise RunCancelled(state.run_id, NODE_UNDERSTANDING_GATE)
-        if action != "answer":
+        if action not in payload["decision_options"]:
             continue
         supplied = str(decision.get("approval_token") or "")
         try:
@@ -58,6 +64,14 @@ async def understanding_gate_node(state: Any) -> Dict[str, Any]:
             valid = False
         if not valid:
             continue
+        if action == "retry":
+            return {
+                "understanding_messages": [
+                    *(state.understanding_messages or []),
+                    {"role": "user", "content": "请重新查询尚未核实的地点，保留已知旅行信息。"},
+                ],
+                "understanding_pending_questions": None,
+            }
         try:
             answers = bind_understanding_answers(list(questions.values()), decision.get("answers"))
         except ValueError:

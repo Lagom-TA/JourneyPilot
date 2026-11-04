@@ -41,6 +41,10 @@ export interface SessionDetail extends SessionSummary {
                 url?: string;
             }>;
             progress_status?: 'running' | 'completed' | 'failed';
+            kind?: 'work_explanation';
+            round?: number | null;
+            call_id?: string | null;
+            seq?: number | null;
             tool_category?: string;
             from_cache?: boolean;
             duration_ms?: number | null;

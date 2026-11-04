@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from copy import deepcopy
 from types import SimpleNamespace
 
 import pytest
@@ -38,8 +37,8 @@ def test_prompt_injects_the_packet_schema_and_matching_candidate_limit(
         task_id="task_prompt_test",
         fact_data_revision=1,
         current_time="2026-01-02 09:30",
-        task_context="",
         candidate_limit=candidate_limit,
+        task_desc="自然研究设想",
         upstream_packet_context="[]",
         active_constraint_ids=(),
     )
@@ -68,8 +67,8 @@ def test_new_research_run_preserves_the_complete_schema_prefix() -> None:
         task_id="task_a",
         fact_data_revision=1,
         current_time="2026-10-05 10:00",
-        task_context="北京",
         candidate_limit=3,
+        task_desc="自然研究设想",
     )
     first = build_research_packet_prompt(run_id="run_a", **options)
     second = build_research_packet_prompt(
@@ -78,7 +77,6 @@ def test_new_research_run_preserves_the_complete_schema_prefix() -> None:
             **options,
             "task_id": "task_b",
             "current_time": "2026-10-06 11:00",
-            "task_context": "上海",
             "candidate_limit": 2,
         },
     )
@@ -102,12 +100,12 @@ def test_dynamic_inputs_change_only_runtime_and_preserve_message_boundaries(
         task_id="task_a",
         fact_data_revision=1,
         current_time="2026-10-05 10:00",
-        task_context="北京",
         candidate_limit=4,
+        task_desc="自然研究设想",
         upstream_packet_context="upstream_a",
         active_constraint_ids=["constraint_a"],
         recommended_tools=["maps_text_search"],
-        state=SimpleNamespace(session_anchor={"summary": "anchor_a"}),
+        state=SimpleNamespace(current_requirements="北京"),
     )
     first = build_research_packet_prompt(**options)
     second = build_research_packet_prompt(
@@ -118,70 +116,43 @@ def test_dynamic_inputs_change_only_runtime_and_preserve_message_boundaries(
             "candidate_limit": 12,
             "fact_data_revision": 9,
             "current_time": "2026-10-06 11:00",
-            "task_context": "上海",
             "upstream_packet_context": "upstream_b",
             "active_constraint_ids": ["constraint_b"],
             "recommended_tools": ["global_place_search"],
-            "state": SimpleNamespace(session_anchor={"summary": "anchor_b"}),
+            "state": SimpleNamespace(current_requirements="上海"),
         }
     )
     assert first.system == second.system
     assert first.runtime != second.runtime
-    for value in ("run_b", "task_b", "anchor_b", "constraint_b", "upstream_b", "上海"):
+    for value in ("run_b", "task_b", "constraint_b", "upstream_b", "上海"):
         assert value not in second.system
         assert value in second.runtime
-    history = [
-        {"role": "user", "content": "old task"},
-        {"role": "assistant", "content": "old answer"},
-    ]
-    before = deepcopy(history)
-    messages = second.messages(history)
-    messages.append({"role": "user", "content": "current task"})
+    messages = second.messages()
     assert [message["content"] for message in messages] == [
         second.system,
-        "old task",
-        "old answer",
         second.runtime,
-        "current task",
     ]
-    assert history == before
-    messages[1]["content"] = "changed working transcript"
-    assert history == before
 
 
-def test_context_sections_have_one_owner_and_are_injected_once(monkeypatch):
-    from travel_agent.memory.agent_context import agent_context_sections
-    from travel_agent.conversation.preset_context import PresetInjector
-
-
-    monkeypatch.setattr(
-        PresetInjector, "format_for_agent", lambda value: f"preset:{value}"
-    )
-    monkeypatch.setattr('travel_agent.planning.requirements.constraints.presentation.format_constraint_pack_for_prompt', lambda value: f'constraints:{value}')
-    monkeypatch.setattr('travel_agent.planning.weather.presentation.format_weather_context_for_planning', lambda state: f'weather:{state.weather_context}')
+def test_research_prompt_uses_the_understanding_without_extra_context():
     state = SimpleNamespace(
-        session_anchor={"summary": "unique_anchor"},
-        preset_context="A",
-        constraint_pack="B",
-        weather_context="C",
+        controlled_trip_identity={"origin": None, "destinations": []},
+        current_requirements="完整旅行理解",
+        user_query="原始旅行消息",
+        session_anchor={"summary": "早期对话"},
+        preset_context="额外背景",
+        constraint_pack={"constraints": ["重复偏好"]},
     )
-    sections = agent_context_sections(state, "destination_researcher")
-    assert [section.name for section in sections] == [
-        "session_anchor",
-        "preset",
-        "constraints",
-        "weather",
-    ]
     prompt = build_research_packet_prompt(
         worker_kind="destination_researcher",
         run_id="run",
         task_id="task",
         fact_data_revision=1,
         current_time="now",
-        task_context="brief",
         candidate_limit=4,
+        task_desc="自然研究设想",
         state=state,
     )
-    for section in sections:
-        assert section.text not in prompt.system
-        assert prompt.runtime.count(section.text) == 1
+    assert prompt.runtime.count("完整旅行理解") == 1
+    for value in ("原始旅行消息", "早期对话", "额外背景", "重复偏好"):
+        assert value not in prompt.runtime

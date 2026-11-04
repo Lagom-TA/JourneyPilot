@@ -234,6 +234,37 @@ def _summarize_route(route: Any) -> Optional[str]:
     return "路线：" + "，".join(raw) if raw else None
 
 
+def _place_identity_key(item: Any) -> tuple[str, ...] | None:
+    if not isinstance(item, dict):
+        return None
+    place_id = str(item.get("place_id") or "").strip()
+    if place_id:
+        return ("id", place_id)
+    name = str(
+        item.get("name")
+        or item.get("title")
+        or item.get("branch_name")
+        or item.get("property_name")
+        or ""
+    ).strip()
+    address = str(item.get("address") or item.get("formatted_address") or "").strip()
+    if not name and not address:
+        return None
+    return ("name", name.casefold(), address.casefold())
+
+
+def _unique_place_items(results: list[Any]) -> list[Any]:
+    unique: list[Any] = []
+    seen: set[tuple[str, ...]] = set()
+    for item in results:
+        key = _place_identity_key(item)
+        if key is None or key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique
+
+
 def _summarize_structured_collection(value: Any) -> Optional[str]:
     """为常见结构化工具载荷（地点搜索/天气/路线）生成可读摘要。
 
@@ -262,23 +293,42 @@ def _summarize_structured_collection(value: Any) -> Optional[str]:
         return None
     try:
         documents = data.get("documents")
-        if isinstance(documents, list):
-            return f"读到 {len(documents)} 段知识库资料" if documents else _EMPTY_RESULT_SUMMARY
+        if isinstance(documents, list) and (
+            documents or "failures" in data or "retrieval_status" in data
+        ):
+            failures = data.get("failures")
+            partial = (
+                isinstance(failures, list) and bool(failures)
+            ) or data.get("retrieval_status") == "partial_failure"
+            if documents:
+                suffix = "（部分来源暂不可用）" if partial else ""
+                return f"读到 {len(documents)} 段知识库资料{suffix}"
+            if partial:
+                return "部分资料库暂不可用"
+            return _EMPTY_RESULT_SUMMARY
         results = data.get("results")
         if isinstance(results, list):
             if not results:
                 return _EMPTY_RESULT_SUMMARY
+            unique = _unique_place_items(results)
+            count = len(unique) if unique else len(results)
             names = [
-                str(item.get("name") or item.get("title") or "").strip()
-                for item in results
+                str(
+                    item.get("name")
+                    or item.get("title")
+                    or item.get("branch_name")
+                    or item.get("property_name")
+                    or ""
+                ).strip()
+                for item in unique
                 if isinstance(item, dict)
             ]
-            # 去重同名 POI 变体（provider 常返回同名多条），保持出现顺序。
+            # 名称列表与计数使用同一去重集合，避免「找到 3 个」却只列出 2 个。
             names = list(dict.fromkeys(name for name in names if name))
             head = "、".join(names[:3])
             if head:
-                return f"找到 {len(results)} 个结果：{head}" + ("…" if len(results) > 3 else "")
-            return f"找到 {len(results)} 个结果"
+                return f"找到 {count} 个结果：{head}" + ("…" if count > 3 else "")
+            return f"找到 {count} 个结果"
 
         forecasts = data.get("forecasts")
         if isinstance(forecasts, list) and forecasts and isinstance(forecasts[0], dict):
@@ -288,8 +338,9 @@ def _summarize_structured_collection(value: Any) -> Optional[str]:
             if casts and isinstance(casts[0], dict):
                 cast = casts[0]
                 weather = str(cast.get("dayweather") or "").strip()
-                low = str(cast.get("daytemp") or "").strip()
-                high = str(cast.get("nighttemp") or "").strip()
+                # 高德 casts 里 daytemp 是白天最高温，nighttemp 是夜间最低温。
+                low = str(cast.get("nighttemp") or "").strip()
+                high = str(cast.get("daytemp") or "").strip()
                 temp = f" {low}~{high}°C" if low and high else ""
                 summary = f"{city} {weather}{temp}".strip()
                 return summary or None
@@ -310,16 +361,26 @@ def _summarize_structured_collection(value: Any) -> Optional[str]:
         if isinstance(web, list):
             if not web:
                 return _EMPTY_RESULT_SUMMARY
+            unique_web: list[dict[str, Any]] = []
+            seen_web: set[str] = set()
+            for item in web:
+                if not isinstance(item, dict):
+                    continue
+                key = str(item.get("url") or item.get("title") or item.get("name") or "").strip().casefold()
+                if not key or key in seen_web:
+                    continue
+                seen_web.add(key)
+                unique_web.append(item)
+            count = len(unique_web) if unique_web else len(web)
             titles = [
                 str(item.get("title") or item.get("name") or "").strip()
-                for item in web
-                if isinstance(item, dict)
+                for item in unique_web
             ]
             titles = list(dict.fromkeys(title for title in titles if title))
             head = "、".join(titles[:3])
             if head:
-                return f"找到 {len(web)} 条网页：{head}" + ("…" if len(web) > 3 else "")
-            return f"找到 {len(web)} 条网页"
+                return f"找到 {count} 条网页：{head}" + ("…" if count > 3 else "")
+            return f"找到 {count} 条网页"
         # 单条网页文档 {url, title, description}（tavily_extract 等）。
         if isinstance(data.get("url"), str) and data.get("url"):
             title = str(data.get("title") or data.get("description") or "").strip()

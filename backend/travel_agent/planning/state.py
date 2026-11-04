@@ -177,7 +177,7 @@ class TravelAgentState(BaseModel):
     - 基础设施：前置 destination_geo / weather_context
     - 编排：execution_plan, current_plan_step, agent_assignments, next_agent
     - Worker 输出：agent_status 与强类型 Research Packet / Workspace
-    - 系统：current_time, selected_mcp_servers, tool_cache 等
+    - 系统：current_time, tool_cache 和版本记录等
     """
 
     messages: Annotated[List[BaseMessage], add_messages] = Field(default_factory=list)
@@ -192,7 +192,7 @@ class TravelAgentState(BaseModel):
     refinement_action: str = ""
     refinement_context: str = ""
 
-    # 理解阶段的工作记录：代理消息历史（含工具结果）、已发生的问答与当前待答问题。
+    # 理解阶段保留消息与问答；待答问题为空数组时等待重新查询地点。
     understanding_messages: List[Dict[str, Any]] = Field(default_factory=list)
     understanding_qa: List[Dict[str, Any]] = Field(default_factory=list)
     understanding_rounds: int = Field(default=0, ge=0)
@@ -231,6 +231,10 @@ class TravelAgentState(BaseModel):
     current_plan_step: int = 0
 
     agent_assignments: Dict[str, Any] = Field(default_factory=dict)
+    research_retry_count: int = Field(default=0, ge=0)
+    research_gate_started_at: Optional[str] = None
+    research_failed_workers: List[str] = Field(default_factory=list)
+    research_retry_workers: List[str] = Field(default_factory=list)
 
     agent_status: Annotated[Dict[str, str], _merge_dicts_allow_clear] = Field(
         default_factory=dict
@@ -301,7 +305,15 @@ class TravelAgentState(BaseModel):
     rejected_intent_amendments: Annotated[
         List[IntentAmendmentRejection], _merge_amendment_rejections
     ] = Field(default_factory=list)
-    selected_mcp_servers: List[str] = Field(default_factory=list)
+    prompt_versions: Annotated[Dict[str, str], _merge_dicts] = Field(
+        default_factory=dict
+    )
+    policy_versions: Annotated[Dict[str, str], _merge_dicts] = Field(
+        default_factory=dict
+    )
+    model_versions: Annotated[Dict[str, str], _merge_dicts] = Field(
+        default_factory=dict
+    )
 
     preset_context: str = ""
     preset_pack_constraints: Dict[str, str] = Field(default_factory=dict)

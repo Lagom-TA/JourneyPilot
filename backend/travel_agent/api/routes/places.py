@@ -7,8 +7,9 @@ from typing import Any, Dict, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 
-from travel_agent.planning.requirements.identity_contracts import DESTINATION_PLACE_KINDS, ITINERARY_PLACE_KINDS, ORIGIN_PLACE_KINDS, PlaceIdentity, PlaceKind
+from travel_agent.planning.requirements.identity_contracts import DESTINATION_PLACE_KINDS, ITINERARY_PLACE_KINDS, ORIGIN_PLACE_KINDS, PlaceIdentity
 from travel_agent.integrations.places.contracts import NominatimPlaceSearchError
+from travel_agent.integrations.places.identity import nominatim_trip_place
 from travel_agent.integrations.places.nominatim import search_nominatim_raw
 from travel_agent.api.schemas.places import PlaceCandidateResponse, PlaceSearchResponse
 
@@ -17,78 +18,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/places", tags=["places"])
 
 
-def _kind(item: Dict[str, Any]) -> Optional[PlaceKind]:
-    value = str(item.get("addresstype") or item.get("type") or "").lower()
-    # Nominatim 将车站标记为 addresstype="railway" / type="station"，
-    # 具体设施类型只能从 ``type`` 读取。
-    facility = str(item.get("type") or "").lower()
-    category = str(item.get("category") or item.get("class") or "").lower()
-    address = item.get("address") if isinstance(item.get("address"), dict) else {}
-    subdivision_code = str(
-        address.get("ISO3166-2-lvl4")
-        or address.get("ISO3166-2-lvl3")
-        or ""
-    ).upper()
-    if value in {"country"}:
-        return PlaceKind.COUNTRY
-    if value in {"city", "town", "municipality"}:
-        return PlaceKind.CITY
-    if value == "state" and subdivision_code in {"CN-BJ", "CN-SH", "CN-TJ", "CN-CQ", "CN-HK", "CN-MO"}:
-        return PlaceKind.CITY
-    if value in {"state", "province", "region", "county"}:
-        return PlaceKind.ADMINISTRATIVE_AREA
-    if value in {"island", "islet"}:
-        return PlaceKind.ISLAND
-    if value in {"aerodrome", "airport"} or category == "aeroway":
-        return PlaceKind.AIRPORT
-    if facility in {"station", "halt"} and category in {"railway", "public_transport"}:
-        return PlaceKind.TRAIN_STATION
-    if value in {"national_park", "nature_reserve", "protected_area"}:
-        return PlaceKind.SCENIC_AREA
-    if value in {"hotel", "guest_house", "hostel"}:
-        return PlaceKind.HOTEL
-    if value in {"restaurant", "cafe", "fast_food"}:
-        return PlaceKind.RESTAURANT
-    if category in {"tourism", "historic", "leisure", "natural"}:
-        return PlaceKind.POI
-    return None
-
-
 def _candidate(item: Dict[str, Any], *, role: str) -> Optional[PlaceCandidateResponse]:
-    kind = _kind(item)
+    raw_place = nominatim_trip_place(item)
+    if raw_place is None:
+        return None
+    place = PlaceIdentity.model_validate(raw_place)
     allowed = {
         "origin": ORIGIN_PLACE_KINDS,
         "destination": DESTINATION_PLACE_KINDS,
         "itinerary_place": ITINERARY_PLACE_KINDS,
     }[role]
-    if kind not in allowed:
+    if place.kind not in allowed:
         return None
-    address = item.get("address") if isinstance(item.get("address"), dict) else {}
-    country_code = str(address.get("country_code") or "").lower()
-    if len(country_code) != 2:
-        return None
-    osm_type = str(item.get("osm_type") or "").lower()
-    osm_id = str(item.get("osm_id") or "")
-    if not osm_type or not osm_id:
-        return None
-    display_name = str(item.get("display_name") or "").strip()
-    short_name = str(item.get("name") or display_name.split(",", 1)[0]).strip()
     importance = max(0.0, min(float(item.get("importance") or 0.0), 1.0))
-    place = PlaceIdentity(
-        place_id=f"osm:{osm_type}:{osm_id}",
-        provider="osm",
-        kind=kind,
-        name=short_name,
-        display_name=display_name,
-        country_code=country_code,
-        latitude=float(item["lat"]),
-        longitude=float(item["lon"]),
-        admin_path=[
-            str(address[key])
-            for key in ("country", "state", "province", "city", "county")
-            if address.get(key)
-        ],
-    )
     return PlaceCandidateResponse(
         place=place,
         confidence=round(importance, 4),

@@ -17,8 +17,8 @@ const NODE_STAGES: ReadonlyArray<readonly [
     stage: StageId
 ]> = [
     ['scope_clarifier', '需求确认', 'planning'],
-    ['understanding_agent', '理解需求', 'planning'],
-    ['understanding_gate', '等待回答', 'planning'],
+    ['understanding_agent', '理解旅行需求', 'planning'],
+    ['understanding_gate', '等待你的回答', 'planning'],
     ['requirements_preparer', '整理需求', 'planning'],
     ['research_plan_generator', '研究生成', 'planning'],
     ['minimum_delivery_draft_builder', '行程框架', 'planning'],
@@ -29,6 +29,7 @@ const NODE_STAGES: ReadonlyArray<readonly [
     ['planner', '制定计划', 'planning'],
     ['plan_gate', '确认方案', 'planning'],
     ['dispatcher', '安排查询', 'planning'],
+    ['research_gate', '等待重试研究', 'research'],
     ['destination_researcher', '目的地调研', 'research'],
     ['transport_researcher', '交通查询', 'research'],
     ['accommodation_researcher', '住宿查询', 'research'],
@@ -40,6 +41,17 @@ export const AGENT_TO_STAGE: Record<string, StageId> = Object.fromEntries(NODE_S
     [node, stage],
     [display, stage],
 ]));
+// 旧夹具与旧历史里可能还留着这两个内部时代的显示名；真实公开名以后端
+// presentation.py 为准，旧名只做兼容，不再作为新事件的名字。
+const LEGACY_AGENT_ALIASES: Record<string, string> = {
+    '理解需求': '理解旅行需求',
+    '等待回答': '等待你的回答',
+};
+for (const [legacy, current] of Object.entries(LEGACY_AGENT_ALIASES)) {
+    const stage = AGENT_TO_STAGE[current];
+    if (stage)
+        AGENT_TO_STAGE[legacy] = stage;
+}
 export function getStageIdForAgent(agentName: string): StageId | null {
     const { base } = parseAgentRound(agentName);
     return AGENT_TO_STAGE[base] ?? null;
@@ -77,6 +89,7 @@ const ACTIVITY_STAGE_BY_NODE: Record<string, ActivityStageId> = {
     planner: 'requirements',
     plan_gate: 'requirements',
     dispatcher: 'research',
+    research_gate: 'research',
     destination_researcher: 'research',
     transport_researcher: 'research',
     accommodation_researcher: 'research',
@@ -93,6 +106,11 @@ for (const [node, display, stage] of NODE_STAGES) {
         ACTIVITY_STAGE_BY_NODE[display] = node === 'itinerary_planner' || display === '行程规划' ? 'route' : 'research';
 }
 ACTIVITY_STAGE_BY_NODE['安排查询'] = 'research';
+for (const [legacy, current] of Object.entries(LEGACY_AGENT_ALIASES)) {
+    const stage = ACTIVITY_STAGE_BY_NODE[current];
+    if (stage)
+        ACTIVITY_STAGE_BY_NODE[legacy] = stage;
+}
 export function getActivityStageIdForAgent(agentName: string): ActivityStageId | null {
     return ACTIVITY_STAGE_BY_NODE[parseAgentRound(agentName).base] ?? null;
 }
@@ -130,8 +148,9 @@ export function latestActivityStageWithSteps(steps: ThinkingStep[]): ActivitySta
     return latestPopulatedActivityStage(steps);
 }
 /**
- * 当前最新活动阶段。门与等待确认归到需求整理，完成、合成与开始输出归到交付；
- * 其余情况按事件顺序取最近进入的阶段。
+ * 当前最新活动阶段。门与等待确认只在需求阶段生效：研究或路线已经留下行动时，
+ * 门是返工确认，不能把已完成的阶段重新标成进行中。完成、合成与开始输出归到
+ * 交付；其余情况按事件顺序取最近进入的阶段。
  */
 export function latestActivityStageId(args: {
     steps: ThinkingStep[];
@@ -141,11 +160,15 @@ export function latestActivityStageId(args: {
     runStatus?: string | null;
     gatePending?: boolean;
 }): ActivityStageId | null {
-    if (args.gatePending || args.runStatus === 'awaiting_input')
-        return 'requirements';
+    const populated = latestPopulatedActivityStage(args.steps);
+    if (args.gatePending || args.runStatus === 'awaiting_input') {
+        return populated && ACTIVITY_STAGE_RANK[populated] > ACTIVITY_STAGE_RANK.requirements
+            ? populated
+            : 'requirements';
+    }
     if (args.runStatus === 'completed' || args.isSynthesizing || args.answerStarted)
         return 'delivery';
-    return latestPopulatedActivityStage(args.steps) ?? (args.isStreaming ? 'requirements' : null);
+    return populated ?? (args.isStreaming ? 'requirements' : null);
 }
 export function filterStepsForActivityStage(steps: ThinkingStep[], stage: ActivityStageId): ThinkingStep[] {
     return steps.filter(step => getActivityStageIdForAgent(step.agentName || '') === stage);
@@ -271,4 +294,136 @@ export function deriveStages(steps: ThinkingStep[], signals: StageSignals): Deri
         };
     });
     return { stages, hasDeepWorkflow: touched.size >= 2 };
+}
+
+export type ActivityStageStatus = 'pending' | 'active' | 'done' | 'failed' | 'stopped';
+export const ACTIVITY_STAGE_ORDER: readonly ActivityStageId[] = ['requirements', 'research', 'route', 'delivery'];
+export interface ActivityStageView {
+    id: ActivityStageId;
+    title: string;
+    status: ActivityStageStatus;
+    startedAt?: Date;
+    endedAt?: Date;
+    elapsedMs?: number;
+}
+export interface ActivityStageProjection {
+    stages: ActivityStageView[];
+    currentStage: ActivityStageId | null;
+}
+export interface ActivityStageSignals {
+    isStreaming: boolean;
+    isSynthesizing: boolean;
+    answerStarted: boolean;
+    runStatus?: string | null;
+    gatePending?: boolean;
+    understandingPending?: boolean;
+}
+function stageTiming(steps: ThinkingStep[], stage: ActivityStageId): {
+    startedAt?: Date;
+    endedAt?: Date;
+    lastAt?: Date;
+} {
+    let startedAt: Date | undefined;
+    let endedAt: Date | undefined;
+    let lastAt: Date | undefined;
+    for (const step of steps) {
+        if (getActivityStageIdForAgent(step.agentName || '') !== stage)
+            continue;
+        const started = step.timestamp instanceof Date ? step.timestamp : new Date(step.timestamp);
+        if (!Number.isNaN(started.getTime()) && (!startedAt || started < startedAt))
+            startedAt = started;
+        const ended = step.endTime instanceof Date ? step.endTime : step.endTime ? new Date(step.endTime) : undefined;
+        if (ended && !Number.isNaN(ended.getTime()) && (!endedAt || ended > endedAt))
+            endedAt = ended;
+        const at = ended ?? started;
+        if (!Number.isNaN(at.getTime()) && (!lastAt || at > lastAt))
+            lastAt = at;
+    }
+    return { startedAt, endedAt, lastAt };
+}
+function hasStageSteps(steps: ThinkingStep[], stage: ActivityStageId): boolean {
+    return steps.some(step => getActivityStageIdForAgent(step.agentName || '') === stage);
+}
+/**
+ * 工作台四阶段的唯一投影：左侧状态、右侧标题和右侧行动都从这里取。
+ *
+ * 当前阶段沿用 latestActivityStageId 的单调/返研规则；终态则回到最近真正留下
+ * 行动的阶段，避免失败前已经输出正文时把焦点误判成交付。阶段状态只表达阶段
+ * 本身，工具自己的成败仍由 ThinkingChain 的组状态表达。
+ */
+export function deriveActivityStages(steps: ThinkingStep[], signals: ActivityStageSignals): ActivityStageProjection {
+    const populated = latestPopulatedActivityStage(steps);
+    const terminal = signals.runStatus;
+    const failed = terminal === 'failed';
+    const stopped = terminal === 'cancelled' || terminal === 'interrupted';
+    const stopping = terminal === 'cancel_requested';
+    const completed = terminal === 'completed';
+    const waiting = Boolean(signals.gatePending || signals.understandingPending || terminal === 'awaiting_input');
+    const focus = latestActivityStageId({
+        steps,
+        isStreaming: signals.isStreaming,
+        isSynthesizing: signals.isSynthesizing,
+        answerStarted: signals.answerStarted,
+        runStatus: terminal,
+        gatePending: signals.gatePending,
+    });
+    let current: ActivityStageId | null;
+    if (failed || stopped || stopping) {
+        current = populated ?? focus;
+    }
+    else if (completed) {
+        current = focus && hasStageSteps(steps, focus) ? focus : populated ?? focus;
+    }
+    else {
+        current = focus;
+        if (current && !hasStageSteps(steps, current)) {
+            const waitingAtRequirements = current === 'requirements' && (signals.isStreaming || waiting);
+            const synthesizingDelivery = current === 'delivery' && (signals.isSynthesizing || signals.answerStarted);
+            if (!waitingAtRequirements && !synthesizingDelivery)
+                current = populated ?? current;
+        }
+        if (!current && signals.isStreaming)
+            current = 'requirements';
+    }
+    const currentIndex = current ? ACTIVITY_STAGE_ORDER.indexOf(current) : -1;
+    const now = Date.now();
+    const stages: ActivityStageView[] = ACTIVITY_STAGE_ORDER.map((id, index) => {
+        const timing = stageTiming(steps, id);
+        let status: ActivityStageStatus;
+        if (completed) {
+            status = 'done';
+        }
+        else if (currentIndex < 0) {
+            status = 'pending';
+        }
+        else if (index < currentIndex) {
+            status = 'done';
+        }
+        else if (index === currentIndex) {
+            if (failed)
+                status = 'failed';
+            else if (stopped)
+                status = 'stopped';
+            else if (stopping || signals.isStreaming || waiting)
+                status = 'active';
+            else
+                status = 'pending';
+        }
+        else {
+            status = hasStageSteps(steps, id) ? 'done' : 'pending';
+        }
+        const endedAt = status === 'active' ? undefined : timing.endedAt ?? timing.lastAt;
+        const elapsedMs = timing.startedAt
+            ? (status === 'active' ? now : endedAt?.getTime() ?? timing.startedAt.getTime()) - timing.startedAt.getTime()
+            : undefined;
+        return {
+            id,
+            title: ACTIVITY_STAGE_TITLES[id],
+            status,
+            startedAt: timing.startedAt,
+            endedAt,
+            elapsedMs,
+        };
+    });
+    return { stages, currentStage: current };
 }

@@ -40,6 +40,9 @@ NODE_PLAN_GATE = "plan_gate"
 NODE_DISPATCHER = "dispatcher"
 
 
+NODE_RESEARCH_GATE = "research_gate"
+
+
 NODE_DESTINATION = "destination_researcher"
 
 
@@ -75,12 +78,10 @@ RESEARCH_WORKER_NODES = frozenset(
 )
 
 
-CHECKPOINT_GATE_NODES = frozenset({NODE_PLAN_GATE, NODE_UNDERSTANDING_GATE})
+CHECKPOINT_GATE_NODES = frozenset({NODE_PLAN_GATE, NODE_UNDERSTANDING_GATE, NODE_RESEARCH_GATE})
 
 
-# 补充要求可以续跑的节点边界。入口整理（scope_clarifier）、提问暂停点
-# （understanding_gate）与路由器自身不是可恢复的边界；图的条件边表与运行时
-# 的 divert 守卫都从这里取，避免两边各写一份。
+# 图的续跑条件边和运行时的补充要求守卫共享同一份节点集合。
 AMENDMENT_CONTINUATION_NODES = frozenset(
     {
         NODE_UNDERSTANDING_AGENT,
@@ -93,6 +94,7 @@ AMENDMENT_CONTINUATION_NODES = frozenset(
         NODE_PLANNER,
         NODE_PLAN_GATE,
         NODE_DISPATCHER,
+        NODE_RESEARCH_GATE,
         NODE_DESTINATION,
         NODE_TRANSPORT,
         NODE_ACCOMMODATION,

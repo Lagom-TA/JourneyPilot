@@ -2,7 +2,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Dict
-from travel_agent.tools.display import public_text, result_preview
+from travel_agent.tools.display import public_args_summary, public_text, result_preview
 from travel_agent.tools.governance import (
     CAPABILITY_DECLARATION_STATUSES,
     ToolExecutionStatus,
@@ -24,16 +24,23 @@ _FAILED_TOOL_STATUSES = frozenset(
 
 
 def _tool_outcome(tool_status: str) -> str:
-    """把 ToolExecutionStatus 映射为面向用户的工具轮次结论。
+    """把 ToolExecutionStatus 映射为审计 trace 的工具轮次结论。
 
-    ``degraded`` 仍表示获得了可用结果，因此结论为 completed；降级信息由
-    ``risk_flags`` 的 ``tool_degraded`` 与帧上的 ``degraded`` 字段承载。
+    ``degraded`` 仍表示获得了可用结果，因此 trace 结论为 completed；
+    ``risk_flags`` 的 ``tool_degraded`` 保留降级事实。
     """
     if tool_status in CAPABILITY_DECLARATION_STATUSES:
         return _TOOL_OUTCOME_CAPABILITY_DECLARED
     if not tool_status or tool_status in _FAILED_TOOL_STATUSES:
         return _TOOL_OUTCOME_FAILED
     return _TOOL_OUTCOME_COMPLETED
+
+
+def _thinking_tool_status(tool_status: str) -> str:
+    """公开思维链需要保留 degraded，历史恢复才不会把它显示成普通完成。"""
+    if tool_status == ToolExecutionStatus.DEGRADED.value:
+        return ToolExecutionStatus.DEGRADED.value
+    return _tool_outcome(tool_status)
 
 
 async def _handle_tool_start(
@@ -46,13 +53,15 @@ async def _handle_tool_start(
     tool_category = tool_info.get("category", "other")
     tool_from_cache = tool_info.get("from_cache", False)
     ts_ms = tool_info.get("ts_ms")
+    # 原始参数仍进 trace；公开帧与思维链只带脱敏后的可读摘要。
+    public_args = public_args_summary(tool_info.get("args_summary", ""))
     yield {
         "type": "tool_start",
         "message_id": ctx.message_id,
         "agent_name": get_agent_display_name(node_name),
         "tool_name": tool_name,
         "tool_call_id": tool_call_id,
-        "args_summary": tool_info.get("args_summary", ""),
+        "args_summary": public_args,
         "category": tool_category,
         "from_cache": tool_from_cache,
         "ts_ms": ts_ms,
@@ -80,12 +89,12 @@ async def _handle_tool_start(
             "tool_call_id": tool_call_id,
             "agent_name": get_agent_display_name(node_name),
             "step_name": f"调用 {tool_name}",
-            "content": tool_info.get("args_summary", ""),
+            "content": public_args,
             "timestamp": now_iso,
             "is_tool_call": True,
             "tool_name": tool_name,
             "tool_status": "running",
-            "tool_args": tool_info.get("args_summary", ""),
+            "tool_args": public_args,
             "tool_category": tool_category,
             "from_cache": tool_from_cache,
         }
@@ -105,12 +114,11 @@ async def _handle_tool_done(
     tool_from_cache = tool_info.get("from_cache", False)
     tool_status = str(tool_info.get("status") or "")
     tool_outcome = _tool_outcome(tool_status)
+    thinking_status = _thinking_tool_status(tool_status)
     audit_id = tool_info.get("audit_id")
     degraded = bool(tool_info.get("degraded"))
     duration_ms = tool_info.get("duration_ms")
     ts_ms = tool_info.get("ts_ms")
-    fallback_from = tool_info.get("fallback_from")
-    fallback_to = tool_info.get("fallback_to")
     tool_result_event: Dict[str, Any] = {
         "type": "tool_result",
         "message_id": ctx.message_id,
@@ -125,10 +133,7 @@ async def _handle_tool_done(
         "duration_ms": duration_ms,
         "ts_ms": ts_ms,
     }
-    if fallback_from:
-        tool_result_event["fallback_from"] = fallback_from
-    if fallback_to:
-        tool_result_event["fallback_to"] = fallback_to
+    # fallback_from/to 是内部工具名，只留在审计 trace；公开帧不携带。
     yield tool_result_event
     trace_tool_call = {
         "name": tool_name,
@@ -165,7 +170,7 @@ async def _handle_tool_done(
             and _ts.get("tool_status") == "running"
         )
         if same_call or fallback_match:
-            _ts["tool_status"] = tool_outcome
+            _ts["tool_status"] = thinking_status
             _ts["tool_result"] = tool_summary
             _ts["result_preview"] = preview
             _ts["end_time"] = now_iso

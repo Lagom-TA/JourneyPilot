@@ -31,6 +31,8 @@ def worker_result(
             rows = packet.get("candidates")
             if isinstance(rows, list):
                 candidates.extend(rows)
+    if isinstance(statuses, dict) and "partial" in statuses.values():
+        return "failed", "本轮调研未完成，已保留可用资料", result_preview(candidates)
     if isinstance(packets, dict) and packets:
         noun = {
             "destination_researcher": "地点",

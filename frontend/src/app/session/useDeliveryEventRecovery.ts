@@ -38,7 +38,7 @@ function validateWindow(window: TripRunEventWindowResponse, runId: string, reque
     }
 }
 export function useDeliveryEventRecovery(): void {
-    const { state, dispatch, currentStateRef } = useApp();
+    const { state, dispatch, currentStateRef, pendingFollowupsRef, setPendingFollowups } = useApp();
     const cursorByRun = React.useRef(new Map<string, number>());
     const readyRuns = React.useRef(new Set<string>());
     const finalizedRuns = React.useRef(new Set<string>());
@@ -123,10 +123,17 @@ export function useDeliveryEventRecovery(): void {
                         }
                     }
                     if (window.run_status === 'completed') {
+                        if (currentStateRef.current.isStreaming) {
+                            await wait(POLL_INTERVAL_MS);
+                            continue;
+                        }
                         if (!window.current_bundle_id) {
                             throw new Error('Completed TripRun has no current Delivery Bundle');
                         }
                         if (deliverySynced) {
+                            const detail = await getTripRunDetail(runId, { sessionId });
+                            if (!active || currentStateRef.current.currentTripRunId !== runId) return;
+                            dispatch({ type: 'SET_CONTROLLED_TRIP_IDENTITY', payload: detail.controlled_trip_identity });
                             const latestAssistant = [...currentStateRef.current.currentMessages]
                                 .reverse()
                                 .find((message) => message.role === 'assistant');
@@ -148,6 +155,15 @@ export function useDeliveryEventRecovery(): void {
                             }
                         }
                         finalizedRuns.current.add(runId);
+                        dispatch({ type: 'SET_TRIP_RUN_STATUS', payload: 'completed' });
+                        if (sessionId && pendingFollowupsRef.current[sessionId]?.some(item => item.status === 'waiting')) {
+                            setPendingFollowups(previous => ({
+                                ...previous,
+                                [sessionId]: (previous[sessionId] ?? []).map(item => item.status === 'waiting'
+                                    ? { ...item, status: item.editing ? 'paused' : 'ready' }
+                                    : item),
+                            }));
+                        }
                         dispatch({ type: 'BUMP_TRIP_RUN_REFRESH' });
                         return;
                     }
@@ -159,9 +175,19 @@ export function useDeliveryEventRecovery(): void {
                             continue;
                         }
                         if (isTripRunStatus(window.run_status)) dispatch({ type: 'SET_TRIP_RUN_STATUS', payload: window.run_status });
-                        if (window.run_status === 'awaiting_input' || window.run_status === 'interrupted') {
+                        if (sessionId && pendingFollowupsRef.current[sessionId]?.some(item => item.status === 'waiting')) {
+                            setPendingFollowups(previous => ({
+                                ...previous,
+                                [sessionId]: (previous[sessionId] ?? []).map(item => item.status === 'waiting'
+                                    ? { ...item, status: 'paused' }
+                                    : item),
+                            }));
+                        }
+                        if (window.run_status === 'awaiting_input' || window.run_status === 'interrupted'
+                            || window.run_status === 'failed' || window.run_status === 'cancelled') {
                             const detail = await getTripRunDetail(runId, { sessionId });
                             if (!active || currentStateRef.current.currentTripRunId !== runId) return;
+                            dispatch({ type: 'SET_CONTROLLED_TRIP_IDENTITY', payload: detail.controlled_trip_identity });
                             const choice = detail.state.pending_user_choice;
                             const payload = choice?.payload && typeof choice.payload === 'object' && !Array.isArray(choice.payload)
                                 ? choice.payload as Record<string, unknown>
@@ -170,12 +196,15 @@ export function useDeliveryEventRecovery(): void {
                                 const gate = normalizePlanApprovalGate({ run_id: runId, gate: 'plan', payload }, 'pending', 'restored');
                                 if (gate) dispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: gate });
                             }
-                            else if (choice?.gate === 'understanding' && payload && Array.isArray(payload.questions)) {
+                            else if ((choice?.gate === 'understanding' || choice?.gate === 'research') && payload && Array.isArray(payload.questions)) {
                                 dispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: {
                                     runId,
                                     revision: typeof payload.revision === 'number' ? payload.revision : 0,
                                     approvalToken: typeof payload.approval_token === 'string' ? payload.approval_token : '',
                                     questions: payload.questions as UnderstandingQuestion[],
+                                    retryLocation: Array.isArray(payload.decision_options) && payload.decision_options.includes('retry'),
+                                    retryResearch: choice.gate === 'research',
+                                    message: typeof payload.message === 'string' ? payload.message : undefined,
                                 } });
                             }
                             dispatch({ type: 'SET_TRIP_RUN_RECOVERY', payload: tripRunRecoveryFromDetail(detail) });
@@ -205,7 +234,7 @@ export function useDeliveryEventRecovery(): void {
         };
         void monitor();
         return () => { active = false; };
-    }, [currentStateRef, dispatch, runId, sessionId]);
+    }, [currentStateRef, dispatch, pendingFollowupsRef, runId, sessionId, setPendingFollowups]);
 }
 export const DeliveryEventRecovery: React.FC = () => {
     useDeliveryEventRecovery();

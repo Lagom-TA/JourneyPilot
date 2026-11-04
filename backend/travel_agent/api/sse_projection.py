@@ -11,9 +11,11 @@ from typing import Any, Dict, Mapping, Optional
 from travel_agent.conversation.intake_contracts import RouteDecision
 from travel_agent.runtime.run_contracts import TripRunStatus
 from travel_agent.planning.delivery.summary_card_contracts import TripSummaryCard
+from travel_agent.planning.requirements.identity_contracts import ControlledTripIdentity
 from travel_agent.planning.delivery.public.bundle import public_event_manifest
 from .audit_projection import audit_safe_value
-from travel_agent.tools.display import public_text, result_preview
+from travel_agent.public_note import sanitize_public_note
+from travel_agent.tools.display import public_args_summary, public_text, result_preview
 
 # 产品生命周期与用户可见的运行边界事件。
 _NORMAL_SSE_EVENT_TYPES = frozenset(
@@ -22,6 +24,7 @@ _NORMAL_SSE_EVENT_TYPES = frozenset(
         "chat_chunk",
         "route_confirmation",
         "understanding_questions",
+        "trip_identity_updated",
         "approval_gate_raised",
         "chat_complete",
         "delivery_ready",
@@ -39,6 +42,7 @@ _RESEARCH_TRACE_EVENT_TYPES = frozenset(
         "agent_progress",
         "tool_start",
         "tool_result",
+        "work_explanation",
     }
 )
 
@@ -102,6 +106,7 @@ def public_understanding_questions_payload(payload: Any) -> Dict[str, Any]:
             if isinstance(question, Mapping)
         ],
         "decision_options": payload.get("decision_options"),
+        **({"message": public_text(payload.get("message"), 300)} if payload.get("gate") == "research" else {}),
     }
 
 
@@ -134,7 +139,7 @@ def public_plan_gate_payload(payload: Any) -> Dict[str, Any]:
                 {
                     "step": step.get("step"),
                     "agents": step.get("agents"),
-                    # 下发完整任务文本：审批门需要用户确认各执行者收到的任务。
+                    # 各角色收到同一份已确认的设想。
                     "tasks": step.get("tasks"),
                 }
                 for step in steps
@@ -168,11 +173,32 @@ def _common_ids(payload: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _project_research_trace(event_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+def _project_research_trace(
+    event_type: str, payload: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
     projected: Dict[str, Any] = _common_ids(payload)
     for key in ("agent_name", "step_name"):
         if key in payload:
             projected[key] = payload[key]
+
+    if event_type == "work_explanation":
+        # 公开说明不走 public_text：那只是形态过滤 + 300 字截断，不是脱敏器。
+        # 这里再次整句校验；无法确认安全时整帧丢弃，不发出可疑前缀。
+        note = sanitize_public_note(str(payload.get("content") or ""))
+        if not note:
+            return None
+        projected.update(
+            {
+                "node": payload.get("node"),
+                "step_id": payload.get("step_id"),
+                "round": payload.get("round"),
+                "call_id": payload.get("call_id"),
+                "seq": payload.get("seq"),
+                "content": note,
+                "source": payload.get("source"),
+            }
+        )
+        return projected
 
     if event_type in {"thinking", "agent_progress"}:
         projected["content"] = public_text(payload.get("content", ""))
@@ -191,7 +217,7 @@ def _project_research_trace(event_type: str, payload: Dict[str, Any]) -> Dict[st
         }
     )
     if event_type == "tool_start":
-        projected["args_summary"] = payload.get("args_summary", "")
+        projected["args_summary"] = public_args_summary(payload.get("args_summary", ""))
     else:
         # ``status`` 是本次工具调用结束方式的唯一字段。不下发 ``success`` 与
         # ``degraded``：前者把三态（成功 / 失败 / 已声明能力）压成布尔，
@@ -204,10 +230,8 @@ def _project_research_trace(event_type: str, payload: Dict[str, Any]) -> Dict[st
                 "duration_ms": payload.get("duration_ms"),
             }
         )
-        # 不下发 ``audit_id``：它是内部标识，检视面板不展示标识符。
-        for key in ("fallback_from", "fallback_to"):
-            if payload.get(key) is not None and payload.get(key) != "":
-                projected[key] = payload[key]
+        # 不下发 ``audit_id`` / ``fallback_from`` / ``fallback_to``：它们是内部
+        # 标识或内部工具名，只留在审计 trace。
     return projected
 
 
@@ -320,6 +344,13 @@ def _project_product_event(event_type: str, payload: Dict[str, Any]) -> Dict[str
             **common,
             "route_decision": _project_route_decision(payload.get("route_decision")),
         }
+    if event_type == "trip_identity_updated":
+        return {
+            **common,
+            "controlled_trip_identity": ControlledTripIdentity.model_validate(
+                payload.get("controlled_trip_identity") or {}
+            ).model_dump(mode="json"),
+        }
     if event_type == "understanding_questions":
         # 与审批门同构：run_status 由后端统一给出，payload 经公开投影下发。
         return {
@@ -344,6 +375,7 @@ def _project_product_event(event_type: str, payload: Dict[str, Any]) -> Dict[str
             **common,
             "run_status": payload.get("run_status"),
             "final_content": payload.get("final_content", ""),
+            "requires_input": payload.get("requires_input") is True,
         }
         if payload.get("guard_blocked"):
             out["guard_blocked"] = True

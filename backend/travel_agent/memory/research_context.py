@@ -26,12 +26,11 @@ def _packet_round(packet: ResearchPacket) -> int:
     match = re.fullmatch(r"(.+)_r(\d+)", packet.task_id)
     return int(match.group(2)) if match else 1
 
-# 串行研究链中各角色能读到的上游候选种类：交通读目的地成果，
-# 住宿读目的地与交通成果；目的地是第一位，没有上游。
+# 交通与住宿共同读取目的地研究；目的地没有上游研究成果。
 _COORDINATION_KINDS = {
     "destination_researcher": frozenset(),
     "transport_researcher": frozenset({"visit", "dining"}),
-    "accommodation_researcher": frozenset({"visit", "dining", "transport"}),
+    "accommodation_researcher": frozenset({"visit", "dining"}),
 }
 # 只剥离跨系统对账用的证据与约束 ID；推荐理由、取舍说明和天气敏感度
 # 属于上游研究结论，保留给下游角色参考。
@@ -78,16 +77,17 @@ def project_research_context(
     worker_kind: str,
     run_id: str,
     generation_id: str,
+    fact_data_revision: int,
     destination_ids: Sequence[str],
 ) -> ResearchContextView:
     kinds = _COORDINATION_KINDS[worker_kind]
     destinations = {str(item) for item in destination_ids if str(item)}
-    # 最新 packet 决定候选的可见版本。不混合不同 generation，也不为填充上下文
-    # 引入无关目的地。
     in_scope = [
         packet
         for packet in packets.values()
-        if packet.run_id == run_id and packet.generation_id == generation_id
+        if packet.run_id == run_id
+        and packet.generation_id == generation_id
+        and packet.fact_data_revision == fact_data_revision
     ]
     latest_rounds = _latest_round_by_base(in_scope)
     current = sorted(

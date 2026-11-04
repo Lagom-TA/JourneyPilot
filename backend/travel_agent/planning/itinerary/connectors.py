@@ -380,7 +380,7 @@ def unfilled_connector_gaps(
     catalog: RecommendationCatalog,
     gaps: list[LocalConnectorGap],
 ) -> list[LocalConnectorGap]:
-    """返回没有实测 provider 路线可用、需要撰写估算的相邻关系。"""
+    """返回没有匹配路线的相邻关系。"""
     candidates = catalog.candidate_index()
     unfilled: list[LocalConnectorGap] = []
     for gap in gaps:
@@ -388,7 +388,7 @@ def unfilled_connector_gaps(
             continue
         unfilled.append(gap)
         logger.info(
-            "[connector] gap %s (%s -> %s) 没有匹配的实测路线，改用估算",
+            "[connector] gap %s (%s -> %s) 没有匹配的路线",
             gap.gap_id,
             gap.from_place_id,
             gap.to_place_id,
@@ -466,11 +466,8 @@ def materialize_skeleton_connectors(
             selected[gap.gap_id] = option
             continue
         authored = authored_routes.get(gap.gap_id)
-        if authored is None:
-            raise ItineraryCompositionError(
-                f"connector gap {gap.gap_id} has neither a Provider route nor an authored route"
-            )
-        selected[gap.gap_id] = authored
+        if authored is not None:
+            selected[gap.gap_id] = authored
 
     updated_days: list[DayComposition] = []
     consumed: set[str] = set()
@@ -494,7 +491,9 @@ def materialize_skeleton_connectors(
                 raise ItineraryCompositionError(
                     f"day {day.day_id} adjacency has no connector gap"
                 )
-            route = selected[gap.gap_id]
+            route = selected.get(gap.gap_id)
+            if route is None:
+                return
             updated.append(
                 TransportPlacement(authored_route=route, connector_gap_id=gap.gap_id)
                 if isinstance(route, AuthoredRoute)

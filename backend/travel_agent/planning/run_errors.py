@@ -14,8 +14,9 @@ class LockedIdentitySupplement(Exception):
     pass
 
 
+@dataclass
 class RunNotAcceptingSupplement(Exception):
-    pass
+    has_delivery: bool = False
 
 
 class DeliveryBundleMissing(Exception):

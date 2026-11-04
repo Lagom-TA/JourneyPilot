@@ -167,7 +167,7 @@ async def fast_answer_node(
 
     try:
         available_tools = filter_tools_for_agent(
-            await get_available_tools(state.selected_mcp_servers or []),
+            await get_available_tools(),
             _NODE_NAME,
         )
         react = await streaming_react_loop(

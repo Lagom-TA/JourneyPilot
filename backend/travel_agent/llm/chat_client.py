@@ -45,8 +45,20 @@ else:
 
         def _convert_chunk_to_generation_chunk(self, chunk: Any, *args: Any, **kwargs: Any) -> Any:
             result = super()._convert_chunk_to_generation_chunk(chunk, *args, **kwargs)
-            if result is not None and chunk.get("usage"):
+            if result is None:
+                return None
+            if chunk.get("usage"):
                 # 保留标准 LangChain 映射丢弃的字段，包括 DeepSeek 缓存命中与
                 # 缓存写入计数。
                 result.message.response_metadata["token_usage"] = deepcopy(chunk["usage"])
+            # 流式转换与 _create_chat_result 不同，后者会把推理字段放进
+            # additional_kwargs；这里必须显式补回，否则工具轮跨轮重放会丢掉
+            # reasoning_content / reasoning_details / reasoning。AIMessageChunk
+            # 相加时字符串拼接、列表合并，正好等于非流式响应的重放载荷。
+            choices = chunk.get("choices") or (chunk.get("chunk") or {}).get("choices") or []
+            if choices:
+                delta = choices[0].get("delta") or {}
+                replay = reasoning_replay(delta)
+                if replay:
+                    result.message.additional_kwargs.update(replay)
             return result

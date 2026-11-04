@@ -6,6 +6,7 @@ import logging
 from typing import Any, Dict, List, Optional, Set
 
 from travel_agent.tools.gateway_contracts import ToolGatewayDecision
+from travel_agent.storage.worker_journal_store import JournalConflict
 from ..runtime.budget import RunBudgetExhausted, current_budget_ledger, guard_run_budget
 from ..runtime.cancellation import RunCancelled, check_cancel_requested
 from ..runtime.operations import (
@@ -23,6 +24,39 @@ from .registry import get_tool_registry
 from .result import ToolResultOutcome, classify_tool_result
 
 logger = logging.getLogger(__name__)
+
+
+async def _reserve_tool_budget(ledger, run_id, tool_name, *, retry=False):
+    from travel_agent.runtime.journal import current_execution_lease, current_worker_journal
+
+    journal = current_worker_journal.get()
+    store = journal.store if journal is not None else None
+    if store is None and run_id and current_execution_lease.get():
+        from travel_agent.bootstrap.registry import registered_components
+
+        components = registered_components()
+        store = getattr(components, "worker_journal_store", None) if components else None
+        if components is not None and store is None:
+            raise JournalConflict("工具预算存储不可用")
+    if store is None or not run_id:
+        if ledger is not None:
+            ledger.reserve_tool_call(f"tool.{tool_name}", tool_name)
+            if retry:
+                ledger.record_tool_retry(tool_name)
+        return
+    limit = (
+        ledger.snapshot.max_tool_calls
+        if ledger is not None and ledger.snapshot.enforce_limits else None
+    )
+    payload = await store.reserve_tool(
+        run_id, tool_name, lease_token=current_execution_lease.get(), limit=limit, retry=retry,
+    )
+    if payload is None and ledger is not None:
+        raise RunBudgetExhausted(f"tool.{tool_name}", "tool_calls", ledger.snapshot, ledger.usage())
+    if ledger is not None and payload is not None:
+        ledger.tool_calls = max(ledger.tool_calls, int(payload["calls"]))
+        for name, count in payload["retries"].items():
+            ledger.tool_retries[name] = max(ledger.tool_retries.get(name, 0), int(count))
 
 
 async def execute_tool(tool_name, arguments, *args, **kwargs):
@@ -282,10 +316,7 @@ async def _execute_tool_once(
         try:
             remaining_model_seconds(f"tool.{tool_name}.attempt_{attempt + 1}")
 
-            if ledger is not None:
-                ledger.reserve_tool_call(f"tool.{tool_name}", tool_name)
-                if attempt > 0:
-                    ledger.record_tool_retry(tool_name)
+            await _reserve_tool_budget(ledger, run_id, tool_name, retry=attempt > 0)
             result = await await_model_operation(
                 registry.execute(tool_name, **arguments),
                 operation=f"tool.{tool_name}.attempt_{attempt + 1}",
@@ -353,6 +384,8 @@ async def _execute_tool_once(
             last_error = str(exc)
             budget_exhausted = exc.dimension
             break
+        except JournalConflict:
+            raise
         except ModelWindowClosed as exc:
             last_error = str(exc)
             research_window_closed = True
@@ -436,8 +469,7 @@ async def _execute_tool_once(
                     if fallback_before.envelope is not None:
                         return fallback_before.envelope
 
-                    if ledger is not None:
-                        ledger.reserve_tool_call(f"tool.{fallback_name}", fallback_name)
+                    await _reserve_tool_budget(ledger, run_id, fallback_name)
                     fallback_result = await await_model_operation(
                         registry.execute(fallback_name, **fallback_args),
                         operation=f"tool.{fallback_name}.fallback",
@@ -486,6 +518,11 @@ async def _execute_tool_once(
                     logger.info(
                         "备用工具 [%s] 也失败: %s", fallback_name, fallback_reason
                     )
+                except RunBudgetExhausted as exc:
+                    budget_exhausted = exc.dimension
+                    last_error = str(exc)
+                except JournalConflict:
+                    raise
                 except ModelWindowClosed as closed:
                     research_window_closed = True
                     last_error = str(closed)
@@ -506,7 +543,7 @@ async def _execute_tool_once(
                 )
     except PermissionError:
         pass
-    except RunCancelled:
+    except (RunCancelled, JournalConflict):
         raise
     except Exception as e:
         logger.debug(f"降级策略查找失败: {e}")

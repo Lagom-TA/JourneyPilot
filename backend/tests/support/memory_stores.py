@@ -73,7 +73,7 @@ from travel_agent.storage.trip_run_store import (
     TripRunStore,
     _validated_delivery_manifest,
 )
-from travel_agent.storage.worker_journal_store import JournalConflict
+from travel_agent.storage.worker_journal_store import TOOL_BUDGET_SCOPE, JournalConflict
 from travel_agent.tools.gateway_contracts import ToolAuditRecord
 
 
@@ -84,6 +84,20 @@ class InMemoryWorkerJournalStore:
 
     async def load(self, run_id, scope_id):
         return deepcopy(self.rows.get((run_id, scope_id), (0, {})))
+
+    async def reserve_tool(self, run_id, tool_name, *, lease_token=None, limit=None, retry=False):
+        # 模拟 Run 创建时初始化的预算；租约仍由生产仓储验证。
+        key = run_id, TOOL_BUDGET_SCOPE
+        version, payload = self.rows.get(key, (1, {"calls": 0, "retries": {}}))
+        calls = int(payload.get("calls") or 0)
+        if limit is not None and calls >= limit:
+            return None
+        retries = dict(payload.get("retries") or {})
+        if retry:
+            retries[tool_name] = int(retries.get(tool_name) or 0) + 1
+        payload = {"calls": calls + 1, "retries": retries}
+        self.rows[key] = version + 1, payload
+        return deepcopy(payload)
 
     async def save(self, run_id, scope_id, version, payload, *, lease_token=None):
         key = run_id, scope_id

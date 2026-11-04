@@ -4,6 +4,7 @@ import { followupComposerState, type FollowupComposerInput } from './followupCom
 const base: FollowupComposerInput = {
   runStatus: 'completed',
   isStreaming: false,
+  hasDelivery: true,
   readOnly: false,
   gatePending: false,
   pendingUnderstanding: false,
@@ -18,9 +19,11 @@ describe('followupComposerState', () => {
     expect(followupComposerState({ ...base, runStatus: 'interrupted', canResume: true }).hint).toContain('继续');
   });
 
-  it('allows supplements during a running trip', () => {
+  it('only accepts queued messages during a run after delivery', () => {
     expect(followupComposerState({ ...base, runStatus: 'running', isStreaming: true }).visible).toBe(true);
-    expect(followupComposerState({ ...base, runStatus: 'running', isStreaming: false }).visible).toBe(true);
+    expect(followupComposerState({ ...base, runStatus: 'running', hasDelivery: false, isStreaming: true }).visible).toBe(false);
+    expect(followupComposerState({ ...base, runStatus: 'running', hasDelivery: false, isStreaming: false }).visible).toBe(false);
+    expect(followupComposerState({ ...base, runStatus: 'completed', hasDelivery: false, isStreaming: true }).visible).toBe(false);
     expect(followupComposerState({ ...base, runStatus: 'awaiting_input' }).visible).toBe(false);
   });
 

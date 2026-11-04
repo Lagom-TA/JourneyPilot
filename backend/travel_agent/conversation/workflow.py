@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, AsyncGenerator, Dict, List, Optional
+from typing import Any, AsyncGenerator, Dict, Optional
 
 from travel_agent.conversation.graph import get_fast_graph
 from travel_agent.conversation.messages import build_messages
@@ -23,7 +23,6 @@ class FastAnswerWorkflow:
         user_message: str,
         session_id: str,
         user_id: str = LOCAL_USER_ID,
-        selected_mcp_servers: Optional[List[str]] = None,
         current_time: str = "",
         conversation_history: Optional[list] = None,
         stream_queue=None,
@@ -44,7 +43,6 @@ class FastAnswerWorkflow:
             messages=messages,
             session_id=session_id,
             user_id=user_id,
-            selected_mcp_servers=selected_mcp_servers or [],
             user_query=user_message,
             run_id=run_id or generate_trip_run_id(),
             current_time=current_time

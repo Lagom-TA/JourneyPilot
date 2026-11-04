@@ -11,12 +11,11 @@ import { normalizePlanApprovalGate } from "../../features/travel/model/planAppro
 import { hasResearchStarted, projectVisibleMessages } from "../../features/chat/model/conversationFlow";
 import { type UnderstandingQuestion } from "../../features/travel/types/planner";
 import { type ChatSession } from "../../features/chat/types/messages";
-import { type ControlledTripIdentity } from "../../features/travel/types/planner";
 import { tripRunRecoveryFromDetail, type TripRunDetailResponse } from "../../features/travel/types/runs";
 import { isPublicDeliveryBundle } from "../../features/travel/types/delivery";
 import { planRequestedRun, sessionLoadFailureMessage } from "./sessionRestore";
 export function useSessionManager() {
-    const { state, dispatch, activeStreamRef, currentStateRef, sessionRuntimeCacheRef } = useApp();
+    const { state, dispatch, activeStreamRef, currentStateRef, sessionRuntimeCacheRef, setPendingFollowups } = useApp();
     const openSessionSeqRef = useRef(0);
     const earlierHistoryInFlightRef = useRef(false);
     const cacheCurrentRuntimeIfStreaming = useCallback((nextSessionId: string) => {
@@ -104,6 +103,9 @@ export function useSessionManager() {
             revision: number;
             approvalToken: string;
             questions: UnderstandingQuestion[];
+            retryLocation: boolean;
+            retryResearch?: boolean;
+            message?: string;
         } | null = null;
         if (pendingRunChoice && selectedRun && currentTripRunStatus === 'awaiting_input') {
             const choiceType = String(pendingRunChoice?.type || '');
@@ -123,6 +125,9 @@ export function useSessionManager() {
                     revision: typeof payload.revision === 'number' ? payload.revision : 0,
                     approvalToken: typeof payload.approval_token === 'string' ? payload.approval_token : '',
                     questions: payload.questions as UnderstandingQuestion[],
+                    retryLocation: Array.isArray(payload.decision_options) && payload.decision_options.includes('retry'),
+                    retryResearch: pendingRunChoice.gate === 'research',
+                    message: typeof payload.message === 'string' ? payload.message : undefined,
                 };
             }
         }
@@ -160,7 +165,7 @@ export function useSessionManager() {
                 hasMore: detail.has_more,
                 loading: false,
             },
-            thinkingSteps: latestAssistantThinkingSteps(restoredStepMessages),
+            thinkingSteps: latestAssistantThinkingSteps(restoredStepMessages, selectedRun?.run_id ?? null),
             deliveryBundle,
             deliveryBundleLoadState,
             tripSummaryCard: latestSummaryCard,
@@ -169,7 +174,7 @@ export function useSessionManager() {
             workspaceActive: Boolean(selectedRun) || messages.length > 0,
             pendingRouteConfirmation: null,
             lastRouteDecision: null,
-            controlledTripIdentity: restoredIdentity as ControlledTripIdentity | null,
+            controlledTripIdentity: restoredIdentity,
             runCostLive: null,
             runCostSummary: null,
             isStreaming: false,
@@ -240,6 +245,11 @@ export function useSessionManager() {
     }, [activeStreamRef, currentStateRef, dispatch, openSession, refreshSessions]);
     const deleteSession = useCallback(async (sessionId: string) => {
         await deleteSessionRequest(sessionId);
+        setPendingFollowups(previous => {
+            const next = { ...previous };
+            delete next[sessionId];
+            return next;
+        });
         dispatch({ type: 'REMOVE_SESSION', payload: sessionId });
         if (state.currentSessionId === sessionId) {
             const sessions = await refreshSessions();
@@ -251,7 +261,7 @@ export function useSessionManager() {
                 setLastSession(null);
             }
         }
-    }, [dispatch, openSession, refreshSessions, state.currentSessionId]);
+    }, [dispatch, openSession, refreshSessions, setPendingFollowups, state.currentSessionId]);
     const renameSession = useCallback(async (sessionId: string, nextTitle: string) => {
         const trimmed = nextTitle.trim();
         if (!trimmed)

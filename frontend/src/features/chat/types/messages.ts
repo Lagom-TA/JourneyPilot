@@ -23,6 +23,11 @@ export interface ResultPreview {
     url?: string;
 }
 export interface ThinkingStep {
+    /** 步骤类型；目前只有模型公开工作说明使用显式 kind。 */
+    kind?: 'work_explanation';
+    round?: number;
+    callId?: string;
+    seq?: number;
     progressStatus?: 'running' | 'completed' | 'failed';
     resultPreview?: ResultPreview[];
     id: string;

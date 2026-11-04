@@ -1,9 +1,8 @@
-"""为落位产生的本地接驳缺口定向补查 Provider 路线。"""
+"""把交通工具返回的路线编译为带来源的研究成果。"""
 
 from __future__ import annotations
 
 import hashlib
-import logging
 from datetime import datetime, timezone
 from typing import Any, Mapping, Optional
 
@@ -32,20 +31,7 @@ from travel_agent.planning.research.output.transcript import (
     authoritative_tool_messages,
 )
 from travel_agent.planning.research.packets import ResearchPacket
-from travel_agent.planning.research.transport.endpoints import (
-    _routable_connector_endpoints,
-)
 from travel_agent.planning.state import TravelAgentState
-from travel_agent.planning.tool_context import build_tool_context_from_state
-from travel_agent.planning.transport_semantics import provider_route_mode
-from travel_agent.tools.execution import execute_tool
-from travel_agent.tools.registry import get_tool_registry
-
-logger = logging.getLogger(__name__)
-
-
-_LOCAL_ROUTE_TOOL_NAMES = frozenset({"global_route_search"})
-_DIRECT_ROUTE_MODES = frozenset({"walk", "bike", "drive"})
 _PROVIDER_ROUTE_FIELDS = (
     "route_id",
     "transport_class",
@@ -63,52 +49,16 @@ _PROVIDER_ROUTE_FIELDS = (
 )
 
 
-def _connector_request(
-    gap: LocalConnectorGap,
-    endpoints: Mapping[tuple[str, str], Mapping[str, Any]],
-) -> Optional[dict[str, Any]]:
-    origin = endpoints.get((gap.from_place_id, gap.destination_id))
-    destination = endpoints.get((gap.to_place_id, gap.destination_id))
-    if origin is None or destination is None:
-        return None
-    if gap.preferred_transport_class == "public_transit":
-        mode = "public_transit"
-    else:
-        mode = next(
-            (
-                provider_route_mode(requested)
-                for requested in gap.requested_flexible_modes
-                if provider_route_mode(requested) in _DIRECT_ROUTE_MODES
-            ),
-            None,
-        )
-    if mode is None:
-        logger.info(
-            "[connector] gap %s has no global_route_search-compatible mode",
-            gap.gap_id,
-        )
-        return None
-    return {
-        "from_name": origin["name"],
-        "from_place_id": origin["place_id"],
-        "from_latitude": origin["latitude"],
-        "from_longitude": origin["longitude"],
-        "to_name": destination["name"],
-        "to_place_id": destination["place_id"],
-        "to_latitude": destination["latitude"],
-        "to_longitude": destination["longitude"],
-        "departure_time": gap.departure_time.isoformat(),
-        "mode": mode,
-    }
-
-
 def _route_packet(
     *,
     state: TravelAgentState,
     catalog: RecommendationCatalog,
-    gap: LocalConnectorGap,
+    gap: LocalConnectorGap | None,
     envelope: Mapping[str, Any],
     existing_candidate_ids: set[str],
+    destination_id: str | None = None,
+    task_id: str | None = None,
+    route_ids: set[str] | None = None,
 ) -> Optional[ResearchPacket]:
     """只把 Gateway 允许作为证据的 Provider 路线编译成类型化数据包。"""
     generated_at = datetime.now(timezone.utc)
@@ -118,14 +68,21 @@ def _route_packet(
     facts: list[FactAssertion] = []
     provenance: list[FieldProvenance] = []
     added_candidate_ids: set[str] = set()
+    target_id = gap.gap_id if gap is not None else str(task_id or "transport_followup")
+    packet_target = f"{target_id}\0{','.join(sorted(route_ids or []))}" if route_ids else target_id
+    resolved_destination = gap.destination_id if gap is not None else str(destination_id or "")
+    if not resolved_destination:
+        return None
     packet_digest = hashlib.sha256(
-        f"{state.run_id}\0{gap.gap_id}\0{envelope.get('audit_id', '')}".encode(
+        f"{state.run_id}\0{packet_target}\0{envelope.get('audit_id', '')}".encode(
             "utf-8"
         )
     ).hexdigest()[:20]
     packet_id = f"packet_transport_connector_{packet_digest}"
 
     for route_id, (route_envelope, route, route_index) in records.items():
+        if route_ids is not None and route_id not in route_ids:
+            continue
         if route["transport_class"] == "long_distance":
             continue
         candidate_id = _provider_candidate_id("transport", route_id)
@@ -215,7 +172,7 @@ def _route_packet(
         candidate = TransportCandidate(
             candidate_id=candidate_id,
             research_packet_id=packet_id,
-            destination_id=gap.destination_id,
+            destination_id=resolved_destination,
             fact_assertion_ids=[fact.fact_assertion_id for fact in route_facts],
             source_record_ids=[source_id],
             field_paths=[fact.field_path for fact in route_facts],
@@ -258,85 +215,16 @@ def _route_packet(
         research_packet_id=packet_id,
         run_id=state.run_id,
         generation_id=catalog.generation_id,
-        task_id=f"{NODE_ITINERARY}:{gap.gap_id}",
+        task_id=f"{NODE_ITINERARY}:{target_id}",
         worker_kind="transport_researcher",
         fact_data_revision=catalog.fact_data_revision,
         query_context={
-            "connector_gap_id": gap.gap_id,
-            "activation_source": "local_connector_route_completion",
+            "connector_gap_id": gap.gap_id if gap is not None else None,
+            "activation_source": "transport_followup",
         },
         candidates=candidates,
         source_records=sources,
         fact_assertions=facts,
         field_provenance=provenance,
         generated_at=generated_at,
-    )
-
-
-async def complete_local_connector_routes(
-    state: TravelAgentState,
-    gaps: list[LocalConnectorGap],
-) -> RecommendationCatalog:
-    """每个可路由缺口只查询一次，并把 Provider 证据追加到候选目录。"""
-    catalog = state.recommendation_catalog
-    if catalog is None:
-        raise ValueError("local connector completion requires the candidate catalog")
-    if not gaps or not get_tool_registry().has_tool("global_route_search"):
-        return catalog
-
-    endpoints = {
-        (endpoint["place_id"], endpoint["destination_id"]): endpoint
-        for endpoint in _routable_connector_endpoints(state)
-    }
-    tool_context = build_tool_context_from_state(state)
-    existing_candidate_ids = set(catalog.candidate_index())
-    additions: list[ResearchPacket] = []
-    for gap in gaps:
-        request = _connector_request(gap, endpoints)
-        if request is None:
-            logger.info(
-                "[connector] gap %s has no routable coordinate endpoints; "
-                "keeping authored fallback",
-                gap.gap_id,
-            )
-            continue
-        envelope = await execute_tool(
-            "global_route_search",
-            request,
-            allowed_tool_names=_LOCAL_ROUTE_TOOL_NAMES,
-            max_retries=0,
-            node_name=NODE_ITINERARY,
-            activation_source="local_connector_route_completion",
-            allow_fallback=False,
-            **tool_context,
-        )
-        try:
-            packet = _route_packet(
-                state=state,
-                catalog=catalog,
-                gap=gap,
-                envelope=envelope,
-                existing_candidate_ids=existing_candidate_ids,
-            )
-        except (TypeError, ValueError) as exc:
-            logger.warning(
-                "[connector] gap %s Provider route evidence was not usable: %s",
-                gap.gap_id,
-                exc,
-            )
-            continue
-        if packet is not None:
-            additions.append(packet)
-            existing_candidate_ids.update(
-                candidate.candidate_id for candidate in packet.candidates
-            )
-
-    if not additions:
-        return catalog
-    packets = [*catalog.research_packets, *additions]
-    return RecommendationCatalog(
-        generation_id=catalog.generation_id,
-        fact_data_revision=catalog.fact_data_revision,
-        weather_data_revision=catalog.weather_data_revision,
-        research_packets=packets,
     )

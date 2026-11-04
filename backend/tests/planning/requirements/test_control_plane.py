@@ -26,11 +26,11 @@ def identity():
 
 
 def plan():
-    return ResearchPlan(summary="安排园林慢游", destination_task="研究园林", transport_task="查询交通", accommodation_task="研究住宿", itinerary_task="安排顺路行程")
+    return ResearchPlan(summary="安排园林慢游")
 
 
 async def ready_state():
-    state = TravelAgentState(run_id="run", user_query="喜欢园林", controlled_trip_identity=identity())
+    state = TravelAgentState(run_id="run", user_query="喜欢园林", current_requirements="喜欢园林", controlled_trip_identity=identity())
     state = state.model_copy(update=await prepare_requirements_node(state))
     state = state.model_copy(update={"research_plan": plan()})
     return state.model_copy(update={"minimum_delivery_draft": build_minimum_delivery_draft(state)})
@@ -55,24 +55,32 @@ async def test_plan_confirmation_rejects_stale_version_and_seals_current_draft()
     accepted = await graph.ainvoke(Command(resume={"action": "approve", "approval_token": gate["approval_token"]}), config)
     assert accepted["minimum_delivery_draft"].planning_authorized
     assert accepted["run_budget"] is not None and accepted["run_deadline"] is not None
-    assert gate["plan"]["steps"][0]["tasks"]["destination_researcher"] == "研究园林"
+    assert gate["plan_text"] == "安排园林慢游"
+    assert all(
+        task == gate["plan_text"]
+        for step in gate["plan"]["steps"]
+        for task in step["tasks"].values()
+    )
 
 
-async def test_approval_seals_the_current_serial_execution_plan():
-    """门禁展示与实际执行使用同一份串行计划，批准即落章。"""
-    from travel_agent.planning.research.plan import RESEARCH_EXECUTION_PLAN
-
+async def test_approval_uses_the_displayed_execution_plan():
+    """门禁展示的研究分组与批准后的执行计划一致。"""
     state = await ready_state()
     graph = gate_graph()
-    config = {"configurable": {"thread_id": "serial-plan", "plan_gate_enabled": True}}
+    config = {"configurable": {"thread_id": "current-plan", "plan_gate_enabled": True}}
     result = await graph.ainvoke(state, config)
     gate = result["__interrupt__"][0].value
-    assert [step["agents"] for step in gate["plan"]["steps"]] == RESEARCH_EXECUTION_PLAN
+    groups = [step["agents"] for step in gate["plan"]["steps"]]
+    assert groups == [
+        ["destination_researcher"],
+        ["transport_researcher", "accommodation_researcher"],
+        ["itinerary_planner"],
+    ]
     approved = await graph.ainvoke(
         Command(resume={"action": "approve", "approval_token": gate["approval_token"]}),
         config,
     )
-    assert approved["execution_plan"] == RESEARCH_EXECUTION_PLAN
+    assert approved["execution_plan"] == groups
     assert approved["current_plan_step"] == 0
 
 
@@ -133,14 +141,22 @@ async def test_gate_supplement_and_runtime_supplement_are_both_prepared(monkeypa
     state = await ready_state()
     builder = StateGraph(TravelAgentState)
     builder.add_node("plan_gate", with_run_control("plan_gate", plan_gate_node))
+    from travel_agent.planning.requirements.understanding.prompts import understanding_context_payload
+
+    async def understand(current):
+        additions = understanding_context_payload(current)["最新补充"]
+        return {"current_requirements": "，".join([current.current_requirements, *additions])}
+
     builder.add_node("intent_amendment_router", lambda current: apply_runtime_amendments(current))
+    builder.add_node("understanding_agent", understand)
     builder.add_node("requirements_preparer", prepare_requirements_node)
     builder.add_edge(START, "plan_gate")
     builder.add_conditional_edges("plan_gate", route_after_plan_gate, {
         "intent_amendment_router": "intent_amendment_router",
-        "requirements_preparer": "requirements_preparer",
+        "understanding_agent": "understanding_agent",
     })
-    builder.add_edge("intent_amendment_router", "requirements_preparer")
+    builder.add_edge("intent_amendment_router", "understanding_agent")
+    builder.add_edge("understanding_agent", "requirements_preparer")
     builder.add_edge("requirements_preparer", END)
     graph = builder.compile(checkpointer=InMemorySaver())
     config = {"configurable": {"thread_id": "combined-supplements", "plan_gate_enabled": True}}
@@ -222,8 +238,12 @@ async def test_supplement_updates_one_current_text_and_changes_generation():
     update = apply_runtime_amendments(state)
     assert update["intent_amendment_route"] == "understanding_agent"
     updated = state.model_copy(update=update)
+    from travel_agent.planning.requirements.understanding.prompts import understanding_context_payload
+
+    assert understanding_context_payload(updated)["最新补充"] == ["改成园林"]
+    # 理解节点综合新要求之后，需求准备只封存该结果。
+    updated = updated.model_copy(update={"current_requirements": "改成园林，喜欢慢游"})
     prepared = await prepare_requirements_node(updated)
-    assert prepared["current_requirements"] == "喜欢园林\n后续补充：改成园林"
     assert prepared["planning_generation"].generation_id != state.planning_generation.generation_id
     assert prepared["applied_intent_amendment_ids"] == ["supplement-1"]
 
@@ -352,7 +372,7 @@ async def test_retry_regenerates_the_plan_and_updates_the_gate(monkeypatch):
 
     class Model:
         async def ainvoke(self, *_args, **_kwargs):
-            return '{"summary":"重新安排","destination_task":"研究地点","transport_task":"研究交通","accommodation_task":"研究住宿","itinerary_task":"安排行程"}'
+            return '{"summary":"重新安排"}'
 
     monkeypatch.setattr(research_plan_node, "llm_for_task", lambda *_args, **_kwargs: Model())
 

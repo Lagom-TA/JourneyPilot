@@ -75,12 +75,12 @@ GLOBAL_PLACE_SEARCH_SCHEMA = {
             "type": "string",
             "minLength": 1,
             "maxLength": 160,
-            "description": "具体景点、餐饮门店或住宿 property 名称，建议同时包含城市/行政区。",
+            "description": "城市、区域、景点或具体门店名称；可结合已知行政区缩小范围。",
         },
         "country_code": {
             "type": "string",
             "pattern": "^[A-Za-z]{2}$",
-            "description": "受控目的地的 ISO 3166-1 alpha-2 国家码，例如日本 jp。",
+            "description": "已知国家时填写两位 ISO 国家码，例如日本 jp；未知时不填。",
         },
         "limit": {
             "type": "integer",
@@ -117,7 +117,7 @@ GLOBAL_PLACE_SEARCH_SCHEMA = {
             "description": "同一外部发现结果明确给出的门店别名；不得由模型新造实体。",
         },
     },
-    "required": ["query", "country_code"],
+    "required": ["query"],
 }
 
 GLOBAL_ROUTE_SEARCH_SCHEMA = {
@@ -162,14 +162,14 @@ GLOBAL_ROUTE_SEARCH_SCHEMA = {
 # search_tools 是 ReAct 循环**就地拦截**的元工具（不走 ToolRegistry 执行）：deferred
 # 曝光下 worker 初始只带这一个工具 + 压缩目录，模型用它按 query 检索并激活所需工具的完整
 # schema。检索范围恒为「该 agent 白名单」（循环持有的 available_tools），因此治理边界不放松。
-# 之所以不注册进 ToolRegistry：搜索范围要按 run 内实际可用工具（白名单 ∩ selected_mcp_servers）
-# 界定，只有循环持有这个上下文；registry executor 拿不到，硬编一份等于复制治理逻辑。
+# 之所以不注册进 ToolRegistry：搜索范围由循环持有的角色可用工具界定，
+# registry executor 拿不到该上下文。
 SEARCH_TOOLS_NAME = "search_tools"
 
 SEARCH_TOOLS_DESCRIPTION = (
-    "在你被授权的工具集中按关键词检索并激活工具。未加载完整定义的工具需先用本工具找到、"
-    "激活后才能调用。支持中文（地图/航班/酒店/汇率/景点）或工具名前缀（amap_/duffel_）检索；"
-    "同前缀的一组工具一次即可命中，激活后当轮与后续轮次持续可用，无需重复检索。"
+    "在授权工具集中按名称或描述中的关键词检索并激活工具。"
+    "可直接使用目录中的工具名，如 global_place_search、global_route_search 或 search_flights；"
+    "一次最多激活五项，继续搜索可获取其余匹配项。已激活的定义在本轮持续可用。"
 )
 
 SEARCH_TOOLS_SCHEMA: Dict[str, Any] = {
@@ -182,7 +182,7 @@ SEARCH_TOOLS_SCHEMA: Dict[str, Any] = {
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "检索关键词，如「地图」「航班」「amap」「hotel」。",
+                    "description": "使用工具目录中的名称或描述，例如 global_place_search、maps_ 或 search_flights。",
                 }
             },
             "required": ["query"],
@@ -282,9 +282,8 @@ def register_builtin_tools() -> None:
     registry.register(
         name="global_place_search",
         description=(
-            "使用全球 OpenStreetMap Nominatim/Overpass 搜索具体地点。返回 provider 原始稳定 place_id、"
-            "provider_place_type、provider_country_code、完整地址和坐标；country_code 必须来自"
-            "受控目的地，适合海外景点、具体餐饮门店与住宿 property 身份核验。"
+            "使用全球 OpenStreetMap Nominatim/Overpass 搜索城市、区域和具体地点。返回稳定 place_id、"
+            "地点类别、国家码、地址与坐标；已知国家时可按国家缩小范围。"
         ),
         parameters_schema=GLOBAL_PLACE_SEARCH_SCHEMA,
         executor=global_place_search,

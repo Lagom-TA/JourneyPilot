@@ -46,11 +46,11 @@ def matrix():
         case = dict(cache=cache, run_mode=run_mode, complexity=complexity, tool_mode=tool_mode)
         trial_id = hashlib.sha256(json.dumps(case, sort_keys=True).encode()).hexdigest()[:16]
         projection = format_worker_research_context({packet.research_packet_id: packet}, worker_kind="accommodation_researcher",
-            run_id="run_test", generation_id="generation_test", destination_ids=["tokyo"])
+            run_id="run_test", generation_id="generation_test", fact_data_revision=packet.fact_data_revision, destination_ids=["tokyo"])
         prompt = build_research_packet_prompt(worker_kind="accommodation_researcher", run_id="run_test", task_id="task",
-            current_time="2026-10-08 12:00", fact_data_revision=1,
+            current_time="2026-10-08 12:00", fact_data_revision=packet.fact_data_revision,
             candidate_limit=6,
-            task_context="预算3000元、不能爬楼、每日一个景点" if complexity == "complex" else "两日旅行",
+            task_desc="预算3000元、不能爬楼、每日一个景点" if complexity == "complex" else "两日旅行",
             upstream_packet_context=projection)
         exposure = apply_tool_exposure(tools, "accommodation_researcher", config=ToolExposureConfig(mode=tool_mode, min_tools_threshold=1))
         messages = attach_tool_catalog([{"role": "system", "content": prompt.system}, {"role": "user", "content": prompt.runtime}], exposure)

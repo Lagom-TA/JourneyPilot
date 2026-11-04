@@ -227,11 +227,12 @@ async def test_a_resumed_run_reads_its_spend_back_from_the_ledger():
     assert store.calls == 1
 
 
-async def test_an_unreadable_ledger_starts_at_zero_instead_of_blocking():
+async def test_an_unreadable_enforced_budget_does_not_restart_at_zero():
     store = _FakeCostLedger(RuntimeError("db down"))
-    ledger = await seed_run_budget("run_i", _snapshot(), cost_ledger_store=store)
-    assert ledger.usage().llm_calls == 0
-    assert ledger.seeded is True
+    with pytest.raises(RuntimeError, match="预算基线不可用"):
+        await seed_run_budget("run_i", _snapshot(), cost_ledger_store=store)
+    ledger = await seed_run_budget("run_i_unlimited", _snapshot(enforce_limits=False), cost_ledger_store=store)
+    assert ledger.usage().llm_calls == 0 and ledger.seeded
 
 
 async def test_unpriced_calls_survive_the_baseline_read():

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from tests.fixtures.planning_state import make_minimum_draft
+from tests.support.memory_stores import InMemoryWorkerJournalStore
 from travel_agent.runtime.budget import (
+    RunBudgetExhausted,
     RunBudgetSnapshot,
     ledger_for,
     reset_ledgers,
@@ -74,6 +78,76 @@ async def test_a_tool_that_used_up_its_retries_is_not_called_again():
     assert envelope["metadata"]["tool_retries_exhausted"] == "web_search"
 
 
+
+
+async def test_parallel_model_reservations_wait_for_actual_usage():
+    ledger = ledger_for("parallel-model", _snapshot(max_llm_calls=2, max_output_tokens=100))
+    first_started = asyncio.Event()
+    release = asyncio.Event()
+    second_started = asyncio.Event()
+
+    async def first():
+        async with ledger.reserve_model("first", input_tokens=1, output_tokens=80):
+            first_started.set()
+            await release.wait()
+            ledger.record_llm_call(input_tokens=1, output_tokens=10, cost_usd=0)
+
+    async def second():
+        async with ledger.reserve_model("second", input_tokens=1, output_tokens=80):
+            second_started.set()
+            ledger.record_llm_call(input_tokens=1, output_tokens=10, cost_usd=0)
+
+    task = asyncio.create_task(first())
+    await first_started.wait()
+    waiting = asyncio.create_task(second())
+    await asyncio.sleep(0)
+    assert not second_started.is_set()
+    release.set()
+    await asyncio.gather(task, waiting)
+    assert second_started.is_set() and ledger.usage().llm_calls == 2
+    assert ledger.pending_llm_calls == 0
+
+
+async def test_tool_budget_persists_across_ledger_recreation():
+    from travel_agent.runtime.journal import WorkerJournal, current_worker_journal
+    from travel_agent.tools.execution import _reserve_tool_budget
+
+    store = InMemoryWorkerJournalStore()
+    journal = WorkerJournal(store, "run", "worker", 0, {}, None)
+    token = current_worker_journal.set(journal)
+    snapshot = _snapshot(max_tool_calls=1)
+    try:
+        await _reserve_tool_budget(ledger_for("run", snapshot), "run", "search")
+        reset_ledgers()
+        with pytest.raises(RunBudgetExhausted, match="run budget exhausted"):
+            await _reserve_tool_budget(ledger_for("run", snapshot), "run", "search")
+    finally:
+        current_worker_journal.reset(token)
+
+
+async def test_parallel_tool_reservations_enforce_limit_and_isolate_runs():
+    from travel_agent.storage.worker_journal_store import TOOL_BUDGET_SCOPE
+
+    store = InMemoryWorkerJournalStore()
+    reservations = await asyncio.gather(*(
+        store.reserve_tool("run", "search", lease_token=None, limit=3, retry=True)
+        for _ in range(10)
+    ))
+    accepted = [item for item in reservations if item is not None]
+    assert len(accepted) == 3
+    assert sorted(item["calls"] for item in accepted) == [1, 2, 3]
+    assert await store.load("run", TOOL_BUDGET_SCOPE) == (
+        4, {"calls": 3, "retries": {"search": 3}},
+    )
+
+    # 返回值不能持有仓储内部的引用；其他 Run 也有独立预算。
+    accepted[0]["retries"]["search"] = 100
+    assert await store.load("run", TOOL_BUDGET_SCOPE) == (
+        4, {"calls": 3, "retries": {"search": 3}},
+    )
+    assert await store.reserve_tool("other-run", "search", limit=3) == {
+        "calls": 1, "retries": {},
+    }
 
 
 def _generation():

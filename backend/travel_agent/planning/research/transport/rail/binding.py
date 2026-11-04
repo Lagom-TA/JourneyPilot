@@ -36,6 +36,7 @@ from travel_agent.planning.research.transport.rail.stations import _locate_rail_
 from travel_agent.planning.research.transport.scope import _NODE_NAME
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.cancellation import RunCancelled
+from travel_agent.storage.worker_journal_store import JournalConflict
 from travel_agent.tools.content import compact_tool_content_for_model
 from travel_agent.tools.execution import execute_tool
 from travel_agent.tools.registry import get_tool_registry
@@ -289,7 +290,7 @@ async def _bind_one_rail_leg(
                     allow_fallback=False,
                     **tool_context,
                 )
-            except RunCancelled:
+            except (RunCancelled, JournalConflict):
                 raise
             except Exception:
                 logger.warning(
@@ -433,7 +434,7 @@ async def _bind_one_rail_leg(
                 break
             if ticket_env is not None:
                 break
-    except RunCancelled:
+    except (RunCancelled, JournalConflict):
         raise
     except Exception:
         logger.warning(
@@ -621,14 +622,8 @@ async def discover_domestic_rail_route(
         return False
     origin = identity.get("origin")
     destinations = identity.get("destinations")
-    if (
-        not isinstance(origin, Mapping)
-        or not isinstance(destinations, list)
-        or not destinations
-    ):
-        logger.warning(
-            "[transport_researcher] skip domestic rail: missing origin/destinations"
-        )
+    if not isinstance(destinations, list) or not destinations:
+        logger.warning("[transport_researcher] skip domestic rail: missing destinations")
         return False
     scoped_legs = [
         scope.route_leg

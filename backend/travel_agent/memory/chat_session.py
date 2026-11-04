@@ -13,8 +13,9 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import bindparam, text
 
+from travel_agent.public_note import WORK_EXPLANATION_KIND
 from travel_agent.runtime.time import utc_now_iso
-from travel_agent.tools.display import public_text, result_preview
+from travel_agent.tools.display import public_args_summary, public_text, result_preview
 from travel_agent.conversation.titles import TITLE_MAX_LEN, derive_session_title
 from ..storage.database import get_db_session
 
@@ -250,23 +251,39 @@ def _project_events_to_messages(rows: List[Dict[str, Any]]) -> List[Dict[str, An
         idx = message_index.get(payload.get("message_id", ""))
         if idx is None:
             continue
+        is_tool_call = bool(payload.get("is_tool_call"))
+        kind = str(payload.get("kind") or "")
+        is_work_note = kind == WORK_EXPLANATION_KIND
         step_record: Dict[str, Any] = {
             "id": payload.get("step_id", ""),
             "agent_name": payload.get("agent_name", ""),
-            "content": public_text(payload.get("content", "")),
+            # 旧历史的 tool_args 可能还是原始参数；读取时再脱敏一次，
+            # 不能只靠前端字段白名单。公开说明已在写库前校验，不再二次截断。
+            "content": (
+                payload.get("content", "")
+                if is_work_note
+                else public_args_summary(payload.get("content", ""))
+                if is_tool_call
+                else public_text(payload.get("content", ""))
+            ),
             "progress_status": payload.get("progress_status"),
             "result_preview": result_preview(payload.get("result_preview", [])),
             "step_name": payload.get("step_name", ""),
             "timestamp": payload.get("timestamp") or utc_now_iso(),
             "end_time": payload.get("end_time"),
         }
+        if kind:
+            step_record["kind"] = kind
+            step_record["round"] = payload.get("round")
+            step_record["call_id"] = payload.get("call_id")
+            step_record["seq"] = payload.get("seq")
         # 工具调用字段，仅对工具调用步骤写入。
-        if payload.get("is_tool_call"):
+        if is_tool_call:
             step_record["is_tool_call"] = True
             step_record["tool_name"] = payload.get("tool_name", "")
             step_record["tool_call_id"] = payload.get("tool_call_id", "")
             step_record["tool_status"] = payload.get("tool_status", "completed")
-            step_record["tool_args"] = payload.get("tool_args", "")
+            step_record["tool_args"] = public_args_summary(payload.get("tool_args", ""))
             step_record["tool_result"] = public_text(payload.get("tool_result", ""))
             step_record["tool_category"] = payload.get("tool_category", "other")
             step_record["from_cache"] = payload.get("from_cache", False)
@@ -533,32 +550,43 @@ class ChatSessionMemory:
         )
 
         for step in thinking_steps:
-            events.append(
-                {
-                    "event_type": "thinking.step",
-                    "payload": {
-                        "message_id": assistant_message_id,
-                        "step_id": step.get("step_id", ""),
-                        "agent_name": step.get("agent_name", ""),
-                        "step_name": step.get("step_name", ""),
-                        "content": step.get("content", ""),
-                        "timestamp": step.get("timestamp") or utc_now_iso(),
-                        "end_time": step.get("end_time") or step.get("timestamp") or utc_now_iso(),
-                        # 工具调用字段
-                        "is_tool_call": step.get("is_tool_call", False),
-                        "tool_name": step.get("tool_name", ""),
-                        "tool_call_id": step.get("tool_call_id", ""),
-                        "tool_status": step.get("tool_status", ""),
-                        "tool_args": step.get("tool_args", ""),
-                        "tool_result": public_text(step.get("tool_result", "")),
-                        "result_preview": result_preview(step.get("result_preview", [])),
-                        "progress_status": step.get("progress_status"),
-                        "tool_category": step.get("tool_category", ""),
-                        "from_cache": step.get("from_cache", False),
-                        "duration_ms": step.get("duration_ms"),
-                    },
-                }
-            )
+            is_tool_call = bool(step.get("is_tool_call", False))
+            kind = str(step.get("kind") or "")
+            is_work_note = kind == WORK_EXPLANATION_KIND
+            step_payload: Dict[str, Any] = {
+                "message_id": assistant_message_id,
+                "step_id": step.get("step_id", ""),
+                "agent_name": step.get("agent_name", ""),
+                "step_name": step.get("step_name", ""),
+                # 公开说明在生成与投影阶段已整句校验，不再截断。
+                "content": (
+                    step.get("content", "")
+                    if is_work_note
+                    else public_args_summary(step.get("content", ""))
+                    if is_tool_call
+                    else public_text(step.get("content", ""))
+                ),
+                "timestamp": step.get("timestamp") or utc_now_iso(),
+                "end_time": step.get("end_time") or step.get("timestamp") or utc_now_iso(),
+                "is_tool_call": is_tool_call,
+                "tool_name": step.get("tool_name", ""),
+                "tool_call_id": step.get("tool_call_id", ""),
+                "tool_status": step.get("tool_status", ""),
+                "tool_args": public_args_summary(step.get("tool_args", "")),
+                "tool_result": public_text(step.get("tool_result", "")),
+                "result_preview": result_preview(step.get("result_preview", [])),
+                "progress_status": step.get("progress_status"),
+                "tool_category": step.get("tool_category", ""),
+                "from_cache": step.get("from_cache", False),
+                "duration_ms": step.get("duration_ms"),
+            }
+            if kind:
+                # 只给新类型写扩展字段；旧步骤的 payload 形状保持不变。
+                step_payload["kind"] = kind
+                step_payload["round"] = step.get("round")
+                step_payload["call_id"] = step.get("call_id")
+                step_payload["seq"] = step.get("seq")
+            events.append({"event_type": "thinking.step", "payload": step_payload})
 
         if context_report:
             events.append(

@@ -21,9 +21,10 @@ from .registry import compact_catalog_items, search_tool_items
 _CATALOG_HINT = (
     "【可用工具（按需激活）】\n"
     "你当前只加载了 search_tools 一个元工具，其余工具的完整定义尚未载入。需要用工具时先调用 "
-    'search_tools(query="关键词") 检索并激活——支持中文（地图/航班/酒店/汇率/景点）或工具名前缀'
-    "（amap_/duffel_）检索，同前缀的一组工具一次即可命中。激活后该工具当轮与后续轮次持续可用，"
-    "无需重复检索；若无需任何工具可直接作答。\n候选工具（名称 — 说明）：\n"
+    'search_tools(query="关键词") 检索并激活。根据下方目录使用名称或描述中的词，'
+    "例如 global_place_search、global_route_search、maps_ 或 search_flights；"
+    "一次最多激活五项，可以继续搜索其余工具。激活后本轮持续可用；"
+    "若无需工具可直接作答。\n候选工具（名称 — 说明）：\n"
 )
 
 

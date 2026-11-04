@@ -17,7 +17,6 @@ from typing import (
     AsyncIterator,
     Awaitable,
     Dict,
-    Iterable,
     Iterator,
     List,
     Optional,
@@ -36,7 +35,7 @@ from travel_agent.runtime.operations import (
     observe_current_run_deadline,
     remaining_model_seconds,
 )
-from travel_agent.runtime.budget import current_budget_ledger, guard_run_budget
+from travel_agent.runtime.budget import current_budget_ledger
 from travel_agent.runtime.context import current_model_window
 from .usage import (
     LLMCallRecord,
@@ -162,13 +161,6 @@ def _coerce_text(content: Any) -> str:
                     parts.append(text)
         return "".join(parts)
     return str(content or "")
-
-
-def _chunk_text(text: str, chunk_size: int = 48) -> Iterable[str]:
-    normalized = text or ""
-    if not normalized:
-        return []
-    return [normalized[i : i + chunk_size] for i in range(0, len(normalized), chunk_size)]
 
 
 def _normalize_tool_calls(raw_calls: Any) -> List[Dict[str, Any]]:
@@ -452,24 +444,23 @@ class OpenAICompatibleLLM(BaseLLM):
         limit = int(getattr(get_settings().provider_channels, name))
         return channel_gate(f"llm.{name}", limit)
 
-    def _guard_budget(
-        self,
-        operation: str,
-        messages: List[Dict[str, Any]],
-        *,
-        output_tokens: Optional[int] = None,
-    ) -> None:
-        """在发起调用前检查预算，按最坏开销计算。
-
-        输入侧按字符数粗估（供应商尚未返回真实 token），输出侧按配置上限。
-        """
-
-        guard_run_budget(
-            operation,
-            llm_calls=1,
-            input_tokens=estimate_tokens(json.dumps(messages, ensure_ascii=False), self.model_name),
-            output_tokens=output_tokens or self._max_tokens,
-        )
+    @contextlib.asynccontextmanager
+    async def _reserve_budget(
+        self, operation: str, messages: List[Dict[str, Any]], *,
+        output_tokens: int, tools: Optional[List[Dict[str, Any]]] = None,
+    ):
+        ledger = current_budget_ledger()
+        if ledger is None:
+            yield
+            return
+        payload: Dict[str, Any] = {"messages": messages}
+        if tools is not None:
+            payload["tools"] = tools
+        input_tokens, _ = estimate_request_tokens(payload, self.model_name)
+        async with ledger.reserve_model(
+            operation, input_tokens=input_tokens, output_tokens=output_tokens
+        ):
+            yield
 
     def _apply_output_token_limit(
         self, kwargs: Dict[str, Any]
@@ -724,7 +715,6 @@ class OpenAICompatibleLLM(BaseLLM):
     ) -> Any:
         logical_id = generate_call_id()
         for attempt in range(self._max_retries + 1):
-            self._guard_budget(f"model.{method}", messages, output_tokens=output_limit)
             record = None
             started = time.perf_counter()
             bound = self._client.bind_tools(tools) if tools is not None else self._client
@@ -733,31 +723,34 @@ class OpenAICompatibleLLM(BaseLLM):
                 nonlocal record, started
                 # 通道与截止时间守卫必须在 outbox 入队之前接受操作：
                 # 被拒绝的协程不会到达供应商。
-                record = self._start_record(method, stream=self._responses_streaming)
-                if record is not None:
-                    record.logical_call_id, record.attempt_number = logical_id, attempt + 1
-                self._request_estimate(record, messages, kwargs, tools)
-                if record is not None:
-                    self._recorder().admit(record)
-                started = time.perf_counter()
-                return await bound.ainvoke(_to_langchain_messages(messages), **kwargs)
+                async with self._reserve_budget(
+                    f"model.{method}", messages, output_tokens=output_limit, tools=tools
+                ):
+                    record = self._start_record(method, stream=self._responses_streaming)
+                    if record is not None:
+                        record.logical_call_id, record.attempt_number = logical_id, attempt + 1
+                    self._request_estimate(record, messages, kwargs, tools)
+                    if record is not None:
+                        self._recorder().admit(record)
+                    started = time.perf_counter()
+                    try:
+                        response = await bound.ainvoke(_to_langchain_messages(messages), **kwargs)
+                        self._validate_response_completion(response)
+                    except BaseException as exc:
+                        self._emit(record, started, status="cancelled" if isinstance(exc, asyncio.CancelledError) else "error",
+                                   error=exc, message=getattr(exc, "message", None) if isinstance(exc, IncompleteModelResponse) else None)
+                        raise
+                    self._emit(record, started, message=response, output_text=estimate_output_text(response))
+                    return response
 
             try:
-                response = await self._in_channel(
-                    invoke_admitted(),
-                    operation=f"model.{method}",
-                )
-                self._validate_response_completion(response)
+                return await self._in_channel(invoke_admitted(), operation=f"model.{method}")
             except BaseException as exc:
-                self._emit(record, started, status="cancelled" if isinstance(exc, asyncio.CancelledError) else "error",
-                           error=exc, message=getattr(exc, "message", None) if isinstance(exc, IncompleteModelResponse) else None)
                 if attempt < self._max_retries and self._retryable(exc):
                     await await_model_operation(asyncio.sleep(min(0.5 * 2 ** attempt, 8)),
                                                 operation=f"model.{method}.retry_wait")
                     continue
                 raise
-            self._emit(record, started, message=response, output_text=estimate_output_text(response))
-            return response
         raise RuntimeError("model call retry loop exhausted without a result")
 
     async def ainvoke(self, messages: List[Dict[str, Any]], **kwargs: Any) -> str:
@@ -803,7 +796,6 @@ class OpenAICompatibleLLM(BaseLLM):
         messages = _satisfy_json_object_prompt_requirement(messages, kwargs, dropped_schema=dropped_schema)
         logical_id = generate_call_id()
         for attempt in range(self._max_retries + 1):
-            self._guard_budget("model.astream", messages, output_tokens=output_limit)
             record = None
             started = time.perf_counter()
             full: Any = None
@@ -813,59 +805,65 @@ class OpenAICompatibleLLM(BaseLLM):
             status, error, retry = "ok", None, False
 
             async def consume_stream() -> AsyncIterator[str]:
-                nonlocal full, last_usage, ttft_ms, record, started
+                nonlocal full, last_usage, ttft_ms, record, started, status, error
                 remaining = remaining_model_seconds("model.astream")
                 queue_wait = remaining if remaining is not None else self._queue_wait_seconds()
                 async with self._channel().hold(wait_seconds=queue_wait):
                     remaining_model_seconds("model.astream")
-                    record = self._start_record("astream", stream=True)
-                    if record is not None:
-                        record.logical_call_id, record.attempt_number = logical_id, attempt + 1
-                    self._request_estimate(record, messages, kwargs)
-                    if record is not None:
-                        self._recorder().admit(record)
-                    started = time.perf_counter()
-                    async for chunk in self._client.astream(_to_langchain_messages(messages), **kwargs):
-                        sample = extract_usage(chunk)
-                        if sample is not None:
-                            # API 返回的 usage 是累计快照，累加多个快照会重复
-                            # 计算同一段输出。
-                            last_usage = sample
-                        full = chunk if full is None else full + chunk
-                        text = _coerce_text(getattr(chunk, "content", ""))
-                        if text:
-                            if ttft_ms is None:
-                                ttft_ms = (time.perf_counter() - started) * 1000
-                            collected.append(text)
-                            yield text
+                    async with self._reserve_budget("model.astream", messages, output_tokens=output_limit):
+                        record = self._start_record("astream", stream=True)
+                        if record is not None:
+                            record.logical_call_id, record.attempt_number = logical_id, attempt + 1
+                        self._request_estimate(record, messages, kwargs)
+                        if record is not None:
+                            self._recorder().admit(record)
+                        started = time.perf_counter()
+                        try:
+                            async for chunk in self._client.astream(_to_langchain_messages(messages), **kwargs):
+                                sample = extract_usage(chunk)
+                                if sample is not None:
+                                    last_usage = sample
+                                full = chunk if full is None else full + chunk
+                                text = _coerce_text(getattr(chunk, "content", ""))
+                                if text:
+                                    if ttft_ms is None:
+                                        ttft_ms = (time.perf_counter() - started) * 1000
+                                    collected.append(text)
+                                    yield text
+                            self._validate_response_completion(full)
+                        except (GeneratorExit, asyncio.CancelledError) as exc:
+                            status, error = "cancelled", exc
+                            raise
+                        except BaseException as exc:
+                            status, error = "error", exc
+                            raise
+                        finally:
+                            self._emit(record, started, status=status, error=error, message=full,
+                                       reported_usage=last_usage, output_text="".join(collected), ttft_ms=ttft_ms)
 
+            stream = consume_stream()
             try:
                 remaining = remaining_model_seconds("model.astream")
                 if remaining is None:
-                    async for text in consume_stream():
-                        yield text
+                    async with contextlib.aclosing(stream):
+                        async for text in stream:
+                            yield text
                 else:
                     try:
-                        async with asyncio.timeout(remaining):
-                            async for text in consume_stream():
+                        async with asyncio.timeout(remaining), contextlib.aclosing(stream):
+                            async for text in stream:
                                 yield text
                     except asyncio.TimeoutError as exc:
                         _deadline, observation = observe_current_run_deadline()
                         if observation is None:
                             raise
                         raise ModelWindowClosed("model.astream", observation, current_model_window.get()) from exc
-                self._validate_response_completion(full)
-            except (GeneratorExit, asyncio.CancelledError) as exc:
-                status, error = "cancelled", exc
+            except (GeneratorExit, asyncio.CancelledError):
                 raise
             except BaseException as exc:
-                status, error = "error", exc
                 retry = attempt < self._max_retries and not collected and self._retryable(exc)
                 if not retry:
                     raise
-            finally:
-                self._emit(record, started, status=status, error=error, message=full,
-                           reported_usage=last_usage, output_text="".join(collected), ttft_ms=ttft_ms)
             if not retry:
                 return
             await await_model_operation(asyncio.sleep(min(0.5 * 2 ** attempt, 8)),
@@ -877,18 +875,116 @@ class OpenAICompatibleLLM(BaseLLM):
         tools: List[Dict[str, Any]],
         **kwargs: Any,
     ) -> AsyncIterator[Dict[str, Any]]:
-        # 为保持接口稳定，这里委托 ainvoke_with_tools 后返回完整 finish 事件；
-        # 计量随该非流式调用记录一条。
-        result = await self.ainvoke_with_tools(messages, tools, **kwargs)
-        content = str(result.get("content") or "")
-        for piece in _chunk_text(content):
-            yield {"type": "text_delta", "content": piece}
-        yield {
-            "type": "finish",
-            "content": content,
-            "tool_calls": result.get("tool_calls", []),
-            "assistant_replay": result.get("assistant_replay", {}),
-        }
+        """真实读取上游流式响应，同时聚合工具调用与推理重放。
+
+        与非流式 ``ainvoke_with_tools`` 共用同一份请求参数、预算守卫和计量口径，
+        但正文增量来自供应商的实际 chunk，不在本地切分完整结果。``stream_start``
+        先给出本次逻辑调用 id；``tool_call_delta`` 只表示上游开始返回工具调用，
+        不携带参数，供 ReAct 判断本轮会执行工具。
+        """
+
+        kwargs, output_limit = self._apply_output_token_limit(kwargs)
+        dropped_schema = _downgraded_json_schema(kwargs, capabilities=self.capabilities)
+        kwargs = _normalize_response_format(kwargs, capabilities=self.capabilities)
+        messages = _satisfy_json_object_prompt_requirement(
+            messages, kwargs, dropped_schema=dropped_schema
+        )
+        logical_id = generate_call_id()
+        for attempt in range(self._max_retries + 1):
+            record = None
+            started = time.perf_counter()
+            full: Any = None
+            last_usage = None
+            ttft_ms = None
+            collected: List[str] = []
+            status, error, retry = "ok", None, False
+            bound = self._client.bind_tools(tools)
+
+            async def consume_stream() -> AsyncIterator[Dict[str, Any]]:
+                nonlocal full, last_usage, ttft_ms, record, started, status, error
+                remaining = remaining_model_seconds("model.astream_with_tools")
+                queue_wait = remaining if remaining is not None else self._queue_wait_seconds()
+                async with self._channel().hold(wait_seconds=queue_wait):
+                    remaining_model_seconds("model.astream_with_tools")
+                    async with self._reserve_budget(
+                        "model.astream_with_tools", messages, output_tokens=output_limit, tools=tools
+                    ):
+                        record = self._start_record("astream_with_tools", stream=True)
+                        if record is not None:
+                            record.logical_call_id, record.attempt_number = logical_id, attempt + 1
+                        self._request_estimate(record, messages, kwargs, tools)
+                        if record is not None:
+                            self._recorder().admit(record)
+                        started = time.perf_counter()
+                        try:
+                            async for chunk in bound.astream(_to_langchain_messages(messages), **kwargs):
+                                sample = extract_usage(chunk)
+                                if sample is not None:
+                                    last_usage = sample
+                                full = chunk if full is None else full + chunk
+                                text = _coerce_text(getattr(chunk, "content", ""))
+                                if text:
+                                    if ttft_ms is None:
+                                        ttft_ms = (time.perf_counter() - started) * 1000.0
+                                    collected.append(text)
+                                    yield {"type": "text_delta", "content": text}
+                                if getattr(chunk, "tool_call_chunks", None):
+                                    yield {"type": "tool_call_delta", "content": ""}
+                            self._validate_response_completion(full)
+                        except (GeneratorExit, asyncio.CancelledError) as exc:
+                            status, error = "cancelled", exc
+                            raise
+                        except BaseException as exc:
+                            status, error = "error", exc
+                            raise
+                        finally:
+                            self._emit(record, started, status=status, error=error, message=full,
+                                       reported_usage=last_usage, output_text="".join(collected), ttft_ms=ttft_ms)
+
+            yield {"type": "stream_start", "call_id": logical_id}
+            stream = consume_stream()
+            try:
+                remaining = remaining_model_seconds("model.astream_with_tools")
+                if remaining is None:
+                    async with contextlib.aclosing(stream):
+                        async for event in stream:
+                            yield event
+                else:
+                    try:
+                        async with asyncio.timeout(remaining), contextlib.aclosing(stream):
+                            async for event in stream:
+                                yield event
+                    except asyncio.TimeoutError as exc:
+                        _deadline, observation = observe_current_run_deadline()
+                        if observation is None:
+                            raise
+                        raise ModelWindowClosed(
+                            "model.astream_with_tools", observation, current_model_window.get()
+                        ) from exc
+            except (GeneratorExit, asyncio.CancelledError):
+                raise
+            except BaseException as exc:
+                retry = attempt < self._max_retries and not collected and self._retryable(exc)
+                if not retry:
+                    raise
+            if not retry:
+                content = _coerce_text(getattr(full, "content", "")).strip()
+                yield {
+                    "type": "finish",
+                    "content": content,
+                    "tool_calls": _normalize_tool_calls(
+                        getattr(full, "tool_calls", [])
+                    ),
+                    "assistant_replay": reasoning_replay(
+                        getattr(full, "additional_kwargs", {}) or {}
+                    ),
+                    "call_id": logical_id,
+                }
+                return
+            await await_model_operation(
+                asyncio.sleep(min(0.5 * 2 ** attempt, 8)),
+                operation="model.astream_with_tools.retry_wait",
+            )
 
 
 class ModelRouter:

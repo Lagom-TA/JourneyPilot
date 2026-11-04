@@ -10,19 +10,32 @@ const CAPABILITY_DECLARATION_STATUSES: readonly ToolExecutionStatus[] = [
 export function isCapabilityDeclaration(status: string | undefined): boolean {
     return CAPABILITY_DECLARATION_STATUSES.includes(status as ToolExecutionStatus);
 }
+export function isNoResultSummary(value: string | null | undefined): boolean {
+    const text = (value || '').trim();
+    return !text || /没有匹配|没有返回|未找到|未取到|无结果|没有可公开|(?:找到|返回|搜索到|获取到)\s*0\s*(?:条|个|项)|^0\s*(?:条|个|项)/.test(text);
+}
 /**
  * 过程区只公开正常、可追溯的旅行行动。
- * 失败工具、失败的阶段进展和 search_tools 未匹配/激活失败属于内部过程，
- * 不能进入标题、摘要、计数或展开详情；Run 级失败仍由状态区单独表达。
+ * search_tools 是内部能力选择，不是旅行行动；知识库/网页的“查过但没收录”
+ * 也不逐条占位。地点/路线/班次/天气的空结果仍是旅行约束，必须保留。
+ * 失败工具与失败阶段进展不进入活动列表；Run 级失败仍由状态区单独表达。
  */
 export function isPublicActivityStep(step: ThinkingStep): boolean {
     if (!step.isToolCall)
         return step.progressStatus !== 'failed';
     if (step.toolStatus === 'failed')
         return false;
-    if (step.toolName && /(^|[_:])search_tools($|[_:])/i.test(step.toolName)) {
-        const result = (step.toolResult || '').trim();
-        if (/未匹配到工具|激活失败|没有可用工具|未启用/.test(result))
+    if (step.toolName && /(^|[_:])search_tools($|[_:])/i.test(step.toolName))
+        return false;
+    // 还在执行的工具没有结果可判断，不能因为“暂时为空”就先藏掉。
+    if (step.toolStatus === 'running' || (!step.toolStatus && !step.endTime))
+        return true;
+    const kind = classifyTool(step.toolName, step.toolCategory);
+    if (kind === 'knowledge' || kind === 'web_search' || kind === 'web_page') {
+        const degraded = step.toolStatus === 'degraded' || step.toolDegraded === true;
+        const capability = step.toolStatus === 'capability_declared';
+        const hasPreview = (step.resultPreview?.length ?? 0) > 0;
+        if (!degraded && !capability && !hasPreview && isNoResultSummary(step.toolResult))
             return false;
     }
     return true;
@@ -39,9 +52,9 @@ export function thinkingStepStatusFromToolResult(status: SSEEvent['status']): No
 const TOOL_STATUS_LABELS: Record<ToolStatus, string> = {
     running: '进行中',
     completed: '已完成',
-    degraded: '已完成（备用通道）',
+    degraded: '备用来源',
     failed: '未完成',
-    capability_declared: '参考资料',
+    capability_declared: '暂不可查',
 };
 export function toolStatusLabel(status: ThinkingStep['toolStatus']): string {
     return status ? TOOL_STATUS_LABELS[status] : '';
@@ -127,22 +140,6 @@ const FAILED_VERB: Record<DisplayKind, string> = {
     internal: '整理未完成',
     data: '旅行数据读取未完成',
     other: '旅行资料读取未完成',
-};
-const CAPABILITY_VERB: Record<DisplayKind, string> = {
-    web_search: '联网资料未覆盖该日期',
-    web_page: '网页数据未覆盖该日期',
-    place_search: '地点数据未覆盖该日期',
-    geocode: '定位数据未覆盖该日期',
-    weather: '天气数据未覆盖该日期',
-    route: '路线数据未覆盖该日期',
-    flight: '航班数据未覆盖该日期',
-    train: '车票数据未覆盖该日期',
-    currency: '汇率数据未覆盖该日期',
-    knowledge: '资料库未覆盖该日期',
-    calculation: '该日期不适用本次计算',
-    internal: '该步不适用',
-    data: '旅行数据未覆盖该日期',
-    other: '该资料来源未覆盖该日期',
 };
 function normalizeToolName(toolName: string | undefined): string {
     return (toolName || '').toLowerCase().replace(/[\s:]+/g, '_');
@@ -340,12 +337,14 @@ export function describeToolStep(step: ThinkingStep): ToolDisplay {
     const args = parseToolArgs(step.toolArgs);
     const subject = publicToolArgText(subjectForKind(kind, args));
     const status = statusForStep(step);
+    // 能力声明只说明“这一步暂不可查”，具体限制必须来自后端 result_summary，
+    // 不能在前端用“未覆盖该日期”之类的泛化结论代替。
     const verb = status === 'running'
         ? RUNNING_VERB[kind]
         : status === 'failed'
             ? FAILED_VERB[kind]
             : status === 'capability_declared'
-                ? CAPABILITY_VERB[kind]
+                ? '暂不可查'
                 : DONE_VERB[kind];
     const actionText = subject ? `${verb}「${truncate(subject, 44)}」` : verb;
     return {
@@ -387,7 +386,7 @@ function sanitizeInternalIdentifiers(text: string): string {
         .replace(INTERNAL_IDENTIFIER, token => aliasForInternalIdentifier(token))
         .replace(PROVIDER_IDENTIFIER, token => aliasForInternalIdentifier(token));
 }
-const TECHNICAL_INPUT_FIELDS = /\b(?:research_packet_id|tool_call_id|run_id|session_id|provider|status_code|args_summary|sanitized_result|raw_result)\b\s*[:=]/i;
+const TECHNICAL_INPUT_FIELDS = /\b(?:contract_version|research_packet_id|tool_call_id|run_id|session_id|provider|status_code|args_summary|sanitized_result|raw_result)\b\s*[:=]/i;
 const TECHNICAL_ERROR_TEXT = [
     /^\s*(?:error|exception|traceback|typeerror|valueerror|runtimeerror|keyerror|httpx?error|urllib3)\b/i,
     /\b(?:traceback \(most recent call last\)|stack trace|internal server error|service unavailable|bad gateway|gateway timeout)\b/i,
@@ -435,4 +434,39 @@ export function toolResultCount(summary: string | null): number | null {
     if (!match)
         return null;
     return parseCountValue(match[1]);
+}
+export function toolSourceLabel(toolName: string | undefined): string {
+    const name = (toolName || '').trim();
+    if (!name)
+        return KIND_LABELS.other;
+    return KIND_LABELS[classifyTool(name, undefined)];
+}
+function normalizedInvocationPart(value: string | undefined): string {
+    return (value || '').replace(/\s+/g, ' ').trim();
+}
+/**
+ * 相邻的同一工具、同一参数、同一结果只保留最后一次。Provider 重试或缓存命中
+ * 常把同一查询写两遍；合并的是重复行，不合并不同来源的证据。
+ */
+export function dedupeToolSteps(steps: ThinkingStep[]): ThinkingStep[] {
+    const out: ThinkingStep[] = [];
+    for (const step of steps) {
+        const previous = out[out.length - 1];
+        const duplicate = previous
+            && previous.isToolCall && step.isToolCall && step.toolName
+            && previous.toolName === step.toolName
+            && previous.toolStatus === step.toolStatus && step.toolStatus !== 'running'
+            && normalizedInvocationPart(previous.toolArgs) === normalizedInvocationPart(step.toolArgs)
+            && normalizedInvocationPart(previous.toolResult) === normalizedInvocationPart(step.toolResult)
+            && JSON.stringify(previous.resultPreview ?? []) === JSON.stringify(step.resultPreview ?? []);
+        if (duplicate) {
+            out[out.length - 1] = {
+                ...step,
+                fromCache: step.fromCache || previous.fromCache,
+            };
+            continue;
+        }
+        out.push(step);
+    }
+    return out;
 }

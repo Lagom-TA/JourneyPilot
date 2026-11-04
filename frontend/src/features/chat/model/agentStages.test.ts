@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveActivityTitle, deriveStages, filterStepsForActivityStage, getStageIdForAgent, latestActivityStageId, latestActivityStageWithSteps, parseAgentRound } from "./agentStages";
+import { deriveActivityStages, deriveActivityTitle, deriveStages, filterStepsForActivityStage, getActivityStageIdForAgent, getStageIdForAgent, latestActivityStageId, latestActivityStageWithSteps, parseAgentRound } from "./agentStages";
 import { type ThinkingStep } from "../types/messages";
 function step(agentName: string): ThinkingStep {
     return {
@@ -77,10 +77,13 @@ describe('activity stage filtering', () => {
         // 首轮研究事件不触发回退，保持原有串行推进语义。
         expect(latestActivityStageId({ ...base, steps: [step('行程规划'), step('目的地调研')] })).toBe('route');
     });
-    it('门、等待确认与完成/合成/开始输出优先落到固定阶段', () => {
+    it('门与等待确认只在需求阶段生效，完成/合成/开始输出优先落到固定阶段', () => {
         const routeSteps = [step('行程规划')];
-        expect(latestActivityStageId({ ...base, steps: routeSteps, gatePending: true })).toBe('requirements');
-        expect(latestActivityStageId({ ...base, steps: routeSteps, runStatus: 'awaiting_input' })).toBe('requirements');
+        expect(latestActivityStageId({ ...base, steps: [], gatePending: true })).toBe('requirements');
+        expect(latestActivityStageId({ ...base, steps: [step('理解旅行需求')], gatePending: true })).toBe('requirements');
+        // 研究/路线已经留下行动时，门是返工确认，不能把焦点拉回需求。
+        expect(latestActivityStageId({ ...base, steps: routeSteps, gatePending: true })).toBe('route');
+        expect(latestActivityStageId({ ...base, steps: routeSteps, runStatus: 'awaiting_input' })).toBe('route');
         expect(latestActivityStageId({ ...base, steps: routeSteps, runStatus: 'completed' })).toBe('delivery');
         expect(latestActivityStageId({ ...base, steps: routeSteps, isSynthesizing: true })).toBe('delivery');
         expect(latestActivityStageId({ ...base, steps: routeSteps, answerStarted: true })).toBe('delivery');
@@ -92,5 +95,73 @@ describe('activity stage filtering', () => {
         expect(latestActivityStageWithSteps(steps)).toBe('route');
         expect(latestActivityStageWithSteps(steps.slice(0, 3))).toBe('research');
         expect(latestActivityStageWithSteps([step('fast_answer_agent')])).toBeNull();
+    });
+});
+describe('four-stage activity projection', () => {
+    it('识别真实公开中文名、旧别名与 dispatcher', () => {
+        expect(getActivityStageIdForAgent('理解旅行需求')).toBe('requirements');
+        expect(getActivityStageIdForAgent('等待你的回答')).toBe('requirements');
+        expect(getActivityStageIdForAgent('安排查询')).toBe('research');
+        expect(getActivityStageIdForAgent('理解旅行需求（第2轮补充）')).toBe('requirements');
+        // 旧夹具仍可读，但新事件使用后端真实公开名。
+        expect(getActivityStageIdForAgent('理解需求')).toBe('requirements');
+        expect(getActivityStageIdForAgent('等待回答')).toBe('requirements');
+    });
+    it('已完成阶段在 Run 仍运行时保持 done，当前阶段才 active', () => {
+        const projection = deriveActivityStages(
+            [step('理解旅行需求'), step('目的地调研')],
+            { isStreaming: true, isSynthesizing: false, answerStarted: false },
+        );
+        expect(projection.currentStage).toBe('research');
+        expect(projection.stages.find(stage => stage.id === 'requirements')?.status).toBe('done');
+        expect(projection.stages.find(stage => stage.id === 'research')?.status).toBe('active');
+        expect(projection.stages.find(stage => stage.id === 'route')?.status).toBe('pending');
+    });
+    it('迟到研究事件不把焦点从路线拉回研究', () => {
+        const projection = deriveActivityStages(
+            [step('行程规划'), step('目的地调研')],
+            { isStreaming: true, isSynthesizing: false, answerStarted: false },
+        );
+        expect(projection.currentStage).toBe('route');
+        expect(projection.stages.find(stage => stage.id === 'research')?.status).toBe('done');
+        expect(projection.stages.find(stage => stage.id === 'route')?.status).toBe('active');
+    });
+    it('失败、取消、中断落在当前阶段，不伪装成完成', () => {
+        const steps = [step('理解旅行需求'), step('目的地调研')];
+        const base = { isStreaming: false, isSynthesizing: false, answerStarted: false };
+        const failed = deriveActivityStages(steps, { ...base, runStatus: 'failed' });
+        expect(failed.currentStage).toBe('research');
+        expect(failed.stages.find(stage => stage.id === 'requirements')?.status).toBe('done');
+        expect(failed.stages.find(stage => stage.id === 'research')?.status).toBe('failed');
+        for (const runStatus of ['cancelled', 'interrupted']) {
+            const stopped = deriveActivityStages(steps, { ...base, runStatus });
+            expect(stopped.currentStage).toBe('research');
+            expect(stopped.stages.find(stage => stage.id === 'research')?.status).toBe('stopped');
+        }
+        const stopping = deriveActivityStages(steps, { ...base, isStreaming: true, runStatus: 'cancel_requested' });
+        expect(stopping.stages.find(stage => stage.id === 'research')?.status).toBe('active');
+    });
+    it('补充轮次可以回到需求或研究', () => {
+        const base = { isStreaming: true, isSynthesizing: false, answerStarted: false };
+        expect(deriveActivityStages([step('行程规划'), step('整理需求（第2轮补充）')], base).currentStage).toBe('requirements');
+        expect(deriveActivityStages([step('行程规划'), step('目的地调研（第2轮补充）')], base).currentStage).toBe('research');
+    });
+    it('等待用户门停在需求阶段，完成态全部收口', () => {
+        const base = { isStreaming: false, isSynthesizing: false, answerStarted: false };
+        const gate = deriveActivityStages([step('理解旅行需求')], { ...base, gatePending: true });
+        expect(gate.currentStage).toBe('requirements');
+        expect(gate.stages.find(stage => stage.id === 'requirements')?.status).toBe('active');
+        const completed = deriveActivityStages([step('目的地调研')], { ...base, runStatus: 'completed' });
+        expect(completed.stages.every(stage => stage.status === 'done')).toBe(true);
+    });
+    it('研究开始后的方案门不把已完成的需求阶段拉回进行中', () => {
+        const base = { isStreaming: false, isSynthesizing: false, answerStarted: false };
+        const gate = deriveActivityStages(
+            [step('理解旅行需求'), step('目的地调研')],
+            { ...base, gatePending: true },
+        );
+        expect(gate.currentStage).toBe('research');
+        expect(gate.stages.find(stage => stage.id === 'requirements')?.status).toBe('done');
+        expect(gate.stages.find(stage => stage.id === 'research')?.status).toBe('active');
     });
 });

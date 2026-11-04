@@ -10,10 +10,14 @@ import { type StreamOwnership } from "./streamOwnership";
 import { createStreamPresentation } from "../../features/chat/model/streamPresentation";
 import { createDeliveryProtocol } from "../../features/travel/model/deliveryProtocol";
 import { type StreamFrameBatch } from "../../features/chat/model/streamFrameBatch";
-export function createStreamEvents(ownership: StreamOwnership, assistantMessage: Message, text: string, initialCurrentTripRunId: string | null, pendingLabel: string | undefined, currentStateRef: MutableRefObject<AppState>, setLastSession: (id: string | null) => void, frame: StreamFrameBatch, gateAction?: PlanGateDecisionAction) {
+export function createStreamEvents(ownership: StreamOwnership, assistantMessage: Message, text: string, initialCurrentTripRunId: string | null, pendingLabel: string | undefined, currentStateRef: MutableRefObject<AppState>, setLastSession: (id: string | null) => void, frame: StreamFrameBatch, gateAction?: PlanGateDecisionAction, resumeSameRun = false) {
     const { identity, scopedDispatch, isStreamVisible, updateActiveStreamHandle } = ownership;
     const { flushFrameNow } = frame;
     let streamFailed = false;
+    let responseCompleted = false;
+    let waitingForRouteConfirmation = false;
+    let waitingForRequiredInput = false;
+    let planningRunId: string | null = null;
     let waitingForGateAcceptance = Boolean(gateAction);
     const presentation = createStreamPresentation(scopedDispatch, assistantMessage, pendingLabel, frame);
     const routeStatus = (route?: JourneyRoute) => ({
@@ -26,6 +30,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
         flushFrameNow();
         scopedDispatch({ type: 'CONFIRM_DELIVERY_BUNDLE', payload: bundle });
     }, terminal => {
+        responseCompleted = true;
         flushFrameNow();
         scopedDispatch({
             type: 'FINISH_LAST_THINKING_STEP',
@@ -52,10 +57,9 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
         scopedDispatch({ type: 'RESOLVE_WAITING_MESSAGES' });
         scopedDispatch({ type: 'SET_SYNTHESIZING', payload: false });
     });
-    return { protocol, get failed() { return streamFailed; }, handleEvent(event: SSEEvent) {
-            // chat_start 只说明流已打开；必须再收到工作流事件，才能确认中断的
-            // 计划门真的恢复了。
-            if (waitingForGateAcceptance && ['thinking', 'agent_progress', 'tool_start', 'trip_summary_card', 'chat_chunk'].includes(event.type)) {
+    return { protocol, get failed() { return streamFailed; }, get completed() { return responseCompleted; }, get awaitingInput() { return waitingForRequiredInput || waitingForRouteConfirmation; }, handleEvent(event: SSEEvent) {
+            // chat_start 只说明流已打开；必须再收到工作流事件，才能确认中断的计划门真的恢复了。
+            if (waitingForGateAcceptance && ['thinking', 'agent_progress', 'tool_start', 'work_explanation', 'trip_summary_card', 'chat_chunk'].includes(event.type)) {
                 waitingForGateAcceptance = false;
                 scopedDispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: null });
                 scopedDispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: null });
@@ -65,6 +69,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                 return;
             switch (event.type) {
                 case 'route_confirmation':
+                    waitingForRouteConfirmation = true;
                     if (event.route_decision) {
                         scopedDispatch({ type: 'SET_LAST_ROUTE_DECISION', payload: event.route_decision });
                         scopedDispatch({ type: 'SET_ROUTE_CONFIRMATION', payload: { rawInput: text, decision: event.route_decision } });
@@ -92,6 +97,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                             scopedDispatch({ type: 'RESOLVE_WAITING_MESSAGES' });
                         }
                         if (event.route_decision?.route === 'trip_planning' || event.route_decision?.route === 'trip_refinement') {
+                            planningRunId = event.run_id;
                             scopedDispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: null });
                             scopedDispatch({
                                 type: 'SET_CURRENT_TRIP_RUN',
@@ -105,13 +111,32 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                         }
                     }
                     if (event.message_id && event.message_id !== assistantMessage.id) {
+                        // 同 Run 的失败/中断续跑会复用原 assistant_message_id。
+                        // 旧消息已经带着上一段记录，先移除再重映射，避免同一 id
+                        // 出现两条助手消息；thinkingSteps 已在发送时保留。
+                        if (resumeSameRun)
+                            scopedDispatch({ type: 'REMOVE_MESSAGE_BY_ID', payload: event.message_id });
                         scopedDispatch({
                             type: 'REMAP_MESSAGE_ID',
                             payload: { fromId: assistantMessage.id, toId: event.message_id },
                         });
                         assistantMessage.id = event.message_id;
                     }
+                    if (event.run_id) {
+                        // 实时助手消息也要带上 Run 归属，恢复/切换 Run 时才不会
+                        // 把当前正文和旧 Run 的消息混在一起。
+                        scopedDispatch({
+                            type: 'UPDATE_MESSAGE_BY_ID',
+                            payload: { id: assistantMessage.id, runId: event.run_id },
+                        });
+                    }
                     break;
+                case 'trip_identity_updated': {
+                    if (event.run_id === identity.runId && event.controlled_trip_identity) {
+                        scopedDispatch({ type: 'SET_CONTROLLED_TRIP_IDENTITY', payload: event.controlled_trip_identity });
+                    }
+                    break;
+                }
                 case 'trip_summary_card': {
                     const card = normalizeTripSummaryCard(event);
                     if (card)
@@ -119,16 +144,21 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     break;
                 }
                 case 'understanding_questions': {
+                    waitingForRequiredInput = true;
                     waitingForGateAcceptance = false;
                     flushFrameNow();
                     scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: new Date() } });
                     const questions = Array.isArray(event.payload?.questions) ? event.payload.questions : [];
-                    if (event.run_id && questions.length > 0) {
+                    const retryLocation = Array.isArray(event.payload?.decision_options) && event.payload.decision_options.includes('retry');
+                    if (event.run_id && (questions.length > 0 || retryLocation)) {
                         scopedDispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: {
                             runId: event.run_id,
                             revision: typeof event.payload?.revision === 'number' ? event.payload.revision : 0,
                             approvalToken: typeof event.payload?.approval_token === 'string' ? event.payload.approval_token : '',
                             questions,
+                            retryLocation,
+                            retryResearch: event.gate === 'research',
+                            message: typeof event.payload?.message === 'string' ? event.payload.message : undefined,
                         } });
                         scopedDispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: null });
                     }
@@ -139,6 +169,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     break;
                 }
                 case 'approval_gate_raised': {
+                    waitingForRequiredInput = true;
                     waitingForGateAcceptance = false;
                     flushFrameNow();
                     scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: new Date() } });
@@ -166,6 +197,10 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     break;
                 }
                 case 'chat_complete': {
+                    waitingForRequiredInput = waitingForRequiredInput || event.requires_input === true || event.run_status === 'awaiting_input';
+                    responseCompleted = (!event.run_status || event.run_status === 'completed' || event.run_status === 'awaiting_input')
+                        && !event.guard_blocked
+                        && !waitingForRouteConfirmation;
                     flushFrameNow();
                     scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: new Date(), tsMs: event.ts_ms } });
                     if (event.final_content && typeof event.final_content === 'string') {
@@ -205,7 +240,9 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                         scopedDispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: null });
                         scopedDispatch({ type: 'RESOLVE_WAITING_MESSAGES' });
                     }
-                    if (isTripRunStatus(event.run_status)) {
+                    if (isTripRunStatus(event.run_status)
+                        && (!event.run_id || currentStateRef.current.currentTripRunId === event.run_id
+                            || event.run_id === planningRunId)) {
                         scopedDispatch({ type: 'SET_TRIP_RUN_STATUS', payload: event.run_status });
                     }
                     if (event.guard_blocked) {
@@ -313,7 +350,9 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     });
                     scopedDispatch({ type: 'SET_SYNTHESIZING', payload: false });
                     scopedDispatch({ type: 'SET_STREAMING', payload: false });
-                    if (isTripRunStatus(event.run_status)) {
+                    if (isTripRunStatus(event.run_status)
+                        && (!event.run_id || currentStateRef.current.currentTripRunId === event.run_id
+                            || event.run_id === planningRunId)) {
                         scopedDispatch({ type: 'SET_TRIP_RUN_STATUS', payload: event.run_status });
                         scopedDispatch({ type: 'BUMP_TRIP_RUN_REFRESH' });
                     }

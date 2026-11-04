@@ -1,4 +1,4 @@
-"""把长期画像、手写记忆和 preset 的明确字段带给规划角色。
+"""把长期画像、相关记忆和预设资料带给旅行理解。
 
 用户自由文本由模型直接理解，这里不做分句或语义抽取。
 """
@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from travel_agent.planning.requirements.constraints.items import _get
+from travel_agent.planning.requirements.constraints.items import _get, _make_item
 from travel_agent.planning.requirements.constraints.loading import load_constraint_sources
 from travel_agent.planning.requirements.constraints.resolution import (
     _dedupe_constraints,
@@ -19,6 +19,7 @@ from travel_agent.planning.requirements.constraints.sources import (
     _map_manual_memory_facts,
     _map_manual_profile,
     _map_preset_constraints,
+    constraint_free_text_sources,
 )
 
 
@@ -55,6 +56,22 @@ async def build_planning_constraint_pack(state: Any) -> Dict[str, Any]:
             constraints.append(portrait)
     constraints.extend(_map_manual_memory_facts(loaded.manual_memory_facts, now))
     constraints.extend(_map_preset_constraints(_get(state, "preset_pack_constraints"), now))
+    for fact in constraint_free_text_sources(state, loaded.memory_facts):
+        if fact.get("source") != "memory_fact" or not str(fact.get("text") or "").strip():
+            continue
+        confirmed = fact.get("category_meta") == "constraint" and fact.get("importance", 0) >= 8
+        constraints.append(
+            _make_item(
+                category="other",
+                value=str(fact["text"]).strip(),
+                params=None,
+                source="memory_fact",
+                confidence="high" if confirmed else "medium",
+                visibility="user_visible" if confirmed else "internal_only",
+                updated_at=fact["updated_at"],
+                origin_ref=fact["id"],
+            )
+        )
     constraints = _resolve_conflicts(_dedupe_constraints(constraints))
     active = [item for item in constraints if item["status"] == "active"]
     return {

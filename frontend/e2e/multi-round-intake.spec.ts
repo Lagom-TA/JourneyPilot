@@ -29,7 +29,7 @@ const planGatePayload = {
   revision: 0,
   decision_options: ['approve', 'supplement', 'cancel'],
   plan: { steps: [{ step: 1, agents: ['destination_researcher'], tasks: { destination_researcher: '调查青岛慢节奏海边路线' } }] },
-  plan_text: '**研究和安排设想**\n从上海去青岛，节奏：慢慢逛；预算：5000 元以内。\n\n- **目的地调研**：调查青岛慢节奏海边路线',
+  plan_text: '从上海去青岛，节奏：慢慢逛；预算：5000 元以内。',
 };
 
 function sse(events: unknown[]) {
@@ -110,6 +110,8 @@ test('逐轮回答新问题，方案消费全部问答', async ({ page }) => {
   await expect(page.getByTestId('trip-brief-plan-gate')).toBeVisible();
   await expect(page.getByTestId('trip-brief-plan-gate')).toContainText('慢慢逛');
   await expect(page.getByTestId('trip-brief-plan-gate')).toContainText('5000 元以内');
+  await expect(page.getByTestId('trip-brief-plan-gate').getByRole('heading', { name: '研究与安排设想' })).toHaveCount(1);
+  await expect(page.getByTestId('trip-brief-plan-gate')).not.toContainText('调查青岛慢节奏海边路线');
   await expect(page.getByTestId('new-trip-hero')).toHaveCount(0);
   expect(errors).toEqual([]);
 });

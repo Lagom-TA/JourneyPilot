@@ -32,7 +32,6 @@ from travel_agent.llm.usage import LLMCallRecord, UsageRecorder
 from travel_agent.planning.delivery.evidence_basis import (
     PublicProjectionContractViolation,
 )
-from travel_agent.planning.requirements.supplements import queue_supplement
 from travel_agent.runtime.cancellation import RunCancelled, run_control_registry
 from travel_agent.runtime.run_contracts import (
     TripRunStatus,
@@ -72,6 +71,15 @@ async def test_preparation_http_errors_leave_no_orphan_or_model(
     assert response.status_code == status and response.json() == {"detail": detail}
     assert not resources.trip_run_store.runs
     assert not resources.run_execution_store.rows
+    assert not resources.fast_workflow.calls
+
+
+async def test_request_rejects_removed_mcp_server_selection(resources):
+    response = await request(
+        "POST", "/api/chat-stream", chat_body(selected_mcp_servers=["12306-train"])
+    )
+    assert response.status_code == 422
+    assert not resources.trip_run_store.runs
     assert not resources.fast_workflow.calls
 
 
@@ -506,45 +514,20 @@ async def test_session_authorization_precedes_control_writes(
     assert not resources.run_execution_store.log
 
 
-async def test_supplement_persists_before_notify_and_duplicate_does_not_append(
-    resources,
-):
-    runs = resources.trip_run_store
-    run = await runs.create_run(session_id="supplement", user_id="local", mode="fast")
-    await runs.transition_status(run.run_id, TripRunStatus.RUNNING)
-    notifications = []
-
-    def notify(run_id):
-        queued = [
-            event
-            for event in runs.events[run_id]
-            if event.event_type == "run.supplement_queued"
-        ]
-        assert len(queued) == 1
-        assert queued[0].payload["command_id"] in resources.run_command_store.commands
-        notifications.append(run_id)
-
-    first = await queue_supplement(
-        run.run_id,
-        run=run,
-        category="food",
-        content=" 本地早餐 ",
-        trip_run_store=runs,
-        command_store=resources.run_command_store,
-        notify=notify,
+async def test_running_supplement_is_rejected_before_first_delivery(resources):
+    run = await resources.trip_run_store.create_run(
+        session_id="supplement", user_id="local", mode="deep"
     )
-    second = await queue_supplement(
-        run.run_id,
-        run=run,
-        category="food",
-        content="本地早餐",
-        trip_run_store=runs,
-        command_store=resources.run_command_store,
-        notify=notify,
+    await resources.trip_run_store.transition_status(run.run_id, TripRunStatus.RUNNING)
+
+    response = await request(
+        "POST", f"/api/trip-runs/{run.run_id}/supplements",
+        {"category": "food", "content": "本地早餐", "session_id": "supplement"},
     )
-    assert first.command is second.command
-    assert first.impact_scope == ["目的地体验", "每日安排"]
-    assert notifications == [run.run_id, run.run_id]
+
+    assert response.status_code == 409
+    assert "首份旅行方案交付前" in response.json()["detail"]
+    assert not resources.run_command_store.commands
 
 
 async def test_transport_heartbeat_suppression_projection_failure_and_close(

@@ -97,6 +97,46 @@ async def test_worker_result_replay_before_graph_checkpoint():
     assert len(calls) == 2
 
 
+async def test_understanding_without_assignment_replays_and_changes_scope():
+    from travel_agent.planning.nodes import NODE_UNDERSTANDING_AGENT
+    from travel_agent.planning.recovery import invocation_scope
+
+    store = InMemoryWorkerJournalStore()
+    state = TravelAgentState(run_id="run", user_query="旅行", current_time="2026-11-02")
+    calls = []
+
+    async def worker(state, config):
+        calls.append(1)
+        return {"understanding_rounds": 1}
+
+    recovered = with_worker_recovery(NODE_UNDERSTANDING_AGENT, worker)
+    config = {"configurable": {"worker_journal_store": store, "__pregel_task_id": "task-1"}}
+    assert await recovered(state, config) == {"understanding_rounds": 1}
+    assert await recovered(state, config) == {"understanding_rounds": 1}
+    assert calls == [1]
+
+    scope = invocation_scope(state, NODE_UNDERSTANDING_AGENT, config)
+    changed_time = state.model_copy(update={"current_time": "2026-11-03"})
+    changed_answer = state.model_copy(update={"understanding_rounds": 1})
+    changed_task = {"configurable": {"__pregel_task_id": "task-2"}}
+    assert invocation_scope(changed_time, NODE_UNDERSTANDING_AGENT, config) != scope
+    assert invocation_scope(changed_answer, NODE_UNDERSTANDING_AGENT, config) != scope
+    assert invocation_scope(state, NODE_UNDERSTANDING_AGENT, changed_task) != scope
+
+
+@pytest.mark.parametrize("assignments", [{}, {"worker": {"objective": "  "}}])
+async def test_other_workers_still_require_valid_assignment(assignments):
+    state = TravelAgentState(run_id="run", agent_assignments=assignments)
+
+    async def worker(state, config):
+        pytest.fail("缺少任务分配时不能执行")
+
+    recovered = with_worker_recovery("worker", worker)
+    config = {"configurable": {"worker_journal_store": InMemoryWorkerJournalStore()}}
+    with pytest.raises(ValueError, match="missing capability assignment for worker"):
+        await recovered(state, config)
+
+
 async def test_stale_writer_cannot_commit():
     store = InMemoryWorkerJournalStore()
     await store.save("run", "scope", 0, {"a": 1})

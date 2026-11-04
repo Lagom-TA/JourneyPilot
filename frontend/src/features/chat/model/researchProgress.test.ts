@@ -39,3 +39,42 @@ describe('public research activity', () => {
         expect(route.subject).toContain('长春站');
     });
 });
+describe('stage-scoped research groups', () => {
+    it('把 dispatcher 归到资料阶段，而不是需求整理组', () => {
+        const groups = researchGroups([step('安排查询'), step('目的地调研')], true, false);
+        expect(groups.map(group => [group.id, group.stage])).toEqual([
+            ['dispatch', 'research'],
+            ['destination', 'research'],
+        ]);
+        expect(groups[0].title).toBe('安排查询');
+    });
+    it('阶段 done 时不再有组显示进行中', () => {
+        const steps = [
+            step('目的地调研', { progressStatus: 'running' }),
+            step('目的地调研', { isToolCall: true, toolName: 'global_place_search', toolStatus: 'running' }),
+        ];
+        const groups = researchGroups(steps, true, false, 'done');
+        expect(groups[0].status).toBe('completed');
+    });
+    it('阶段 failed/stopped 时保留非正常终态', () => {
+        const running = [step('目的地调研', { isToolCall: true, toolName: 'global_place_search', toolStatus: 'running' })];
+        expect(researchGroups(running, true, false, 'failed')[0].status).toBe('failed');
+        expect(researchGroups(running, true, false, 'stopped')[0].status).toBe('stopped');
+        const completed = [step('目的地调研', { progressStatus: 'completed', endTime: new Date() })];
+        expect(researchGroups(completed, false, false, 'failed')[0].status).toBe('completed');
+    });
+    it('阶段 active 但没有实时流时，遗留 running 收口为 stopped', () => {
+        const running = [step('目的地调研', { isToolCall: true, toolName: 'global_place_search', toolStatus: 'running' })];
+        expect(researchGroups(running, false, false, 'active')[0].status).toBe('stopped');
+    });
+});
+describe('generic chat grouping compatibility', () => {
+    it('普通聊天里需求组在后续 worker 出现后仍收口为已结束', () => {
+        const groups = researchGroups([
+            step('requirements_preparer', { progressStatus: 'running' }),
+            step('目的地调研', { progressStatus: 'running' }),
+        ], true, false);
+        expect(groups.find(group => group.id === 'planning')?.status).toBe('completed');
+        expect(groups.find(group => group.id === 'destination')?.status).toBe('running');
+    });
+});

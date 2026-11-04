@@ -23,6 +23,9 @@ export interface TravelState {
         revision: number;
         approvalToken: string;
         questions: UnderstandingQuestion[];
+        retryLocation: boolean;
+        retryResearch?: boolean;
+        message?: string;
     } | null;
     /** 提交旅行想法后即进入工作台；首页只服务尚未开始的新会话。 */
     workspaceActive: boolean;

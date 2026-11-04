@@ -17,4 +17,4 @@ async def test_get_available_tools_raises_instead_of_returning_an_empty_catalog(
 ):
     monkeypatch.setattr(access, "get_tool_registry", lambda: _ExplodingRegistry())
     with pytest.raises(access.ToolAccessUnavailable):
-        await access.get_available_tools([])
+        await access.get_available_tools()

@@ -1,6 +1,7 @@
 import { createContext, useContext } from "react";
 import { type AppState, type AppAction } from "./state";
 import { type ActiveStreamHandle, type SessionRuntimeSnapshot } from "../session/runtimeSnapshot";
+import { type PendingFollowups } from "../session/pendingFollowups";
 export const AppContext = createContext<{
     state: AppState;
     dispatch: React.Dispatch<AppAction>;
@@ -8,6 +9,9 @@ export const AppContext = createContext<{
     activeStreamRef: React.MutableRefObject<ActiveStreamHandle | null>;
     currentStateRef: React.MutableRefObject<AppState>;
     sessionRuntimeCacheRef: React.MutableRefObject<Map<string, SessionRuntimeSnapshot>>;
+    pendingFollowups: PendingFollowups;
+    setPendingFollowups: React.Dispatch<React.SetStateAction<PendingFollowups>>;
+    pendingFollowupsRef: React.MutableRefObject<PendingFollowups>;
 } | null>(null);
 export function useApp() {
     const ctx = useContext(AppContext);

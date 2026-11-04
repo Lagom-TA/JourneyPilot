@@ -76,7 +76,6 @@ class ChatRequest(BaseModel):
     route: Optional[RouteName] = None
     route_decision: Optional[RouteDecision] = None
     controlled_trip_identity: Optional[ControlledTripIdentity] = None
-    selected_mcp_servers: List[str] = Field(default_factory=list)
     plan_gate: Optional[bool] = None
     gate_decision: Optional[GateDecision] = None
     preset_id: Optional[str] = None

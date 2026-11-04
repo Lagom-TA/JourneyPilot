@@ -403,15 +403,16 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   const reportDocument = bundle ? selectCurrentReportDocument(bundle) : null;
   const daysToRender = activeDay == null ? itinerary?.day_plans ?? [] : selectedDay ? [selectedDay] : [];
 
-  const identityTitle = identity
+  const identityTitle = identity?.destinations.length
     ? `${identity.destinations.map((place) => place.name).join('＋')} ${tripDays(identity) || bundle?.workspace.itinerary.duration_days || ''} 日`
     : null;
   const title = bundle?.workspace.itinerary.title ?? identityTitle ?? '我的旅行';
-  const dateLabel = bundle
+  const dateRange = bundle
     ? daySummaries.length > 0
       ? [daySummaries[0].dateLabel, daySummaries[daySummaries.length - 1].dateLabel].filter(Boolean).join(' — ')
       : null
-    : identity ? `${identity.start_date} — ${identity.end_date}` : null;
+    : identity?.start_date && identity.end_date ? `${identity.start_date} — ${identity.end_date}` : null;
+  const dateLabel = dateRange && identity?.dates_assumed ? `${dateRange}（暂定）` : dateRange;
   const metaLabel = bundle
     ? [
       identity?.destinations.map((place) => place.name).join('＋'),

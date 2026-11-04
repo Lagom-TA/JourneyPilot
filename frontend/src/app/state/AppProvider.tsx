@@ -3,6 +3,7 @@ import { appReducer } from "./appReducer";
 import { initialState } from "./initialState";
 import { type ActiveStreamHandle, type SessionRuntimeSnapshot } from "../session/runtimeSnapshot";
 import { type AppState } from "./state";
+import { type PendingFollowups } from "../session/pendingFollowups";
 import { AppContext } from "./AppContext";
 import React, { type ReactNode } from 'react';
 export const AppProvider: React.FC<{
@@ -13,6 +14,13 @@ export const AppProvider: React.FC<{
     const activeStreamRef = React.useRef<ActiveStreamHandle | null>(null);
     const currentStateRef = React.useRef<AppState>(state);
     const sessionRuntimeCacheRef = React.useRef<Map<string, SessionRuntimeSnapshot>>(new Map());
+    const [pendingFollowups, setPendingFollowupsState] = React.useState<PendingFollowups>({});
+    const pendingFollowupsRef = React.useRef(pendingFollowups);
+    const setPendingFollowups = React.useCallback<React.Dispatch<React.SetStateAction<PendingFollowups>>>((action) => {
+        const next = typeof action === 'function' ? action(pendingFollowupsRef.current) : action;
+        pendingFollowupsRef.current = next;
+        setPendingFollowupsState(next);
+    }, []);
     React.useEffect(() => {
         currentStateRef.current = state;
     }, [state]);
@@ -36,7 +44,10 @@ export const AppProvider: React.FC<{
         activeStreamRef,
         currentStateRef,
         sessionRuntimeCacheRef,
-    }), [state]);
+        pendingFollowups,
+        setPendingFollowups,
+        pendingFollowupsRef,
+    }), [state, pendingFollowups, setPendingFollowups]);
     return (<AppContext.Provider value={value}>
       {children}
     </AppContext.Provider>);

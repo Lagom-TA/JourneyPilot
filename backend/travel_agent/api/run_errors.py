@@ -51,7 +51,11 @@ def raise_run_use_case_error(error: Exception) -> NoReturn:
     if isinstance(error, RunNotAcceptingSupplement):
         raise HTTPException(
             status_code=409,
-            detail="当前不在运行中；请在旅行简报的调研计划区域追加要求。",
+            detail=(
+                "请等待当前回复结束，再围绕已有行程发送新消息。"
+                if error.has_delivery
+                else "首份旅行方案交付前，不能在运行中追加要求。"
+            ),
         ) from error
     if isinstance(error, DeliveryBundleMissing):
         raise HTTPException(

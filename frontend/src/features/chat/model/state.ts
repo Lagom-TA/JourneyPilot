@@ -70,6 +70,10 @@ export type ChatAction = {
     type: 'ADD_THINKING_STEP';
     payload: ThinkingStep;
 } | {
+    /** 按稳定 id 追加或更新步骤；公开工作说明重连去重用。 */
+    type: 'UPSERT_THINKING_STEP';
+    payload: ThinkingStep;
+} | {
     type: 'FINISH_LAST_THINKING_STEP';
     payload: {
         endTime: Date;

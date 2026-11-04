@@ -94,6 +94,24 @@ export function chatReducer<T extends ChatState>(state: T, action: ChatAction): 
                 currentMessages: msgs,
             };
         }
+        case 'UPSERT_THINKING_STEP': {
+            const existing = state.thinkingSteps.findIndex(step => step.id === action.payload.id);
+            const newSteps = existing >= 0
+                ? state.thinkingSteps.map((step, index) => index === existing ? action.payload : step)
+                : [...state.thinkingSteps, action.payload];
+            const msgs = [...state.currentMessages];
+            if (msgs.length > 0) {
+                const lastMsg = msgs[msgs.length - 1];
+                if (lastMsg.role === 'assistant') {
+                    msgs[msgs.length - 1] = { ...lastMsg, thinkingSteps: newSteps };
+                }
+            }
+            return {
+                ...state,
+                thinkingSteps: newSteps,
+                currentMessages: msgs,
+            };
+        }
         case 'FINISH_LAST_THINKING_STEP': {
             if (state.thinkingSteps.length === 0)
                 return state;

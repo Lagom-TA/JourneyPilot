@@ -148,6 +148,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         case 'REMAP_MESSAGE_ID':
         case 'SET_THINKING_STEPS':
         case 'ADD_THINKING_STEP':
+        case 'UPSERT_THINKING_STEP':
         case 'FINISH_LAST_THINKING_STEP':
         case 'UPDATE_LAST_TOOL_STEP':
         case 'USAGE_UPDATE':

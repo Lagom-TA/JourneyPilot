@@ -35,22 +35,15 @@ def build_required_long_distance_legs(
 ) -> list[ProviderRouteLegScope]:
     """推导行程链上每个长途交通段的职责。
 
-    多目的地行程是访问顺序上的链，而不是简单往返。对
-    ``[origin, *destinations, origin]``，每个相邻且端点不同的对需要一个长途段：
-    ``origin→city_1``（outbound，首站就是出发地时省略）、每个中间边界
-    ``city_i→city_{i+1}``（inter_destination），以及末站不是出发地时的
-    ``city_M→origin``（return）。首站就是出发地时，离开该地的真实边界由
-    ``city_1→city_2`` 的 inter_destination 承担，不生成同端点段；替代方式
-    不是丢站或把交通段推迟到别的日期。中间城市之间的段同样需要研究和绑定。
-
+    按访问顺序生成目的地之间的跨城段；已知出发地时，再生成往返段。
     每个目的地的停留天数在行程跨度内平均分配，余数给较早的城市；
-    inter_destination 段在下一城市停留的第一天出发。
+    目的地之间的交通段在下一城市停留的第一天出发。
     """
 
     origin_id, destination_ids = _identity_parts(controlled_trip_identity)
-    if not origin_id or not destination_ids:
+    if not destination_ids:
         return []
-    if origin_id == destination_ids[0] and destination_ids[-1] == origin_id:
+    if origin_id and origin_id == destination_ids[0] and destination_ids[-1] == origin_id:
         return []
     try:
         start_date = date.fromisoformat(
@@ -79,7 +72,7 @@ def build_required_long_distance_legs(
         cursor += timedelta(days=n)
 
     legs: list[ProviderRouteLegScope] = []
-    if destination_ids[0] != origin_id:
+    if origin_id and destination_ids[0] != origin_id:
         legs.append(
             ProviderRouteLegScope(
                 leg_role="outbound",
@@ -100,7 +93,7 @@ def build_required_long_distance_legs(
                 cross_day_required=False,
             )
         )
-    if destination_ids[-1] != origin_id:
+    if origin_id and destination_ids[-1] != origin_id:
         legs.append(
             ProviderRouteLegScope(
                 leg_role="return",

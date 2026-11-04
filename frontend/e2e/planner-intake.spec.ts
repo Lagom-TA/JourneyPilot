@@ -33,7 +33,7 @@ const planGatePayload = {
   revision: 0,
   decision_options: ['approve', 'supplement', 'cancel'],
   plan: { steps: [{ step: 1, agents: ['destination_researcher'], tasks: { destination_researcher: '调查青岛适合独游的海边与城区路线' } }] },
-  plan_text: '**研究和安排设想**\n从上海出发去青岛，2026-11-05 至 2026-11-07，独自旅行；节奏：慢慢逛，留出休息时间。\n\n- **目的地调研**：调查青岛适合独游的海边与城区路线',
+  plan_text: '从上海出发去青岛，2026-11-05 至 2026-11-07，独自旅行；节奏：慢慢逛，留出休息时间。',
 };
 
 function sse(events: unknown[]) {
@@ -151,7 +151,9 @@ for (const mobile of [false, true]) {
     expect(decision.approval_token).toBe('understanding_gate.approval:e2e-1');
     // 回答后方案在同一工作台出现，理解卡退场，没有首页闪回。
     await expect(page.getByTestId('trip-brief-plan-gate')).toBeVisible();
-    await expect(page.getByTestId('trip-brief-plan-gate')).toContainText('研究和安排设想');
+    await expect(page.getByTestId('trip-brief-plan-gate')).toContainText('慢慢逛，留出休息时间');
+    await expect(page.getByTestId('trip-brief-plan-gate').getByRole('heading', { name: '研究与安排设想' })).toHaveCount(1);
+    await expect(page.getByTestId('trip-brief-plan-gate')).not.toContainText('调查青岛适合独游的海边与城区路线');
     await expect(page.getByTestId('understanding-questions-card')).toHaveCount(0);
     await expect(page.getByTestId('new-trip-hero')).toHaveCount(0);
     await page.waitForTimeout(mobile ? 150 : 450);

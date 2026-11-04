@@ -30,6 +30,7 @@ from travel_agent.planning.nodes import (
     NODE_PLANNER,
     NODE_REQUIREMENTS_PREPARER,
     NODE_RESEARCH_PLAN_GENERATOR,
+    NODE_RESEARCH_GATE,
     NODE_SUMMARY_CARD_BRIEF,
     NODE_TRANSPORT,
     NODE_UNDERSTANDING_AGENT,
@@ -58,6 +59,7 @@ from travel_agent.planning.research.dispatch import (
     dispatcher_node,
     route_after_dispatcher,
 )
+from travel_agent.planning.research.gate import research_gate_node
 from travel_agent.planning.research.plan import planner_node
 from travel_agent.planning.research.research_plan_node import research_plan_generator_node
 from travel_agent.planning.research.transport.node import transport_researcher_node
@@ -112,7 +114,7 @@ def _route_after_itinerary(state: TravelAgentState) -> str:
 def _route_after_understanding(state: TravelAgentState) -> str:
     if state.pending_intent_amendments:
         return NODE_INTENT_AMENDMENT_ROUTER
-    if state.understanding_pending_questions:
+    if state.understanding_pending_questions is not None:
         return NODE_UNDERSTANDING_GATE
     return NODE_REQUIREMENTS_PREPARER
 
@@ -178,6 +180,7 @@ def build_travel_workflow() -> StateGraph:
     graph.add_node(NODE_PLAN_GATE, with_run_control(NODE_PLAN_GATE, plan_gate_node))
 
     graph.add_node(NODE_DISPATCHER, with_run_control(NODE_DISPATCHER, dispatcher_node))
+    graph.add_node(NODE_RESEARCH_GATE, research_gate_node)
     graph.add_node(
         NODE_DESTINATION,
         with_run_control(
@@ -200,7 +203,11 @@ def build_travel_workflow() -> StateGraph:
         ),
     )
     graph.add_node(
-        NODE_ITINERARY, with_run_control(NODE_ITINERARY, itinerary_planner_node)
+        NODE_ITINERARY,
+        with_run_control(
+            NODE_ITINERARY,
+            with_worker_recovery(NODE_ITINERARY, itinerary_planner_node),
+        ),
     )
     graph.add_node(
         NODE_DELIVERY_PROJECTOR,
@@ -278,6 +285,8 @@ def build_travel_workflow() -> StateGraph:
         },
     )
 
+    graph.add_edge(NODE_RESEARCH_GATE, NODE_DISPATCHER)
+
     for worker in (NODE_DESTINATION, NODE_TRANSPORT, NODE_ACCOMMODATION):
         graph.add_conditional_edges(
             worker,
@@ -329,6 +338,7 @@ def build_travel_workflow() -> StateGraph:
             NODE_TRANSPORT: NODE_TRANSPORT,
             NODE_ACCOMMODATION: NODE_ACCOMMODATION,
             NODE_ITINERARY: NODE_ITINERARY,
+            NODE_RESEARCH_GATE: NODE_RESEARCH_GATE,
         },
     )
 

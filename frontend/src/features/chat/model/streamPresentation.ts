@@ -53,6 +53,31 @@ export function createStreamPresentation(scopedDispatch: (action: ChatAction) =>
                     scopedDispatch({ type: 'ADD_THINKING_STEP', payload: progressStep });
                     break;
                 }
+                case 'work_explanation': {
+                    if (!event.content?.trim())
+                        break;
+                    if (!pendingStatusCleared) {
+                        pendingStatusCleared = true;
+                        scopedDispatch({ type: 'UPDATE_MESSAGE_BY_ID', payload: { id: assistantMessage.id, pendingStatusText: undefined } });
+                    }
+                    const now = new Date();
+                    const step: ThinkingStep = {
+                        // 服务端给出稳定 step_id；缺失时用 run/节点/轮次/调用/序号兜底。
+                        // 同一片段重放时按 id 覆盖，不重复拼接。
+                        id: event.step_id || `work-note:${event.run_id || ''}:${event.agent_name || ''}:${event.round ?? 0}:${event.call_id || ''}:${event.seq ?? 0}`,
+                        agentName: event.agent_name || '',
+                        content: event.content,
+                        stepName: event.step_name || '模型工作说明',
+                        timestamp: now,
+                        tsMs: event.ts_ms,
+                        kind: 'work_explanation',
+                        round: event.round,
+                        callId: event.call_id,
+                        seq: event.seq,
+                    };
+                    scopedDispatch({ type: 'UPSERT_THINKING_STEP', payload: step });
+                    break;
+                }
                 case 'tool_start': {
                     if (!pendingStatusCleared) {
                         pendingStatusCleared = true;

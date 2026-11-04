@@ -1,4 +1,4 @@
-"""根据旅行基础信息和自然语言需求生成研究方案。"""
+"""根据旅行理解生成研究设想。"""
 
 from __future__ import annotations
 
@@ -26,10 +26,15 @@ async def research_plan_generator_node(state: TravelAgentState) -> Dict[str, Any
         {
             "role": "system",
             "content": (
-                "你是旅行研究协调员。根据基础信息、用户原话与追问回答，为本次旅行写简短具体的研究和安排行动方案。"
-                "理解后续补充对先前想法的修改，以较新的表达为准；不要把用户原话拆成逐条合同，也不要要求用户确认原话。"
-                "为目的地、交通、住宿、行程组合分别写清有关任务，任务应可直接交给对应研究员。"
-                "用中文写简洁具体的方案。只返回 JSON 对象，字段为 summary、destination_task、transport_task、accommodation_task、itinerary_task。"
+                "你是旅行研究协调员。根据提供的旅行理解，为旅行者提出本次旅行的研究与安排设想。"
+                "用简洁、自然、规范的语言说明大致会关注什么、如何规划，点出影响旅行意图的关键要求；"
+                "不要罗列角色分工或把需求拆成逐条合同。"
+                "忠实体现旅行理解中的明确要求，重点说明影响安排的关键点；"
+                "没有说明的条件保持未知，不要自行添加要求。"
+                "设想只提供方向，不主动规定查询方法、工具、候选数量或研究范围；"
+                "如果旅行者明确提出这些要求，应按原意体现，不受前述限制。"
+                "不要承诺具体研究次序或并行执行。"
+                "只返回一个 JSON 对象：{\"summary\": \"面向旅行者的研究与安排设想\"}。"
             ),
         },
         {
@@ -37,14 +42,7 @@ async def research_plan_generator_node(state: TravelAgentState) -> Dict[str, Any
             "content": json.dumps(
                 {
                     "旅行基础信息": state.controlled_trip_identity,
-                    "用户需求与回答": state.current_requirements,
-                    "长期偏好与记忆": [
-                        {"类别": item.get("category"), "内容": item.get("value"), "强度": item.get("type")}
-                        for item in state.constraint_pack.get("constraints", [])
-                        if item.get("status") == "active"
-                        and item.get("visibility") != "internal_only"
-                    ],
-                    "其他背景": state.preset_context,
+                    "整理后的旅行要求": state.current_requirements,
                 },
                 ensure_ascii=False, default=str,
             ),
@@ -58,10 +56,6 @@ async def research_plan_generator_node(state: TravelAgentState) -> Dict[str, Any
         )
         content = getattr(response, "content", response)
         parsed = content if isinstance(content, dict) else safe_parse_json(content, strip_think_tags=True)
-        if isinstance(parsed, dict) and isinstance(parsed.get("plan"), dict):
-            parsed = parsed["plan"]
-        if isinstance(parsed, dict):
-            parsed = {key: parsed[key] for key in ResearchPlan.model_fields if key in parsed}
         plan = ResearchPlan.model_validate(parsed)
     except (TimeoutError, OpenAIError, TypeError, ValueError, ValidationError, RuntimeError) as exc:
         logger.warning("研究方案生成失败: %s", exc)

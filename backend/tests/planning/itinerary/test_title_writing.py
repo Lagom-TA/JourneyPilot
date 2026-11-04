@@ -9,8 +9,10 @@ from travel_agent.planning.delivery.public.itinerary import _public_itinerary
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
 from travel_agent.planning.delivery.report_projection import project_report
 from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
+from travel_agent.planning.itinerary.models import CustomBlock, TimelineEntryRef
 from travel_agent.planning.itinerary.parsing import parse_itinerary_composition
 from travel_agent.planning.itinerary.title_writing import write_itinerary_copy
+from travel_agent.planning.references import EntityType
 from travel_agent.planning.requirements.inputs import UserInputAnchor
 from travel_agent.planning.requirements.place_names import (
     CONTROLLED_DESTINATION_ANCHOR_PREFIX,
@@ -20,6 +22,7 @@ from travel_agent.planning.weather.models import WeatherContextSnapshot
 from travel_agent.runtime.cancellation import RunCancelled
 from travel_agent.runtime.deadlines import DeadlineObservation
 from travel_agent.runtime.operations import ModelWindowClosed
+from travel_agent.storage.worker_journal_store import JournalConflict
 from travel_agent.runtime.budget import (
     RunBudgetExhausted,
     RunBudgetSnapshot,
@@ -73,31 +76,25 @@ def _workspace(days=1, *, with_identity=False):
 
 
 class _CopyModel:
-    def __init__(self, *, fail_times=0, missing_day=False, day_ids=None):
+    def __init__(self, *, fail=False, missing_day=False, reverse_days=False):
         self.calls = 0
-        self.fail_times = fail_times
+        self.fail = fail
         self.missing_day = missing_day
-        self.day_ids = day_ids
+        self.reverse_days = reverse_days
 
     async def ainvoke(self, messages, **kwargs):
         self.calls += 1
-        if self.calls <= self.fail_times:
+        if self.fail:
             raise RuntimeError("model unavailable")
-        payload = {}
-        for message in reversed(messages):
-            content = str(message.get("content") or "")
-            if content.lstrip().startswith("{"):
-                payload = json.loads(content)
-                break
-        day_ids = self.day_ids or [
-            day["day_id"] for day in payload.get("days", [])
-        ] or ["day_1"]
+        payload = json.loads(messages[-1]["content"])
         days = [
-            {"day_id": day_id, "theme": f"第{index}天慢慢逛吃旧城街"}
-            for index, day_id in enumerate(day_ids, start=1)
+            {"day_id": day["day_id"], "theme": f"第{day['day']}天慢慢逛吃旧城街"}
+            for day in payload["days"]
         ]
-        if self.missing_day and self.calls == 1:
+        if self.missing_day:
             days = days[:-1]
+        if self.reverse_days:
+            days.reverse()
         return json.dumps(
             {"title": "两天逛吃旧城慢慢散步", "days": days}, ensure_ascii=False
         )
@@ -107,7 +104,7 @@ class _CopyModel:
 async def test_title_writing_maps_copy_by_day_id_and_keeps_facts():
     workspace = _workspace(days=2)
     before = workspace.itinerary.model_dump()
-    model = _CopyModel()
+    model = _CopyModel(reverse_days=True)
 
     updated = await write_itinerary_copy(workspace, model)
 
@@ -118,21 +115,10 @@ async def test_title_writing_maps_copy_by_day_id_and_keeps_facts():
         "第2天慢慢逛吃旧城街",
     ]
     after = updated.itinerary.model_dump()
-    for key in (
-        "day_plans",
-        "visit_stops",
-        "dining_stops",
-        "lodging_stays",
-        "transport_legs",
-        "cost_summary",
-        "highlights",
-    ):
-        if key == "day_plans":
-            assert [day["date"] for day in after[key]] == [
-                day["date"] for day in before[key]
-            ]
-            continue
-        assert after[key] == before[key]
+    after["title"] = before["title"]
+    for previous, current in zip(before["day_plans"], after["day_plans"]):
+        current["theme"] = previous["theme"]
+    assert after == before
 
 
 @pytest.mark.asyncio
@@ -140,11 +126,11 @@ async def test_title_writing_failure_keeps_existing_copy_and_is_bounded():
     workspace = _workspace()
     original_title = workspace.itinerary.title
     original_themes = [day.theme for day in workspace.itinerary.day_plans]
-    model = _CopyModel(fail_times=5)
+    model = _CopyModel(fail=True)
 
     updated = await write_itinerary_copy(workspace, model)
 
-    assert model.calls == 2
+    assert model.calls == 1
     assert updated.itinerary.title == original_title
     assert [day.theme for day in updated.itinerary.day_plans] == original_themes
 
@@ -212,14 +198,24 @@ async def test_title_writing_propagates_cancellation_without_retry():
 
 
 @pytest.mark.asyncio
-async def test_missing_day_gets_one_structural_repair_attempt():
+async def test_title_writing_propagates_journal_conflict():
+    class ConflictedModel:
+        async def ainvoke(self, messages, **kwargs):
+            raise JournalConflict("execution lease lost")
+
+    with pytest.raises(JournalConflict, match="lease lost"):
+        await write_itinerary_copy(_workspace(), ConflictedModel())
+
+
+@pytest.mark.asyncio
+async def test_missing_day_keeps_existing_copy():
     workspace = _workspace(days=2)
-    model = _CopyModel(missing_day=True, day_ids=["day_1", "day_2"])
+    model = _CopyModel(missing_day=True)
 
     updated = await write_itinerary_copy(workspace, model)
 
-    assert model.calls == 2
-    assert updated.itinerary.title == "两天逛吃旧城慢慢散步"
+    assert model.calls == 1
+    assert updated is workspace
 
 
 @pytest.mark.asyncio
@@ -236,15 +232,23 @@ async def test_missing_day_gets_one_structural_repair_attempt():
         },
         {
             "title": "两天逛吃旧城慢慢散步",
-            "days": [{"day_id": "day_1", "theme": "太短"}],
+            "days": [
+                {"day_id": "day_1", "theme": "上午的行程"},
+                {"day_id": "day_1", "theme": "下午的行程"},
+            ],
         },
         {
             "title": "两天逛吃旧城慢慢散步",
-            "days": [{"day_id": "day_1", "theme": "第一天" * 6}],
+            "days": [{"day_id": "unknown", "theme": "行程主题"}],
         },
+        {
+            "title": "两天逛吃旧城慢慢散步",
+            "days": [{"day_id": "day_1", "theme": "   "}],
+        },
+        "not json",
     ],
 )
-async def test_invalid_copy_structure_or_length_keeps_existing_copy(payload):
+async def test_invalid_copy_structure_keeps_existing_copy(payload):
     workspace = _workspace()
     original_title = workspace.itinerary.title
     original_theme = workspace.itinerary.day_plans[0].theme
@@ -255,14 +259,90 @@ async def test_invalid_copy_structure_or_length_keeps_existing_copy(payload):
 
         async def ainvoke(self, messages, **kwargs):
             self.calls += 1
-            return json.dumps(payload, ensure_ascii=False)
+            return payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
 
     model = _InvalidCopyModel()
     updated = await write_itinerary_copy(workspace, model)
 
-    assert model.calls == 2
+    assert model.calls == 1
     assert updated.itinerary.title == original_title
     assert updated.itinerary.day_plans[0].theme == original_theme
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("title", "theme"),
+    [("标题", "短"), ("东京旅行" * 6, "第一天" * 6)],
+)
+async def test_copy_length_does_not_block_output(title, theme):
+    workspace = _workspace()
+
+    class CopyModel:
+        calls = 0
+
+        async def ainvoke(self, messages, **kwargs):
+            self.calls += 1
+            return json.dumps(
+                {"title": title, "days": [{"day_id": "day_1", "theme": theme}]},
+                ensure_ascii=False,
+            )
+
+    model = CopyModel()
+    updated = await write_itinerary_copy(workspace, model)
+
+    assert model.calls == 1
+    assert updated.itinerary.title == title
+    assert updated.itinerary.day_plans[0].theme == theme
+
+
+@pytest.mark.asyncio
+async def test_title_input_uses_the_ordered_itinerary_without_other_context():
+    workspace = _workspace(with_identity=True)
+    day = workspace.itinerary.day_plans[0]
+    block = CustomBlock(item_id="rest", day_id=day.day_id, title="自由休息")
+    unfinished = CustomBlock(item_id="unplaced", day_id=day.day_id, title="未安排活动")
+    day = day.model_copy(
+        update={
+            "timeline": [
+                TimelineEntryRef(
+                    entry_id="rest_entry",
+                    entity_type=EntityType.CUSTOM_BLOCK,
+                    entity_id=block.item_id,
+                ),
+                *day.timeline,
+            ]
+        }
+    )
+    itinerary = workspace.itinerary.model_copy(
+        update={"day_plans": [day], "custom_blocks": [block, unfinished]}
+    )
+    workspace = workspace.model_copy(update={"itinerary": itinerary})
+
+    class InspectingModel:
+        async def ainvoke(self, messages, **kwargs):
+            assert [message["role"] for message in messages] == ["system", "user"]
+            payload = json.loads(messages[1]["content"])
+            assert payload.keys() == {"current_title", "destinations", "duration_days", "days"}
+            assert payload["days"][0] == {
+                "day_id": day.day_id,
+                "day": 1,
+                "date": "2026-10-10",
+                "city": "东京",
+                "lodging": [],
+                "timeline": [
+                    {"type": "custom_block", "content": "自由休息"},
+                    {"type": "visit_stop", "content": "旧景点"},
+                ],
+            }
+            return json.dumps(
+                {"title": "东京之旅", "days": [{"day_id": day.day_id, "theme": "慢逛东京"}]},
+                ensure_ascii=False,
+            )
+
+    updated = await write_itinerary_copy(workspace, InspectingModel())
+
+    assert updated.itinerary.title == "东京之旅"
+    assert updated.itinerary.day_plans[0].theme == "慢逛东京"
 
 
 @pytest.mark.asyncio

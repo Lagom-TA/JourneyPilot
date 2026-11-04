@@ -262,6 +262,14 @@ class TripRunStore:
                     "summary": _json_dumps(initial_summary),
                 },
             )
+            from travel_agent.storage.worker_journal_store import TOOL_BUDGET_SCOPE, initial_tool_budget
+
+            kind, payload = initial_tool_budget()
+            await session.execute(text(
+                "INSERT INTO run_worker_journals "
+                "(run_id, scope_id, version, payload_type, payload) "
+                "VALUES (:run_id, :scope_id, 1, :kind, :payload)"
+            ), {"run_id": run.run_id, "scope_id": TOOL_BUDGET_SCOPE, "kind": kind, "payload": payload})
             await self._append_event_in_session(
                 session,
                 run.run_id,

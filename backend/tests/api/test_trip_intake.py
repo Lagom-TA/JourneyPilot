@@ -234,6 +234,31 @@ async def test_resubmitting_the_same_message_replays_the_pending_questions(
     assert len(deep_workflow.inputs) == 1
 
 
+@pytest.mark.parametrize("gate", ["understanding", "research"])
+async def test_replay_preserves_the_pending_question_gate(gate):
+    from travel_agent.conversation.chat.preparation import _replay_run_events
+
+    payload = {"questions": QUESTIONS, "approval_token": "gate-token"}
+    run = SimpleNamespace(
+        run_id="run-1", assistant_message_id="message-1", status=TripRunStatus.AWAITING_INPUT
+    )
+
+    class Store:
+        async def get_detail(self, run_id, *, event_limit):
+            assert run_id == run.run_id and event_limit == 1
+            return SimpleNamespace(state=SimpleNamespace(pending_user_choice={"gate": gate, "payload": payload}))
+
+    events = [
+        event async for event in _replay_run_events(
+            run=run, trip_run_store=Store(), session_id="session-1",
+            route_decision=decision(RouteName.TRIP_PLANNING),
+        )
+    ]
+    assert [event["type"] for event in events] == ["chat_start", "understanding_questions", "chat_complete"]
+    assert events[1]["gate"] == gate
+    assert events[1]["payload"] == payload
+
+
 async def test_form_entry_stores_the_confirmed_identity_on_the_run_row(
     resources, deep_workflow, planning_route
 ):

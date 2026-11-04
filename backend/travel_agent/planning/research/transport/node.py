@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
-from travel_agent.conversation.history import append_recent_history
 from travel_agent.llm.router import get_model_router
 from travel_agent.llm.task_routing import TaskKind, llm_for_task, plain_observation_messages
 from travel_agent.memory.research_context import format_worker_research_context
@@ -40,7 +39,6 @@ from travel_agent.planning.research.prompts import build_research_packet_prompt
 from travel_agent.planning.research.reference_service_contracts import (
     ProviderReferenceService,
 )
-from travel_agent.planning.research.transport.prompts import build_transport_task_prompt
 from travel_agent.planning.research.transport.rail.binding import (
     discover_domestic_rail_route,
 )
@@ -58,6 +56,7 @@ from travel_agent.tools.access import (
     get_available_tools,
 )
 from travel_agent.tools.react import streaming_react_loop
+from travel_agent.tools.result import ReactOutcome
 
 if TYPE_CHECKING:
     from travel_agent.runtime.events import EventBuffer
@@ -85,14 +84,12 @@ async def transport_researcher_node(
     current_time = state.current_time or datetime.datetime.now().strftime(
         "%Y-%m-%d %H:%M"
     )
-    user_query = state.current_requirements or ""
     run_id = state.run_id
 
     output_key, assignment = resolve_agent_assignment(
         state.agent_assignments or {}, _NODE_NAME
     )
     task_desc = assignment["objective"]
-    task_context = task_desc
     recommended_tools = assignment.get("recommended_tools", [])
     excluded_tools = assignment.get("excluded_tools", [])
     provider_assignments = transport_provider_assignments(assignment, state)
@@ -108,6 +105,7 @@ async def transport_researcher_node(
         worker_kind=_NODE_NAME,
         run_id=run_id,
         generation_id=generation_id,
+        fact_data_revision=state.fact_data_revision,
         destination_ids=[item.get("place_id", "") for item in state.controlled_trip_identity.get("destinations", [])],
     )
 
@@ -121,12 +119,12 @@ async def transport_researcher_node(
         task_id=output_key,
         fact_data_revision=state.fact_data_revision,
         current_time=current_time,
-        task_context=task_context,
         candidate_limit=packet_candidate_limit(
             _NODE_NAME,
             trip_identity=state.controlled_trip_identity,
             required_route_scopes=required_route_scopes,
         ),
+        task_desc=task_desc,
         upstream_packet_context=upstream_packet_context,
         active_constraint_ids=active_constraint_ids,
         state=state,
@@ -134,26 +132,14 @@ async def transport_researcher_node(
     )
 
     logger.info(
-        "TransportResearcher 上下文注入: anchor=%s, preset=%s, district_ctx_len=%d",
-        bool(state.session_anchor),
-        bool(state.preset_context),
+        "TransportResearcher 旅行理解=%s, 上游资料长度=%d",
+        bool(state.current_requirements),
         len(upstream_packet_context),
     )
 
-    history: List[Dict[str, Any]] = []
-    append_recent_history(history, state)
-    messages = prompt.messages(history)
-    messages.append(
-        {
-            "role": "user",
-            "content": build_transport_task_prompt(
-                task_desc=task_desc,
-                user_query=user_query,
-            ),
-        }
-    )
+    messages = prompt.messages()
 
-    available_tools = await get_available_tools(state.selected_mcp_servers or [])
+    available_tools = await get_available_tools()
     available_tools = filter_tools_for_agent(available_tools, _NODE_NAME)
     available_tools = exclude_tools(available_tools, excluded_tools)
     tool_cache = dict(state.tool_cache) if state.tool_cache else {}
@@ -190,7 +176,6 @@ async def transport_researcher_node(
             messages=messages,
             worker_base=_NODE_NAME,
             output_key=output_key,
-            task_desc=task_desc,
         )
         await discover_domestic_rail_route(
             state=state,
@@ -215,15 +200,18 @@ async def transport_researcher_node(
             can_ask_user=False,
             tool_cache=tool_cache,
             tool_context=tool_context,
+            public_note=True,
         )
-        raw_response = react.content
-        if not raw_response.strip():
-            # 工具循环没有产出正文时，用同一上下文做一次不带工具的直接生成。
+        authoritative_tool_results.extend(react.tool_results)
+        if react.outcome is ReactOutcome.ITERATION_LIMIT:
             raw_response = await llm.ainvoke(
                 plain_observation_messages(messages),
                 response_format={"type": "json_object"},
             )
-        authoritative_tool_results.extend(react.tool_results)
+        elif react.outcome is ReactOutcome.FINAL_ANSWER:
+            raw_response = react.content
+        else:
+            raise RuntimeError(f"研究未完成: {react.error or react.outcome.value}")
 
         finalize_started_at = time.perf_counter()
         packet = await parse_research_packet(
@@ -307,8 +295,6 @@ async def transport_researcher_node(
             "last_error": last_error,
             "agent_status": {output_key: "failed"},
         }
-        if redo_requests_update is not None:
-            result["research_redo_requests"] = redo_requests_update
         if failure_packet is not None:
             result["research_packets"] = {packet_state_key: failure_packet}
         if outcomes:

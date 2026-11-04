@@ -29,8 +29,8 @@ def exclude_tools(
     ]
 
 
-async def get_available_tools(selected_mcp_servers: List[str]) -> List[Dict[str, Any]]:
-    "从工具注册表获取可用工具列表，按 selected_mcp_servers 过滤 MCP 工具。"
+async def get_available_tools() -> List[Dict[str, Any]]:
+    "从工具注册表获取可用工具列表。"
     try:
         registry = get_tool_registry()
         from ..config.loader import get_settings
@@ -42,17 +42,7 @@ async def get_available_tools(selected_mcp_servers: List[str]) -> List[Dict[str,
                 for tool in tools
                 if tool["schema"]["function"]["name"] != "knowledge_search"
             ]
-        if not selected_mcp_servers:
-            return tools
-
-        selected = set(selected_mcp_servers)
-        filtered: List[Dict[str, Any]] = []
-        for tool in tools:
-            if tool.get("source") != "mcp":
-                filtered.append(tool)
-            elif tool.get("server_name") in selected:
-                filtered.append(tool)
-        return filtered
+        return tools
     except Exception as exc:
         logger.exception("获取工具列表失败")
         raise ToolAccessUnavailable("工具目录暂时不可用") from exc
@@ -168,9 +158,14 @@ _AGENT_TOOL_POLICY: Dict[str, AgentToolPolicy] = {
         },
     ),
     "transport_researcher": AgentToolPolicy(
-        servers={"12306-train", "duffel-flights", "amap-maps"},
+        servers={
+            "12306-train", "duffel-flights", "amap-maps",
+            "tavily-search", "brave-search", "duckduckgo-search", "fetch",
+        },
         deny_tools={"maps_geo", "maps_weather", "ask_user"},
-        extra_tools={"free_web_search", "global_route_search", "knowledge_search"},
+        extra_tools={
+            "free_web_search", "global_place_search", "global_route_search", "knowledge_search"
+        },
     ),
     "accommodation_researcher": AgentToolPolicy(
         servers={"tavily-search", "brave-search", "currency-exchange-mcp"},
@@ -179,19 +174,18 @@ _AGENT_TOOL_POLICY: Dict[str, AgentToolPolicy] = {
             "free_web_search",
             "knowledge_search",
             "global_place_search",
+            "global_route_search",
             "maps_text_search",
             "maps_around_search",
             "maps_search_detail",
         },
     ),
     "itinerary_planner": AgentToolPolicy(
-        # 组合自主补查地点与衔接等局部信息；不提供 ask_user 与知识库。
+        # 组合只查询安排所需地点，交通问题交给交通研究员。
         servers=set(),
-        deny_tools={"ask_user", "knowledge_search"},
+        deny_tools={"ask_user", "knowledge_search", "global_route_search", "free_web_search"},
         extra_tools={
-            "free_web_search",
             "global_place_search",
-            "global_route_search",
             "maps_text_search",
             "maps_around_search",
             "maps_search_detail",

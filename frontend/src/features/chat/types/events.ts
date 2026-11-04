@@ -1,9 +1,9 @@
-import { type RouteDecision } from "../../travel/types/planner";
+import { type ControlledTripIdentity, type RouteDecision } from "../../travel/types/planner";
 import { type ResultPreview, type ToolExecutionStatus } from "./messages";
 import { type DeliveryRevisionManifest, type PublicDeliveryBundle } from "../../travel/types/delivery";
 import { type RunCostSummary } from "./cost";
 export interface SSEEvent {
-    type: 'chat_start' | 'thinking' | 'agent_progress' | 'tool_start' | 'tool_result' | 'chat_chunk' | 'chat_complete' | 'delivery_ready' | 'run_terminal' | 'run_cancelled' | 'run_failed' | 'approval_gate_raised' | 'understanding_questions' | 'error' | 'usage_update' | 'context_report' | 'context_compaction' | 'trip_summary_card' | 'route_confirmation';
+    type: 'chat_start' | 'thinking' | 'agent_progress' | 'agent_thinking' | 'tool_start' | 'tool_result' | 'work_explanation' | 'chat_chunk' | 'chat_complete' | 'delivery_ready' | 'run_terminal' | 'run_cancelled' | 'run_failed' | 'approval_gate_raised' | 'understanding_questions' | 'error' | 'usage_update' | 'context_report' | 'context_compaction' | 'trip_summary_card' | 'trip_identity_updated' | 'route_confirmation';
     message_id?: string;
     session_id?: string;
     run_id?: string;
@@ -13,11 +13,18 @@ export interface SSEEvent {
     step_name?: string;
     message?: string;
     guard_blocked?: boolean;
-    run_status?: string;
+    requires_input?: boolean;
+    run_status?: string | null;
     gate?: string;
     route_decision?: RouteDecision;
+    controlled_trip_identity?: ControlledTripIdentity;
     tool_name?: string;
     tool_call_id?: string;
+    /** 公开工作说明：模型在工具轮中面向用户写出的可见正文。 */
+    step_id?: string;
+    round?: number;
+    seq?: number;
+    source?: string;
     args_summary?: string;
     summary?: string;
     result_preview?: ResultPreview[];

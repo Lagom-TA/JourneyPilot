@@ -195,11 +195,12 @@ async def test_failed_composition_without_workspace_routes_to_finalizer(
 
 
 @pytest.mark.parametrize("phase", ["research", "target_missed", "closeout"])
-async def test_failed_research_does_not_block_pending_composition(
+async def test_failed_research_waits_for_user_retry_before_composition(
     phase, deadline_observation
 ) -> None:
     state = _failed_composition_state("run_pending_composition").model_copy(
         update={
+            "agent_assignments": {"destination_researcher": {"objective": "研究目的地"}},
             "agent_status": {
                 "destination_researcher": "failed",
                 "itinerary_planner": "pending",
@@ -211,7 +212,8 @@ async def test_failed_research_does_not_block_pending_composition(
 
     update = await dispatch.dispatcher_node(state)
     assert "delivery_failure" not in update
-    assert dispatch.route_after_dispatcher(state.model_copy(update=update)) == NODE_ITINERARY
+    assert update["research_failed_workers"] == ["destination_researcher"]
+    assert dispatch.route_after_dispatcher(state.model_copy(update=update)) == "research_gate"
 
 
 @pytest.mark.parametrize("phase", ["research", "closeout"])

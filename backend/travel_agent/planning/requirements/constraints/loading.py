@@ -133,6 +133,9 @@ def _memory_fact_query(state: TravelAgentState) -> str:
                 for interest in style.get("secondary_interests") or []
                 if str(interest).strip()
             )
+    query = str(getattr(state, "current_requirements", "") or state.user_query or "").strip()
+    if query:
+        terms.append(query)
     unique_terms = list(dict.fromkeys(term for term in terms if term))
     if not unique_terms:
         return _GENERIC_CONSTRAINT_QUERY

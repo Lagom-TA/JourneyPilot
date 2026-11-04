@@ -61,7 +61,7 @@ def _public_pending_user_choice(choice: Any) -> Optional[Dict[str, Any]]:
         "gate": gate,
         "payload": (
             public_understanding_questions_payload(choice.get("payload"))
-            if gate == "understanding"
+            if gate in {"understanding", "research"}
             else public_plan_gate_payload(choice.get("payload"))
         ),
     }

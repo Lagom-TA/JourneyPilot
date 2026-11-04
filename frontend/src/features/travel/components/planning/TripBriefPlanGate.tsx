@@ -3,7 +3,7 @@ import { ArrowRight, Check, Loader2, PencilLine, Users } from 'lucide-react';
 import { useApp } from '../../../../app/state/AppContext';
 import { useSendMessage } from '../../../../app/session/useSendMessage';
 import { type PlanGateDecisionAction } from '../../types/planner';
-import { type PlanApprovalGate } from '../../types/planning';
+import { type PlanApprovalGate, type PlanGateStep } from '../../types/planning';
 import { Button } from '../../../../components/ui/Button';
 import { cn } from '../../../../lib/utils';
 import { emphasisEnter } from '../../../../lib/motion';
@@ -15,6 +15,18 @@ import { planGateDraftKey, readPlanGateDraft, writePlanGateDraft } from '../../m
 import { getTripRunDetail } from '../../api/runs';
 import { isTripRunStatus } from '../../types/runs';
 import React from 'react';
+
+const RESEARCH_STEP_LABELS: Record<string, string> = {
+  destination_researcher: '目的地研究',
+  transport_researcher: '交通研究',
+  accommodation_researcher: '住宿研究',
+  itinerary_planner: '组合行程',
+};
+
+function researchStepText(step: PlanGateStep): string {
+  const labels = step.agents.map(agent => RESEARCH_STEP_LABELS[agent] || agent);
+  return labels.join('、') + (labels.length > 1 ? '（并行）' : '');
+}
 
 export const TripBriefPlanGate: React.FC<{
   variant?: 'default' | 'workspace';
@@ -60,18 +72,18 @@ export const TripBriefPlanGate: React.FC<{
   const decisionBlocked = controlsBlocked || stalePlan;
   const canRevise = entries.supplement;
   const planText = gate.planText.trim();
-  const planSteps = gate.steps.filter((step) => step.agents.length > 0);
   const generationFailed = Boolean(entries.retry) && !entries.approve;
   const showEditor = editing;
-  const partySummary = identity
+  const partySummary = identity?.party
     ? [
-      `${identity.party.adults} 位成人`,
+      identity.party.adults == null && identity.party.total != null ? `${identity.party.total} 人同行` : '',
+      identity.party.adults != null ? `${identity.party.adults} 位成人` : '',
       identity.party.children ? `${identity.party.children} 位儿童` : '',
       identity.party.elderly_companions ? '有长辈同行' : '',
       identity.party.accessibility_required ? '需要无障碍安排' : '',
     ].filter(Boolean).join(' · ')
     : '';
-  const styleTags = identity ? [identity.style.primary, ...identity.style.secondary_interests].filter(Boolean) : [];
+  const styleTags = identity?.style ? [identity.style.primary, ...identity.style.secondary_interests].filter(Boolean) : [];
 
   const refreshPlan = async () => {
     if (refreshing) return;
@@ -161,31 +173,23 @@ export const TripBriefPlanGate: React.FC<{
 
       {identity && !workspace && (
         <div className="plan-gate-context" aria-label="旅行摘要">
-          <p><Users size={14} aria-hidden /><span>{partySummary}</span></p>
+          <p><Users size={14} aria-hidden /><span>{partySummary || '同行人数待确认'}</span></p>
           {styleTags.length > 0 && <div className="plan-gate-context-tags" aria-label="旅行风格">{styleTags.map((item) => <span key={item}>{item}</span>)}</div>}
         </div>
       )}
 
-      {(planText || planSteps.length > 0) && (
+      {planText && (
         <section className="plan-gate-plan" aria-labelledby="plan-gate-plan-title">
           <h3 id="plan-gate-plan-title">{generationFailed ? '方案生成情况' : '研究与安排设想'}</h3>
-          {planText ? (
-            <Markdown content={planText} className="plan-gate-plan-text" />
-          ) : (
-            <ol className="plan-gate-plan-steps">
-              {planSteps.map((step) => (
-                <li key={step.step}>
-                  <strong>步骤 {step.step}</strong>
-                  <span>{Object.values(step.tasks || {}).filter(Boolean).join('；') || step.agents.join('、')}</span>
-                </li>
-              ))}
-            </ol>
-          )}
-          {!workspace && !generationFailed && <p className="plan-gate-plan-note">确认后，下面的任务会交给对应角色执行；有修改会重新整理方案。</p>}
+          <Markdown content={planText} className="plan-gate-plan-text" />
+          {!generationFailed && gate.steps.length > 0 && <p className="plan-gate-plan-note">
+            研究安排：{gate.steps.map(researchStepText).join(' → ')}
+          </p>}
+          {!workspace && !generationFailed && <p className="plan-gate-plan-note">确认后开始研究；有修改会重新整理方案。</p>}
         </section>
       )}
 
-      {!planText && planSteps.length === 0 && <p className="plan-gate-note">还没有研究设想，可以直接开始规划。</p>}
+      {!planText && <p className="plan-gate-note">暂时没有可展示的研究设想。</p>}
 
       {canRevise && (
         <div className="plan-gate-edit">

@@ -11,6 +11,7 @@ import { Send, Square, Check, Plus, Sparkles, Loader2, Copy, X, Archive } from "
 import { useSendMessage } from "../../../app/session/useSendMessage";
 import { useSessionManager } from "../../../app/session/useSessionManager";
 import { useStopRun } from "../../../app/session/useStopRun";
+import { usePendingFollowups } from "../../../app/session/usePendingFollowups";
 import { PresetSelector } from "../../presets/components/PresetSelector";
 import { normalizeContextCompactionEvent } from "../model/contextCompaction";
 import React, { useState, useRef, useCallback } from 'react';
@@ -25,6 +26,7 @@ export const InputArea: React.FC<{
 }> = ({ showCompaction = true, minimal = false, autoFocus = true, placeholder, initialInput = '', targetRunId, onInputSent }) => {
     const { state, dispatch, activeStreamAbortRef } = useApp();
     const { sendMessage } = useSendMessage();
+    const pending = usePendingFollowups();
     const { setLastSession } = useSessionManager();
     const { stopRun } = useStopRun();
     const [input, setInput] = useState(initialInput);
@@ -41,7 +43,7 @@ export const InputArea: React.FC<{
     const [optimizeCopyFailed, setOptimizeCopyFailed] = useState(false);
     const [isCompacting, setIsCompacting] = useState(false);
     const [compactError, setCompactError] = useState<string | null>(null);
-    const [supplementStatus, setSupplementStatus] = useState<string | null>(null);
+    const [sendStatus, setSendStatus] = useState<string | null>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const mode = state.inputMode;
     const adjustHeight = () => {
@@ -55,40 +57,53 @@ export const InputArea: React.FC<{
         const text = input.trim();
         if (!text)
             return;
-        if (state.isStreaming && state.currentTripRunId) {
-            try {
-                const { addTripRunSupplement } = await import('../../travel/api/runs');
-                const receipt = await addTripRunSupplement(state.currentTripRunId, text, state.currentSessionId);
+        const runActive = state.currentTripRunStatus === 'running' || state.currentTripRunStatus === 'created'
+            || state.currentTripRunStatus === 'cancel_requested';
+        if (state.isStreaming || runActive || pending.items.length) {
+            if (pending.add(text)) {
                 setInput('');
                 onInputSent?.();
-                setSupplementStatus(receipt.message);
-            } catch {
-                setSupplementStatus('补充未发送，请稍后重试。');
+                if (textareaRef.current) textareaRef.current.style.height = 'auto';
+                setSendStatus(null);
+            }
+            else {
+                setSendStatus('首份行程交付前，暂不能发送新消息。');
             }
             return;
         }
-        if (state.isStreaming) return;
         setInput('');
         onInputSent?.();
         if (textareaRef.current)
             textareaRef.current.style.height = 'auto';
-        dispatch({ type: 'SET_THINKING_STEPS', payload: [] });
-        const runId = targetRunId ?? state.currentTripRunId;
+        const runId = targetRunId ?? state.deliveryBundle?.manifest.run_id ?? state.currentTripRunId;
         const sent = await sendMessage(text, runId ? { resumeRunId: runId } : undefined);
         if (!sent) setInput(text);
-    }, [input, state.isStreaming, state.currentTripRunId, state.currentSessionId, dispatch, sendMessage, targetRunId, onInputSent]);
+    }, [input, onInputSent, pending, sendMessage, state.currentTripRunId, state.currentTripRunStatus, state.deliveryBundle, state.isStreaming, targetRunId]);
     const handleStop = stopRun;
     const handleStoppedSend = useCallback(async () => {
         const text = stoppedInput.trim();
         if (!text)
             return;
+        const runActive = state.currentTripRunStatus === 'running' || state.currentTripRunStatus === 'created'
+            || state.currentTripRunStatus === 'cancel_requested';
+        if (state.isStreaming || runActive || pending.items.length) {
+            if (!pending.add(text)) {
+                setSendStatus('首份行程交付前，暂不能发送新消息。');
+                return;
+            }
+            setStoppedInput('');
+            setSendStatus(null);
+            onInputSent?.();
+            dispatch({ type: 'SET_INPUT_MODE', payload: 'normal' });
+            return;
+        }
         setStoppedInput('');
         onInputSent?.();
         dispatch({ type: 'SET_INPUT_MODE', payload: 'normal' });
-        dispatch({ type: 'SET_THINKING_STEPS', payload: [] });
-        const sent = await sendMessage(text, targetRunId ? { resumeRunId: targetRunId } : undefined);
-        if (!sent && targetRunId) setInput(text);
-    }, [stoppedInput, dispatch, sendMessage, targetRunId, onInputSent]);
+        const runId = targetRunId ?? state.deliveryBundle?.manifest.run_id ?? state.currentTripRunId;
+        const sent = await sendMessage(text, runId ? { resumeRunId: runId } : undefined);
+        if (!sent) setInput(text);
+    }, [dispatch, onInputSent, pending, sendMessage, state.currentTripRunId, state.currentTripRunStatus, state.deliveryBundle, state.isStreaming, stoppedInput, targetRunId]);
     const handleNewChat = useCallback(() => {
         if (activeStreamAbortRef.current) {
             activeStreamAbortRef.current.abort();
@@ -193,17 +208,48 @@ export const InputArea: React.FC<{
             setIsCompacting(false);
         }
     }, [state.currentSessionId, isCompacting, dispatch]);
+    const runInFlight = Boolean(state.currentTripRunId && isTripRunCancellable(state.currentTripRunStatus));
     const composer = composerState({
         isStreaming: state.isStreaming,
         hasInput: Boolean(input.trim()),
         hasTripRun: Boolean(state.currentTripRunId),
         runCancellable: isTripRunCancellable(state.currentTripRunStatus),
     });
-    const showStop = composer.showStop;
+    const showStop = composer.showStop || (runInFlight && !input.trim());
+    const pendingPaused = pending.items.some(item => item.status === 'paused');
+    const canResumePending = pendingPaused && !state.isStreaming && Boolean(state.deliveryBundle)
+        && !state.planApprovalGate && !state.understandingQuestions && !state.pendingRouteConfirmation
+        && !['created', 'running', 'cancel_requested', 'awaiting_input'].includes(state.currentTripRunStatus ?? '');
+    const inputDisabled = (state.isStreaming || state.currentTripRunStatus === 'running'
+        || state.currentTripRunStatus === 'created' || state.currentTripRunStatus === 'cancel_requested')
+        && (!state.deliveryBundle || !state.currentSessionId);
     const normalPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改……' : '描述这趟旅行：目的地、日期、同行人、预算、偏好…');
     const stoppedPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改……' : '告诉 JourneyPilot 这趟行程想怎么调整…');
     return (<div className="w-full">
-
+      {pending.items.length > 0 && <section className="mb-2 rounded-card border border-stroke bg-panel p-3" aria-label="待发送消息">
+        <p className="mb-2 text-xs text-ink-secondary">
+          {pendingPaused ? '待发送消息已暂停，可修改或删除后继续。' : '当前回复结束后，以下消息会合并发送。'}
+        </p>
+        <div className="space-y-2">
+          {pending.items.map((item, index) => <div key={item.id} className="flex items-start gap-2">
+            <textarea
+              aria-label={`待发送消息 ${index + 1}`}
+              className="min-h-[36px] flex-1 resize-y rounded-card border border-stroke bg-transparent px-2 py-1.5 text-sm text-ink"
+              rows={1}
+              value={item.text}
+              onFocus={() => pending.setEditing(item.id, true)}
+              onBlur={() => pending.setEditing(item.id, false)}
+              onChange={event => pending.update(item.id, event.target.value)}
+            />
+            <button type="button" aria-label={`删除待发送消息 ${index + 1}`} onClick={() => pending.remove(item.id)} className="rounded-card p-2 text-ink-secondary hover:text-ink">
+              <X size={14} />
+            </button>
+          </div>)}
+        </div>
+        {canResumePending && <button type="button" onClick={pending.resume} disabled={pending.items.some(item => !item.text.trim())} className="mt-2 text-xs font-medium text-accent disabled:opacity-50">
+          发送待处理消息
+        </button>}
+      </section>}
       <div className="rounded-card shadow-sm">
 
         <div className="overflow-hidden rounded-card border border-stroke bg-panel">
@@ -222,8 +268,8 @@ export const InputArea: React.FC<{
                   <textarea ref={textareaRef} data-testid="brief-input" aria-label="旅行需求" value={input} onChange={(e) => {
                 setInput(e.target.value);
                 adjustHeight();
-            }} onKeyDown={handleKeyDown} placeholder={normalPlaceholder} rows={1} name="chat-message" autoComplete="off" autoFocus={minimal && autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[200px] leading-relaxed')}/>
-                  <Button variant="primary" size="sm" data-testid="send-button" aria-label={showStop ? (state.currentTripRunId ? '停止本次运行' : '停止回答') : '发送'} data-streaming={showStop ? 'true' : 'false'} onClick={showStop ? handleStop : handleSend} disabled={!showStop && composer.sendDisabled} className={cn('flex-shrink-0 !rounded-card !h-8 !w-8 !p-0', showStop &&
+            }} onKeyDown={handleKeyDown} disabled={inputDisabled} placeholder={normalPlaceholder} rows={1} name="chat-message" autoComplete="off" autoFocus={minimal && autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[200px] leading-relaxed')}/>
+                  <Button variant="primary" size="sm" data-testid="send-button" aria-label={showStop ? (state.currentTripRunId ? '停止本次运行' : '停止回答') : '发送'} data-streaming={showStop ? 'true' : 'false'} onClick={showStop ? handleStop : handleSend} disabled={!showStop && (inputDisabled || composer.sendDisabled)} className={cn('flex-shrink-0 !rounded-card !h-8 !w-8 !p-0', showStop &&
                 '!bg-ink/75 hover:!bg-ink !shadow-none')}>
                     {showStop ? <Square size={13}/> : <Send size={14}/>}
                   </Button>
@@ -307,7 +353,7 @@ export const InputArea: React.FC<{
             </div>)}
         </div>
       </div>
-      {supplementStatus && <p role="status" className="mt-2 px-1 text-xs text-ink-secondary">{supplementStatus}</p>}
+      {sendStatus && <p role="status" className="mt-2 px-1 text-xs text-ink-secondary">{sendStatus}</p>}
       {compactError && (<p role="status" className="mt-2 px-1 text-xs text-error">
           {compactError}
         </p>)}

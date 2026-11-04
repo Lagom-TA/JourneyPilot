@@ -22,10 +22,11 @@ def _brief_dict(state: TravelAgentState) -> Dict[str, Any]:
             item.name or item.display_name for item in identity.destinations
         ),
         "duration_days": identity.duration_days,
-        "departure_city": identity.origin.name or identity.origin.display_name,
-        "departure_city_status": "provided",
+        "dates_assumed": identity.dates_assumed,
+        "departure_city": identity.origin.name if identity.origin else "",
+        "departure_city_status": "provided" if identity.origin else "deferred",
         "constraints": [],
-        "travel_style": identity.style.primary,
+        "travel_style": identity.style.primary if identity.style else "",
     }
 
 
@@ -55,7 +56,7 @@ def build_trip_summary_card(brief: Dict[str, Any]) -> Dict[str, Any]:
     destination = _as_text(brief.get("destination"), 40) or "本次旅行"
     duration_days = brief.get("duration_days")
     duration = (
-        f"{duration_days} 天"
+        f"{duration_days} 天{'（日期暂定）' if brief.get('dates_assumed') else ''}"
         if isinstance(duration_days, int) and duration_days > 0
         else "行程天数待定"
     )
@@ -77,7 +78,7 @@ def build_trip_summary_card(brief: Dict[str, Any]) -> Dict[str, Any]:
             label="行程",
             value=duration,
             state="confirmed"
-            if isinstance(duration_days, int) and duration_days > 0
+            if isinstance(duration_days, int) and duration_days > 0 and not brief.get("dates_assumed")
             else "default",
         ),
         TripSummaryFact(

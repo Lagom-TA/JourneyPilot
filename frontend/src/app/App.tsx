@@ -10,6 +10,7 @@ import { PresenceFrame } from "../components/ui/PresenceSurface";
 import { useSessionManager } from "./session/useSessionManager";
 import { ViewUrlSync } from "./navigation/ViewUrlSync";
 import { DeliveryEventRecovery } from "./session/useDeliveryEventRecovery";
+import { usePendingFollowupDispatch } from "./session/usePendingFollowups";
 import { resolveViewTransition, viewTransitionVariants } from "./navigation/viewTransition";
 import React, { Suspense, lazy } from 'react';
 const KnowledgeBasePage = lazy(() => import('../features/knowledge/pages/KnowledgeBasePage').then((m) => ({ default: m.KnowledgeBasePage })));
@@ -63,12 +64,17 @@ const App: React.FC = () => {
       <MotionProviders>
         <SessionBootstrap />
         <DeliveryEventRecovery />
+        <PendingFollowupDispatch />
         <ViewUrlSync />
         <MainLayout>
           <ViewRouter />
         </MainLayout>
       </MotionProviders>
     </AppProvider>);
+};
+const PendingFollowupDispatch: React.FC = () => {
+    usePendingFollowupDispatch();
+    return null;
 };
 const SessionBootstrap: React.FC = () => {
     const { initializeSessions } = useSessionManager();

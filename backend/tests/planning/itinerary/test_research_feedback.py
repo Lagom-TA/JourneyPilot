@@ -79,13 +79,7 @@ class FeedbackModel:
     async def ainvoke(self, messages, **kwargs):
         system = str(messages[0].get("content", ""))
         if "研究协调员" in system:
-            return json.dumps({
-                "summary": "围绕文化与慢节奏安排行程。",
-                "destination_task": "调查适合慢游的体验与餐饮。",
-                "transport_task": "查询景点之间的衔接与时间成本。",
-                "accommodation_task": "研究靠近活动区域的住宿选择。",
-                "itinerary_task": "把体验安排进不赶路的行程。",
-            }, ensure_ascii=False)
+            return json.dumps({"summary": "围绕文化与慢节奏安排行程。"}, ensure_ascii=False)
         if "行程组合器" in system:
             described = json.loads(
                 str(messages[-1].get("content", "")).split("待补的相邻段：", 1)[1]
@@ -98,8 +92,11 @@ class FeedbackModel:
 
     async def ainvoke_with_tools_events(self, messages, tools):
         system = str(messages[0].get("content", ""))
-        if "需求理解者" in system:
-            yield {"type": "finish", "content": json.dumps({"action": "ready", "trip_identity": self._identity}, ensure_ascii=False), "tool_calls": []}
+        if "正式研究前理解这趟旅行" in system:
+            yield {"type": "finish", "content": json.dumps({
+                "action": "ready", "trip_identity": self._identity,
+                "requirements": "喜欢博物馆和街区漫步，不赶路。",
+            }, ensure_ascii=False), "tool_calls": []}
             return
         if "旅行规划师" in system:
             self.composition_calls += 1
@@ -107,8 +104,8 @@ class FeedbackModel:
             self.composition_transcripts.append(self.composition_request)
             if self._route_query and not any(m.get("role") == "tool" for m in messages):
                 yield {"type": "finish", "content": "", "tool_calls": [
-                    {"id": "route-check", "name": "global_route_search",
-                     "arguments": {"from": "supply_place_01", "to": "stay_place_01"}},
+                    {"id": "route-check", "name": "request_transport_research",
+                     "arguments": {"question": "请查询两处之间的路线", "current_arrangement": "上午从景点到住宿", "destination_id": "city_hangzhou"}},
                 ]}
                 return
             if self._route_query:
@@ -163,7 +160,7 @@ class FeedbackModel:
 
 
 async def _run_research_feedback(monkeypatch, model: FeedbackModel):
-    """装配离线边界并跑通真实图（理解 → 方案确认 → 串行研究 → 组合）。"""
+    """使用内存存储与模型替身运行规划图。"""
     from travel_agent.planning.research import research_plan_node
     from travel_agent.planning.research.destination import node as destination
     from travel_agent.planning.research.transport import node as transport
@@ -178,6 +175,16 @@ async def _run_research_feedback(monkeypatch, model: FeedbackModel):
         monkeypatch.setattr(module, "get_model_router", lambda: object())
         monkeypatch.setattr(module, "llm_for_task", lambda *args, **kwargs: model)
 
+    async def followup(state, **kwargs):
+        from travel_agent.tools.governance import build_tool_execution_envelope
+
+        route_calls.append({"question": kwargs["question"]})
+        return build_tool_execution_envelope(
+            tool_name="request_transport_research", arguments={}, source="local",
+            result={"success": True, "routes": [{"duration_minutes": 45}]},
+        ), state.recommendation_catalog
+
+    monkeypatch.setattr("travel_agent.planning.itinerary.composition.research_transport_followup", followup)
     registry = ToolRegistry()
     route_calls: list[dict] = []
 
@@ -208,7 +215,7 @@ async def _run_research_feedback(monkeypatch, model: FeedbackModel):
     monkeypatch.setattr(react, "get_tool_registry", lambda: registry)
     monkeypatch.setattr(react, "apply_tool_exposure", lambda tools, name: ToolExposurePlan(False, name, tuple(item["schema"] for item in tools), "", 0, 0, len(tools), len(tools)))
 
-    async def available(_selected):
+    async def available():
         return registry.get_tools_as_schemas()
 
     for module in (destination, transport, accommodation, understanding_agent, itinerary):
@@ -314,9 +321,9 @@ async def test_composition_supplementary_query_adjusts_arrangement(monkeypatch):
     )
     result, route_calls = await _run_research_feedback(monkeypatch, model)
 
-    # 工具真实执行过一次，参数来自组合模型的调用。
+    # 组合把问题交给交通研究员，并读取返回结果。
     assert len(route_calls) == 1
-    assert route_calls[0]["from"] == "supply_place_01"
+    assert route_calls[0]["question"] == "请查询两处之间的路线"
     # 补查结果进入组合模型的上下文（吸收），并据此调整停留点时间：
     # 09:30 出发 + 45 分钟实际路线 + 60 分钟停留 = 11:15 结束。
     assert "routes" in model.composition_transcripts[-1]
@@ -348,13 +355,8 @@ async def test_research_redo_round_trip_replaces_erroneous_output(monkeypatch):
     )
     result, _ = await _run_research_feedback(monkeypatch, model)
 
-    # 研究顺序：目的地 → 交通 → 住宿 → 目的地返研（第 2 轮）。
-    assert model.worker_order == [
-        "destination_researcher",
-        "transport_researcher",
-        "accommodation_researcher",
-        "destination_researcher",
-    ]
+    assert model.worker_order[0] == model.worker_order[-1] == "destination_researcher"
+    assert set(model.worker_order[1:-1]) == {"transport_researcher", "accommodation_researcher"}
     # 返研轮的 Worker 读到反馈与上一轮错误成果。
     redo_request_text = model.worker_requests["destination_researcher"]
     assert "返研请求" in redo_request_text
@@ -556,6 +558,7 @@ def test_upstream_view_keeps_only_latest_research_round():
         worker_kind="accommodation_researcher",
         run_id="run_test",
         generation_id="generation_test",
+        fact_data_revision=1,
         destination_ids=["tokyo"],
     )
     kinds_and_ids = {
@@ -565,7 +568,7 @@ def test_upstream_view_keeps_only_latest_research_round():
     }
     assert ("visit", "visit_new") in kinds_and_ids
     assert ("visit", "visit_old") not in kinds_and_ids
-    assert ("transport", "transit_old") in kinds_and_ids
+    assert ("transport", "transit_old") not in kinds_and_ids
 
 
 def test_redo_request_is_visible_in_workspace_progress():
@@ -631,3 +634,28 @@ def test_redo_round_runs_under_composition_model_window():
     assert _model_window_for_node("destination_researcher", plain_state) == "research"
     assert _model_window_for_node("itinerary_planner", plain_state) == "composition"
     assert _model_window_for_node("destination_researcher", TravelAgentState()) == "research"
+
+
+@pytest.mark.asyncio
+async def test_closed_redo_window_marks_current_assignment(monkeypatch):
+    from travel_agent.planning import execution
+
+    async def baseline():
+        return None
+
+    async def worker(*args, **kwargs):
+        pytest.fail("窗口关闭时不应调用返研 worker")
+
+    monkeypatch.setattr(execution, "ensure_budget_baseline", baseline)
+    observation = SimpleNamespace(
+        phase="composition_closed", research_closed=True, composition_closed=True
+    )
+    monkeypatch.setattr(execution, "observe_run_deadline", lambda deadline: (deadline, observation))
+    state = TravelAgentState(agent_assignments={
+        "destination_researcher": {"objective": "调查景点"},
+        "destination_researcher_r2": {"objective": "重做景点"},
+    }).model_copy(update={"run_deadline": object()})
+
+    result = await execution.with_run_control("destination_researcher", worker)(state)
+
+    assert result["agent_status"] == {"destination_researcher_r2": "partial"}

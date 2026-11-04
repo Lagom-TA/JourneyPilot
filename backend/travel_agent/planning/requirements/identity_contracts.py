@@ -10,6 +10,7 @@ from pydantic import Field
 from pydantic import model_validator
 from typing import List
 from typing import Literal
+from typing import Optional
 
 
 class _StrictInputModel(BaseModel):
@@ -65,10 +66,18 @@ class PlaceIdentity(_StrictInputModel):
 
 
 class TravelParty(_StrictInputModel):
-    adults: int = Field(ge=1, le=20)
-    children: int = Field(ge=0, le=20)
-    elderly_companions: bool = False
-    accessibility_required: bool = False
+    total: Optional[int] = Field(default=None, ge=1, le=40)
+    adults: Optional[int] = Field(default=None, ge=1, le=20)
+    children: Optional[int] = Field(default=None, ge=0, le=20)
+    elderly_companions: Optional[bool] = None
+    accessibility_required: Optional[bool] = None
+
+    @model_validator(mode="after")
+    def validate_total(self) -> "TravelParty":
+        if self.total is not None and self.adults is not None and self.children is not None:
+            if self.total != self.adults + self.children:
+                raise ValueError("总人数与成人、儿童人数不一致")
+        return self
 
 
 class TravelStyle(_StrictInputModel):
@@ -79,17 +88,17 @@ class TravelStyle(_StrictInputModel):
 
 
 class ControlledTripIdentity(_StrictInputModel):
-    origin: PlaceIdentity
-
-    destinations: List[PlaceIdentity] = Field(min_length=1)
-    start_date: date
-    end_date: date
-    party: TravelParty
-    style: TravelStyle
+    origin: Optional[PlaceIdentity] = None
+    destinations: List[PlaceIdentity] = Field(default_factory=list)
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    dates_assumed: bool = False
+    party: Optional[TravelParty] = None
+    style: Optional[TravelStyle] = None
 
     @model_validator(mode="after")
     def validate_identity(self) -> "ControlledTripIdentity":
-        if self.origin.kind not in ORIGIN_PLACE_KINDS:
+        if self.origin is not None and self.origin.kind not in ORIGIN_PLACE_KINDS:
             raise ValueError("出发地只支持城市、机场或火车站")
         if len(self.destinations) > MAX_CONTROLLED_DESTINATIONS:
             raise ValueError(f"一次旅行最多 {MAX_CONTROLLED_DESTINATIONS} 个目的地")
@@ -104,15 +113,18 @@ class ControlledTripIdentity(_StrictInputModel):
             )
         if len({item.place_id for item in self.destinations}) != len(self.destinations):
             raise ValueError("目的地不能重复")
-        days = (self.end_date - self.start_date).days + 1
-        if days < 1:
-            raise ValueError("结束日期不能早于开始日期")
-        if days > 14:
-            raise ValueError("单次旅行最多 14 天")
-        if len(self.destinations) > days:
-            raise ValueError("目的地数量不能超过行程天数")
+        if self.start_date is not None and self.end_date is not None:
+            days = (self.end_date - self.start_date).days + 1
+            if days < 1:
+                raise ValueError("结束日期不能早于开始日期")
+            if days > 14:
+                raise ValueError("单次旅行最多 14 天")
+            if len(self.destinations) > days:
+                raise ValueError("目的地数量不能超过行程天数")
         return self
 
     @property
-    def duration_days(self) -> int:
+    def duration_days(self) -> Optional[int]:
+        if self.start_date is None or self.end_date is None:
+            return None
         return (self.end_date - self.start_date).days + 1

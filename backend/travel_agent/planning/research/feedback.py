@@ -139,15 +139,11 @@ def build_research_redo_messages(
     *,
     request: Dict[str, Any],
     prior_packet: Optional[ResearchPacket],
-    task_desc: str,
-    current_requirements: str,
 ) -> list[Dict[str, str]]:
     """返研轮追加给 Worker 的消息：问题、原因、需要重做什么与错误成果。"""
     sections = [
         "返研请求：上一轮研究成果无法支撑行程安排，需要重做。",
         f"组合反馈（问题、为什么无法安排、需要重做什么）：{request['feedback']}",
-        f"原始任务（重做时仍适用）：{task_desc}",
-        f"相关需求：{current_requirements}",
     ]
     if prior_packet is not None:
         sections.append(f"上一轮错误成果（整体被替代，只作对照，不要原样重交）：{prior_packet_digest(prior_packet)}")
@@ -180,7 +176,6 @@ def append_research_redo_messages(
     messages: list[dict[str, Any]],
     worker_base: str,
     output_key: str,
-    task_desc: str,
 ) -> Optional[Dict[str, Any]]:
     """返研轮给 Worker 追加反馈消息，并返回用于更新待处理集合的载荷。
 
@@ -202,8 +197,6 @@ def append_research_redo_messages(
         build_research_redo_messages(
             request=request,
             prior_packet=prior_packet,
-            task_desc=task_desc,
-            current_requirements=getattr(state, "current_requirements", ""),
         )
     )
     return remaining

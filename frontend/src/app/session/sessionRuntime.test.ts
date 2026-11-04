@@ -77,7 +77,8 @@ describe('session runtime behavior', () => {
         questions: [{ id: 'pace', question: '节奏？', kind: 'single', options: [{ id: 'slow', label: '慢慢逛' }] }],
       },
     });
-    events.handleEvent({ type: 'chat_complete', run_id: 'run-A', run_status: 'awaiting_input', ts_ms: 5 });
+    events.handleEvent({ type: 'chat_complete', run_id: 'run-A', run_status: 'awaiting_input', requires_input: false, ts_ms: 5 });
+    expect(events.awaitingInput).toBe(true);
     let state = currentStateRef.current;
     for (const action of dispatches) state = appReducer(state, action);
     expect(state.understandingQuestions).toMatchObject({ runId: 'run-A', revision: 1, approvalToken: 'token-1' });
@@ -99,6 +100,46 @@ describe('session runtime behavior', () => {
     owner.updateActiveStreamHandle({ runId: 'stale' });
     expect(dispatch).not.toHaveBeenCalled();
     expect(owner.isCurrentStream()).toBe(false);
+  });
+
+  it.each([
+    { requiresInput: true, reply: '请说明想调整哪一天。', awaitingInput: true },
+    { requiresInput: false, reply: '这里是旅行问题的回答。', awaitingInput: false },
+  ])('keeps a successful runless reply and projects requires_input=$requiresInput', ({ requiresInput, reply, awaitingInput }) => {
+    const assistant = message('followup-answer', '');
+    let state: AppState = { ...stateFor('A'), currentTripRunStatus: 'completed', currentMessages: [assistant], deliveryBundle: deliveryBundle() };
+    const currentStateRef = { current: state };
+    const dispatch = (action: AppAction) => { state = appReducer(state, action); currentStateRef.current = state; };
+    const active = { current: { token: 'followup', sessionId: 'A', runId: 'run-A', controller: null } };
+    const owner = createStreamOwnership('followup', 'A', 0, 'run-A', null, active, currentStateRef, { current: new Map() }, dispatch);
+    const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);
+    const events = createStreamEvents(owner, assistant, '补充要求', 'run-A', undefined, currentStateRef, () => {}, frame);
+
+    events.handleEvent({ type: 'chat_start', session_id: 'A', message_id: assistant.id });
+    events.handleEvent({ type: 'chat_complete', run_status: null, requires_input: requiresInput, final_content: reply });
+
+    expect(events.failed).toBe(false);
+    expect(events.completed).toBe(true);
+    expect(events.awaitingInput).toBe(awaitingInput);
+    expect(state.currentMessages[0]).toMatchObject({ content: reply, displayContent: reply, streamCompleted: true });
+    expect(state.currentTripRunId).toBe('run-A');
+    expect(state.currentTripRunStatus).toBe('completed');
+  });
+
+  it('does not let a follow-up answer change the active planning run status', () => {
+    let state: AppState = { ...stateFor('A'), deliveryBundle: deliveryBundle() };
+    const currentStateRef = { current: state };
+    const dispatch = (action: AppAction) => { state = appReducer(state, action); currentStateRef.current = state; };
+    const active = { current: { token: 'answer', sessionId: 'A', runId: 'run-A', controller: null } };
+    const owner = createStreamOwnership('answer', 'A', 0, 'run-A', null, active, currentStateRef, { current: new Map() }, dispatch);
+    const assistant = message('answer', '');
+    const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);
+    const events = createStreamEvents(owner, assistant, '问题', 'run-A', undefined, currentStateRef, () => {}, frame);
+    events.handleEvent({ type: 'chat_start', session_id: 'A', run_id: 'answer-run', route_decision: { route: 'fast_answer', confidence: 1, alternatives: [], signals: [], requires_trip_draft: false, requires_confirmation: false } });
+    events.handleEvent({ type: 'chat_complete', run_id: 'answer-run', run_status: 'completed', final_content: '回答' });
+    expect(state.currentTripRunId).toBe('run-A');
+    expect(state.currentTripRunStatus).toBe('running');
+    expect(events.completed).toBe(true);
   });
 
   it('deduplicates cost replay with identity preservation and resets accounting on a new run', () => {

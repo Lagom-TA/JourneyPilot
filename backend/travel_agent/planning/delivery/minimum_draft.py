@@ -24,20 +24,23 @@ def build_minimum_delivery_draft(state: Any) -> Optional[MinimumDeliveryDraft]:
     if state.planning_generation is None or not state.run_id:
         raise ValueError("行程框架需要运行和规划版本")
     identity = ControlledTripIdentity.model_validate(state.controlled_trip_identity)
+    days = identity.duration_days
+    if not identity.destinations or identity.start_date is None or days is None:
+        raise ValueError("行程框架需要已核实的目的地和旅行日期")
     identity_payload = identity.model_dump(mode="json")
     anchors = [UserInputAnchor(anchor_id="trip_identity", field_path="controlled_trip_identity", value=identity_payload, input_kind="controlled_identity")]
-    if identity.origin.place_id:
+    if identity.origin is not None:
         anchors.append(UserInputAnchor(anchor_id="origin", field_path="controlled_trip_identity.origin", value=identity_payload["origin"], input_kind="controlled_identity"))
     for index, destination in enumerate(identity_payload["destinations"]):
         anchors.append(UserInputAnchor(anchor_id=f"destination_{index}", field_path=f"controlled_trip_identity.destinations.{index}", value=destination, input_kind="controlled_identity"))
     anchors.append(UserInputAnchor(anchor_id="requirements", field_path="current_requirements", value=state.current_requirements, input_kind="requirements"))
     shells = []
     previous = None
-    for index in range(identity.duration_days):
-        destination = identity.destinations[min(index * len(identity.destinations) // identity.duration_days, len(identity.destinations) - 1)]
+    for index in range(days):
+        destination = identity.destinations[min(index * len(identity.destinations) // days, len(identity.destinations) - 1)]
         shells.append(MinimumDeliveryDayShell(
             day_id=f"day_{index + 1}", day=index + 1, date=identity.start_date + timedelta(days=index), destination_id=destination.place_id,
-            lodging_night=index < identity.duration_days - 1,
+            lodging_night=index < days - 1,
             arrival_from_destination_id=previous if previous and previous != destination.place_id else None,
         ))
         previous = destination.place_id

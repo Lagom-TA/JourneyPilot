@@ -4,6 +4,7 @@ from datetime import datetime
 from datetime import timezone
 from travel_agent.integrations.places.contracts import NominatimPlaceSearchError
 from travel_agent.integrations.places.nominatim import search_nominatim_raw
+from travel_agent.integrations.places.identity import nominatim_trip_place
 from travel_agent.integrations.places.normalization import _CONCRETE_PLACE_FILTERS
 from travel_agent.integrations.places.normalization import _OSM_RELATION_PLACE_ID
 from travel_agent.integrations.places.normalization import logger
@@ -23,7 +24,7 @@ import asyncio
 
 async def global_place_search(
     query: str,
-    country_code: str,
+    country_code: Optional[str] = None,
     limit: int = 5,
     destination_place_id: Optional[str] = None,
     destination_latitude: Optional[float] = None,
@@ -31,15 +32,8 @@ async def global_place_search(
     candidate_kind: Optional[str] = None,
     aliases: Optional[list[str]] = None,
 ) -> Dict[str, Any]:
-    """只返回指定国家内的地点身份。
-
-    ``destination_latitude`` / ``destination_longitude`` 会传给主文本检索，而
-    不只用于下方的 Overpass 回退；缺少坐标时文本检索无法判断目的地位置。
-    调用方均会提供这两个参数。
-    """
+    """按已知国家和目的地位置搜索地点；未知国家时搜索全球结果。"""
     normalized_country = normalize_country_code(country_code)
-    if normalized_country is None:
-        raise ValueError("country_code is required")
     observation = await search_nominatim_raw(
         query,
         country_code=normalized_country,
@@ -47,12 +41,15 @@ async def global_place_search(
         focus_latitude=destination_latitude,
         focus_longitude=destination_longitude,
     )
-    results = [
-        place
-        for item in observation.items
-        if (place := normalize_nominatim_place(item)) is not None
-        and place["provider_country_code"] == normalized_country
-    ]
+    results = []
+    for item in observation.items:
+        place = normalize_nominatim_place(item)
+        if place is None or (normalized_country is not None and place["provider_country_code"] != normalized_country):
+            continue
+        trip_place = nominatim_trip_place(item)
+        if trip_place is not None:
+            place["trip_identity"] = trip_place
+        results.append(place)
     is_concrete = _CONCRETE_PLACE_FILTERS.get(candidate_kind or "")
     if is_concrete is not None:
         results = [place for place in results if is_concrete(place)]
@@ -66,6 +63,7 @@ async def global_place_search(
     if (
         not results
         and is_concrete is not None
+        and normalized_country is not None
         and isinstance(destination_place_id, str)
     ):
         if _OSM_RELATION_PLACE_ID.fullmatch(destination_place_id.strip()) is None:

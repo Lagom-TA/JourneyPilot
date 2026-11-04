@@ -103,6 +103,7 @@ def _blocked_research_worker_update(
     node_name: str,
     observed_deadline: Any,
     observation: DeadlineObservation,
+    output_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """生成研究/组合窗口关闭时 Worker 的返回更新。
 
@@ -114,7 +115,7 @@ def _blocked_research_worker_update(
     if observation.phase == "expired":
         return {
             "run_deadline": observed_deadline,
-            "agent_status": {node_name: "failed"},
+            "agent_status": {output_key or node_name: "failed"},
             "last_error": (
                 "delivery deadline elapsed before research worker could start"
                 if node_name in _RESEARCH_WORKER_NODES
@@ -123,7 +124,7 @@ def _blocked_research_worker_update(
         }
     return {
         "run_deadline": observed_deadline,
-        "agent_status": {node_name: "partial"},
+        "agent_status": {output_key or node_name: "partial"},
     }
 
 
@@ -309,11 +310,22 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                             model_window=model_window,
                         )
                     ):
-                        # 窗口关闭后不再进入 Worker；研究窗口与组合窗口分别关闭。
+                        # 返研状态按当前任务轮次记录，供 dispatcher 汇合和重试。
+                        output_key = node_name
+                        if node_name in _RESEARCH_WORKER_NODES:
+                            from .assignments import resolve_agent_assignment
+
+                            try:
+                                output_key, _ = resolve_agent_assignment(
+                                    state.agent_assignments, node_name
+                                )
+                            except ValueError:
+                                pass
                         return _blocked_research_worker_update(
                             node_name=node_name,
                             observed_deadline=observed_deadline,
                             observation=observation,
+                            output_key=output_key,
                         )
                 handle = run_control_registry.get(run_id)
                 if (
@@ -323,8 +335,11 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                 ):
                     # 已脱离或迟到的 Worker 不得覆盖已持久化的 Bundle。
                     return _ignored_after_delivery_update(state, node_name)
+                # 并行研究的待处理要求在汇合后的分发边界统一接收。
                 claimed_supplements = (
-                    handle.pending_supplements() if handle is not None else []
+                    handle.pending_supplements()
+                    if handle is not None and node_name not in _RESEARCH_WORKER_NODES
+                    else []
                 )
                 existing_amendments = list(
                     getattr(state, "pending_intent_amendments", None) or []

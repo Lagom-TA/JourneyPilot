@@ -26,6 +26,51 @@ from .temporal import temporal_schema_contract_errors
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_mcp_error(value: Any) -> str:
+    """保留可判断的失败原因，不传播上游错误中的原始内容。"""
+    if isinstance(value, TimeoutError):
+        return "timeout: MCP 服务调用超时"
+    if isinstance(value, ConnectionError):
+        return "connection: MCP 服务连接失败"
+    status_code = getattr(getattr(value, "response", None), "status_code", None)
+    if isinstance(status_code, int) and 400 <= status_code <= 599:
+        return f"HTTP {status_code}: MCP 服务请求失败"
+    text = str(value or "").casefold()
+    status = re.search(
+        r"\b(?:http(?:/\d(?:\.\d)?)?(?:\s+(?:error|status(?:\s+code)?))?|"
+        r"status(?:\s+code)?|error)\s*[:=]?\s*([45]\d\d)\b",
+        text,
+    ) or re.search(
+        r"\b([45]\d\d)\s+(?:bad request|unauthorized|forbidden|too many requests|"
+        r"bad gateway|service unavailable|gateway timeout)\b",
+        text,
+    )
+    if status:
+        return f"HTTP {status.group(1)}: MCP 服务请求失败"
+    if any(marker in text for marker in ("timeout", "timed out", "超时")):
+        return "timeout: MCP 服务调用超时"
+    if any(marker in text for marker in ("quota", "usage limit", "配额", "额度")):
+        return "quota: MCP 服务配额不足"
+    if any(marker in text for marker in ("cuqps", "rate limit", "rate-limit", "频率限制")):
+        return "rate limit: MCP 服务请求过于频繁"
+    if any(marker in text for marker in ("unauthorized", "invalid_user_key", "invalid api key", "authentication", "auth failed", "鉴权失败")):
+        return "authentication: MCP 服务认证失败"
+    if any(marker in text for marker in ("forbidden", "permission denied", "无权限")):
+        return "forbidden: MCP 服务拒绝访问"
+    if any(marker in text for marker in ("schema", "required tool", "日期能力定义", "输出结构")):
+        return "provider contract: MCP 工具定义不符合要求"
+    if any(marker in text for marker in ("invalid parameter", "invalid params", "bad request", "invalid param", "input validation error", "参数无效")):
+        return "invalid parameter: MCP 服务拒绝请求参数"
+    if any(marker in text for marker in ("no complete one-way routes", "found no executable route", "no results", "未检索到")):
+        return "no results: MCP 服务没有找到匹配结果"
+    if any(marker in text for marker in ("connection", "network", "connection refused", "connection reset", "broken pipe", "连接失败", "网络错误")):
+        return "connection: MCP 服务连接失败"
+    if any(marker in text for marker in ("temporarily", "unavailable", "暂时不可用")):
+        return "provider unavailable: MCP 服务暂时不可用"
+    return "MCP 服务调用失败"
+
+
 INIT_TIMEOUT_SECONDS = int(os.getenv("MCP_INIT_TIMEOUT_SECONDS", "45"))
 CALL_TIMEOUT_SECONDS = int(os.getenv("MCP_CALL_TIMEOUT_SECONDS", "60"))
 # 每个 server 的会话租约空闲 TTL。0 表示不因空闲而回收。
@@ -86,8 +131,8 @@ class _OutputSchemaTolerantSession(ClientSession):
     async def _validate_tool_result(self, name: str, result: Any) -> None:
         try:
             await super()._validate_tool_result(name, result)
-        except RuntimeError as exc:
-            message = (str(exc) or exc.__class__.__name__)[:1000]
+        except RuntimeError:
+            message = "MCP 输出结构不符合声明"
             self._output_schema_violation = message
             logger.warning(
                 "MCP 输出 schema 声明不可用，按无声明处理 | server=%s tool=%s error=%s",
@@ -269,7 +314,7 @@ def _amap_failure(tool_name: str, detail: str) -> Optional[Dict[str, Any]]:
         "success": False,
         "provider": "amap",
         "tool_name": tool_name,
-        "error": text[:1000],
+        "error": _safe_mcp_error(text),
     }
 
 
@@ -376,9 +421,7 @@ def _amap_record(poi: Any) -> Optional[Dict[str, Any]]:
 
 
 def _mcp_error_message(exc: Exception) -> str:
-    if isinstance(exc, asyncio.TimeoutError):
-        return "初始化或调用超时"
-    return str(exc) or exc.__class__.__name__
+    return _safe_mcp_error(exc)
 
 
 def _mcp_result_error(payload: Any) -> Optional[str]:
@@ -398,7 +441,7 @@ def _mcp_result_error(payload: Any) -> Optional[str]:
                     messages.append(text)
     elif isinstance(content, str) and content.strip():
         messages.append(content.strip())
-    return "；".join(messages)[:1000] or "MCP 工具返回失败结果"
+    return _safe_mcp_error("；".join(messages))
 
 
 @dataclass
@@ -500,7 +543,7 @@ class MCPManager:
                 )
                 if contract_errors:
                     raise RuntimeError(
-                        "date-sensitive MCP schema contract mismatch: "
+                        "MCP 日期能力定义不匹配: "
                         + "; ".join(contract_errors)
                     )
                 tool_names: List[str] = []
@@ -773,7 +816,6 @@ class MCPManager:
                         "server_name": server_name,
                         "tool_name": tool_name,
                         "error": protocol_error,
-                        "result": payload,
                     }
 
                 state = self._server_states.get(server_name)
@@ -807,6 +849,13 @@ class MCPManager:
                     "tool_name": tool_name,
                     "result": payload,
                 }
+                if isinstance(answer, dict) and answer.get("success") is False:
+                    answer = {
+                        "success": False,
+                        "server_name": server_name,
+                        "tool_name": tool_name,
+                        "error": _safe_mcp_error(answer.get("error")),
+                    }
                 if schema_violation is not None:
                     answer[PROVIDER_OUTPUT_SCHEMA_VIOLATION_KEY] = schema_violation
                 return answer

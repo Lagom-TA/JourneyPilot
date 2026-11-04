@@ -16,7 +16,7 @@ from tests.fixtures.research_catalog import (
     make_local_transport_packet,
     make_visit_packet,
 )
-from travel_agent.planning.itinerary import composition, connector_estimates, locations
+from travel_agent.planning.itinerary import composition, locations
 from travel_agent.planning.itinerary.connectors import (
     extract_local_connector_gaps,
     materialize_skeleton_connectors,
@@ -831,13 +831,12 @@ async def test_fastest_provider_alternative_is_selected(monkeypatch):
         execution_plan=[["itinerary_planner"]], agent_status={"itinerary_planner": "pending"},
     )
 
-    async def no_authoring(*args, **kwargs):
-        pytest.fail("provider alternatives must not be replaced by authored routes")
+    async def no_followup(*args, **kwargs):
+        pytest.fail("已有可用路线时不应发起补查")
 
-    # 本用例约束的是接驳选择不调用模型；最终文案步骤由独立用例覆盖。
     monkeypatch.setattr(node, "get_model_router", lambda: None)
     monkeypatch.setattr(node, "llm_for_task", lambda *args, **kwargs: object())
-    monkeypatch.setattr(node, "_author_connector_routes", no_authoring)
+    monkeypatch.setattr(node, "research_transport_followup", no_followup)
     completed = restore_planning_state(current, **await node.itinerary_planner_node(current, {}))
     assert completed.agent_status["itinerary_planner"] == "completed"
     assert completed.composition_failure_context is None
@@ -874,8 +873,8 @@ async def test_provider_route_beyond_the_remaining_window_reschedules_once(monke
         agent_status={"itinerary_planner": "pending"},
     )
 
-    async def no_authoring(*args, **kwargs):
-        pytest.fail("matching provider route must be used")
+    async def no_followup(*args, **kwargs):
+        pytest.fail("已有可用路线时不应发起补查")
 
     async def no_tools(*args, **kwargs):
         return []
@@ -891,7 +890,7 @@ async def test_provider_route_beyond_the_remaining_window_reschedules_once(monke
         assert "路线约 60 分钟" in state.composition_failure_context
         return corrected
 
-    monkeypatch.setattr(node, "_author_connector_routes", no_authoring)
+    monkeypatch.setattr(node, "research_transport_followup", no_followup)
     monkeypatch.setattr(node, "get_available_tools", no_tools)
     monkeypatch.setattr(node, "_compose_draft", recompose)
     monkeypatch.setattr(node, "get_model_router", lambda: None)
@@ -904,6 +903,7 @@ async def test_provider_route_beyond_the_remaining_window_reschedules_once(monke
     assert rescheduled.trip_workspace is None
     assert rescheduled.composition_reschedule_rounds == 1
     assert "超出可用时间窗口" in rescheduled.composition_failure_context
+    assert not rescheduled.composition_failure_context.startswith("交通研究员补查结果：")
 
     second = restore_planning_state(
         rescheduled, **await node.itinerary_planner_node(rescheduled, {})
@@ -949,27 +949,6 @@ async def test_materialize_failure_returns_failed_status_and_bounded_context(mon
     )
     assert len(failed.composition_failure_context) <= 600
     assert failed.trip_workspace is None
-
-
-@pytest.mark.asyncio
-async def test_connector_estimator_receives_real_names_and_uses_full_estimate():
-
-    catalog = make_catalog(restaurant_packet(), visit_packet())
-    skeleton = parse_itinerary_composition(
-        json.dumps(itinerary_draft([meal_placement(), visit_entry("09:10", "10:10")]))
-    )
-    gaps = extract_local_connector_gaps(skeleton, catalog, weather_data_revision=0)
-
-    class Model:
-        async def ainvoke(self, messages, **kwargs):
-            described = json.loads(messages[-1]["content"].split("：", 1)[1])[0]
-            assert described["from_endpoint"]["name"] == "Cafe"
-            assert described["to_endpoint"]["name"] == "candidate_visit"
-            return json.dumps({"connectors": [{"gap_id": gaps[0].gap_id, "mode": "bus", "duration_minutes": 60, "selection_reason": "honest estimate"}]})
-
-    authored = await connector_estimates._author_connector_routes(Model(), gaps)
-    result = materialize_skeleton_connectors(skeleton, catalog, gaps, authored)
-    assert result.days[0].placements[1].authored_route.duration_minutes == 60
 
 
 @pytest.mark.parametrize("partial", [False, True])

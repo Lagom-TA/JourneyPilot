@@ -9,7 +9,6 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 
 from travel_agent.config.loader import get_settings
-from travel_agent.conversation.history import append_recent_history
 from travel_agent.knowledge.collections import grounding_corpus
 from travel_agent.knowledge.source_records import rag_chunk_source_records
 from travel_agent.llm.router import get_model_router
@@ -24,11 +23,7 @@ from travel_agent.planning.requirements.constraint_applicability import (
     active_hard_constraint_ids,
 )
 from travel_agent.planning.research.destination.diagnostics import _log_rag_place_funnel
-from travel_agent.planning.research.destination.scope import (
-    _NODE_NAME,
-    build_destination_boundaries,
-    build_destination_task_prompt,
-)
+from travel_agent.planning.research.destination.scope import _NODE_NAME
 from travel_agent.planning.research.errors import format_worker_last_error
 from travel_agent.planning.research.feedback import append_research_redo_messages
 from travel_agent.planning.research.output.failures import (
@@ -64,6 +59,7 @@ from travel_agent.tools.knowledge_results import (
     knowledge_tool_documents,
 )
 from travel_agent.tools.react import streaming_react_loop
+from travel_agent.tools.result import ReactOutcome
 
 if TYPE_CHECKING:
     from travel_agent.runtime.events import EventBuffer
@@ -92,14 +88,12 @@ async def destination_researcher_node(
     current_time = state.current_time or datetime.datetime.now().strftime(
         "%Y-%m-%d %H:%M"
     )
-    user_query = state.current_requirements or ""
     run_id = state.run_id
 
     output_key, assignment = resolve_agent_assignment(
         state.agent_assignments or {}, _NODE_NAME
     )
     task_desc = assignment["objective"]
-    task_context = task_desc
     recommended_tools = assignment.get("recommended_tools", [])
     excluded_tools = assignment.get("excluded_tools", [])
     provider_assignments = parse_provider_evidence_assignments(
@@ -116,6 +110,7 @@ async def destination_researcher_node(
         worker_kind=_NODE_NAME,
         run_id=run_id,
         generation_id=generation_id,
+        fact_data_revision=state.fact_data_revision,
         destination_ids=[item.get("place_id", "") for item in state.controlled_trip_identity.get("destinations", [])],
     )
 
@@ -129,10 +124,10 @@ async def destination_researcher_node(
         task_id=output_key,
         fact_data_revision=state.fact_data_revision,
         current_time=current_time,
-        task_context=task_context,
         candidate_limit=packet_candidate_limit(
             _NODE_NAME, trip_identity=state.controlled_trip_identity
         ),
+        task_desc=task_desc,
         upstream_packet_context=upstream_packet_context,
         active_constraint_ids=active_constraint_ids,
         state=state,
@@ -140,21 +135,14 @@ async def destination_researcher_node(
     )
 
     logger.info(
-        "DestinationResearcher 上下文注入: constraint_pack=%s, anchor=%s, preset=%s, knowledge=%s",
-        bool(state.constraint_pack),
-        bool(state.session_anchor),
-        bool(state.preset_context),
+        "DestinationResearcher 旅行理解=%s, knowledge=%s",
+        bool(state.current_requirements),
         "on_demand" if get_settings().embedding.enabled else "disabled",
     )
 
-    history: List[Dict[str, Any]] = []
-    append_recent_history(history, state)
-    messages = prompt.messages(history)
-    destination_boundaries = build_destination_boundaries(
-        state.controlled_trip_identity
-    )
+    messages = prompt.messages()
 
-    available_tools = await get_available_tools(state.selected_mcp_servers or [])
+    available_tools = await get_available_tools()
     available_tools = filter_tools_for_agent(available_tools, _NODE_NAME)
     available_tools = exclude_tools(available_tools, excluded_tools)
 
@@ -180,31 +168,11 @@ async def destination_researcher_node(
     finalize_started_at: Optional[float] = None
     redo_requests_update: Optional[Dict[str, Any]] = None
     try:
-        messages.append(
-            {
-                "role": "user",
-                "content": build_destination_task_prompt(
-                    task_desc=task_desc,
-                    user_query=user_query,
-                    destination_boundaries=destination_boundaries,
-                ),
-            }
-        )
-        messages.append(
-            {
-                "role": "user",
-                "content": (
-                    "按任务和用户需求选择实际可用的检索或地点工具；以本轮提供的工具目录为准。"
-                    "需要地点身份时用可用工具核实，找不到合适工具或资料时保留未知，不编造。"
-                ),
-            }
-        )
         redo_requests_update = append_research_redo_messages(
             state=state,
             messages=messages,
             worker_base=_NODE_NAME,
             output_key=output_key,
-            task_desc=task_desc,
         )
 
         react = await streaming_react_loop(
@@ -222,15 +190,18 @@ async def destination_researcher_node(
             can_ask_user=False,
             tool_cache=tool_cache,
             tool_context=tool_context,
+            public_note=True,
         )
-        raw_response = react.content
-        if not raw_response.strip():
-            # 工具循环没有产出正文时，用同一上下文做一次不带工具的直接生成。
+        authoritative_tool_results.extend(react.tool_results)
+        if react.outcome is ReactOutcome.ITERATION_LIMIT:
             raw_response = await llm.ainvoke(
                 plain_observation_messages(messages),
                 response_format={"type": "json_object"},
             )
-        authoritative_tool_results.extend(react.tool_results)
+        elif react.outcome is ReactOutcome.FINAL_ANSWER:
+            raw_response = react.content
+        else:
+            raise RuntimeError(f"研究未完成: {react.error or react.outcome.value}")
 
         finalize_started_at = time.perf_counter()
         packet = await parse_research_packet(
@@ -324,8 +295,6 @@ async def destination_researcher_node(
             "last_error": last_error,
             "agent_status": {output_key: "failed"},
         }
-        if redo_requests_update is not None:
-            result["research_redo_requests"] = redo_requests_update
         if failure_packet is not None:
             result["research_packets"] = {packet_state_key: failure_packet}
         if outcomes:

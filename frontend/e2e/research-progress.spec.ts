@@ -48,9 +48,10 @@ for (const width of [320, 390, 1440]) {
     await expect(destination.getByRole('button')).toHaveCount(1);
     await expect(destination.getByRole('button')).toHaveAttribute('aria-expanded', 'true');
     const query = destination.getByTestId('research-query');
-    await expect(query).toContainText('长春 历史博物馆');
+    await expect(query).toContainText('找到 1 个结果');
     await expect(query.locator('.research-source')).not.toBeVisible();
     await query.locator('summary').click();
+    await expect(query.locator('[data-detail-section="input"]')).toContainText('长春 历史博物馆');
     await expect(query).toContainText('长春市宽城区光复北路');
     await expect(query.getByRole('link', { name: '伪满皇宫博物院' })).toHaveAttribute('href', 'https://example.org/museum');
     await expect(destination.getByTestId('research-query')).toHaveCount(1);
@@ -63,8 +64,11 @@ for (const width of [320, 390, 1440]) {
     await expect(transport.locator('.research-agent-state')).toHaveText('已结束');
     const stay = page.getByTestId('research-agent-stay');
     await expect(stay.getByRole('button')).toHaveCount(1);
-    await expect(stay.getByTestId('research-query').first().locator('summary')).toHaveCount(1);
-    await expect(stay).toContainText('参考资料');
+    const stayRows = stay.getByTestId('research-query');
+    await expect(stayRows).toHaveCount(2);
+    await expect(stayRows.first()).toContainText('找到 1 个结果');
+    await expect(stayRows.first().locator('summary')).toHaveCount(0);
+    await expect(stayRows.nth(1)).toContainText('暂不可查');
     await page.getByRole('button', { name: '停止', exact: true }).click();
     await expect(panel).toContainText('旅行规划已中断');
     await expect(stay.locator('.research-agent-state')).toHaveText('已停止');
@@ -116,24 +120,20 @@ test('workspace 工具行密度、展开长查询与真实阶段标题', async (
   expect(geometry.overflow).toBeLessThanOrEqual(1);
 
   await page.getByRole('button', { name: '内部工具', exact: true }).click();
-  const planning = page.getByTestId('research-agent-planning');
-  await planning.getByRole('button').click();
-  const internalRow = page.getByTestId('research-query').filter({ hasText: '已选择适合本次行程的地点与交通资料' });
-  await expect(internalRow).toBeVisible();
-  await expect(internalRow).toContainText('整理规划');
-  await expect(internalRow).not.toContainText('global_place_search');
-  await internalRow.locator('summary').click();
-  await expect(internalRow.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
-  await expect(internalRow).not.toContainText('global_place_search');
+  // search_tools 是内部能力选择，不再作为旅行行动出现在过程区。
+  await expect(page.getByTestId('research-query').filter({ hasText: '已选择适合本次行程的地点与交通资料' })).toHaveCount(0);
+  await expect(page.getByTestId('research-agent-planning')).toHaveCount(0);
+  await expect(panel).not.toContainText('global_place_search');
   await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-compact-list.png` });
 
   await page.getByRole('button', { name: '长查询', exact: true }).click();
   // 目的地完成态自动收起，重新展开后再核对新追加的查询行。
   await page.getByTestId('research-agent-destination').locator('button.research-agent-heading').click();
-  const longRow = page.getByTestId('research-query').filter({ hasText: '杭州西湖周边适合雨天慢慢散步' });
-  await expect(longRow).toContainText('杭州西湖周边适合雨天慢慢散步、喝咖啡并避开人群的路线与街区');
+  const longRow = page.getByTestId('research-query').filter({ hasText: '找到 1 个适合雨天散步的街区' });
+  await expect(longRow).toContainText('找到 1 个适合雨天散步的街区');
   await longRow.locator('summary').focus();
   await page.keyboard.press('Enter');
+  await expect(longRow.locator('[data-detail-section="input"]')).toContainText('杭州西湖周边适合雨天慢慢散步、喝咖啡并避开人群的路线与街区');
   await expect(longRow.getByRole('link', { name: '北山街雨天散步路线' })).toBeVisible();
   await expect(longRow.locator('.research-query-title')).toHaveCSS('white-space', 'normal');
   await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-expanded-query.png` });
@@ -147,7 +147,7 @@ test('workspace 工具行密度、展开长查询与真实阶段标题', async (
   await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-delivery-stage.png` });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  const phoneRow = page.getByTestId('research-query').filter({ hasText: '杭州西湖周边适合雨天慢慢散步' });
+  const phoneRow = page.getByTestId('research-query').filter({ hasText: '找到 1 个适合雨天散步的街区' });
   await phoneRow.locator('summary').click();
   await expect(phoneRow.getByRole('link', { name: '北山街雨天散步路线' })).toBeVisible();
   await expect(phoneRow.locator('.research-tool-input-value')).toContainText('杭州西湖周边适合雨天慢慢散步');
@@ -169,73 +169,54 @@ test('workspace 激活摘要、真实计数、安全详情与后续事件保持�
   await page.getByRole('button', { name: '边界详情', exact: true }).click();
   await page.getByRole('button', { name: '长查询', exact: true }).click();
   await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-running-activity.png` });
-  const planning = page.getByTestId('research-agent-planning');
-  await planning.getByRole('button').click();
+  // 内部能力激活不再进入过程区，也不再生成 planning 卡片。
+  await expect(page.getByTestId('research-query').filter({ hasText: '已启用' })).toHaveCount(0);
+  await expect(page.getByTestId('research-agent-planning')).toHaveCount(0);
 
-  const activationPlace = page.getByTestId('research-query').filter({ hasText: '已启用：地点搜索、知识库检索' });
-  await expect(activationPlace).toHaveCount(1);
-  await expect(activationPlace).not.toContainText('global_place_search');
-  await expect(activationPlace).not.toContainText('knowledge_search');
-  await activationPlace.locator('summary').click();
-  await expect(activationPlace).toContainText('整理规划');
-  await expect(activationPlace.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
-  await expect(activationPlace).not.toContainText('global_place_search');
-  await expect(activationPlace).not.toContainText('knowledge_search');
-  await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-expanded-activation.png` });
-
-  const activationWeb = page.getByTestId('research-query').filter({ hasText: '已启用：网页搜索' });
-  await expect(activationWeb).toHaveCount(1);
-  await activationWeb.locator('summary').click();
-  for (const internal of ['brave_local_search', 'brave_web_search', 'firecrawl_search', 'free_web_search', 'tavily_search']) {
-    await expect(activationWeb).not.toContainText(internal);
-  }
-  await expect(activationWeb).not.toContainText('brave');
-  await expect(activationWeb).not.toContainText('firecrawl');
-  await expect(activationWeb).not.toContainText('tavily');
-  await activationPlace.locator('summary').click();
-  await activationWeb.locator('summary').click();
-
-  const fourResults = page.getByTestId('research-query').filter({ hasText: '深圳湾公园 周边' });
+  const fourResults = page.getByTestId('research-query').filter({ hasText: '找到 4 个结果：深圳湾公园、红树林、人才公园、海上世界' });
+  await expect(fourResults.locator('summary')).toHaveCount(1);
   await fourResults.locator('summary').click();
-  await expect(fourResults).toContainText('返回 4 条结果');
+  await expect(fourResults).not.toContainText('返回 4 条结果');
   await expect(fourResults).not.toContainText('返回 2 条结果');
   await expect(fourResults).toContainText('找到 4 个结果：深圳湾公园、红树林、人才公园、海上世界');
   await expect(fourResults.locator('.research-source')).toHaveCount(2);
   await fourResults.locator('.research-tool-detail').scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-expanded-place.png` });
 
-  const onlySummary = page.getByTestId('research-query').filter({ hasText: '当地雨天备选活动' });
+  const onlySummary = page.getByTestId('research-query').filter({ hasText: '已整理 3 条适合雨天的室内活动摘要' });
   await onlySummary.locator('summary').click();
+  await expect(onlySummary.locator('[data-detail-section="input"]')).toContainText('当地雨天备选活动');
   await expect(onlySummary).toContainText('已整理 3 条适合雨天的室内活动摘要');
   await expect(onlySummary).not.toContainText('返回 ');
   await expect(onlySummary.locator('.research-source')).toHaveCount(0);
 
-  const noInputResult = page.getByTestId('research-query').filter({ hasText: '查询旅行信息' }).filter({ hasNotText: '已启用' }).filter({ hasNotText: '仅提供' });
-  await noInputResult.locator('summary').click();
-  await expect(noInputResult.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
-  await expect(noInputResult.locator('[data-detail-section="result"]')).toContainText('没有可公开的结果');
+  const noInputResult = page.getByTestId('research-query').filter({ hasText: '已读取数据' });
+  await expect(noInputResult.locator('summary')).toHaveCount(0);
+  await expect(noInputResult.locator('[data-detail-section="input"]')).toHaveCount(0);
+  await expect(noInputResult.locator('[data-detail-section="result"]')).toHaveCount(0);
 
-  const jsonLeak = page.getByTestId('research-query').filter({ hasText: '海边天气' });
+  const jsonLeak = page.getByTestId('research-query').filter({ hasText: '已读取联网资料' });
   await jsonLeak.locator('summary').click();
-  await expect(jsonLeak.locator('[data-detail-section="result"]')).not.toContainText('success');
-  await expect(jsonLeak.locator('[data-detail-section="result"]')).not.toContainText('secret');
-  await expect(jsonLeak.locator('[data-detail-section="result"]')).not.toContainText('tavily_search');
+  await expect(jsonLeak).toContainText('无结果');
+  for (const leaked of ['success', 'secret', 'tavily_search']) {
+    await expect(jsonLeak).not.toContainText(leaked);
+  }
 
   const machineInput = page.getByTestId('research-query').filter({ hasText: '机器载荷输入已过滤' });
-  await machineInput.locator('summary').click();
-  await expect(machineInput.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
-  for (const leaked of ['success', 'provider', 'tavily_search', 'sanitized_result']) {
+  await expect(machineInput.locator('summary')).toHaveCount(0);
+  await expect(machineInput.locator('[data-detail-section="input"]')).toHaveCount(0);
+  for (const leaked of ['success', 'provider', 'tavily_search', 'sanitized_result', 'contract_version']) {
     await expect(machineInput).not.toContainText(leaked);
   }
 
   const contractInput = page.getByTestId('research-query').filter({ hasText: '合同字段输入已过滤' });
-  await contractInput.locator('summary').click();
-  await expect(contractInput.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
-  for (const leaked of ['research_packet_id', 'packet-1', 'tool_call_id']) {
+  await expect(contractInput.locator('summary')).toHaveCount(0);
+  await expect(contractInput.locator('[data-detail-section="input"]')).toHaveCount(0);
+  for (const leaked of ['contract_version', 'research_packet_id', 'packet-1', 'tool_call_id']) {
     await expect(contractInput).not.toContainText(leaked);
   }
 
-  const internalInput = page.getByTestId('research-query').filter({ hasText: '地点搜索 网页搜索 附近景点' });
+  const internalInput = page.getByTestId('research-query').filter({ hasText: '内部标识输入已转换' });
   await internalInput.locator('summary').click();
   await expect(internalInput.locator('.research-tool-input-value')).toHaveText('地点搜索 网页搜索 附近景点');
   for (const leaked of ['global_place_search', 'brave_web_search', 'tavily_search']) {
@@ -243,13 +224,12 @@ test('workspace 激活摘要、真实计数、安全详情与后续事件保持�
   }
 
   const errorInput = page.getByTestId('research-query').filter({ hasText: '异常文本输入已过滤' });
-  await errorInput.locator('summary').click();
-  await expect(errorInput.locator('[data-detail-section="input"]')).toContainText('没有可公开的输入');
+  await expect(errorInput.locator('summary')).toHaveCount(0);
   for (const leaked of ['Traceback', 'File', 'line 42', 'agent.py']) {
     await expect(errorInput).not.toContainText(leaked);
   }
 
-  const longRow = page.getByTestId('research-query').filter({ hasText: '杭州西湖周边适合雨天慢慢散步' });
+  const longRow = page.getByTestId('research-query').filter({ hasText: '找到 1 个适合雨天散步的街区' });
   await longRow.locator('summary').focus();
   await page.keyboard.press('Enter');
   await expect(longRow.getByRole('link', { name: '北山街雨天散步路线' })).toBeVisible();
@@ -263,10 +243,10 @@ test('workspace 激活摘要、真实计数、安全详情与后续事件保持�
   await expect(destination.locator('.research-agent-state')).toHaveText('已结束');
   await expect(destination.locator('.research-agent-body')).toHaveCount(0);
   await destination.getByRole('button').click();
-  const reopened = destination.getByTestId('research-query').filter({ hasText: '深圳湾公园 周边' });
+  const reopened = destination.getByTestId('research-query').filter({ hasText: '找到 4 个结果：深圳湾公园、红树林、人才公园、海上世界' });
   await reopened.locator('summary').click();
   await expect(reopened.locator('.research-tool-detail')).toBeVisible();
-  await expect(reopened).toContainText('返回 4 条结果');
+  await expect(reopened).not.toContainText('返回 4 条结果');
   await page.getByRole('button', { name: '无关事件', exact: true }).click();
   await expect(reopened.locator('.research-tool-detail')).toBeVisible();
   expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
@@ -374,7 +354,8 @@ test('真实 thinking 事件缺少 progress_status 时，终态展开记录不�
   await expect(destinationPanel).toContainText('找到 1 个结果');
   await fixture.push([{ type: 'run_failed', run_id: 'run-generation-sse', message: '离线合成：真实 thinking 事件形状后规划失败。', run_status: 'failed', ts_ms: ts + 6 }]);
   await expect(page.locator('.generation-progress > h2')).toHaveText('旅行规划未完成');
-  await expect(page.locator('.research-panel-title')).toHaveText('旅行规划未完成');
+  // 右侧过程区标题跟随所属阶段；Run 终态由左侧进度标题表达。
+  await expect(page.locator('.research-panel-title')).toHaveText('查找旅行资料');
   // 制定计划文本属于需求整理阶段：选择该阶段后再核对规划卡。
   await page.locator('.generation-progress li').first().getByRole('button').click();
   await expect(planning.locator('.research-agent-state')).toHaveText('已结束');
@@ -389,10 +370,10 @@ test('真实 thinking 事件缺少 progress_status 时，终态展开记录不�
   await page.locator('.generation-progress li').nth(1).getByRole('button').click();
   await expect(destinationPanel.locator('.research-agent-body')).toHaveCount(0);
   await destinationPanel.getByRole('button').click();
-  await expect(destinationPanel).toContainText('青岛 海岸线');
-  await destinationPanel.getByTestId('research-query').locator('summary').click();
-  await expect(destinationPanel).toContainText('返回 1 条结果');
   await expect(destinationPanel).toContainText('找到 1 个结果');
+  await destinationPanel.getByTestId('research-query').locator('summary').click();
+  await expect(destinationPanel.locator('[data-detail-section="input"]')).toContainText('青岛 海岸线');
+  await expect(destinationPanel).not.toContainText('返回 1 条结果');
   await expect(destinationPanel.getByRole('link', { name: '小麦岛公园' })).toBeVisible();
   await page.screenshot({ path: `${EVIDENCE_DIR}/generation-2000-failed-expanded.png` });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -416,13 +397,13 @@ test('真实 thinking 事件后取消也不在终态展开记录保留运行中�
   ]);
   await fixture.push([{ type: 'run_cancelled', run_id: 'run-generation-sse-cancel', final_content: '离线合成：真实 thinking 事件形状后取消。', ts_ms: ts + 3 }]);
   await expect(page.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
-  await expect(page.locator('.research-panel-title')).toHaveText('旅行规划已取消');
+  await expect(page.locator('.research-panel-title')).toHaveText('查找旅行资料');
   await expandProcessPanel(page);
-  // 制定计划文本属于需求整理阶段：选择该阶段后再核对规划卡。
-  // 取消终态下该阶段没有已完成的步骤，卡片如实显示已停止。
+  // 制定计划文本属于需求整理阶段：Run 已进入资料阶段后取消，
+  // 已离开的需求阶段显示已结束，而不是继续保留“进行中/已停止”。
   await page.locator('.generation-progress li').first().getByRole('button').click();
   const planning = page.getByTestId('research-agent-planning');
-  await expect(planning.locator('.research-agent-state')).toHaveText('已停止');
+  await expect(planning.locator('.research-agent-state')).toHaveText('已结束');
   await expect(planning).not.toContainText('正在按顺序安排调研任务');
   await expect(planning.locator('.research-agent-body')).toHaveCount(0);
   await planning.getByRole('button').click();
@@ -529,7 +510,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await expect(page.locator('.generation-progress')).toHaveAttribute('data-active', 'false');
     await expect(page.locator('.generation-progress li.is-active')).toHaveCount(0);
     await expect(page.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
-    await expect(page.locator('.research-panel-title')).toHaveText('旅行规划已取消');
+    await expect(page.locator('.research-panel-title')).toHaveText('整理旅行需求');
     await expectCompactProcessWithoutCards(page);
     expect(await page.locator('.generation-progress li').first().evaluate((element) => getComputedStyle(element, '::before').animationName)).toBe('none');
 
@@ -567,7 +548,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await expect(page.locator('.generation-progress > h2')).toHaveText('旅行规划未完成');
     await expect(page.getByText('这次规划没有完成，你可以回到新旅行重新尝试。', { exact: true })).toBeVisible();
     await expect(page.getByText('旅行方案暂时无法生成，请稍后重试。', { exact: true })).toBeVisible();
-    await expect(page.locator('.research-panel-title')).toHaveText('旅行规划未完成');
+    await expect(page.locator('.research-panel-title')).toHaveText('整理旅行需求');
     await expectCompactProcessWithoutCards(page);
     await page.screenshot({ path: '../test-results/e2e-evidence/generation-layout/generation-2000-failed-r3.png' });
     expect(errors).toEqual([]);
@@ -579,7 +560,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await page.goto('/e2e/fixtures/generation-progress.html');
     await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.cancelAfterPlanning());
     await expect(page.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
-    await expect(page.locator('.research-panel-title')).toHaveText('旅行规划已取消');
+    await expect(page.locator('.research-panel-title')).toHaveText('整理旅行需求');
     await expect(page.getByText('这次规划已取消。', { exact: true })).toBeVisible();
     await expectCompactProcessWithoutCards(page);
     await expect(page.getByText(/正在规划你的旅行|正在准备相关查询/)).toHaveCount(0);
@@ -591,7 +572,7 @@ test.describe('生成工作区卡片、过程区与阶段扫光', () => {
     await page.goto('/e2e/fixtures/generation-progress.html');
     await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.requestCancelAfterPlanning());
     await expect(page.locator('.generation-progress > h2')).toHaveText('正在停止规划');
-    await expect(page.locator('.research-panel-title')).toHaveText('正在停止规划');
+    await expect(page.locator('.research-panel-title')).toHaveText('整理旅行需求');
     await expect(page.getByText('正在停止这次规划。', { exact: true })).toBeVisible();
     await expectCompactProcessWithoutCards(page);
     await expect(page.getByText(/正在规划你的旅行|正在准备相关查询/)).toHaveCount(0);
@@ -623,9 +604,9 @@ test('内部失败、未匹配与激活失败不进入过程展示，成功空�
     await expect(panel).not.toContainText(leaked);
   }
   await expect(panel.locator('[title*="失败调用不应展示"]')).toHaveCount(0);
-  const emptySuccess = page.getByTestId('research-query').filter({ hasText: '雨天空结果' });
+  const emptySuccess = page.getByTestId('research-query').filter({ hasText: '没有返回结果' });
   await expect(emptySuccess).toBeVisible();
-  await expect(emptySuccess).toContainText('没有返回结果');
+  await expect(emptySuccess).toContainText('无结果');
   await expect(panel.getByTestId('research-query').filter({ hasText: '内部失败' })).toHaveCount(0);
   await page.screenshot({ path: `${EVIDENCE_DIR}/workspace-2000-internal-failures-hidden.png` });
   mkdirSync(EVIDENCE_DIR, { recursive: true });
@@ -649,7 +630,7 @@ test('阶段先有正常结果后失败仍按真实生命周期结束并自动�
   await expect(destination.locator('.research-agent-body')).toHaveCount(0);
   await expect(panel).not.toContainText('阶段失败正文不应展示');
   await destination.getByRole('button').click();
-  await expect(destination.locator('.research-agent-body')).toContainText('长春 历史博物馆');
+  await expect(destination.locator('.research-agent-body')).toContainText('伪满皇宫博物院');
   await expect(destination).not.toContainText('阶段失败正文不应展示');
   mkdirSync(EVIDENCE_DIR, { recursive: true });
   writeFileSync(`${EVIDENCE_DIR}/failed-after-result.json`, JSON.stringify({
@@ -665,7 +646,7 @@ test('同 Run 补充轮次重新展开阶段并隔离旧轮次工具详情', asy
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/e2e/fixtures/research-progress.html');
   const destination = page.getByTestId('research-agent-destination');
-  const oldRow = destination.getByTestId('research-query').filter({ hasText: '长春 历史博物馆' });
+  const oldRow = destination.getByTestId('research-query').filter({ hasText: '找到 1 个结果' });
   await oldRow.locator('summary').click();
   await expect(oldRow.getByRole('link', { name: '伪满皇宫博物院' })).toBeVisible();
   await page.getByRole('button', { name: '目的地完成', exact: true }).click();
@@ -675,9 +656,9 @@ test('同 Run 补充轮次重新展开阶段并隔离旧轮次工具详情', asy
   await page.getByRole('button', { name: '补充轮次', exact: true }).click();
   await expect(destination.locator('.research-agent-state')).toHaveText('进行中');
   await expect(destination.locator('button.research-agent-heading')).toHaveAttribute('aria-expanded', 'true');
-  await expect(destination.locator('.research-agent-body')).toContainText('长春 雨天备选');
+  await expect(destination.locator('.research-agent-body')).toContainText('吉林省博物院');
   await expect(oldRow.locator('.research-tool-detail')).not.toBeVisible();
-  const newRow = destination.getByTestId('research-query').filter({ hasText: '长春 雨天备选' });
+  const newRow = destination.getByTestId('research-query').filter({ hasText: '找到 2 个结果' });
   await expect(newRow.getByRole('link', { name: '吉林省博物院' })).not.toBeVisible();
   await newRow.locator('summary').click();
   await expect(newRow.getByRole('link', { name: '吉林省博物院' })).toBeVisible();
@@ -706,8 +687,8 @@ test('组合补查、反馈返研与返研后继续组合在同一工作台可�
   await expect(composition.locator('.research-agent-state')).toHaveText('进行中');
   // 目的地卡回到进行中，返研轮的查询行可展开。
   await expect(destination.locator('.research-agent-state')).toHaveText('进行中');
-  await expect(destination.locator('.research-agent-body')).toContainText('可直接安排的真实景点');
-  const redoRow = destination.getByTestId('research-query').filter({ hasText: '可直接安排的真实景点' });
+  await expect(destination.locator('.research-agent-body')).toContainText('长影旧址博物馆');
+  const redoRow = destination.getByTestId('research-query').filter({ hasText: '找到 2 个结果' });
   await redoRow.locator('summary').click();
   await expect(redoRow.getByRole('link', { name: '长影旧址博物馆' })).toBeVisible();
   mkdirSync(redoEvidenceDir, { recursive: true });
@@ -715,7 +696,7 @@ test('组合补查、反馈返研与返研后继续组合在同一工作台可�
     compositionState: await composition.locator('.research-agent-state').innerText(),
     destinationState: await destination.locator('.research-agent-state').innerText(),
     redoMilestoneVisible: await composition.getByText('已要求按反馈重做').count(),
-    redoToolRowVisible: await destination.getByText('可直接安排的真实景点').count(),
+    redoToolRowVisible: await destination.getByText('长影旧址博物馆').count(),
   }, null, 2));
   await page.screenshot({ path: `${redoEvidenceDir}/process-2000-composition-redo.png`, fullPage: true });
 });
@@ -736,10 +717,10 @@ test('生成工作台面板把返研重做过程留在当前活动区并归并�
   const destination = page.getByTestId('research-agent-destination');
   await expect(destination).toBeVisible();
   await expect(destination.locator('.research-agent-state')).toHaveText('进行中');
-  await expect(destination.locator('.research-agent-body')).toContainText('可直接安排的真实景点');
+  await expect(destination.locator('.research-agent-body')).toContainText('长影旧址博物馆');
   await expect(page.getByTestId('research-agent-destination（第2轮补充）')).toHaveCount(0);
   // 重做期间过程区焦点回到研究：返研内容在当前活动区可见。
-  await expect(page.locator('.generation-activity')).toContainText('可直接安排的真实景点');
+  await expect(page.locator('.generation-activity')).toContainText('长影旧址博物馆');
   // 继续组合后焦点回到路线，组合卡带着补查行与返研结论出现。
   await page.evaluate(() => (window as GenerationFixtureWindow).__generationFixture?.compositionContinue());
   const composition = page.getByTestId('research-agent-itinerary');
@@ -750,7 +731,7 @@ test('生成工作台面板把返研重做过程留在当前活动区并归并�
   await expect(composition.locator('.research-agent-body')).toContainText('门到门 25 分钟');
   await expect(composition.locator('.research-agent-body')).toContainText('已要求按反馈重做');
   await expect(composition.locator('.research-agent-state')).toHaveText('进行中');
-  await expect(page.locator('.generation-activity')).not.toContainText('可直接安排的真实景点');
+  await expect(page.locator('.generation-activity')).not.toContainText('长影旧址博物馆');
   // 焦点回到路线：研究阶段的卡片退出当前活动区（可从左侧阶段切回查看）。
   await expect(page.getByTestId('research-agent-destination')).toHaveCount(0);
   mkdirSync(redoEvidenceDir, { recursive: true });
@@ -763,11 +744,11 @@ test('新 Run 不继承旧 Run 的工具详情展开状态', async ({ page }) =>
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/e2e/fixtures/research-progress.html');
   await page.getByRole('button', { name: '长查询', exact: true }).click();
-  const longRow = page.getByTestId('research-query').filter({ hasText: '杭州西湖周边适合雨天慢慢散步' });
+  const longRow = page.getByTestId('research-query').filter({ hasText: '找到 1 个适合雨天散步的街区' });
   await longRow.locator('summary').click();
   await expect(longRow.getByRole('link', { name: '北山街雨天散步路线' })).toBeVisible();
   await page.getByRole('button', { name: '新 Run', exact: true }).click();
-  const newRunRow = page.getByTestId('research-query').filter({ hasText: '杭州西湖周边适合雨天慢慢散步' });
+  const newRunRow = page.getByTestId('research-query').filter({ hasText: '找到 1 个适合雨天散步的街区' });
   await expect(newRunRow.locator('.research-tool-detail')).not.toBeVisible();
   const newRunDetailVisibleBeforeClick = await newRunRow.locator('.research-tool-detail').isVisible();
   await newRunRow.locator('summary').click();

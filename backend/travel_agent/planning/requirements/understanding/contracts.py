@@ -26,7 +26,7 @@ class UnderstandingQuestion(BaseModel):
 
     id: str = Field(min_length=1, max_length=64)
     question: str = Field(min_length=1, max_length=500)
-    kind: Literal["single", "multiple"] = "single"
+    kind: Literal["single", "multiple", "date_range"] = "single"
     options: List[UnderstandingQuestionOption] = Field(default_factory=list)
 
 

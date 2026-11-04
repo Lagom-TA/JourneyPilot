@@ -92,7 +92,7 @@ UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/jour
 UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py doctor
 ```
 
-配置选择 `rerank.provider=cross_encoder` 时还需要安装 `--group cross-encoder`。迁移被拒绝时按 CLI 输出定位原因：**未版本化的非空库一律拒绝**，需要重建数据库或从匹配的备份恢复，不要手工 `stamp` 迁移版本。API Key 按 README 使用环境变量；排障记录中不要粘贴密钥或完整私有配置。
+配置选择 `rerank.provider=cross_encoder` 时还需要安装 `--group cross-encoder`。迁移被拒绝时按 CLI 输出定位原因：未版本化的非空库会被拒绝；不要擅自删表、清卷或手工 `stamp` 迁移版本。开发、调试和测试统一使用当前配置的数据库，不另建数据库或切换到其他库，除非用户明确要求；删除、清空、重建数据库或其他可能批量破坏现有数据的操作，须先确认影响并取得用户明确授权。API Key 按 README 使用环境变量；排障记录中不要粘贴密钥或完整私有配置。
 
 ## 页面未更新或 API 不通
 

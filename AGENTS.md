@@ -14,7 +14,8 @@ JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
 - 管理：`./run.sh status`、`./run.sh restart`、`./run.sh stop`、`./run.sh logs [backend|frontend]`、`./run.sh help`。
 - `restart` 不会保存环境变量：它等价于 `stop` + 重新执行 `start`。端口或数据库/Redis 覆盖要么每次带上，要么写进 `config.yaml`。
 - 前端支持热更新；`run.sh` 启动的后端固定关闭自动重载，修改 Python 代码后需要 `./run.sh restart`。
-- 启动失败、端口冲突或服务异常时，查阅 [本地启动排障](docs/local-development-troubleshooting.md)。
+- 本地开发、调试和测试统一使用当前配置的数据库，不另建数据库或切换到其他库，除非用户明确要求。删除、清空、重建数据库或其他可能批量破坏现有数据的操作，须先确认影响并取得用户明确授权。
+- 启动失败、端口冲突或服务异常时，按需查阅 [本地启动排障](docs/local-development-troubleshooting.md)。
 
 ## 语言与注释
 

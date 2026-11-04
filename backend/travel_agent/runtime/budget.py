@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any, Dict, Literal, Optional, get_args
 from pydantic import Field
@@ -170,6 +172,11 @@ class RunBudgetLedger:
     #: 每个工具在这个 Run 上**重试**了多少轮。首次调用不计在内。
     tool_retries: Dict[str, int] = field(default_factory=dict)
     seeded: bool = False
+    pending_llm_calls: int = 0
+    pending_input_tokens: int = 0
+    pending_output_tokens: int = 0
+    budget_changed: asyncio.Condition = field(default_factory=asyncio.Condition, repr=False)
+    seed_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     def usage(self) -> RunBudgetUsage:
         return RunBudgetUsage(
@@ -201,6 +208,40 @@ class RunBudgetLedger:
         )
         if dimension is not None:
             raise RunBudgetExhausted(operation, dimension, self.snapshot, usage)
+
+    @asynccontextmanager
+    async def reserve_model(self, operation: str, *, input_tokens: int, output_tokens: int):
+        """在途请求占用额度；已有请求结束后再判断是否真的耗尽。"""
+        async with self.budget_changed:
+            while True:
+                from .cancellation import check_cancel_requested
+
+                check_cancel_requested()
+                usage = self.usage().model_copy(update={
+                    "llm_calls": self.llm_calls + self.pending_llm_calls,
+                    "input_tokens": self.input_tokens + self.pending_input_tokens,
+                    "output_tokens": self.output_tokens + self.pending_output_tokens,
+                })
+                dimension = exhausted_dimension(
+                    self.snapshot, usage, llm_calls=1,
+                    input_tokens=input_tokens, output_tokens=output_tokens,
+                )
+                if dimension is None:
+                    self.pending_llm_calls += 1
+                    self.pending_input_tokens += input_tokens
+                    self.pending_output_tokens += output_tokens
+                    break
+                if not self.pending_llm_calls:
+                    raise RunBudgetExhausted(operation, dimension, self.snapshot, usage)
+                await self.budget_changed.wait()
+        try:
+            yield
+        finally:
+            async with self.budget_changed:
+                self.pending_llm_calls -= 1
+                self.pending_input_tokens -= input_tokens
+                self.pending_output_tokens -= output_tokens
+                self.budget_changed.notify_all()
 
     def record_llm_call(
         self,
@@ -297,40 +338,40 @@ async def seed_run_budget(
     *,
     cost_ledger_store: Any,
 ) -> RunBudgetLedger:
-    """把台账里已花的 token/费用读回本进程的账本。
-
-    只做一次（``seeded``）。读不到台账时**不清零**也不阻断：账本从 0 起算意味着一个
-    恢复的 Run 可能多花一轮，而拒绝启动意味着它一点都跑不了 —— 前者是可以看见的偏差，
-    后者是一次不必要的中断。
-    """
+    """读取一次已用预算；启用上限时无法读取不能继续发起调用。"""
 
     ledger = ledger_for(run_id, snapshot)
-    if ledger.seeded:
+    async with ledger.seed_lock:
+        if ledger.seeded:
+            return ledger
+        try:
+            summary = await cost_ledger_store.run_summary(run_id)
+        except Exception as exc:
+            if snapshot.enforce_limits:
+                raise RuntimeError("预算基线不可用，无法安全继续") from exc
+            logger.warning("预算基线读取失败，沿用当前账本 | run=%s error=%s", run_id, exc)
+            summary = {}
+        totals = summary or {}
+        ledger.llm_calls = int(totals.get("call_count") or 0)
+        ledger.input_tokens = int(totals.get("total_input_tokens") or 0)
+        ledger.output_tokens = int(totals.get("total_output_tokens") or 0)
+        ledger.cost_usd = float(totals.get("total_cost_usd") or 0.0)
+        ledger.unpriced_calls = max(0, int(totals.get("unpriced_call_count") or 0))
+        if totals.get("cost_complete") is False:
+            ledger.unpriced_calls = max(1, ledger.unpriced_calls)
+        from travel_agent.bootstrap.registry import registered_components
+        from travel_agent.storage.worker_journal_store import TOOL_BUDGET_SCOPE
+
+        components = registered_components()
+        store = getattr(components, "worker_journal_store", None) if components else None
+        if store is not None:
+            version, tool_usage = await store.load(run_id, TOOL_BUDGET_SCOPE)
+            if not version:
+                raise RuntimeError("工具预算记录不存在，不能安全恢复")
+            ledger.tool_calls = int(tool_usage.get("calls") or 0)
+            ledger.tool_retries = dict(tool_usage.get("retries") or {})
+        ledger.seeded = True
         return ledger
-    ledger.seeded = True
-    try:
-        summary = await cost_ledger_store.run_summary(run_id)
-    except Exception as exc:
-        logger.warning("预算基线读取失败，账本从 0 起算 | run=%s error=%s", run_id, exc)
-        return ledger
-    totals = summary or {}
-    ledger.llm_calls = int(totals.get("call_count") or 0)
-    ledger.input_tokens = int(totals.get("total_input_tokens") or 0)
-    ledger.output_tokens = int(totals.get("total_output_tokens") or 0)
-    ledger.cost_usd = float(totals.get("total_cost_usd") or 0.0)
-    ledger.unpriced_calls = max(0, int(totals.get("unpriced_call_count") or 0))
-    if totals.get("cost_complete") is False:
-        ledger.unpriced_calls = max(1, ledger.unpriced_calls)
-    if ledger.llm_calls:
-        logger.info(
-            "预算基线已载入 | run=%s calls=%d in=%d out=%d cost=%.6f",
-            run_id,
-            ledger.llm_calls,
-            ledger.input_tokens,
-            ledger.output_tokens,
-            ledger.cost_usd,
-        )
-    return ledger
 
 
 def current_budget_ledger() -> Optional[RunBudgetLedger]:

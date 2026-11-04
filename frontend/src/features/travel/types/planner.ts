@@ -24,21 +24,23 @@ export interface RouteDecision {
     requires_confirmation?: boolean;
 }
 export interface ControlledTripIdentity {
-    origin: PlaceIdentity;
+    origin: PlaceIdentity | null;
     destinations: PlaceIdentity[];
-    start_date: string;
-    end_date: string;
+    start_date: string | null;
+    end_date: string | null;
+    dates_assumed: boolean;
     party: {
-        adults: number;
-        children: number;
-        elderly_companions: boolean;
-        accessibility_required: boolean;
-    };
+        total: number | null;
+        adults: number | null;
+        children: number | null;
+        elderly_companions: boolean | null;
+        accessibility_required: boolean | null;
+    } | null;
     style: {
         primary: string;
         secondary_interests: string[];
         source: 'current' | 'suggested';
-    };
+    } | null;
 }
 export interface PlannerOption {
     id: string;
@@ -64,7 +66,7 @@ export interface UnderstandingQuestionOption {
 export interface UnderstandingQuestion {
     id: string;
     question: string;
-    kind: 'single' | 'multiple';
+    kind: 'single' | 'multiple' | 'date_range';
     options: UnderstandingQuestionOption[];
 }
 export interface UnderstandingAnswer {

@@ -13,11 +13,11 @@ _ROUND_SUFFIX = re.compile(r"_r(\d+)$")
 
 
 def _latest_packets(
-    packets: Dict[str, ResearchPacket], *, generation_id: str
+    packets: Dict[str, ResearchPacket], *, run_id: str, generation_id: str
 ) -> Dict[str, ResearchPacket]:
     latest: dict[str, tuple[int, ResearchPacket]] = {}
     for key, packet in packets.items():
-        if packet.generation_id != generation_id:
+        if packet.run_id != run_id or packet.generation_id != generation_id:
             continue
         task_key = key.split("@", 1)[0]
         base = strip_round_suffix(task_key)
@@ -32,12 +32,12 @@ def _latest_packets(
 
 
 def _worker_rounds_by_base(
-    research_packets: Dict[str, ResearchPacket], generation_id: str
+    research_packets: Dict[str, ResearchPacket], run_id: str, generation_id: str
 ) -> Dict[str, int]:
     """当前规划版本内每个 Worker 基础名出现过的最高轮次。"""
     rounds: Dict[str, int] = {}
     for key, packet in research_packets.items():
-        if packet.generation_id != generation_id:
+        if packet.run_id != run_id or packet.generation_id != generation_id:
             continue
         task_key = key.split("@", 1)[0]
         base = strip_round_suffix(task_key)
@@ -58,13 +58,16 @@ def _catalog_packets(state: TravelAgentState) -> list[ResearchPacket]:
     generation_id = state.planning_generation.generation_id
     current = _latest_packets(
         state.research_packets,
+        run_id=state.run_id,
         generation_id=generation_id,
     )
     # 组合已请求返研但返研轮未产出 packet 时，该 Worker 的旧轮次成果属于
     # 被判不可用的错误成果，整体退出目录，不再供给后续决策。
     redo_rounds = state.research_redo_rounds or {}
     if redo_rounds:
-        worker_rounds = _worker_rounds_by_base(state.research_packets, generation_id)
+        worker_rounds = _worker_rounds_by_base(
+            state.research_packets, state.run_id, generation_id
+        )
         for base in [
             base
             for base in current
@@ -93,8 +96,11 @@ def _catalog_packets(state: TravelAgentState) -> list[ResearchPacket]:
         packet.research_packet_id for packet in state.research_packets.values()
     }
     for packet in previous.research_packets:
+        if packet.query_context.get("activation_source") == "transport_followup":
+            continue
         if (
             packet.worker_kind not in current
+            or packet.run_id != state.run_id
             or packet.generation_id != generation_id
             or packet.fact_data_revision != state.fact_data_revision
         ):
@@ -116,6 +122,26 @@ def _catalog_packets(state: TravelAgentState) -> list[ResearchPacket]:
             continue
         packets.append(_packet_candidate_closure(packet, retained))
         current_packet_ids.add(packet.research_packet_id)
+    current_candidate_ids = {
+        candidate.candidate_id for packet in packets for candidate in packet.candidates
+    }
+    for packet in previous.research_packets:
+        if (
+            packet.query_context.get("activation_source") != "transport_followup"
+            or packet.run_id != state.run_id
+            or packet.generation_id != generation_id
+            or packet.fact_data_revision != state.fact_data_revision
+            or packet.research_packet_id in current_packet_ids
+        ):
+            continue
+        retained = [
+            candidate for candidate in packet.candidates
+            if candidate.candidate_id not in current_candidate_ids
+        ]
+        if retained:
+            packets.append(_packet_candidate_closure(packet, retained))
+            current_packet_ids.add(packet.research_packet_id)
+            current_candidate_ids.update(candidate.candidate_id for candidate in retained)
     return packets
 
 

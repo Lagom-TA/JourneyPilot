@@ -32,14 +32,14 @@ describe('normalizePlanApprovalGate', () => {
             run_id: 'run_plan_failed',
             payload: {
                 plan: { steps: [] },
-                plan_text: '**研究方案暂未生成**\n可以重试、补充要求或取消。',
+                plan_text: '可以重试、补充要求或取消。',
                 approval_token: 'failed-plan-token',
                 decision_options: ['retry', 'supplement', 'cancel'],
             },
         }, 'pending', 'restored');
         expect(gate?.steps).toEqual([]);
         expect(gate?.decisionOptions).toEqual(['retry', 'supplement', 'cancel']);
-        expect(gate?.planText).toContain('研究方案暂未生成');
+        expect(gate?.planText).toBe('可以重试、补充要求或取消。');
         expect(gate?.approvalToken).toBe('failed-plan-token');
     });
 

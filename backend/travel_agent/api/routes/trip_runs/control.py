@@ -15,11 +15,10 @@ from travel_agent.runtime.cancellation import run_control_registry
 from travel_agent.api.run_authorization import _get_authorized_run
 from travel_agent.api.run_errors import raise_run_use_case_error
 from travel_agent.planning.run_control import cancel_run
-from travel_agent.planning.requirements.supplements import queue_supplement
+from travel_agent.planning.requirements.supplements import reject_running_supplement
 from travel_agent.planning.run_errors import (
     RunNotFound,
     RunNotCancellable,
-    LockedIdentitySupplement,
     RunNotAcceptingSupplement,
 )
 
@@ -31,13 +30,7 @@ router = APIRouter(prefix="/api/trip-runs", tags=["trip-runs"])
 async def add_trip_run_supplement(
     run_id: str, request: TripRunSupplementRequest
 ) -> TripRunSupplementResponse:
-    """在下一个可协作节点边界追加要求。
-
-    要求先写入 `trip_run_commands` 再通知执行器，是否接受不取决于请求命中哪个进程。
-    通知丢失或进程切换后，执行器下一次轮询仍能读到该命令。
-
-    补充内容由规划流程结合当前旅行理解，并在适当的节点边界更新需求。
-    """
+    """运行中的新消息在当前轮结束后通过对话入口发送。"""
     components = get_components()
     detail = await components.trip_run_store.get_detail(run_id, event_limit=0)
     if detail is None:
@@ -45,27 +38,13 @@ async def add_trip_run_supplement(
     if request.session_id and detail.run.session_id != request.session_id:
         raise HTTPException(status_code=403, detail="无权修改该 TripRun")
     try:
-        outcome = await queue_supplement(
-            run_id,
+        await reject_running_supplement(
             run=detail.run,
-            category=request.category,
-            content=request.content,
             trip_run_store=components.trip_run_store,
-            command_store=components.run_command_store,
-            notify=run_control_registry.notify,
+            delivery_bundle_store=components.delivery_bundle_store,
         )
-    except (LockedIdentitySupplement, RunNotAcceptingSupplement) as error:
+    except RunNotAcceptingSupplement as error:
         raise_run_use_case_error(error)
-    command = outcome.command
-    return TripRunSupplementResponse(
-        run_id=run_id,
-        command_id=command.command_id,
-        accepted=True,
-        status=command.status.value,
-        category=request.category,
-        message=outcome.message,
-        impact_scope=outcome.impact_scope,
-    )
 
 
 @router.post("/{run_id}/control", response_model=TripRunControlResponse)

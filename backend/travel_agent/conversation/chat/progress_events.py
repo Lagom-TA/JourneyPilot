@@ -7,6 +7,12 @@ from travel_agent.planning.presentation import (
     get_agent_display_name,
     get_step_display_name,
 )
+from travel_agent.public_note import (
+    WORK_EXPLANATION_KIND,
+    WORK_EXPLANATION_SOURCE,
+    sanitize_public_note,
+    work_explanation_step_id,
+)
 from travel_agent.utils.json_helpers import strip_think_blocks
 from travel_agent.planning.delivery.public.bundle import public_event_manifest
 from travel_agent.conversation.stream_text import (
@@ -33,7 +39,7 @@ _PROGRESS_STEP_NODES = {
     "weather_context_builder",
     "dispatcher",
 }
-_DISPATCHER_PROGRESS_TEXT = "正在按顺序安排调研任务"
+_DISPATCHER_PROGRESS_TEXT = "正在安排调研任务"
 
 
 async def _handle_agent_activity(
@@ -85,6 +91,63 @@ async def _handle_node_activity(
     if payload.get("status") == "started" and node in _DEEP_WORKER_NODES:
         async for event in _handle_agent_activity(("agent_activity", node, None), ctx):
             yield event
+
+
+async def _handle_work_explanation(
+    item: tuple, ctx: ChatPresentation
+) -> AsyncIterator[Dict[str, Any]]:
+    """work_explanation 事件：工具轮中模型面向用户写出的公开工作说明。
+
+    服务端再校验一次（投影层同样会校验），并以稳定 step_id 去重。说明只进入
+    过程区，不是助手正文，也不是可核实的旅行事实。
+    """
+
+    _, node_name, info = item
+    content = sanitize_public_note(str(info.get("content") or ""))
+    if not content:
+        return
+    agent_name = get_agent_display_name(node_name)
+    round_number = info.get("round")
+    call_id = str(info.get("call_id") or "")
+    seq = info.get("seq")
+    step_id = str(info.get("step_id") or "") or work_explanation_step_id(
+        run_id=ctx.trace_run_id or ctx.message_id,
+        node=node_name,
+        round_number=int(round_number or 0),
+        call_id=call_id,
+        seq=int(seq or 0),
+    )
+    if any(step.get("step_id") == step_id for step in ctx.thinking_steps):
+        return
+    now_iso = datetime.now(timezone.utc).isoformat()
+    ctx.thinking_steps.append(
+        {
+            "step_id": step_id,
+            "agent_name": agent_name,
+            "step_name": "模型工作说明",
+            "content": content,
+            "timestamp": now_iso,
+            "end_time": now_iso,
+            "kind": WORK_EXPLANATION_KIND,
+            "round": round_number,
+            "call_id": call_id,
+            "seq": seq,
+        }
+    )
+    yield {
+        "type": "work_explanation",
+        "message_id": ctx.message_id,
+        "run_id": ctx.trace_run_id,
+        "agent_name": agent_name,
+        "node": node_name,
+        "step_id": step_id,
+        "round": round_number,
+        "call_id": call_id,
+        "seq": seq,
+        "content": content,
+        "source": WORK_EXPLANATION_SOURCE,
+        "ts_ms": run_ts_ms(),
+    }
 
 
 async def _handle_context_report(
@@ -153,6 +216,15 @@ async def _handle_state_update(
 
         return
 
+    if node_name == "understanding_agent" and "controlled_trip_identity" in state_update:
+        yield {
+            "type": "trip_identity_updated",
+            "message_id": ctx.message_id,
+            "run_id": ctx.trace_run_id,
+            "controlled_trip_identity": state_update["controlled_trip_identity"],
+            "ts_ms": run_ts_ms(),
+        }
+
     summary_card = (
         state_update.get("trip_summary_card")
         if isinstance(state_update, dict)
@@ -218,7 +290,9 @@ async def _handle_state_update(
         execution_plan = state_update.get("execution_plan", [])
         if execution_plan:
             agents_desc = " → ".join(
-                "/".join(get_agent_display_name(a) for a in g) for g in execution_plan
+                "、".join(get_agent_display_name(a) for a in group)
+                + ("（并行）" if len(group) > 1 else "")
+                for group in execution_plan
             )
             thinking_content = f"制定调研计划：{agents_desc}"
         else:

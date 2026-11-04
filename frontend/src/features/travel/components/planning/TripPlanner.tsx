@@ -114,6 +114,7 @@ export const TripPlanner: React.FC<{
   const [config, setConfig] = React.useState<TripPlannerConfiguration | null>(null);
   const [configError, setConfigError] = React.useState<RequestFailure | null>(null);
   const [origin, setOrigin] = React.useState<PlaceIdentity | null>(null);
+  const [originQuery, setOriginQuery] = React.useState<string | null>(null);
   const initialDestinationValues = initialDestinations.slice(0, MAX_DESTINATIONS);
   const [destinations, setDestinations] = React.useState<Array<PlaceIdentity | null>>(
     initialDestinationValues.length ? initialDestinationValues : [null],
@@ -242,7 +243,9 @@ export const TripPlanner: React.FC<{
   const submitStructured = async () => {
     setError('');
     const selectedDestinations = destinations.filter((item): item is PlaceIdentity => Boolean(item));
-    if (!origin && selectedDestinations.length === 0 && !startDate && !guidedText.trim()) {
+    const pendingDestinations = destinationQueries.slice(selectedDestinations.length).map((item) => item.trim()).filter(Boolean);
+    const pendingOrigin = !origin ? (originQuery ?? extracted?.origin ?? '').trim() : '';
+    if (!origin && !pendingOrigin && selectedDestinations.length === 0 && pendingDestinations.length === 0 && !startDate && !guidedText.trim()) {
       setError('先填一点想法或条件，再开始规划。');
       return;
     }
@@ -251,30 +254,36 @@ export const TripPlanner: React.FC<{
       setError(parsedBudget.error);
       return;
     }
-    const identityComplete = Boolean(origin && selectedDestinations.length > 0 && startDate && endDate);
-    const identity: ControlledTripIdentity | null = identityComplete && origin
-      ? {
-        origin,
-        destinations: selectedDestinations,
-        start_date: startDate!,
-        end_date: endDate!,
-        party: { adults, children, elderly_companions: elderly, accessibility_required: false },
-        style: { primary, secondary_interests: interests, source: primaryTouched ? 'current' : 'suggested' },
-      }
-      : null;
+    const identity: ControlledTripIdentity = {
+      origin,
+      destinations: selectedDestinations,
+      start_date: startDate || null,
+      end_date: endDate || null,
+      dates_assumed: false,
+      party: { total: adults ? adults + children : null, adults: adults || null, children, elderly_companions: elderly, accessibility_required: null },
+      style: primaryTouched || interests.length > 0
+        ? { primary, secondary_interests: interests, source: primaryTouched ? 'current' : 'suggested' }
+        : null,
+    };
     const numericBudget = parsedBudget.value;
     const facts: string[] = [];
     if (origin) facts.push(`出发地：${origin.name}`);
+    else if (pendingOrigin) facts.push(`出发地（待核实）：${pendingOrigin}`);
     if (selectedDestinations.length > 0) facts.push(`目的地：${selectedDestinations.map((item) => item.name).join('、')}`);
+    if (pendingDestinations.length > 0) facts.push(`目的地（待核实）：${pendingDestinations.join('、')}`);
     if (startDate && endDate) facts.push(`日期：${startDate} 至 ${endDate}`);
-    facts.push(`同行：${adults} 位成人${children ? `、${children} 位儿童` : ''}${elderly ? '、长辈同行' : ''}`);
-    facts.push(`风格：${primary}${interests.length ? `（${interests.join('、')}）` : ''}`);
+    else if (startDate) facts.push(`开始日期：${startDate}`);
+    else if (endDate) facts.push(`结束日期：${endDate}`);
+    if (adults) facts.push(`同行：${adults} 位成人${children ? `、${children} 位儿童` : ''}${elderly ? '、长辈同行' : ''}`);
+    if (primaryTouched) facts.push(`风格：${primary}${interests.length ? `（${interests.join('、')}）` : ''}`);
+    else if (interests.length) facts.push(`兴趣：${interests.join('、')}`);
     if (numericBudget !== null) facts.push(`总预算约 ${numericBudget.toLocaleString('zh-CN')} 元`);
     const summary = [guidedText.trim(), `按条件规划——${facts.join('；')}`].filter(Boolean).join('\n');
     onHomePlanSubmitted?.();
     await sendMessage(summary, {
       route: 'trip_planning',
-      ...(identity ? { controlledTripIdentity: identity } : {}),
+      newTrip: true,
+      controlledTripIdentity: identity,
       assistantPendingLabel: '正在整理旅行信息',
     });
   };
@@ -286,6 +295,7 @@ export const TripPlanner: React.FC<{
     onHomePlanSubmitted?.();
     // 不指定路径：普通问题走轻量回答，规划想法由模型判断后进入工作台理解。
     await sendMessage(text, {
+      newTrip: true,
       assistantPendingLabel: '正在理解你的旅行想法',
     });
   };
@@ -488,7 +498,7 @@ export const TripPlanner: React.FC<{
             ) : (
               <>
                 <div className="planner-route-fields">
-                  <PlaceField role="origin" value={origin} onChange={setOrigin} label="从哪里出发" frequent={!extracted.origin} initialQuery={extracted.origin} />
+                  <PlaceField role="origin" value={origin} onChange={setOrigin} onQueryChange={setOriginQuery} label="从哪里出发" frequent={!extracted.origin} initialQuery={extracted.origin} />
                   <ArrowRight className="planner-route-arrow" size={16} aria-hidden />
                   <div className="planner-destination-field-wrap">
                     <span className="planner-field-label">去哪里</span>

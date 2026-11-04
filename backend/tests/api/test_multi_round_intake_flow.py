@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -63,6 +64,8 @@ class UnderstandingModel:
             # 查询结果已回到同一模型：提出第一轮问题。
             yield {"type": "finish", "content": json.dumps({
                 "action": "ask",
+                "trip_identity": IDENTITY,
+                "requirements": "从上海去青岛放松几天",
                 "questions": [{"id": "pace", "question": "想慢慢逛还是排满？", "kind": "single",
                                "options": [{"id": "slow", "label": "慢慢逛"}, {"id": "full", "label": "排满"}]}],
             }, ensure_ascii=False), "tool_calls": []}
@@ -72,6 +75,7 @@ class UnderstandingModel:
             yield {"type": "finish", "content": json.dumps({
                 "action": "ready",
                 "trip_identity": IDENTITY,
+                "requirements": "从上海去青岛放松几天；想慢慢逛还是排满？：慢慢逛",
             }, ensure_ascii=False), "tool_calls": []}
             return
         # 回答后再查一次。
@@ -84,13 +88,7 @@ class UnderstandingModel:
         if "研究协调员" in system:
             payload = json.loads(messages[-1]["content"])
             self.plan_request = payload
-            return json.dumps({
-                "summary": "围绕海边与慢节奏安排青岛。",
-                "destination_task": "调查青岛适合慢游的海边候选。",
-                "transport_task": "安排上海到青岛的往返交通。",
-                "accommodation_task": "研究靠近海边的住宿。",
-                "itinerary_task": "把海边与休息安排进两天。",
-            }, ensure_ascii=False)
+            return json.dumps({"summary": "围绕海边与慢节奏安排青岛。"}, ensure_ascii=False)
         raise AssertionError("多轮理解测试不应调用其他模型路径")
 
 
@@ -127,7 +125,7 @@ async def offline_graph(monkeypatch):
     monkeypatch.setattr(react, "get_tool_registry", lambda: registry)
     monkeypatch.setattr(react, "apply_tool_exposure", lambda tools, name: ToolExposurePlan(False, name, tuple(item["schema"] for item in tools), "", 0, 0, len(tools), len(tools)))
 
-    async def available(_selected):
+    async def available():
         return registry.get_tools_as_schemas()
 
     monkeypatch.setattr(understanding_agent, "get_available_tools", available)
@@ -159,6 +157,7 @@ def _initial_state():
         run_id="understanding-flow",
         session_id="understanding-flow",
         user_query="从上海去青岛放松几天",
+        controlled_trip_identity=IDENTITY,
     )
 
 
@@ -199,7 +198,13 @@ async def test_understanding_rounds_reach_the_plan_gate_with_answers_in_requirem
     assert "海边" in plan_gate["plan_text"]
     # 回答后再查：第二轮模型调用先发起了一次新检索。
     assert offline_graph.searches == ["青岛 11 月 海边", "青岛 慢节奏 景点"]
-    assert len(offline_graph.journal.rows) == 2
+    understanding_scopes = [
+        scope for run_id, scope in offline_graph.journal.rows
+        if run_id == "understanding-flow" and scope.startswith("understanding_agent:")
+    ]
+    assert len(understanding_scopes) == 2
+    _, budget = await offline_graph.journal.load("understanding-flow", "__tool_budget__")
+    assert budget["calls"] == 2
     # 模型确实收到了用户的回答，不会重复询问已解决的问题。
     answered_context = offline_graph.model.messages_log[-2]
     assert any(
@@ -212,8 +217,8 @@ async def test_understanding_rounds_reach_the_plan_gate_with_answers_in_requirem
     run = await offline_graph.runs.get_run("understanding-flow")
     assert run.controlled_trip_identity["destinations"][0]["name"] == "青岛"
     # 方案请求读到含问答的需求文字。
-    assert "想慢慢逛还是排满？：慢慢逛" in offline_graph.model.plan_request["用户需求与回答"]
-    assert "从上海去青岛放松几天" in offline_graph.model.plan_request["用户需求与回答"]
+    assert "想慢慢逛还是排满？：慢慢逛" in offline_graph.model.plan_request["整理后的旅行要求"]
+    assert "从上海去青岛放松几天" in offline_graph.model.plan_request["整理后的旅行要求"]
 
 
 async def test_invalid_identity_is_repaired_with_worker_journal(offline_graph, monkeypatch):
@@ -227,10 +232,10 @@ async def test_invalid_identity_is_repaired_with_worker_journal(offline_graph, m
             self.messages_log.append(deepcopy(messages))
             identity = deepcopy(IDENTITY)
             if self.calls == 1:
-                identity["origin"]["kind"] = "城市"
+                identity["party"]["adults"] = -1
             yield {
                 "type": "finish",
-                "content": json.dumps({"action": "ready", "trip_identity": identity}, ensure_ascii=False),
+                "content": json.dumps({"action": "ready", "trip_identity": identity, "requirements": "从上海去青岛放松几天"}, ensure_ascii=False),
                 "tool_calls": [],
             }
 
@@ -244,10 +249,105 @@ async def test_invalid_identity_is_repaired_with_worker_journal(offline_graph, m
 
     assert result["__interrupt__"][0].value["gate"] == "plan"
     assert model.calls == 2
-    assert any("trip_identity 校验未通过" in str(message.get("content")) for message in model.messages_log[1])
+    assert any("请修正本轮输出格式" in str(message.get("content")) for message in model.messages_log[1])
     payload = next(iter(offline_graph.journal.rows.values()))[1]
     assert payload["understanding_react_0"]["done"]
     assert payload["understanding_react_1"]["done"]
+
+
+async def test_understanding_repairs_invalid_output_and_recovers_each_attempt(offline_graph, monkeypatch):
+    from travel_agent.planning.nodes import NODE_UNDERSTANDING_AGENT
+    from travel_agent.planning.recovery import invocation_scope, with_worker_recovery
+    from travel_agent.planning.requirements.understanding import agent as understanding_agent
+
+    class RepairModel:
+        def __init__(self):
+            self.requests = []
+            self.interrupted = False
+
+        async def ainvoke_with_tools_events(self, messages, tools):
+            self.requests.append([dict(message) for message in messages])
+            if len(self.requests) == 1:
+                yield {"type": "finish", "content": "不是 JSON", "tool_calls": []}
+            elif not self.interrupted:
+                self.interrupted = True
+                raise asyncio.CancelledError()
+            else:
+                yield {"type": "finish", "content": json.dumps({
+                    "action": "ready", "trip_identity": IDENTITY,
+                    "requirements": "从上海去青岛放松几天",
+                }, ensure_ascii=False), "tool_calls": []}
+
+    model = RepairModel()
+    monkeypatch.setattr(understanding_agent, "llm_for_task", lambda *args, **kwargs: model)
+    state = _initial_state()
+    config = offline_graph.config
+    recovered = with_worker_recovery(NODE_UNDERSTANDING_AGENT, understanding_agent.understanding_agent_node)
+    with pytest.raises(asyncio.CancelledError):
+        await recovered(state, config)
+
+    store = config["configurable"]["worker_journal_store"]
+    _, payload = await store.load(state.run_id, invocation_scope(state, NODE_UNDERSTANDING_AGENT, config))
+    assert payload["understanding_react_0"]["done"] is True
+    assert payload["understanding_react_1"]["phase"] == "request_started"
+
+    result = await recovered(state, config)
+    assert result["controlled_trip_identity"]["destinations"][0]["name"] == "青岛"
+    assert len(model.requests) == 3
+    assert "请修正本轮输出格式" in model.requests[-1][-1]["content"]
+    assert await recovered(state, config) == result
+    assert len(model.requests) == 3
+
+
+async def test_understanding_repair_recovers_tool_without_repeating_it(offline_graph, monkeypatch):
+    from travel_agent.planning.nodes import NODE_UNDERSTANDING_AGENT
+    from travel_agent.planning.recovery import invocation_scope, with_worker_recovery
+    from travel_agent.planning.requirements.understanding import agent as understanding_agent
+    from travel_agent.tools import react
+
+    class RepairModel:
+        def __init__(self):
+            self.calls = 0
+
+        async def ainvoke_with_tools_events(self, messages, tools):
+            self.calls += 1
+            if self.calls == 1:
+                yield {"type": "finish", "content": "不是 JSON", "tool_calls": []}
+            elif self.calls == 2:
+                yield {"type": "finish", "content": "", "tool_calls": [
+                    {"id": "repair-search", "name": "free_web_search", "arguments": {"query": "青岛 海边"}},
+                ]}
+            else:
+                yield {"type": "finish", "content": json.dumps({
+                    "action": "ready", "trip_identity": IDENTITY,
+                    "requirements": "从上海去青岛放松几天",
+                }, ensure_ascii=False), "tool_calls": []}
+
+    model = RepairModel()
+    monkeypatch.setattr(understanding_agent, "llm_for_task", lambda *args, **kwargs: model)
+    original_check = react.check_cancel_requested
+
+    def interrupt_after_tool(node):
+        if offline_graph.searches:
+            raise asyncio.CancelledError()
+        original_check(node)
+
+    monkeypatch.setattr(react, "check_cancel_requested", interrupt_after_tool)
+    state = _initial_state()
+    config = offline_graph.config
+    recovered = with_worker_recovery(NODE_UNDERSTANDING_AGENT, understanding_agent.understanding_agent_node)
+    with pytest.raises(asyncio.CancelledError):
+        await recovered(state, config)
+    assert offline_graph.searches == ["青岛 海边"]
+
+    store = config["configurable"]["worker_journal_store"]
+    _, payload = await store.load(state.run_id, invocation_scope(state, NODE_UNDERSTANDING_AGENT, config))
+    assert payload["understanding_react_1"]["next_tool"] == 1
+    monkeypatch.setattr(react, "check_cancel_requested", original_check)
+    result = await recovered(state, config)
+    assert result["controlled_trip_identity"]["destinations"][0]["name"] == "青岛"
+    assert offline_graph.searches == ["青岛 海边"]
+    assert model.calls == 3
 
 
 async def test_always_asking_model_fails_visibly_at_the_round_cap(offline_graph, monkeypatch):
@@ -257,6 +357,8 @@ async def test_always_asking_model_fails_visibly_at_the_round_cap(offline_graph,
         async def ainvoke_with_tools_events(self, messages, tools):
             yield {"type": "finish", "content": json.dumps({
                 "action": "ask",
+                "trip_identity": IDENTITY,
+                "requirements": "从上海去青岛放松几天",
                 "questions": [{"id": f"q{self.calls}", "question": "还有吗？", "kind": "single",
                                "options": [{"id": "a", "label": "A"}]}],
             }, ensure_ascii=False), "tool_calls": []}

@@ -67,6 +67,60 @@ async def delivered(resources, monkeypatch):
     return run, bundle
 
 
+async def test_running_supplement_after_delivery_waits_for_the_next_turn(resources, delivered):
+    parent, _bundle = delivered
+    child = await resources.trip_run_store.create_run(
+        session_id="trip-session", user_id="local", mode="deep", parent_run_id=parent.run_id
+    )
+    await resources.trip_run_store.transition_status(child.run_id, TripRunStatus.RUNNING)
+
+    response = await request(
+        "POST", f"/api/trip-runs/{child.run_id}/supplements",
+        {"category": "other", "content": "想去公园", "session_id": "trip-session"},
+    )
+
+    assert response.status_code == 409
+    assert "当前回复结束" in response.json()["detail"]
+    assert not resources.run_command_store.commands
+
+
+@pytest.mark.parametrize(
+    ("extra", "expected"),
+    [({}, False), ({"requires_input": False}, False), ({"requires_input": True}, True)],
+)
+def test_chat_complete_projects_requires_input(extra, expected):
+    from travel_agent.api.sse_projection import project_sse_payload
+
+    projected = project_sse_payload({"type": "chat_complete", **extra})
+    assert projected["requires_input"] is expected
+    assert projected["run_status"] is None
+
+
+async def test_clarification_requires_input_without_changing_delivered_run(resources, delivered, monkeypatch):
+    run, bundle = delivered
+
+    async def decide(*_args):
+        return RefinementDecision(action="clarify", response="想调整哪一天？")
+
+    monkeypatch.setattr(preparation, "understand_followup", decide)
+    response = await request(
+        "POST", "/api/chat-stream",
+        {"messages": [{"role": "user", "content": "帮我调整", "message_id": "clarify-1"}],
+         "session_id": "trip-session", "run_id": run.run_id},
+    )
+
+    assert response.status_code == 200
+    events = decode(response)
+    assert [event["type"] for event in events] == ["chat_start", "chat_complete"]
+    assert events[-1]["final_content"] == "想调整哪一天？"
+    assert events[-1]["requires_input"] is True
+    assert events[-1]["run_status"] is None
+    assert resources.chat_session_memory.turns[-1]["assistant_content"] == "想调整哪一天？"
+    assert len(resources.trip_run_store.runs) == 1
+    assert (await resources.trip_run_store.get_run(run.run_id)).status is TripRunStatus.COMPLETED
+    assert await resources.delivery_bundle_store.get_current(run.run_id) == bundle
+
+
 async def test_question_uses_current_trip_without_changing_delivery(resources, delivered, monkeypatch):
     run, bundle = delivered
     seen = {}
@@ -82,7 +136,9 @@ async def test_question_uses_current_trip_without_changing_delivery(resources, d
     resources.fast_workflow = Answer()
     response = await request("POST", "/api/chat-stream", {"messages": [{"role": "user", "content": "当天安排了什么？", "message_id": "question-1"}], "session_id": "trip-session", "run_id": run.run_id})
     assert response.status_code == 200
-    assert any(event.get("final_content") == "安排了原有景点。" for event in decode(response))
+    completed = next(event for event in decode(response) if event["type"] == "chat_complete")
+    assert completed["final_content"] == "安排了原有景点。"
+    assert completed["requires_input"] is False
     assert seen["bundle"] == bundle
     assert await resources.delivery_bundle_store.get_current(run.run_id) == bundle
 
@@ -102,7 +158,7 @@ async def test_local_revision_reuses_an_unselected_candidate(resources, delivere
     model = Model()
     monkeypatch.setattr(itinerary_node, "get_model_router", lambda: object())
     monkeypatch.setattr(itinerary_node, "llm_for_task", lambda *args, **kwargs: model)
-    async def tools(_): return []
+    async def tools(): return []
     async def keep_copy(workspace, _llm): return workspace
     monkeypatch.setattr(itinerary_node, "get_available_tools", tools)
     monkeypatch.setattr(itinerary_node, "write_itinerary_copy", keep_copy)
@@ -127,20 +183,51 @@ async def test_destination_change_reaches_a_new_plan_and_failure_keeps_the_origi
     monkeypatch.setattr(preparation, "understand_followup", decide)
     from travel_agent.planning.requirements.understanding import agent as understanding
     from travel_agent.planning.research import research_plan_node
+    from travel_agent.tools import react
+
+    kyoto = {
+        **identity()["destinations"][0], "place_id": "destination_kyoto",
+        "name": "京都", "display_name": "京都", "latitude": 35.01, "longitude": 135.77,
+    }
+
     class Model:
         async def ainvoke_with_tools_events(self, messages, tools):
+            if not any(message.get("role") == "tool" for message in messages):
+                yield {"type": "finish", "content": "", "tool_calls": [
+                    {"id": "kyoto-search", "name": "global_place_search", "arguments": {"query": "京都"}},
+                ]}
+                return
             changed = identity()
-            changed["destinations"] = [{**changed["destinations"][0], "place_id": "destination_kyoto", "name": "京都", "display_name": "京都"}]
-            yield {"type": "finish", "content": json.dumps({"action": "ready", "trip_identity": changed}), "tool_calls": []}
+            changed["destinations"] = [kyoto]
+            yield {"type": "finish", "content": json.dumps({
+                "action": "ready", "trip_identity": changed, "requirements": "目的地改成京都，保持文化旅行风格",
+            }), "tool_calls": []}
+
         async def ainvoke(self, messages, **kwargs):
             assert "京都" in str(messages)
-            return json.dumps({"summary": "京都慢游", "destination_task": "研究京都", "transport_task": "研究交通", "accommodation_task": "研究住宿", "itinerary_task": "安排行程"})
+            return json.dumps({"summary": "京都慢游"})
+
+    async def tools():
+        return [{"source": "local", "schema": {"type": "function", "function": {
+            "name": "global_place_search", "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+        }}}]
+
+    async def search_place(name, arguments, *_args, **_kwargs):
+        assert name == "global_place_search" and arguments == {"query": "京都"}
+        return {
+            "audit_id": "kyoto-lookup", "tool_name": name, "status": "success", "args_digest": "fixture",
+            "metadata": {"evidence_allowed": True},
+            "sanitized_result": {"success": True, "provider": "nominatim", "results": [
+                {"place_id": kyoto["place_id"], "trip_identity": kyoto},
+            ]},
+        }
+
     model = Model()
     for module in (understanding, research_plan_node):
         monkeypatch.setattr(module, "get_model_router", lambda: object())
         monkeypatch.setattr(module, "llm_for_task", lambda *args, **kwargs: model)
-    async def tools(_): return []
     monkeypatch.setattr(understanding, "get_available_tools", tools)
+    monkeypatch.setattr(react, "execute_tool", search_place)
     monkeypatch.setattr("travel_agent.planning.execution.ensure_budget_baseline", lambda: _nothing())
     from travel_agent.planning.workflow import TravelPlanningWorkflow
     resources.travel_workflow = TravelPlanningWorkflow(resources.checkpointer, delivery_bundle_store=resources.delivery_bundle_store, trip_run_store=resources.trip_run_store)

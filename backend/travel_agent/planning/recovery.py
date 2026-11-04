@@ -33,7 +33,6 @@ def invocation_scope(state, node, config=None):
         "planning_generation",
         "constraint_pack",
         "fact_data_revision",
-        "selected_mcp_servers",
         "session_anchor",
         "preset_context",
         "weather_context",
@@ -45,6 +44,13 @@ def invocation_scope(state, node, config=None):
         "understanding_rounds",
         "understanding_pending_questions",
     }
+    if node == "itinerary_planner":
+        keys.update({
+            "placement_skeleton", "trip_workspace", "composition_failure_context",
+            "composition_reschedule_rounds", "research_redo_requests", "research_redo_rounds",
+        })
+    if node == NODE_UNDERSTANDING_AGENT:
+        keys.update({"current_time", "plan_gate_amendment", "pending_intent_amendments"})
     fields = state.model_dump(mode="json", include=keys)
     if node != NODE_UNDERSTANDING_AGENT:
         fields["assignment"] = resolve_agent_assignment(state.agent_assignments, node)
@@ -80,7 +86,14 @@ def with_worker_recovery(node, worker):
         check_cancel_requested(node)
         if allow_journal_replay and "worker_result" in payload:
             await journal.commit()  # 缓存重放前先提交，防止执行租约已被接管
-            return deepcopy(payload["worker_result"])
+            result = deepcopy(payload["worker_result"])
+            if node == NODE_UNDERSTANDING_AGENT and "controlled_trip_identity" in result:
+                run_store = configurable.get("trip_run_store")
+                if run_store is not None:
+                    await run_store.update_controlled_trip_identity(
+                        state.run_id, controlled_trip_identity=result["controlled_trip_identity"]
+                    )
+            return result
         token = current_worker_journal.set(journal)
         try:
             result = await worker(state, config)

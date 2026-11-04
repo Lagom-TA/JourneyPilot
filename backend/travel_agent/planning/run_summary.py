@@ -29,6 +29,10 @@ def build_trip_run_state_summary(state: Any) -> Dict[str, Any]:
     source_records = (
         fact_store.get("source_records") if isinstance(fact_store, dict) else []
     )
+    identity = data.get("controlled_trip_identity") or {}
+    identity_ready = isinstance(identity, dict) and bool(
+        identity.get("destinations") and identity.get("start_date") and identity.get("end_date")
+    )
     summary = {
         "task_type": task_type,
         "has_workspace": bool(workspace),
@@ -37,7 +41,7 @@ def build_trip_run_state_summary(state: Any) -> Dict[str, Any]:
         "map_ready": bool(data.get("map_projection")),
         "synthesis_mode": data.get("synthesis_mode"),
         "route_decision": data.get("route_decision") or None,
-        "identity_locked": bool(data.get("controlled_trip_identity")),
+        "identity_locked": identity_ready,
     }
     return summary
 

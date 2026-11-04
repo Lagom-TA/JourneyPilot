@@ -29,8 +29,9 @@ from .progress_events import (
     _handle_context_compaction,
     _handle_context_report,
     _handle_state_update,
+    _handle_work_explanation,
 )
-from travel_agent.planning.nodes import NODE_UNDERSTANDING_GATE
+from travel_agent.planning.nodes import NODE_RESEARCH_GATE, NODE_UNDERSTANDING_GATE
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ _SSE_HANDLERS = {
     "agent_activity": _handle_agent_activity,
     "tool_start": _handle_tool_start,
     "tool_done": _handle_tool_done,
+    "work_explanation": _handle_work_explanation,
     "context_compaction": _handle_context_compaction,
     "context_report": _handle_context_report,
     "state": _handle_state_update,
@@ -146,7 +148,6 @@ async def execute_chat(
                 "user_message": user_message,
                 "session_id": session_id,
                 "user_id": LOCAL_USER_ID,
-                "selected_mcp_servers": request.selected_mcp_servers,
                 "conversation_history": history,
                 "stream_queue": event_queue,
                 "session_anchor": session_anchor_data,
@@ -272,10 +273,10 @@ async def execute_chat(
                 _, payload = item
 
                 gate = str(payload.get("gate") or "approval")
-                if gate == "understanding":
+                if gate in {"understanding", "research"}:
                     ctx.understanding_gate = payload
                     await lifecycle.transition_to_awaiting_input(
-                        current_node=NODE_UNDERSTANDING_GATE,
+                        current_node=NODE_RESEARCH_GATE if gate == "research" else NODE_UNDERSTANDING_GATE,
                         pending_user_choice={
                             "type": "understanding_questions",
                             "gate": gate,

@@ -24,6 +24,8 @@ def destination_geo_resolver_node(state: TravelAgentState) -> Dict[str, Any]:
     """使用已确认的 PlaceIdentity 坐标，不重新地理编码，也不猜目的地。"""
 
     identity = ControlledTripIdentity.model_validate(state.controlled_trip_identity)
+    if not identity.destinations or identity.start_date is None or identity.end_date is None:
+        raise ValueError("目的地地理信息需要已核实的目的地和旅行日期")
     existing_timezones = {
         item.destination_id: item.timezone for item in state.destination_geo
     }
@@ -58,6 +60,8 @@ async def weather_context_builder_node(
 ) -> Dict[str, Any]:
     """用户批准后构建目的地/日期天气网格。"""
     identity = ControlledTripIdentity.model_validate(state.controlled_trip_identity)
+    if identity.start_date is None or identity.end_date is None:
+        raise ValueError("天气资料需要旅行日期")
     if not state.destination_geo:
         raise ValueError("weather context requires resolved controlled destinations")
     expected_destination_ids = {item.destination_id for item in state.destination_geo}

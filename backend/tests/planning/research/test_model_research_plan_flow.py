@@ -37,6 +37,7 @@ class OfflineModel:
 
     def __init__(self):
         self.plan_requests = []
+        self.plan_instructions = []
         self.worker_requests = {}
         self.worker_tools = {}
         self.composition_request = ""
@@ -46,15 +47,10 @@ class OfflineModel:
         if "研究协调员" in system:
             payload = json.loads(messages[-1]["content"])
             self.plan_requests.append(payload)
-            changed = "改成园林" in payload["用户需求与回答"]
+            self.plan_instructions.append(system)
+            changed = "园林" in payload["整理后的旅行要求"]
             interest = "园林" if changed else "博物馆"
-            return json.dumps({
-                "summary": f"围绕{interest}与慢节奏安排杭州。",
-                "destination_task": f"调查{interest}，寻找可行的参观候选。",
-                "transport_task": f"围绕{interest}查询适合的交通。",
-                "accommodation_task": f"研究靠近{interest}的住宿选择。",
-                "itinerary_task": f"把{interest}安排进不赶路的一天。",
-            }, ensure_ascii=False)
+            return json.dumps({"summary": f"围绕{interest}与慢节奏安排杭州，每天最多两个景点。"}, ensure_ascii=False)
         if "旅行规划师" in system:
             self.composition_request = "\n".join(str(message.get("content", "")) for message in messages)
             return json.dumps({
@@ -68,9 +64,11 @@ class OfflineModel:
 
     async def ainvoke_with_tools_events(self, messages, tools):
         system = str(messages[0].get("content", ""))
-        if "需求理解者" in system:
+        if "正式研究前理解这趟旅行" in system:
             self.understanding_request = "\n".join(str(message.get("content", "")) for message in messages)
-            yield {"type": "finish", "content": json.dumps({"action": "ready", "trip_identity": IDENTITY}, ensure_ascii=False), "tool_calls": []}
+            interest = "园林" if "改成园林" in self.understanding_request else "博物馆"
+            requirements = f"喜欢{interest}，不赶路，每天最多两个景点，返程不要跨日，步行少一些，并使用火车。"
+            yield {"type": "finish", "content": json.dumps({"action": "ready", "trip_identity": IDENTITY, "requirements": requirements}, ensure_ascii=False), "tool_calls": []}
             return
         if "旅行规划师" in system:
             # 组合在工具循环内运行：替身不调用工具，直接返回行程草稿。
@@ -108,7 +106,7 @@ class LeaseStore:
         return SimpleNamespace(lease_token="lease", lease_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10))
 
 
-async def test_latest_user_words_and_confirmed_tasks_reach_research_and_delivery(monkeypatch):
+async def test_confirmed_idea_and_travel_understanding_reach_research_and_delivery(monkeypatch):
     from travel_agent.planning.research import research_plan_node
     from travel_agent.planning.research.destination import node as destination
     from travel_agent.planning.research.transport import node as transport
@@ -138,7 +136,7 @@ async def test_latest_user_words_and_confirmed_tasks_reach_research_and_delivery
     monkeypatch.setattr(react, "get_tool_registry", lambda: registry)
     monkeypatch.setattr(react, "apply_tool_exposure", lambda tools, name: ToolExposurePlan(False, name, tuple(item["schema"] for item in tools), "", 0, 0, len(tools), len(tools)))
     for module in (destination, transport, accommodation, understanding_agent):
-        async def available(_selected):
+        async def available():
             schemas = registry.get_tools_as_schemas()
             for tool in schemas:
                 if tool["schema"]["function"]["name"] == "search_flights":
@@ -169,7 +167,7 @@ async def test_latest_user_words_and_confirmed_tasks_reach_research_and_delivery
     config = {"configurable": {"thread_id": "offline-flow", "plan_gate_enabled": True, "run_execution_store": lease_store, "delivery_bundle_store": bundles, "trip_run_store": runs}}
     state = TravelAgentState(
         run_id="offline-flow", session_id="offline-flow",
-        user_query="喜欢博物馆，不赶路，返程不要跨日。",
+        user_query="喜欢博物馆，不赶路，每天最多两个景点，返程不要跨日，并使用火车。",
         understanding_qa=[{"question_id": "pace", "question": "步行节奏？", "answer": "步行少一些"}],
         controlled_trip_identity=IDENTITY,
     )
@@ -212,32 +210,44 @@ async def test_latest_user_words_and_confirmed_tasks_reach_research_and_delivery
         current_execution_lease.reset(token)
 
     assert len(model.plan_requests) == 2
-    assert "步行少一些" in model.plan_requests[-1]["用户需求与回答"]
-    assert "园林" in gate["plan_text"] and "博物馆" not in gate["plan_text"]
-    serial_workers = (
+    assert set(model.plan_requests[-1]) == {"旅行基础信息", "整理后的旅行要求"}
+    assert model.plan_requests[-1]["旅行基础信息"]["destinations"] == IDENTITY["destinations"]
+    assert model.plan_instructions[0] == model.plan_instructions[1]
+    requirements = model.plan_requests[-1]["整理后的旅行要求"]
+    assert all(text in requirements for text in ("喜欢园林", "返程不要跨日", "步行少一些", "每天最多两个景点", "使用火车"))
+    assert gate["plan_text"] == "围绕园林与慢节奏安排杭州，每天最多两个景点。"
+    assert first_gate["plan_text"] == "围绕博物馆与慢节奏安排杭州，每天最多两个景点。"
+    workers = (
         "destination_researcher",
         "transport_researcher",
         "accommodation_researcher",
     )
-    for step_index, worker in enumerate(serial_workers):
-        assert "改成园林" in model.worker_requests[worker]
-        assert gate["plan"]["steps"][step_index]["tasks"][worker] in model.worker_requests[worker]
+    assert [step["agents"] for step in gate["plan"]["steps"]] == [
+        ["destination_researcher"], ["transport_researcher", "accommodation_researcher"],
+        ["itinerary_planner"],
+    ]
+    for worker in workers:
+        assert any(step["tasks"].get(worker) == gate["plan_text"] for step in gate["plan"]["steps"])
+        assert model.worker_requests[worker].count(gate["plan_text"]) == 1
+        assert requirements in model.worker_requests[worker]
     assert calls == ["杭州园林实际检索"]
+    assert "每天最多两个景点" in model.worker_requests["destination_researcher"]
     assert "返程不要跨日" in model.worker_requests["transport_researcher"]
     flight_tool = next(tool for tool in model.worker_tools["transport_researcher"] if tool["function"]["name"] == "search_flights")
     flight_parameters = flight_tool["function"]["parameters"]["properties"]["params"]
     assert flight_parameters["properties"]["require_cross_day"] == {"type": "boolean"}
     assert "require_cross_day" not in flight_parameters.get("required", [])
     assert budget.peek_ledger("offline-flow").tool_calls == 1
-    assert "改成园林" in model.composition_request
-    assert gate["plan"]["steps"][3]["tasks"]["itinerary_planner"] in model.composition_request
+    assert requirements in model.composition_request
+    assert gate["plan"]["steps"][2]["tasks"]["itinerary_planner"] == gate["plan_text"]
+    assert model.composition_request.count(gate["plan_text"]) == 1
     assert result["recommendation_catalog"].generation_id == result["planning_generation"].generation_id
     candidate = result["recommendation_catalog"].candidate_index()["garden_candidate"]
     assert candidate.place_id == "garden_place" and candidate.fact_assertion_ids
-    assert result["trip_workspace"].requirements.endswith("后续补充：改成园林")
+    assert result["trip_workspace"].requirements == requirements
     assert result["report_projection"] is not None
     assert result["plan_gate_decision"]["action"] == "approve"
     assert result["delivery_persisted"] is True
     persisted = await bundles.get_current("offline-flow")
-    assert persisted.workspace.requirements.endswith("后续补充：改成园林")
+    assert persisted.workspace.requirements == requirements
     assert (await runs.get_run("offline-flow")).status is TripRunStatus.COMPLETED

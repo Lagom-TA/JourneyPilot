@@ -106,11 +106,11 @@ async def _replay_run_events(
                 "run_status": run.status.value,
                 "payload": choice.get("payload", {}),
             }
-        elif isinstance(choice, dict) and choice.get("gate") == "understanding":
+        elif isinstance(choice, dict) and choice.get("gate") in {"understanding", "research"}:
             yield {
                 "type": "understanding_questions",
                 "run_id": run.run_id,
-                "gate": "understanding",
+                "gate": choice["gate"],
                 "run_status": run.status.value,
                 "payload": choice.get("payload", {}),
             }
@@ -127,7 +127,7 @@ def _pending_gate_payload(detail: Any) -> Dict[str, Any]:
 
     state = getattr(detail, "state", None)
     choice = getattr(state, "pending_user_choice", None)
-    if not isinstance(choice, dict) or choice.get("gate") not in {"plan", "understanding"}:
+    if not isinstance(choice, dict) or choice.get("gate") not in {"plan", "understanding", "research"}:
         return {}
     payload = choice.get("payload")
     return dict(payload) if isinstance(payload, dict) else {}
@@ -293,7 +293,7 @@ async def _prepare_chat(
                 )
                 async def _clarification_sse():
                     yield {"type": "chat_start", "message_id": message_id, "session_id": session_id}
-                    yield {"type": "chat_complete", "message_id": message_id, "final_content": reply}
+                    yield {"type": "chat_complete", "message_id": message_id, "final_content": reply, "requires_input": True}
                 return ImmediateChat(_clarification_sse())
     if refinement_action:
         route_decision = explicit_route_decision(

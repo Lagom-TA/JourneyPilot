@@ -1,18 +1,15 @@
-import json
-
 import pytest
 
-from tests.fixtures.itinerary import (
-    itinerary_draft,
-    restore_planning_state,
-    visit_entry,
-)
+from tests.fixtures.itinerary import itinerary_draft, restore_planning_state, visit_entry
 from tests.fixtures.planning_state import make_planning_state
 from tests.fixtures.research_catalog import make_catalog, make_visit_packet
 from travel_agent.planning.itinerary import node
-from travel_agent.planning.itinerary.draft import AuthoredRoute
-from travel_agent.planning.itinerary.parsing import parse_itinerary_composition
-from travel_agent.planning.research.candidates import TransportCandidate
+from travel_agent.planning.itinerary.draft import ItineraryCompositionDraft
+from travel_agent.planning.itinerary.connectors import (
+    connector_mode_requests_from_constraint_pack,
+    extract_local_connector_gaps,
+    materialize_skeleton_connectors,
+)
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
 from travel_agent.planning.delivery.public.itinerary import _public_itinerary
 from travel_agent.planning.itinerary.models import TransportLeg
@@ -20,491 +17,121 @@ from travel_agent.planning.research.transport import local_routes
 from travel_agent.tools.governance import build_tool_execution_envelope
 
 
-@pytest.fixture(autouse=True)
-def _mock_composition_model(monkeypatch):
+def _state():
+    packets = [make_visit_packet(f"visit_{index}", f"地点{index}") for index in (1, 2)]
+    placements = []
+    for index, (start, end) in enumerate((("08:00", "09:00"), ("09:40", "10:40")), 1):
+        entry = visit_entry(start, end)
+        entry["candidate_id"] = f"visit_{index}"
+        placements.append(entry)
+    return restore_planning_state(
+        make_planning_state(), recommendation_catalog=make_catalog(*packets),
+        placement_skeleton=ItineraryCompositionDraft.model_validate(itinerary_draft(placements)),
+        execution_plan=[["itinerary_planner"]], agent_status={"itinerary_planner": "pending"},
+    )
+
+
+@pytest.mark.asyncio
+async def test_transport_followup_keeps_station_and_path_facts(monkeypatch):
+    state = _state()
     monkeypatch.setattr(node, "get_model_router", lambda: None)
     monkeypatch.setattr(node, "llm_for_task", lambda *args, **kwargs: object())
 
-
-def _located_visit(candidate_id, *, located=True):
-    packet = make_visit_packet(
-        candidate_id,
-        candidate_id,
-    )
-    if not located:
-        return packet
-    source = packet.source_records[0].model_copy(
-        update={
-            "snapshot": {
-                "results": [
-                    {
-                        "place_id": f"place_{candidate_id}",
-                        "latitude": 35.6,
-                        "longitude": 139.7,
-                    }
-                ]
-            }
+    async def research(current, *, gaps, **kwargs):
+        gap = gaps[0]
+        origin = {"name": "地点1", "place_id": gap.from_place_id}
+        destination = {"name": "地点2", "place_id": gap.to_place_id}
+        route = {
+            "route_id": "route-1", "transport_class": "public_transit", "selected_mode": "metro",
+            "from_endpoint": origin, "to_endpoint": destination, "duration_minutes": 12,
+            "boarding_stop": {"name": "出发站"}, "alighting_stop": {"name": "到达站"},
+            "segments": [{
+                "segment_id": "segment-1", "mode": "metro", "from_endpoint": origin,
+                "to_endpoint": destination, "duration_minutes": 12,
+                "path": [{"latitude": 35.6, "longitude": 139.7}, {"latitude": 35.7, "longitude": 139.8}],
+            }],
         }
-    )
-    return packet.model_copy(update={"source_records": [source]})
-
-
-def _planning_state(*, stop_count=2, unlocated_stop=None, constraint_pack=None):
-    packets = [
-        _located_visit(
-            f"candidate_{index}", located=index != unlocated_stop
+        envelope = build_tool_execution_envelope(
+            tool_name="global_route_search", arguments={}, source="builtin", audit_id="audit-route",
+            result={"success": True, "provider": "fixture", "routes": [route]},
         )
-        for index in range(stop_count)
-    ]
-    times = (("08:00", "09:00"), ("09:40", "10:40"), ("11:10", "12:10"))
-    placements = []
-    for index, (start, end) in enumerate(times[:stop_count]):
-        placement = visit_entry(start, end)
-        placement["candidate_id"] = f"candidate_{index}"
-        placements.append(placement)
-    skeleton = parse_itinerary_composition(
-        json.dumps(itinerary_draft(placements))
+        envelope["metadata"]["evidence_allowed"] = True
+        packet = local_routes._route_packet(
+            state=current, catalog=current.recommendation_catalog, gap=gap,
+            envelope=envelope, existing_candidate_ids=set(current.recommendation_catalog.candidate_index()),
+        )
+        catalog = current.recommendation_catalog.model_copy(update={
+            "research_packets": [*current.recommendation_catalog.research_packets, packet],
+        })
+        return {"status": "success"}, catalog
+
+    monkeypatch.setattr(node, "research_transport_followup", research)
+    result = await node.itinerary_planner_node(state, {})
+    workspace = result["trip_workspace"]
+    leg = workspace.itinerary.transport_legs[0]
+    assert leg.boarding_stop.name == "出发站"
+    assert leg.alighting_stop.name == "到达站"
+    assert len(leg.segments[0].path) == 2
+    assert leg.lineage.source_record_ids
+    public = _public_itinerary(
+        workspace.itinerary,
+        EvidenceBasisView.from_itinerary(workspace.itinerary),
     )
-    current = make_planning_state()
-    if constraint_pack is not None:
-        current = restore_planning_state(current, constraint_pack=constraint_pack)
-    return restore_planning_state(
-        current,
-        recommendation_catalog=make_catalog(*packets),
-        placement_skeleton=skeleton,
-        execution_plan=[["itinerary_planner"]],
-        agent_status={"itinerary_planner": "pending"},
-    )
+    assert public["transport_legs"][0]["boarding_stop"]["name"] == "出发站"
+    assert public["transport_legs"][0]["alighting_stop"]["name"] == "到达站"
+    assert TransportLeg.model_validate(leg.model_dump()).alighting_stop.name == "到达站"
+    candidate = result["recommendation_catalog"].candidate_index()[leg.lineage.candidate_id]
+    assert candidate.boarding_stop.name == "出发站"
+    assert candidate.alighting_stop.name == "到达站"
+    assert candidate.segments[0].path == leg.segments[0].path
 
 
-def _envelope(result, arguments, *, audit_id="audit_connector_test"):
-    envelope = build_tool_execution_envelope(
-        tool_name="global_route_search",
-        arguments=arguments,
-        result=result,
-        status="success",
-        source="builtin",
-        server_name="route_search",
-        category="data",
-        audit_id=audit_id,
-        retrieved_at="2026-10-26T00:00:00+00:00",
-    )
-    envelope["metadata"]["evidence_allowed"] = True
-    return envelope
-
-
-def _route_result(
-    request,
-    *,
-    path_point_count=2,
-    selected_mode="metro",
-    transport_class="public_transit",
-    boarding_stop=None,
-    alighting_stop=None,
-):
-    def endpoint(prefix):
-        return {
-            "name": request[f"{prefix}_name"],
-            "place_id": request[f"{prefix}_place_id"],
-            "latitude": request[f"{prefix}_latitude"],
-            "longitude": request[f"{prefix}_longitude"],
-        }
-
-    origin = endpoint("from")
-    destination = endpoint("to")
-    path = [
-        {
-            "latitude": origin["latitude"] + index * 0.0001,
-            "longitude": origin["longitude"] + index * 0.0001,
-        }
-        for index in range(path_point_count)
-    ]
-    route_id = (
-        f"route:{origin['place_id']}:{destination['place_id']}:{selected_mode}"
-    )
-    segment = {
-        "segment_id": "segment_1",
-        "mode": selected_mode,
-        "from_endpoint": origin,
-        "to_endpoint": destination,
-        "departure_at": None,
-        "arrival_at": None,
-        "duration_minutes": 12,
-        "distance_meters": 1200,
-        "operator_name": None,
-        "service_number": "M1",
-        "line_name": "Mock Metro",
-        "cost_cny": None,
-        "path": path,
-    }
-    return {
-        "success": True,
-        "provider": "transitous",
-        "retrieved_at": "2026-10-26T00:00:00+00:00",
-        "request": request,
-        "routes": [
-            {
-                "route_id": route_id,
-                "provider": "transitous",
-                "transport_class": transport_class,
-                "selected_mode": selected_mode,
-                "from_endpoint": origin,
-                "to_endpoint": destination,
-                "boarding_stop": boarding_stop,
-                "alighting_stop": alighting_stop,
-                "departure_at": None,
-                "arrival_at": None,
-                "duration_minutes": 12,
-                "distance_meters": 1200,
-                "total_cost_cny": None,
-                "segments": [segment],
-                "booking_status": "not_required",
-            }
-        ],
-        "provider_response": {"mocked": True},
-    }
-
-
-def _allow_route_tool(monkeypatch):
-    class Registry:
-        def has_tool(self, name):
-            return name == "global_route_search"
-
-    monkeypatch.setattr(local_routes, "get_tool_registry", lambda: Registry())
-
-
-def _locked_mode_pack(mode):
-    return {
-        "hard_constraints": [
-            {
-                "status": "active",
-                "visibility": "user_visible",
-                "category": "transport_constraint",
-                "source_refs": [{"source": "current_query"}],
-                "params": {"locked_local_mode": mode},
-            }
-        ],
+@pytest.mark.parametrize("mode", ["taxi", "ride_hailing"])
+def test_verified_road_route_keeps_requested_display_mode(mode):
+    state = _state()
+    constraints = {
+        "hard_constraints": [{
+            "status": "active", "visibility": "user_visible", "category": "transport_constraint",
+            "source_refs": [{"source": "current_query"}], "params": {"locked_local_mode": mode},
+        }],
         "soft_preferences": [],
     }
-
-
-def _authored_routes(gaps, *, duration=17):
-    return {
-        gap.gap_id: AuthoredRoute(
-            mode="walk",
-            duration_minutes=duration,
-            selection_reason="Provider 无可用结果，保留估算",
-        )
-        for gap in gaps
+    requests, required = connector_mode_requests_from_constraint_pack(
+        state.placement_skeleton, constraints, state.recommendation_catalog
+    )
+    gaps = extract_local_connector_gaps(
+        state.placement_skeleton, state.recommendation_catalog, weather_data_revision=0,
+        flexible_mode_requests=requests, required_flexible_mode_pairs=required,
+    )
+    gap = gaps[0]
+    origin = {"name": "地点1", "place_id": gap.from_place_id}
+    destination = {"name": "地点2", "place_id": gap.to_place_id}
+    route = {
+        "route_id": "road-1", "transport_class": "flexible", "selected_mode": "drive",
+        "from_endpoint": origin, "to_endpoint": destination, "duration_minutes": 12,
+        "segments": [{"segment_id": "road-segment", "mode": "drive", "from_endpoint": origin,
+                      "to_endpoint": destination, "duration_minutes": 12}],
     }
-
-
-async def _complete(current):
-    return restore_planning_state(
-        current, **await node.itinerary_planner_node(current, {})
+    envelope = build_tool_execution_envelope(
+        tool_name="global_route_search", arguments={}, source="builtin", audit_id="audit-road",
+        result={"success": True, "provider": "fixture", "routes": [route]},
     )
-
-
-@pytest.mark.asyncio
-async def test_routable_unfilled_gap_uses_provider_route_without_estimation(
-    monkeypatch,
-):
-    current = _planning_state()
-    calls = []
-    _allow_route_tool(monkeypatch)
-
-    async def execute(tool_name, arguments, **kwargs):
-        calls.append((tool_name, arguments, kwargs))
-        return _envelope(_route_result(arguments), arguments)
-
-    async def no_estimation(*args, **kwargs):
-        pytest.fail("a routable Provider result must not be replaced by an estimate")
-
-    monkeypatch.setattr(local_routes, "execute_tool", execute)
-    monkeypatch.setattr(node, "_author_connector_routes", no_estimation)
-
-    completed = await _complete(current)
-
-    assert completed.agent_status["itinerary_planner"] == "completed"
-    assert len(calls) == 1
-    leg = completed.trip_workspace.itinerary.transport_legs[0]
-    candidate = completed.recommendation_catalog.candidate_index()[
-        leg.lineage.candidate_id
-    ]
-    assert isinstance(candidate, TransportCandidate)
-    assert leg.duration_minutes == 12
-    assert leg.lineage.lineage_kind == "candidate_entity"
-    source = next(
-        source
-        for packet in completed.recommendation_catalog.research_packets
-        for source in packet.source_records
-        if source.source_record_id in candidate.source_record_ids
+    envelope["metadata"]["evidence_allowed"] = True
+    packet = local_routes._route_packet(
+        state=state, catalog=state.recommendation_catalog, gap=gap, envelope=envelope,
+        existing_candidate_ids=set(state.recommendation_catalog.candidate_index()),
     )
-    assert source.tool_audit_id == "audit_connector_test"
-    assert any(
-        fact.field_path == "segments"
-        for packet in completed.recommendation_catalog.research_packets
-        for fact in packet.fact_assertions
-        if fact.entity_ref.entity_id == candidate.candidate_id
+    catalog = state.recommendation_catalog.model_copy(update={
+        "research_packets": [*state.recommendation_catalog.research_packets, packet],
+    })
+    draft = materialize_skeleton_connectors(state.placement_skeleton, catalog, gaps, {})
+    from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
+
+    workspace = materialize_trip_workspace(
+        run_id=state.run_id, workspace_revision=0, composition=draft, catalog=catalog,
+        requirements=state.current_requirements, composition_mutations=[], connector_gaps=gaps,
     )
-
-
-@pytest.mark.asyncio
-async def test_provider_without_a_route_still_uses_estimation(monkeypatch):
-    current = _planning_state()
-    authored_gap_ids = []
-    _allow_route_tool(monkeypatch)
-
-    async def execute(tool_name, arguments, **kwargs):
-        result = {
-            "success": True,
-            "provider": "transitous",
-            "routes": [],
-            "retrieved_at": "2026-10-26T00:00:00+00:00",
-        }
-        return _envelope(result, arguments)
-
-    async def author(_llm, gaps):
-        authored_gap_ids.extend(gap.gap_id for gap in gaps)
-        return _authored_routes(gaps)
-
-    monkeypatch.setattr(local_routes, "execute_tool", execute)
-    monkeypatch.setattr(node, "_author_connector_routes", author)
-
-    completed = await _complete(current)
-
-    assert completed.agent_status["itinerary_planner"] == "completed"
-    assert authored_gap_ids == [
-        gap.gap_id for gap in completed.local_connector_gaps
-    ]
-    leg = completed.trip_workspace.itinerary.transport_legs[0]
-    assert leg.duration_minutes == 17
-    assert leg.lineage.lineage_kind == "authored_entity"
-    assert leg.segments[0].path == []
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("unlocated_stop", [0, 1])
-async def test_missing_coordinates_never_queries_provider(
-    monkeypatch, unlocated_stop
-):
-    current = _planning_state(unlocated_stop=unlocated_stop)
-    authored_gap_ids = []
-    _allow_route_tool(monkeypatch)
-
-    async def no_query(*args, **kwargs):
-        pytest.fail("a gap without two located endpoints must not be queried")
-
-    async def author(_llm, gaps):
-        authored_gap_ids.extend(gap.gap_id for gap in gaps)
-        return _authored_routes(gaps)
-
-    monkeypatch.setattr(local_routes, "execute_tool", no_query)
-    monkeypatch.setattr(node, "_author_connector_routes", author)
-
-    completed = await _complete(current)
-
-    assert completed.agent_status["itinerary_planner"] == "completed"
-    assert len(authored_gap_ids) == 1
-    assert completed.trip_workspace.itinerary.transport_legs[0].duration_minutes == 17
-
-
-@pytest.mark.asyncio
-async def test_each_unfilled_gap_is_queried_once_without_tool_retries(monkeypatch):
-    current = _planning_state(stop_count=3)
-    calls = []
-    _allow_route_tool(monkeypatch)
-
-    async def execute(tool_name, arguments, **kwargs):
-        calls.append((tool_name, arguments, kwargs))
-        return _envelope(
-            {
-                "success": True,
-                "provider": "transitous",
-                "routes": [],
-                "retrieved_at": "2026-10-26T00:00:00+00:00",
-            },
-            arguments,
-            audit_id=f"audit_connector_{len(calls)}",
-        )
-
-    async def author(_llm, gaps):
-        return _authored_routes(gaps)
-
-    monkeypatch.setattr(local_routes, "execute_tool", execute)
-    monkeypatch.setattr(node, "_author_connector_routes", author)
-
-    completed = await _complete(current)
-
-    assert completed.agent_status["itinerary_planner"] == "completed"
-    assert len(calls) == 2
-    pairs = {
-        (arguments["from_place_id"], arguments["to_place_id"])
-        for _, arguments, _ in calls
-    }
-    assert pairs == {
-        ("place_candidate_0", "place_candidate_1"),
-        ("place_candidate_1", "place_candidate_2"),
-    }
-    assert all(kwargs["max_retries"] == 0 for _, _, kwargs in calls)
-    assert all(
-        kwargs["activation_source"] == "local_connector_route_completion"
-        for _, _, kwargs in calls
-    )
-
-
-@pytest.mark.asyncio
-async def test_selected_provider_route_preserves_complete_path(monkeypatch):
-    current = _planning_state()
-    _allow_route_tool(monkeypatch)
-
-    async def execute(tool_name, arguments, **kwargs):
-        return _envelope(_route_result(arguments, path_point_count=8), arguments)
-
-    async def no_estimation(*args, **kwargs):
-        pytest.fail("the Provider route with geometry must be selected")
-
-    monkeypatch.setattr(local_routes, "execute_tool", execute)
-    monkeypatch.setattr(node, "_author_connector_routes", no_estimation)
-
-    completed = await _complete(current)
-
-    leg = completed.trip_workspace.itinerary.transport_legs[0]
-    actual_path = [point.model_dump() for point in leg.segments[0].path]
-    expected_path = _route_result(
-        {
-            "from_name": "candidate_0",
-            "from_place_id": "place_candidate_0",
-            "from_latitude": 35.6,
-            "from_longitude": 139.7,
-            "to_name": "candidate_1",
-            "to_place_id": "place_candidate_1",
-            "to_latitude": 35.6,
-            "to_longitude": 139.7,
-        },
-        path_point_count=8,
-    )["routes"][0]["segments"][0]["path"]
-    assert actual_path == expected_path
-    candidate = completed.recommendation_catalog.candidate_index()[
-        leg.lineage.candidate_id
-    ]
-    assert [point.model_dump() for point in candidate.segments[0].path] == expected_path
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("requested_mode", ["taxi", "ride_hailing"])
-async def test_road_service_modes_query_drive_and_keep_display_lock_and_path(
-    monkeypatch, requested_mode
-):
-    current = _planning_state(constraint_pack=_locked_mode_pack(requested_mode))
-    calls = []
-    _allow_route_tool(monkeypatch)
-
-    async def execute(tool_name, arguments, **kwargs):
-        calls.append((tool_name, arguments, kwargs))
-        return _envelope(
-            _route_result(
-                arguments,
-                path_point_count=6,
-                selected_mode="drive",
-                transport_class="flexible",
-            ),
-            arguments,
-        )
-
-    async def no_estimation(*args, **kwargs):
-        pytest.fail("兼容的 drive 道路路线必须满足出租车或网约车接驳")
-
-    monkeypatch.setattr(local_routes, "execute_tool", execute)
-    monkeypatch.setattr(node, "_author_connector_routes", no_estimation)
-
-    completed = await _complete(current)
-
-    assert completed.agent_status["itinerary_planner"] == "completed"
-    assert len(calls) == 1
-    assert calls[0][1]["mode"] == "drive"
-    leg = completed.trip_workspace.itinerary.transport_legs[0]
-    assert leg.selected_mode.value == requested_mode
-    assert leg.mode_preference.locked_mode.value == requested_mode
+    leg = workspace.itinerary.transport_legs[0]
+    assert leg.selected_mode.value == mode
+    assert leg.mode_preference.locked_mode.value == mode
     assert leg.segments[0].mode.value == "drive"
-    assert len(leg.segments[0].path) == 6
-    candidate = completed.recommendation_catalog.candidate_index()[
-        leg.lineage.candidate_id
-    ]
-    assert candidate.selected_mode.value == "drive"
-    assert candidate.segments[0].mode.value == "drive"
-    assert [point.model_dump() for point in candidate.segments[0].path] == [
-        point.model_dump() for point in leg.segments[0].path
-    ]
-
-@pytest.mark.asyncio
-async def test_provider_station_facts_survive_model_public_projection_and_readback(
-    monkeypatch,
-):
-    current = _planning_state()
-    _allow_route_tool(monkeypatch)
-
-    async def execute(tool_name, arguments, **kwargs):
-        return _envelope(
-            _route_result(
-                arguments,
-                boarding_stop={
-                    "name": "复兴门站",
-                    "place_id": "amap:stop:station_fuxingmen",
-                    "latitude": 39.907,
-                    "longitude": 116.356,
-                },
-                alighting_stop={
-                    "name": "王府井站",
-                    "place_id": "amap:stop:station_wangfujing",
-                    "latitude": 39.915,
-                    "longitude": 116.412,
-                },
-            ),
-            arguments,
-        )
-
-    async def no_estimation(*args, **kwargs):
-        pytest.fail("the Provider route with station facts must be selected")
-
-    monkeypatch.setattr(local_routes, "execute_tool", execute)
-    monkeypatch.setattr(node, "_author_connector_routes", no_estimation)
-
-    completed = await _complete(current)
-
-    leg = completed.trip_workspace.itinerary.transport_legs[0]
-    assert leg.from_endpoint.place_id == "place_candidate_0"
-    assert leg.to_endpoint.place_id == "place_candidate_1"
-    assert leg.boarding_stop is not None
-    assert leg.boarding_stop.name == "复兴门站"
-    assert leg.alighting_stop is not None
-    assert leg.alighting_stop.name == "王府井站"
-
-    public = _public_itinerary(
-        completed.trip_workspace.itinerary,
-        EvidenceBasisView.from_itinerary(completed.trip_workspace.itinerary),
-    )
-    public_leg = public["transport_legs"][0]
-    assert public_leg["from_endpoint"]["place_id"] == "place_candidate_0"
-    assert public_leg["boarding_stop"]["name"] == "复兴门站"
-    assert public_leg["alighting_stop"]["name"] == "王府井站"
-
-    read_back = TransportLeg.model_validate(leg.model_dump())
-    assert read_back.boarding_stop == leg.boarding_stop
-    assert read_back.alighting_stop == leg.alighting_stop
-
-    legacy_payload = leg.model_dump()
-    legacy_payload.pop("boarding_stop")
-    legacy_payload.pop("alighting_stop")
-    legacy = TransportLeg.model_validate(legacy_payload)
-    assert legacy.boarding_stop is None
-    assert legacy.alighting_stop is None
-    assert legacy.from_endpoint == leg.from_endpoint
-    assert legacy.to_endpoint == leg.to_endpoint
-
-    candidate = completed.recommendation_catalog.candidate_index()[
-        leg.lineage.candidate_id
-    ]
-    assert isinstance(candidate, TransportCandidate)
-    assert candidate.boarding_stop is not None
-    assert candidate.alighting_stop is not None

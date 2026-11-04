@@ -24,8 +24,8 @@ def test_user_requirements_are_injected_as_planning_guidance():
     assert first.system == second.system
     assert first.runtime != second.runtime
     assert "Tokyo dining" not in second.system
-    assert second.runtime.count("不要爬楼") == 1
-    assert second.runtime.count("prior Tokyo fact") == 1
+    assert "不要爬楼" not in second.runtime
+    assert "prior Tokyo fact" not in second.runtime
     assert "必去东京国立博物馆" in first.runtime
     assert "<user_requirements>" in first.runtime
     assert "<json_schema>" in second.runtime and "<json_schema>" not in second.system
@@ -37,4 +37,4 @@ def test_composition_prompt_has_no_acceptance_or_gate_wording():
     combined = prompt.system + prompt.runtime
     for phrase in ("验收", "忠实度", "never_violate", "repair_then_deviate", "Composition Rules", "必须覆盖", "整份组合被拒", "回炉"):
         assert phrase not in combined
-    assert "按用户需求规划行程" in prompt.system
+    assert "结合旅行理解与研究成果安排旅程" in prompt.system

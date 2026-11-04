@@ -12,12 +12,12 @@ from travel_agent.planning.state import TravelAgentState
 
 
 async def seed_refinement_state(state: TravelAgentState, bundle, action: str) -> TravelAgentState:
+    if action != "revise":
+        return state.model_copy(update={"current_requirements": bundle.workspace.requirements})
     requirements = "\n".join(
         part for part in (bundle.workspace.requirements, f"后续补充：{state.user_query}") if part
     )
     state = state.model_copy(update={"current_requirements": requirements})
-    if action != "revise":
-        return state
 
     generation = next_generation(state, requirements)
     old_catalog = bundle.workspace.recommendation_catalog

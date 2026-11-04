@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeToolStep, isPublicActivityStep, toolResultCount, toolResultText } from "./toolDisplay";
+import { dedupeToolSteps, describeToolStep, isNoResultSummary, isPublicActivityStep, toolResultCount, toolResultText, toolStatusLabel } from "./toolDisplay";
 import { type ThinkingStep } from "../types/messages";
 function step(toolResult: string | undefined): Pick<ThinkingStep, 'toolResult'> {
     return { toolResult };
@@ -51,6 +51,7 @@ describe('toolResultText', () => {
         for (const payload of [
             '{"success":true,"provider":"tavily_search","sanitized_result":{}}',
             'research_packet_id=packet-1 tool_call_id=call-1',
+            'contract_version=1',
             'Traceback (most recent call last): File "agent.py", line 42, in run',
             'HTTP 500: upstream provider failed',
         ]) {
@@ -107,12 +108,46 @@ describe('toolResultText', () => {
 
 describe('isPublicActivityStep', () => {
     const base = (extra: Partial<ThinkingStep>): ThinkingStep => ({ id: 's', agentName: '目的地调研', content: '', stepName: '', timestamp: new Date(), ...extra });
-    it('排除失败工具、失败进展和未匹配的内部激活，保留成功空结果与参考能力', () => {
+    it('排除失败工具、失败进展和全部内部能力激活', () => {
         expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'global_place_search', toolStatus: 'failed' }))).toBe(false);
         expect(isPublicActivityStep(base({ progressStatus: 'failed' }))).toBe(false);
         expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'search_tools', toolStatus: 'completed', toolResult: '未匹配到工具' }))).toBe(false);
-        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'search_tools', toolStatus: 'completed', toolResult: '激活工具：global_place_search' }))).toBe(true);
-        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'global_place_search', toolStatus: 'completed', toolResult: '没有返回结果' }))).toBe(true);
-        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'hotel_search', toolStatus: 'capability_declared' }))).toBe(true);
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'search_tools', toolStatus: 'completed', toolResult: '激活工具：global_place_search' }))).toBe(false);
+    });
+    it('隐藏空知识库/网页，但保留地点空结果、备用来源与能力声明', () => {
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'knowledge_search', toolStatus: 'completed', toolResult: '没有匹配的结果' }))).toBe(false);
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'free_web_search', toolStatus: 'completed', toolResult: '没有匹配的结果' }))).toBe(false);
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'knowledge_search', toolStatus: 'running' }))).toBe(true);
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'knowledge_search', toolStatus: 'completed', toolResult: '读到 2 段知识库资料', resultPreview: [{ title: '资料' }] }))).toBe(true);
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'knowledge_search', toolStatus: 'degraded', toolResult: '没有匹配的结果' }))).toBe(true);
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'global_place_search', toolStatus: 'completed', toolResult: '没有匹配的结果' }))).toBe(true);
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'hotel_search', toolStatus: 'capability_declared', toolResult: '最远可查 11-15，你的 11-20 尚未进入窗口' }))).toBe(true);
+    });
+});
+describe('tool row semantics', () => {
+    const base = (extra: Partial<ThinkingStep>): ThinkingStep => ({ id: 's', agentName: '目的地调研', content: '', stepName: '', timestamp: new Date(), ...extra });
+    it('状态词区分无结果、备用来源与暂不可查', () => {
+        expect(toolStatusLabel('completed')).toBe('已完成');
+        expect(toolStatusLabel('degraded')).toBe('备用来源');
+        expect(toolStatusLabel('capability_declared')).toBe('暂不可查');
+        expect(isNoResultSummary('没有匹配的结果')).toBe(true);
+        expect(isNoResultSummary('找到 0 个结果')).toBe(true);
+        expect(isNoResultSummary('找到 2 个结果')).toBe(false);
+    });
+    it('相邻同工具同参数同结果只保留最后一次', () => {
+        const first = base({ id: 'a', isToolCall: true, toolName: 'global_place_search', toolArgs: '{"query":"西湖"}', toolResult: '找到 1 个结果', fromCache: true });
+        const second = base({ id: 'b', isToolCall: true, toolName: 'global_place_search', toolArgs: '{"query":"西湖"}', toolResult: '找到 1 个结果' });
+        const other = base({ id: 'c', isToolCall: true, toolName: 'global_place_search', toolArgs: '{"query":"灵隐寺"}', toolResult: '找到 1 个结果' });
+        const merged = dedupeToolSteps([first, second, other]);
+        expect(merged.map(item => item.id)).toEqual(['b', 'c']);
+        expect(merged[0].fromCache).toBe(true);
+    });
+    it('保留隔着工作说明的查询、并行查询与不同来源', () => {
+        const first = base({ id: 'a', isToolCall: true, toolName: 'global_place_search', toolStatus: 'completed', toolArgs: 'query=西湖', toolResult: '找到 1 个结果' });
+        const note = base({ id: 'note', kind: 'work_explanation', content: '继续确认地点。' });
+        const second = { ...first, id: 'b' };
+        expect(dedupeToolSteps([first, note, second]).map(item => item.id)).toEqual(['a', 'note', 'b']);
+        expect(dedupeToolSteps([{ ...first, toolStatus: 'running' }, { ...second, toolStatus: 'running' }])).toHaveLength(2);
+        expect(dedupeToolSteps([first, { ...second, resultPreview: [{ title: '另一来源' }] }])).toHaveLength(2);
     });
 });

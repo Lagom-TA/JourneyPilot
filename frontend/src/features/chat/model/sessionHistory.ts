@@ -33,6 +33,10 @@ export function mapThinkingSteps(rawSteps: SessionDetail['messages'][number]['th
         toolResult: step.tool_result,
         resultPreview: step.result_preview,
         progressStatus: step.progress_status,
+        kind: step.kind,
+        round: step.round ?? undefined,
+        callId: step.call_id ?? undefined,
+        seq: step.seq ?? undefined,
         toolCategory: step.tool_category as ThinkingStep['toolCategory'],
         fromCache: step.from_cache,
     }));
@@ -60,9 +64,22 @@ export function projectMessagesForRunLifecycle(messages: Message[], status: Trip
         ? { ...message, type: 'normal' as const, streamCompleted: true }
         : message));
 }
-export function latestAssistantThinkingSteps(messages: Message[]): ThinkingStep[] {
-    const latestWithSteps = [...messages]
+export function latestAssistantThinkingSteps(messages: Message[], runId?: string | null): ThinkingStep[] {
+    // 恢复历史 Run 时只认该 Run 的消息。父 Run 与子 Run 的助手消息都可能有
+    // thinking_steps，取全局最后一条会把别的 Run 的记录混进来。
+    const scoped = runId ? messages.filter((message) => message.runId === runId) : messages;
+    const latestWithSteps = [...scoped]
         .reverse()
         .find((m) => m.role === 'assistant' && (m.thinkingSteps?.length ?? 0) > 0);
-    return latestWithSteps?.thinkingSteps || [];
+    if (!latestWithSteps)
+        return [];
+    // 同一次 Run 续跑会新建 turn 但复用 assistant_message_id；历史按 turn
+    // 分开投影后，同一助手消息会变成多条，各自只带本 turn 的步骤。合并同 id
+    // 的步骤，刷新后才不会丢掉续跑前的阶段记录。
+    const sameMessage = scoped.filter(
+        (m) => m.role === 'assistant' && m.id === latestWithSteps.id,
+    );
+    if (sameMessage.length <= 1)
+        return latestWithSteps.thinkingSteps || [];
+    return sameMessage.flatMap((m) => m.thinkingSteps || []);
 }

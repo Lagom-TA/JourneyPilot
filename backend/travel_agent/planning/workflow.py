@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, AsyncGenerator, Dict, List, NoReturn, Optional
+from typing import Any, AsyncGenerator, Dict, NoReturn, Optional
 
 from langgraph.types import Command
 from pydantic import ValidationError
@@ -15,6 +15,7 @@ from travel_agent.planning.graph import get_travel_graph
 from travel_agent.planning.nodes import (
     NODE_CLARIFIER,
     NODE_PLAN_GATE,
+    NODE_RESEARCH_GATE,
     NODE_REQUIREMENTS_PREPARER,
     NODE_UNDERSTANDING_AGENT,
     NODE_UNDERSTANDING_GATE,
@@ -118,7 +119,9 @@ class TravelPlanningWorkflow:
             if NODE_PLAN_GATE in snapshot.next and not (state.research_plan or state.research_plan_error):
                 logger.warning("计划门检查点缺少当前研究方案 run_id=%s", run_id)
                 raise CheckpointContractError("当前版本无法继续这次旧规划，请重新规划这趟旅行。")
-            if NODE_UNDERSTANDING_GATE in snapshot.next and not state.understanding_pending_questions:
+            if NODE_RESEARCH_GATE in snapshot.next and not state.research_failed_workers:
+                raise CheckpointContractError("研究重试检查点缺少未完成的角色。")
+            if NODE_UNDERSTANDING_GATE in snapshot.next and state.understanding_pending_questions is None:
                 logger.warning("理解门检查点缺少待答问题 run_id=%s", run_id)
                 raise CheckpointContractError("当前版本无法继续这次旧规划，请重新规划这趟旅行。")
         unknown_nodes = set(snapshot.next) - set(self._graph.nodes)
@@ -137,7 +140,6 @@ class TravelPlanningWorkflow:
         user_message: str,
         session_id: str,
         user_id: str = LOCAL_USER_ID,
-        selected_mcp_servers: Optional[List[str]] = None,
         current_time: str = "",
         conversation_history: Optional[list] = None,
         stream_queue=None,
@@ -169,7 +171,6 @@ class TravelPlanningWorkflow:
                 messages=messages,
                 session_id=session_id,
                 user_id=user_id,
-                selected_mcp_servers=selected_mcp_servers or [],
                 user_query=user_message,
                 run_id=effective_run_id,
                 current_time=current_time

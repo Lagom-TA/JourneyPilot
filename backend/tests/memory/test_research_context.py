@@ -16,14 +16,15 @@ def _scope(**overrides):
         "worker_kind": "accommodation_researcher",
         "run_id": "run_test",
         "generation_id": "generation_test",
+        "fact_data_revision": 1,
         "destination_ids": ["tokyo"],
         **overrides,
     }
 
 
-def test_view_filters_runs_generations_destinations_and_keeps_latest_candidate():
+def test_view_filters_runs_generations_revisions_and_destinations():
     old = make_packet("old", revision=1)
-    new = make_packet("new", revision=2)
+    new = make_packet("new", revision=2).model_copy(update={"task_id": "task_test_r2"})
     other_city = make_packet("other_city", entities=(("visit_other", "osaka"),))
     other_run = make_packet(
         "other_run", entities=(("visit_run", "tokyo"),), run_id="run_other"
@@ -35,22 +36,21 @@ def test_view_filters_runs_generations_destinations_and_keeps_latest_candidate()
         p.research_packet_id: p
         for p in (old, new, other_city, other_run, other_generation)
     }
-    scope = _scope()
-    first = format_worker_research_context(packets, **scope)
-    second = format_worker_research_context(
-        dict(reversed(list(packets.items()))), **scope
-    )
-    assert first == second
-    view = json.loads(first)
-    assert view["destination_ids"] == ["tokyo"]
-    assert [item["research_packet_id"] for item in view["coordination"]] == ["new"]
-    assert view["coordination"][0]["candidates"][0]["candidate_id"] == "visit_a"
-    assert (
-        project_research_context(
-            packets, **_scope(worker_kind="destination_researcher")
+    for revision, expected_packet in ((1, "old"), (2, "new")):
+        scope = _scope(fact_data_revision=revision)
+        first = format_worker_research_context(packets, **scope)
+        second = format_worker_research_context(
+            dict(reversed(list(packets.items()))), **scope
+        )
+        assert first == second
+        view = json.loads(first)
+        assert view["destination_ids"] == ["tokyo"]
+        assert [item["research_packet_id"] for item in view["coordination"]] == [expected_packet]
+        assert view["coordination"][0]["candidates"][0]["candidate_id"] == "visit_a"
+        assert not project_research_context(
+            packets, **_scope(worker_kind="destination_researcher", fact_data_revision=revision)
         ).coordination
-        == []
-    )
+    assert not project_research_context(packets, **_scope(fact_data_revision=3)).coordination
 
 
 def test_coordination_preserves_values_units_validity_and_source_links_without_snapshots():
@@ -102,18 +102,8 @@ def test_coordination_preserves_values_units_validity_and_source_links_without_s
     assert packet.model_dump(mode="json") == before
 
 
-def test_transport_coordination_preserves_endpoints_segments_and_timing():
+def test_research_coordination_excludes_transport_candidates():
     packet = make_packet(worker="transport_researcher")
-    view = project_research_context({"packet": packet}, **_scope())
-    candidate = view.coordination[0].candidates[0]
-    assert candidate["from_endpoint"] == candidate["segments"][0]["from_endpoint"]
-    assert candidate["to_endpoint"] == candidate["segments"][-1]["to_endpoint"]
-    assert [segment["mode"] for segment in candidate["segments"]] == ["metro", "bus"]
-    assert (
-        candidate["segments"][0]["departure_at"]
-        and candidate["segments"][1]["arrival_at"]
-    )
-    assert (
-        candidate["segments"]
-        == packet.candidates[0].model_dump(mode="json")["segments"]
-    )
+    for worker_kind in ("transport_researcher", "accommodation_researcher"):
+        view = project_research_context({"packet": packet}, **_scope(worker_kind=worker_kind))
+        assert view.coordination == []

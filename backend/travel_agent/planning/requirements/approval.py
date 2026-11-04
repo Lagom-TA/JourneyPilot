@@ -14,7 +14,6 @@ from travel_agent.config.loader import get_settings
 from travel_agent.planning.delivery.minimum_draft import seal_minimum_delivery_draft
 from travel_agent.planning.invalidation import invalidation_update
 from travel_agent.planning.nodes import NODE_DISPATCHER, NODE_INTENT_AMENDMENT_ROUTER, NODE_PLAN_GATE, NODE_RESEARCH_PLAN_GENERATOR
-from travel_agent.planning.presentation import get_agent_display_name
 from travel_agent.planning.requirements.amendment_contracts import IntentAmendment
 from travel_agent.planning.research.plan import RESEARCH_EXECUTION_PLAN
 from travel_agent.planning.state import TravelAgentState
@@ -30,19 +29,13 @@ def _is_plan_gate_enabled(config: Optional[RunnableConfig]) -> bool:
 def _build_plan_gate_payload(state: TravelAgentState) -> Dict[str, Any]:
     plan = state.research_plan
     failed = plan is None or state.research_plan_error is not None
-    tasks = plan.tasks() if plan else {}
-    # 门禁展示与批准后的实际执行使用同一份串行计划定义。
+    # 门禁展示与批准后的实际执行使用同一份计划定义。
     groups = RESEARCH_EXECUTION_PLAN
     steps = [
-        {"step": index, "agents": group, "tasks": {worker: tasks[worker] for worker in group}}
+        {"step": index, "agents": group, "tasks": {worker: plan.summary for worker in group}}
         for index, group in enumerate(groups, 1)
     ] if plan else []
-    if plan:
-        text = "**研究和安排设想**\n" + plan.summary + "\n\n" + "\n".join(
-            f"- **{get_agent_display_name(worker)}**：{task}" for worker, task in tasks.items()
-        )
-    else:
-        text = "**研究方案暂未生成**\n可以重试、补充要求或取消。"
+    text = plan.summary if plan else "可以重试、补充要求或取消。"
     payload: Dict[str, Any] = {
         "gate": "plan",
         "revision": state.plan_gate_revision_count,
@@ -99,7 +92,7 @@ async def plan_gate_node(state: TravelAgentState, config: Optional[RunnableConfi
             }
         return {
             "plan_gate_decision": {"action": "approve", "revision": state.plan_gate_revision_count, "approval_token": supplied},
-            # 批准时落章当前串行执行计划：用户确认的分组与实际执行保持一致。
+            # 批准时落章确认门展示的执行分组，保持授权与实际执行一致。
             "execution_plan": RESEARCH_EXECUTION_PLAN,
             "current_plan_step": 0,
             **seal_minimum_delivery_draft(state),

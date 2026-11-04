@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from langchain_core.runnables import RunnableConfig
@@ -13,22 +13,23 @@ from travel_agent.llm.router import get_model_router
 from travel_agent.llm.task_routing import TaskKind, llm_for_task
 from travel_agent.llm.token_counting import estimate_request_tokens
 from travel_agent.planning.nodes import NODE_UNDERSTANDING_AGENT
+from travel_agent.planning.requirements.constraints.planning import build_planning_constraint_pack
 from travel_agent.planning.requirements.identity_contracts import (
     ControlledTripIdentity,
 )
 from travel_agent.planning.requirements.understanding.contracts import (
     validate_understanding_questions,
 )
+from travel_agent.planning.requirements.understanding.places import bind_understanding_places
 from travel_agent.planning.requirements.understanding.prompts import (
     initial_understanding_messages,
 )
+from travel_agent.planning.research.output.transcript import authoritative_tool_messages
 from travel_agent.planning.tool_context import build_tool_context_from_state
 from travel_agent.tools.access import filter_tools_for_agent, get_available_tools
 from travel_agent.tools.react import streaming_react_loop
 from travel_agent.tools.result import ReactOutcome
 from travel_agent.utils.json_helpers import safe_parse_json
-
-logger = logging.getLogger(__name__)
 
 # 理解阶段的累计上限：提问轮数、每轮工具迭代数与上下文规模。取消由运行控制
 # 与工具循环内的取消检查承担；每次模型与工具调用都记入运行台账，方案确认时
@@ -53,17 +54,12 @@ def _append_final_answer(messages: List[Dict[str, Any]], content: str) -> None:
 
 
 async def _persist_run_identity(config: Dict[str, Any], run_id: str, identity: ControlledTripIdentity) -> None:
-    """把理解产出的身份写回 Run 行，供工作台展示与刷新恢复读取。"""
-
+    """把当前已知基础信息写回 Run 行，供刷新恢复读取。"""
     store = (config or {}).get("configurable", {}).get("trip_run_store")
-    if store is None:
-        return
-    try:
+    if store is not None:
         await store.update_controlled_trip_identity(
             run_id, controlled_trip_identity=identity.model_dump(mode="json")
         )
-    except Exception:
-        logger.warning("理解身份写回 Run 行失败 run_id=%s", run_id, exc_info=True)
 
 
 async def understanding_agent_node(state: Any, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
@@ -72,14 +68,22 @@ async def understanding_agent_node(state: Any, config: Optional[RunnableConfig] 
     router = get_model_router()
     llm = llm_for_task(router, TaskKind.UNDERSTANDING, has_tools=True)
     available_tools = filter_tools_for_agent(
-        await get_available_tools(state.selected_mcp_servers or []),
+        await get_available_tools(),
         NODE_UNDERSTANDING_AGENT,
     )
     tool_context = build_tool_context_from_state(state)
 
+    current_time = state.current_time or datetime.now().strftime("%Y-%m-%d %A %H:%M:%S")
+    constraint_pack = state.constraint_pack or await build_planning_constraint_pack(state)
+    context_state = state.model_copy(update={"constraint_pack": constraint_pack, "current_time": current_time})
     messages: List[Dict[str, Any]] = (
-        list(state.understanding_messages) or initial_understanding_messages(state)
+        list(state.understanding_messages) or initial_understanding_messages(context_state)
     )
+    if state.understanding_messages and messages and messages[-1].get("role") == "user":
+        messages = [
+            *messages,
+            {"role": "user", "content": f"本轮参考时间：{current_time}"},
+        ]
     rounds = int(state.understanding_rounds or 0)
     repair = 0
     while True:
@@ -109,60 +113,52 @@ async def understanding_agent_node(state: Any, config: Optional[RunnableConfig] 
         if not isinstance(parsed, dict):
             parsed = None
         action = str((parsed or {}).get("action") or "")
-        if action == "ask":
-            try:
-                questions = validate_understanding_questions(parsed.get("questions"))
-            except ValueError as exc:
-                if repair >= _UNDERSTANDING_REPAIR_ATTEMPTS:
-                    raise UnderstandingFailed(f"需求理解的问题输出不合法: {exc}") from exc
-                repair += 1
-                _append_final_answer(messages, react.content)
-                messages.append(
-                    {"role": "user", "content": f"上一次输出的问题不合法（{exc}）。请重新输出完整的 JSON 结论。"}
-                )
-                continue
-            if rounds >= UNDERSTANDING_MAX_ROUNDS:
-                raise UnderstandingFailed("已达到理解阶段的提问上限，请整理要求后重新开始规划。")
+        try:
+            if action not in {"ask", "ready"}:
+                raise ValueError("action 必须是 ask 或 ready")
+            raw_identity = parsed.get("trip_identity")
+            requirements = parsed.get("requirements")
+            if not isinstance(raw_identity, dict):
+                raise ValueError("trip_identity 必须是对象")
+            if not isinstance(requirements, str) or not requirements.strip():
+                raise ValueError("requirements 必须是整理后的旅行要求")
+            bound_identity = bind_understanding_places(
+                raw_identity,
+                state.controlled_trip_identity or {},
+                [*messages, *authoritative_tool_messages(react.tool_results)],
+            )
+            identity = ControlledTripIdentity.model_validate(bound_identity)
+            questions = validate_understanding_questions(parsed.get("questions")) if action == "ask" else None
+        except (ValidationError, ValueError) as exc:
+            if repair >= _UNDERSTANDING_REPAIR_ATTEMPTS:
+                raise UnderstandingFailed(f"需求理解没有返回有效结果: {exc}") from exc
+            repair += 1
             _append_final_answer(messages, react.content)
-            return {
-                "understanding_messages": messages,
-                "understanding_qa": list(state.understanding_qa or []),
-                "understanding_pending_questions": [item.model_dump(mode="json") for item in questions],
-                "understanding_rounds": rounds + 1,
-            }
-        if action == "ready":
-            try:
-                identity = ControlledTripIdentity.model_validate((parsed or {}).get("trip_identity"))
-            except (ValidationError, ValueError) as exc:
-                if repair >= _UNDERSTANDING_REPAIR_ATTEMPTS:
-                    raise UnderstandingFailed(f"旅行基础信息不完整: {exc}") from exc
-                repair += 1
-                _append_final_answer(messages, react.content)
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            f"trip_identity 校验未通过（{exc}）。"
-                            "请修正后重新输出完整的 ready JSON；缺关键信息就改为 ask 向用户提问。"
-                        ),
-                    }
-                )
-                continue
-            _append_final_answer(messages, react.content)
-            await _persist_run_identity(config, state.run_id, identity)
-            return {
-                "understanding_messages": messages,
-                "understanding_qa": list(state.understanding_qa or []),
-                "understanding_pending_questions": None,
-                "controlled_trip_identity": identity.model_dump(mode="json"),
-            }
-        if repair >= _UNDERSTANDING_REPAIR_ATTEMPTS:
-            raise UnderstandingFailed("需求理解没有返回有效的 JSON 结论。")
-        repair += 1
+            messages.append({"role": "user", "content": f"请修正本轮输出格式：{exc}"})
+            continue
+
+        pending = [item.model_dump(mode="json") for item in questions] if questions else []
+        missing_dates = identity.start_date is None or identity.end_date is None
+        if action == "ready" and missing_dates:
+            pending = [{
+                "id": "travel_dates",
+                "question": "旅行时间尚未明确，准备玩几天？也可以选择具体的出发和返程日期。",
+                "kind": "date_range",
+                "options": [],
+            }]
+        needs_retry = action == "ready" and not missing_dates and not identity.destinations
+        if action == "ask" and rounds >= UNDERSTANDING_MAX_ROUNDS:
+            raise UnderstandingFailed("已达到理解阶段的提问上限，请整理要求后重新开始规划。")
         _append_final_answer(messages, react.content)
-        messages.append(
-            {
-                "role": "user",
-                "content": "输出格式不正确：action 必须是 ask 或 ready。请重新输出完整的 JSON 结论。",
-            }
-        )
+        await _persist_run_identity(config, state.run_id, identity)
+        update = {
+            "understanding_messages": messages,
+            "understanding_qa": list(state.understanding_qa or []),
+            "understanding_pending_questions": pending if pending or needs_retry else None,
+            "controlled_trip_identity": identity.model_dump(mode="json"),
+            "current_requirements": requirements.strip(),
+            "constraint_pack": constraint_pack,
+        }
+        if pending or needs_retry:
+            update["understanding_rounds"] = rounds + 1
+        return update

@@ -74,12 +74,17 @@ _EXPECTED_REAL_RESULTS: Dict[str, List[str]] = {
         "tavily_search",
     ],
     "transport_researcher": [
+        "brave_search",
+        "duckduckgo_search",
         "duffel_search_flights",
+        "fetch_web",
         "free_web_search",
+        "global_place_search",
         "global_route_search",
         "maps_around_search",
         "maps_search_detail",
         "maps_text_search",
+        "tavily_search",
         "train_ticket_search",
     ],
     "accommodation_researcher": [
@@ -87,20 +92,41 @@ _EXPECTED_REAL_RESULTS: Dict[str, List[str]] = {
         "currency_convert",
         "free_web_search",
         "global_place_search",
+        "global_route_search",
         "maps_around_search",
         "maps_search_detail",
         "maps_text_search",
         "tavily_search",
     ],
     "itinerary_planner": [
-        "free_web_search",
         "global_place_search",
-        "global_route_search",
         "maps_around_search",
         "maps_search_detail",
         "maps_text_search",
     ],
 }
+
+
+async def test_registered_tools_are_filtered_by_role_and_knowledge_setting(monkeypatch):
+    from types import SimpleNamespace
+
+    from travel_agent.config import loader
+
+    available_tools = [*_FAKE_TOOLS, _local("knowledge_search")]
+    monkeypatch.setattr(
+        access, "get_tool_registry", lambda: SimpleNamespace(get_tools_as_schemas=lambda: available_tools)
+    )
+    monkeypatch.setattr(
+        loader, "_effective", SimpleNamespace(settings=SimpleNamespace(embedding=SimpleNamespace(enabled=False)))
+    )
+    available = await access.get_available_tools()
+    assert "train_ticket_search" in _names(available)
+    assert "tavily_search" in _names(available)
+    assert "knowledge_search" not in _names(available)
+    assert "train_ticket_search" in _names(filter_tools_for_agent(available, "transport_researcher"))
+    assert "train_ticket_search" not in _names(filter_tools_for_agent(available, "destination_researcher"))
+    loader._effective.settings.embedding.enabled = True
+    assert "knowledge_search" in _names(await access.get_available_tools())
 
 
 def test_real_workers_keep_their_policy_toolsets():

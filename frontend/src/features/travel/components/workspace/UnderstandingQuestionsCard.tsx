@@ -5,15 +5,25 @@ import { useStopRun } from '../../../../app/session/useStopRun';
 import { cn } from '../../../../lib/utils';
 import React from 'react';
 import type { UnderstandingQuestion } from '../../types/planner';
+import { DateRangePicker } from '../planning/DateRangePicker';
 
-type AnswerDraft = { optionIds: string[]; freeText: string };
+type AnswerDraft = { optionIds: string[]; freeText: string; start: string; end: string };
+
+function today(): string {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
 
 function answerText(question: UnderstandingQuestion, draft: AnswerDraft): string {
   const labels = draft.optionIds
     .map((id) => question.options.find((option) => option.id === id)?.label)
     .filter((label): label is string => Boolean(label));
+  const dates = draft.start && draft.end ? `旅行日期：${draft.start} 至 ${draft.end}` : '';
   const free = draft.freeText.trim();
-  return [labels.join('、'), free].filter(Boolean).join('；');
+  const reference = question.kind === 'date_range' && !dates && free
+    ? `若只填写旅行天数，暂以 ${today()} 为出发日期进行规划`
+    : '';
+  return [labels.join('、'), dates, free, reference].filter(Boolean).join('；');
 }
 
 /**
@@ -25,7 +35,10 @@ export const UnderstandingQuestionsCard: React.FC<{
   revision: number;
   approvalToken: string;
   questions: UnderstandingQuestion[];
-}> = ({ runId, revision, approvalToken, questions }) => {
+  retryLocation: boolean;
+  retryResearch?: boolean;
+  message?: string;
+}> = ({ runId, revision, approvalToken, questions, retryLocation, retryResearch, message }) => {
   const { state } = useApp();
   const { sendMessage } = useSendMessage();
   const { stopRun } = useStopRun();
@@ -34,7 +47,7 @@ export const UnderstandingQuestionsCard: React.FC<{
   const formRef = React.useRef<HTMLFormElement>(null);
 
   const draftOf = (question: UnderstandingQuestion): AnswerDraft =>
-    drafts[question.id] ?? { optionIds: [], freeText: '' };
+    drafts[question.id] ?? { optionIds: [], freeText: '', start: '', end: '' };
 
   const allAnswered = questions.every((question) => answerText(question, draftOf(question)).trim().length > 0);
 
@@ -56,7 +69,20 @@ export const UnderstandingQuestionsCard: React.FC<{
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!allAnswered || submitting || state.isStreaming) return;
+    if ((!retryLocation && !allAnswered) || submitting || state.isStreaming) return;
+    if (retryLocation) {
+      setSubmitting(true);
+      try {
+        await sendMessage(retryResearch ? '重试未完成的研究' : '重新查询目的地', {
+          resumeRunId: runId,
+          route: 'trip_refinement',
+          gateDecision: { action: 'retry', approval_token: approvalToken },
+        });
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     const answers = questions.map((question) => ({
       question_id: question.id,
       text: answerText(question, draftOf(question)),
@@ -91,8 +117,8 @@ export const UnderstandingQuestionsCard: React.FC<{
       onSubmit={(event) => void submit(event)}
     >
       <header className="understanding-questions-head">
-        <h2>模型想先确认几件事</h2>
-        <p>回答会直接进入你的旅行需求；也可以自由补充。</p>
+        <h2>{retryResearch ? '部分研究未完成' : retryLocation ? '目的地待核实' : '模型想先确认几件事'}</h2>
+        <p>{retryResearch ? message || '已有成果已保留，可以重试或取消。' : retryLocation ? '暂时没有查到可靠的地点，请稍后重试。' : '回答会直接进入你的旅行需求；也可以自由补充。'}</p>
       </header>
       <ol className="understanding-questions-list">
         {questions.map((question) => {
@@ -100,6 +126,19 @@ export const UnderstandingQuestionsCard: React.FC<{
           return (
             <li key={question.id} className="understanding-question" data-testid="understanding-question">
               <p className="understanding-question-text">{question.question}</p>
+              {question.kind === 'date_range' && (
+                <div>
+                  <DateRangePicker
+                    start={draft.start}
+                    end={draft.end}
+                    onChange={(start, end) => setDrafts((current) => ({
+                      ...current,
+                      [question.id]: { ...draftOf(question), start, end },
+                    }))}
+                  />
+                  <p className="mt-2 text-xs text-ink-secondary">也可以直接填写天数；未指定日期时暂按今天出发规划。</p>
+                </div>
+              )}
               {question.options.length > 0 && (
                 <div className="understanding-question-options" role="group" aria-label={`回答方式：${question.question}`}>
                   {question.options.map((option) => {
@@ -128,7 +167,7 @@ export const UnderstandingQuestionsCard: React.FC<{
                 onChange={(event) =>
                   setDrafts((current) => ({
                     ...current,
-                    [question.id]: { ...draft, freeText: event.target.value },
+                    [question.id]: { ...draftOf(question), freeText: event.target.value },
                   }))
                 }
               />
@@ -144,10 +183,10 @@ export const UnderstandingQuestionsCard: React.FC<{
           type="submit"
           className="understanding-questions-submit"
           data-testid="understanding-questions-submit"
-          disabled={!allAnswered || submitting || state.isStreaming}
+          disabled={(!retryLocation && !allAnswered) || submitting || state.isStreaming}
         >
           {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-          {submitting ? '正在提交' : '提交回答'}
+          {submitting ? '正在提交' : retryResearch ? '重试未完成的研究' : retryLocation ? '重试地点查询' : '提交回答'}
         </button>
       </footer>
     </form>

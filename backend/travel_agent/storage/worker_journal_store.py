@@ -16,6 +16,13 @@ class JournalConflict(RuntimeError):
     pass
 
 
+TOOL_BUDGET_SCOPE = "__tool_budget__"
+
+
+def initial_tool_budget() -> tuple[str, bytes]:
+    return JsonPlusSerializer().dumps_typed({"calls": 0, "retries": {}})
+
+
 def journal_boundary(method):
     @wraps(method)
     async def wrapped(*args, **kwargs):
@@ -29,6 +36,37 @@ def journal_boundary(method):
 
 
 class WorkerJournalStore:
+    @journal_boundary
+    async def reserve_tool(self, run_id, tool_name, *, lease_token, limit, retry=False):
+        async with get_db_session() as session:
+            lease = await session.execute(text(
+                "SELECT run_id FROM trip_run_executions WHERE run_id=:run_id "
+                "AND lease_token=:lease_token AND lease_expires_at>NOW() FOR UPDATE"
+            ), {"run_id": run_id, "lease_token": lease_token})
+            if lease.first() is None:
+                raise JournalConflict("工具预算的执行租约已失效")
+            result = await session.execute(text(
+                "SELECT version, payload_type, payload FROM run_worker_journals "
+                "WHERE run_id=:run_id AND scope_id=:scope_id FOR UPDATE"
+            ), {"run_id": run_id, "scope_id": TOOL_BUDGET_SCOPE})
+            row = result.mappings().first()
+            if row is None:
+                raise JournalConflict("工具预算记录不存在，不能安全恢复")
+            payload = JsonPlusSerializer().loads_typed((row["payload_type"], bytes(row["payload"])))
+            calls = int(payload.get("calls") or 0)
+            if limit is not None and calls >= limit:
+                return None
+            retries = dict(payload.get("retries") or {})
+            if retry:
+                retries[tool_name] = int(retries.get(tool_name) or 0) + 1
+            payload = {"calls": calls + 1, "retries": retries}
+            kind, data = JsonPlusSerializer().dumps_typed(payload)
+            await session.execute(text(
+                "UPDATE run_worker_journals SET version=version+1, payload_type=:kind, "
+                "payload=:data, updated_at=NOW() WHERE run_id=:run_id AND scope_id=:scope_id"
+            ), {"run_id": run_id, "scope_id": TOOL_BUDGET_SCOPE, "kind": kind, "data": data})
+            return payload
+
     @journal_boundary
     async def load(self, run_id, scope_id):
         async with get_db_session() as session:
@@ -72,5 +110,4 @@ class WorkerJournalStore:
             if updated is None:
                 raise JournalConflict("concurrent worker journal write")
         return updated
-
 
