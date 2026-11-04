@@ -231,9 +231,7 @@ test('表单完整身份直接进入方案确认', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-11-01T10:00:00+08:00'));
   await page.goto('/');
   await page.getByTestId('planner-structured-tab').click();
-  const skipOrigin = page.getByRole('button', { name: '暂时不用默认值', exact: true });
-  if (await skipOrigin.count()) await skipOrigin.click();
-  await page.getByRole('textbox', { name: '从哪里出发' }).fill('上海');
+  await page.getByRole('textbox', { name: '出发地', exact: true }).fill('上海');
   await page.getByRole('button', { name: '上海 上海，中国', exact: true }).click();
   await page.getByRole('textbox', { name: '目的地，搜索城市或区域' }).fill('青岛');
   await page.getByRole('button', { name: '青岛 青岛，中国', exact: true }).click();

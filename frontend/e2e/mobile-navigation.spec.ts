@@ -5,13 +5,9 @@ for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 844 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: '想去哪里，告诉我。' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /想去哪里，\s*告诉我。/ })).toBeVisible();
     await page.getByRole('tab', { name: '按条件规划' }).click();
-    const skip = page.getByRole('button', { name: '暂时不用默认值', exact: true });
-    const originInput = page.getByRole('textbox', { name: '从哪里出发' });
-    await expect(skip.or(originInput)).toBeVisible();
-    if (await skip.count()) await skip.click();
-    await expect(page.getByRole('textbox', { name: '从哪里出发' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: '出发地', exact: true })).toBeVisible();
     await expect(page.getByRole('textbox', { name: '目的地，搜索城市或区域', exact: true })).toBeVisible();
     const scroll = page.locator('.new-trip-hero');
     expect(await scroll.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);

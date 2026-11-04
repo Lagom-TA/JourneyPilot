@@ -143,6 +143,38 @@ export const TripPlanner: React.FC<{
     setDestinationAddOpen(state === 'open');
   }, []);
 
+  const resizeNaturalInput = React.useCallback(() => {
+    const input = naturalInputRef.current;
+    if (!input || modeRef.current !== 'natural' || input.clientWidth === 0) return;
+    input.style.height = 'auto';
+    input.style.height = `${input.scrollHeight}px`;
+  }, []);
+
+  React.useLayoutEffect(() => {
+    resizeNaturalInput();
+  }, [mode, naturalText, resizeNaturalInput]);
+
+  React.useLayoutEffect(() => {
+    const input = naturalInputRef.current;
+    if (mode !== 'natural' || !input) return undefined;
+    let previousWidth = 0;
+    let frame = 0;
+    const observer = new ResizeObserver(([entry]) => {
+      const width = entry.contentRect.width;
+      if (width === 0 || width === previousWidth) return;
+      previousWidth = width;
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(resizeNaturalInput);
+    });
+    observer.observe(input);
+    document.fonts.addEventListener('loadingdone', resizeNaturalInput);
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+      document.fonts.removeEventListener('loadingdone', resizeNaturalInput);
+    };
+  }, [mode, resizeNaturalInput]);
+
   const focusNaturalInput = React.useCallback(() => {
     const input = naturalInputRef.current;
     if (!input) return;

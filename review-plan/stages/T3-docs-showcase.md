@@ -31,7 +31,7 @@
 
 ## 收到的提醒
 
-- [ ] 来自 F2-01、F2-03、F2-06：首页使用四张原创风景与真实票据、行李签，条件表单已重做；共用纸品库有 17 张透明 WebP，首页最新镜头为 r5，素材与提示词见 `frontend/src/assets/home/`、`frontend/src/assets/paper/` 及 `output/review/F2/manifest.md` → 请在全项目定稿后选取 README 展示镜头。
+- [ ] 来自 F2-01、F2-03、F2-06、F2-08、F2-09：首页使用四张原创风景、同主题旅行票据与插画行李签，条件表单已重做；共用纸品库有 17 张透明 WebP，首页最新镜头及 V2 交互录屏为 r10，素材与提示词见 `frontend/src/assets/home/`、`frontend/src/assets/paper/` 及 `output/review/F2/manifest.md` → 请在全项目定稿后选取 README 展示镜头。
 - [ ] 来自 B5-12、B5-13：手动记忆操作会留作后续总结反馈；Node MCP 使用锁定依赖并要求 Node 22 → 请复核公开文档与安装说明。
 - [ ] 来自 B6-08、B6-09：第三方 Open-Meteo MCP 默认禁用且 README 已说明；23 个审查过程文件和本机专用审查设置需在审查完成后决定公开范围，删除前列清目标并取得授权。
 - [ ] 来自 B6-10：启动脚本复用已有 PostgreSQL 和 Redis 容器，配置变化不会自动重建；请复核中英文快速开始。

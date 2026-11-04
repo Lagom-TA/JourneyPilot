@@ -97,6 +97,73 @@ function expectCleanFixture(fixture: { pageErrors: string[]; unmocked: string[] 
   expect(fixture.unmocked).toEqual([]);
 }
 
+async function expectTextInsidePaper(page: Page) {
+  await page.locator('.travel-atlas img').evaluateAll((images) => Promise.all(images.map((image) => (image as HTMLImageElement).decode())));
+  const geometry = await page.getByTestId('travel-atlas').evaluate((atlas) => {
+    const primary = atlas.querySelector('.is-primary')!.getBoundingClientRect();
+    const secondary = atlas.querySelector('.is-secondary')!.getBoundingClientRect();
+    const toolbar = atlas.querySelector('.atlas-toolbar')!.getBoundingClientRect();
+    return {
+      paperGap: secondary.top - primary.bottom,
+      controlGap: Math.min(primary.top, secondary.top) - toolbar.bottom,
+      leftEdgeOffset: Math.abs(toolbar.left - primary.left),
+      rightEdgeOffset: Math.abs(toolbar.right - primary.right),
+      controlsRight: toolbar.right,
+      viewportWidth: window.innerWidth,
+      tabsOnOneLine: new Set(Array.from(atlas.querySelectorAll('[role="tab"]')).map((tab) => tab.getBoundingClientRect().top)).size === 1,
+    };
+  });
+  expect(geometry.paperGap).toBeGreaterThanOrEqual(8);
+  expect(geometry.controlGap).toBeGreaterThanOrEqual(8);
+  expect(geometry.leftEdgeOffset).toBeLessThanOrEqual(4);
+  expect(geometry.rightEdgeOffset).toBeLessThanOrEqual(4);
+  expect(geometry.controlsRight).toBeLessThanOrEqual(geometry.viewportWidth);
+  expect(geometry.tabsOnOneLine).toBe(true);
+  const violations = await page.locator('.atlas-example-card').evaluateAll((cards) => cards.flatMap((card) => {
+    const button = card as HTMLElement;
+    const previous = button.style.getPropertyValue('transform');
+    const priority = button.style.getPropertyPriority('transform');
+    const transition = button.style.getPropertyValue('transition');
+    const transitionPriority = button.style.getPropertyPriority('transition');
+    button.style.setProperty('transition', 'none', 'important');
+    button.style.setProperty('transform', 'none', 'important');
+    const image = button.querySelector<HTMLImageElement>('.atlas-paper')!;
+    const box = image.getBoundingClientRect();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d')!;
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const walker = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+    const errors: string[] = [];
+    while (walker.nextNode()) {
+      const text = walker.currentNode;
+      if (!text.textContent?.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(text);
+      for (const rect of Array.from(range.getClientRects())) {
+        const points = [[rect.left, rect.top], [rect.right, rect.top], [rect.left, rect.bottom], [rect.right, rect.bottom]];
+        for (const [left, top] of points) {
+          const x = Math.floor((left - box.left) / box.width * canvas.width);
+          const y = Math.floor((top - box.top) / box.height * canvas.height);
+          if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height || pixels[(y * canvas.width + x) * 4 + 3] < 160) {
+            errors.push(`${button.dataset.testid}: ${text.textContent.trim()}`);
+            break;
+          }
+        }
+      }
+    }
+    if (previous) button.style.setProperty('transform', previous, priority);
+    else button.style.removeProperty('transform');
+    button.getBoundingClientRect();
+    if (transition) button.style.setProperty('transition', transition, transitionPriority);
+    else button.style.removeProperty('transition');
+    return errors;
+  }));
+  expect(violations).toEqual([]);
+}
+
 test('同一视图内后退后，切换视图仍同步地址栏', async ({ page }) => {
   await openHome(page);
   await page.evaluate(() => {
@@ -136,13 +203,20 @@ async function destinationGeometry(page: Page) {
   });
 }
 
-test('首页只保留自由输入、四种场景与两条可回填灵感', async ({ page }) => {
+test('首页只保留自由输入、四种场景与两件互补的旅行纸品', async ({ page }) => {
   const fixture = await openHome(page, { width: 1440, height: 900 });
   const input = page.getByTestId('natural-trip-input');
   await expect(page.getByRole('button', { name: '补充偏好' })).toHaveCount(0);
   await expect(page.getByText('补充偏好', { exact: true })).toHaveCount(0);
   await expect(page.locator('.planner-natural-starter')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '开始规划', exact: true })).toBeDisabled();
+  await expect(input).toHaveCSS('resize', 'none');
+  const initialInputHeight = (await input.boundingBox())!.height;
+  await input.fill(Array.from({ length: 12 }, () => '沿海慢慢走，安排一些休息时间。').join('\n'));
+  await expect.poll(async () => (await input.boundingBox())!.height).toBeGreaterThan(initialInputHeight + 100);
+  expect(await input.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1);
+  await input.fill('');
+  await expect.poll(async () => (await input.boundingBox())!.height).toBe(initialInputHeight);
   const scenes = [
     { id: 'jiangnan', tab: '江南', title: '苏州＋杭州 4 日' },
     { id: 'northwest', tab: '西北', title: '敦煌＋张掖 6 日' },
@@ -153,15 +227,110 @@ test('首页只保留自由输入、四种场景与两条可回填灵感', async
     await page.getByTestId(`atlas-tab-${scene.id}`).click();
     await expect(page.getByTestId('travel-atlas')).toHaveAttribute('data-scene', scene.id);
     const example = page.getByTestId('atlas-use-example');
-    await expect(example).toHaveAccessibleName(`用这个灵感填入规划：${scene.title}`);
-    await expect(example.locator('.atlas-example-title')).toHaveText(scene.tab);
+    await expect(example).toHaveAccessibleName(`采用旅行提案：${scene.title}`);
+    await expect(example.locator('.atlas-example-title')).toContainText(scene.title.split('＋')[0]);
+    await expect(page.getByTestId('atlas-use-alternate')).toHaveAttribute('data-theme', scene.id);
+    await expect(page.locator('.home-landscape')).toHaveAttribute('data-theme', scene.id);
+    await expect(page.getByTestId('travel-atlas').getByText('填入', { exact: true })).toHaveCount(0);
     await expect(page.locator('.atlas-example-card')).toHaveCount(2);
     await expect(page.locator('.atlas-scene')).toHaveCount(1);
+    await expectTextInsidePaper(page);
   }
   await page.getByTestId('atlas-use-example').click();
   await expect(input).toHaveValue(/海口和三亚/);
   await expect(input).toBeFocused();
   await expect(page.getByRole('button', { name: '开始规划', exact: true })).toBeEnabled();
+  const proposal = await input.inputValue();
+  await input.fill('另一个还未提交的想法');
+  await page.getByTestId('atlas-use-alternate').click();
+  await expect(input).toHaveValue(proposal);
+  await expect(input).toBeFocused();
+  for (const paper of ['atlas-use-example', 'atlas-use-alternate']) {
+    await page.getByTestId(paper).hover();
+    await page.waitForTimeout(350);
+    await expectTextInsidePaper(page);
+  }
+  expectCleanFixture(fixture);
+});
+
+test('旅行提案自动轮换在悬停、填写、焦点和隐藏页面时暂停', async ({ page }) => {
+  await page.clock.install();
+  const fixture = await openHome(page);
+  const atlas = page.getByTestId('travel-atlas');
+  await page.mouse.move(0, 0);
+  await expect(atlas).toHaveAttribute('data-autoplay', 'running');
+  const readProgress = () => page.getByTestId('atlas-progress').evaluate((element) => {
+    const right = getComputedStyle(element).clipPath.match(/inset\([^ ]+ ([\d.]+)%/);
+    return 1 - Number(right?.[1] ?? 100) / 100;
+  });
+  await expect(page.getByTestId('atlas-rotation-control')).toHaveCount(0);
+  await page.clock.fastForward(6000);
+  await page.clock.runFor(40);
+  const partial = await readProgress();
+  expect(partial).toBeGreaterThan(0.35);
+  expect(partial).toBeLessThan(0.65);
+  await page.getByTestId('atlas-use-example').hover();
+  await expect(atlas).toHaveAttribute('data-autoplay', 'paused');
+  const frozen = await readProgress();
+  await page.clock.fastForward(28_000);
+  expect(await readProgress()).toBeCloseTo(frozen, 2);
+  await expect(atlas).toHaveAttribute('data-scene', 'northwest');
+  await page.mouse.move(0, 0);
+  await expect(atlas).toHaveAttribute('data-autoplay', 'running');
+  await page.clock.fastForward(8100);
+  await expect(atlas).toHaveAttribute('data-scene', 'island');
+  const input = page.getByTestId('natural-trip-input');
+  await input.fill('保留我自己的旅行想法');
+  await expect(atlas).toHaveAttribute('data-autoplay', 'paused');
+  await page.clock.fastForward(28_000);
+  await expect(atlas).toHaveAttribute('data-scene', 'island');
+  await expect(input).toHaveValue('保留我自己的旅行想法');
+  await page.getByTestId('atlas-tab-jiangnan').focus();
+  await page.clock.fastForward(28_000);
+  await expect(atlas).toHaveAttribute('data-scene', 'island');
+  await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
+  await page.mouse.move(0, 0);
+  await expect(atlas).toHaveAttribute('data-autoplay', 'running');
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(atlas).toHaveAttribute('data-autoplay', 'paused');
+  await page.clock.fastForward(28_000);
+  await expect(atlas).toHaveAttribute('data-scene', 'island');
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect(atlas).toHaveAttribute('data-autoplay', 'running');
+  await page.clock.fastForward(14_100);
+  await expect(atlas).toHaveAttribute('data-scene', 'southwest');
+  await expect(input).toHaveValue('保留我自己的旅行想法');
+  expectCleanFixture(fixture);
+});
+
+test('素材延迟或失败时整组保留，快速选择只采用最后一次主题', async ({ page }) => {
+  const fixture = await openHome(page);
+  let releaseImage: () => void = () => {};
+  const waiting = new Promise<void>((resolve) => { releaseImage = resolve; });
+  await page.route('**/*jiangnan.webp*', async (route) => {
+    if (route.request().resourceType() === 'image') await waiting;
+    await route.continue();
+  });
+  await page.getByTestId('atlas-tab-jiangnan').click();
+  await expect(page.getByTestId('travel-atlas')).toHaveAttribute('aria-busy', 'true');
+  await expect(page.getByTestId('travel-atlas')).toHaveAttribute('data-scene', 'northwest');
+  await expect(page.locator('.home-landscape')).toHaveAttribute('data-theme', 'northwest');
+  await page.getByTestId('atlas-tab-island').click();
+  await expect(page.getByTestId('travel-atlas')).toHaveAttribute('data-scene', 'island');
+  releaseImage();
+  await page.waitForTimeout(100);
+  await expect(page.getByTestId('atlas-use-alternate')).toHaveAttribute('data-theme', 'island');
+  await page.route('**/*northwest.webp*', (route) => route.request().resourceType() === 'image' ? route.abort() : route.continue());
+  await page.getByTestId('atlas-tab-northwest').click();
+  await expect(page.getByTestId('travel-atlas')).not.toHaveAttribute('aria-busy', 'true');
+  await expect(page.getByTestId('travel-atlas')).toHaveAttribute('data-scene', 'island');
+  await expect(page.locator('.home-landscape')).toHaveAttribute('data-theme', 'island');
   expectCleanFixture(fixture);
 });
 
@@ -183,7 +352,7 @@ test('配置失败不阻塞一句话输入，条件规划可以重试并保留�
   expectCleanFixture(fixture);
 });
 
-test('场景由用户切换，键盘导航同步选中态和焦点', async ({ page }) => {
+test('手动选择整组主题，键盘导航同步选中态和焦点', async ({ page }) => {
   const fixture = await openHome(page);
   const tabs = page.locator('.atlas-scene-tabs > button');
   const panelIds = await tabs.evaluateAll((elements) => elements.map((element) => element.getAttribute('aria-controls')));
@@ -267,13 +436,13 @@ test('人数用选项和自填确认，取消不改变草稿，提交保留成�
     await expect(page.getByRole('button', { name: '增加成人' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '减少儿童' })).toHaveCount(0);
     await page.locator('.planner-card').scrollIntoViewIfNeeded();
-    await page.screenshot({ path: `${evidence}/H2-${code}-form-r6.png` });
+    await page.screenshot({ path: `${evidence}/H2-${code}-form-r10.png` });
     const trigger = page.getByTestId('traveler-picker-trigger');
     await trigger.click();
     const dialog = page.getByTestId('traveler-picker-dialog');
     await expect(dialog).toHaveCSS('opacity', '1');
     await expect(page.getByRole('button', { name: '9 位成人', exact: true })).toBeVisible();
-    await page.screenshot({ path: `${evidence}/H2-${code}-travelers-r6.png` });
+    await page.screenshot({ path: `${evidence}/H2-${code}-travelers-r10.png` });
     await page.getByRole('button', { name: '6 位成人', exact: true }).click();
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
@@ -284,7 +453,7 @@ test('人数用选项和自填确认，取消不改变草稿，提交保留成�
     await expect(page.getByRole('button', { name: '完成', exact: true })).toBeDisabled();
     await page.getByRole('textbox', { name: '自填成人', exact: true }).fill('10');
     await page.getByRole('button', { name: '2 位儿童', exact: true }).click();
-    await page.screenshot({ path: `${evidence}/H2-${code}-travelers-custom-r6.png` });
+    await page.screenshot({ path: `${evidence}/H2-${code}-travelers-custom-r10.png` });
     await page.getByRole('button', { name: '完成', exact: true }).click();
     await expect(trigger).toHaveAccessibleName('同行人数：10 位成人，2 位儿童');
     await page.getByTestId('planner-natural-tab').click();
@@ -334,13 +503,13 @@ test('一句话提交只发送文字，等待和失败均保留用户需求', as
     expect(requestBody).not.toHaveProperty('controlled_trip_identity');
     await expect(page.getByTestId('new-trip-hero')).toHaveCount(0);
     await expect(page.getByText(text, { exact: true })).toBeVisible();
-    await page.screenshot({ path: `${evidence}/H1-${code}-pending-r6.png` });
+    await page.screenshot({ path: `${evidence}/H1-${code}-pending-r10.png` });
     release();
     await expect(page.getByRole('button', { name: '再试一次', exact: true })).toBeVisible();
     await expect(page.getByText(text, { exact: true })).toBeVisible();
     await expect(page.getByText('Service unavailable: internal-provider-debug', { exact: true })).toHaveCount(0);
     await expect(page.getByTestId('error-inspect')).toHaveCount(0);
-    await page.screenshot({ path: `${evidence}/H1-${code}-failed-r6.png` });
+    await page.screenshot({ path: `${evidence}/H1-${code}-failed-r10.png` });
     expectCleanFixture(fixture);
     await context.close();
   }
@@ -911,10 +1080,14 @@ test('首页在宽窄屏和断点保持主操作可见，条件表单自然展�
     const planner = page.locator('.planner-card');
     const action = page.getByRole('button', { name: '开始规划', exact: true });
     const natural = (await planner.boundingBox())!;
+    const headline = (await page.locator('.new-trip-copy').boundingBox())!;
+    const content = (await page.locator('.new-trip-content').boundingBox())!;
     const actionBox = (await action.boundingBox())!;
+    expect(natural.y - headline.y - headline.height).toBeGreaterThanOrEqual(40);
     expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(height);
     expect(await page.locator('.new-trip-hero').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
-    await page.screenshot({ path: `${evidence}/H1-${code}-default-r6.png` });
+    await expectTextInsidePaper(page);
+    await page.screenshot({ path: `${evidence}/H1-${code}-default-r10.png` });
     await page.getByTestId('planner-structured-tab').click();
     await page.getByRole('button', { name: '更多偏好' }).click();
     await expect(page.getByRole('button', { name: '长辈同行', exact: true })).toBeVisible();
@@ -926,7 +1099,7 @@ test('首页在宽窄屏和断点保持主操作可见，条件表单自然展�
     expect(structured.height).toBeGreaterThan(natural.height);
     const overflow = await page.locator('.planner-card').evaluate((el) => el.scrollWidth - el.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
-    await page.screenshot({ path: `${evidence}/H2-${code}-preferences-error-r6.png` });
+    await page.screenshot({ path: `${evidence}/H2-${code}-preferences-error-r10.png` });
     if (['M', 'D', 'B639', 'B640'].includes(code)) {
       await page.getByTestId('date-range-trigger').click();
       await expect(page.getByTestId('date-range-dialog')).toBeVisible();
@@ -934,12 +1107,12 @@ test('首页在宽窄屏和断点保持主操作可见，条件表单自然展�
       const calendar = (await page.getByTestId('date-range-dialog').boundingBox())!;
       expect(calendar.y).toBeGreaterThanOrEqual(0);
       expect(calendar.y + calendar.height).toBeLessThanOrEqual(height);
-      await page.screenshot({ path: `${evidence}/H4-${code}-calendar-r6.png` });
+      await page.screenshot({ path: `${evidence}/H4-${code}-calendar-r10.png` });
       await page.keyboard.press('Escape');
     }
-    results[code] = { width, height, deviceScaleFactor, natural, structured, action: actionBox, overflow };
+    results[code] = { width, height, deviceScaleFactor, headline, content, natural, structured, action: actionBox, overflow };
     expectCleanFixture(fixture);
     await context.close();
   }
-  writeFileSync(`${evidence}/implementation-layout-r6.json`, JSON.stringify(results, null, 2));
+  writeFileSync(`${evidence}/implementation-layout-r10.json`, JSON.stringify(results, null, 2));
 });
