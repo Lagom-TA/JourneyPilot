@@ -429,9 +429,13 @@ def _project_product_event(event_type: str, payload: Dict[str, Any]) -> Dict[str
         if isinstance(payload.get("run_cost_summary"), dict):
             out["run_cost_summary"] = audit_safe_value(payload["run_cost_summary"])
         return out
-    # error 及其他允许下发的产品错误：只下发固定提示，不透出供应商原始信息。
-    return {
+    # 中断由 error 帧携带状态，客户端据此区分中断和普通失败。
+    out = {
         **common,
         "message": payload.get("message")
         or "旅行方案暂时无法生成，请稍后重试。",
     }
+    status = payload.get("run_status")
+    if isinstance(status, str) and status in {item.value for item in TripRunStatus}:
+        out["run_status"] = status
+    return out

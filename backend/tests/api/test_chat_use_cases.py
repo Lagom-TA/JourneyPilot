@@ -861,6 +861,8 @@ async def test_cancellation_reason_remains_user_vs_lease_loss(
     assert run.status.value == status
     assert [event["type"] for event in events] == [event_type]
     assert resources.chat_session_memory.turns[0]["assistant_type"] == "interrupted"
+    if reason == "lease_lost":
+        assert chat_api.project_sse_payload(events[0])["run_status"] == "interrupted"
 
 
 def usage_call(call_id, run_id):
