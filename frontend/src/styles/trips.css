@@ -354,4 +354,3 @@
   .my-trip-history-time { grid-column: 1 / -1; font-size: 10px; }
   .my-trip-history-name { flex-direction: column; gap: 1px; }
 }
-
