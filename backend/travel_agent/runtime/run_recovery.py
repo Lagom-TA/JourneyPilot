@@ -16,6 +16,7 @@ from travel_agent.runtime.run_lifecycle import is_terminal_status
 from travel_agent.storage.run_command_store import RunCommandStore
 from travel_agent.storage.run_execution_store import RunExecutionStore
 from travel_agent.storage.run_execution_store import RunRecoveryCandidate
+from travel_agent.storage.database import get_db_session
 from typing import Any
 from typing import Awaitable
 from typing import Callable
@@ -26,6 +27,10 @@ import logging
 
 
 logger = logging.getLogger(__name__)
+
+
+class _RecoveryLeaseActive(Exception):
+    """候选在恢复提交前重新获得了有效租约。"""
 
 
 CheckpointProbe = Callable[[str], Awaitable[bool]]
@@ -156,31 +161,35 @@ class RunRecoveryService:
 
     async def _converge_cancelled(
         self, candidate: RunRecoveryCandidate
-    ) -> RunRecoveryOutcome:
+    ) -> Optional[RunRecoveryOutcome]:
         """取消请求在重启恢复时完成。durable completion 优先，所以先看还能不能转。"""
 
         reason = "cancel_requested_completed_during_recovery"
-        await self._execution_store.record_recovery(
-            candidate.run_id,
-            recovery_status=RunRecoveryStatus.RELEASED,
-            recovery_reason=reason,
-        )
         try:
-            await self._trip_run_store.transition_status(
-                candidate.run_id,
-                TripRunStatus.CANCELLED,
-                current_node=candidate.current_node,
-                event_type="run.cancelled",
-                payload={"reason": reason},
-            )
+            async with get_db_session() as session:
+                await self._trip_run_store.transition_status(
+                    candidate.run_id,
+                    TripRunStatus.CANCELLED,
+                    current_node=candidate.current_node,
+                    event_type="run.cancelled",
+                    payload={"reason": reason},
+                    allow_same=False,
+                    db_session=session,
+                )
+                recovered = await self._execution_store.record_recovery(
+                    candidate.run_id, recovery_status=RunRecoveryStatus.RELEASED,
+                    recovery_reason=reason, db_session=session,
+                )
+                if recovered is None:
+                    raise _RecoveryLeaseActive()
+                await self._settle_commands(
+                    candidate.run_id, run_status=TripRunStatus.CANCELLED.value,
+                    cancel_consumed=True, error_code=RUN_ENDED_BEFORE_CONSUMPTION,
+                    reason=reason, db_session=session,
+                )
+        except _RecoveryLeaseActive:
+            return None
         except ValueError:
-            await self._settle_commands(
-                candidate.run_id,
-                run_status="unchanged",
-                cancel_consumed=False,
-                error_code=RUN_ENDED_BEFORE_CONSUMPTION,
-                reason=reason,
-            )
             return RunRecoveryOutcome(
                 run_id=candidate.run_id,
                 previous_status=candidate.status.value,
@@ -189,13 +198,6 @@ class RunRecoveryService:
                 reason="durable_status_moved_during_recovery",
             )
 
-        await self._settle_commands(
-            candidate.run_id,
-            run_status=TripRunStatus.CANCELLED.value,
-            cancel_consumed=True,
-            error_code=RUN_ENDED_BEFORE_CONSUMPTION,
-            reason=reason,
-        )
         return RunRecoveryOutcome(
             run_id=candidate.run_id,
             previous_status=candidate.status.value,
@@ -206,26 +208,37 @@ class RunRecoveryService:
 
     async def _converge_running(
         self, candidate: RunRecoveryCandidate
-    ) -> RunRecoveryOutcome:
+    ) -> Optional[RunRecoveryOutcome]:
         resumable, reason = await self._resume_verdict(candidate)
         recovery_status = (
             RunRecoveryStatus.RESUME_AVAILABLE
             if resumable
             else RunRecoveryStatus.NON_RESUMABLE
         )
-        await self._execution_store.record_recovery(
-            candidate.run_id,
-            recovery_status=recovery_status,
-            recovery_reason=reason,
-        )
         try:
-            await self._trip_run_store.transition_status(
-                candidate.run_id,
-                TripRunStatus.INTERRUPTED,
-                current_node=candidate.current_node,
-                event_type="run.interrupted",
-                payload={"reason": reason, "recovery_status": recovery_status.value},
-            )
+            async with get_db_session() as session:
+                await self._trip_run_store.transition_status(
+                    candidate.run_id,
+                    TripRunStatus.INTERRUPTED,
+                    current_node=candidate.current_node,
+                    event_type="run.interrupted",
+                    payload={"reason": reason, "recovery_status": recovery_status.value},
+                    allow_same=False,
+                    db_session=session,
+                )
+                recovered = await self._execution_store.record_recovery(
+                    candidate.run_id, recovery_status=recovery_status,
+                    recovery_reason=reason, db_session=session,
+                )
+                if recovered is None:
+                    raise _RecoveryLeaseActive()
+                await self._settle_commands(
+                    candidate.run_id, run_status=TripRunStatus.INTERRUPTED.value,
+                    cancel_consumed=False, error_code=RUN_INTERRUPTED_BEFORE_CONSUMPTION,
+                    reason=reason, db_session=session,
+                )
+        except _RecoveryLeaseActive:
+            return None
         except ValueError:
             return RunRecoveryOutcome(
                 run_id=candidate.run_id,
@@ -235,13 +248,6 @@ class RunRecoveryService:
                 reason="durable_status_moved_during_recovery",
             )
 
-        await self._settle_commands(
-            candidate.run_id,
-            run_status=TripRunStatus.INTERRUPTED.value,
-            cancel_consumed=False,
-            error_code=RUN_INTERRUPTED_BEFORE_CONSUMPTION,
-            reason=reason,
-        )
         return RunRecoveryOutcome(
             run_id=candidate.run_id,
             previous_status=candidate.status.value,
@@ -258,6 +264,7 @@ class RunRecoveryService:
         cancel_consumed: bool,
         error_code: str,
         reason: str,
+        db_session: Any = None,
     ) -> None:
         """给这个 Run 留下的控制命令一个结论。
 
@@ -275,6 +282,7 @@ class RunRecoveryService:
             cancel_consumed=cancel_consumed,
             error_code=error_code,
             reason=reason,
+            db_session=db_session,
         )
 
     async def _resume_verdict(
@@ -318,11 +326,13 @@ class RunRecoveryService:
             if has_bundle is False:
                 # 状态说完成、交付产物却不存在：完成事实不完整，不猜，只标诊断。
                 reason = "completed_without_durable_bundle"
-                await self._execution_store.record_recovery(
+                recorded = await self._execution_store.record_recovery(
                     candidate.run_id,
                     recovery_status=RunRecoveryStatus.RECOVERY_CONTRACT_FAILURE,
                     recovery_reason=reason,
                 )
+                if recorded is None:
+                    return None
                 return RunRecoveryOutcome(
                     run_id=candidate.run_id,
                     previous_status=candidate.status.value,
@@ -330,22 +340,29 @@ class RunRecoveryService:
                     recovery_status=RunRecoveryStatus.RECOVERY_CONTRACT_FAILURE.value,
                     reason=reason,
                 )
-        if is_terminal_status(candidate.status):
-            await self._settle_commands(
-                candidate.run_id,
-                run_status=candidate.status.value,
-                cancel_consumed=candidate.status == TripRunStatus.CANCELLED,
-                error_code=RUN_ENDED_BEFORE_CONSUMPTION,
-                reason="executor_gone_on_inactive_run",
+        async with get_db_session() as session:
+            current = await self._trip_run_store.get_run(
+                candidate.run_id, db_session=session, for_update=True,
             )
-
-        released = await self._execution_store.release(
-            candidate.run_id,
-            recovery_status=RunRecoveryStatus.RELEASED,
-            recovery_reason="executor_gone_on_inactive_run",
-        )
-        if not released:
-            return None
+            if current is None or current.status != candidate.status:
+                return None
+            released = await self._execution_store.release(
+                candidate.run_id,
+                recovery_status=RunRecoveryStatus.RELEASED,
+                recovery_reason="executor_gone_on_inactive_run",
+                db_session=session,
+            )
+            if not released:
+                return None
+            if is_terminal_status(candidate.status):
+                await self._settle_commands(
+                    candidate.run_id,
+                    run_status=candidate.status.value,
+                    cancel_consumed=candidate.status == TripRunStatus.CANCELLED,
+                    error_code=RUN_ENDED_BEFORE_CONSUMPTION,
+                    reason="executor_gone_on_inactive_run",
+                    db_session=session,
+                )
         return RunRecoveryOutcome(
             run_id=candidate.run_id,
             previous_status=candidate.status.value,

@@ -220,3 +220,51 @@ async def test_initial_delivery_restores_both_in_memory_stores_on_failure(failur
         )
     assert bundles.snapshot_for_initial_delivery() == before_bundles
     assert runs.snapshot_for_initial_delivery() == before_runs
+
+
+async def test_stale_lease_rolls_back_the_initial_delivery(monkeypatch):
+    from contextlib import asynccontextmanager
+    from travel_agent.runtime.cancellation import RunCancelled
+    from travel_agent.runtime.journal import current_execution_lease
+
+    state = TravelAgentState(run_id="run_stale")
+    manifest = SimpleNamespace(
+        run_id=state.run_id, bundle_id="bundle_stale",
+        model_dump=lambda **_: {"bundle_id": "bundle_stale"},
+    )
+    bundle = SimpleNamespace(manifest=manifest)
+    calls = []
+
+    @asynccontextmanager
+    async def transaction():
+        try:
+            yield "transaction"
+        except Exception:
+            calls.append("rollback")
+            raise
+        calls.append("commit")
+
+    class Bundles:
+        async def commit(self, **_kwargs):
+            calls.append("bundle")
+            return SimpleNamespace(bundle=bundle)
+
+        async def get_current_in_session(self, _session, _run_id):
+            return bundle
+
+    class Runs:
+        async def complete_delivery(self, run_id, **kwargs):
+            assert kwargs["execution_lease_token"] == "old-lease"
+            assert kwargs["session"] == "transaction"
+            raise RunCancelled(run_id, reason="lease_lost")
+
+    monkeypatch.setattr(persistence, "get_db_session", transaction)
+    token = current_execution_lease.set("old-lease")
+    try:
+        with pytest.raises(RunCancelled):
+            await persistence._commit_initial_delivery_atomically(
+                bundle_store=Bundles(), trip_store=Runs(), state=state, bundle=bundle,
+            )
+    finally:
+        current_execution_lease.reset(token)
+    assert calls == ["bundle", "rollback"]

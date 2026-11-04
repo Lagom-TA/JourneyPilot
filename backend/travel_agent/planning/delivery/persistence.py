@@ -7,6 +7,7 @@ from typing import Any
 from travel_agent.planning.delivery.bundle import DeliveryBundle
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.operations import await_delivery_operation
+from travel_agent.runtime.journal import current_execution_lease
 from travel_agent.runtime.run_contracts import TripRunStatus
 from travel_agent.storage.database import get_db_session
 from travel_agent.storage.delivery_bundle_store import (
@@ -40,12 +41,14 @@ async def _commit_initial_delivery_atomically(
     async def complete(current: DeliveryBundle, *, session: Any | None = None) -> None:
         if current.manifest.bundle_id != bundle.manifest.bundle_id:
             raise RuntimeError("persisted delivery bundle is not the current bundle")
+        lease_token = current_execution_lease.get()
         completed, _ready_event, _terminal_event = await await_delivery_operation(
             trip_store.complete_delivery(
                 state.run_id,
                 bundle_id=current.manifest.bundle_id,
                 manifest=current.manifest.model_dump(mode="json"),
                 **({"session": session} if session is not None else {}),
+                **({"execution_lease_token": lease_token} if lease_token is not None else {}),
             ),
             operation="trip_run_complete_delivery",
         )

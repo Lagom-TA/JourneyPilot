@@ -30,6 +30,10 @@ Describe a trip in your own words or enter the destination, dates, and preferenc
 full plan, JourneyPilot reviews the request, verifies places and asks follow-up questions when needed,
 then presents a research plan for approval before researching places, stays, transport, and weather.
 If research is interrupted, completed results are retained and retries use the original plan's time limits.
+Disconnecting interrupts the current execution. Reopening restores saved state and content; resumable
+plans continue only when you choose to resume them.
+When a run budget is enabled, model calls are checked against an estimate; incomplete pricing or usage
+means the cost limit cannot be guaranteed precisely.
 
 Once a plan is ready, you can:
 

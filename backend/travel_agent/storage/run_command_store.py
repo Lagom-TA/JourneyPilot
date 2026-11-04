@@ -270,6 +270,7 @@ class RunCommandStore:
         command_types: Optional[Iterable[str | RunCommandType]] = None,
         result: Optional[Dict[str, Any]] = None,
         error_code: Optional[str] = None,
+        db_session: Any = None,
     ) -> List[RunCommand]:
         """给这个 run 所有未收口的命令一个结论，返回被改动的行。
 
@@ -295,7 +296,7 @@ class RunCommandStore:
             bindparam("open_statuses", expanding=True),
             bindparam("command_types", expanding=True),
         )
-        async with get_db_session() as session:
+        async def write(session):
             settled = await session.execute(
                 statement,
                 {
@@ -308,6 +309,11 @@ class RunCommandStore:
                 },
             )
             return [_command_from_row(dict(row)) for row in settled.mappings().all()]
+
+        if db_session is not None:
+            return await write(db_session)
+        async with get_db_session() as session:
+            return await write(session)
 
     async def list_open(self, run_id: str) -> List[RunCommand]:
         statement = text(

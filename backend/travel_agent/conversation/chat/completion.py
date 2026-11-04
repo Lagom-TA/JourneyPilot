@@ -94,6 +94,7 @@ async def complete_chat(
                 current_node="workflow",
                 event_type="run.completed",
                 payload={"trace_event_count": len(ctx.trace_events)},
+                execution_lease_token=getattr(lifecycle, "execution_lease_token", None),
             )
         except ValueError:
             current_run = await trip_run_store.get_run(trip_run.run_id)

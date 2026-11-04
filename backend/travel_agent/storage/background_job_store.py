@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Dict, List, Mapping, Optional
 
 from sqlalchemy import bindparam, text
@@ -149,6 +150,7 @@ class BackgroundJobStore:
                 WHERE status IN :claimable_statuses
                   AND available_at <= NOW()
                   AND (lease_expires_at IS NULL OR lease_expires_at < NOW())
+                  AND attempts < max_attempts
                 ORDER BY priority ASC, created_at ASC
                 FOR UPDATE SKIP LOCKED
                 LIMIT :batch
@@ -165,12 +167,26 @@ class BackgroundJobStore:
             """
         ).bindparams(bindparam("claimable_statuses", expanding=True))
         async with get_db_session() as session:
+            await session.execute(
+                text("""
+                    UPDATE background_jobs
+                    SET status = :dead, lease_owner = NULL, lease_expires_at = NULL,
+                        last_error_code = 'attempts_exhausted',
+                        last_error_summary = '任务尝试次数已用尽', updated_at = NOW()
+                    WHERE status IN :claimable_statuses
+                      AND available_at <= NOW()
+                      AND (lease_expires_at IS NULL OR lease_expires_at < NOW())
+                      AND attempts >= max_attempts
+                """).bindparams(bindparam("claimable_statuses", expanding=True)),
+                {"dead": BackgroundJobStatus.DEAD.value,
+                 "claimable_statuses": list(_CLAIMABLE_STATUS_VALUES)},
+            )
             result = await session.execute(
                 statement,
                 {
                     "claimable_statuses": list(_CLAIMABLE_STATUS_VALUES),
                     "running": BackgroundJobStatus.RUNNING.value,
-                    "lease_owner": EXECUTOR_ID,
+                    "lease_owner": f"{EXECUTOR_ID}:{uuid.uuid4().hex}",
                     "lease_seconds": max(1, lease_seconds),
                     "batch": max(1, min(batch, 100)),
                 },
@@ -179,7 +195,7 @@ class BackgroundJobStore:
             jobs.sort(key=lambda job: (job.priority, job.created_at, job.job_id))
             return jobs
 
-    async def renew_lease(self, job_id: str, *, lease_seconds: int) -> bool:
+    async def renew_lease(self, job_id: str, *, lease_owner: str, lease_seconds: int) -> bool:
         async with get_db_session() as session:
             result = await session.execute(
                 text(
@@ -190,19 +206,22 @@ class BackgroundJobStore:
                     WHERE job_id = :job_id
                       AND lease_owner = :lease_owner
                       AND status = :running
+                      AND lease_expires_at > NOW()
                     RETURNING job_id
                     """
                 ),
                 {
                     "job_id": job_id,
-                    "lease_owner": EXECUTOR_ID,
+                    "lease_owner": lease_owner,
                     "lease_seconds": max(1, lease_seconds),
                     "running": BackgroundJobStatus.RUNNING.value,
                 },
             )
             return result.mappings().first() is not None
 
-    async def complete(self, job_id: str, *, result: Optional[Dict[str, Any]] = None) -> bool:
+    async def complete(
+        self, job_id: str, *, lease_owner: str, result: Optional[Dict[str, Any]] = None,
+    ) -> bool:
         async with get_db_session() as session:
             updated = await session.execute(
                 text(
@@ -221,12 +240,13 @@ class BackgroundJobStore:
                     WHERE job_id = :job_id
                       AND status = :running
                       AND lease_owner = :lease_owner
+                      AND lease_expires_at > NOW()
                     RETURNING job_id
                     """
                 ),
                 {
                     "job_id": job_id,
-                    "lease_owner": EXECUTOR_ID,
+                    "lease_owner": lease_owner,
                     "completed": BackgroundJobStatus.COMPLETED.value,
                     "running": BackgroundJobStatus.RUNNING.value,
                     "result": _dumps(result) if result is not None else None,
@@ -238,10 +258,11 @@ class BackgroundJobStore:
         self,
         job_id: str,
         *,
+        lease_owner: str,
         error_code: str,
         error_summary: str,
         retry_in_seconds: Optional[int],
-    ) -> BackgroundJobStatus:
+    ) -> Optional[BackgroundJobStatus]:
         """记下失败。`retry_in_seconds=None` 表示不再重试，直接进 dead。
 
         重试上限也在这里判：`attempts` 已在 claim 时自增，达到 `max_attempts` 就 dead。
@@ -268,12 +289,13 @@ class BackgroundJobStore:
                     WHERE job_id = :job_id
                       AND status = :running
                       AND lease_owner = :lease_owner
+                      AND lease_expires_at > NOW()
                     RETURNING status
                     """
                 ),
                 {
                     "job_id": job_id,
-                    "lease_owner": EXECUTOR_ID,
+                    "lease_owner": lease_owner,
                     "running": BackgroundJobStatus.RUNNING.value,
                     "dead": BackgroundJobStatus.DEAD.value,
                     "retry_wait": BackgroundJobStatus.RETRY_WAIT.value,
@@ -283,7 +305,7 @@ class BackgroundJobStore:
                 },
             )
             row = updated.mappings().first()
-            return coerce_job_status(row["status"]) if row else BackgroundJobStatus.DEAD
+            return coerce_job_status(row["status"]) if row else None
 
     async def retry_dead(self, job_id: str) -> bool:
         """把一条 dead 任务放回队列（诊断页的重试按钮）。"""

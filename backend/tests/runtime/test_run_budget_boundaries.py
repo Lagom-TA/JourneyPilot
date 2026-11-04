@@ -108,6 +108,38 @@ async def test_parallel_model_reservations_wait_for_actual_usage():
     assert ledger.pending_llm_calls == 0
 
 
+async def test_parallel_model_reservations_include_estimated_cost():
+    ledger = ledger_for("parallel-cost", _snapshot(max_cost_usd=1.0))
+    admitted = asyncio.Event()
+    release = asyncio.Event()
+
+    async def first():
+        async with ledger.reserve_model(
+            "first", input_tokens=1, output_tokens=1, estimated_cost_usd=0.6,
+        ):
+            admitted.set()
+            await release.wait()
+            ledger.record_llm_call(input_tokens=1, output_tokens=1, cost_usd=0.6)
+
+    async def second():
+        async with ledger.reserve_model(
+            "second", input_tokens=1, output_tokens=1, estimated_cost_usd=0.6,
+        ):
+            pytest.fail("预估费用超限时不得发起第二次调用")
+
+    running = asyncio.create_task(first())
+    await admitted.wait()
+    waiting = asyncio.create_task(second())
+    await asyncio.sleep(0)
+    assert not waiting.done()
+    release.set()
+    await running
+    with pytest.raises(RunBudgetExhausted) as exc:
+        await waiting
+    assert exc.value.dimension == "cost_usd"
+    assert ledger.pending_cost_usd == pytest.approx(0)
+
+
 async def test_tool_budget_persists_across_ledger_recreation():
     from travel_agent.runtime.journal import WorkerJournal, current_worker_journal
     from travel_agent.tools.execution import _reserve_tool_budget

@@ -315,6 +315,25 @@ async def test_live_lease_is_left_alone(migrated_async_database):
     assert current is not None and current.status is TripRunStatus.RUNNING
 
 
+async def test_recovery_does_not_clear_a_lease_claimed_during_checkpoint_probe(migrated_async_database):
+    run_id = await _orphan_run(status=TripRunStatus.RUNNING)
+    executions = RunExecutionStore()
+    claimed = None
+
+    async def probe(_run_id):
+        nonlocal claimed
+        claimed = await executions.claim(run_id, lease_seconds=45)
+        return True
+
+    service = RunRecoveryService(
+        trip_run_store=TripRunStore(), execution_store=executions, checkpoint_probe=probe,
+    )
+    report = await service.sweep()
+    assert report.outcomes == () and not report.failures
+    assert (await TripRunStore().get_run(run_id)).status is TripRunStatus.RUNNING
+    assert (await executions.get(run_id)).lease_token == claimed.lease_token
+
+
 async def test_sweeping_twice_reports_nothing_the_second_time(migrated_async_database):
     """普查幂等：第二次扫描不该把同一批 Run 再判一遍、再报一遍。"""
 

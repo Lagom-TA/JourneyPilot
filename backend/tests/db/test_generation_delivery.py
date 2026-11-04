@@ -153,3 +153,38 @@ async def test_initial_delivery_with_weather_and_long_history_is_readable(migrat
     restored_bundle, recovered_ready, recovered_terminal = await delivery.load_durable_completed_delivery()
     assert restored_bundle == bundle
     assert (recovered_ready.sequence, recovered_terminal.sequence) == (ready.sequence, terminal.sequence)
+
+
+async def test_stale_executor_cannot_commit_delivery_or_run_status(migrated_async_database):
+    from travel_agent.runtime.cancellation import RunCancelled
+    from travel_agent.runtime.journal import current_execution_lease
+    from travel_agent.storage.run_execution_store import RunExecutionStore
+
+    runs, bundles, executions = TripRunStore(), DeliveryBundleStore(), RunExecutionStore()
+    run = await runs.create_run(session_id="stale-delivery", user_id="local", mode="deep")
+    await runs.transition_status(run.run_id, TripRunStatus.RUNNING)
+    old = await executions.claim(run.run_id, lease_seconds=45)
+    async with get_db_session() as session:
+        await session.execute(text(
+            "UPDATE trip_run_executions SET lease_expires_at=NOW()-INTERVAL '1 second' "
+            "WHERE run_id=:run_id"
+        ), {"run_id": run.run_id})
+    current = await executions.claim(run.run_id, lease_seconds=45)
+    assert current.lease_token != old.lease_token
+    with pytest.raises(RunCancelled):
+        await runs.transition_status(
+            run.run_id, TripRunStatus.FAILED, execution_lease_token=old.lease_token,
+        )
+    state = _delivery_state(run.run_id)
+    token = current_execution_lease.set(old.lease_token)
+    try:
+        with pytest.raises(RunCancelled):
+            await _commit_initial_delivery_atomically(
+                bundle_store=bundles, trip_store=runs, state=state,
+                bundle=assemble_delivery_bundle(state),
+            )
+    finally:
+        current_execution_lease.reset(token)
+    assert await bundles.get_current(run.run_id) is None
+    assert (await runs.get_run(run.run_id)).status is TripRunStatus.RUNNING
+    assert (await executions.get(run.run_id)).lease_token == current.lease_token

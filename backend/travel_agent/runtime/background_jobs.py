@@ -62,12 +62,14 @@ class BackgroundJobWorker:
     async def poll_once(self) -> int:
         """领取并执行一批任务，返回执行条数。"""
 
-        jobs = await self._store.claim(
-            lease_seconds=self._lease_seconds, batch=self._batch_size
-        )
-        for job in jobs:
-            await self._execute(job)
-        return len(jobs)
+        processed = 0
+        for _ in range(self._batch_size):
+            jobs = await self._store.claim(lease_seconds=self._lease_seconds, batch=1)
+            if not jobs:
+                break
+            await self._execute(jobs[0])
+            processed += 1
+        return processed
 
     async def _loop(self) -> None:
         await run_forever("后台任务", self._step)
@@ -82,10 +84,15 @@ class BackgroundJobWorker:
             pass
 
     async def _execute(self, job: BackgroundJob) -> None:
+        lease_owner = job.lease_owner
+        if not lease_owner:
+            logger.warning("后台任务缺少租约持有者 job=%s", job.job_id)
+            return
         handler = self._handlers.get(job.job_type)
         if handler is None:
             await self._store.fail(
                 job.job_id,
+                lease_owner=lease_owner,
                 error_code="no_handler",
                 error_summary=f"没有注册 {job.job_type.value} 的处理器",
                 retry_in_seconds=None,
@@ -95,7 +102,7 @@ class BackgroundJobWorker:
         lease_lost = asyncio.Event()
         handler_task = asyncio.create_task(handler(job))
         renewer = asyncio.create_task(
-            self._renew_lease(job.job_id, handler_task, lease_lost)
+            self._renew_lease(job.job_id, lease_owner, handler_task, lease_lost)
         )
         try:
             result = await handler_task
@@ -112,6 +119,7 @@ class BackgroundJobWorker:
         except BackgroundJobPermanentError as exc:
             await self._store.fail(
                 job.job_id,
+                lease_owner=lease_owner,
                 error_code=exc.error_code,
                 error_summary=str(exc),
                 retry_in_seconds=None,
@@ -126,11 +134,14 @@ class BackgroundJobWorker:
             )
             status = await self._store.fail(
                 job.job_id,
+                lease_owner=lease_owner,
                 error_code=exc.__class__.__name__,
                 error_summary=str(exc),
                 retry_in_seconds=delay,
             )
-            if status is BackgroundJobStatus.DEAD:
+            if status is None:
+                logger.warning("后台任务租约失效，失败结果未写入 job=%s", job.job_id)
+            elif status is BackgroundJobStatus.DEAD:
                 logger.warning(
                     "后台任务重试用尽 job=%s type=%s error=%s",
                     job.job_id,
@@ -149,11 +160,13 @@ class BackgroundJobWorker:
         finally:
             renewer.cancel()
 
-        await self._store.complete(job.job_id, result=result)
+        if not await self._store.complete(job.job_id, lease_owner=lease_owner, result=result):
+            logger.warning("后台任务租约失效，完成结果未写入 job=%s", job.job_id)
 
     async def _renew_lease(
         self,
         job_id: str,
+        lease_owner: str,
         handler_task: asyncio.Task,
         lease_lost: asyncio.Event,
     ) -> None:
@@ -168,7 +181,7 @@ class BackgroundJobWorker:
             await asyncio.sleep(interval)
             try:
                 renewed = await self._store.renew_lease(
-                    job_id, lease_seconds=self._lease_seconds
+                    job_id, lease_owner=lease_owner, lease_seconds=self._lease_seconds
                 )
             except asyncio.CancelledError:
                 raise

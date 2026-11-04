@@ -31,6 +31,8 @@ from travel_agent.runtime.operations import (
     remaining_delivery_seconds,
 )
 from travel_agent.runtime.run_contracts import TripRunStatus
+from travel_agent.runtime.cancellation import RunCancelled
+from travel_agent.runtime.journal import current_execution_lease
 from travel_agent.storage.delivery_bundle_store import DeliveryBundleStore
 from travel_agent.storage.trip_run_store import TripRunStore
 
@@ -70,6 +72,7 @@ async def _mark_failed(
                 error_message=record.public_message,
                 event_type="run.delivery_failed",
                 payload=failure_payload,
+                execution_lease_token=current_execution_lease.get(),
             )
     except Exception:
         return
@@ -167,6 +170,8 @@ async def delivery_finalizer_node(
                 "delivery_failure": None,
                 "is_completed": not current.workspace.itinerary.unresolved,
             }
+        except RunCancelled:
+            raise
         except Exception as exc:
             last_error = exc
             if isinstance(exc, DeliveryDeadlineExceeded):

@@ -672,6 +672,7 @@ class InMemoryTripRunStore(TripRunStore):
         payload: Optional[Dict[str, Any]] = None,
         allow_same: bool = True,
         db_session: Any = None,
+        execution_lease_token: Optional[str] = None,
     ) -> TripRun:
         run = self.runs.get(run_id)
         if run is None:
@@ -743,6 +744,7 @@ class InMemoryTripRunStore(TripRunStore):
         bundle_id: str,
         manifest: Dict[str, Any],
         current_node: str = "delivery_finalizer",
+        execution_lease_token: Optional[str] = None,
     ) -> tuple[TripRun, TripRunEvent, TripRunEvent]:
         manifest_payload = _validated_delivery_manifest(
             run_id=run_id,

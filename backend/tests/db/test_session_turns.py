@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from sqlalchemy import text
 
@@ -152,6 +154,37 @@ async def test_a_page_stops_at_the_event_budget(migrated_async_database):
     page = await memory.list_turns(_USER, "s-1", limit=30)
     assert 0 < len(page["turns"]) < 6
     assert page["has_more"] is True
+
+
+async def test_one_oversized_turn_has_a_stable_cursor(migrated_async_database):
+    from travel_agent.memory.chat_session import TURN_PAGE_MAX_EVENTS
+
+    memory = ChatSessionMemory()
+    await _write_turns(memory, "s-oversized", 1, steps=0)
+    await _write_turns(memory, "s-oversized", 1, steps=TURN_PAGE_MAX_EVENTS, start=1)
+
+    latest = await memory.list_turns(_USER, "s-oversized")
+    assert len(latest["turns"]) == 1 and latest["has_more"]
+    assert len(latest["turns"][0]["messages"][1]["thinking_steps"]) == TURN_PAGE_MAX_EVENTS
+    older = await memory.list_turns(_USER, "s-oversized", before_turn=latest["next_before"])
+    assert len(older["turns"]) == 1 and not older["has_more"]
+    assert older["turns"][0]["turn_id"] != latest["turns"][0]["turn_id"]
+
+
+async def test_concurrent_turn_writes_share_the_session_order(migrated_async_database):
+    memory = ChatSessionMemory()
+    await memory.ensure_session(
+        session_id="s-parallel", user_id=_USER, mode="fast",
+        title_seed="并发", controlled_trip_identity=None,
+    )
+    await asyncio.gather(*(
+        _write_turns(memory, "s-parallel", 1, steps=1, start=index)
+        for index in range(8)
+    ))
+    page = await memory.list_turns(_USER, "s-parallel")
+    assert len(page["turns"]) == 8
+    assert len({turn["cursor"] for turn in page["turns"]}) == 8
+    assert all(len(turn["messages"]) == 2 for turn in page["turns"])
 
 
 async def test_compaction_only_reads_the_budget_and_moves_the_exact_boundary(

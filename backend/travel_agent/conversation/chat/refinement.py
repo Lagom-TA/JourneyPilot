@@ -29,6 +29,8 @@ async def pending_clarification_context(memory, session_id: str, run_id: str, te
         turns = page.get("turns") or []
         for turn in reversed(turns):
             messages = turn.get("messages") or []
+            if messages and all(item.get("type") == "context_compaction" for item in messages):
+                continue
             user = next((item for item in messages if item.get("role") == "user"), None)
             assistant = next((item for item in messages if item.get("role") == "assistant"), None)
             if (

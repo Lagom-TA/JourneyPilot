@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -23,6 +24,71 @@ from travel_agent.planning.delivery.bundle import DeliveryRevisionManifest
 from travel_agent.runtime.command_contracts import RunCommandStatus, RunCommandType
 from travel_agent.runtime.journal import current_execution_lease
 from travel_agent.runtime.run_contracts import TripRunStatus
+
+
+async def test_fast_retry_replays_the_saved_answer_without_calling_the_workflow(resources):
+    body = chat_body(
+        session_id="retry-fast",
+        messages=[{"role": "user", "content": "苏州适合玩几天？", "message_id": "same-user"}],
+    )
+    first = decode(await request("POST", "/api/chat-stream", body))
+    replay = decode(await request("POST", "/api/chat-stream", body))
+    assert first[-1]["final_content"] == replay[-1]["final_content"] == "hello"
+    assert first[0]["run_id"] == replay[0]["run_id"]
+    assert resources.fast_workflow.calls == ["苏州适合玩几天？"]
+    assert len(resources.chat_session_memory.turns) == 1
+
+
+async def test_disconnect_during_profile_load_releases_claimed_lease(resources):
+    started = asyncio.Event()
+
+    class SlowProfile:
+        async def get_user_profile(self, _user_id):
+            started.set()
+            await asyncio.Event().wait()
+
+    resources.user_profile_memory = SlowProfile()
+    body = chat_body()
+    prepared = await prepare(body, resources)
+    stream = execute(body, prepared, resources)
+    consumer = asyncio.create_task(anext(stream))
+    await started.wait()
+    consumer.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await consumer
+    await asyncio.wait_for(resources.run_execution_store.released.wait(), 1)
+    assert not await resources.run_execution_store.has_live_lease(prepared.trip_run.run_id)
+    assert resources.fast_workflow.calls == []
+
+
+@pytest.mark.parametrize("reason", ["budget", "deadline"])
+async def test_resource_exhaustion_explains_the_failure(resources, reason):
+    from travel_agent.runtime.budget import RunBudgetExhausted, RunBudgetSnapshot, RunBudgetUsage
+    from travel_agent.runtime.deadlines import DeadlineObservation
+    from travel_agent.runtime.operations import ModelWindowClosed
+
+    class ExhaustedWorkflow:
+        async def astream(self, **_kwargs):
+            if reason == "budget":
+                raise RunBudgetExhausted("model.ainvoke", "llm_calls", RunBudgetSnapshot(), RunBudgetUsage())
+            if reason == "deadline":
+                raise ModelWindowClosed("model.ainvoke", DeadlineObservation(10, 0, "expired"), "research")
+            yield {}
+
+    resources.fast_workflow = ExhaustedWorkflow()
+    response = await request("POST", "/api/chat-stream", chat_body())
+    events = decode(response)
+    assert [event["type"] for event in events] == ["chat_start", "run_failed", "error"]
+    assert ("额度" if reason == "budget" else "时限") in events[-1]["message"]
+    run = await resources.trip_run_store.get_run(events[0]["run_id"])
+    assert run.status is TripRunStatus.FAILED
+    assert resources.chat_session_memory.turns[0]["assistant_type"] == "error"
+    assert resources.chat_session_memory.turns[0]["assistant_content"] == events[-1]["message"]
+    durable = await resources.trip_run_store.list_events(run.run_id)
+    failed = next(event for event in durable if event.event_type == "run.failed")
+    assert failed.payload["reason_code"] == (
+        "run_budget_exhausted.llm_calls" if reason == "budget" else "run_deadline_exhausted"
+    )
 
 
 async def test_cancelled_realtime_exchange_preflight_does_not_continue(resources, monkeypatch):

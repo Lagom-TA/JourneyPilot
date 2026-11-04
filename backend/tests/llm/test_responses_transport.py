@@ -78,6 +78,54 @@ async def test_deadline_rejection_before_first_provider_call_has_no_usage_attemp
     assert recorder._spool.db.execute("SELECT COUNT(*) FROM usage_outbox").fetchone()[0] == 0
 
 
+@pytest.mark.parametrize("limit", ["llm_calls", "cost_usd"])
+async def test_router_reserves_budget_before_contacting_provider(
+    gateway_settings, monkeypatch, tmp_path, limit,
+):
+    import travel_agent.llm.router as router_module
+    from travel_agent.config.models import ModelPricingItem
+    from travel_agent.runtime.budget import RunBudgetExhausted, RunBudgetSnapshot, ledger_for, release_ledger
+    from travel_agent.runtime.context import current_run_budget
+
+    requests = []
+    recorder = UsageRecorder(spool_path=tmp_path / "budget-usage.sqlite3")
+    monkeypatch.setattr(router_module, "get_usage_recorder", lambda: recorder)
+    monkeypatch.setattr(router_module, "resolve_price", lambda *_args: ModelPricingItem(
+        pattern="gpt", input_per_1m=1000, output_per_1m=1000,
+    ))
+
+    def respond(request):
+        requests.append(request)
+        raise AssertionError("预算不足时不能访问提供商")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        monkeypatch.setattr(router_module, "ChatOpenAI", lambda **kwargs: ReasoningChatOpenAI(
+            **kwargs, http_async_client=client,
+        ))
+        llm = ModelRouter().get_for_task(TaskKind.COMPOSITION)
+        snapshot = RunBudgetSnapshot(
+            enforce_limits=True,
+            max_llm_calls=1 if limit == "llm_calls" else None,
+            max_cost_usd=0.0001 if limit == "cost_usd" else None,
+        )
+        run_id = f"run_router_budget_{limit}"
+        ledger = ledger_for(run_id, snapshot)
+        if limit == "llm_calls":
+            ledger.record_llm_call(input_tokens=1, output_tokens=1, cost_usd=0)
+        run_token = current_run_id.set(run_id)
+        budget_token = current_run_budget.set(snapshot)
+        try:
+            with pytest.raises(RunBudgetExhausted) as exc:
+                await llm.ainvoke([{"role": "user", "content": "计划一次旅行"}])
+            assert exc.value.dimension == limit
+        finally:
+            current_run_budget.reset(budget_token)
+            current_run_id.reset(run_token)
+            release_ledger(run_id)
+    assert requests == []
+    assert recorder.drain() == []
+
+
 @pytest.mark.parametrize("stream,aggregate", [(False, False), (True, False), (False, True)])
 async def test_primary_responses_roundtrip_and_usage(gateway_settings, monkeypatch, stream, aggregate):
     import travel_agent.llm.router as router_module

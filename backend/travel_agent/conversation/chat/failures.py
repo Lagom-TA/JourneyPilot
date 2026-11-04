@@ -13,7 +13,9 @@ from travel_agent.planning.delivery.public.bundle import (
 from travel_agent.utils.json_helpers import strip_think_blocks
 from travel_agent.planning.delivery.completion import DeliveryFinalizationError
 from travel_agent.runtime.cancellation import RunCancelled, stop_verdict
+from travel_agent.runtime.budget import RunBudgetExhausted
 from travel_agent.runtime.events import run_ts_ms
+from travel_agent.runtime.operations import DeliveryDeadlineExceeded, ModelWindowClosed
 
 from travel_agent.conversation.stream_text import (
     strip_non_display_blocks,
@@ -78,6 +80,7 @@ async def cancel_chat(
                     error_code=verdict.error_code,
                     event_type="run.interrupted",
                     payload={"reason": verdict.payload_reason},
+                    execution_lease_token=getattr(lifecycle, "execution_lease_token", None),
                 )
         else:
             if current_run and current_run.status == TripRunStatus.RUNNING:
@@ -87,6 +90,7 @@ async def cancel_chat(
                     current_node=stop_node,
                     event_type="run.control_requested",
                     payload={"action": "cancel", "source": "workflow_boundary"},
+                    execution_lease_token=getattr(lifecycle, "execution_lease_token", None),
                 )
             await trip_run_store.transition_status(
                 trip_run.run_id,
@@ -97,7 +101,10 @@ async def cancel_chat(
                     "reason": verdict.payload_reason,
                     "trace_event_count": len(ctx.trace_events),
                 },
+                execution_lease_token=getattr(lifecycle, "execution_lease_token", None),
             )
+    except RunCancelled as lease_loss:
+        verdict = stop_verdict(lease_loss.reason)
     except Exception as run_err:
         logger.warning(f"TripRun 停止状态保存失败: {run_err}")
     cost_summary = await accounting.finalize_cost_summary(terminal=True)
@@ -195,7 +202,14 @@ async def fail_chat(
             return
     logger.error(f"SSE 流式处理错误: {terminal_failure}", exc_info=terminal_failure)
 
-    if isinstance(terminal_failure, DeliveryFinalizationError):
+    public_failure_message = "旅行方案暂时无法生成，请稍后重试。"
+    if isinstance(terminal_failure, RunBudgetExhausted):
+        terminal_reason_code = terminal_failure.reason_code
+        public_failure_message = "本次规划的模型调用额度已用尽，调整运行预算后请重新规划。"
+    elif isinstance(terminal_failure, (ModelWindowClosed, DeliveryDeadlineExceeded)):
+        terminal_reason_code = "run_deadline_exhausted"
+        public_failure_message = "本次规划已超过运行时限，请重新规划。"
+    elif isinstance(terminal_failure, DeliveryFinalizationError):
         terminal_reason_code = terminal_failure.record.failure_class.value
     elif isinstance(terminal_failure, PublicProjectionContractViolation):
         terminal_reason_code = "public_projection_contract_violation"
@@ -227,7 +241,15 @@ async def fail_chat(
                 payload={
                     "reason_code": terminal_reason_code,
                 },
+                execution_lease_token=getattr(lifecycle, "execution_lease_token", None),
             )
+        except RunCancelled as lease_loss:
+            async for event in cancel_chat(
+                lease_loss, ctx=ctx, trip_run=trip_run, trip_run_store=trip_run_store,
+                turns=turns, accounting=accounting, lifecycle=lifecycle, message_id=message_id,
+            ):
+                yield event
+            return
         except ValueError:
             raced_run = await trip_run_store.get_run(trip_run.run_id)
             if raced_run is not None and raced_run.status in {
@@ -242,6 +264,11 @@ async def fail_chat(
                 )
         except Exception as run_err:
             logger.error(f"TripRun 失败状态保存失败: {run_err}", exc_info=True)
+    if sealed_status is None and turns is not None:
+        try:
+            await turns.save_partial("error", content_override=public_failure_message)
+        except Exception as save_err:
+            logger.warning("失败会话保存失败: %s", save_err)
     failed_trace = ctx.next_trace(
         node="workflow",
         phase="postprocess",
@@ -292,14 +319,14 @@ async def fail_chat(
     else:
         yield {
             "type": "run_failed",
-            "message": "旅行方案暂时无法生成，请稍后重试。",
+            "message": public_failure_message,
             "message_id": message_id,
             "run_id": trip_run.run_id,
             "run_cost_summary": terminal_cost_summary,
         }
     yield {
         "type": "error",
-        "message": "旅行方案暂时无法生成，请稍后重试。",
+        "message": public_failure_message,
         "message_id": message_id,
         "run_id": trip_run.run_id,
     }

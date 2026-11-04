@@ -91,6 +91,36 @@ async def test_a_full_critical_queue_makes_the_producer_wait():
     assert buffer.stalled is False
 
 
+async def test_parallel_critical_producers_do_not_share_one_free_slot():
+    buffer = _buffer(critical_queue_size=1, stalled_consumer_seconds=5)
+    await buffer.put(("state", "a", 0))
+    tasks = [asyncio.create_task(buffer.put(("state", "a", i))) for i in range(1, 4)]
+    await asyncio.sleep(0.01)
+
+    received = [await buffer.get(1)]
+    for _ in tasks:
+        await asyncio.sleep(0.01)
+        assert buffer.snapshot()["critical_size"] == 1
+        received.append(await buffer.get(1))
+    await asyncio.gather(*tasks)
+
+    assert sorted(item[2] for item in received) == [0, 1, 2, 3]
+    assert buffer.stats.max_critical_size == 1
+    assert not buffer.stalled
+
+
+async def test_text_waits_when_next_chunk_would_exceed_capacity():
+    buffer = _buffer(max_pending_text_chars=8, stalled_consumer_seconds=5)
+    await buffer.put(("token", "a", "12345"))
+    blocked = asyncio.create_task(buffer.put(("token", "a", "6789")))
+    await asyncio.sleep(0.01)
+    assert not blocked.done()
+    assert await buffer.get(1) == ("token", "a", "12345")
+    await asyncio.wait_for(blocked, 1)
+    assert await buffer.get(1) == ("token", "a", "6789")
+    assert buffer.stats.max_pending_text_chars <= 8
+
+
 async def test_a_consumer_that_never_reads_is_reported_stalled():
     """浏览器停读不该让 Run 变成 failed —— 记一次 stall，由消费者收摊。"""
 

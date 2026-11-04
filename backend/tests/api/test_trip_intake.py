@@ -278,7 +278,7 @@ async def test_replay_preserves_the_pending_question_gate(gate):
 
     events = [
         event async for event in _replay_run_events(
-            run=run, trip_run_store=Store(), session_id="session-1",
+            run=run, trip_run_store=Store(), chat_session_memory=None, session_id="session-1",
             route_decision=decision(RouteName.TRIP_PLANNING),
         )
     ]

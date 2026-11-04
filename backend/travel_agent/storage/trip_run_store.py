@@ -19,6 +19,7 @@ from travel_agent.runtime.run_contracts import TripRun, TripRunDetail, TripRunEv
 from travel_agent.runtime.run_lifecycle import assert_status_transition_allowed, is_terminal_status, mark_cancelled_pending_choice, with_pending_choice_summary
 from travel_agent.runtime.time import utc_now_iso
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
+from travel_agent.runtime.cancellation import RunCancelled
 from .database import get_db_session
 from travel_agent.runtime.time import iso_or_none as _iso
 from .row_values import json_dumps as _json_dumps
@@ -87,6 +88,23 @@ async def _session_scope(session: Any | None):
         return
     async with get_db_session() as owned_session:
         yield owned_session
+
+
+async def _require_execution_lease(session: Any, run_id: str, lease_token: Optional[str]) -> None:
+    """运行执行者写入终态前，与租约接管使用同一行锁。"""
+    if lease_token is None:
+        return
+    result = await session.execute(
+        text("""
+            SELECT run_id FROM trip_run_executions
+            WHERE run_id = :run_id AND lease_token = :lease_token
+              AND lease_expires_at > NOW()
+            FOR UPDATE
+        """),
+        {"run_id": run_id, "lease_token": lease_token},
+    )
+    if result.first() is None:
+        raise RunCancelled(run_id, reason="lease_lost")
 
 
 
@@ -283,10 +301,12 @@ class TripRunStore:
             )
         return run
 
-    async def get_run(self, run_id: str) -> Optional[TripRun]:
-        async with get_db_session() as session:
+    async def get_run(
+        self, run_id: str, *, db_session: Any = None, for_update: bool = False,
+    ) -> Optional[TripRun]:
+        async with _session_scope(db_session) as session:
             result = await session.execute(
-                text("SELECT * FROM trip_runs WHERE run_id = :run_id"),
+                text("SELECT * FROM trip_runs WHERE run_id = :run_id" + (" FOR UPDATE" if for_update else "")),
                 {"run_id": run_id},
             )
             row = result.mappings().first()
@@ -588,6 +608,7 @@ class TripRunStore:
         payload: Optional[Dict[str, Any]] = None,
         allow_same: bool = True,
         db_session: Any = None,
+        execution_lease_token: Optional[str] = None,
     ) -> TripRun:
         target = coerce_status(target_status)
         async with _session_scope(db_session) as session:
@@ -598,6 +619,7 @@ class TripRunStore:
             row = result.mappings().first()
             if not row:
                 raise KeyError(f"TripRun not found: {run_id}")
+            await _require_execution_lease(session, run_id, execution_lease_token)
             current = coerce_status(row["status"])
             assert_status_transition_allowed(current, target, allow_same=allow_same)
             if (
@@ -722,6 +744,7 @@ class TripRunStore:
         manifest: Dict[str, Any],
         current_node: str = "delivery_finalizer",
         session: Any | None = None,
+        execution_lease_token: Optional[str] = None,
     ) -> tuple[TripRun, TripRunEvent, TripRunEvent]:
         """在同一个事务里暴露 ready、COMPLETED 与终态三个持久化事实。"""
         manifest_payload = _validated_delivery_manifest(
@@ -739,6 +762,7 @@ class TripRunStore:
             row = result.mappings().first()
             if row is None:
                 raise KeyError(f"TripRun not found: {run_id}")
+            await _require_execution_lease(session, run_id, execution_lease_token)
             current = coerce_status(row["status"])
             state_result = await session.execute(
                 text(

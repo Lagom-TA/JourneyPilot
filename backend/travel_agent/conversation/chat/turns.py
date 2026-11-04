@@ -38,9 +38,11 @@ class ChatTurns:
         self.request_trip_identity = request_trip_identity
         self.saved = False
 
-    async def save_partial(self, assistant_type: str) -> str:
-        assistant_content = strip_non_display_blocks(
-            strip_thinking_text(strip_think_blocks(self.presentation.full_response))
+    async def save_partial(self, assistant_type: str, *, content_override: str | None = None) -> str:
+        assistant_content = (
+            content_override if content_override is not None else strip_non_display_blocks(
+                strip_thinking_text(strip_think_blocks(self.presentation.full_response))
+            )
         )
         if not self.saved:
             await self.chat_session_memory.save_turn(
@@ -52,7 +54,7 @@ class ChatTurns:
                 assistant_message_id=self.message_id,
                 assistant_content=assistant_content,
                 assistant_display_content=assistant_content,
-                assistant_type="normal",
+                assistant_type=assistant_type if assistant_type in {"interrupted", "error"} else "normal",
                 task_type=self.presentation.task_type or None,
                 agent_name=self.presentation.final_agent_name,
                 step_name=self.presentation.final_step_name,

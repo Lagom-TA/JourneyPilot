@@ -457,8 +457,20 @@ class OpenAICompatibleLLM(BaseLLM):
         if tools is not None:
             payload["tools"] = tools
         input_tokens, _ = estimate_request_tokens(payload, self.model_name)
+        price = resolve_price(self.model_name, self.provider)
+        estimated_cost = None
+        if price is not None:
+            input_rate = max(
+                price.input_per_1m,
+                price.cached_input_per_1m or 0.0,
+                price.cache_write_per_1m or 0.0,
+            )
+            estimated_cost = (
+                input_tokens * input_rate + output_tokens * price.output_per_1m
+            ) / 1_000_000.0
         async with ledger.reserve_model(
-            operation, input_tokens=input_tokens, output_tokens=output_tokens
+            operation, input_tokens=input_tokens, output_tokens=output_tokens,
+            estimated_cost_usd=estimated_cost,
         ):
             yield
 

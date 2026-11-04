@@ -115,13 +115,14 @@ Tests:
 ---
 
 ### INV-JOB-002：丢失租约的 worker 不写结果
-约定：续不上租约就取消处理器；写结果时按 `lease_owner` 过滤，丢失租约的那个写不进去。
+约定：续不上租约就取消处理器；任务结论按本次领取的唯一 `lease_owner` 和有效期过滤，丢失租约的执行者不能覆盖新结论。处理器自身的外部副作用仍由其幂等规则负责。
 Owner: `backend/travel_agent/runtime/background_jobs.py` 的 `_renew_lease`、`backend/travel_agent/storage/background_job_store.py` 的 `complete` / `fail`
 Tests:
 - `backend/tests/db/test_background_jobs.py`
+- `backend/tests/runtime/test_lease_races.py::test_old_job_handler_cannot_finish_after_a_new_claim`
 
 ### INV-RUN-001：每个 running Run 都有有效租约
-约定：运行中的 Run 必须有未过期的执行租约；心跳周期显著小于租约长度；连续写失败达到阈值后停止发起新的外部调用。
+约定：运行前取得执行租约；心跳周期显著小于租约长度；过期租约不能续活，连续写失败达到阈值后停止发起新的外部调用。
 Owner: `backend/travel_agent/runtime/run_lease.py`、`backend/travel_agent/storage/run_execution_store.py`
 Storage: `trip_run_executions`（executor / lease / heartbeat）。
 ADR: [ADR-0005](adr/ADR-0005-restart-does-not-resume-spending.md)
@@ -130,12 +131,13 @@ Tests:
 - `backend/tests/runtime/test_run_execution_contract.py`
 
 ### INV-RUN-002：孤儿 Run 不会永久显示 running
-约定：失去执行器的 Run 在启动扫描时收敛；之后周期复扫，避免租约剩余时间让第一轮扫描跳过它。
+约定：失去执行器的 Run 在启动扫描时收敛；之后周期复扫。提交状态、恢复判定和命令结论时重新检查租约，并在同一事务内写入；已被接管的候选不改变状态。
 Owner: `backend/travel_agent/runtime/run_recovery.py`
 Storage: `trip_runs.status` 与 `trip_run_executions`。
 ADR: [ADR-0005](adr/ADR-0005-restart-does-not-resume-spending.md)
 Tests:
 - `backend/tests/db/test_run_recovery.py`
+- `backend/tests/runtime/test_lease_races.py::test_recovery_rolls_back_if_a_lease_is_claimed_during_probe`
 
 ### INV-RUN-003：重启后不自动继续花费
 约定：恢复只改状态，不自动发起模型调用；恢复的 Run 从 `run_llm_calls` 台账读回已花量，而不是拿满额预算。
@@ -144,10 +146,10 @@ Storage: `trip_runs.status` = interrupted / resume_available；`run_llm_calls`�
 ADR: [ADR-0005](adr/ADR-0005-restart-does-not-resume-spending.md)
 Tests:
 - `backend/tests/runtime/test_run_budget.py::test_a_resumed_run_reads_its_spend_back_from_the_ledger`
-- `backend/tests/runtime/test_run_budget.py::test_an_unreadable_ledger_starts_at_zero_instead_of_blocking`
+- `backend/tests/runtime/test_run_budget.py::test_an_unreadable_enforced_budget_does_not_restart_at_zero`
 
 ### INV-RUN-004：同一个 Run 不会有两个执行器
-约定：只能接管无主的执行行（租约已释放或已过期），不按 `executor_id` 匹配；租约在工作流真正停下之后才交还；失去租约时只停止自己那条流的 handle，registry 的注销按 handle 身份进行。
+约定：只能接管无主的执行行（租约已释放或已过期），不按 `executor_id` 匹配；租约在工作流真正停下之后才交还。执行者写运行终态和提交首份交付时按有效租约令牌校验；流清理只停止自己的 handle，不清除接管者的进程状态。
 Owner: `backend/travel_agent/storage/run_execution_store.py` 的 `claim`、`backend/travel_agent/runtime/run_lease.py`、`backend/travel_agent/conversation/chat/lifecycle.py`
 Storage: `trip_run_executions.lease_token` / `lease_expires_at`。
 Tests:
@@ -155,6 +157,8 @@ Tests:
 - `backend/tests/db/test_run_execution_lease.py::test_a_released_lease_can_be_reclaimed_by_the_same_executor`
 - `backend/tests/runtime/test_run_execution_contract.py::test_unregister_only_removes_its_own_handle`
 - `backend/tests/runtime/test_run_execution_contract.py::test_a_superseded_lease_keeper_does_not_evict_the_active_one`
+- `backend/tests/runtime/test_lease_races.py::test_status_transition_rejects_a_lost_execution_lease`
+- `backend/tests/planning/test_workflow_boundaries.py::test_stale_lease_rolls_back_the_initial_delivery`
 
 ### INV-RUN-005：分窗表覆盖图上每一个 worker
 约定：分窗表必须恰好覆盖执行计划里的每个 worker 目标，每个 worker 恰好属于 research 或 composition 一个窗口；漏一个会让它落进默认 research 档。
@@ -236,6 +240,7 @@ Tests:
 - `backend/tests/db/test_session_turns.py::test_a_turn_is_always_returned_whole`
 - `backend/tests/db/test_session_turns.py::test_a_new_turn_does_not_shift_an_open_cursor`
 - `backend/tests/db/test_session_turns.py::test_a_page_stops_at_the_event_budget`
+- `backend/tests/memory/test_chat_session_paging.py::test_oversized_turn_uses_its_real_start_for_the_next_cursor`
 
 ### INV-SESSION-002：压缩只读预算范围，boundary 精确
 约定：boundary 只推进到实际进入摘要的最后一条；失败不推进也不覆盖旧 anchor；`commit_compaction` 是唯一写入方。
@@ -271,7 +276,7 @@ Tests:
 - `backend/tests/api/test_chat_use_cases.py::test_deep_post_commit_failure_keeps_sealed_truth_and_projection_flag`
 
 ### INV-SSE-002：慢客户端不让内存无界增长；未 stall 时不丢事件
-约定：critical 队列有界；未 stall 时不丢，stall 后不再入队并计入 `dropped_critical_events`；token 合并成更大 chunk 而不是丢弃；待发正文超上限即强制 flush；消费者卡住则结束传输交给 durable 恢复。
+约定：critical 队列有界，多个生产者逐个取得空位；未 stall 时不丢，stall 后不再入队并计入 `dropped_critical_events`。token 合并为更大 chunk，超出待发容量时等待消费者；单个增量自身可以超过容量。消费者卡住则结束传输，未发送的正文计入 `dropped_text_chars`，由持久状态恢复。
 Owner: `backend/travel_agent/runtime/events.py`
 Storage: 进程内，上限在 `Settings.streaming`。
 ADR: [ADR-0006](adr/ADR-0006-resource-budgets-and-isolation.md)
@@ -280,6 +285,7 @@ Tests:
 - `backend/tests/runtime/test_event_buffer.py::test_adjacent_tokens_merge_without_losing_characters`
 - `backend/tests/runtime/test_event_buffer.py::test_a_consumer_that_never_reads_is_reported_stalled`
 - `backend/tests/runtime/test_event_buffer.py::test_a_stalled_consumer_does_not_let_the_critical_queue_grow`
+- `backend/tests/runtime/test_event_buffer.py::test_parallel_critical_producers_do_not_share_one_free_slot`
 
 ## 资源边界
 
@@ -294,7 +300,7 @@ Tests:
 - `backend/tests/runtime/test_blocking_work.py::test_queue_wait_has_an_upper_bound`
 
 ### INV-BUDGET-001：预算在调用之前判，快照不受配置热更新影响
-约定：按最坏开销在调用前判；快照在 Draft 授权时封存，与 Deadline 同进同出。授权前的理解阶段不封预算快照，但受提问轮数、每轮工具迭代与单轮超时的显式上限约束；进入 Run 后的模型与工具调用记入 `run_llm_calls` 台账，封存时由台账读回已花量。入口分流（`classify_route`）与提示词优化发生在 Run 创建之前，不写 Run 台账。
+约定：调用前按输入 token 估算、输出上限和价格表估算本次开销；价格或用量不完整时费用维不能保证硬上限。快照在 Draft 授权时封存，与 Deadline 同进同出。授权前的理解阶段不封预算快照，但受提问轮数、每轮工具迭代与单轮超时的显式上限约束；进入 Run 后的模型调用记入 `run_llm_calls`，工具调用记入 worker journal，封存时读回已花量。入口分流（`classify_route`）与提示词优化发生在 Run 创建之前，不写 Run 台账。
 Owner: `backend/travel_agent/runtime/budget.py`
 Storage: `RunBudgetSnapshot` 随 checkpoint；已花量的最终事实在 `run_llm_calls`。
 ADR: [ADR-0006](adr/ADR-0006-resource-budgets-and-isolation.md)
@@ -303,6 +309,7 @@ Tests:
 - `backend/tests/runtime/test_run_budget.py::test_a_sealed_snapshot_ignores_later_config_changes`
 - `backend/tests/runtime/test_run_budget_boundaries.py::test_budget_and_deadline_must_be_sealed_together`
 - `backend/tests/runtime/test_run_budget_boundaries.py::test_a_replay_of_a_sealed_draft_never_refills_the_budget`
+- `backend/tests/llm/test_responses_transport.py::test_router_reserves_budget_before_contacting_provider`
 
 ### INV-BUDGET-002：预算耗尽是可解释的降级，不是一次 Run 失败
 约定：工具侧返回带 `run_budget_exhausted.<维度>` 的 failed envelope，调用方按可解释降级处理；不抛异常、不把 Run 记成 CANCELLED。
@@ -318,10 +325,11 @@ Tests:
 - `backend/tests/runtime/test_run_budget.py::test_an_unpriced_call_never_lets_cost_reject_a_call`
 
 ### INV-BUDGET-004：判和记是一步，重试不能超支
-约定：每次工具调用尝试都先预留再执行；判与记分开会让上限失效。
-Owner: `backend/travel_agent/runtime/budget.py` 的 `RunBudgetLedger.reserve_tool_call`
+约定：每次工具调用尝试先预留再执行；模型调用将已花额度、并发预留和本次预估一起判定，结束后按实际用量结算并释放预留。
+Owner: `backend/travel_agent/runtime/budget.py` 的 `RunBudgetLedger.reserve_model` / `reserve_tool_call`、`backend/travel_agent/storage/worker_journal_store.py`
 Tests:
 - `backend/tests/runtime/test_run_budget_boundaries.py::test_the_retry_loop_cannot_outspend_the_tool_call_budget`
+- `backend/tests/runtime/test_run_budget_boundaries.py::test_parallel_model_reservations_include_estimated_cost`
 
 ### INV-BUDGET-005：重试上限管的是重试轮数，不是调用次数
 约定：首发不计入 `max_tool_retries_per_target`；重试计数只约束重试轮数。

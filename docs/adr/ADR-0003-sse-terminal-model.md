@@ -13,9 +13,9 @@
 
 ## 为什么
 
-浏览器会断流、会休眠、会在半路重连。如果终态可以出现零次，客户端只能靠超时猜；
-如果同一状态可以反复转移，客户端会先渲染成功再渲染失败 —— 而用户看到的最后一帧是错的。
-状态只转移一次、终态帧不重复，是让客户**不必猜**的合同。
+浏览器会断流或休眠；已经断开的连接无法保证收到终态帧。活跃连接按终态帧结束请求，
+断线后依据持久状态、事件窗口和已保存内容恢复。运行段只做一次状态收口，避免客户端
+先渲染成功再渲染失败。
 
 ## 替代方案与为什么没选
 
@@ -26,5 +26,4 @@
 
 - 生产者侧的退出收敛点是 `conversation/chat/lifecycle.py` 的 `cleanup_stream_exit`；
   `delivery_ready_emitted` 与 `run_terminal_emitted` 防止重复发布终态帧。
-- 背压不允许丢终态：`EventBuffer` 的 critical 队列满时生产者**等待**，不丢
-  （见 [ADR-0006](ADR-0006-resource-budgets-and-isolation.md)）。
+- `EventBuffer` 的 critical 队列满时生产者等待；消费者 stall 后结束传输，以持久状态恢复（见 [ADR-0006](ADR-0006-resource-budgets-and-isolation.md)）。

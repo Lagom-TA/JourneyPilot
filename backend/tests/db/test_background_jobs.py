@@ -90,6 +90,34 @@ async def test_a_claimed_job_is_not_claimable_until_its_lease_expires(
     assert reclaimed.attempts == 2
 
 
+async def test_a_reclaimed_job_rejects_the_previous_worker(migrated_async_database):
+    store = BackgroundJobStore()
+    await store.enqueue(_JOB, "turn-stale", _payload())
+    (old,) = await store.claim(lease_seconds=60)
+    await _expire_lease(old.job_id)
+    (current,) = await store.claim(lease_seconds=60)
+    assert current.lease_owner != old.lease_owner
+    assert not await store.renew_lease(old.job_id, lease_owner=old.lease_owner, lease_seconds=60)
+    assert not await store.complete(old.job_id, lease_owner=old.lease_owner, result={"old": True})
+    assert await store.fail(
+        old.job_id, lease_owner=old.lease_owner, error_code="late",
+        error_summary="late", retry_in_seconds=None,
+    ) is None
+    assert await store.complete(current.job_id, lease_owner=current.lease_owner, result={"current": True})
+    assert (await store.get(current.job_id)).result == {"current": True}
+
+
+async def test_expired_final_attempt_becomes_dead(migrated_async_database):
+    store = BackgroundJobStore()
+    await store.enqueue(_JOB, "turn-exhausted", _payload(), max_attempts=1)
+    (job,) = await store.claim(lease_seconds=60)
+    await _expire_lease(job.job_id)
+    assert await store.claim(lease_seconds=60) == []
+    current = await store.get(job.job_id)
+    assert current.status is BackgroundJobStatus.DEAD
+    assert current.last_error_code == "attempts_exhausted"
+
+
 async def test_retryable_failure_waits_before_becoming_claimable(migrated_async_database):
     store = BackgroundJobStore()
     await store.enqueue(_JOB, "turn-a", _payload())
@@ -97,6 +125,7 @@ async def test_retryable_failure_waits_before_becoming_claimable(migrated_async_
 
     status = await store.fail(
         job.job_id,
+        lease_owner=job.lease_owner,
         error_code="TimeoutError",
         error_summary="provider timeout",
         retry_in_seconds=retry_delay_seconds(job.attempts),
@@ -121,6 +150,7 @@ async def test_permanent_failure_goes_straight_to_dead(migrated_async_database):
 
     status = await store.fail(
         job.job_id,
+        lease_owner=job.lease_owner,
         error_code="source_message_deleted",
         error_summary="来源消息已不存在",
         retry_in_seconds=None,
@@ -137,6 +167,7 @@ async def test_attempts_run_out_into_dead(migrated_async_database):
         (job,) = await store.claim(lease_seconds=60, batch=1)
         status = await store.fail(
             job.job_id,
+            lease_owner=job.lease_owner,
             error_code="TimeoutError",
             error_summary="provider timeout",
             retry_in_seconds=1,
@@ -161,8 +192,8 @@ async def test_completing_twice_keeps_the_first_conclusion(migrated_async_databa
     await store.enqueue(_JOB, "turn-a", _payload())
     (job,) = await store.claim(lease_seconds=60, batch=1)
 
-    assert await store.complete(job.job_id, result={"facts": 2}) is True
-    assert await store.complete(job.job_id, result={"facts": 99}) is False
+    assert await store.complete(job.job_id, lease_owner=job.lease_owner, result={"facts": 2}) is True
+    assert await store.complete(job.job_id, lease_owner=job.lease_owner, result={"facts": 99}) is False
 
     settled = await store.get(job.job_id)
     assert settled.status is BackgroundJobStatus.COMPLETED
@@ -188,7 +219,7 @@ async def test_cleanup_only_removes_expired_completed_jobs(migrated_async_databa
     await store.enqueue(_JOB, "turn-dead", _payload())
 
     (done,) = await store.claim(lease_seconds=60, batch=1)
-    await store.complete(done.job_id, result={})
+    await store.complete(done.job_id, lease_owner=done.lease_owner, result={})
     async with get_db_session() as session:
         await session.execute(
             text(
@@ -200,6 +231,7 @@ async def test_cleanup_only_removes_expired_completed_jobs(migrated_async_databa
     (dead,) = await store.claim(lease_seconds=60, batch=1)
     await store.fail(
         dead.job_id,
+        lease_owner=dead.lease_owner,
         error_code="invalid_payload",
         error_summary="bad",
         retry_in_seconds=None,

@@ -38,6 +38,7 @@ async def settle_run_terminal_commands(
     cancel_consumed: bool,
     error_code: str = RUN_ENDED_BEFORE_CONSUMPTION,
     reason: Optional[str] = None,
+    db_session: Any = None,
 ) -> None:
     """Run 不再有执行器时，给还没收口的命令一个结论。
 
@@ -61,17 +62,21 @@ async def settle_run_terminal_commands(
                 status=RunCommandStatus.CONSUMED,
                 command_types=[RunCommandType.CANCEL],
                 result=result,
+                **({"db_session": db_session} if db_session is not None else {}),
             )
         await store.settle_open_for_run(
             run_id,
             status=RunCommandStatus.REJECTED,
             error_code=error_code,
             result=result,
+            **({"db_session": db_session} if db_session is not None else {}),
         )
     except Exception as exc:
         logger.warning(
             "运行控制命令收口失败 run_id=%s status=%s error=%s", run_id, run_status, exc
         )
+        if db_session is not None:
+            raise
 
 
 class RunCommandCoordinator:
@@ -191,7 +196,6 @@ class RunCommandCoordinator:
                     command_id,
                     exc,
                 )
-
     async def _on_supplements_rejected(
         self,
         command_ids: List[str],

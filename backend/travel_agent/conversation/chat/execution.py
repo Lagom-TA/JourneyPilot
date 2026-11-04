@@ -89,11 +89,6 @@ async def execute_chat(
     event_queue = build_event_buffer(get_settings().streaming)
     heartbeat_seconds = get_settings().streaming.heartbeat_seconds
 
-    _stream_profile = await load_user_profile(
-        user_profile_memory,
-        LOCAL_USER_ID,
-    )
-
     workflow = travel_workflow if use_deep_research else fast_workflow
 
     set_run_ts_anchor()
@@ -204,6 +199,7 @@ async def execute_chat(
         lifecycle.command_coordinator.start()
 
         lease_keeper.start()
+        stream_profile = await load_user_profile(user_profile_memory, LOCAL_USER_ID)
 
         async def start_run(db_session: Any = None) -> None:
             try:
@@ -212,6 +208,7 @@ async def execute_chat(
                     TripRunStatus.RUNNING,
                     event_type="run.started",
                     payload={"mode": mode, "checkpoint_thread_id": trip_run.run_id},
+                    execution_lease_token=lifecycle.execution_lease_token,
                     **({"db_session": db_session} if db_session is not None else {}),
                 )
             except ValueError:
@@ -371,7 +368,7 @@ async def execute_chat(
                 accounting=accounting,
                 delivery=delivery,
                 lifecycle=lifecycle,
-                stream_profile=_stream_profile,
+                stream_profile=stream_profile,
                 background_job_worker=background_job_worker,
                 session_id=session_id,
                 user_message=user_message,

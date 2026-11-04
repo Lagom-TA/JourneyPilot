@@ -174,6 +174,7 @@ class RunExecutionStore:
                     WHERE run_id = :run_id
                       AND lease_token = :lease_token
                       AND executor_id = :executor_id
+                      AND lease_expires_at > NOW()
                     RETURNING run_id
                     """
                 ),
@@ -206,6 +207,7 @@ class RunExecutionStore:
                     WHERE run_id = :run_id
                       AND lease_token = :lease_token
                       AND executor_id = :executor_id
+                      AND lease_expires_at > NOW()
                     RETURNING run_id
                     """
                 ),
@@ -225,10 +227,11 @@ class RunExecutionStore:
         lease_token: Optional[str] = None,
         recovery_status: RunRecoveryStatus = RunRecoveryStatus.RELEASED,
         recovery_reason: Optional[str] = None,
+        db_session: Any = None,
     ) -> bool:
         """放弃租约。`lease_token=None` 由恢复扫描使用：它接管的正是没主的行。"""
 
-        async with get_db_session() as session:
+        async def write(session):
             result = await session.execute(
                 text(
                     """
@@ -240,7 +243,8 @@ class RunExecutionStore:
                         updated_at = NOW()
                     WHERE run_id = :run_id
                       AND (
-                        CAST(:lease_token AS TEXT) IS NULL
+                        (CAST(:lease_token AS TEXT) IS NULL
+                         AND (lease_expires_at IS NULL OR lease_expires_at < NOW()))
                         OR lease_token = CAST(:lease_token AS TEXT)
                       )
                     RETURNING run_id
@@ -255,16 +259,22 @@ class RunExecutionStore:
             )
             return result.mappings().first() is not None
 
+        if db_session is not None:
+            return await write(db_session)
+        async with get_db_session() as session:
+            return await write(session)
+
     async def record_recovery(
         self,
         run_id: str,
         *,
         recovery_status: RunRecoveryStatus,
         recovery_reason: str,
-    ) -> RunExecution:
+        db_session: Any = None,
+    ) -> Optional[RunExecution]:
         """写下恢复判定。没有执行行的历史 run 在这里补一行，判定才有落点。"""
 
-        async with get_db_session() as session:
+        async def write(session):
             result = await session.execute(
                 text(
                     """
@@ -277,6 +287,8 @@ class RunExecutionStore:
                         recovery_status = EXCLUDED.recovery_status,
                         recovery_reason = EXCLUDED.recovery_reason,
                         updated_at = NOW()
+                    WHERE trip_run_executions.lease_expires_at IS NULL
+                       OR trip_run_executions.lease_expires_at < NOW()
                     RETURNING *
                     """
                 ),
@@ -286,7 +298,13 @@ class RunExecutionStore:
                     "recovery_reason": recovery_reason,
                 },
             )
-            return _execution_from_row(dict(result.mappings().first()))
+            row = result.mappings().first()
+            return _execution_from_row(dict(row)) if row else None
+
+        if db_session is not None:
+            return await write(db_session)
+        async with get_db_session() as session:
+            return await write(session)
 
     async def list_recovery_candidates(self, *, limit: int = 200) -> List[RunRecoveryCandidate]:
         """所有「没有仍在运行的执行器」的 run。

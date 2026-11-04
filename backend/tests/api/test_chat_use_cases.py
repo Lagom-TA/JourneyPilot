@@ -621,6 +621,40 @@ async def test_disconnect_converges_before_stuck_provider_and_releases_only_afte
     await stream.aclose()
 
 
+async def test_old_stream_cleanup_does_not_stop_or_clear_replacement(resources):
+    from travel_agent.runtime.budget import RunBudgetSnapshot, ledger_for, peek_ledger, release_ledger
+
+    run = await resources.trip_run_store.create_run(
+        session_id="replacement", user_id="local", mode="fast",
+    )
+    await resources.trip_run_store.transition_status(run.run_id, TripRunStatus.RUNNING)
+    old_handle = run_control_registry.register(run.run_id)
+    new_handle = run_control_registry.register(run.run_id)
+    ledger = ledger_for(run.run_id, RunBudgetSnapshot())
+
+    class Keeper:
+        async def release(self, **_kwargs):
+            return None
+
+    owner = lifecycle.ChatLifecycle(
+        run_id=run.run_id, trip_run_store=resources.trip_run_store,
+        travel_workflow=None, use_deep_research=False, presentation=SimpleNamespace(),
+        turns=None, lease=SimpleNamespace(control_handle=old_handle), lease_keeper=Keeper(),
+    )
+    owner.control_registered = True
+    owner.workflow_task = asyncio.create_task(asyncio.Event().wait())
+    await asyncio.sleep(0)
+    try:
+        await owner.cleanup_stream_exit("old_stream_closed")
+        assert old_handle.cancel_event.is_set()
+        assert not new_handle.cancel_event.is_set()
+        assert run_control_registry.get(run.run_id) is new_handle
+        assert run.status is TripRunStatus.RUNNING
+        assert peek_ledger(run.run_id) is ledger
+    finally:
+        release_ledger(run.run_id)
+
+
 @pytest.mark.parametrize(
     "corruption",
     [None, "missing", "duplicate", "reversed", "not_completed", "no_bundle"],
@@ -826,6 +860,7 @@ async def test_cancellation_reason_remains_user_vs_lease_loss(
     ]
     assert run.status.value == status
     assert [event["type"] for event in events] == [event_type]
+    assert resources.chat_session_memory.turns[0]["assistant_type"] == "interrupted"
 
 
 def usage_call(call_id, run_id):

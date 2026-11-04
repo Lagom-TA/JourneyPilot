@@ -81,6 +81,7 @@ def exhausted_dimension(
     tool_calls: int = 0,
     input_tokens: int = 0,
     output_tokens: int = 0,
+    cost_usd: float = 0.0,
 ) -> Optional[BudgetDimension]:
     """按「这次最坏花多少」判还能不能再发一次调用。
 
@@ -99,7 +100,7 @@ def exhausted_dimension(
         "tool_calls": usage.tool_calls + tool_calls,
         "input_tokens": usage.input_tokens + input_tokens,
         "output_tokens": usage.output_tokens + output_tokens,
-        "cost_usd": usage.cost_usd,
+        "cost_usd": usage.cost_usd + cost_usd,
     }
     for dimension in BUDGET_DIMENSIONS:
         if dimension == "cost_usd" and not usage.cost_complete:
@@ -175,6 +176,8 @@ class RunBudgetLedger:
     pending_llm_calls: int = 0
     pending_input_tokens: int = 0
     pending_output_tokens: int = 0
+    pending_cost_usd: float = 0.0
+    pending_unpriced_calls: int = 0
     budget_changed: asyncio.Condition = field(default_factory=asyncio.Condition, repr=False)
     seed_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
@@ -210,7 +213,10 @@ class RunBudgetLedger:
             raise RunBudgetExhausted(operation, dimension, self.snapshot, usage)
 
     @asynccontextmanager
-    async def reserve_model(self, operation: str, *, input_tokens: int, output_tokens: int):
+    async def reserve_model(
+        self, operation: str, *, input_tokens: int, output_tokens: int,
+        estimated_cost_usd: Optional[float] = None,
+    ):
         """在途请求占用额度；已有请求结束后再判断是否真的耗尽。"""
         async with self.budget_changed:
             while True:
@@ -221,15 +227,25 @@ class RunBudgetLedger:
                     "llm_calls": self.llm_calls + self.pending_llm_calls,
                     "input_tokens": self.input_tokens + self.pending_input_tokens,
                     "output_tokens": self.output_tokens + self.pending_output_tokens,
+                    "cost_usd": self.cost_usd + self.pending_cost_usd,
+                    "cost_complete": (
+                        self.unpriced_calls == 0 and self.pending_unpriced_calls == 0
+                        and estimated_cost_usd is not None
+                    ),
                 })
                 dimension = exhausted_dimension(
                     self.snapshot, usage, llm_calls=1,
                     input_tokens=input_tokens, output_tokens=output_tokens,
+                    cost_usd=estimated_cost_usd or 0.0,
                 )
                 if dimension is None:
                     self.pending_llm_calls += 1
                     self.pending_input_tokens += input_tokens
                     self.pending_output_tokens += output_tokens
+                    if estimated_cost_usd is None:
+                        self.pending_unpriced_calls += 1
+                    else:
+                        self.pending_cost_usd += estimated_cost_usd
                     break
                 if not self.pending_llm_calls:
                     raise RunBudgetExhausted(operation, dimension, self.snapshot, usage)
@@ -241,6 +257,10 @@ class RunBudgetLedger:
                 self.pending_llm_calls -= 1
                 self.pending_input_tokens -= input_tokens
                 self.pending_output_tokens -= output_tokens
+                if estimated_cost_usd is None:
+                    self.pending_unpriced_calls -= 1
+                else:
+                    self.pending_cost_usd = max(0.0, self.pending_cost_usd - estimated_cost_usd)
                 self.budget_changed.notify_all()
 
     def record_llm_call(

@@ -89,6 +89,7 @@ async def _replay_run_events(
     *,
     run,
     trip_run_store,
+    chat_session_memory,
     session_id: str,
     route_decision,
 ):
@@ -120,11 +121,27 @@ async def _replay_run_events(
                 "run_status": run.status.value,
                 "payload": choice.get("payload", {}),
             }
+    final_content = None
+    if run.status == TripRunStatus.COMPLETED and run.mode.value == "fast":
+        try:
+            final_content = await chat_session_memory.get_message_content(
+                session_id=session_id, message_id=run.assistant_message_id,
+            )
+        except Exception as exc:
+            logger.warning("读取已完成回答失败 run_id=%s error=%s", run.run_id, exc)
+        if final_content is None:
+            yield {
+                "type": "error", "message_id": run.assistant_message_id,
+                "run_id": run.run_id, "run_status": run.status.value,
+                "message": "已完成的回答暂时无法读取，请刷新会话重试。",
+            }
+            return
     yield {
         "type": "chat_complete",
         "message_id": run.assistant_message_id,
         "run_id": run.run_id,
         "run_status": run.status.value,
+        **({"final_content": final_content} if final_content is not None else {}),
     }
 
 
@@ -453,6 +470,7 @@ async def _prepare_chat(
                 _replay_run_events(
                     run=existing_run,
                     trip_run_store=trip_run_store,
+                    chat_session_memory=chat_session_memory,
                     session_id=session_id,
                     route_decision=route_decision,
                 )
@@ -626,6 +644,7 @@ async def _prepare_chat(
                 _replay_run_events(
                     run=trip_run,
                     trip_run_store=trip_run_store,
+                    chat_session_memory=chat_session_memory,
                     session_id=session_id,
                     route_decision=route_decision,
                 )

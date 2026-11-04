@@ -622,7 +622,7 @@ class ChatSessionMemory:
 
         async with get_db_session() as session:
             row_result = await session.execute(
-                text("SELECT * FROM chat_sessions WHERE session_id = :sid"),
+                text("SELECT * FROM chat_sessions WHERE session_id = :sid FOR UPDATE"),
                 {"sid": session_id},
             )
             row = row_result.mappings().first()
@@ -805,6 +805,19 @@ class ChatSessionMemory:
                 {"sid": session_id, "turn_ids": [str(row["turn_id"]) for row in selected]},
             )
             rows = [dict(row) for row in event_rows.mappings().all()]
+            if window_saturated and len(candidates) == 1:
+                first_order = min(int(row["event_order"]) for row in rows)
+                candidates[0]["first_order"] = first_order
+                earlier = await session.execute(
+                    text("""
+                        SELECT EXISTS (
+                            SELECT 1 FROM chat_session_events
+                            WHERE session_id = :sid AND event_order < :first_order
+                        )
+                    """),
+                    {"sid": session_id, "first_order": first_order},
+                )
+                has_more = bool(earlier.scalar_one())
 
         grouped: Dict[str, List[Dict[str, Any]]] = {}
         for row in rows:

@@ -171,7 +171,7 @@ class EventBuffer:
         await self._put_critical(kind, item)
 
     async def _put_critical(self, kind: str, item: Tuple) -> None:
-        if self._critical_count >= self._critical_queue_size:
+        while self._critical_count >= self._critical_queue_size:
             await self._await_space()
             if self.stalled and self._critical_count >= self._critical_queue_size:
                 # 消费者已经不再读取：继续入队等于让内存无界增长。结束传输由
@@ -184,7 +184,10 @@ class EventBuffer:
     async def _put_text(self, kind: str, node: str, chunk: str) -> None:
         if not chunk:
             return
-        if self._pending_text_chars + len(chunk) > self._max_pending_text_chars:
+        while (self._pending_text_chars
+               and self._pending_text_chars + len(chunk) > self._max_pending_text_chars):
+            # 当前水位未满但容不下本次增量时，也要等消费者取走内容。
+            self._space.clear()
             await self._await_space()
             if self.stalled:
                 # 传输正在被结束（消费者拿到 stalled 就收摊）。这里丢掉的只是显示用的

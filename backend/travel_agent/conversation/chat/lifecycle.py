@@ -41,6 +41,10 @@ class ChatLifecycle:
         self.lease_released = False
         self.stream_exit_reason = "stream_closed_before_terminal"
 
+    @property
+    def execution_lease_token(self) -> str:
+        return self.lease_keeper.lease_token or ""
+
     async def transition_to_awaiting_input(
         self,
         *,
@@ -57,6 +61,7 @@ class ChatLifecycle:
                 pending_user_choice=pending_user_choice,
                 event_type=event_type,
                 payload=payload,
+                execution_lease_token=self.execution_lease_token,
             )
         except ValueError:
             current_run = await self.trip_run_store.get_run(self.run_id)
@@ -109,6 +114,7 @@ class ChatLifecycle:
                         "reason": reason,
                         "current_node": current_node_name,
                     },
+                    execution_lease_token=self.execution_lease_token,
                 )
                 try:
                     await self.turns.save_partial("interrupted")
@@ -138,6 +144,9 @@ class ChatLifecycle:
         if self.process_cleanup_done:
             return
         self.process_cleanup_done = True
+        current_handle = run_control_registry.get(self.run_id)
+        if current_handle is not None and current_handle is not self.lease.control_handle:
+            return
         if self.control_registered:
             run_control_registry.unregister(self.run_id, self.lease.control_handle)
 
@@ -226,26 +235,29 @@ class ChatLifecycle:
 
     async def cleanup_stream_exit(self, reason: str) -> None:
         """在限时尽力关闭工作流之前，先持久化退出结果。"""
+        current_handle = run_control_registry.get(self.run_id)
+        superseded = current_handle is not None and current_handle is not self.lease.control_handle
         if (
             self.workflow_task is not None
             and not self.workflow_task.done()
             and self.control_registered
         ):
-            handle = run_control_registry.get(self.run_id)
+            handle = self.lease.control_handle
             if handle is not None:
                 handle.request_stop("stream_exit")
 
-        try:
-            await self.converge_stream_exit(reason)
-        except Exception as convergence_err:
-            logger.error(
-                "TripRun durable stream-exit convergence failed run_id=%s error=%s",
-                self.run_id,
-                convergence_err,
-                exc_info=True,
-            )
+        if not superseded:
+            try:
+                await self.converge_stream_exit(reason)
+            except Exception as convergence_err:
+                logger.error(
+                    "TripRun durable stream-exit convergence failed run_id=%s error=%s",
+                    self.run_id,
+                    convergence_err,
+                    exc_info=True,
+                )
 
-        await self.settle_run_commands()
+            await self.settle_run_commands()
         if self.command_coordinator is not None:
             await self.command_coordinator.stop()
 

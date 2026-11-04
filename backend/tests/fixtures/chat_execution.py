@@ -100,6 +100,11 @@ class ChatMemory:
     async def save_turn(self, **kwargs):
         self.turns.append(kwargs)
 
+    async def get_message_content(self, *, session_id, message_id):
+        return next((turn["assistant_content"] for turn in reversed(self.turns)
+                     if turn["session_id"] == session_id
+                     and turn["assistant_message_id"] == message_id), None)
+
     async def list_turns(self, user_id, session_id, *, before_turn=None, limit=30):
         turns = []
         for turn in self.turns:

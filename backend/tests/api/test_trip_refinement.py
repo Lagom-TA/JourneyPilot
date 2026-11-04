@@ -31,6 +31,30 @@ def identity():
     return {"origin": place, "destinations": [place], "start_date": "2026-10-10", "end_date": "2026-10-10", "party": {"adults": 1, "children": 0, "elderly_companions": False, "accessibility_required": False}, "style": {"primary": "文化", "secondary_interests": [], "source": "current"}}
 
 
+async def test_clarification_history_crosses_compaction_and_page_boundaries():
+    from travel_agent.conversation.chat.refinement import pending_clarification_context
+
+    def clarification(user, question):
+        return {"messages": [
+            {"role": "user", "content": user},
+            {"role": "assistant", "content": question,
+             "task_type": "refinement_clarification", "run_id": "run-1"},
+        ]}
+
+    class Memory:
+        async def list_turns(self, _user_id, _session_id, *, before_turn=None):
+            if before_turn is None:
+                return {"turns": [
+                    {"messages": [{"role": "system", "type": "context_compaction"}]},
+                    clarification("第一天", "想换成什么？"),
+                ], "has_more": True, "next_before": "older"}
+            return {"turns": [clarification("帮我调整", "想调整哪一天？")],
+                    "has_more": False, "next_before": None}
+
+    context = await pending_clarification_context(Memory(), "session-1", "run-1", "公园")
+    assert context == "旅行者：帮我调整\n追问：想调整哪一天？\n旅行者：第一天\n追问：想换成什么？\n旅行者：公园"
+
+
 def delivered_bundle(run_id):
     first = make_visit_packet("candidate_visit", "原有景点")
     second = make_visit_packet("candidate_alternative", "候选公园")

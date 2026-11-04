@@ -132,7 +132,6 @@ async def test_heartbeat_extends_the_lease(migrated_async_database):
     execution = await store.claim(run_id, lease_seconds=45)
     assert execution is not None
 
-    await _expire_lease(run_id)
     renewed = await store.heartbeat(
         run_id, lease_token=execution.lease_token or "", lease_seconds=45
     )
@@ -142,6 +141,15 @@ async def test_heartbeat_extends_the_lease(migrated_async_database):
     assert after is not None
     assert after.recovery_status is RunRecoveryStatus.RUNNING
     assert await store.count_active_leases() == 1
+
+
+async def test_expired_lease_cannot_be_revived(migrated_async_database):
+    store = RunExecutionStore()
+    run_id = await _create_run()
+    execution = await store.claim(run_id, lease_seconds=45)
+    await _expire_lease(run_id)
+    assert not await store.heartbeat(run_id, lease_token=execution.lease_token, lease_seconds=45)
+    assert not await store.mark_safe_checkpoint(run_id, lease_token=execution.lease_token, checkpoint_id="late")
 
 
 async def test_heartbeat_fails_after_takeover(migrated_async_database):
