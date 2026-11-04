@@ -52,6 +52,7 @@
 ## 收到的提醒
 
 - [x] 来自 F1-05、F1-06：首页样式已分文件并统一 token 与断点 → 已验证 320–2560px 及关键断点、稳定态日历与目的地候选；本轮表单指定截图复核通过。
+- [ ] 来自后端综合验收：默认 e2e 用例在首页重做后有 4 项失败，其余 25 项通过。`mobile-navigation.spec.ts`（320、390、768px）仍按“想去哪里，告诉我。”匹配标题，而页面标题的无障碍名称现为“想去哪里， 告诉我。”；`planner-intake.spec.ts` 的“表单完整身份直接进入方案确认”仍找“从哪里出发”输入框，现名为“出发地”。这两个规格自基线起未改动，页面渲染正常（截图确认） → 请更新选择器，并重跑 `smoke`、`mobile-navigation`、`home-inspiration`、`planner-intake`、`multi-round-intake`。失败产物在 `frontend/test-results/`（已被 Git 忽略）。
 
 ## 问题与修复
 
