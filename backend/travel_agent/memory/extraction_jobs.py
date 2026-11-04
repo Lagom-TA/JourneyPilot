@@ -60,7 +60,6 @@ def make_memory_extraction_handler(
             user_id=user_id,
             session_id=session_id,
             user_msg=user_message,
-            existing_portrait=str(payload.get("portrait_baseline") or ""),
             source_message_id=user_message_id,
             job=job,
         )
@@ -69,6 +68,8 @@ def make_memory_extraction_handler(
         return {
             "facts": outcome.facts_written,
             "portraits": outcome.portraits_written,
+            "facts_deleted": outcome.facts_deleted,
+            "portraits_deleted": outcome.portraits_deleted,
             "profile_revision_at_enqueue": payload.get("profile_revision"),
             "profile_revision_now": current_revision,
         }
@@ -82,7 +83,7 @@ async def load_user_profile(user_profile_memory, user_id: str):
     画像抵达模型的唯一通道是 Constraint Pack 的统一装配入口
     （``travel_agent/planning/requirements/constraints/sources.py`` 中
     ``_map_manual_profile`` 映射六组偏好、``_auto_portrait_block`` 映射系统画像）。
-    本函数只返回画像对象，供记忆抽取作为 ``auto_portrait`` 增量基线。
+    本函数返回本轮运行开始时的画像对象，供运行过程读取画像版本。
     """
     try:
         return await user_profile_memory.get_user_profile(user_id)
@@ -100,13 +101,12 @@ async def enqueue_memory_extraction(
     assistant_message_id: str,
     profile_revision: int,
     memory_revision_at_start: int,
-    portrait_baseline: str,
     background_job_worker=None,
 ) -> None:
     """把本轮的记忆抽取排入 `background_jobs`。
 
     在聊天保存事务之后调用：任务只保存引用，正文由 worker 从会话记录读回。
-    画像基线随 payload 固定，延迟执行的抽取仍使用入队时的画像版本。
+    抽取时读取当前记忆与手动操作，避免使用入队时的过期画像。
     """
     if not get_settings().embedding.enabled:
         return
@@ -123,7 +123,7 @@ async def enqueue_memory_extraction(
                 "user_message_id": user_message_id,
                 "assistant_message_id": assistant_message_id,
                 "profile_revision": profile_revision,
-                "portrait_baseline": portrait_baseline,
+                "memory_revision_at_start": memory_revision_at_start,
             },
             memory_revision_at_start=memory_revision_at_start,
         )

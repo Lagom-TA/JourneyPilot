@@ -238,14 +238,16 @@ async def test_update_reuses_indexer_with_original_text_and_local_scope(
     )
 
 
-async def test_manual_fact_dedupe_does_not_write_or_create_profile():
+async def test_manual_fact_dedupe_records_the_user_action_without_rewriting(manual_db):
     row = {"fact_id": "same-id", "content": "no seafood"}
     store = SimpleNamespace(
         find_manual_fact=AsyncMock(return_value=row),
         save_fact=AsyncMock(),
         get_fact=AsyncMock(),
+        set_memory_revision=AsyncMock(),
     )
-    profile = Mock(side_effect=AssertionError("dedupe must not resolve profile"))
+    record = AsyncMock(return_value=7)
+    profile = Mock(return_value=SimpleNamespace(record_memory_management=record))
     result = await save_manual_fact(
         store=store,
         user_id="local",
@@ -256,7 +258,7 @@ async def test_manual_fact_dedupe_does_not_write_or_create_profile():
     assert result.status == "existing" and result.fact is row
     store.save_fact.assert_not_called()
     store.get_fact.assert_not_called()
-    profile.assert_not_called()
+    record.assert_awaited_once()
 
 
 @pytest.fixture
@@ -282,22 +284,27 @@ async def test_manual_fact_write_profile_then_identity_readback(manual_db):
         events.append(("save", kwargs))
         return "new-id"
 
-    async def ensure(user_id, *, db_session):
-        events.append(("profile", user_id))
+    async def record(user_id, operation, *, db_session, items, details):
+        events.append(("history", user_id, operation, items, details))
+        return 7
+
+    async def set_revision(user_id, fact_id, revision, *, db_session):
+        events.append(("revision", user_id, fact_id, revision))
 
     async def read(user_id, fact_id, *, db_session):
         events.append(("read", user_id, fact_id))
         return row
 
     store = SimpleNamespace(
-        find_manual_fact=AsyncMock(return_value=None), save_fact=save, get_fact=read
+        find_manual_fact=AsyncMock(return_value=None), save_fact=save, get_fact=read,
+        set_memory_revision=set_revision,
     )
     result = await save_manual_fact(
         store=store,
         user_id="local",
         content="no seafood",
         category="diet",
-        profile_for_write=lambda: SimpleNamespace(ensure_profile_for_write=ensure),
+        profile_for_write=lambda: SimpleNamespace(record_memory_management=record),
     )
     assert result.status == "created" and result.fact is row
     assert events == [
@@ -313,7 +320,9 @@ async def test_manual_fact_write_profile_then_identity_readback(manual_db):
                 "prepared_embedding": None,
             },
         ),
-        ("profile", "local"),
+        ("history", "local", "add_fact",
+         [{"fact_id": "new-id", "content": "no seafood", "category": "diet"}], {"status": "created"}),
+        ("revision", "local", "new-id", 7),
         ("read", "local", "new-id"),
     ]
 
@@ -324,8 +333,9 @@ async def test_manual_fact_write_and_readback_failures(save_id, created, manual_
         find_manual_fact=AsyncMock(return_value=None),
         save_fact=AsyncMock(return_value=save_id),
         get_fact=AsyncMock(return_value=created),
+        set_memory_revision=AsyncMock(),
     )
-    profile = SimpleNamespace(ensure_profile_for_write=AsyncMock())
+    profile = SimpleNamespace(record_memory_management=AsyncMock())
     with pytest.raises(ManualFactSaveFailed, match="memory fact save failed"):
         await save_manual_fact(
             store=store,
@@ -334,7 +344,7 @@ async def test_manual_fact_write_and_readback_failures(save_id, created, manual_
             category="diet",
             profile_for_write=lambda: profile,
         )
-    assert profile.ensure_profile_for_write.await_count == int(save_id is not None)
+    assert profile.record_memory_management.await_count == int(save_id is not None)
     assert store.get_fact.await_count == int(save_id is not None)
 
 
@@ -352,10 +362,11 @@ async def test_manual_fact_http_defaults_and_identity(client, monkeypatch, manua
     )
     monkeypatch.setattr(MemoryStore, "save_fact", saved)
     monkeypatch.setattr(MemoryStore, "get_fact", read)
-    ensure = AsyncMock()
+    monkeypatch.setattr(MemoryStore, "set_memory_revision", AsyncMock())
+    record = AsyncMock(return_value=7)
     registry.set_components(
         SimpleNamespace(
-            user_profile_memory=SimpleNamespace(ensure_profile_for_write=ensure)
+            user_profile_memory=SimpleNamespace(record_memory_management=record)
         )
     )
     async with client:
@@ -376,21 +387,28 @@ async def test_manual_fact_http_defaults_and_identity(client, monkeypatch, manua
         prepared_embedding=None,
     )
     read.assert_awaited_once_with(LOCAL_USER_ID, "id-from-save", db_session=manual_db)
-    ensure.assert_awaited_once_with(LOCAL_USER_ID, db_session=manual_db)
+    record.assert_awaited_once()
 
 
-async def test_manual_fact_rechecks_after_acquiring_lock(manual_db):
+async def test_manual_fact_rechecks_after_computing_embedding(manual_db, monkeypatch):
     row = {"fact_id": "same-id", "content": "no seafood"}
     store = SimpleNamespace(
         find_manual_fact=AsyncMock(side_effect=[None, row]),
         save_fact=AsyncMock(),
+        _compute_embedding=AsyncMock(return_value=[0.5]),
+        set_memory_revision=AsyncMock(),
     )
+    monkeypatch.setattr(manual_facts, "get_settings", lambda: SimpleNamespace(
+        embedding=SimpleNamespace(enabled=True)
+    ))
+    record = AsyncMock()
     result = await save_manual_fact(
         store=store, user_id="local", content="no seafood", category="diet",
-        profile_for_write=Mock(side_effect=AssertionError("不应再次创建画像")),
+        profile_for_write=lambda: SimpleNamespace(record_memory_management=record),
     )
     assert result.status == "existing" and result.fact == row
     store.save_fact.assert_not_called()
+    record.assert_awaited_once()
 
 
 async def test_preferences_unknown_fields_do_not_write(client):

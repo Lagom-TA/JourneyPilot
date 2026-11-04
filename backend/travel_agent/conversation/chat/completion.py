@@ -77,7 +77,6 @@ async def complete_chat(
             assistant_message_id=message_id,
             profile_revision=stream_profile.revision if stream_profile else 0,
             memory_revision_at_start=memory_revision_at_start,
-            portrait_baseline=stream_profile.auto_portrait if stream_profile else "",
             background_job_worker=background_job_worker,
         )
 

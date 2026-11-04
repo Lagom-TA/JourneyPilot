@@ -792,10 +792,8 @@ async def test_turns_saved_once_before_extraction_and_successful_deep_publicatio
 
     async def extract(**kwargs):
         assert len(resources.chat_session_memory.turns) == 1 and turns.saved
-        assert (
-            kwargs["profile_revision"] == 7
-            and kwargs["portrait_baseline"] == "fixed baseline"
-        )
+        assert kwargs["profile_revision"] == 7
+        assert "portrait_baseline" not in kwargs
 
     monkeypatch.setattr(completion, "enqueue_memory_extraction", extract)
     monkeypatch.setattr(

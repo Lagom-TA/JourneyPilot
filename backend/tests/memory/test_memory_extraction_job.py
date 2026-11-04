@@ -64,8 +64,7 @@ async def test_handler_reads_the_message_from_the_session_record():
     result = await handle(_job())
 
     assert extractor.calls[0]["user_msg"] == "我吃素，不吃海鲜"
-    # 画像基线是入队那一刻固定下来的，不是执行时的最新画像。
-    assert extractor.calls[0]["existing_portrait"] == "喜欢慢节奏"
+    assert "existing_portrait" not in extractor.calls[0]
     assert extractor.calls[0]["source_message_id"] == "m-1"
     assert result["facts"] == 2 and result["portraits"] == 1
     assert result["profile_revision_at_enqueue"] == 3
@@ -113,8 +112,7 @@ async def test_disabled_vectors_do_not_enqueue_or_wake_worker(monkeypatch):
     await extraction_jobs.enqueue_memory_extraction(
         user_id="local", session_id="session", user_message="我吃素",
         user_message_id="message", assistant_message_id="reply", profile_revision=1,
-        memory_revision_at_start=1,
-        portrait_baseline="", background_job_worker=worker,
+        memory_revision_at_start=1, background_job_worker=worker,
     )
     get_store.assert_not_called()
     store.enqueue.assert_not_called()

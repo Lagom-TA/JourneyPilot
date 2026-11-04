@@ -78,6 +78,7 @@ class MemoryGraph:
         session_id: str = "",
         source_properties: Optional[Dict[str, Any]] = None,
         target_properties: Optional[Dict[str, Any]] = None,
+        memory_revision: int = 0,
         db_session: Any = None,
     ) -> None:
         """创建或更新关系边。
@@ -107,21 +108,26 @@ class MemoryGraph:
                 text("""
                     INSERT INTO memory_relations
                         (user_id, source_id, target_id, relation, confidence,
-                         evidence, valid_from, source_session, created_at)
+                         evidence, valid_from, source_session, memory_revision, created_at)
                     VALUES
                         (:uid, :src, :tgt, :rel, :conf,
-                         :evidence, NOW(), :sess, NOW())
+                         :evidence, NOW(), :sess, :memory_revision, NOW())
                     ON CONFLICT (user_id, source_id, target_id, relation)
                     DO UPDATE SET
                         confidence = GREATEST(memory_relations.confidence, EXCLUDED.confidence),
                         evidence = CASE
-                            WHEN EXCLUDED.evidence <> '' THEN EXCLUDED.evidence
+                            WHEN EXCLUDED.evidence <> ''
+                             AND EXCLUDED.memory_revision >= memory_relations.memory_revision
+                            THEN EXCLUDED.evidence
                             ELSE memory_relations.evidence
                         END,
                         source_session = CASE
-                            WHEN EXCLUDED.source_session <> '' THEN EXCLUDED.source_session
+                            WHEN EXCLUDED.source_session <> ''
+                             AND EXCLUDED.memory_revision >= memory_relations.memory_revision
+                            THEN EXCLUDED.source_session
                             ELSE memory_relations.source_session
-                        END
+                        END,
+                        memory_revision = GREATEST(memory_relations.memory_revision, EXCLUDED.memory_revision)
                 """),
                 {
                     "uid": user_id,
@@ -131,6 +137,7 @@ class MemoryGraph:
                     "conf": confidence,
                     "evidence": evidence,
                     "sess": session_id,
+                    "memory_revision": memory_revision,
                 },
             )
 
@@ -139,6 +146,7 @@ class MemoryGraph:
         user_id: str,
         portrait_items: List[Dict[str, Any]],
         session_id: str = "",
+        memory_revision: int = 0,
         db_session: Any = None,
     ) -> None:
         """批量处理 portrait[] 提取结果。
@@ -165,6 +173,7 @@ class MemoryGraph:
                 evidence=evidence,
                 session_id=session_id,
                 target_properties={"dimension": dimension},
+                memory_revision=memory_revision,
                 db_session=db_session,
             )
 
@@ -181,6 +190,7 @@ class MemoryGraph:
                         r.relation,
                         r.confidence,
                         r.evidence,
+                        r.memory_revision,
                         r.valid_from,
                         se.name        AS source_name,
                         se.entity_type AS source_type,
@@ -191,7 +201,7 @@ class MemoryGraph:
                     JOIN memory_entities se ON r.source_id = se.entity_id
                     JOIN memory_entities te ON r.target_id = te.entity_id
                     WHERE r.user_id = :uid
-                    ORDER BY r.valid_from ASC
+                    ORDER BY r.valid_from ASC, r.relation_id ASC
                 """),
                 {"uid": user_id},
             )
@@ -224,11 +234,11 @@ class MemoryGraph:
                 "entities": len(entity_result.fetchall()),
             }
 
-    async def delete_relation(self, user_id: str, relation_id: int | str) -> int:
+    async def delete_relation(self, user_id: str, relation_id: int | str, *, db_session: Any = None) -> int:
         """物理删除该用户的一条关系。"""
         if not user_id or relation_id is None:
             return 0
-        async with get_db_session() as session:
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text("""
                     DELETE FROM memory_relations

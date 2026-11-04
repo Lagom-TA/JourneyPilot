@@ -14,7 +14,9 @@ from typing import Any, Dict, Optional
 from sqlalchemy import text
 
 from travel_agent.memory.preference_contracts import TravelPreference, UserProfile
+from travel_agent.runtime.time import utc_now_iso
 from ..storage.database import get_db_session
+from ..storage.memory_lock import lock_user_memory
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +34,9 @@ def _bind_ts(value: Optional[str]) -> Optional[datetime]:
 class UserProfileMemory:
     """用户画像持久化管理。"""
 
-    async def get_user_profile(self, user_id: str) -> Optional[UserProfile]:
+    async def get_user_profile(self, user_id: str, *, db_session: Any = None) -> Optional[UserProfile]:
         """从 PostgreSQL 获取用户画像；不存在时返回 None。"""
-        async with get_db_session() as session:
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text("SELECT * FROM user_profiles WHERE user_id = :uid"),
                 {"uid": user_id},
@@ -76,6 +78,47 @@ class UserProfileMemory:
         )
         return int(result.scalar_one())
 
+    async def get_memory_management_history(
+        self, user_id: str, *, db_session: Any = None,
+    ) -> list[dict[str, Any]]:
+        """读取用户对记忆的手动操作，供后续记忆总结参考。"""
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
+            result = await session.execute(
+                text("SELECT memory_management_history FROM user_profiles WHERE user_id = :uid"),
+                {"uid": user_id},
+            )
+            history = result.scalar_one_or_none() or []
+            if isinstance(history, str):
+                history = json.loads(history)
+            if not isinstance(history, list):
+                raise ValueError("invalid memory management history")
+            return history
+
+    async def record_memory_management(
+        self, user_id: str, operation: str, *, items: list[dict[str, Any]],
+        db_session: Any, category: str | None = None, details: dict[str, Any] | None = None,
+        reset: bool = False,
+    ) -> int:
+        """与手动操作在同一事务中写入时间顺序和操作内容。"""
+        await self.ensure_profile_for_write(user_id, db_session=db_session, lock=True)
+        revision = await self.advance_memory_fence(user_id, db_session=db_session)
+        event = {
+            "operation": operation,
+            "revision": revision,
+            "items": items,
+            "created_at": utc_now_iso(),
+        }
+        if category is not None:
+            event["category"] = category
+        if details is not None:
+            event["details"] = details
+        expression = "CAST(:events AS jsonb)" if reset else "memory_management_history || CAST(:events AS jsonb)"
+        await db_session.execute(
+            text(f"UPDATE user_profiles SET memory_management_history = {expression} WHERE user_id = :uid"),
+            {"uid": user_id, "events": json.dumps([event], ensure_ascii=False)},
+        )
+        return revision
+
     async def save_user_profile(self, profile: UserProfile) -> None:
         """保存或更新用户画像（upsert）。每次写入 revision 前进一格。"""
         now = datetime.now(timezone.utc).isoformat()
@@ -84,6 +127,7 @@ class UserProfileMemory:
             profile.created_at = now
 
         async with get_db_session() as session:
+            await lock_user_memory(session, profile.user_id)
             await session.execute(
                 text("""
                     INSERT INTO user_profiles
@@ -119,6 +163,7 @@ class UserProfileMemory:
         validated = TravelPreference(**updates)
         preferences = validated.model_dump(mode="json", include=set(updates))
         async with get_db_session() as session:
+            await lock_user_memory(session, user_id)
             await session.execute(
                 text("""
                     INSERT INTO user_profiles (user_id, preferences, revision)

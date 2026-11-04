@@ -28,6 +28,16 @@ async def memory_database(monkeypatch):
                 await connection.execute(text(
                     f"CREATE TEMP TABLE {name} (LIKE public.{name} INCLUDING ALL) ON COMMIT DROP"
                 ))
+            await connection.execute(text(
+                "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS "
+                "memory_management_history JSONB NOT NULL DEFAULT '[]'::jsonb"
+            ))
+            await connection.execute(text(
+                "ALTER TABLE memory_facts ADD COLUMN IF NOT EXISTS memory_revision INTEGER NOT NULL DEFAULT 0"
+            ))
+            await connection.execute(text(
+                "ALTER TABLE memory_relations ADD COLUMN IF NOT EXISTS memory_revision INTEGER NOT NULL DEFAULT 0"
+            ))
             for name, field in (("memory_facts", "fact_id"), ("memory_entities", "entity_id"), ("memory_relations", "relation_id")):
                 await connection.execute(text(f"CREATE TEMP SEQUENCE {name}_b5_sequence"))
                 await connection.execute(text(
@@ -72,13 +82,18 @@ async def _job(session):
 
 
 async def _apply(job, *, content="吃素", portrait=None):
+    from travel_agent.memory import memory_extractor
     from travel_agent.memory.memory_extractor import ExtractedFactCandidate, MemoryExtractor
     from travel_agent.memory.memory_store import MemoryStore
 
-    return await MemoryExtractor()._commit_extraction(
+    extractor = MemoryExtractor()
+    store = MemoryStore()
+    async with memory_extractor.get_db_session() as session:
+        context = await extractor._load_context("local", store=store, db_session=session)
+    return await extractor._commit_extraction(
         job=job, user_id="local", session_id="session", source_message_id="message",
         facts=[ExtractedFactCandidate(content=content, category="preference", importance=5)],
-        embeddings=[None], portrait=portrait or [], store=MemoryStore(),
+        embeddings=[None], portrait=portrait or [], store=store, context=context,
     )
 
 
@@ -150,3 +165,39 @@ async def test_manual_fact_deduplication_in_configured_database(memory_database)
     assert first.status == "created" and second.status == "existing"
     assert first.fact["fact_id"] == second.fact["fact_id"]
     assert (await memory_database.execute(text("SELECT COUNT(*) FROM memory_facts"))).scalar_one() == 1
+    history = await UserProfileMemory().get_memory_management_history("local")
+    assert [event["operation"] for event in history] == ["add_fact", "add_fact"]
+    assert [event["details"]["status"] for event in history] == ["created", "existing"]
+    assert (await memory_database.execute(text("SELECT memory_revision FROM memory_facts"))).scalar_one() == history[-1]["revision"]
+
+
+async def test_explicit_change_updates_fact_and_removes_stale_portrait(memory_database):
+    from travel_agent.memory.memory_extractor import ExtractedFactCandidate, MemoryExtractor
+    from travel_agent.memory.memory_graph import MemoryGraph
+    from travel_agent.memory.memory_store import MemoryStore, USER_MANUAL_SESSION_ID
+    from travel_agent.memory.user_profile import UserProfileMemory
+
+    session = memory_database
+    fact_id = (await session.execute(text("""
+        INSERT INTO memory_facts (user_id, session_id, content, category, importance)
+        VALUES ('local', :manual, '吃素', 'preference', 5) RETURNING fact_id
+    """), {"manual": USER_MANUAL_SESSION_ID})).scalar_one()
+    graph = MemoryGraph()
+    await graph.update_portrait("local", [{"trait": "素食", "dimension": "lifestyle"}], db_session=session)
+    await UserProfileMemory().set_auto_portrait("local", "生活方式：素食", db_session=session)
+    job = (await _job(session)).model_copy(update={"payload": {"memory_revision_at_start": 1}})
+    extractor, store = MemoryExtractor(), MemoryStore()
+    context = await extractor._load_context("local", store=store, db_session=session)
+    relation_id = int(context.relations[0]["relation_id"])
+    outcome = await extractor._commit_extraction(
+        job=job, user_id="local", session_id="session", source_message_id="message",
+        facts=[ExtractedFactCandidate(action="update", fact_id=str(fact_id), content="不再吃素",
+                                      category="preference", importance=5)],
+        embeddings=[None], portrait=[], store=store, context=context, deleted_relation_ids=[relation_id],
+    )
+    row = (await session.execute(text(
+        "SELECT content, session_id, memory_revision FROM memory_facts WHERE fact_id = :id"
+    ), {"id": fact_id})).one()
+    assert row.content == "不再吃素" and row.session_id == USER_MANUAL_SESSION_ID and row.memory_revision > 0
+    assert (await UserProfileMemory().get_user_profile("local")).auto_portrait == ""
+    assert outcome.facts_written == 1 and outcome.portraits_deleted == 1

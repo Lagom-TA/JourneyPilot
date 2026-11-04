@@ -33,6 +33,12 @@ def _json_loads(value: Any, default: Any) -> Any:
     return value
 
 
+def _audit_reason(reason: str, deleted: List[Dict[str, Any]]) -> str:
+    for content in sorted({str(item.get("content") or "") for item in deleted} - {""}, key=len, reverse=True):
+        reason = reason.replace(content, "[redacted]")
+    return reason
+
+
 
 
 def _record_from_row(row: Dict[str, Any]) -> ForgettingAuditRecord:
@@ -78,17 +84,28 @@ class MemoryLifecycleStore:
         request_id: Optional[str] = None,
         reason: str = "",
     ) -> MemoryDeletionSummary:
-        summary = MemoryDeletionSummary(
-            request_id=request_id or generate_memory_forgetting_request_id(),
-            user_id=user_id,
-            scope=MemoryDeleteScope.FACT,
-            fact_id=str(fact_id),
-            affected_facts=await self.memory_store.delete_fact(user_id, fact_id),
-            boundary=default_forgetting_boundary(),
-            metadata=sanitize_forgetting_metadata({"reason": reason, "fact_id": str(fact_id)}),
-        )
-        await self.record_audit(summary)
-        return summary
+        if not user_id:
+            raise ValueError("user_id is required")
+        async with get_db_session() as session:
+            await lock_user_memory(session, user_id)
+            deleted = await self.memory_store.pop_fact(user_id, fact_id, db_session=session)
+            await self.user_profile_memory.record_memory_management(
+                user_id, "delete_fact", items=deleted, db_session=session, details={"reason": reason},
+            )
+            summary = MemoryDeletionSummary(
+                request_id=request_id or generate_memory_forgetting_request_id(),
+                user_id=user_id,
+                scope=MemoryDeleteScope.FACT,
+                fact_id=str(fact_id),
+                affected_facts=len(deleted),
+                boundary=default_forgetting_boundary() | {
+                    "management_history_recorded": True,
+                    "deleted_content_retained_for_summary": bool(deleted),
+                },
+                metadata=sanitize_forgetting_metadata({"reason": _audit_reason(reason, deleted), "fact_id": str(fact_id)}),
+            )
+            await self.record_audit(summary, db_session=session, require_insert=True)
+            return summary
 
     async def _clear_system_learned_memory(
         self,
@@ -133,39 +150,56 @@ class MemoryLifecycleStore:
         clear_graph: bool = False,
         clear_session_anchors: bool = False,
     ) -> MemoryDeletionSummary:
-        affected_facts = await self.memory_store.delete_by_category(user_id, category)
-        cleared = await self._clear_system_learned_memory(
-            user_id,
-            clear_auto_portrait=clear_auto_portrait,
-            clear_graph=clear_graph,
-            clear_session_anchors=clear_session_anchors,
-        )
+        if not user_id:
+            raise ValueError("user_id is required")
+        async with get_db_session() as session:
+            await lock_user_memory(session, user_id)
+            deleted = await self.memory_store.pop_category(user_id, category, db_session=session)
+            cleared = await self._clear_system_learned_memory(
+                user_id,
+                clear_auto_portrait=clear_auto_portrait,
+                clear_graph=clear_graph,
+                clear_session_anchors=clear_session_anchors,
+                db_session=session,
+            )
+            await self.user_profile_memory.record_memory_management(
+                user_id, "delete_category", items=deleted, category=category, db_session=session,
+                details={
+                    "reason": reason,
+                    "clear_auto_portrait": clear_auto_portrait,
+                    "clear_graph": clear_graph,
+                    "clear_session_anchors": clear_session_anchors,
+                },
+            )
 
-        summary = MemoryDeletionSummary(
-            request_id=request_id or generate_memory_forgetting_request_id(),
-            user_id=user_id,
-            scope=MemoryDeleteScope.CATEGORY,
-            category=category,
-            affected_facts=affected_facts,
-            affected_entities=cleared["entities"],
-            affected_relations=cleared["relations"],
-            affected_profiles=cleared["profiles"],
-            affected_session_anchors=cleared["anchors"],
-            boundary=default_forgetting_boundary(
-                auto_portrait_cleared=clear_auto_portrait,
-                graph_cleared=clear_graph,
-                session_anchor_cleared=clear_session_anchors,
-            ),
-            metadata=sanitize_forgetting_metadata({
-                "reason": reason,
-                "category": category,
-                "clear_auto_portrait": clear_auto_portrait,
-                "clear_graph": clear_graph,
-                "clear_session_anchors": clear_session_anchors,
-            }),
-        )
-        await self.record_audit(summary)
-        return summary
+            summary = MemoryDeletionSummary(
+                request_id=request_id or generate_memory_forgetting_request_id(),
+                user_id=user_id,
+                scope=MemoryDeleteScope.CATEGORY,
+                category=category,
+                affected_facts=len(deleted),
+                affected_entities=cleared["entities"],
+                affected_relations=cleared["relations"],
+                affected_profiles=cleared["profiles"],
+                affected_session_anchors=cleared["anchors"],
+                boundary=default_forgetting_boundary(
+                    auto_portrait_cleared=clear_auto_portrait,
+                    graph_cleared=clear_graph,
+                    session_anchor_cleared=clear_session_anchors,
+                ) | {
+                    "management_history_recorded": True,
+                    "deleted_content_retained_for_summary": bool(deleted),
+                },
+                metadata=sanitize_forgetting_metadata({
+                    "reason": _audit_reason(reason, deleted),
+                    "category": category,
+                    "clear_auto_portrait": clear_auto_portrait,
+                    "clear_graph": clear_graph,
+                    "clear_session_anchors": clear_session_anchors,
+                }),
+            )
+            await self.record_audit(summary, db_session=session, require_insert=True)
+            return summary
 
     async def delete_all_user_memory(
         self,
@@ -192,7 +226,14 @@ class MemoryLifecycleStore:
                 clear_session_anchors=clear_session_anchors,
                 db_session=session,
             )
-            fence_revision = await self.user_profile_memory.advance_memory_fence(user_id, db_session=session)
+            fence_revision = await self.user_profile_memory.record_memory_management(
+                user_id, "clear_all", items=[], db_session=session, reset=True,
+                details={
+                    "clear_auto_portrait": clear_auto_portrait,
+                    "clear_graph": clear_graph,
+                    "clear_session_anchors": clear_session_anchors,
+                },
+            )
             summary = MemoryDeletionSummary(
                 request_id=request_id or generate_memory_forgetting_request_id(),
                 user_id=user_id,
@@ -206,7 +247,7 @@ class MemoryLifecycleStore:
                     auto_portrait_cleared=clear_auto_portrait,
                     graph_cleared=clear_graph,
                     session_anchor_cleared=clear_session_anchors,
-                ),
+                ) | {"management_history_cleared": True},
                 metadata=sanitize_forgetting_metadata({
                     "reason": reason,
                     "clear_auto_portrait": clear_auto_portrait,
@@ -226,17 +267,25 @@ class MemoryLifecycleStore:
         reason: str = "retention_cleanup",
         limit: int = 1000,
     ) -> MemoryDeletionSummary:
-        affected_facts = await self.memory_store.delete_expired_facts(user_id, limit=limit)
-        summary = MemoryDeletionSummary(
-            request_id=request_id or generate_memory_forgetting_request_id(),
-            user_id=user_id or "*",
-            scope=MemoryDeleteScope.EXPIRED,
-            affected_facts=affected_facts,
-            boundary=default_forgetting_boundary(),
-            metadata=sanitize_forgetting_metadata({"reason": reason, "limit": limit}),
-        )
-        await self.record_audit(summary)
-        return summary
+        async with get_db_session() as session:
+            if user_id:
+                await lock_user_memory(session, user_id)
+            affected_facts = await self.memory_store.delete_expired_facts(user_id, limit=limit, db_session=session)
+            if user_id:
+                await self.user_profile_memory.record_memory_management(
+                    user_id, "cleanup_expired", items=[], db_session=session,
+                    details={"affected_facts": affected_facts},
+                )
+            summary = MemoryDeletionSummary(
+                request_id=request_id or generate_memory_forgetting_request_id(),
+                user_id=user_id or "*",
+                scope=MemoryDeleteScope.EXPIRED,
+                affected_facts=affected_facts,
+                boundary=default_forgetting_boundary() | {"management_history_recorded": bool(user_id)},
+                metadata=sanitize_forgetting_metadata({"reason": reason, "limit": limit}),
+            )
+            await self.record_audit(summary, db_session=session, require_insert=True)
+            return summary
 
     async def record_audit(
         self, summary: MemoryDeletionSummary, *, db_session: Any = None, require_insert: bool = False,

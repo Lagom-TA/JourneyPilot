@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from contextlib import nullcontext
 from datetime import datetime, timezone
@@ -56,6 +57,7 @@ def _fact_row(row: Any) -> Dict[str, Any]:
         "content": row["content"],
         "category": row["category"],
         "importance": row["importance"],
+        "memory_revision": int(row.get("memory_revision") or 0),
         "source": "manual" if row.get("session_id") == USER_MANUAL_SESSION_ID else "auto",
         "created_at": _iso(row.get("created_at")),
         "expires_at": _iso(row.get("expires_at")),
@@ -98,6 +100,7 @@ class MemoryStore:
         source_message_id: str = "",
         db_session: Any = None,
         prepared_embedding: Optional[List[float]] = None,
+        memory_revision: int = 0,
     ) -> Optional[int]:
         """计算 embedding 并把事实写入 memory_facts 表，返回该行的 ``fact_id``。
 
@@ -134,11 +137,11 @@ class MemoryStore:
                         INSERT INTO memory_facts
                             (user_id, session_id, content, category, importance, embedding,
                              expires_at, retention_category, retention_policy,
-                             source_message_id, fact_digest, created_at)
+                             source_message_id, fact_digest, memory_revision, created_at)
                         VALUES
                             (:uid, :sid, :content, :cat, :imp, CAST(:emb AS vector),
                              :expires_at, :retention_category, CAST(:retention_policy AS jsonb),
-                             :source_message_id, :fact_digest, NOW())
+                             :source_message_id, :fact_digest, :memory_revision, NOW())
                         ON CONFLICT (user_id, fact_digest) WHERE fact_digest IS NOT NULL
                         DO NOTHING
                         RETURNING fact_id
@@ -155,6 +158,7 @@ class MemoryStore:
                         "retention_policy": _json.dumps(policy_metadata, ensure_ascii=False),
                         "source_message_id": source_message_id,
                         "fact_digest": digest,
+                        "memory_revision": memory_revision,
                     },
                 )
                 fact_id = result.scalar_one_or_none()
@@ -282,7 +286,8 @@ class MemoryStore:
         user_id: str,
         *,
         include_expired: bool = False,
-        limit: int = 500,
+        limit: Optional[int] = 500,
+        db_session: Any = None,
     ) -> List[Dict[str, Any]]:
         """列出该用户全部记忆事实（按创建时间倒序），不走语义检索。
 
@@ -293,7 +298,11 @@ class MemoryStore:
             return []
         try:
             expiry_clause = "" if include_expired else "AND (expires_at IS NULL OR expires_at > NOW())"
-            async with get_db_session() as session:
+            limit_clause = "" if limit is None else "LIMIT :limit"
+            params: Dict[str, Any] = {"uid": user_id}
+            if limit is not None:
+                params["limit"] = max(1, min(limit, 2000))
+            async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
                 result = await session.execute(
                     text(f"""
                         SELECT
@@ -301,16 +310,17 @@ class MemoryStore:
                             content,
                             category,
                             importance,
+                            memory_revision,
                             session_id,
                             created_at,
                             expires_at
                         FROM memory_facts
                         WHERE user_id = :uid
                           {expiry_clause}
-                        ORDER BY created_at DESC
-                        LIMIT :limit
+                        ORDER BY created_at DESC, fact_id DESC
+                        {limit_clause}
                     """),
-                    {"uid": user_id, "limit": max(1, min(limit, 2000))},
+                    params,
                 )
                 rows = result.mappings().fetchall()
 
@@ -335,7 +345,7 @@ class MemoryStore:
         async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text("""
-                    SELECT fact_id, content, category, importance, session_id, created_at, expires_at
+                    SELECT fact_id, content, category, importance, memory_revision, session_id, created_at, expires_at
                     FROM memory_facts
                     WHERE user_id = :uid AND fact_id = :fact_id
                 """),
@@ -357,7 +367,7 @@ class MemoryStore:
         async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text("""
-                    SELECT fact_id, content, category, importance, session_id, created_at, expires_at
+                    SELECT fact_id, content, category, importance, memory_revision, session_id, created_at, expires_at
                     FROM memory_facts
                     WHERE user_id = :uid
                       AND session_id = :sid
@@ -414,38 +424,85 @@ class MemoryStore:
     # 删除 / retention cleanup
     # -----------------------------------------------------------------------
 
-    async def delete_fact(self, user_id: str, fact_id: str | int) -> int:
+    async def replace_fact(
+        self, *, user_id: str, fact_id: int, session_id: str, content: str,
+        category: str, importance: int, source_message_id: str,
+        prepared_embedding: Optional[List[float]], memory_revision: int, db_session: Any,
+    ) -> bool:
+        """按事实身份更新内容，保留手动记忆的来源标记。"""
+        policy = MemoryRetentionPolicy()
+        embedding = None
+        if prepared_embedding is not None:
+            embedding = f"[{','.join(str(v) for v in prepared_embedding)}]"
+        digest = memory_fact_digest(user_id, source_message_id, content) if source_message_id else None
+        result = await db_session.execute(
+            text("""
+                UPDATE memory_facts
+                SET content = :content, category = :category, importance = :importance,
+                    session_id = CASE WHEN session_id = :manual_session THEN session_id ELSE :session END,
+                    source_message_id = :source_message_id, fact_digest = :digest,
+                    memory_revision = :memory_revision,
+                    embedding = CAST(:embedding AS vector), expires_at = :expires_at,
+                    retention_category = :category, retention_policy = CAST(:policy AS jsonb)
+                WHERE user_id = :uid AND fact_id = :fact_id
+                RETURNING fact_id
+            """),
+            {
+                "uid": user_id, "fact_id": fact_id, "content": content,
+                "category": category, "importance": importance, "session": session_id,
+                "manual_session": USER_MANUAL_SESSION_ID, "source_message_id": source_message_id,
+                "digest": digest, "embedding": embedding,
+                "memory_revision": memory_revision,
+                "expires_at": policy.expires_at_for(category, importance),
+                "policy": json.dumps(policy.to_metadata(category, importance), ensure_ascii=False),
+            },
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def set_memory_revision(self, user_id: str, fact_id: str | int, revision: int, *, db_session: Any) -> None:
+        await db_session.execute(
+            text("UPDATE memory_facts SET memory_revision = :revision WHERE user_id = :uid AND fact_id = :fact_id"),
+            {"uid": user_id, "fact_id": int(fact_id), "revision": revision},
+        )
+
+    async def delete_fact(self, user_id: str, fact_id: str | int, *, db_session: Any = None) -> int:
+        return len(await self.pop_fact(user_id, fact_id, db_session=db_session))
+
+    async def pop_fact(self, user_id: str, fact_id: str | int, *, db_session: Any = None) -> list[dict[str, Any]]:
         if not user_id or fact_id is None:
-            return 0
+            return []
         # fact_id 列是 bigint；路由层传入的是路径参数字符串，asyncpg 不做隐式转换
         try:
             fact_id_int = int(fact_id)
         except (TypeError, ValueError):
-            return 0
-        async with get_db_session() as session:
+            return []
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text("""
                     DELETE FROM memory_facts
                     WHERE user_id = :uid AND fact_id = :fact_id
-                    RETURNING fact_id
+                    RETURNING fact_id, content, category
                 """),
                 {"uid": user_id, "fact_id": fact_id_int},
             )
-            return len(result.fetchall())
+            return [dict(row) for row in result.mappings().all()]
 
-    async def delete_by_category(self, user_id: str, category: str) -> int:
+    async def delete_by_category(self, user_id: str, category: str, *, db_session: Any = None) -> int:
+        return len(await self.pop_category(user_id, category, db_session=db_session))
+
+    async def pop_category(self, user_id: str, category: str, *, db_session: Any = None) -> list[dict[str, Any]]:
         if not user_id or not category:
-            return 0
-        async with get_db_session() as session:
+            return []
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text("""
                     DELETE FROM memory_facts
                     WHERE user_id = :uid AND category = :category
-                    RETURNING fact_id
+                    RETURNING fact_id, content, category
                 """),
                 {"uid": user_id, "category": category},
             )
-            return len(result.fetchall())
+            return [dict(row) for row in result.mappings().all()]
 
     async def delete_all_user_facts(self, user_id: str, *, db_session: Any = None) -> int:
         if not user_id:
@@ -467,6 +524,7 @@ class MemoryStore:
         *,
         now: Optional[datetime] = None,
         limit: int = 1000,
+        db_session: Any = None,
     ) -> int:
         params: Dict[str, Any] = {
             "now": now or datetime.now(timezone.utc),
@@ -476,7 +534,7 @@ class MemoryStore:
         if user_id:
             user_clause = "AND user_id = :uid"
             params["uid"] = user_id
-        async with get_db_session() as session:
+        async with (get_db_session() if db_session is None else nullcontext(db_session)) as session:
             result = await session.execute(
                 text(f"""
                     WITH doomed AS (

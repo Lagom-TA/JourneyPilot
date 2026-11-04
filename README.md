@@ -43,6 +43,12 @@ Once a plan is ready, you can:
 - Continue the conversation to request changes and clarify them over several turns, including adjustments suggested by a weather update.
 - Save travel styles and your own reference material for later planning.
 
+When you manually add or delete memories, JourneyPilot retains the action and affected content as feedback
+for later memory summaries and sends it to the configured fast model. Explicit new statements can update
+existing memories. The portrait is reconciled when a conversation memory summary next runs; until then,
+the previous portrait may still be used for planning. Deleting all memory clears the management history
+and keeps only a content-free record of the reset.
+
 Sources, prices, and live information depend on the services used. Prices are shown for individual items
 without a combined total, and the PDF identifies items that remain unplanned. Some local routes may be estimates,
 and availability can change. JourneyPilot does not make bookings or process payments.
