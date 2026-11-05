@@ -6,6 +6,7 @@ import { deriveActivityTitle, getActivityStageIdForAgent, parseAgentRound, type 
 import { AgentOrb } from "./AgentOrb";
 import { cn } from "../../../lib/utils";
 import React, { useEffect, useId, useState } from 'react';
+import '../../../styles/generation.css';
 interface ThinkingChainProps {
     steps: ThinkingStep[];
     isGenerating: boolean;
@@ -28,6 +29,7 @@ interface ThinkingChainProps {
     /** 工作台当前展示的四阶段；传入后组状态以阶段状态为准，不再按整 Run 推断。 */
     activityStage?: ActivityStageId;
     stageStatus?: ActivityStageStatus;
+    activityFocus?: string;
 }
 const ICONS = { planning: Compass, destination: MapPin, transport: TrainFront, stay: BedDouble, itinerary: Map, delivery: FileCheck2 };
 // dispatcher 的 thinking 事件只宣告并行调研开始，没有 progress_status；它不是完成里程碑。
@@ -57,11 +59,12 @@ function safeUrl(value: string | undefined): string | undefined {
         return undefined;
     }
 }
-function ToolActivity({ step, stopped, open, onOpenChange }: {
+function ToolActivity({ step, stopped, open, onOpenChange, visibleSummary }: {
     step: ThinkingStep;
     stopped: boolean;
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    visibleSummary?: string;
 }) {
     const display = describeToolStep(step);
     const result = toolResultText(step);
@@ -70,14 +73,14 @@ function ToolActivity({ step, stopped, open, onOpenChange }: {
     const noResult = display.status === 'completed' && isNoResultSummary(result);
     // 折叠行只保留一次结论：进行中显示工具类别，结束后显示后端摘要。
     // 查询主题放在展开后的输入里，不在标题和详情重复。
-    const headline = running ? display.categoryLabel : result || display.actionText;
+    const headline = running || result === visibleSummary ? display.categoryLabel : result || display.actionText;
     const statusText = running && stopped ? '已停止' : noResult ? '无结果' : toolStatusLabel(display.status);
     const resultLine = running
         ? ''
         : result || (display.status === 'failed' ? '本次行动未完成，没有可公开的结果。' : '没有结果');
     // 折叠行已经显示结果时，展开详情不再重复同一句；只有“没有结果”这类
     // 限制说明才需要单独一行。
-    const showResultLine = Boolean(resultLine && resultLine !== headline);
+    const showResultLine = Boolean(resultLine && resultLine !== headline && resultLine !== visibleSummary);
     const hasDetails = display.inputs.length > 0 || previews.length > 0;
     const summary = <>
     <span className={cn('research-query-dot', running && !stopped && 'is-active', display.status === 'failed' && 'is-warning')}/>
@@ -109,7 +112,7 @@ function ToolActivity({ step, stopped, open, onOpenChange }: {
       </div>
     </div>
   </div>;
-    return <li className="research-query" data-testid="research-query">
+    return <li className="research-query" data-testid="research-query" data-tool-id={step.toolCallId || step.id}>
     {hasDetails
         ? <details open={open} onToggle={(event) => {
                 const next = event.currentTarget.open;
@@ -133,12 +136,13 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
     runTerminal: boolean;
 }) {
     const region = useId();
-    const [open, setOpen] = useState(group.status === 'running');
+    const [open, setOpen] = useState(layout !== 'workspace' && group.status === 'running');
     const previousStatus = React.useRef(group.status);
     const previousRunTerminal = React.useRef(runTerminal);
     React.useEffect(() => {
         const previous = previousStatus.current;
         previousStatus.current = group.status;
+        if (layout === 'workspace') return;
         if (previous === 'running' && group.status !== 'running') {
             setOpen(false);
             onClearTools(group.steps.map(step => step.id));
@@ -150,14 +154,14 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
             setOpen(true);
             onClearTools(group.steps.map(step => step.id));
         }
-    }, [group.status, group.steps, onClearTools]);
+    }, [group.status, group.steps, onClearTools, layout]);
     React.useEffect(() => {
-        if (runTerminal && !previousRunTerminal.current) {
+        if (layout !== 'workspace' && runTerminal && !previousRunTerminal.current) {
             setOpen(false);
             onClearTools(group.steps.map(step => step.id));
         }
         previousRunTerminal.current = runTerminal;
-    }, [group.steps, onClearTools, runTerminal]);
+    }, [group.steps, onClearTools, runTerminal, layout]);
     const Icon = ICONS[group.id as keyof typeof ICONS] || Compass;
     const activitySteps = dedupeToolSteps(group.steps);
     const tools = activitySteps.filter(s => s.isToolCall);
@@ -167,11 +171,16 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
     const latestCompletedProgress = [...progressSteps].reverse().find(s => s.progressStatus === 'completed' && informativeProgressText(s.content));
     const latestResult = [...tools].reverse().map(toolResultText).find(Boolean) || '';
     const latestWorkNote = [...group.steps].reverse().find(isWorkExplanationStep);
+    const latestActivity = [...activitySteps].reverse().map(step => step.isToolCall
+        ? step.toolStatus === 'running' ? describeToolStep(step).actionText : toolResultText(step)
+        : isWorkExplanationStep(step) ? workExplanationText(step.content) : informativeProgressText(step.content)).find(Boolean);
     const summary = group.status === 'running'
-        ? runningTool ? describeToolStep(runningTool).actionText
+        ? latestActivity || (runningTool ? describeToolStep(runningTool).actionText
             : informativeProgressText(latestRunningProgress?.content) || informativeProgressText(latestCompletedProgress?.content) || workExplanationText(latestWorkNote?.content) || latestResult
+        )
         : informativeProgressText(latestCompletedProgress?.content) || latestResult;
     const workspace = layout === 'workspace';
+    const summaryIsWorkNote = summary && summary === workExplanationText(latestWorkNote?.content);
     // 工具、公开说明与阶段里程碑按到达顺序渲染；同一工具调用只保留一条折叠行。
     const activityItems: Array<{
         key: string;
@@ -192,7 +201,7 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
         }
         if (isWorkExplanationStep(step)) {
             const text = workExplanationText(step.content);
-            if (text)
+            if (text && (!workspace || text !== summary))
                 activityItems.push({ key: `note-${step.id}`, kind: 'note', text });
             continue;
         }
@@ -201,23 +210,27 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
         if (group.status !== 'running' && isTransientStageActivity(step))
             continue;
         const text = informativeProgressText(step.content);
-        if (!text || (!workspace && text === summary) || seenMilestones.has(text))
+        if (!text || text === summary || seenMilestones.has(text))
             continue;
         seenMilestones.add(text);
         activityItems.push({ key: `milestone-${step.id}`, kind: 'milestone', text });
     }
     const hasDetails = activityItems.length > 0;
+    if (workspace && duplicateTitle && !summary && !hasDetails && group.status !== 'failed') return null;
     const issues = tools.filter(s => s.toolStatus === 'failed' || s.toolStatus === 'capability_declared').length;
     const status = <span className={cn('research-agent-state', group.status === 'running' && 'is-active')}>
       {group.status === 'failed' ? <CircleAlert size={11}/> : group.status === 'completed' ? <Check size={11}/> : group.status === 'stopped' ? <Pause size={11}/> : <span className="research-status-dot"/>}
       {group.status === 'failed' ? '未完成' : group.status === 'running' ? '进行中' : group.status === 'stopped' ? '已停止' : '已结束'}
     </span>;
     const content = workspace ? <>
-    <span className="research-agent-icon"><Icon size={18} strokeWidth={1.6}/></span>
-    <span className="research-agent-line">
-      {duplicateTitle ? status : <span className="research-agent-title">{group.title}{status}</span>}
+    <span className="research-agent-summary">
+      <span className="research-agent-line">
+        {!duplicateTitle && <span className="research-agent-title">{group.title}</span>}
+        {status}
+        {hasDetails && <ChevronDown size={15} className={cn('research-agent-chevron', open && 'rotate-180')} aria-hidden/>}
+      </span>
+      {summary && <span className="research-agent-update" data-testid="research-agent-update" title={summaryIsWorkNote ? '模型生成的工作说明，不是已核实的旅行事实' : undefined}>{summary}</span>}
     </span>
-    {hasDetails && <ChevronDown size={15} className={cn('research-agent-chevron', open && 'rotate-180')}/>}
   </> : <>
     <span className="research-agent-icon"><Icon size={18} strokeWidth={1.6}/></span>
     <span className="min-w-0 flex-1">
@@ -227,13 +240,13 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
     </span>
     {hasDetails && <ChevronDown size={16} className={cn('research-agent-chevron', open && 'rotate-180')}/>}
   </>;
-    return <section className={cn('research-agent', workspace && 'research-agent-flat', group.status === 'running' && 'is-active', group.status === 'failed' && 'is-failed')} data-testid={`research-agent-${group.id}`}>
+    return <section className={cn('research-agent', workspace && 'research-agent-flat', duplicateTitle && 'is-stage-group', group.status === 'running' && 'is-active', group.status === 'failed' && 'is-failed')} data-testid={`research-agent-${group.id}`} data-status={group.status}>
     {!hasDetails ? <div className="research-agent-heading">{content}</div>
             : <button type="button" className="research-agent-heading" aria-expanded={open} aria-controls={region} onClick={() => setOpen(v => !v)}>{content}</button>}
     {open && hasDetails && <div id={region} className="research-agent-body">
       <ol className="research-queries">
         {activityItems.map(item => item.kind === 'tool' && item.step
-            ? <ToolActivity key={item.key} step={item.step} stopped={interrupted || group.status !== 'running'} open={openToolIds.has(item.step.id)} onOpenChange={(open) => onToolOpenChange(item.step!.id, open)}/>
+            ? <ToolActivity key={item.key} step={item.step} stopped={interrupted || group.status !== 'running'} open={openToolIds.has(item.step.id)} onOpenChange={(open) => onToolOpenChange(item.step!.id, open)} visibleSummary={workspace ? summary : undefined}/>
             : item.kind === 'note'
                 ? <li key={item.key} className="research-work-note" data-testid="research-work-note">
                     <span className="research-work-note-label" title="模型生成的工作说明，不是已核实的旅行事实">模型工作说明</span>
@@ -244,7 +257,7 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
     </div>}
   </section>;
 }
-export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGenerating, displayContent, isSynthesizing, pendingStatusText, variant = 'default', serverTotalMs, startedAt, regionId, layout = 'default', runStatus, gatePending = false, runKey, initiallyExpanded, forcedCollapsed = false, collapseKey, activityTitle, emptyText, activityStage, stageStatus }) => {
+export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGenerating, displayContent, isSynthesizing, pendingStatusText, variant = 'default', serverTotalMs, startedAt, regionId, layout = 'default', runStatus, gatePending = false, runKey, initiallyExpanded, forcedCollapsed = false, collapseKey, activityTitle, emptyText, activityStage, stageStatus, activityFocus }) => {
     const interrupted = variant === 'interrupted';
     // 工作台传入阶段状态后，“是否还在运行”只由该阶段决定；普通聊天不传，
     // 继续沿用整 Run 的旧口径。
@@ -269,9 +282,9 @@ export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGeneratin
             setExpanded(false);
     }, [forcedCollapsed, collapseKey]);
     React.useEffect(() => {
-        if (terminalStatus)
+        if (terminalStatus && layout !== 'workspace')
             setOpenToolIds(new Set());
-    }, [terminalStatus, runScope]);
+    }, [terminalStatus, runScope, layout]);
     const setToolOpen = (id: string, open: boolean) => {
         setOpenToolIds((previous) => {
             const next = new Set(previous);
@@ -306,7 +319,14 @@ export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGeneratin
     const groups = React.useMemo(() => researchGroups(steps, live, interrupted, stageStatus)
         .filter(group => !activityStage || group.stage === activityStage)
         .map(group => ({ ...group, steps: group.steps.filter(isPublicActivityStep) }))
-        .filter(group => group.steps.length > 0), [steps, live, interrupted, activityStage, stageStatus]);
+        .filter(group => group.steps.length > 0 || group.status === 'failed')
+        .sort((a, b) => {
+            if (layout !== 'workspace') return 0;
+            const rank = { failed: 0, running: 1, stopped: 2, completed: 3 };
+            return rank[a.status] - rank[b.status];
+        }), [steps, live, interrupted, activityStage, stageStatus, layout]);
+    const focus = publicProgressText(activityFocus);
+    const showFocus = focus && !scopedVisibleSteps.some(step => publicProgressText(step.content) === focus || toolResultText(step) === focus);
     const start = startedAt ? new Date(startedAt).getTime() : scopedVisibleSteps[0]?.timestamp.getTime();
     const ms = serverTotalMs ?? (live && start ? now - start : undefined);
     const elapsed = ms != null && Number.isFinite(ms) ? `${Math.max(0, Math.floor(ms / 1000))} 秒` : '';
@@ -315,7 +335,7 @@ export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGeneratin
         : interrupted ? '调研已停止' : isSynthesizing || (live && displayContent?.trim()) ? '正在整理旅行方案' : live ? (scopedVisibleSteps.length ? '正在为你调研' : '正在准备规划') : scopedVisibleSteps.length ? '调研记录' : '准备旅行查询';
     const title = activityTitle?.trim() || derivedTitle;
     const emptyMessage = emptyText?.trim()
-        || (live ? publicProgressText(pendingStatusText) || '正在整理旅行需求，接下来会显示各阶段的查询和资料。'
+        || (live ? publicProgressText(pendingStatusText) || '等待新的调研进展。'
             : stageStatus === 'done' ? '这个阶段没有留下可查看的行动记录。'
                 : stageStatus === 'failed' ? '这个阶段没有完成。'
                     : stageStatus === 'stopped' ? '这个阶段已停止。'
@@ -331,14 +351,18 @@ export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGeneratin
                     : stageStatus === 'active'
                         ? <Compass size={18}/>
                         : interrupted ? <Pause size={18}/> : <FileCheck2 size={18}/>;
-    return <section className={cn('research-panel', layout === 'workspace' && 'research-panel-workspace')} data-testid="thinking-chain">
-    <button type="button" className="research-panel-heading" aria-expanded={expanded} aria-controls={regionId} onClick={() => setExpanded(v => !v)}>
+    return <section className={cn('research-panel', layout === 'workspace' && 'research-panel-workspace')} data-testid="thinking-chain" data-run={runScope}>
+    {layout === 'workspace' ? <div className="research-panel-heading" tabIndex={-1}>
+      <h2 className="research-panel-title">{title}</h2>
+      {elapsed && <span className="research-elapsed">{elapsed}</span>}
+    </div> : <button type="button" className="research-panel-heading" aria-expanded={expanded} aria-controls={regionId} onClick={() => setExpanded(v => !v)}>
       {headingIcon}
       <span className="min-w-0 flex-1 text-left"><span className="research-panel-title">{title}</span></span>
       {elapsed && <span className="research-elapsed">{elapsed}</span>}
       <ChevronDown size={16} className={cn('research-agent-chevron', expanded && 'rotate-180')}/>
-    </button>
-    {expanded && <div id={regionId} className="research-panel-body">
+    </button>}
+    {(layout === 'workspace' ? !forcedCollapsed : expanded) && <div id={regionId} className="research-panel-body">
+      {showFocus && <p className="research-current-focus">{focus}</p>}
       {groups.length ? <div className="research-agent-list">{groups.map(group => <AgentCard key={`${runScope}-${group.id}`} group={group} interrupted={interrupted} layout={layout} openToolIds={openToolIds} onToolOpenChange={setToolOpen} onClearTools={clearTools} duplicateTitle={layout === 'workspace' && group.title === title} runTerminal={terminalStatus}/>)}</div>
                 : <div className="research-empty"><Search size={18}/><p>{emptyMessage}</p></div>}
     </div>}

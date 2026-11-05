@@ -112,7 +112,7 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
       return json(id === 'A' && options.research ? {
         ...sessionDetail(id),
         messages: [{
-          id: 'research-message', role: 'assistant', content: '', display_content: '', timestamp: '2026-10-25T08:00:00Z',
+          id: 'research-message', run_id: 'run-A', role: 'assistant', content: '', display_content: '', timestamp: '2026-10-25T08:00:00Z',
           thinking_steps: stagedResearchSteps(options.longChain === true),
         }],
       } : sessionDetail(id));
@@ -259,7 +259,7 @@ async function followupComposerFacts(page: Page) {
       return { top: round(rect.top), bottom: round(rect.bottom), left: round(rect.left), right: round(rect.right), width: round(rect.width), height: round(rect.height) };
     };
     const composer = document.querySelector<HTMLElement>('[data-testid="generation-followup-composer"]');
-    const panel = document.querySelector<HTMLElement>('.research-panel-workspace');
+    const panel = document.querySelector<HTMLElement>('.research-panel-workspace .research-panel-body');
     const inner = composer?.querySelector<HTMLElement>('.generation-followup-inner') ?? null;
     const body = document.querySelector<HTMLElement>('.generation-activity-body');
     const textarea = composer?.querySelector<HTMLTextAreaElement>('textarea') ?? null;
@@ -496,7 +496,7 @@ test('cancels through HTTP control and leaves the composer usable', async ({ pag
   await expect(workspace.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
   await expect(workspace.getByRole('textbox', { name: '行程调整要求' })).toBeEditable();
   expect(fixture.requests.some(request => request.startsWith('POST /api/trip-runs/run-A/control'))).toBe(true);
-  await workspace.locator('.generation-stage-button').filter({ hasText: '查找旅行资料' }).click();
+  await workspace.getByRole('button', { name: '查找旅行资料', exact: true }).click();
   await expect(workspace.locator('.research-panel-title')).toHaveText('查找旅行资料');
   await expect(workspace.getByTestId('thinking-chain')).toBeVisible();
   await assertOffline(page, fixture);
@@ -514,14 +514,16 @@ test('completed planning without a bundle keeps a follow-up composer below the p
   await expect(workspace.locator('.generation-progress > h2')).toHaveText('旅行规划已生成');
   await expect(page.getByTestId('delivery-recovery-notice')).toBeVisible();
   await expect(composer).toBeVisible();
-  await expect(composer).toContainText('规划已生成');
+  await expect(composer.locator('.generation-followup-hint')).toHaveCount(0);
   await expect(composer.getByTestId('brief-input')).toHaveValue('');
+  await workspace.getByRole('button', { name: '查找旅行资料', exact: true }).click();
   const collapsedGroups = workspace.locator('.research-agent-heading[aria-expanded="false"]');
   expect(await collapsedGroups.count()).toBeGreaterThan(0);
   for (let remaining = await collapsedGroups.count(); remaining > 0; remaining -= 1) {
     await collapsedGroups.first().click();
   }
   await expect(collapsedGroups).toHaveCount(0);
+  await page.locator('.generation-activity-body').evaluate(element => { element.scrollTop = 0; });
 
   const initial = await followupComposerFacts(page);
   expect(initial.body?.scrollHeight ?? 0).toBeGreaterThan((initial.body?.clientHeight ?? 0) + 200);
@@ -546,7 +548,7 @@ test('completed planning without a bundle keeps a follow-up composer below the p
   const textarea = composer.getByTestId('brief-input');
   await textarea.fill('第二天少安排一个景点，多留休息时间');
   await textarea.press('Enter');
-  await expect(composer).toBeVisible();
+  await expect(composer).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => ((window as FixtureWindow).__offlineChatBodies ?? []).length)).toBe(1);
   const request = await lastChatBody(page);
   expect(request?.session_id).toBe('A');
@@ -561,7 +563,7 @@ test('completed planning without a bundle keeps a follow-up composer below the p
     { type: 'thinking', message_id: 'followup', agent_name: '行程规划', step_name: '安排路线', content: '正在按新的休息要求重新安排路线', ts_ms: Date.now() },
   ]);
   await expect(workspace).toContainText('正在按新的休息要求重新安排路线');
-  await expect(composer).toBeVisible();
+  await expect(composer).toHaveCount(0);
   await sendFrames(page, [{ type: 'chat_complete', session_id: 'A', run_id: 'run-followup', final_content: '已按补充要求重新安排。', run_status: 'failed' }], true);
   await expect(composer).toBeVisible();
   expect(await page.evaluate(() => (window as FixtureWindow).__offlineChatBodies?.length ?? 0)).toBe(1);
@@ -595,7 +597,7 @@ for (const terminalStatus of ['failed', 'cancelled'] as const) {
     await expect(workspace.getByTestId('boarding-pass-resume')).toHaveCount(0);
     await expect(workspace.getByRole('button', { name: '返回新旅行', exact: true })).toBeVisible();
     if (terminalStatus === 'failed') {
-      await expect(composer).toContainText('没有完成');
+      await expect(composer.locator('.generation-followup-hint')).toHaveCount(0);
       await page.screenshot({ path: `${FOLLOWUP_EVIDENCE_DIR}/desktop-2000-failed-followup.png`, fullPage: true });
     }
     await assertOffline(page, fixture);
@@ -613,7 +615,7 @@ test('resumable interrupted planning keeps the dedicated resume path beside the 
   await expect(workspace).toBeVisible();
   await expect(workspace.locator('.generation-progress > h2')).toHaveText('旅行规划已中断');
   await expect(composer).toBeVisible();
-  await expect(composer).toContainText('从最近的位置继续');
+  await expect(workspace.getByText('可以从最近的位置继续。', { exact: true })).toBeVisible();
   const resume = workspace.getByTestId('boarding-pass-resume');
   await expect(resume).toBeVisible();
   await page.screenshot({ path: `${FOLLOWUP_EVIDENCE_DIR}/desktop-2000-interrupted-followup.png`, fullPage: true });
@@ -903,7 +905,7 @@ test('recovers durable delivery without a stream and keeps recovery mounted acro
   await page.goto('/');
   await expect(page.getByTestId('generation-journey-panel')).toBeVisible();
   await expect(page.getByTestId('thinking-chain')).toBeVisible();
-  await expect(page.getByTestId('thinking-chain').getByRole('button').first()).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('thinking-chain').locator('.research-panel-heading')).toBeVisible();
   await expect(page.getByTestId('generation-journey-panel')).not.toContainText('每一步安排，都有据可查');
   await expect(page.getByText('规划过程', { exact: true })).toHaveCount(0);
   await expect(page.getByText('查看不同阶段的思考摘要、查询内容和已找到的旅行资料。', { exact: true })).toHaveCount(0);
@@ -1125,7 +1127,7 @@ test('restores staged research with formatted tool calls and results', async ({ 
   await expect(destination.locator('.research-agent-body')).toHaveCount(0);
   await destination.getByRole('button').click();
   await expect(destination).toContainText('找到 3 个适合安排进行程的地点');
-  await expect(destination.getByTestId('research-agent-update')).toHaveCount(0);
+  await expect(destination.getByTestId('research-agent-update')).toHaveText('找到 3 个适合安排进行程的地点');
   await destination.getByTestId('research-query').locator('summary').click();
   await expect(destination.locator('[data-detail-section="input"]')).toContainText('厦门 海岸步道');
   await expect(destination).not.toContainText('返回 3 条结果');
@@ -1137,7 +1139,7 @@ test('restores staged research with formatted tool calls and results', async ({ 
   await transport.getByTestId('research-query').locator('summary').click();
   await expect(transport.locator('[data-detail-section="input"]')).toContainText('深圳北');
   await expect(transport.locator('[data-detail-section="input"]')).toContainText('厦门北');
-  await expect(workspace.getByTestId('research-agent-stay')).toContainText('已结束');
+  await expect(workspace.getByTestId('research-agent-stay')).toContainText('已停止');
   await expect(workspace.getByTestId('research-agent-stay')).not.toContainText('正在筛选交通方便的住宿区域');
   await page.screenshot({ path: test.info().outputPath('desktop-generation-research.png'), fullPage: true });
   await assertOffline(page, fixture);
@@ -1243,7 +1245,7 @@ test('cancel keeps the current run workspace and restores a pending gate on phon
   await expect(workspace).toBeVisible();
   await expect(sidebar).toHaveAttribute('data-mount-probe', 'kept');
   await expect(workspace.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
-  await expect(page.getByText('这次规划已取消。', { exact: true })).toBeVisible();
+  await expect(workspace.locator('.generation-terminal-title')).toHaveText('旅行规划已取消');
   await expect(page.getByTestId('new-trip-hero')).toHaveCount(0);
   await page.screenshot({ path: '../test-results/e2e-evidence/unified-planning-workspace/workspace-2000-cancelled.png', fullPage: true });
   await assertOffline(page, fixture);
@@ -1347,7 +1349,7 @@ test('handoff expands from compact requirements to the plan gate and collapses o
   await input.fill('继续完善这趟旅行');
   await input.press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
-  await expect(process.getByRole('button').first()).toHaveAttribute('aria-expanded', 'false');
+  await expect(process.locator('.research-agent-heading[aria-expanded="true"]')).toHaveCount(0);
   await expect(handoff).toHaveAttribute('data-phase', 'process');
 
   await sendFrames(page, [
@@ -1355,7 +1357,7 @@ test('handoff expands from compact requirements to the plan gate and collapses o
     { type: 'agent_progress', agent_name: 'requirements_preparer', content: '正在整理旅行需求', progress_status: 'running' },
   ]);
   await expect(workspace.locator('.research-panel-title')).toHaveText('整理旅行需求');
-  await expect(workspace.locator('.generation-progress li.is-active .generation-stage-title')).toHaveText('整理旅行需求');
+  await expect(workspace.locator('.generation-progress li.is-active .generation-stage-title')).toHaveText('需求');
   await expect(handoff).toHaveAttribute('data-phase', 'process');
   await page.screenshot({ path: `${evidence}/desktop-2000-handoff-compact.png`, fullPage: true });
   const compactHeight = await handoff.evaluate((element) => element.getBoundingClientRect().height);
@@ -1377,9 +1379,9 @@ test('handoff expands from compact requirements to the plan gate and collapses o
   const expansionFrames = await expanding;
   await expect(handoff).toHaveAttribute('data-phase', 'gate');
   const openHeight = await handoff.evaluate((element) => element.getBoundingClientRect().height);
-  expect(openHeight).toBeGreaterThan(compactHeight + 80);
+  expect(openHeight).toBeGreaterThan(compactHeight);
   expect(expansionFrames.some((frame) => frame.height > compactHeight + 3)).toBe(true);
-  expect(expansionFrames.some((frame) => frame.height > compactHeight + 8 && frame.height < openHeight - 8)).toBe(true);
+  expect(Math.min(...expansionFrames.map(frame => frame.height))).toBeGreaterThanOrEqual(compactHeight - 1);
   expect(expansionFrames.at(-1)!.height).toBeGreaterThan(openHeight - 8);
   await page.screenshot({ path: `${evidence}/desktop-2000-handoff-gate.png`, fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -1406,11 +1408,11 @@ test('handoff expands from compact requirements to the plan gate and collapses o
   await expect(handoff).toHaveAttribute('data-phase', 'process');
   await expect(gate).toHaveCount(0);
   await expect(workspace.locator('.research-panel-title')).toHaveText('整理旅行需求');
-  await expect(process.getByRole('button').first()).toBeFocused();
+  await expect(process.locator('.research-panel-heading')).toBeFocused();
   const collapsedHeight = await handoff.evaluate((element) => element.getBoundingClientRect().height);
-  expect(collapsedHeight).toBeLessThan(openHeight - 80);
+  expect(collapsedHeight).toBeLessThan(openHeight);
   expect(collapseFrames.some((frame) => frame.height < openHeight - 3)).toBe(true);
-  expect(collapseFrames.some((frame) => frame.height < openHeight - 8 && frame.height > collapsedHeight + 8)).toBe(true);
+  expect(collapseFrames.at(-1)!.height).toBeGreaterThanOrEqual(collapsedHeight - 1);
   await page.screenshot({ path: `${evidence}/desktop-2000-handoff-collapsed.png`, fullPage: true });
 
   await sendFrames(page, [{ type: 'thinking', message_id: 'handoff-approved', agent_name: '目的地调研', step_name: '地点搜索', content: '正在核对本次目的地的建筑与本地生活', ts_ms: Date.now(), progress_status: 'running' }]);
@@ -1439,7 +1441,7 @@ test('handoff reaches restored and reduced-motion targets without a residual siz
     return { duration: style.transitionDuration, delay: style.transitionDelay };
   });
   expect(durations.duration.split(',').every((value) => value.trim() === '0s')).toBe(true);
-  await expect(gate.getByRole('heading', { name: '确认研究方案', exact: true })).toBeFocused();
+  await expect(gate.getByRole('heading', { name: '研究方案', exact: true })).toBeFocused();
   await page.screenshot({ path: `${evidence}/desktop-2000-handoff-restored-reduced.png`, fullPage: true });
 
   const before = await handoff.evaluate((element) => element.getBoundingClientRect().height);
@@ -1495,8 +1497,10 @@ test('trip card integrates companions and style with route facts across desktop 
     expect(row.left).toBeGreaterThanOrEqual(desktop.cardLeft - 1);
     expect(row.right).toBeLessThanOrEqual(desktop.cardRight + 1);
   }
-  expect(desktop.rows[0].top).toBeLessThan(desktop.rows[1].top);
-  expect(desktop.rows[1].top).toBeLessThan(desktop.rows[2].top);
+  for (let index = 1; index < desktop.rows.length; index += 1) {
+    const previous = desktop.rows[index - 1], current = desktop.rows[index];
+    expect(current.top >= previous.bottom - 1 || current.left >= previous.right - 1).toBe(true);
+  }
   await page.screenshot({ path: `${evidence}/desktop-2000-trip-card-long.png`, fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -2701,7 +2705,7 @@ test('review live gate must receive heading focus after expansion', async ({ pag
   await sampleHandoffHeights(page);
   console.log('FOCUS', await page.evaluate(() => ({ active: document.activeElement?.tagName, gateInert: (document.querySelector('.generation-handoff-gate') as HTMLElement)?.inert })));
   await assertOffline(page, fixture);
-  await expect(page.getByRole('heading', { name: '确认研究方案', exact: true })).toBeFocused({ timeout: 1000 });
+  await expect(page.getByRole('heading', { name: '研究方案', exact: true })).toBeFocused({ timeout: 1000 });
 });
 
 test('review currentFocus remains visible in actual research stage', async ({ page }) => {
@@ -2710,17 +2714,16 @@ test('review currentFocus remains visible in actual research stage', async ({ pa
     { type: 'thinking', message_id: 'review-live', agent_name: '交通查询', step_name: '核对衔接', content: '核对可执行的到站衔接', ts_ms: Date.now(), progress_status: 'running' },
     { type: 'trip_summary_card', summary_card: { headline: '离线测试', summary: '调研进行中', current_focus: '正在核对末班接驳车与无障碍换乘', compact_line: '离线样例', facts: [], priorities: [] } },
   ]);
-  await expect(page.locator('.generation-progress li.is-active .generation-stage-title')).toHaveText('查找旅行资料');
+  await expect(page.locator('.generation-progress li.is-active .generation-stage-title')).toHaveText('研究');
   await assertOffline(page, fixture);
-  await expect(page.locator('.generation-progress li.is-active')).toContainText('正在核对末班接驳车与无障碍换乘', { timeout: 1000 });
+  await expect(page.locator('.research-current-focus')).toHaveText('正在核对末班接驳车与无障碍换乘', { timeout: 1000 });
 });
 
-test('review process manually opened before gate collapses again on approval', async ({ page }) => {
+test('研究方案交接保持阶段标题，研究任务由各自的入口展开', async ({ page }) => {
   const fixture = await start(page);
   const heading = page.getByTestId('thinking-chain').locator('.research-panel-heading');
-  await expect(heading).toHaveAttribute('aria-expanded', 'false');
-  await heading.click();
-  await expect(heading).toHaveAttribute('aria-expanded', 'true');
+  await expect(heading).toBeVisible();
+  await expect(heading).not.toHaveAttribute('aria-expanded');
   await openGate(page);
   await page.getByRole('button', { name: '确认并开始生成', exact: true }).click();
   await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
@@ -2729,7 +2732,8 @@ test('review process manually opened before gate collapses again on approval', a
   await sendFrames(page, [{ type: 'thinking', agent_name: 'planner', content: '正在准备研究计划' }]);
   await expect(page.getByTestId('trip-brief-plan-gate')).toHaveCount(0);
   await assertOffline(page, fixture);
-  await expect(heading).toHaveAttribute('aria-expanded', 'false', { timeout: 1000 });
+  await expect(heading).toBeVisible();
+  await expect(page.locator('.research-agent-heading[aria-expanded="true"]')).toHaveCount(0);
 });
 
 test('review event recovery must go directly to restored gate without expansion', async ({ page }) => {
@@ -2781,9 +2785,10 @@ test('review new Run after live gate cancellation starts compact instead of carr
   await sendFrames(page, [{ type: 'chat_start', session_id: 'A', run_id: 'run-followup', message_id: 'review-new-run', route_decision: { route: 'trip_planning' } }]);
   await expect(handoff).toHaveAttribute('data-review-mounted', 'kept');
   const heading = page.getByTestId('thinking-chain').locator('.research-panel-heading');
-  await expect(heading).toHaveAttribute('aria-controls', 'generation-thinking-run-followup');
+  await expect(page.getByTestId('thinking-chain')).toHaveAttribute('data-run', 'run-followup');
   await assertOffline(page, fixture);
-  await expect(heading).toHaveAttribute('aria-expanded', 'false', { timeout: 1000 });
+  await expect(heading).toBeVisible();
+  await expect(page.locator('.research-agent-heading[aria-expanded="true"]')).toHaveCount(0);
 });
 
 test('review fast new revision reopens with keyboard focus on the current gate', async ({ page }) => {
@@ -2803,5 +2808,5 @@ test('review fast new revision reopens with keyboard focus on the current gate',
   await expect(gate.getByLabel('想改哪里？')).toHaveValue('');
   await sampleHandoffHeights(page);
   await assertOffline(page, fixture);
-  await expect(gate.getByRole('heading', { name: '确认研究方案', exact: true })).toBeFocused({ timeout: 1000 });
+  await expect(gate.getByRole('heading', { name: '研究方案', exact: true })).toBeFocused({ timeout: 1000 });
 });

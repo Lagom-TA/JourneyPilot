@@ -147,7 +147,7 @@ export const TripWorkspaceShell: React.FC = () => {
           data-testid="delivery-recovery-notice"
           role="alert"
           aria-atomic="true"
-          className="recovery-notice flex items-center justify-between gap-3 rounded-card border border-stroke bg-panel/95 px-4 py-2.5 text-sm text-ink shadow-lg backdrop-blur"
+          className={`recovery-notice ${!state.deliveryBundle ? 'is-generation' : ''} flex items-center justify-between gap-3 rounded-card border border-stroke bg-panel/95 px-4 py-2.5 text-sm text-ink shadow-lg backdrop-blur`}
         >
           <span data-testid="delivery-recovery-notice-message" className="min-w-0 break-words">
             {deliveryBundleLoadState.status === 'loading' ? '正在重新加载这趟旅行…' : deliveryBundleLoadState.message}

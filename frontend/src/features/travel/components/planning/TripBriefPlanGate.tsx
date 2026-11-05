@@ -71,7 +71,7 @@ export const TripBriefPlanGate: React.FC<{
   const controlsBlocked = state.isStreaming || submitting !== null || refreshing;
   const decisionBlocked = controlsBlocked || stalePlan;
   const canRevise = entries.supplement;
-  const planText = gate.planText.trim();
+  const planText = gate.planText.trim() || [...new Set(gate.steps.flatMap(step => Object.values(step.tasks || {})).map(task => task.trim()).filter(Boolean))].join('\n\n');
   const generationFailed = Boolean(entries.retry) && !entries.approve;
   const showEditor = editing;
   const partySummary = identity?.party
@@ -167,77 +167,78 @@ export const TripBriefPlanGate: React.FC<{
   return (
     <m.section data-testid="trip-brief-plan-gate" aria-labelledby="trip-brief-plan-gate-title" className={cn('plan-gate-card', workspace && 'is-workspace')} variants={emphasisEnter} initial={workspace ? false : 'hidden'} animate="visible">
       <header className="plan-gate-header">
-        <h2 id="trip-brief-plan-gate-title" tabIndex={-1}>{generationFailed ? '研究方案暂未生成' : '确认研究方案'}</h2>
+        <h2 id="trip-brief-plan-gate-title" tabIndex={-1}>{generationFailed ? '研究方案暂未生成' : '研究方案'}</h2>
         {!workspace && <span>{identity ? generationFailed ? '可以重试生成方案，也可以补充要求后再试。' : '这是本次准备怎样研究和安排的设想，确认后开始调研，或补充调整。' : '请确认本次旅行的需求与安排。'}</span>}
       </header>
+      <div className="plan-gate-content">
+        {identity && !workspace && (
+          <div className="plan-gate-context" aria-label="旅行摘要">
+            <p><Users size={14} aria-hidden /><span>{partySummary || '同行人数待确认'}</span></p>
+            {styleTags.length > 0 && <div className="plan-gate-context-tags" aria-label="旅行风格">{styleTags.map((item) => <span key={item}>{item}</span>)}</div>}
+          </div>
+        )}
 
-      {identity && !workspace && (
-        <div className="plan-gate-context" aria-label="旅行摘要">
-          <p><Users size={14} aria-hidden /><span>{partySummary || '同行人数待确认'}</span></p>
-          {styleTags.length > 0 && <div className="plan-gate-context-tags" aria-label="旅行风格">{styleTags.map((item) => <span key={item}>{item}</span>)}</div>}
-        </div>
-      )}
+        {planText && (
+          <section className="plan-gate-plan" aria-labelledby="plan-gate-plan-title">
+            <h3 id="plan-gate-plan-title" className={workspace ? 'sr-only' : undefined}>{generationFailed ? '方案生成情况' : '研究与安排设想'}</h3>
+            <Markdown content={planText} className="plan-gate-plan-text" />
+            {!workspace && !generationFailed && gate.steps.length > 0 && <p className="plan-gate-plan-note">
+              研究安排：{gate.steps.map(researchStepText).join(' → ')}
+            </p>}
+            {!workspace && !generationFailed && <p className="plan-gate-plan-note">确认后开始研究；有修改会重新整理方案。</p>}
+          </section>
+        )}
 
-      {planText && (
-        <section className="plan-gate-plan" aria-labelledby="plan-gate-plan-title">
-          <h3 id="plan-gate-plan-title">{generationFailed ? '方案生成情况' : '研究与安排设想'}</h3>
-          <Markdown content={planText} className="plan-gate-plan-text" />
-          {!generationFailed && gate.steps.length > 0 && <p className="plan-gate-plan-note">
-            研究安排：{gate.steps.map(researchStepText).join(' → ')}
-          </p>}
-          {!workspace && !generationFailed && <p className="plan-gate-plan-note">确认后开始研究；有修改会重新整理方案。</p>}
-        </section>
-      )}
+        {!planText && <p className="plan-gate-note">暂时没有可展示的研究设想。</p>}
 
-      {!planText && <p className="plan-gate-note">暂时没有可展示的研究设想。</p>}
-
-      {canRevise && (
-        <div className="plan-gate-edit">
-          <button type="button" aria-expanded={editing} onClick={() => setEditing((value) => !value)} disabled={decisionBlocked}>
-            <PencilLine size={15} />补充或调整旅行要求
-          </button>
-          <div className={cn('plan-gate-edit-panel', showEditor && 'is-open')}>
-            <div>
-              <label htmlFor="plan-gate-guide">想改哪里？</label>
-              <textarea
-                id="plan-gate-guide"
-                value={guide}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setGuide(value);
-                  setDraftStorageUnavailable(!writePlanGateDraft(draftKey, value));
-                }}
-                disabled={controlsBlocked}
-                rows={3}
-                maxLength={500}
-                placeholder="例如：每天少安排一个景点，住宿选在地铁附近，首日中午后开始活动。"
-              />
-              {guide.trim() && <p role="status">请先提交修改，或清空内容后确认当前方案。</p>}
-              {guide.trim() && draftStorageUnavailable && <p role="status">回答尚未保存，刷新页面会清空，请先提交。</p>}
-              {showEditor && <Button variant="secondary" data-testid="plan-gate-supplement" disabled={decisionBlocked || !guide.trim()} onClick={() => void submit('supplement')}>
-                {submitting === 'supplement' ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
-                按修改重新整理
-              </Button>}
+        {canRevise && (
+          <div className="plan-gate-edit">
+            <button type="button" aria-expanded={editing} onClick={() => setEditing((value) => !value)} disabled={decisionBlocked}>
+              <PencilLine size={15} />补充或调整旅行要求
+            </button>
+            <div className={cn('plan-gate-edit-panel', showEditor && 'is-open')}>
+              <div>
+                <label htmlFor="plan-gate-guide">想改哪里？</label>
+                <textarea
+                  id="plan-gate-guide"
+                  value={guide}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setGuide(value);
+                    setDraftStorageUnavailable(!writePlanGateDraft(draftKey, value));
+                  }}
+                  disabled={controlsBlocked}
+                  rows={3}
+                  maxLength={500}
+                  placeholder="例如：每天少安排一个景点，住宿选在地铁附近，首日中午后开始活动。"
+                />
+                {guide.trim() && <p role="status">请先提交修改，或清空内容后确认当前方案。</p>}
+                {guide.trim() && draftStorageUnavailable && <p role="status">回答尚未保存，刷新页面会清空，请先提交。</p>}
+                {showEditor && <Button variant="secondary" data-testid="plan-gate-supplement" disabled={decisionBlocked || !guide.trim()} onClick={() => void submit('supplement')}>
+                  {submitting === 'supplement' ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
+                  按修改重新整理
+                </Button>}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {error && <p ref={errorRef} role="alert" tabIndex={-1} className="plan-gate-error">{error}</p>}
-      {stalePlan && <Button variant="secondary" type="button" disabled={controlsBlocked} onClick={() => void refreshPlan()}>{refreshing ? '正在刷新计划…' : '刷新当前计划'}</Button>}
+        {error && <p ref={errorRef} role="alert" tabIndex={-1} className="plan-gate-error">{error}</p>}
+        {stalePlan && <Button variant="secondary" type="button" disabled={controlsBlocked} onClick={() => void refreshPlan()}>{refreshing ? '正在刷新计划…' : '刷新当前计划'}</Button>}
 
-      <div className="plan-gate-actions">
-        {!workspace && <p>{gate.revision > 0 ? '修改后会按这一版要求重新整理。' : '确认后开始查询资料，再安排每天路线。'}</p>}
-        <div>
-          {entries.cancel && <button type="button" disabled={controlsBlocked} onClick={() => void submit('cancel')}>取消规划</button>}
-          {entries.retry && <Button variant="secondary" disabled={decisionBlocked} onClick={() => void submit('retry')}>
-            {submitting === 'retry' ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
-            重试生成研究计划
-          </Button>}
-          {entries.approve && <Button size="lg" disabled={decisionBlocked || Boolean(guide.trim())} onClick={() => void submit('approve')}>
-            {submitting === 'approve' ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-            确认并开始生成
-          </Button>}
+        <div className="plan-gate-actions">
+          {!workspace && <p>{gate.revision > 0 ? '修改后会按这一版要求重新整理。' : '确认后开始查询资料，再安排每天路线。'}</p>}
+          <div>
+            {entries.cancel && <button type="button" disabled={controlsBlocked} onClick={() => void submit('cancel')}>取消规划</button>}
+            {entries.retry && <Button variant="secondary" disabled={decisionBlocked} onClick={() => void submit('retry')}>
+              {submitting === 'retry' ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+              重试生成研究计划
+            </Button>}
+            {entries.approve && <Button size="lg" disabled={decisionBlocked || !planText || Boolean(guide.trim())} onClick={() => void submit('approve')}>
+              {submitting === 'approve' ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+              确认并开始生成
+            </Button>}
+          </div>
         </div>
       </div>
     </m.section>

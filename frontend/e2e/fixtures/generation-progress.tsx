@@ -135,6 +135,7 @@ function Fixture() {
           type: 'ADD_MESSAGE',
           payload: {
             id: 'generation-failure',
+            runId: 'run-generation-fixture',
             role: 'assistant',
             content: '旅行方案暂时无法生成，请稍后重试。',
             displayContent: '旅行方案暂时无法生成，请稍后重试。',

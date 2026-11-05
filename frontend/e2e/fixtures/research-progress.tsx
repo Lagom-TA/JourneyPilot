@@ -97,7 +97,7 @@ function Fixture() {
     ...(compositionRedo ? compositionRedoSteps : []),
     ...(supplementRound ? [...sourceSteps, ...supplementRoundSteps] : sourceSteps),
   ];
-  return <main style={{ maxWidth: 1100, margin: '32px auto', padding: '0 16px' }}>
+  return <main style={{ containerType: 'inline-size', maxWidth: 1100, margin: '32px auto', padding: '0 16px' }}>
     <p style={{ fontSize: 12 }}>交互验证样例 · 长春 4 日调研</p>
     <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
       <button onClick={() => setDestinationDone(true)}>目的地完成</button>

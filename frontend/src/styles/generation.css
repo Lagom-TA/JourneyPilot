@@ -1,0 +1,189 @@
+/* 研究台面：旅行身份、阶段定位和当前任务各占一层。 */
+.generation-journey-panel {
+  --desk-gap: clamp(28px, 4vw, 64px);
+  --desk-inset: clamp(20px, 4vw, 64px);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  container-type: inline-size;
+  background: var(--color-bg);
+}
+.generation-planning-layout { display: flex; flex-direction: column; width: min(100%, 1600px); height: 100%; min-height: 0; margin: 0 auto; }
+.generation-planning-sidebar { flex: none; padding: clamp(24px, 3vw, 42px) var(--desk-inset) 0; }
+.generation-trip-card { min-width: 0; }
+.generation-trip-card-header h1 { margin: 0; outline: none; font-family: theme('fontFamily.sans'); font-size: clamp(34px, 3.5vw, 58px); font-weight: 750; line-height: 1.22; letter-spacing: -.035em; }
+.generation-trip-title-destinations { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 10px; }
+.generation-trip-title-segment { display: inline-flex; min-width: 0; align-items: baseline; gap: 10px; }
+.generation-trip-title-place { overflow-wrap: anywhere; }
+.generation-trip-title-divider { color: var(--color-ink-muted); font-weight: 400; }
+.generation-trip-card-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 18px; margin-top: 15px; color: var(--color-ink-secondary); font-size: 12px; line-height: 1.7; }
+.generation-trip-fact, .generation-trip-fact-value, .generation-trip-tags { display: flex; min-width: 0; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; }
+.generation-trip-card-date { font-variant-numeric: tabular-nums; }
+.generation-trip-fact-style { color: var(--color-ink-muted); }
+.generation-progress { display: flex; align-items: center; gap: 12px; margin-top: 25px; border-top: 2px solid var(--color-ink); border-bottom: 1px solid var(--color-stroke); }
+.generation-progress ol { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 0 26px; margin: 0; padding: 0; list-style: none; }
+.generation-progress li { min-width: 0; }
+.generation-stage-heading { margin: 0; font: inherit; }
+.generation-stage-button { display: flex; min-height: 48px; align-items: center; gap: 7px; padding: 0 2px; color: var(--color-ink-muted); font-size: 12px; }
+.generation-stage-button:hover, .generation-stage-button[aria-pressed='true'], .generation-progress li.is-active .generation-stage-button { color: var(--color-ink); }
+.generation-stage-button[aria-pressed='true'] { box-shadow: inset 0 -2px var(--color-accent); }
+.generation-stage-button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 3px; }
+.generation-stage-mark { display: flex; width: 13px; height: 14px; align-items: center; justify-content: center; font-size: 0; }
+.generation-progress li.is-pending .generation-stage-mark { display: none; }
+.generation-progress li.is-active .generation-stage-mark { color: var(--color-accent); }
+.generation-progress li.is-done .generation-stage-mark { color: var(--color-chart); }
+.generation-progress li.is-failed .generation-stage-mark { color: var(--color-warning); }
+.generation-stage-title { font-weight: 500; }
+.generation-stage-spinner { animation: generation-spin var(--dur-generation-spin) linear infinite; }
+.generation-readonly-note { margin: 9px 0 0; color: var(--color-ink-muted); font-size: 12px; }
+.generation-activity { display: flex; min-height: 0; min-width: 0; flex: 1; flex-direction: column; overflow: hidden; }
+.generation-activity-body { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 32px var(--desk-inset) 36px; }
+.generation-handoff { display: grid; min-width: 0; align-content: start; }
+.generation-handoff-pane { display: grid; min-height: 0; grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: opacity var(--dur-medium) var(--ease-standard); }
+.generation-handoff-pane-inner { min-height: 0; overflow: hidden; }
+.generation-handoff.is-gate .generation-handoff-gate .generation-handoff-pane-inner, .generation-handoff:not(.is-gate) .generation-handoff-process .generation-handoff-pane-inner { overflow: visible; }
+.generation-handoff.is-gate .generation-handoff-process, .generation-handoff:not(.is-gate) .generation-handoff-gate { grid-template-rows: 0fr; opacity: 0; visibility: hidden; }
+.generation-handoff.is-instant .generation-handoff-pane, .generation-handoff.is-instant .generation-handoff-pane-inner { transition: none; }
+.generation-status-actions, .generation-activity-error { margin-left: calc((100% - var(--desk-gap)) * .32 + var(--desk-gap)); }
+.generation-status-actions { margin-bottom: 24px; }
+.generation-status-actions > p { margin: 0 0 12px; color: var(--color-ink-secondary); font-size: 13px; line-height: 1.75; }
+.generation-run-actions { display: flex; gap: 12px; flex-wrap: wrap; }
+.generation-run-actions button { display: inline-flex; min-height: 40px; align-items: center; gap: 7px; padding: 8px 14px; border: 1px solid var(--color-stroke); border-radius: var(--radius-label); color: var(--color-ink); font-size: 13px; }
+.generation-run-actions button[data-testid='boarding-pass-resume'] { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
+.generation-stop-btn { display: inline-flex; flex: none; min-height: 34px; align-items: center; justify-content: center; gap: 7px; padding: 6px 11px; border: 1px solid var(--color-stroke); border-radius: var(--radius-label); color: var(--color-ink-secondary); font-size: 12px; transition: color var(--dur-fast), border-color var(--dur-fast), background-color var(--dur-fast); }
+.generation-stop-btn:hover:not(:disabled) { color: var(--color-error); border-color: currentColor; background: color-mix(in srgb, var(--color-error) 5%, transparent); }
+.generation-stop-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.generation-stop-btn:disabled { opacity: .55; cursor: wait; }
+.generation-activity-error { margin-top: 0; margin-bottom: 22px; color: var(--color-error); font-size: 13px; line-height: 1.8; }
+.generation-terminal-title { margin: 0; max-width: 7em; font-family: theme('fontFamily.sans'); font-size: clamp(30px, 3vw, 46px); font-weight: 700; line-height: 1.3; letter-spacing: -.025em; }
+.generation-followup { flex: none; padding: 12px var(--desk-inset) calc(16px + env(safe-area-inset-bottom)); background: var(--color-bg); }
+.generation-followup-inner { margin-left: calc((100% - var(--desk-gap)) * .32 + var(--desk-gap)); }
+.generation-followup-hint { margin: 0 0 7px; color: var(--color-ink-secondary); font-size: 12px; line-height: 1.6; }
+
+/* 阶段标题位于左侧；任务本身承担展开与收起。 */
+.research-panel.research-panel-workspace { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.7fr); gap: var(--desk-gap, 40px); width: 100%; margin: 0; border: 0; border-radius: 0; background: transparent; overflow: visible; }
+.research-panel-workspace .research-panel-heading { display: flex; min-width: 0; align-items: flex-start; flex-direction: column; gap: 14px; align-self: start; padding: 0; text-align: left; outline: none; }
+.research-panel-workspace .research-panel-heading > span:first-of-type { flex: none; }
+.research-panel-workspace .research-panel-title { max-width: 6em; font-family: theme('fontFamily.sans'); font-size: clamp(30px, 3.2vw, 48px); font-weight: 750; line-height: 1.28; letter-spacing: -.03em; }
+.research-panel-workspace .research-elapsed { display: block; font-size: 12px; }
+.research-panel-workspace .research-panel-body { min-width: 0; padding: 0; }
+.research-current-focus { margin: 0 0 20px; color: var(--color-ink-secondary); font-size: 13px; line-height: 1.85; }
+.research-panel-workspace .research-agent-list { display: grid; grid-template-columns: 1.1fr 1fr; align-items: start; gap: 28px 26px; }
+.research-panel-workspace .research-agent { min-width: 0; border: 0; border-top: 1px solid var(--color-stroke); border-radius: 0; background: transparent; }
+.research-panel-workspace .research-agent.is-active { border-top: 2px solid var(--color-chart); background: transparent; }
+.research-panel-workspace .research-agent.is-failed { border-top-color: var(--color-warning); }
+.research-panel-workspace .research-agent:not(.is-active), .research-panel-workspace .research-agent.is-stage-group { grid-column: 1 / -1; }
+.research-panel-workspace .research-agent-heading { display: flex; min-height: 44px; width: calc(100% + 12px); margin: 0 -6px; padding: 14px 6px 18px; gap: 0; text-align: left; border-radius: 2px; transition: background-color var(--dur-fast) var(--ease-standard); }
+.research-panel-workspace .research-agent-summary { display: block; width: 100%; min-width: 0; }
+.research-panel-workspace .research-agent-icon { display: none; }
+.research-panel-workspace .research-agent-line { display: flex; min-width: 0; align-items: baseline; gap: 9px; }
+.research-panel-workspace .research-agent-title { display: block; min-width: 0; flex: 1; font-size: 15px; font-weight: 600; line-height: 1.6; }
+.research-panel-workspace .research-agent-state { flex: none; font-size: 12px; line-height: 1.6; }
+.research-panel-workspace .research-agent-update { display: block; margin-top: 17px; padding-left: 11px; border-left: 1px solid var(--color-accent); color: var(--color-ink-secondary); font-size: 13px; line-height: 1.85; }
+.research-panel-workspace .research-agent:not(.is-active) .research-agent-update { margin-top: 8px; padding-left: 0; border-left: 0; }
+.research-panel-workspace .research-agent-chevron { width: 15px; height: 15px; margin-top: 2px; transition: opacity var(--dur-fast), transform var(--dur-medium); }
+.research-panel-workspace .research-agent-body { padding: 0 0 12px; border-top: 1px solid var(--color-stroke); }
+.research-panel-workspace .research-query-summary { min-height: 44px; align-items: flex-start; gap: 8px; padding: 14px 0; }
+.research-panel-workspace .research-query-main { display: block; min-width: 0; }
+.research-panel-workspace .research-query-kind { display: block; margin: 0 0 4px; font-size: 11px; }
+.research-panel-workspace .research-query-title { display: block; color: var(--color-ink); font-size: 13px; line-height: 1.75; white-space: normal; overflow-wrap: anywhere; }
+.research-panel-workspace .research-query-status { font-size: 11px; max-width: 72px; }
+.research-panel-workspace .research-query-detail { margin: 0; padding: 0 0 16px; border-left: 0; }
+.research-panel-workspace .research-tool-detail { margin: 0; padding: 0; max-width: none; }
+.research-panel-workspace .research-source { padding: 10px 0; }
+.research-panel-workspace .research-source-title { font-size: 13px; }
+.research-panel-workspace .research-source p { font-size: 12px; line-height: 1.8; }
+.research-panel-workspace .research-milestone { font-size: 13px; line-height: 1.85; }
+.research-panel-workspace .research-work-note { padding: 12px 0; border-left: 0; }
+.research-panel-workspace .research-work-note-label { font-size: 11px; }
+.research-panel-workspace .research-work-note-text { font-size: 13px; line-height: 1.85; }
+.research-panel-workspace .research-empty { min-height: 0; padding: 8px 0; justify-content: flex-start; align-items: flex-start; }
+.research-panel-workspace .research-empty p { font-size: 13px; line-height: 1.85; }
+
+/* 确认门与追问占据同一组列，操作紧随内容。 */
+.generation-journey-panel .plan-gate-card.is-workspace, .understanding-questions-card { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.7fr); gap: 0 var(--desk-gap, 40px); width: 100%; min-width: 0; max-width: none; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.generation-journey-panel .plan-gate-card.is-workspace .plan-gate-header h2, .understanding-questions-head h2 { margin: 0; max-width: 6em; font-family: theme('fontFamily.sans'); font-size: clamp(30px, 3.2vw, 48px); font-weight: 750; line-height: 1.28; letter-spacing: -.03em; }
+.plan-gate-content { min-width: 0; }
+.generation-journey-panel .plan-gate-card.is-workspace .plan-gate-plan { margin: 0; padding: 0; border-top: 0; }
+.generation-journey-panel .plan-gate-card.is-workspace .plan-gate-plan-text { margin: 0; font-size: 14px; line-height: 1.9; }
+.generation-journey-panel .plan-gate-card.is-workspace .plan-gate-plan-text > :first-child { margin-top: 0; }
+.generation-journey-panel .plan-gate-card.is-workspace .plan-gate-plan-text :is(h1, h2, h3, h4) { margin: 26px 0 9px; color: var(--color-ink); font-family: theme('fontFamily.sans'); font-size: 16px; font-weight: 600; line-height: 1.55; }
+.generation-journey-panel .plan-gate-card.is-workspace .plan-gate-plan-text p { margin: 9px 0 0; }
+.generation-journey-panel .plan-gate-card.is-workspace .plan-gate-plan-text :is(ul, ol) { margin: 10px 0 0; padding-left: 20px; }
+.generation-journey-panel .plan-gate-card.is-workspace .plan-gate-plan-text li { margin: 5px 0; }
+.generation-journey-panel .plan-gate-card.is-workspace .plan-gate-actions { justify-content: flex-start; margin-top: 26px; padding-top: 20px; }
+.generation-journey-panel .plan-gate-card.is-workspace .plan-gate-actions > div { flex-direction: row-reverse; justify-content: flex-end; flex-wrap: wrap; }
+.generation-journey-panel .plan-gate-card.is-workspace .plan-gate-edit-panel { min-width: 0; }
+.generation-journey-panel .plan-gate-card.is-workspace .plan-gate-edit-panel textarea { font-size: 14px; line-height: 1.8; }
+.generation-journey-panel .plan-gate-card.is-workspace .plan-gate-edit > button { padding-left: 0; color: var(--color-ink-secondary); }
+.understanding-questions-head { grid-column: 1; grid-row: 1 / 3; }
+.understanding-questions-head > p { margin: 18px 0 0; max-width: 28ch; color: var(--color-ink-secondary); font-size: 13px; line-height: 1.85; }
+.understanding-questions-list { grid-column: 2; min-width: 0; margin: 0; padding: 0; list-style: none; }
+.understanding-questions-fields { grid-column: 2; min-width: 0; margin: 0; padding: 0; border: 0; }
+.understanding-question-heading { display: flex; align-items: flex-start; gap: 12px; }
+.understanding-question-heading > p { flex: 1; }
+.understanding-question-heading > button { display: inline-flex; flex: none; min-width: 32px; min-height: 32px; justify-content: center; align-items: center; color: var(--color-ink-muted); }
+.understanding-question-heading > button[aria-pressed='true'], .understanding-question-heading > button:hover { color: var(--color-accent); }
+.understanding-question + .understanding-question { margin-top: 28px; padding-top: 24px; border-top: 1px solid var(--color-stroke); }
+.understanding-question-text { margin: 0 0 14px; font-size: 16px; font-weight: 600; line-height: 1.7; }
+.understanding-question-options { display: flex; flex-wrap: wrap; gap: 9px; }
+.understanding-question-option { min-height: 42px; padding: 9px 13px; border: 1px solid var(--color-stroke); border-radius: var(--radius-label); color: var(--color-ink-secondary); font-size: 13px; line-height: 1.65; text-align: left; }
+.understanding-question-option:hover, .understanding-question-option.is-selected { border-color: var(--color-accent); background: var(--color-accent-soft); color: var(--color-ink); }
+.understanding-question-input { width: 100%; min-height: 74px; margin-top: 13px; padding: 11px 12px; border: 1px solid var(--color-stroke); border-radius: var(--radius-label); background: var(--color-panel); font-size: 14px; line-height: 1.8; resize: vertical; }
+.understanding-question-input:focus { border-color: var(--color-accent); }
+.understanding-date-note { margin: 9px 0 0; color: var(--color-ink-secondary); font-size: 12px; line-height: 1.7; }
+.understanding-questions-actions { grid-column: 2; display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.understanding-questions-actions button { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 7px; padding: 10px 17px; border-radius: var(--radius-label); font-size: 13px; line-height: 1.6; }
+.understanding-questions-submit { color: var(--color-on-accent); background: var(--color-accent); font-weight: 600; }
+.understanding-questions-cancel { color: var(--color-ink-secondary); }
+.understanding-questions-actions button:disabled, .understanding-question-option:disabled { opacity: .5; cursor: not-allowed; }
+.generation-has-questions .research-panel.research-panel-workspace { display: block; margin-top: 28px; padding-left: calc((100% - var(--desk-gap)) * .32 + var(--desk-gap)); }
+.generation-has-questions .research-panel-heading { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+@media (hover: hover) and (pointer: fine) {
+ @container (width >= 800px) {
+  .research-panel-workspace .research-agent-heading[aria-expanded] .research-agent-chevron, .research-panel-workspace .research-disclosure-icon { opacity: 0; transition: opacity var(--dur-fast); }
+  .research-panel-workspace .research-agent-heading[aria-expanded]:hover, .research-panel-workspace .research-agent-heading:focus-visible { background: color-mix(in srgb, var(--color-ink) 4%, transparent); }
+  .research-panel-workspace .research-agent-heading:hover .research-agent-chevron, .research-panel-workspace .research-agent-heading:focus-visible .research-agent-chevron, .research-panel-workspace .research-agent-heading[aria-expanded='true'] .research-agent-chevron, .research-panel-workspace summary:hover .research-disclosure-icon, .research-panel-workspace summary:focus-visible .research-disclosure-icon, .research-panel-workspace details[open] > summary .research-disclosure-icon { opacity: 1; }
+ }
+}
+@container (width < 800px) {
+  .generation-planning-sidebar { padding: 24px 22px 0; }
+  .generation-trip-card-header h1 { font-size: clamp(28px, 5vw, 38px); }
+  .generation-trip-card-meta { margin-top: 12px; gap: 4px 14px; }
+  .generation-progress { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+  .generation-progress ol { gap: 0 22px; }
+  .generation-activity-body { padding: 25px 22px 28px; }
+  .research-panel.research-panel-workspace, .generation-journey-panel .plan-gate-card.is-workspace, .understanding-questions-card { grid-template-columns: minmax(0, 1fr); gap: 23px; }
+  .research-panel-workspace .research-panel-heading { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 16px; }
+  .research-panel-workspace .research-panel-title, .generation-journey-panel .plan-gate-card.is-workspace .plan-gate-header h2, .understanding-questions-head h2 { max-width: none; font-size: 29px; line-height: 1.35; }
+  .research-panel-workspace .research-agent-list { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .research-panel-workspace .research-agent-update { margin-top: 13px; }
+  .research-panel-workspace .research-agent-chevron, .research-panel-workspace .research-disclosure-icon { opacity: 1; }
+  .generation-status-actions, .generation-activity-error, .generation-followup-inner { margin-left: 0; }
+  .generation-followup { padding: 10px 22px calc(12px + env(safe-area-inset-bottom)); }
+  .understanding-questions-head { grid-column: 1; grid-row: auto; }
+  .understanding-questions-head > p { max-width: none; margin-top: 12px; }
+  .understanding-questions-fields, .understanding-questions-list, .understanding-questions-actions { grid-column: 1; }
+  .understanding-questions-actions { margin-top: 0; }
+  .generation-has-questions .research-panel.research-panel-workspace { padding-left: 0; }
+}
+@container (width < 440px) {
+  .generation-planning-sidebar { padding: 21px 18px 0; }
+  .generation-activity-body { padding: 23px 18px 26px; }
+  .generation-followup { padding-inline: 18px; }
+  .generation-progress ol { gap: 0 14px; }
+  .generation-stop-btn { width: 34px; height: 34px; padding: 0; }
+  .generation-stop-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .generation-trip-card-header h1 { font-size: 30px; }
+  .generation-trip-card-meta { font-size: 11px; }
+  .generation-trip-fact-style { display: none; }
+  .generation-trip-title-destinations, .generation-trip-title-segment { column-gap: 7px; }
+  .generation-journey-panel .plan-gate-card.is-workspace .plan-gate-actions > div { width: 100%; }
+  .generation-journey-panel .plan-gate-card.is-workspace .plan-gate-actions > div > button { width: auto; }
+  .understanding-question-input, .generation-journey-panel .plan-gate-card.is-workspace .plan-gate-edit-panel textarea { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) { .generation-stage-spinner { animation: none; } }
+
+.recovery-notice.is-generation { top: auto; bottom: calc(90px + env(safe-area-inset-bottom)); }
+@keyframes generation-spin { to { transform: rotate(360deg); } }

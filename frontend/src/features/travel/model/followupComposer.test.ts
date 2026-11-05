@@ -16,7 +16,7 @@ describe('followupComposerState', () => {
     for (const runStatus of ['completed', 'failed', 'cancelled', 'interrupted'] as const) {
       expect(followupComposerState({ ...base, runStatus }).visible, runStatus).toBe(true);
     }
-    expect(followupComposerState({ ...base, runStatus: 'interrupted', canResume: true }).hint).toContain('继续');
+    expect(followupComposerState({ ...base, runStatus: 'interrupted', canResume: true }).visible).toBe(true);
   });
 
   it('only accepts queued messages during a run after delivery', () => {
@@ -37,11 +37,10 @@ describe('followupComposerState', () => {
     expect(followupComposerState({ ...base, readOnly: true }).visible).toBe(false);
   });
 
-  it('explains each terminal state without promising outside the current workspace', () => {
-    expect(followupComposerState({ ...base, runStatus: 'completed' }).hint).toContain('规划已生成');
-    expect(followupComposerState({ ...base, runStatus: 'failed' }).hint).toContain('没有完成');
-    expect(followupComposerState({ ...base, runStatus: 'cancelled' }).hint).toContain('已取消');
-    expect(followupComposerState({ ...base, runStatus: 'interrupted', canResume: false }).hint).toContain('返回新旅行');
-    expect(followupComposerState({ ...base, runStatus: 'interrupted', canResume: true }).hint).toContain('从最近的位置继续');
+  it('only explains the queue when a delivered trip is still running', () => {
+    for (const runStatus of ['completed', 'failed', 'cancelled', 'interrupted'] as const) {
+      expect(followupComposerState({ ...base, runStatus }).hint).toBe('');
+    }
+    expect(followupComposerState({ ...base, runStatus: 'running', isStreaming: true }).hint).toContain('当前回复结束后');
   });
 });

@@ -142,6 +142,7 @@ for (const mobile of [false, true]) {
     await page.screenshot({ path: `${SCREEN_DIR}/${mobile ? '390' : '1440'}-understanding-questions.png`, fullPage: true });
     // 选项与自由补充合并成完整回答文字。
     await page.getByRole('button', { name: '慢慢逛，留出休息时间' }).click();
+    await page.getByRole('button', { name: '补充回答：这次更想慢慢逛，还是把行程排满？' }).click();
     await page.getByRole('textbox', { name: '自由回答：这次更想慢慢逛，还是把行程排满？' }).fill('第二天想睡到自然醒');
     await page.getByTestId('understanding-questions-submit').click();
     await expect.poll(() => harness.chatRequests.at(-1)?.gate_decision?.action).toBe('answer');

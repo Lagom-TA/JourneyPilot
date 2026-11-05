@@ -33,6 +33,10 @@ A travel ticket and luggage tag present one proposal. Scenes rotate slowly and p
 or edit; choosing either paper fills the current mode without submitting it. For a
 full plan, JourneyPilot reviews the request, verifies places and asks follow-up questions when needed,
 then presents a research plan for approval before researching places, stays, transport, and weather.
+The generation workspace combines a trip summary, four-stage navigation, and the current task.
+Research tasks show their latest update; click a task to toggle queries, sources, and public work notes.
+Manually opened records stay open when a task ends. The stop control sits beside stage navigation;
+follow-up questions and research approval each have their own submission area.
 If research is interrupted, completed results are retained and retries use the original plan's time limits.
 Disconnecting interrupts the current execution. Reopening restores saved state and content; resumable
 plans continue only when you choose to resume them.

@@ -1,4 +1,4 @@
-import { Loader2, Send, Square } from 'lucide-react';
+import { Loader2, PencilLine, Send, Square } from 'lucide-react';
 import { useApp } from '../../../../app/state/AppContext';
 import { useSendMessage } from '../../../../app/session/useSendMessage';
 import { useStopRun } from '../../../../app/session/useStopRun';
@@ -43,8 +43,17 @@ export const UnderstandingQuestionsCard: React.FC<{
   const { sendMessage } = useSendMessage();
   const { stopRun } = useStopRun();
   const [drafts, setDrafts] = React.useState<Record<string, AnswerDraft>>({});
+  const [freeAnswers, setFreeAnswers] = React.useState<Set<string>>(() => new Set());
   const [submitting, setSubmitting] = React.useState(false);
   const formRef = React.useRef<HTMLFormElement>(null);
+  const retry = retryLocation || retryResearch;
+  const readOnly = state.currentTripRunReadOnly || state.currentTripRunStatus !== 'awaiting_input';
+
+  React.useEffect(() => {
+    setDrafts({});
+    setFreeAnswers(new Set());
+    setSubmitting(false);
+  }, [runId, revision, approvalToken]);
 
   const draftOf = (question: UnderstandingQuestion): AnswerDraft =>
     drafts[question.id] ?? { optionIds: [], freeText: '', start: '', end: '' };
@@ -69,8 +78,8 @@ export const UnderstandingQuestionsCard: React.FC<{
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if ((!retryLocation && !allAnswered) || submitting || state.isStreaming) return;
-    if (retryLocation) {
+    if (readOnly || (!retry && !allAnswered) || submitting || state.isStreaming) return;
+    if (retry) {
       setSubmitting(true);
       try {
         await sendMessage(retryResearch ? '重试未完成的研究' : '重新查询目的地', {
@@ -117,15 +126,23 @@ export const UnderstandingQuestionsCard: React.FC<{
       onSubmit={(event) => void submit(event)}
     >
       <header className="understanding-questions-head">
-        <h2>{retryResearch ? '部分研究未完成' : retryLocation ? '目的地待核实' : '模型想先确认几件事'}</h2>
-        <p>{retryResearch ? message || '已有成果已保留，可以重试或取消。' : retryLocation ? '暂时没有查到可靠的地点，请稍后重试。' : '回答会直接进入你的旅行需求；也可以自由补充。'}</p>
+        <h2 tabIndex={-1}>{retryResearch ? '部分研究未完成' : retryLocation ? '目的地待核实' : '还需确认'}</h2>
+        {retry && <p>{retryResearch ? message || '已有成果已保留。' : '暂时没有查到可靠的地点。'}</p>}
       </header>
+      <fieldset className="understanding-questions-fields" disabled={readOnly || submitting || state.isStreaming}>
       <ol className="understanding-questions-list">
         {questions.map((question) => {
           const draft = draftOf(question);
           return (
             <li key={question.id} className="understanding-question" data-testid="understanding-question">
-              <p className="understanding-question-text">{question.question}</p>
+              <div className="understanding-question-heading">
+                <p className="understanding-question-text">{question.question}</p>
+                {question.options.length > 0 && <button type="button" aria-label={`补充回答：${question.question}`} aria-pressed={freeAnswers.has(question.id)} onClick={() => setFreeAnswers(current => {
+                  const next = new Set(current);
+                  if (next.has(question.id)) next.delete(question.id); else next.add(question.id);
+                  return next;
+                })}><PencilLine size={15} aria-hidden /></button>}
+              </div>
               {question.kind === 'date_range' && (
                 <div>
                   <DateRangePicker
@@ -136,7 +153,7 @@ export const UnderstandingQuestionsCard: React.FC<{
                       [question.id]: { ...draftOf(question), start, end },
                     }))}
                   />
-                  <p className="mt-2 text-xs text-ink-secondary">也可以直接填写天数；未指定日期时暂按今天出发规划。</p>
+                  <p className="understanding-date-note">只填写天数时，暂按今天出发。</p>
                 </div>
               )}
               {question.options.length > 0 && (
@@ -149,6 +166,7 @@ export const UnderstandingQuestionsCard: React.FC<{
                         type="button"
                         className={cn('understanding-question-option', selected && 'is-selected')}
                         aria-pressed={selected}
+                        disabled={readOnly || submitting || state.isStreaming}
                         onClick={() => toggleOption(question, option.id)}
                       >
                         {option.label}
@@ -157,25 +175,27 @@ export const UnderstandingQuestionsCard: React.FC<{
                   })}
                 </div>
               )}
-              <textarea
+              {(question.options.length === 0 || freeAnswers.has(question.id)) && <textarea
                 className="understanding-question-input"
                 aria-label={`自由回答：${question.question}`}
                 placeholder="或直接写下你的想法"
                 rows={2}
                 maxLength={2000}
                 value={draft.freeText}
+                disabled={readOnly || submitting || state.isStreaming}
                 onChange={(event) =>
                   setDrafts((current) => ({
                     ...current,
                     [question.id]: { ...draftOf(question), freeText: event.target.value },
                   }))
                 }
-              />
+              />}
             </li>
           );
         })}
       </ol>
-      <footer className="understanding-questions-actions">
+      </fieldset>
+      {!readOnly && <footer className="understanding-questions-actions">
         <button type="button" className="understanding-questions-cancel" onClick={() => void stopRun()} disabled={submitting}>
           <Square size={12} />取消规划
         </button>
@@ -183,12 +203,12 @@ export const UnderstandingQuestionsCard: React.FC<{
           type="submit"
           className="understanding-questions-submit"
           data-testid="understanding-questions-submit"
-          disabled={(!retryLocation && !allAnswered) || submitting || state.isStreaming}
+          disabled={(!retry && !allAnswered) || submitting || state.isStreaming}
         >
           {submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
           {submitting ? '正在提交' : retryResearch ? '重试未完成的研究' : retryLocation ? '重试地点查询' : '提交回答'}
         </button>
-      </footer>
+      </footer>}
     </form>
   );
 };
