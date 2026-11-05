@@ -12,6 +12,7 @@ import { Button } from '../../../../components/ui/Button';
 import { Skeleton } from '../../../../components/ui/Skeleton';
 import { useApp } from '../../../../app/state/AppContext';
 import { useSendMessage } from '../../../../app/session/useSendMessage';
+import { ActivePresetContext } from '../../../presets/components/ActivePresetContext';
 import { DateRangePicker } from './DateRangePicker';
 import { PlaceField } from './PlaceField';
 import { TravelerPicker } from './TravelerPicker';
@@ -398,6 +399,7 @@ export const TripPlanner: React.FC<{
     >
       <div className="planner-standard-flow">
         {compact ? <p className="planner-compact-label">确认旅行信息</p> : tabs}
+        {!compact && <ActivePresetContext />}
         <div className="planner-panels">
           <m.div
             role="tabpanel"

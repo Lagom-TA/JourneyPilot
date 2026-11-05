@@ -1,4 +1,4 @@
-import { BookOpen, ChevronRight, Compass, Map, PanelLeftClose, PanelLeftOpen, Plus, SlidersHorizontal } from 'lucide-react';
+import { BookOpen, ChevronRight, Map, PanelLeftClose, PanelLeftOpen, Plus, SlidersHorizontal } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
 import { cn } from '../../lib/utils';
 import { useApp } from '../state/AppContext';
@@ -6,10 +6,10 @@ import { type ActiveView } from '../state/state';
 import { useIsMobileViewport } from '../../hooks/useMediaQuery';
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss';
 import { BrandMark, BrandWordmark } from '../components/BrandMark';
-import { useSessionManager } from '../session/useSessionManager';
+import { useStartNewTrip } from '../session/useStartNewTrip';
+import { PREFERENCE_LINKS } from '../components/PreferenceSectionNav';
 import { duration, easing } from '../../lib/motion';
 import { getViewHref } from '../../lib/viewHref';
-import { abortSessionStream } from '../session/streamRegistry';
 import React from 'react';
 
 interface MainLayoutProps {
@@ -18,15 +18,9 @@ interface MainLayoutProps {
 
 const PREFERENCE_VIEWS: ActiveView[] = ['user-preferences', 'presets', 'knowledge-base'];
 
-const PREFERENCE_LINKS: Array<{ view: ActiveView; label: string }> = [
-  { view: 'user-preferences', label: '我的偏好' },
-  { view: 'presets', label: '旅行风格' },
-  { view: 'knowledge-base', label: '资料来源' },
-];
-
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
-  const { state, dispatch, activeStreamsRef } = useApp();
-  const { setLastSession } = useSessionManager();
+  const { state, dispatch } = useApp();
+  const beginNewTrip = useStartNewTrip();
   const isMobile = useIsMobileViewport();
   const drawerOpen = isMobile && !state.sidebarCollapsed;
   const sidebarRef = React.useRef<HTMLElement>(null);
@@ -45,16 +39,9 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   }, [closeSidebar, dispatch, isMobile]);
 
   const startNewTrip = React.useCallback(() => {
-    abortSessionStream(activeStreamsRef.current, state);
-    dispatch({ type: 'CLEAR_CHAT' });
-    setLastSession(null);
-    const url = new URL(window.location.href);
-    url.searchParams.delete('session_id');
-    url.searchParams.delete('run_id');
-    url.searchParams.set('view', 'chat');
-    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
-    changeView('chat');
-  }, [activeStreamsRef, changeView, dispatch, setLastSession, state]);
+    beginNewTrip();
+    if (isMobile) closeSidebar();
+  }, [beginNewTrip, closeSidebar, isMobile]);
 
   const keepFocusInDrawer = (event: React.KeyboardEvent<HTMLElement>) => {
     if (!drawerOpen || event.key !== 'Tab') return;
@@ -92,8 +79,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     return <a key={`${mobile ? 'mobile' : 'desktop'}-${view}`} href={getViewHref(view)} aria-current={active ? 'page' : undefined} className={className} onClick={(event) => { event.preventDefault(); changeView(view); }}>{content}</a>;
   };
 
-  const preferenceActive = PREFERENCE_VIEWS.includes(state.activeView);
-
   return (
     <div className="app-shell paper-grain">
       <header aria-hidden={drawerOpen || undefined} className="app-topbar">
@@ -119,22 +104,6 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           <PanelLeftOpen size={19} aria-hidden />
         </button>
       </header>
-
-      {preferenceActive && (
-        <nav className="preference-section-nav" aria-label="偏好与资料分类">
-          <div>
-            {PREFERENCE_LINKS.map((item) => (
-              <a
-                key={item.view}
-                href={getViewHref(item.view)}
-                aria-current={state.activeView === item.view ? 'page' : undefined}
-                className={cn(state.activeView === item.view && 'is-active')}
-                onClick={(event) => { event.preventDefault(); changeView(item.view); }}
-              >{item.label}</a>
-            ))}
-          </div>
-        </nav>
-      )}
 
       <main ref={mainRef} className="app-main">
         {children}
@@ -169,20 +138,17 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           <button type="button" aria-label="收起侧栏" onClick={closeSidebar} className="mobile-drawer-close"><PanelLeftClose size={18} /></button>
         </div>
         <nav className="mobile-drawer-nav" aria-label="旅行导航">
-          <p>旅行</p>
           {navLink('chat', '新旅行', <Plus size={17} aria-hidden />, true)}
           {navLink('trips', '我的行程', <BookOpen size={17} aria-hidden />, true)}
-          <p className="mobile-drawer-section-label">你的旅行偏好</p>
-          {navLink('user-preferences', '偏好与资料', <Compass size={17} aria-hidden />, true)}
+          <p className="mobile-drawer-section-label">偏好与资料</p>
           <div className="mobile-preference-links">
-            {[...PREFERENCE_LINKS].reverse().map((item) => (
+            {PREFERENCE_LINKS.map((item) => (
               <a key={item.view} href={getViewHref(item.view)} className={cn('mobile-nav-link', state.activeView === item.view && 'is-active')} onClick={(event) => { event.preventDefault(); changeView(item.view); }}>
                 <span>{item.label}</span><ChevronRight size={15} className="ml-auto opacity-45" />
               </a>
             ))}
           </div>
         </nav>
-        <p className="mobile-drawer-footnote">让旅行更简单，更有意义。</p>
       </aside>
     </div>
   );

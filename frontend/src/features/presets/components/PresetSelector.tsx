@@ -7,7 +7,7 @@ import { describeRequestFailure, type RequestFailure } from "../../../lib/reques
 import { RecoveryAction } from "../../../components/ui/RequestFailureNotice";
 import { Popover } from "../../../components/ui/Popover";
 import { Compass, X, ChevronDown, Loader2, Settings2 } from "lucide-react";
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 interface PresetSelectorProps {
     className?: string;
 }
@@ -43,6 +43,7 @@ export const PresetSelector: React.FC<PresetSelectorProps> = ({ className }) => 
             setLoading(false);
         }
     }, [dispatch, state.activePresetId, state.activePresetName]);
+    useEffect(() => { if (state.activePresetId) void loadPresets(); }, [state.activePresetId, loadPresets]);
     const handleClear = () => {
         dispatch({ type: 'SET_ACTIVE_PRESET', payload: null });
     };
@@ -65,7 +66,8 @@ export const PresetSelector: React.FC<PresetSelectorProps> = ({ className }) => 
         </div>
       </button>);
     };
-    return (<div className={cn('inline-flex', className)}>
+    return (<div className={cn('inline-flex flex-wrap items-center gap-2', className)}>
+      {notice && <span role="status" className="text-xs text-warning">{notice}</span>}
       <Popover placement="top-start" offset={8} className="rounded-card overflow-hidden" trigger={(p) => {
             const onTriggerClick = () => {
                 if (!p.open)
@@ -97,9 +99,6 @@ export const PresetSelector: React.FC<PresetSelectorProps> = ({ className }) => 
                   <p className="mt-1 break-words text-[11px] leading-relaxed text-ink-secondary">{loadError.message}</p>
                   <RecoveryAction failure={loadError} onRetry={() => void loadPresets()} className="mt-3"/>
                 </div>) : (<>
-                  {notice && (<div className="border-b border-stroke/60 px-3 py-2">
-                      <p className="text-[11px] leading-relaxed text-warning">{notice}</p>
-                    </div>)}
                   {state.activePresetId && activePreset && (<div className="px-3 py-2 border-b border-stroke/60">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-ink-secondary font-medium uppercase tracking-wide">

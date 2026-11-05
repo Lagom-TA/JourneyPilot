@@ -1,14 +1,14 @@
 import { usePresetLibrary } from "../hooks/usePresetLibrary";
 import { deletePreset } from "../api/presets";
-import { m } from "motion/react";
 import { Plus } from "lucide-react";
-import { Chip } from "../../../components/ui/Chip";
 import { useApp } from "../../../app/state/AppContext";
 import { PresetCard } from "../components/PresetCard";
 import { PresetCreator } from "../components/PresetCreator";
 import { Button } from "../../../components/ui/Button";
 import { PageShell, type SurfaceState } from "../../../components/ui/PageShell";
-import { staggerContainer } from "../../../lib/motion";
+import { PreferenceSectionNav } from "../../../app/components/PreferenceSectionNav";
+import { useStartNewTrip } from "../../../app/session/useStartNewTrip";
+import { describeRequestFailure } from "../../../lib/requestFailureMessage";
 import { type TravelPreset } from "../types/preset";
 import React, { useState, useCallback } from 'react';
 type FilterTab = 'all' | 'mine' | 'preset';
@@ -18,10 +18,13 @@ const FILTER_TABS: Array<{
 }> = [
     { id: 'all', label: '全部' },
     { id: 'mine', label: '我的' },
-    { id: 'preset', label: '官方' },
+    { id: 'preset', label: '内置' },
 ];
 export const PresetLibraryPage: React.FC = () => {
     const { state, dispatch } = useApp();
+    const startNewTrip = useStartNewTrip();
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [deleteError, setDeleteError] = useState<{ id: string; message: string } | null>(null);
     const [search, setSearch] = useState('');
     const [filter, setFilter] = useState<FilterTab>('all');
     const [showCreator, setShowCreator] = useState(false);
@@ -49,14 +52,17 @@ export const PresetLibraryPage: React.FC = () => {
                 type: 'SET_ACTIVE_PRESET',
                 payload: { id: preset.id, name: preset.name },
             });
-            dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'chat' });
+            startNewTrip();
         }
-    }, [state.activePresetId, dispatch]);
+    }, [state.activePresetId, dispatch, startNewTrip]);
     const handleEdit = useCallback((preset: TravelPreset) => {
         setEditingPreset(preset);
         setShowCreator(true);
     }, []);
     const handleDelete = useCallback(async (preset: TravelPreset) => {
+        if (deletingId) return;
+        setDeletingId(preset.id);
+        setDeleteError(null);
         try {
             await deletePreset(preset.id);
             if (state.activePresetId === preset.id) {
@@ -64,10 +70,11 @@ export const PresetLibraryPage: React.FC = () => {
             }
             await loadPresets();
         }
-        catch {
-            await loadPresets();
+        catch (err) {
+            setDeleteError({ id: preset.id, message: describeRequestFailure(err, '删除', '这个旅行风格').message });
         }
-    }, [state.activePresetId, dispatch, loadPresets]);
+        finally { setDeletingId(null); }
+    }, [state.activePresetId, dispatch, loadPresets, deletingId]);
     const handleCreatorClose = useCallback(() => {
         setShowCreator(false);
         setEditingPreset(null);
@@ -97,21 +104,21 @@ export const PresetLibraryPage: React.FC = () => {
                     }
                     : { kind: 'ready' };
     return (<>
-      <PageShell title="旅行风格" purpose="选一个，规划时按它的口味安排" readout={presets.length > 0 ? `${presets.length} 个` : undefined} actions={<Button variant="primary" size="sm" onClick={() => {
+      <PageShell title="旅行风格" navigation={<PreferenceSectionNav />} readout={presets.length > 0 ? `${presets.length} 个` : undefined} actions={<Button variant="primary" size="sm" onClick={() => {
                 setEditingPreset(null);
                 setShowCreator(true);
             }}>
             <Plus size={14}/>
             创建风格
-          </Button>} search={{ value: search, onChange: setSearch, placeholder: '搜索旅行风格...' }} tabs={<div className="flex flex-wrap gap-2">
-            {FILTER_TABS.map((tab) => (<Chip key={tab.id} selected={filter === tab.id} onClick={() => setFilter(tab.id)}>
+          </Button>} search={{ value: search, onChange: setSearch, placeholder: '搜索旅行风格' }} tabs={<>
+            {FILTER_TABS.map((tab) => (<button type="button" key={tab.id} aria-pressed={filter === tab.id} onClick={() => setFilter(tab.id)}>
                 {tab.label}
-              </Chip>))}
-          </div>} state={surfaceState}>
+              </button>))}
+          </>} state={surfaceState}>
 
-        <m.div variants={staggerContainer(filteredPresets.length)} initial="hidden" animate="visible" className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {filteredPresets.map((preset) => (<PresetCard key={preset.id} preset={preset} isActive={state.activePresetId === preset.id} onActivate={handleActivate} onEdit={handleEdit} onDelete={handleDelete}/>))}
-        </m.div>
+        <div className="preset-library-grid">
+          {filteredPresets.map((preset) => (<PresetCard key={preset.id} preset={preset} isActive={state.activePresetId === preset.id} onActivate={handleActivate} onEdit={handleEdit} onDelete={handleDelete} deleting={deletingId === preset.id} deleteError={deleteError?.id === preset.id ? deleteError.message : undefined}/>))}
+        </div>
       </PageShell>
 
       {showCreator && <PresetCreator preset={editingPreset} onClose={handleCreatorClose}/>}

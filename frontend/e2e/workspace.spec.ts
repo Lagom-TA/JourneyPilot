@@ -13,7 +13,7 @@ test('顶部导航、浏览器后退与刷新恢复', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '旅行风格', exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole('heading', { name: '旅行风格', exact: true })).toBeVisible();
-  await page.getByPlaceholder('搜索旅行风格...').fill('no-such-preset-e2e');
+  await page.getByPlaceholder('搜索旅行风格').fill('no-such-preset-e2e');
   await expect(page.getByText('没有找到匹配的旅行风格', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -34,16 +34,18 @@ test('真实资料库：上传、读取、修改、刷新、删除自己的测�
     const row = page.getByTestId(`knowledge-source-row-${name}`);
     await row.click({ timeout: 90_000 });
     const body = page.getByRole('textbox', { name: '资料正文' });
+    await expect(page.locator('.knowledge-document-content')).toHaveText(content);
+    await page.getByRole('button', { name: '编辑正文', exact: true }).click();
     await expect(body).toHaveValue(content);
     await body.fill(revised);
-    await page.getByRole('button', { name: '保存', exact: true }).click();
-    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 60_000 });
+    await page.getByRole('button', { name: '保存正文', exact: true }).click();
+    await expect(page.locator('.knowledge-document')).not.toBeVisible({ timeout: 60_000 });
     await page.reload();
     await row.click();
-    await expect(body).toHaveValue(revised);
+    await expect(page.locator('.knowledge-document-content')).toHaveText(revised);
     await page.getByRole('button', { name: '删除这篇', exact: true }).click();
-    await page.getByRole('button', { name: '删除', exact: true }).click();
-    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await page.getByRole('button', { name: '确认删除', exact: true }).click();
+    await expect(page.locator('.knowledge-document')).not.toBeVisible();
     await expect(row).toHaveCount(0);
     expect((await request.get(sourceURL)).status()).toBe(404);
   } finally {
@@ -83,7 +85,7 @@ test('真实旅行风格：创建、刷新、编辑、删除自己的测试风�
     await page.getByRole('button', { name: '保存修改', exact: true }).click();
     await expect(card).toContainText(`${name}-edited`);
     await card.getByRole('button', { name: '删除这个风格' }).click();
-    await card.getByRole('button', { name: '删除', exact: true }).click();
+    await card.getByRole('button', { name: '确认删除', exact: true }).click();
     await expect(card).toHaveCount(0);
   } finally {
     if (presetId) {

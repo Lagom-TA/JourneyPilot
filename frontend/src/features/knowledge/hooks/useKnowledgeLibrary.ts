@@ -1,10 +1,14 @@
-import { getKnowledgeCollectionStats, getKnowledgeSource, updateKnowledgeSource, deleteKnowledgeSource, knowledgeUploadFile, knowledgeIndex, knowledgeDeleteCollection } from "../api/knowledge";
+import { getKnowledgeUploadLimit, getKnowledgeCollectionStats, getKnowledgeSource, updateKnowledgeSource, deleteKnowledgeSource, knowledgeUploadFile, knowledgeIndex, knowledgeDeleteCollection } from "../api/knowledge";
 import { describeRequestFailure, type RequestFailure } from "../../../lib/requestFailureMessage";
 import { describeKnowledgeIngestFailure, describeKnowledgeSourceFailure } from "../model/knowledgeIngestFailure";
 import { type KnowledgeCollectionStats, type KnowledgeSourceDocument } from "../types/knowledge";
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 const DEFAULT_COLLECTION = 'travel_knowledge';
 export function useKnowledgeLibrary(manualContent: string, setManualContent: (content: string) => void, setShowAddModal: (open: boolean) => void, setShowDeleteModal: (open: boolean) => void) {
+    const [uploadLimit, setUploadLimit] = useState<number | null>(null);
+    const [limitError, setLimitError] = useState<RequestFailure | null>(null);
+    const [manualError, setManualError] = useState<string | null>(null);
+    const [documentVersion, setDocumentVersion] = useState(0);
     const [stats, setStats] = useState<KnowledgeCollectionStats | null>(null);
     const [loadingStats, setLoadingStats] = useState(true);
     const [loadError, setLoadError] = useState<RequestFailure | null>(null);
@@ -43,6 +47,15 @@ export function useKnowledgeLibrary(manualContent: string, setManualContent: (co
                 setLoadingStats(false);
         }
     }, []);
+    const loadUploadLimit = useCallback(async () => {
+        try {
+            setUploadLimit(await getKnowledgeUploadLimit());
+            setLimitError(null);
+        } catch (error) {
+            setLimitError(describeRequestFailure(error, '读取', '上传限制'));
+        }
+    }, []);
+    useEffect(() => { void loadUploadLimit(); }, [loadUploadLimit]);
     useEffect(() => {
         void loadStats();
         return () => {
@@ -74,7 +87,7 @@ export function useKnowledgeLibrary(manualContent: string, setManualContent: (co
                     setLoadingDocument(false);
             }
         })();
-    }, [openSource]);
+    }, [openSource, documentVersion]);
     const setStatus = (message: string, tone: 'ok' | 'error') => {
         setStatusTone(tone);
         setStatusMessage(message);
@@ -92,8 +105,8 @@ export function useKnowledgeLibrary(manualContent: string, setManualContent: (co
             return;
         setIsSaving(true);
         try {
-            const result = await updateKnowledgeSource(DEFAULT_COLLECTION, openSource, draft);
-            setStatus(`已保存「${openSource}」，重新整理成 ${result.chunks_indexed} 段资料。`, 'ok');
+            await updateKnowledgeSource(DEFAULT_COLLECTION, openSource, draft);
+            setStatus('资料已保存，后续规划将参考新正文。', 'ok');
             closeSource();
             await loadStats();
         }
@@ -109,8 +122,8 @@ export function useKnowledgeLibrary(manualContent: string, setManualContent: (co
             return;
         setIsDeletingSource(true);
         try {
-            const result = await deleteKnowledgeSource(DEFAULT_COLLECTION, openSource);
-            setStatus(`已删除「${openSource}」，原有 ${result.deleted_chunks} 段资料。`, 'ok');
+            await deleteKnowledgeSource(DEFAULT_COLLECTION, openSource);
+            setStatus('这份资料已删除。', 'ok');
             closeSource();
             await loadStats();
         }
@@ -123,12 +136,21 @@ export function useKnowledgeLibrary(manualContent: string, setManualContent: (co
     };
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (!file || isUploading)
+        if (!file || isUploading || isDeleting || !uploadLimit) return;
+        if (file.size > uploadLimit) {
+            setStatus('文件超过大小限制，请换一份较小的文件。', 'error');
+            e.target.value = '';
             return;
+        }
+        if (!/\.(txt|md|pdf|docx)$/i.test(file.name)) {
+            setStatus('请选择 TXT、Markdown、PDF 或 DOCX 文件。', 'error');
+            e.target.value = '';
+            return;
+        }
         setIsUploading(true);
         try {
-            const result = await knowledgeUploadFile(file, DEFAULT_COLLECTION);
-            setStatus(`已把「${file.name}」加入资料库，整理成 ${result.chunks_indexed} 段资料。`, 'ok');
+            await knowledgeUploadFile(file, DEFAULT_COLLECTION);
+            setStatus(`「${file.name}」已加入资料库。`, 'ok');
             await loadStats();
         }
         catch (error) {
@@ -143,15 +165,16 @@ export function useKnowledgeLibrary(manualContent: string, setManualContent: (co
         if (!manualContent.trim() || isIndexing)
             return;
         setIsIndexing(true);
+        setManualError(null);
         try {
-            const result = await knowledgeIndex(manualContent, DEFAULT_COLLECTION);
+            await knowledgeIndex(manualContent, DEFAULT_COLLECTION);
             setManualContent('');
             setShowAddModal(false);
-            setStatus(`已添加到资料库，整理成 ${result.chunks_indexed} 段资料。`, 'ok');
+            setStatus('文本已加入资料库。', 'ok');
             await loadStats();
         }
         catch (error) {
-            setStatus(describeKnowledgeIngestFailure(error, '添加').message, 'error');
+            setManualError(describeKnowledgeIngestFailure(error, '添加').message);
         }
         finally {
             setIsIndexing(false);
@@ -175,5 +198,5 @@ export function useKnowledgeLibrary(manualContent: string, setManualContent: (co
             setIsDeleting(false);
         }
     };
-    return { stats, loadingStats, loadError, isUploading, isIndexing, isDeleting, statusMessage, setStatusMessage, statusTone, openSource, setOpenSource, sourceDocument, draft, setDraft, loadingDocument, documentError, isSaving, isDeletingSource, loadStats, closeSource, handleSaveSource, handleDeleteSource, handleFileUpload, handleManualIndex, handleDeleteCollection };
+    return { retryDocument: () => setDocumentVersion(value => value + 1), uploadLimit, limitError, loadUploadLimit, manualError, setManualError, stats, loadingStats, loadError, isUploading, isIndexing, isDeleting, statusMessage, setStatusMessage, statusTone, openSource, setOpenSource, sourceDocument, draft, setDraft, loadingDocument, documentError, isSaving, isDeletingSource, loadStats, closeSource, handleSaveSource, handleDeleteSource, handleFileUpload, handleManualIndex, handleDeleteCollection };
 }

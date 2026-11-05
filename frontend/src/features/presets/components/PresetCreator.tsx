@@ -44,7 +44,7 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
     const [aiError, setAiError] = useState<string | null>(null);
     const [showAiChat, setShowAiChat] = useState(false);
     const [focusAreas, setFocusAreas] = useState<Set<string>>(new Set(preset?.constraints?.focus_areas || []));
-    const steps = ['基本信息', '核心指令', '约束条件', '预览'];
+    const steps = ['基本信息', '规划方式', '约束条件', '预览'];
     const canNext = () => {
         if (step === 0)
             return name.trim().length > 0;
@@ -141,20 +141,14 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
             setSaving(false);
         }
     }, [saving, isEdit, preset, name, description, icon, category, instructions, constraints, focusAreas, onClose]);
-    return (<Modal open onClose={onClose} title={isEdit ? '编辑旅行风格' : '创建旅行风格'} maxWidth="max-w-2xl">
+    return (<Modal open onClose={() => { if (!saving && !aiLoading) onClose(); }} title={isEdit ? '编辑旅行风格' : '创建旅行风格'} maxWidth="max-w-3xl">
       <div className="-mx-6 -mb-6 flex max-h-[min(80vh,780px)] flex-col overflow-hidden">
 
         <div className="px-6 py-3 border-b border-stroke">
-          <div className="flex items-center gap-2">
-            {steps.map((s, i) => (<React.Fragment key={i}>
-                <button onClick={() => i <= step && setStep(i)} className={cn('flex items-center gap-1.5 text-xs font-medium transition-colors', i === step ? 'text-accent' : i < step ? 'text-ink-secondary' : 'text-ink-muted')}>
-                  <span className={cn('w-5 h-5 rounded-full flex items-center justify-center text-[11px] font-bold', i === step ? 'bg-accent text-white' : i < step ? 'bg-accent/20 text-accent' : 'bg-ink/10 text-ink-muted')}>
-                    {i + 1}
-                  </span>
-                  {s}
-                </button>
-                {i < steps.length - 1 && (<div className={cn('flex-1 h-px', i < step ? 'bg-accent' : 'bg-stroke')}/>)}
-              </React.Fragment>))}
+          <div className="preset-creator-steps" aria-label="创建步骤">
+            {steps.map((label, index) => <button key={label} type="button" disabled={index > step || saving || aiLoading} aria-current={index === step ? 'step' : undefined} onClick={() => setStep(index)} className={index === step ? 'text-accent' : 'text-ink-secondary'}>
+              <span>{index + 1}</span><span>{label}</span>
+            </button>)}
           </div>
         </div>
 
@@ -196,7 +190,7 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
           {step === 1 && (<div className="space-y-4">
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label htmlFor="preset-instructions" className="text-xs font-medium text-ink-secondary">核心指令</label>
+                  <label htmlFor="preset-instructions" className="text-xs font-medium text-ink-secondary">规划方式</label>
                   <button type="button" onClick={() => setShowAiChat(!showAiChat)} className={cn('flex items-center gap-1 px-2 py-1 rounded-card text-xs font-medium transition-colors duration-base', showAiChat
                 ? 'bg-accent-soft text-accent'
                 : 'bg-accent-soft/70 text-accent hover:bg-accent-soft')}>
@@ -211,13 +205,13 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
                   <div className="flex gap-2">
                     <textarea aria-label="AI 辅助描述" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="例如：我想要一个帮我规划日本深度文化体验的风格，重点关注寺庙、茶道和传统手工艺" rows={3} className={cn('flex-1 rounded-card border border-accent/15 bg-surface px-3 py-2', 'text-sm text-ink placeholder:text-ink-muted leading-relaxed', 'resize-none')}/>
                   </div>
-                  {aiError && (<p className="mt-2 text-xs leading-relaxed text-error">{aiError}</p>)}
+                  {aiError && (<p role="alert" className="mt-2 text-xs leading-relaxed text-error">{aiError}</p>)}
                   <div className="flex justify-end mt-2">
                     <button type="button" onClick={handleAiGenerate} disabled={!aiPrompt.trim() || aiLoading} className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-card text-xs font-medium', 'transition-[color,background-color,opacity] duration-base ease-standard', aiPrompt.trim() && !aiLoading
                     ? 'bg-accent text-white hover:bg-accent-hover shadow-sm'
                     : 'bg-ink/5 text-ink-muted cursor-not-allowed')}>
                       {aiLoading ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>}
-                      {aiLoading ? '生成中…' : '生成指令'}
+                      {aiLoading ? '生成中…' : '生成规划方式'}
                     </button>
                   </div>
                 </div>)}
@@ -255,17 +249,17 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
             </div>)}
 
           {step === 3 && (<div className="space-y-4">
-              <div className="rounded-card border border-stroke bg-panel p-4 shadow-sm">
+              <div className="py-2">
                 <div className="flex items-center gap-2 mb-3">
 
                   <span className="flex items-center">{getPresetIcon(icon, 18)}</span>
                   <h3 className="text-sm font-bold text-ink">{name || '未命名旅行风格'}</h3>
                 </div>
                 {description && <p className="text-xs text-ink-secondary mb-3">{description}</p>}
-                <div className="text-xs text-ink-secondary mb-2 font-medium">核心指令：</div>
-                <pre className="text-xs text-ink leading-relaxed whitespace-pre-wrap bg-ink/[0.03] rounded-card p-3 max-h-[200px] overflow-y-auto">
+                <div className="text-xs text-ink-secondary mb-2 font-medium">规划方式：</div>
+                <p className="text-sm text-ink leading-relaxed whitespace-pre-wrap">
                   {instructions || '无'}
-                </pre>
+                </p>
                 {focusAreas.size > 0 && (<div className="flex flex-wrap gap-1 mt-3">
                     {Array.from(focusAreas).map((area) => (<span key={area} className="text-[11px] px-1.5 py-0.5 rounded-label bg-accent/10 text-accent">
                         {area}
@@ -277,7 +271,7 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
 
 
         {saveError && (<div className="mx-6 mt-3 rounded-card border border-error/25 bg-error/[0.06] px-3 py-2">
-            <p className="text-xs leading-relaxed text-error">{saveError}</p>
+            <p role="alert" className="text-xs leading-relaxed text-error">{saveError}</p>
           </div>)}
         <div className="flex items-center justify-between px-6 py-4 border-t border-stroke">
           <div>
@@ -287,7 +281,7 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
               </button>)}
           </div>
           <div className="flex items-center gap-2">
-            {step < 3 ? (<Button variant="primary" size="sm" onClick={() => setStep(step + 1)} disabled={!canNext()} className="flex items-center gap-1">
+            {step < 3 ? (<Button variant="primary" size="sm" onClick={() => setStep(step + 1)} disabled={!canNext() || saving || aiLoading} className="flex items-center gap-1">
                 下一步
                 <ChevronRight size={14}/>
               </Button>) : (<Button variant="primary" size="sm" onClick={handleSave} disabled={saving || !name.trim() || !instructions.trim()} className="flex items-center gap-1.5">

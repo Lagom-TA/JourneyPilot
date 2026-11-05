@@ -30,5 +30,6 @@ def public_config_payload(settings: Any) -> Dict[str, Any]:
             "top_k": settings.rag.top_k,
             "embedding_model": settings.embedding.model_name,
         },
+        "ingest": {"max_upload_bytes": settings.ingest.max_upload_bytes},
         "env": settings.env,
     }

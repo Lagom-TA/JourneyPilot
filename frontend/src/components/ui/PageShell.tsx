@@ -1,12 +1,9 @@
 import React from 'react';
 import { Search } from 'lucide-react';
-import { m } from 'motion/react';
-import { cn } from '../../lib/utils';
 import { ChartMark, type ChartMarkName } from './ChartMark';
 import { Input } from './Input';
 import { RequestFailureNotice } from './RequestFailureNotice';
 import { Skeleton } from './Skeleton';
-import { staggerContainer, staggerItem } from '../../lib/motion';
 import { type RequestFailure } from '../../lib/requestFailureMessage';
 
 
@@ -22,6 +19,7 @@ interface PageShellProps {
   purpose?: string;
   readout?: React.ReactNode;
   actions?: React.ReactNode;
+  navigation?: React.ReactNode;
   search?: {
     value: string;
     onChange: (value: string) => void;
@@ -32,76 +30,38 @@ interface PageShellProps {
   children?: React.ReactNode;
 }
 
-export const PAGE_COLUMN = 'mx-auto w-full max-w-5xl';
-
-export const PAGE_GUTTER = 'px-6';
-
 export const PageShell: React.FC<PageShellProps> = ({
   title,
   purpose,
   readout,
   actions,
+  navigation,
   search,
   tabs,
   state,
   children,
 }) => {
-  const steps = 2 + (search ? 1 : 0) + (tabs ? 1 : 0);
-
   return (
-    <m.div
-      className="flex h-full flex-col overflow-hidden"
-      variants={staggerContainer(steps)}
-      initial="hidden"
-      animate="visible"
-    >
-      <div className={cn('flex-shrink-0 pb-4 pt-6', PAGE_GUTTER)}>
-        <div className={PAGE_COLUMN}>
-          <m.div
-            variants={staggerItem}
-            className="flex min-w-0 flex-wrap items-start justify-between gap-3"
-          >
-            <div className="min-w-0">
-              <h1 className="font-display text-[32px] font-semibold leading-tight tracking-[-0.025em] text-ink">{title}</h1>
-              {purpose && <p className="mt-1.5 text-[13px] text-ink-secondary">{purpose}</p>}
-            </div>
-            <div className="flex flex-shrink-0 items-center gap-3">
-              {/* 混合中文读数不加拉丁标签字距，避免量词间距被拉宽。 */}
-              {readout && <span className="text-[11px] tabular-nums text-ink-muted">{readout}</span>}
-              {actions}
-            </div>
-          </m.div>
-
-          {search && (
-            <m.div variants={staggerItem} className="mt-4">
-              <Input
-                value={search.value}
-                onChange={(event) => search.onChange(event.target.value)}
-                placeholder={search.placeholder}
-                aria-label={search.placeholder}
-                icon={<Search size={15} />}
-              />
-            </m.div>
-          )}
-
-          {tabs && (
-            <m.div variants={staggerItem} className="mt-3">
-              {tabs}
-            </m.div>
-          )}
+    <div className="archive-page">
+      <div className="archive-layout">
+        <header className="archive-rail">
+          <h1 className="archive-title" aria-label={title}>
+            <span>{title.slice(0, 2)}</span><span>{title.slice(2)}</span>
+          </h1>
+          {purpose && <p className="archive-note">{purpose}</p>}
+          {navigation}
+          {actions && <div className="archive-actions">{actions}</div>}
+        </header>
+        <div className="archive-content">
+          {(search || readout) && <div className="archive-toolbar">
+            {search && <Input value={search.value} onChange={(event) => search.onChange(event.target.value)} placeholder={search.placeholder} aria-label={search.placeholder} icon={<Search size={16} />} />}
+            {readout && <span className="archive-readout">{readout}</span>}
+          </div>}
+          {tabs && <div className="archive-tabs">{tabs}</div>}
+          <SurfaceBody state={state}>{children}</SurfaceBody>
         </div>
       </div>
-
-      <div className={cn('flex flex-1 flex-col overflow-y-auto pb-6', PAGE_GUTTER)}>
-        <m.div variants={staggerItem} className={cn('flex flex-1 flex-col', PAGE_COLUMN)}>
-          <div className="relative flex flex-1 flex-col rounded-panel border border-stroke bg-panel px-5 py-6 sm:px-7 sm:py-7">
-            <div className="relative z-[1] flex flex-1 flex-col">
-              <SurfaceBody state={state}>{children}</SurfaceBody>
-            </div>
-          </div>
-        </m.div>
-      </div>
-    </m.div>
+    </div>
   );
 };
 
@@ -132,7 +92,7 @@ const SurfaceBody: React.FC<{
 
     case 'search-miss':
       return (
-        <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
+        <div className="archive-empty">
           <p className="text-base text-ink-secondary">{state.line}</p>
           {state.hint && <p className="mt-1.5 text-xs text-ink-muted">{state.hint}</p>}
         </div>
@@ -140,7 +100,7 @@ const SurfaceBody: React.FC<{
 
     case 'empty':
       return (
-        <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
+        <div className="archive-empty">
           {state.mark && <ChartMark mark={state.mark} size={104} className="mb-5" />}
           <p className="text-base text-ink">{state.line}</p>
           {state.hint && <p className="mt-1.5 text-xs text-ink-secondary">{state.hint}</p>}

@@ -209,7 +209,7 @@ async function selectSession(page: Page, id: string) {
   if (await mobile.isVisible()) await mobile.click();
   await page.getByRole('link', { name: '我的行程', exact: true }).click();
   const card = page.getByTestId(`trip-card-${id}`);
-  await card.getByRole('button', { name: /打开对话|打开当前行程|继续这趟旅行/ }).click();
+  await card.getByRole('button', { name: /查看对话|查看行程|继续规划|查看进度|查看记录/ }).click();
 }
 async function assertOffline(page: Page, fixture: Awaited<ReturnType<typeof offlineApp>>) {
   expect(fixture.pageErrors).toEqual([]); expect(fixture.escapes).toEqual([]);
@@ -2512,9 +2512,10 @@ test('confirm action returns focus after cancellation', async ({ page }) => {
   const trigger = row.locator('[data-confirm-action] > button');
   await trigger.focus();
   await trigger.press('Enter');
-  await expect(row.getByRole('button', { name: '删除', exact: true })).toBeFocused();
+  await expect(row.getByRole('button', { name: '确认删除', exact: true })).toBeFocused();
   await row.getByRole('button', { name: '取消', exact: true }).click();
   await expect(trigger).toBeFocused();
+  await page.getByText('记忆如何使用与管理', { exact: true }).click();
   const deleteAll = page.getByTestId('memory-delete-all');
   await deleteAll.click();
   const dialog = page.getByRole('dialog', { name: '删除全部记忆？' });

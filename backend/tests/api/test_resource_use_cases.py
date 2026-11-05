@@ -136,11 +136,13 @@ async def test_runtime_config_error_mapping_preserves_update_before_failure(
 
 async def test_public_config_never_exposes_model_keys(client, configured):
     configured.primary_model.api_key = "fixture-primary"
+    configured.ingest.max_upload_bytes = 2 * 1024 * 1024
     async with client:
         response = await client.get("/api/config")
     assert response.status_code == 200
     assert response.json()["primary_model"]["api_key_set"] is True
     assert response.json()["fast_model"]["api_key_set"] is False
+    assert response.json()["ingest"]["max_upload_bytes"] == 2 * 1024 * 1024
     assert "fixture-primary" not in response.text
     assert '"api_key"' not in response.text
 

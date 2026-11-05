@@ -4,6 +4,7 @@ import './index.css';
 import './styles/home.css';
 import './styles/layout.css';
 import './styles/trips.css';
+import './styles/archive.css';
 import './styles/workspace.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<App />);

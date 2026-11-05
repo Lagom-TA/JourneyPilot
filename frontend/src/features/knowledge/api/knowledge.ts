@@ -44,3 +44,8 @@ export async function deleteKnowledgeSource(collection: string, source: string):
 export async function getKnowledgeCollectionStats(collection: string): Promise<KnowledgeCollectionStats> {
     return fetchJson<KnowledgeCollectionStats>(`/knowledge/collections/${encodeURIComponent(collection)}/stats`);
 }
+
+export async function getKnowledgeUploadLimit(): Promise<number> {
+    const result = await fetchJson<{ ingest: { max_upload_bytes: number } }>('/config');
+    return result.ingest.max_upload_bytes;
+}
