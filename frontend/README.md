@@ -18,12 +18,16 @@ JourneyPilot 的旅行工作台前端：React 18 + TypeScript + Vite + Tailwind 
 - 正式交付只接受完整 `DeliveryBundle`，过程事件可以流式；报告、行程、地图、来源与天气来自同一份交付记录。
 - 交付以地图画幅呈现全程，城市导航按连续停留段分组，单日展开为日程与地图对页；地图保持挂载并按上下文保留视野。手机日程面板为非模态的两档面板，可通过手柄点击或拖动切换，地图按半屏可见区域避让。未安排事项按天关联，资料缺口与事实来源按需展开。
 
+## 行程与个人资料
+
+`PageShell` 与 `styles/archive.css` 组织开放档案页，页面统一滚动；偏好分类在桌面标题下与手机标题后显示。行程按会话收拢生成记录，当前与历史共用正式会话恢复边界。选择旅行风格通过 `useStartNewTrip` 新建旅行；首页只在有选择或失效提示时显示风格上下文。资料正文默认只读，编辑与取消明确分开，保存失败保留草稿。文件上限来自 `/api/config` 的 `ingest.max_upload_bytes`，上传仍由服务端最终校验。
+
 ## 样式与视口
 
-- `src/index.css` 定义全局 token、基础样式和共享过程样式；`src/styles/` 按首页、应用壳、行程列表与工作台分文件，由 `src/main.tsx` 按顺序加载。全局组件和复杂布局使用语义类，组件内部的简单排列使用 Tailwind 工具类。
+- `src/index.css` 定义全局 token、基础样式和共享过程样式；`src/styles/` 按首页、应用壳、开放档案、行程列表与工作台分文件，由 `src/main.tsx` 按顺序加载。全局组件和复杂布局使用语义类，组件内部的简单排列使用 Tailwind 工具类。
 - 颜色、圆角、阴影、CSS 动效和全局层级使用 `src/index.css` 的 token；Motion 使用 `src/lib/motion.ts` 中的秒制时长与缓动，交通方式颜色集中在 `src/features/travel/model/transportPresentation.ts`。
 - `breakpoints.json` 定义 Tailwind 与 JS 共用的 `sm` 640、`md` 768、`lg` 1024、`xl` 1280 和 `2xl` 1536 像素断点。CSS 媒体查询使用相同边界；480、1440、1800 像素和高度 760 像素是局部布局的补充条件。
-- 字体通过 Fontsource 本地加载：Inter 处理拉丁字符，Noto Sans SC 处理中文正文；标题优先使用本地 14 字子集，缺失字符回退到完整的 Noto Serif SC，最后回退系统字体。字体使用 `font-display: swap`。
+- 字体通过 Fontsource 本地加载：Inter 处理拉丁字符，Noto Sans SC 处理中文正文；档案页和主要交付标题使用 Noto Sans SC 粗体；衬线标题优先使用本地 14 字子集，缺失字符回退到完整的 Noto Serif SC，最后回退系统字体。字体使用 `font-display: swap`。
 
 全局层级以同一层叠上下文内的数值为准；组件内部的 0–50 只控制局部层叠。
 
