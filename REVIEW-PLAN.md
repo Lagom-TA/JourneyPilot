@@ -27,7 +27,7 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 
 ## 进度总览
 
-**进度**：后端逻辑 6/6 · 前端页面 2/6 · 文字内容 0/3 · [待决事项](review-plan/decisions.md) 0 项
+**进度**：后端逻辑 6/6 · 前端页面 3/6 · 文字内容 0/3 · [待决事项](review-plan/decisions.md) 0 项
 
 状态：⬜ 未开始 · 🔍 审查中 · 🔧 修复中 · ✅ 已完成 · ↩️ 需复核 · ⏸️ 搁置
 
@@ -42,13 +42,13 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 | B6 | [数据、配置与工程发布](review-plan/stages/B6-data-config-release.md) | `后端逻辑` | B1 | ✅ | Codex | 0 | 2026-11-04 / 8d994d8、9d9a185、3a61d1c、ac523de |
 | F1 | [前端结构、状态与样式体系](review-plan/stages/F1-frontend-foundation.md) | `前端页面` | S0、B4 | ✅ | Codex（采集 / 修复） | 0 | 2026-11-04 / 38bd919、286d9e8 |
 | F2 | [首页与需求输入](review-plan/stages/F2-home-input.md) | `前端页面` | F1 | ✅ | Codex（采集 / 修复） / GPT 6.1 Terra（分析） | 0 | 2026-11-05 / 669f83a、627f341 |
-| F3 | [生成工作台](review-plan/stages/F3-generation-workspace.md) | `前端页面` | F1、B2、B4 | ⬜ | | 9 | |
-| F4 | [交付工作台](review-plan/stages/F4-delivery-workspace.md) | `前端页面` | F1、B3 | ⬜ | | 8 | |
+| F3 | [生成工作台](review-plan/stages/F3-generation-workspace.md) | `前端页面` | F1、B2、B4 | ✅ | Codex（采集 / 修复） / GPT 6.1 Terra（分析） | 0 | 2026-11-05 / e48c3fc |
+| F4 | [交付工作台](review-plan/stages/F4-delivery-workspace.md) | `前端页面` | F1、B3 | ⬜ | | 9 | |
 | F5 | [我的行程与偏好资料](review-plan/stages/F5-trips-preferences.md) | `前端页面` | F1、B5 | ⬜ | | 5 | |
-| F6 | [动效与交互](review-plan/stages/F6-motion-a11y.md) | `前端页面` | F2–F5 | ⬜ | | 2 | |
-| T1 | [界面文案](review-plan/stages/T1-ui-copy.md) | `文字内容` | F1 | ⬜ | | 5 | |
+| F6 | [动效与交互](review-plan/stages/F6-motion-a11y.md) | `前端页面` | F2–F5 | ⬜ | | 3 | |
+| T1 | [界面文案](review-plan/stages/T1-ui-copy.md) | `文字内容` | F1 | ⬜ | | 6 | |
 | T2 | [提示词与模型产出](review-plan/stages/T2-prompts-outputs.md) | `文字内容` | B2、B3 | ⬜ | | 5 | |
-| T3 | [文档与开源门面](review-plan/stages/T3-docs-showcase.md) | `文字内容` | 其余全部 | ⬜ | | 8 | |
+| T3 | [文档与开源门面](review-plan/stages/T3-docs-showcase.md) | `文字内容` | 其余全部 | ⬜ | | 9 | |
 
 三类标签可以并行推进；同一标签内按编号顺序进行；前置阶段完成后才能开始。状态只在这张表里维护。
 
