@@ -49,22 +49,22 @@ _EXTRACTION_SYSTEM_PROMPT = """你负责维护用户的长期记忆。结合当�
       "category": "trip_plan 或 preference 或 constraint 或 feedback",
       "importance": 1到10的整数,
       "user_evidence": "支撑修改的本轮用户原话片段，可为空",
-      "management_revision": "支撑修改的手动操作 revision，可为空"
+      "management_revision": 支撑修改的手动操作 revision（整数），没有则为 null
     }
   ],
   "delete_facts": [
-    {"fact_id": "要移除的当前事实 ID", "user_evidence": "用户原话片段", "management_revision": null}
+    {"fact_id": "要移除的当前事实 ID", "user_evidence": "用户原话片段", "management_revision": 整数或 null}
   ],
   "portrait": [
     {
       "trait": "有事实支持的持久性用户特征",
       "dimension": "lifestyle 或 budget_class 或 travel_style 或 personality 或 family 或 constraint",
-      "supporting_fact_indexes": ["支撑该画像的 facts 数组下标"],
+      "supporting_fact_indexes": [支撑该画像的 facts 数组下标，整数],
       "supporting_fact_ids": ["支撑该画像的已有事实 ID"]
     }
   ],
   "delete_portrait": [
-    {"relation_id": "要移除的当前画像关系 ID", "user_evidence": "用户原话片段", "management_revision": null}
+    {"relation_id": "要移除的当前画像关系 ID", "user_evidence": "用户原话片段", "management_revision": 整数或 null}
   ]
 }
 
@@ -517,14 +517,15 @@ class MemoryExtractor:
         router = get_model_router()
         llm = router.get_fast()
 
+        # 已有记忆在相邻两轮之间大多不变，放前面；本轮消息与版本每次都变，放最后。
         inputs = {
-            "user_message": user_msg,
-            "turn_revision": turn_revision if type(turn_revision) is int else 0,
-            "current_portrait": context.portrait or _PORTRAIT_FALLBACK,
             "current_preferences": context.preferences,
+            "current_portrait": context.portrait or _PORTRAIT_FALLBACK,
             "current_facts": context.facts,
             "current_relations": context.relations,
             "manual_management_history": context.management_history,
+            "turn_revision": turn_revision if type(turn_revision) is int else 0,
+            "user_message": user_msg,
         }
         response = await llm.ainvoke([
             {"role": "system", "content": _EXTRACTION_SYSTEM_PROMPT},

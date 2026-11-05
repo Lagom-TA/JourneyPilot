@@ -16,9 +16,11 @@ from travel_agent.storage.worker_journal_store import JournalConflict
 logger = logging.getLogger(__name__)
 
 
-_SYSTEM_PROMPT = """你是旅行行程的中文文案编辑。根据已安排的行程写总标题和每日主题，每段建议 10 到 15 个字。
-输出一个 JSON 对象：{"title": "总标题", "days": [{"day_id": "对应的 day_id", "theme": "当天主题"}]}。
-days 中的 day_id 与输入中的每一天一一对应。"""
+_SYSTEM_PROMPT = """你是旅行行程的中文文案编辑。根据已安排的行程写总标题和每日主题。
+- 总标题像人给行程起的名字，点出目的地和这趟旅行的气质，8 到 14 个字，不用生僻的地名简称。
+- 每日主题 10 到 15 个字，概括当天最有代表性的一两件事，读起来是一句自然的话，而不是把几个地名连在一起。
+- 只依据输入里已安排的内容，不添加没有安排的地点或承诺。
+输出一个 JSON 对象：{"title": "总标题", "days": [{"day_id": "对应的 day_id", "theme": "当天主题"}]}。days 中的 day_id 与输入中的每一天一一对应。"""
 
 
 def _day_copy_inputs(workspace: TripWorkspace) -> list[dict[str, Any]]:

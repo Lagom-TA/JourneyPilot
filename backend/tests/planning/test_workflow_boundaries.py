@@ -14,6 +14,7 @@ from travel_agent.planning import graph as planning_graph
 from travel_agent.planning.delivery import persistence
 from travel_agent.planning.execution import with_run_control
 from travel_agent.planning.requirements import amendments, entry
+from travel_agent.planning.requirements.understanding.prompts import understanding_system_prompt
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.context import current_run_id, node_lifecycle_sink
 from travel_agent.runtime.run_contracts import TripRunStatus
@@ -83,7 +84,7 @@ async def test_entry_compresses_the_session_without_requiring_identity(
     result = await entry.clarifier_node(state, {"configurable": {"stream_queue": queue}})
     expected = {} if compaction_fails else {"session_compressed": True}
     assert result == expected
-    assert calls == [(state.run_id, queue, entry.SCOPE_CONTEXT_SYSTEM_PROMPT)]
+    assert calls == [(state.run_id, queue, understanding_system_prompt())]
 
 
 async def test_fast_workflow_preserves_update_snapshot_and_lifecycle_order(monkeypatch):

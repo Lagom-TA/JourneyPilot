@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from langchain_core.runnables import RunnableConfig
 
 from travel_agent.conversation.compaction import _check_and_handle_compaction_deep
-from travel_agent.conversation.compaction_prompt import SCOPE_CONTEXT_SYSTEM_PROMPT
+from travel_agent.planning.requirements.understanding.prompts import understanding_system_prompt
 from travel_agent.planning.state import TravelAgentState
 
 if TYPE_CHECKING:
@@ -34,7 +34,7 @@ async def clarifier_node(
         compaction_updates = await _check_and_handle_compaction_deep(
             state,
             stream_queue,
-            SCOPE_CONTEXT_SYSTEM_PROMPT,
+            understanding_system_prompt(),
         )
     except Exception as e:
         logger.warning("Clarifier: 会话大小测量失败，降级为当前请求与会话: %s", e)

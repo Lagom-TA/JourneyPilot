@@ -65,7 +65,7 @@ async def fast_answer_node(
     constraint_pack = await build_run_constraint_pack(state)
     constraint_text = format_constraint_pack_for_prompt(constraint_pack)
 
-    base_system = SYSTEM_PROMPT.format(current_time=current_time)
+    base_system = SYSTEM_PROMPT
     if state.refinement_context:
         base_system += "\n\n当前旅行的已保存安排，回答时以此为依据：\n" + state.refinement_context
     if preset_suffix:
@@ -149,7 +149,9 @@ async def fast_answer_node(
         wire_tail.append({"role": "system", "content": DISCOVERY_OBJECTIVE_INSTRUCTION})
     if realtime_prompt:
         wire_tail.append({"role": "user", "content": realtime_prompt})
-    wire_tail.append({"role": "user", "content": f"用户问题：{user_query}"})
+    wire_tail.append(
+        {"role": "user", "content": f"当前时间：{current_time}\n用户问题：{user_query}"}
+    )
 
     built_ctx = await ctx_builder.build_context(
         session_id=state.session_id or "",

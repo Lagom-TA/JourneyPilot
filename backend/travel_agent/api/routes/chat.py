@@ -12,6 +12,7 @@ from travel_agent.conversation.chat.preparation import (
 )
 from travel_agent.conversation.chat.execution import execute_chat
 from travel_agent.conversation.prompt_optimization import (
+    inferred_preferences_text,
     optimize_travel_prompt,
     prepare_prompt_optimization,
 )
@@ -127,7 +128,14 @@ async def optimize_prompt(request: OptimizePromptRequest):
     if rejection is not None:
         return rejection
     try:
-        return await optimize_travel_prompt(prompt, get_components().model_router)
+        components = get_components()
+        return await optimize_travel_prompt(
+            prompt,
+            components.model_router,
+            inferred_preferences=await inferred_preferences_text(
+                components.user_profile_memory
+            ),
+        )
     except Exception as e:
         logger.error(f"提示词优化失败: {e}", exc_info=True)
         raise HTTPException(
