@@ -24,6 +24,7 @@ npx playwright test --list
 | `session-state.spec.ts` | `JP_SESSION_STATE_E2E=1` | 可打开页面 | 无；`/api/` 与地图瓦片在浏览器内拦截 |
 | `map-load-failure.spec.ts` | `JP_MAP_LOAD_FAILURE_E2E=1` | 可打开页面 | 无；只模拟瓦片失败 |
 | `f3-workspace.spec.ts` | 无 | 可打开页面 | 无；正式工作台组件，API 在浏览器内拦截 |
+| `f4-workspace.spec.ts` | 无 | 可打开页面 | 无；正式交付工作台，API 与瓦片在浏览器内拦截 |
 | `research-progress.spec.ts` | `JP_COMPONENT_E2E=1` | 可打开页面 | 无；使用本地组件样例 |
 | `deployment-settings.spec.ts` | `JP_DEPLOYMENT_URL=<局域网 HTTP 地址>` | 单独启动指定子路径和自定义瓦片的 Vite 服务 | API 与瓦片在浏览器内拦截 |
 | `workspace.spec.ts` | 部分；写入用例需 `JP_WRITE_E2E=1` | 完整应用 | 真实资料库与风格写入；只删除本次唯一命名的测试数据 |

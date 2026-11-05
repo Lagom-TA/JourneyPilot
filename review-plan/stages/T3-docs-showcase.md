@@ -31,6 +31,7 @@
 
 ## 收到的提醒
 
+- [ ] 来自 F4-01 至 F4-08：地图画幅＋旅程对页已实现，中英文 README 与前端说明同步；全程、单日、阅读版桌面 / 手机最新代表镜头为 r3，补充镜头与实际 18 页 PDF 见 `output/review/F4/manifest.md` → 请在全项目定稿后选取门面素材；现有 14 日素材与异常夹具的来源边界见 [F4 验收记录](../F4-acceptance.md)，不作为模型质量评测。
 - [ ] 来自 F3-02、F3-04、F3-06：研究台面与最新动态已定稿，G4-D/M-pending-r3.png、G5-D/M-parallel-r3.png 为展示候选；四段交互录像与联系表、r4 焦点补图见 output/review/F3/manifest.md → 请在全项目定稿后选取 README / 作品集镜头，说明夹具素材不代表真实模型质量。
 
 - [ ] 来自 F2-01、F2-03、F2-06、F2-08、F2-09：首页使用四张原创风景、同主题旅行票据与插画行李签，条件表单已重做；共用纸品库有 17 张透明 WebP，首页最新镜头及 V2 交互录屏为 r10，素材与提示词见 `frontend/src/assets/home/`、`frontend/src/assets/paper/` 及 `output/review/F2/manifest.md` → 请在全项目定稿后选取 README 展示镜头。

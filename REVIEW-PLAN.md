@@ -27,7 +27,7 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 
 ## 进度总览
 
-**进度**：后端逻辑 6/6 · 前端页面 3/6 · 文字内容 0/3 · [待决事项](review-plan/decisions.md) 0 项
+**进度**：后端逻辑 6/6 · 前端页面 4/6 · 文字内容 0/3 · [待决事项](review-plan/decisions.md) 0 项
 
 状态：⬜ 未开始 · 🔍 审查中 · 🔧 修复中 · ✅ 已完成 · ↩️ 需复核 · ⏸️ 搁置
 
@@ -43,16 +43,18 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 | F1 | [前端结构、状态与样式体系](review-plan/stages/F1-frontend-foundation.md) | `前端页面` | S0、B4 | ✅ | Codex（采集 / 修复） | 0 | 2026-11-04 / 38bd919、286d9e8 |
 | F2 | [首页与需求输入](review-plan/stages/F2-home-input.md) | `前端页面` | F1 | ✅ | Codex（采集 / 修复） / GPT 6.1 Terra（分析） | 0 | 2026-11-05 / 669f83a、627f341 |
 | F3 | [生成工作台](review-plan/stages/F3-generation-workspace.md) | `前端页面` | F1、B2、B4 | ✅ | Codex（采集 / 修复） / GPT 6.1 Terra（分析） | 0 | 2026-11-05 / e48c3fc |
-| F4 | [交付工作台](review-plan/stages/F4-delivery-workspace.md) | `前端页面` | F1、B3 | ⬜ | | 9 | |
+| F4 | [交付工作台](review-plan/stages/F4-delivery-workspace.md) | `前端页面` | F1、B3 | ✅ | Codex（采集 / 修复） / GPT 6.1 Terra（分析） | 0 | 2026-11-05 / 047bbd2 |
 | F5 | [我的行程与偏好资料](review-plan/stages/F5-trips-preferences.md) | `前端页面` | F1、B5 | ⬜ | | 5 | |
-| F6 | [动效与交互](review-plan/stages/F6-motion-a11y.md) | `前端页面` | F2–F5 | ⬜ | | 3 | |
-| T1 | [界面文案](review-plan/stages/T1-ui-copy.md) | `文字内容` | F1 | ⬜ | | 6 | |
+| F6 | [动效与交互](review-plan/stages/F6-motion-a11y.md) | `前端页面` | F2–F5 | ⬜ | | 4 | |
+| T1 | [界面文案](review-plan/stages/T1-ui-copy.md) | `文字内容` | F1 | ⬜ | | 7 | |
 | T2 | [提示词与模型产出](review-plan/stages/T2-prompts-outputs.md) | `文字内容` | B2、B3 | ⬜ | | 5 | |
-| T3 | [文档与开源门面](review-plan/stages/T3-docs-showcase.md) | `文字内容` | 其余全部 | ⬜ | | 9 | |
+| T3 | [文档与开源门面](review-plan/stages/T3-docs-showcase.md) | `文字内容` | 其余全部 | ⬜ | | 10 | |
 
 三类标签可以并行推进；同一标签内按编号顺序进行；前置阶段完成后才能开始。状态只在这张表里维护。
 
 后端 B1–B6 的综合验收记录见 [acceptance-backend.md](review-plan/acceptance-backend.md)：质量门、提醒收口、验收中的修复，以及仍需关注的事项。
+
+F4 的设计结果、代表状态与验证范围见 [F4-acceptance.md](review-plan/F4-acceptance.md)。
 
 ## 标签与人选
 
@@ -78,6 +80,8 @@ review-plan/
 ├── references.md            外部参考库：收录站点、入口、获取方式
 ├── decisions.md             待决事项
 ├── acceptance-backend.md    后端 B1–B6 综合验收记录
+├── F4-design-options.md     F4 参考调研与选定方向
+├── F4-acceptance.md         F4 实现与验证范围
 ├── b4-events.md             B4 流式事件清单
 └── stages/                  每个阶段一个文件：范围、审查项、清单、参考、提醒、问题与修复
     ├── S0-setup.md

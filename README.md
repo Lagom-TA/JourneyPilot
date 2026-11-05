@@ -51,6 +51,11 @@ Once a plan is ready, you can:
 - Continue the conversation to request changes and clarify them over several turns, including adjustments suggested by a weather update.
 - Save travel styles and your own reference material for later planning.
 
+The delivery workspace opens on a full map with city stay segments, then expands into an itinerary
+and map spread for a selected day. Nearby places cluster as you zoom out. On phones, a two-position
+bottom panel keeps the map clear while showing the itinerary. Unscheduled items appear on their
+relevant days; descriptions and factual sources expand on demand. PDF export is available in the reading view.
+
 When you manually add or delete memories, JourneyPilot retains the action and affected content as feedback
 for later memory summaries and sends it to the configured fast model. Explicit new statements can update
 existing memories. The portrait is reconciled when a conversation memory summary next runs; until then,
