@@ -19,7 +19,11 @@ export function LabelledFactList({ facts, testId, }: {
             const { label, value } = splitLabelledFact(fact);
             return (<div key={fact} className={cn('min-w-0 border-t border-stroke/60 py-3', index === 0 && 'border-t-0 pt-0', index === 1 && 'sm:border-t-0 sm:pt-0')}>
             {label && (<dt className={cn(READOUT_LABEL, 'text-chart')}>{label}</dt>)}
-            <dd className="mt-1.5 break-words text-[15px] font-medium leading-6 text-ink">{value}</dd>
+            <dd className="mt-1.5 break-words text-[15px] font-medium leading-6 text-ink">{value.split(' · ').map((line, lineIndex) => (
+              <span key={lineIndex} className="trip-fact-line">{line.split('、').map((part, partIndex, parts) => (
+                <span key={partIndex}><span className="trip-fact-unit">{part}</span>{partIndex < parts.length - 1 ? '、' : ''}</span>
+              ))}</span>
+            ))}</dd>
           </div>);
         })}
     </dl>);

@@ -10,6 +10,7 @@ interface BundleMapLeafletLazyProps {
     linkedEntityId?: string | null;
     onLinkEntity?: (entityId: string | null) => void;
     overlayOffset?: number;
+    bottomOffset?: number;
 }
 const BundleMapLeafletImpl = lazy(() => import('./BundleMapLeaflet').then((module) => ({
     default: module.BundleMapLeaflet,

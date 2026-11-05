@@ -19,6 +19,9 @@ import { CustomBlockRow, DiningStopCard, LodgingStayCard, VisitStopCard } from '
 import { TransportLegCard } from './TransportLegCard';
 import { DayHeader } from './DayHeader';
 import { TimelineNodeMark } from './TimelineNodeMark';
+import { unresolvedForDay } from '../../model/itineraryNavigation';
+import { UnresolvedReadout } from './UnresolvedReadout';
+import { EntitySourceList } from './EntitySourceList';
 
 export type TimelineEntity = PublicVisitStop | PublicDiningStop | PublicLodgingStay | PublicTransportLeg | PublicCustomBlock;
 type DayPlan = PublicDeliveryBundle['workspace']['itinerary']['day_plans'][number];
@@ -45,13 +48,17 @@ interface ItineraryCardFlowProps {
 }
 
 export function TimelineEntityDetails({ bundle, entity }: { bundle: PublicDeliveryBundle; entity: TimelineEntity }) {
-  if (entity.type === 'transport_leg') {
-    return <TransportLegCard leg={entity} sandboxNote={bundle.provider_environment.sandbox_note} />;
-  }
-  if (entity.type === 'visit_stop') return <VisitStopCard stop={entity} />;
-  if (entity.type === 'dining_stop') return <DiningStopCard stop={entity} />;
-  if (entity.type === 'lodging_stay') return <LodgingStayCard stay={entity} />;
-  return <CustomBlockRow block={entity} />;
+  const content = entity.type === 'transport_leg'
+    ? <TransportLegCard leg={entity} sandboxNote={bundle.provider_environment.sandbox_note} />
+    : entity.type === 'visit_stop' ? <VisitStopCard stop={entity} />
+    : entity.type === 'dining_stop' ? <DiningStopCard stop={entity} />
+    : entity.type === 'lodging_stay' ? <LodgingStayCard stay={entity} />
+    : <CustomBlockRow block={entity} />;
+  const id = entity.type === 'transport_leg' ? entity.transport_leg_id : entity.type === 'lodging_stay' ? entity.stay_id : entity.item_id;
+  const summary = entity.type === 'visit_stop' || entity.type === 'dining_stop'
+    ? bundle.report_projection.document?.days.flatMap((day) => day.blocks).find((block) => block.entity_ref.entity_id === id)?.summary
+    : null;
+  return <>{summary && <p className="journey-detail-summary">{summary}</p>}{content}<EntitySourceList bundle={bundle} entityId={id} /></>;
 }
 
 const ENTITY_LABELS: Record<DayTimelineNodeVM['entityKind'], string> = {
@@ -120,7 +127,7 @@ function OccurrenceCard({
   };
   const selectFromTransportCard = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!transportEntryVisible) return;
-    const nested = (event.target as HTMLElement).closest('button, a, input, select, textarea, [role="button"]');
+    const nested = (event.target as HTMLElement).closest('button, a, input, select, textarea, summary, [role="button"]');
     if (nested && nested !== event.currentTarget) return;
     selectOnMap();
   };
@@ -185,11 +192,12 @@ function OccurrenceCard({
               onKeyDown={transportEntryVisible ? selectFromTransportCardKey : undefined}
             >
               <TransportLegCard leg={entity} sandboxNote={bundle.provider_environment.sandbox_note} />
+              <EntitySourceList bundle={bundle} entityId={node.entityId} />
             </div>
           ) : (
             <div className="journey-card-copy">
               <h3>{node.title}</h3>
-              {node.summary && <p>{node.summary}</p>}
+              {node.summary && !entity && <p>{node.summary}</p>}
               {(node.durationLabel || node.priceLabel) && (
                 <div className="journey-card-readouts">
                   {node.durationLabel && <span>{node.durationLabel}</span>}
@@ -271,6 +279,7 @@ export function ItineraryCardFlow({
               theme={day.theme}
               weather={summary?.weather ?? null}
             />
+            <UnresolvedReadout items={unresolvedForDay(bundle, day.day_id)} />
             <m.ol
               className="journey-card-flow"
               aria-label={`第 ${day.day} 天行程卡片`}

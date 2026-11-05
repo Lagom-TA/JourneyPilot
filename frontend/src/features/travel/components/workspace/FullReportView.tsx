@@ -5,13 +5,13 @@ import { apiErrorDetail } from '../../../../lib/apiErrorDetail';
 import { formatLocalDate, selectDaySummaries, selectDayTimeline, type DaySummaryVM, type DayTimelineNodeVM } from '../../model/itineraryPresentation';
 import { splitLabelledFact } from '../../model/tripDomains';
 import { formatTripCostSummary } from '../../model/costPresentation';
-import { BrandMark } from '../../../../app/components/BrandMark';
 import { type PublicDeliveryBundle } from '../../types/delivery';
 import { DayHeader } from './DayHeader';
 import { DayTimeline } from './DayTimeline';
-import { LabelledFactList, TripFactReadout } from './TripFactReadout';
-import { Neatline } from '../../../../components/ui/Neatline';
-import { Postmark } from '../../../../components/ui/Postmark';
+import { LabelledFactList } from './TripFactReadout';
+import { unresolvedForDay } from '../../model/itineraryNavigation';
+import { UnresolvedReadout } from './UnresolvedReadout';
+import { EntitySourceList } from './EntitySourceList';
 import { safeHref } from '../../../../lib/safeHref';
 import React from 'react';
 
@@ -107,7 +107,7 @@ export function PdfDownloadButton({ bundle, compact = false }: {
         {status === 'loading' ? (compact ? '准备中' : '正在准备 PDF') : (compact ? 'PDF' : '导出当前 PDF')}
       </button>
       {message && (compact
-        ? <span className="sr-only" role={status === 'error' ? 'alert' : 'status'}>{message}</span>
+        ? <span className="pdf-export-feedback" role={status === 'error' ? 'alert' : 'status'}>{message}</span>
         : <p role={status === 'error' ? 'alert' : 'status'} className="mt-2 max-w-[36ch] break-words text-[11px] leading-5 text-ink-secondary">{message}</p>)}
     </div>
   );
@@ -124,57 +124,49 @@ function ReportCover({ bundle, document: report, allowPdf }: {
   const lastDate = formatLocalDate(dates[dates.length - 1] ?? null);
   const dateRange = firstDate && lastDate ? (firstDate === lastDate ? firstDate : `${firstDate} – ${lastDate}`) : firstDate ?? lastDate;
   const costLabel = formatTripCostSummary(report.cost_summary);
-  const readouts: Array<{ label: string; value: string }> = [
-    ...(destinations.length > 0 ? [{ label: '目的地', value: destinations.join(' · ') }] : []),
-    ...(dateRange ? [{ label: '行程期间', value: dateRange }] : []),
-    { label: '天数', value: `${report.duration_days} 天` },
-    ...(costLabel ? [{ label: '费用', value: costLabel }] : []),
-  ];
+  const dateText = dates.length ? `${dates[0]} 至 ${dates[dates.length - 1]}` : `${report.duration_days} 天`;
+  const identityOverview = `${dateText}，前往${destinations.join('、')}的旅行计划。`;
   return (
-    <header data-testid="report-cover" className="report-cover relative px-5 py-7 sm:px-8 sm:py-9">
-      <Neatline />
-      <div className="relative z-10 flex min-w-0 flex-wrap items-start justify-between gap-x-6 gap-y-5">
-        <div className="min-w-0 flex-1 basis-[22rem]">
-          <div className="flex items-center gap-2.5">
-            <BrandMark size={20} className="shrink-0" />
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-muted">JOURNEYPILOT · 旅行刊物</p>
-          </div>
-          <h1 className="mt-5 max-w-[22ch] break-words text-[30px] font-semibold leading-[1.22] tracking-[-0.022em] text-ink sm:text-[38px]">{report.title}</h1>
-          <p className="mt-4 max-w-[58ch] break-words text-[15px] leading-7 text-ink-secondary">{report.overview}</p>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-5">
-          {allowPdf && <PdfDownloadButton bundle={bundle} />}
-          <Postmark generatedAt={bundle.report_projection.generated_at} />
-        </div>
+    <header data-testid="report-cover" className="report-cover">
+      <h1>{report.title.split(/([零一二三四五六七八九十百〇\d]+(?:天|日|晚))/g).map((part, index) => (
+        <span key={index} className={/[零一二三四五六七八九十百〇\d]+(?:天|日|晚)/.test(part) ? 'report-title-unit' : undefined}>{part}</span>
+      ))}</h1>
+      <div className="report-cover-meta">
+        {destinations.map((name) => <span key={name}>{name}</span>)}
+        {dateRange && <span>{dateRange}</span>}
+        <span>{report.duration_days} 天</span>
       </div>
-      <dl className="relative z-10 mt-7 grid gap-x-6 gap-y-4 border-t border-stroke pt-5 sm:grid-cols-2 lg:grid-cols-4">
-        {readouts.map((entry) => <TripFactReadout key={entry.label} {...entry} />)}
-      </dl>
+      {report.overview !== identityOverview && <p className="report-cover-overview">{report.overview}</p>}
+      {costLabel && <p className="report-cover-cost">{costLabel}</p>}
+      {allowPdf && <PdfDownloadButton bundle={bundle} />}
     </header>
   );
 }
 
-function ReportTimelineSupplement({ block, node }: { block: ReportBlock; node: DayTimelineNodeVM }) {
+function ReportTimelineSupplement({ block, node, bundle }: { block: ReportBlock; node: DayTimelineNodeVM; bundle: PublicDeliveryBundle }) {
   return (
     <div data-testid={`report-timeline-supplement-${node.key}`} className="min-w-0">
       <ReportEntryLines block={block} />
+      <EntitySourceList bundle={bundle} entityId={node.entityId} />
     </div>
   );
 }
 
-function ReportDaySection({ day, summary, nodes }: {
+function ReportDaySection({ day, summary, nodes, bundle }: {
   day: ReportDay;
   summary: DaySummaryVM | null;
   nodes: readonly DayTimelineNodeVM[];
+  bundle: PublicDeliveryBundle;
 }) {
   const blocks = React.useMemo(() => new Map(day.blocks.map((block) => [block.details.entry_id, block])), [day.blocks]);
   if (!summary) return null;
   return (
     <section data-testid={`report-day-${day.day_id}`} className="border-t border-stroke py-7 first:border-t-0 first:pt-6 sm:py-8" aria-labelledby={`delivery-day-report-${day.day_id}`}>
       <DayHeader dayId={`report-${day.day_id}`} day={summary.day} dateLabel={summary.dateLabel} weekdayLabel={summary.weekdayLabel} destinationLabel={summary.destinationLabel} theme={summary.theme} weather={summary.weather} />
+      <UnresolvedReadout items={unresolvedForDay(bundle, day.day_id)} />
       <DayTimeline nodes={nodes} renderSupplement={(node) => {
         const block = blocks.get(node.key);
-        return block ? <ReportTimelineSupplement block={block} node={node} /> : null;
+        return block ? <ReportTimelineSupplement block={block} node={node} bundle={bundle} /> : null;
       }} />
     </section>
   );
@@ -188,6 +180,7 @@ export function FullReportView({ bundle, allowPdf = true }: {
   if (!document) return null;
   const summaries = selectDaySummaries(bundle);
   const summariesByDayId = new Map(summaries.map((summary) => [summary.dayId, summary]));
+  const assignedUnresolved = new Set(bundle.workspace.itinerary.day_plans.flatMap((day) => unresolvedForDay(bundle, day.day_id)));
   const seenReferences = new Set<string>();
   const references = bundle.source_index.content.citations.flatMap((citation) => citation.sources).filter((source) => {
     if (seenReferences.has(source.source_record_id)) return false;
@@ -214,13 +207,14 @@ export function FullReportView({ bundle, allowPdf = true }: {
 
       <div id="report-days">
         {document.days.map((day) => (
-          <ReportDaySection key={day.day_id} day={day} summary={summariesByDayId.get(day.day_id) ?? null} nodes={selectDayTimeline(bundle, day.day_id)} />
+          <ReportDaySection key={day.day_id} day={day} summary={summariesByDayId.get(day.day_id) ?? null} nodes={selectDayTimeline(bundle, day.day_id)} bundle={bundle} />
         ))}
       </div>
 
+      <UnresolvedReadout items={document.unresolved.filter((item) => !assignedUnresolved.has(item))} all />
+
       {references.length > 0 && (
         <footer id="report-references" className="report-references" aria-labelledby="report-references-heading">
-          <p>REFERENCES</p>
           <h2 id="report-references-heading">参考资料</h2>
           <ol>
             {references.map((source, index) => {

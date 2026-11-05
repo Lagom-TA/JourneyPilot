@@ -1,5 +1,5 @@
 import { useReducedMotion } from "motion/react";
-import { MapContainer, Marker, Polyline, TileLayer, ZoomControl, useMap } from "react-leaflet";
+import { MapContainer, Marker, Polyline, TileLayer, ZoomControl, useMap, useMapEvents } from "react-leaflet";
 import { type MapProjection } from "../../types/report";
 import { pointOnTileDatum } from "../../model/tileDatum";
 import { transportModeColor } from "../../model/transportPresentation";
@@ -32,6 +32,7 @@ interface BundleMapLeafletProps {
     linkedEntityId?: string | null;
     onLinkEntity?: (entityId: string | null) => void;
     overlayOffset?: number;
+    bottomOffset?: number;
 }
 const TILE = getMapTileConfig();
 const FALLBACK_COLOR = 'var(--color-accent)';
@@ -71,7 +72,7 @@ function placeIcon(place: BundleMapPlace, color: string, offset: [number, number
     const size = endpoint ? 18 : 30;
     const center = size / 2;
     const content = endpoint
-        ? '<span style="width:6px;height:6px;border-radius:50%;background:#fff"></span>'
+        ? ''
         : String(place.sequence > 0 ? place.sequence : '•');
     return L.divIcon({
         className: '',
@@ -123,6 +124,11 @@ interface GroupPin extends PinBase {
 type Pin = PlacePin | GroupPin;
 function expandedOffset(index: number, total: number): [number, number] {
     if (total <= 1) return [0, 0];
+    if (total > 10) {
+        const radius = 30 * Math.sqrt(index + 1);
+        const angle = index * 2.399963;
+        return [Math.cos(angle) * radius, Math.sin(angle) * radius];
+    }
     const radius = Math.min(54, 28 + total * 3);
     const angle = -Math.PI / 2 + (Math.PI * 2 * index) / total;
     return [Math.cos(angle) * radius, Math.sin(angle) * radius];
@@ -135,7 +141,7 @@ function usePins(groups: BundleMapPlaceGroup[], expandedGroupId: string | null):
             const position = placePoint(group.places[0]);
             if (!position) continue;
             if (group.places.length > 1 && group.id !== expandedGroupId) {
-                const color = placeColor();
+                const color = 'var(--color-chart)';
                 const key = `${group.id}|${color}`;
                 let icon = cache.get(key);
                 if (!icon) {
@@ -256,13 +262,16 @@ function EntranceMarker({ pin, selected, linked, seen, onSelect, onLink, onUnlin
 }
 const CLOSE_ENOUGH_ZOOM = 14;
 const FOCUS_ZOOM = 15;
-function MapViewport({ places, lines, selectedEntityId, overlayOffset = 0, }: Pick<BundleMapLeafletProps, 'places' | 'selectedEntityId' | 'overlayOffset'> & {
+function MapViewport({ places, lines, selectedEntityId, overlayOffset = 0, bottomOffset = 0 }: Pick<BundleMapLeafletProps, 'places' | 'selectedEntityId' | 'overlayOffset' | 'bottomOffset'> & {
     lines: RouteLines[];
 }) {
     const map = useMap();
     const lastTarget = React.useRef('');
     const lastDataKey = React.useRef<string | null>(null);
     const lastOverlayOffset = React.useRef(overlayOffset);
+    const lastBottomOffset = React.useRef(bottomOffset);
+    const previousContext = React.useRef<string | null>(null);
+    const viewHistory = React.useRef(new Map<string, { center: L.LatLng; zoom: number }>());
     const reducedMotion = useReducedMotion();
     // 相机只认显式选中：悬浮／聚焦高亮不进入这个 effect 的依赖，也不构成聚焦目标。
     React.useEffect(() => {
@@ -277,22 +286,35 @@ function MapViewport({ places, lines, selectedEntityId, overlayOffset = 0, }: Pi
             ...places.flatMap((place) => { const point = placePoint(place); return point ? [point] : []; }),
             ...lines.flatMap((line) => line.segments.flatMap((segment) => segment.points)),
         ];
+        const topPadding = overlayOffset > 0 ? 96 : 156;
         const dataKey = mapViewportDataKey(allPoints);
         const previousDataKey = lastDataKey.current;
         const previousOverlayOffset = lastOverlayOffset.current;
+        const previousBottomOffset = lastBottomOffset.current;
         lastDataKey.current = dataKey;
         lastOverlayOffset.current = overlayOffset;
+        lastBottomOffset.current = bottomOffset;
         const hasSelection = Boolean(focusedPoint) || focusedPoints.length > 0;
+        const contextKey = `${dataKey}:${overlayOffset}:${bottomOffset}`;
+        if (previousContext.current !== contextKey) {
+            if (previousContext.current) viewHistory.current.set(previousContext.current, { center: map.getCenter(), zoom: map.getZoom() });
+            previousContext.current = contextKey;
+            const saved = viewHistory.current.get(contextKey);
+            if (saved && !hasSelection) {
+                map.setView(saved.center, saved.zoom, { animate: !reducedMotion });
+                return;
+            }
+        }
         const fitAllOnContextChange = shouldAutoFitMap({
             dataKey,
             previousDataKey,
             hasSelection,
-        }) || (!hasSelection && previousOverlayOffset !== overlayOffset);
+        }) || (!hasSelection && (previousOverlayOffset !== overlayOffset || previousBottomOffset !== bottomOffset));
         if (focusedPlace && focusedPoint) {
             const key = `place:${focusedPlace.entity_ref.entity_id}`;
             if (lastTarget.current === key) return;
             lastTarget.current = key;
-            const target = map.unproject(map.project(L.latLng(focusedPoint), FOCUS_ZOOM).subtract([overlayOffset / 2, 0]), FOCUS_ZOOM);
+            const target = map.unproject(map.project(L.latLng(focusedPoint), FOCUS_ZOOM).subtract([overlayOffset / 2, -bottomOffset / 2]), FOCUS_ZOOM);
             if (map.getZoom() >= CLOSE_ENOUGH_ZOOM) map.panTo(target, { animate: !reducedMotion });
             else if (reducedMotion) map.setView(target, FOCUS_ZOOM, { animate: false });
             else map.flyTo(target, FOCUS_ZOOM, { duration: duration.mapFocus });
@@ -303,14 +325,14 @@ function MapViewport({ places, lines, selectedEntityId, overlayOffset = 0, }: Pi
             if (lastTarget.current === key) return;
             lastTarget.current = key;
             const bounds = L.latLngBounds(focusedPoints);
-            map.fitBounds(bounds, { paddingTopLeft: [overlayOffset + 36, 76], paddingBottomRight: [36, 36], maxZoom: FOCUS_ZOOM, animate: !reducedMotion });
+            map.fitBounds(bounds, { paddingTopLeft: [overlayOffset + 36, topPadding], paddingBottomRight: [36, bottomOffset + 36], maxZoom: FOCUS_ZOOM, animate: !reducedMotion });
             return;
         }
         lastTarget.current = '';
         if (!fitAllOnContextChange || allPoints.length === 0) return;
-        if (allPoints.length === 1) map.setView(map.unproject(map.project(allPoints[0], 13).subtract([overlayOffset / 2, 0]), 13), 13, { animate: !reducedMotion });
-        else map.fitBounds(L.latLngBounds(allPoints), { paddingTopLeft: [overlayOffset + 32, 76], paddingBottomRight: [32, 32], maxZoom: FOCUS_ZOOM, animate: !reducedMotion });
-    }, [map, places, lines, selectedEntityId, reducedMotion, overlayOffset]);
+        if (allPoints.length === 1) map.setView(map.unproject(map.project(allPoints[0], 13).subtract([overlayOffset / 2, -bottomOffset / 2]), 13), 13, { animate: !reducedMotion });
+        else map.fitBounds(L.latLngBounds(allPoints), { paddingTopLeft: [overlayOffset + 32, topPadding], paddingBottomRight: [32, bottomOffset + 32], maxZoom: FOCUS_ZOOM, animate: !reducedMotion });
+    }, [map, places, lines, selectedEntityId, reducedMotion, overlayOffset, bottomOffset]);
     React.useEffect(() => {
         map.invalidateSize();
         const frame = window.requestAnimationFrame(() => map.invalidateSize());
@@ -329,9 +351,17 @@ const BASEMAP_NOTICE: Record<BasemapState, string | null> = {
     ready: null,
     degraded: '底图暂时没加载出来 · 针的位置仍然准确',
 };
-export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, routes, selectedEntityId, onSelectEntity, linkedEntityId = null, onLinkEntity, overlayOffset = 0, }) => {
+function MapScale({ onZoom }: { onZoom: (zoom: number) => void }) {
+    const map = useMapEvents({ zoomend: () => onZoom(map.getZoom()) });
+    React.useEffect(() => { onZoom(map.getZoom()); }, [map, onZoom]);
+    return null;
+}
+export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, routes, selectedEntityId, onSelectEntity, linkedEntityId = null, onLinkEntity, overlayOffset = 0, bottomOffset = 0 }) => {
+    const reducedMotion = useReducedMotion();
     const [basemap, setBasemap] = React.useState<BasemapState>('loading');
     const [expandedGroupId, setExpandedGroupId] = React.useState<string | null>(null);
+    const [zoom, setZoom] = React.useState(12);
+    const mapInstance = React.useRef<L.Map | null>(null);
     const tileErrors = React.useRef(0);
     const pinRoot = React.useRef<HTMLDivElement>(null);
     const seenRoutes = React.useRef(new Set<string>()).current;
@@ -342,6 +372,7 @@ export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, rout
     // 无 zoom 中卸载报错时，可删除此补丁。
     const guardTeardown = React.useCallback((map: L.Map | null) => {
         if (!map) return;
+        mapInstance.current = map;
         const instance = map as unknown as { _animatingZoom: boolean; _teardownGuarded?: true };
         if (instance._teardownGuarded) return;
         instance._teardownGuarded = true;
@@ -357,7 +388,10 @@ export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, rout
         onLinkEntity?.(entityId);
     };
     const lines = useRouteLines(routes);
-    const groups = React.useMemo(() => groupBundleMapPlaces(places), [places]);
+    const groups = React.useMemo(() => groupBundleMapPlaces(places, (place) => {
+        const point = placePoint(place);
+        return point ? L.CRS.EPSG3857.latLngToPoint(L.latLng(point), zoom) : null;
+    }), [places, zoom]);
     const pins = usePins(groups, expandedGroupId);
     const focusedEntityId = resolveMapFocusEntityId(selectedEntityId);
     React.useEffect(() => {
@@ -377,7 +411,13 @@ export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, rout
             const entityId = pin.dataset.bundleMapEntity;
             applyPinState(pin, entityId === selectedEntityId ? 'selected' : entityId === linkedEntityId ? 'linked' : 'idle');
         });
-    }, [pins, selectedEntityId, linkedEntityId]);
+        root.querySelectorAll<HTMLElement>('[data-bundle-map-group]').forEach((pin) => {
+            const group = groups.find((item) => item.id === pin.dataset.bundleMapGroup);
+            const selected = group?.places.some((place) => place.entity_ref.entity_id === selectedEntityId);
+            const linked = group?.places.some((place) => place.entity_ref.entity_id === linkedEntityId);
+            applyPinState(pin, selected ? 'selected' : linked ? 'linked' : 'idle');
+        });
+    }, [groups, pins, selectedEntityId, linkedEntityId]);
     const anchor = React.useRef<[number, number] | null>(null);
     const firstPoint = pins[0]?.position ?? lines.flatMap((line) => line.segments.flatMap((segment) => segment.points))[0] ?? null;
     if (firstPoint) anchor.current = firstPoint;
@@ -393,7 +433,8 @@ export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, rout
             tileerror: () => { tileErrors.current += 1; setBasemap('degraded'); },
         }}/>
       <ZoomControl position="bottomright" />
-      <MapViewport places={places} lines={lines} selectedEntityId={selectedEntityId} overlayOffset={overlayOffset}/>
+      <MapScale onZoom={setZoom} />
+      <MapViewport places={places} lines={lines} selectedEntityId={selectedEntityId} overlayOffset={overlayOffset} bottomOffset={bottomOffset}/>
       {lines.map(({ route, segments }) => {
             const routeId = route.entity_ref.entity_id;
             const selected = routeId === selectedEntityId;
@@ -420,9 +461,15 @@ export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, rout
                   position={pin.position}
                   icon={pin.icon}
                   zIndexOffset={500}
-                  eventHandlers={{ click: () => setExpandedGroupId(pin.group.id) }}
+                  eventHandlers={{ click: () => {
+                    const points = pin.group.places.flatMap((place) => { const point = placePoint(place); return point ? [point] : []; });
+                    const bounds = L.latLngBounds(points);
+                    if (mapInstance.current && !bounds.getNorthEast().equals(bounds.getSouthWest(), 0.00001) && mapInstance.current.getZoom() < 17) {
+                        mapInstance.current.fitBounds(bounds, { paddingTopLeft: [overlayOffset + 48, 110], paddingBottomRight: [48, bottomOffset + 48], maxZoom: 17, animate: !reducedMotion });
+                    } else setExpandedGroupId(pin.group.id);
+                  } }}
                   keyboard
-                  title={`同位置 ${pin.group.places.length} 个地点，点击展开`}
+                  title={`附近 ${pin.group.places.length} 个位置，点击展开`}
                 />);
             }
             const entityId = pin.place.entity_ref.entity_id;

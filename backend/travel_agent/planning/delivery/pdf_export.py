@@ -233,7 +233,7 @@ def _source_story(
 
     if not citations:
         return []
-    story: list[Any] = [Spacer(1, 4 * mm), Paragraph("来源", styles["h1"])]
+    story: list[Any] = [Spacer(1, 4 * mm)]
     entity_labels = {
         "visit_stop": "景点与体验",
         "dining_stop": "餐饮安排",
@@ -258,18 +258,25 @@ def _source_story(
             if entity_label not in entry["entity_labels"]:
                 entry["entity_labels"].append(entity_label)
 
-    for entry in source_entries.values():
+    for index, entry in enumerate(source_entries.values()):
         source = entry["source"]
         number_marks = ", ".join(str(number) for number in entry["numbers"])
         entity_summary = "、".join(entry["entity_labels"])
-        story.append(Paragraph(f"[{number_marks}] {entity_summary}", styles["h2"]))
         title = escape(source.title)
         if source.canonical_url:
             title = f'<link href="{escape(source.canonical_url)}" color="#2477E8">{title}</link>'
-        story.append(Paragraph(title, styles["body"]))
-        story.append(Paragraph(escape(source.public_excerpt), styles["small"]))
         story.append(
-            Paragraph(f"取得时间：{source.retrieved_at.isoformat()}", styles["small"])
+            KeepTogether(
+                [
+                    *([Paragraph("来源", styles["h1"])] if index == 0 else []),
+                    Paragraph(f"[{number_marks}] {entity_summary}", styles["h2"]),
+                    Paragraph(title, styles["body"]),
+                    Paragraph(escape(source.public_excerpt), styles["small"]),
+                    Paragraph(
+                        f"取得时间：{source.retrieved_at.isoformat()}", styles["small"]
+                    ),
+                ]
+            )
         )
         if source.rag_chunk_content:
             story.append(Paragraph(escape(source.rag_chunk_content), styles["small"]))

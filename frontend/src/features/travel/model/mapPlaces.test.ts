@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { type PublicDeliveryBundle } from '../types/delivery';
 import { type TransportEndpoint } from '../types/entities';
+import { type BundleMapPlace } from './mapPlaces';
 import {
   buildBundleMapPlaces,
   groupBundleMapPlaces,
+  isLocatedBundleMapPlace,
   locatedBundlePlaceIds,
 } from './mapPlaces';
 import { buildWaypointOrder } from './waypointOrder';
@@ -120,5 +122,16 @@ describe('bundle map places', () => {
 
     expect(shared?.places.map((place) => place.entity_ref.entity_id)).toEqual(['visit-a', 'visit-b']);
     expect(groups.flatMap((group) => group.places).some((place) => place.entity_ref.entity_id === 'dining-missing')).toBe(false);
+  });
+
+  it('clusters nearby screen positions and separates them when zooming in without losing entities', () => {
+    const bundle = makeBundle();
+    const places = buildBundleMapPlaces(bundle, buildWaypointOrder(bundle.workspace.itinerary, locatedBundlePlaceIds(bundle))).filter(isLocatedBundleMapPlace).map((place, index) => ({ ...place, latitude: 32, longitude: 120 + index * .1 }));
+    const project = (scale: number) => (place: BundleMapPlace) => ({ x: (place.longitude! - 120) * 300 * scale, y: 0 });
+    const overview = groupBundleMapPlaces(places, project(1));
+    const detail = groupBundleMapPlaces(places, project(3));
+    expect(overview.length).toBeLessThan(detail.length);
+    expect(detail.length).toBe(places.length);
+    expect(overview.flatMap((group) => group.places)).toEqual(places);
   });
 });

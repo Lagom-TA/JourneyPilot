@@ -1,9 +1,8 @@
 import { AnimatePresence, useReducedMotion } from 'motion/react';
 import type { Variants } from 'motion/react';
-import { ArrowLeft, BookOpen, CalendarDays, ChevronDown, Layers3, Map as MapIcon, MessageCircle, Sun, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Layers3, Map as MapIcon, MessageCircle, Sun, X } from 'lucide-react';
 import { useApp } from '../../../../app/state/AppContext';
 import { useIsMobileViewport } from '../../../../hooks/useMediaQuery';
-import { Sheet } from '../../../../components/ui/Sheet';
 import { CanvasMotion } from '../../../../components/ui/CanvasMotion';
 import { PresenceFrame, PresenceSection } from '../../../../components/ui/PresenceSurface';
 import { ConversationThread } from '../../../chat/components/ConversationThread';
@@ -13,6 +12,7 @@ import { selectCurrentReportDocument, selectDaySummaries, selectDayTimeline, typ
 import { resolveWorkspaceSceneTransition, type WorkspaceScene } from '../../model/workspaceTransition';
 import { formatTripCostSummary } from '../../model/costPresentation';
 import { routeLines } from '../../model/mapModel';
+import { tripSegments, unresolvedForDay } from '../../model/itineraryNavigation';
 import { type ControlledTripIdentity } from '../../types/planner';
 import { type PublicDeliveryBundle } from '../../types/delivery';
 import { type PublicWeatherAdjustment } from '../../types/weather';
@@ -23,6 +23,9 @@ import { TripOverview } from './TripOverview';
 import { WeatherSuggestions } from './WeatherSuggestions';
 import { FullReportView, PdfDownloadButton } from './FullReportView';
 import { GenerationJourneyPanel } from './GenerationJourneyPanel';
+import { TripRouteNav } from './TripRouteNav';
+import { DeliveryMobileSheet } from './DeliveryMobileSheet';
+import { UnresolvedReadout } from './UnresolvedReadout';
 import { ItineraryCardFlow, TimelineEntityDetails, type CardMapSelection, type TimelineEntity } from './ItineraryCardFlow';
 import { cn } from '../../../../lib/utils';
 import { duration, easing } from '../../../../lib/motion';
@@ -105,14 +108,28 @@ function tripDays(identity: ControlledTripIdentity): number {
   return Math.floor((new Date(`${identity.end_date}T00:00:00`).getTime() - new Date(`${identity.start_date}T00:00:00`).getTime()) / 86400000) + 1;
 }
 
-function MapDayNav({ days, activeDay, onSelect }: {
+function MapDayNav({ days, activeDay, onSelect, showOverview = true, compact = false }: {
   days: DayPlan[];
   activeDay: number | null;
   onSelect: (day: number | null) => void;
+  showOverview?: boolean;
+  compact?: boolean;
 }) {
+  if (compact) {
+    const index = days.findIndex((day) => day.day === activeDay);
+    return (
+      <nav data-testid="itinerary-day-nav" aria-label="按天查看行程" className="journey-day-nav is-compact">
+        <button type="button" aria-label="前一天" disabled={index <= 0} onClick={() => onSelect(days[index - 1].day)}><ChevronLeft size={15} /></button>
+        <select aria-label="选择行程日期" value={activeDay ?? ''} onChange={(event) => onSelect(Number(event.target.value))}>
+          {days.map((day) => <option key={day.day_id} value={day.day}>第 {day.day} 天</option>)}
+        </select>
+        <button type="button" aria-label="后一天" disabled={index < 0 || index >= days.length - 1} onClick={() => onSelect(days[index + 1].day)}><ChevronRight size={15} /></button>
+      </nav>
+    );
+  }
   return (
     <nav data-testid="itinerary-day-nav" aria-label="按天查看行程" className="journey-day-nav">
-      <button type="button" aria-pressed={activeDay == null} onClick={() => onSelect(null)} className={cn(activeDay == null && 'is-active')}>全程</button>
+      {showOverview && <button type="button" aria-pressed={activeDay == null} onClick={() => onSelect(null)} className={cn(activeDay == null && 'is-active')}>全程</button>}
       {days.map((day) => (
         <button key={day.day_id} type="button" aria-label={`第 ${day.day} 天`} aria-pressed={activeDay === day.day} onClick={() => onSelect(day.day)} className={cn(activeDay === day.day && 'is-active')}>
           D{day.day}
@@ -149,7 +166,7 @@ function ReadingWorkspace({ bundle }: { bundle: PublicDeliveryBundle }) {
       <div className="reading-scroll">
         {document
           ? <FullReportView bundle={bundle} allowPdf={false} />
-          : <div className="reading-pending" role="status"><BookOpen size={25} /><h1>阅读版正在整理</h1><p>地图与日程已经可以查看。</p></div>}
+          : <div className="reading-pending" role={bundle.report_projection.status === 'failed' ? 'alert' : 'status'}><BookOpen size={25} /><h1>{bundle.report_projection.status === 'failed' ? '阅读版暂时无法加载' : '阅读版正在整理'}</h1><p>地图与日程已经可以查看。</p></div>}
       </div>
     </section>
   );
@@ -160,6 +177,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   const isMobile = useIsMobileViewport();
   const reducedMotion = useReducedMotion();
   const [activeDay, setActiveDay] = React.useState<number | null>(null);
+  const [activeSegmentId, setActiveSegmentId] = React.useState<string | null>(null);
   const [sidebarMode, setSidebarMode] = React.useState<'itinerary' | 'conversation'>('itinerary');
   const [conversationDraft, setConversationDraft] = React.useState('');
   const [conversationRunId, setConversationRunId] = React.useState<string | null>(null);
@@ -171,10 +189,11 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   const [hiddenLayers, setHiddenLayers] = React.useState<PlaceLayer[]>([]);
   const placeReturnFocusRef = React.useRef<{ entityId: string; occurrenceKey: string | null } | null>(null);
   const conversationReturnFocusRef = React.useRef<string | null>(null);
-  const navigationScrollRef = React.useRef<HTMLDivElement>(null);
   const contentScrollRef = React.useRef<HTMLDivElement>(null);
   const floatingPanelRef = React.useRef<HTMLDivElement>(null);
   const [panelOffset, setPanelOffset] = React.useState(0);
+  const [mapBottomOffset, setMapBottomOffset] = React.useState(0);
+  const mapRegionRef = React.useRef<HTMLDivElement>(null);
   const summaryCardRefs = React.useRef(new Map<string, HTMLButtonElement>());
   const overviewScrollTop = React.useRef(0);
   const returnFocusDayId = React.useRef<string | null>(null);
@@ -237,8 +256,17 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
     });
   }, []);
 
+  const closeMobileSheet = React.useCallback(() => {
+    dispatch({ type: 'SET_MOBILE_CANVAS_OPEN', payload: false });
+    window.requestAnimationFrame(() => document.querySelector<HTMLElement>('[data-testid="canvas-pill"]')?.focus({ preventScroll: true }));
+  }, [dispatch]);
+
   const entities = React.useMemo(() => bundle ? buildEntityIndex(bundle) : new Map<string, TimelineEntity>(), [bundle]);
   const daySummaries = React.useMemo(() => bundle ? selectDaySummaries(bundle) : [], [bundle]);
+  const segments = React.useMemo(() => tripSegments(daySummaries), [daySummaries]);
+  const activeSegment = segments.find((segment) => segment.id === activeSegmentId) ?? null;
+  const overviewSummaries = activeSegment?.days ?? daySummaries;
+  const segmentDays = React.useMemo(() => activeSegment ? new Set(activeSegment.days.map((day) => day.day)) : null, [activeSegment]);
   const daySummaryById = React.useMemo(() => new Map(daySummaries.map((summary) => [summary.dayId, summary])), [daySummaries]);
   const daysByEntity = React.useMemo(() => {
     const map = new Map<string, Set<number>>();
@@ -292,8 +320,19 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
     };
   }, [bundle, isMobile]);
 
+  React.useLayoutEffect(() => {
+    const region = mapRegionRef.current;
+    if (!isMobile || !state.mobileCanvasOpen || !region) { setMapBottomOffset(0); return; }
+    const update = () => setMapBottomOffset(Math.round(region.clientHeight * .55));
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(region);
+    return () => observer.disconnect();
+  }, [isMobile, state.mobileCanvasOpen]);
+
   React.useEffect(() => {
     setActiveDay(null);
+    setActiveSegmentId(null);
     setSidebarMode('itinerary');
     setSelectedEntityId(null);
     setSelectedOccurrenceKey(null);
@@ -338,7 +377,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   }, []);
 
   const openDay = React.useCallback((summary: DaySummaryVM) => {
-    overviewScrollTop.current = navigationScrollRef.current?.scrollTop ?? 0;
+    overviewScrollTop.current = contentScrollRef.current?.scrollTop ?? 0;
     returnFocusDayId.current = summary.dayId;
     setSidebarMode('itinerary');
     setActiveDay(summary.day);
@@ -366,7 +405,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
     if (activeDay != null || !returnFocusDayId.current) return;
     const dayId = returnFocusDayId.current;
     window.requestAnimationFrame(() => {
-      navigationScrollRef.current?.scrollTo({ top: overviewScrollTop.current });
+      contentScrollRef.current?.scrollTo({ top: overviewScrollTop.current });
       summaryCardRefs.current.get(dayId)?.focus();
       returnFocusDayId.current = null;
     });
@@ -380,11 +419,15 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   const visiblePlaces = React.useMemo(() => mappedPlaces.filter((place) => (
     !hiddenLayers.includes(place.entity_ref.entity_type as PlaceLayer)
     && (displayedDay == null || place.days.includes(displayedDay))
-  )), [displayedDay, hiddenLayers, mappedPlaces]);
+    && (displayedDay != null || !segmentDays || place.days.some((day) => segmentDays.has(day)))
+  )), [displayedDay, hiddenLayers, mappedPlaces, segmentDays]);
   const visibleRoutes = React.useMemo(() => {
     if (!showRoutes) return [];
-    return projectedRoutes.filter((route) => displayedDay == null || daysByEntity.get(route.entity_ref.entity_id)?.has(displayedDay));
-  }, [daysByEntity, displayedDay, projectedRoutes, showRoutes]);
+    return projectedRoutes.filter((route) => {
+      const days = daysByEntity.get(route.entity_ref.entity_id);
+      return displayedDay != null ? days?.has(displayedDay) : !segmentDays || [...(days ?? [])].some((day) => segmentDays.has(day));
+    });
+  }, [daysByEntity, displayedDay, projectedRoutes, segmentDays, showRoutes]);
   const drawableRouteIds = React.useMemo(() => new Set(
     projectedRoutes.filter(routeIsDrawable).map((route) => route.entity_ref.entity_id),
   ), [projectedRoutes]);
@@ -442,7 +485,8 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
     placeReturnFocusRef.current = null;
     setSelectedOccurrenceKey(null);
     setSelectedEntityId(id);
-  }, [closePlaceDetail, selectedEntityId]);
+    if (isMobile) dispatch({ type: 'SET_MOBILE_CANVAS_OPEN', payload: false });
+  }, [closePlaceDetail, dispatch, isMobile, selectedEntityId]);
 
   const openReading = React.useCallback(() => {
     dispatch({ type: 'SET_DELIVERABLE_VIEW', payload: 'full_report' });
@@ -454,34 +498,43 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
     dispatch({ type: 'SET_DELIVERABLE_VIEW', payload: view === 'today' ? 'interactive_itinerary' : 'today' });
   }, [dispatch, view]);
 
+  const selectSegment = (segmentId: string | null) => {
+    setActiveSegmentId(segmentId);
+    setSidebarMode('itinerary');
+    setActiveDay(null);
+    setSelectedEntityId(null);
+    setSelectedOccurrenceKey(null);
+    setLinkedEntityId(null);
+    overviewScrollTop.current = 0;
+    returnFocusDayId.current = null;
+    contentScrollRef.current?.scrollTo({ top: 0 });
+  };
+
   const navigation = bundle && (
     <aside className="journey-sidebar journey-navigation" aria-label={view === 'today' ? '旅中今天安排' : '旅行导航'}>
       <header className="journey-sidebar-header">
         <button type="button" className="journey-back-trips" onClick={() => dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'trips' })}><ArrowLeft size={14} />我的行程</button>
         <div className="journey-title-row">
-          <h1>{title}</h1>
+          <h1 title={title}>{title}</h1>
           {state.currentTripRunReadOnly && <span>历史结果 · 只读</span>}
         </div>
         {metaLabel && <p>{metaLabel}</p>}
         <div className="journey-view-actions">
           <button type="button" className="journey-view-action" onClick={openReading}><BookOpen size={14} />阅读版</button>
-          <PdfDownloadButton bundle={bundle} compact />
           <button type="button" className={cn('journey-view-action', view === 'today' && 'is-active')} onClick={toggleToday}><Sun size={14} />{view === 'today' ? '返回全程' : '旅中查看'}</button>
           {view === 'interactive_itinerary' && !state.currentTripRunReadOnly && !conversationOpen && (
             <button type="button" data-conversation-trigger="navigation" className="journey-view-action" onClick={openConversation}><MessageCircle size={14} />调整</button>
           )}
         </div>
       </header>
-      {state.currentTripRunReadOnly && <div className="journey-readonly-footer">这份生成记录仅供查看</div>}
     </aside>
   );
 
   const contentBody = conversationOpen ? (
-    <div className="journey-conversation-view" onKeyDown={(event) => { if (event.key === 'Escape') closeConversation(); }}>
+    <div className="journey-conversation-view" onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); closeConversation(); } }}>
       <header>
         <button type="button" onClick={closeConversation}><ArrowLeft size={14} />返回日程</button>
         <h2>调整这趟旅行</h2>
-        <p>告诉我你的想法，日程和地图会一起更新。</p>
       </header>
       {(state.planApprovalGate || state.understandingQuestions) ? <GenerationJourneyPanel /> : (
         <ConversationThread
@@ -507,6 +560,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
       </header>
       <WeatherSuggestions suggestions={bundle?.workspace.weather_adjustments.filter((item) => item.date === selectedDay.date) ?? []} readOnly={state.currentTripRunReadOnly} onDiscuss={discussWeather} />
       <TodayNextCard node={nextNode} actualToday={actualToday} />
+      <UnresolvedReadout items={bundle && selectedDay ? unresolvedForDay(bundle, selectedDay.day_id) : []} />
       <DayTimeline nodes={selectedTimeline} waypointOrder={waypointOrder} linkedEntityId={linkedEntityId} onLinkEntity={setLinkedEntityId} />
       {selectedDay.estimated_cost_cny != null && <footer>当日约 <strong>¥{selectedDay.estimated_cost_cny.toLocaleString('zh-CN')}</strong></footer>}
     </div>
@@ -516,7 +570,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
       {activeDay == null && (
         <TripOverview
           itinerary={bundle.workspace.itinerary}
-          summaries={daySummaries}
+          summaries={overviewSummaries}
           costCoverageStatement={formatTripCostSummary(bundle.report_projection.document?.cost_summary)}
           onOpenDay={openDay}
           registerDayCard={registerDayCard}
@@ -525,7 +579,13 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
           activeDay={activeDay}
         />
       )}
-      {activeDay != null && <button type="button" data-testid="day-overview-back" onClick={restoreOverview} className="journey-back-overview"><ArrowLeft size={15} />返回全程</button>}
+      {activeDay == null && <UnresolvedReadout items={bundle.workspace.itinerary.unresolved} all />}
+      {activeDay != null && (
+        <div className="journey-day-navigation">
+          <button type="button" data-testid="day-overview-back" onClick={restoreOverview} className="journey-back-overview"><ArrowLeft size={15} />返回全程</button>
+          <MapDayNav days={itinerary?.day_plans ?? []} activeDay={activeDay} onSelect={selectDay} showOverview={false} compact={isMobile} />
+        </div>
+      )}
       {activeDay != null && <ItineraryCardFlow
         bundle={bundle}
         days={daysToRender}
@@ -565,7 +625,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   );
 
   const mapRegion = (
-    <div className="journey-map-region" data-testid="itinerary-map-region">
+    <div ref={mapRegionRef} className="journey-map-region" data-testid="itinerary-map-region">
       {hasMapData ? (
         <BundleMapLeafletLazy
           places={visiblePlaces}
@@ -575,14 +635,14 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
           linkedEntityId={linkedEntityId}
           onLinkEntity={setLinkedEntityId}
           overlayOffset={isMobile ? 0 : panelOffset}
+          bottomOffset={isMobile ? mapBottomOffset : view === 'today' ? 0 : 96}
         />
       ) : (
-        <div className="journey-map-empty"><MapIcon size={28} /><p>已确认的地点会显示在这里</p></div>
+        <div className="journey-map-empty"><MapIcon size={28} /><p>这趟行程暂无可定位的地点或路线</p></div>
       )}
-      {hasMapData && !hasVisibleData && <div className="journey-map-empty is-floating"><MapIcon size={20} /><p>这一天暂无可定位的地点或路线</p></div>}
+      {hasMapData && !hasVisibleData && <div className="journey-map-empty is-floating"><MapIcon size={20} /><p>当前范围暂无可定位的地点或路线</p></div>}
 
       <div className="journey-map-top-controls">
-        {bundle && view === 'interactive_itinerary' && <MapDayNav days={bundle.workspace.itinerary.day_plans} activeDay={activeDay} onSelect={selectDay} />}
         {bundle && (
           <div className="journey-layer-control">
             <button type="button" aria-expanded={layersOpen} onClick={() => setLayersOpen((open) => !open)}><Layers3 size={15} />图层<ChevronDown size={13} className={cn('transition-transform', layersOpen && 'rotate-180')} /></button>
@@ -607,6 +667,11 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
           </div>
         )}
       </div>
+
+      {bundle && view === 'interactive_itinerary' && (
+        <TripRouteNav segments={segments} activeSegmentId={activeDay == null ? activeSegmentId : segments.find((segment) => segment.days.some((day) => day.day === activeDay))?.id ?? null} onSelect={selectSegment} />
+      )}
+      {isMobile && !state.mobileCanvasOpen && state.currentTripRunReadOnly && <span className="journey-readonly-map-label">历史结果 · 只读</span>}
 
       <AnimatePresence mode="wait" initial={false} onExitComplete={restorePlaceFocus}>
         {bundle && selectedEntity && (
@@ -650,7 +715,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
           className="delivery-interactive-layer"
         >
             <PresenceSection
-              className={cn('delivery-workspace', !bundle && 'is-generating', view === 'today' && 'is-today')}
+              className={cn('delivery-workspace', !bundle && 'is-generating', view === 'today' && 'is-today', activeDay == null && !conversationOpen && view !== 'today' && 'is-overview', (activeDay != null || conversationOpen || view === 'today') && 'is-detail')}
               style={{ '--journey-map-overlay': `${panelOffset}px` } as React.CSSProperties}
               aria-label="旅行地图工作区"
             >
@@ -661,9 +726,9 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
                   : <div className="generation-workspace generation-workspace-conversation"><ConversationThread key={state.conversationEpoch} embedded /></div>}
               {bundle && !isMobile && <PresenceFrame ref={floatingPanelRef} className="journey-floating-panel" initial={{ opacity: 0, x: reducedMotion ? 0 : -18 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reducedMotion ? 0 : duration.page, ease: easing.decelerate }}>{navigation}{content}</PresenceFrame>}
               {isMobile && bundle && (
-                <Sheet open={state.mobileCanvasOpen} onClose={() => dispatch({ type: 'SET_MOBILE_CANVAS_OPEN', payload: false })} testId="canvas-sheet">
-                  <div className="journey-mobile-panels">{navigation}{content}</div>
-                </Sheet>
+                <DeliveryMobileSheet open={state.mobileCanvasOpen} onClose={closeMobileSheet}>
+                  {navigation}{content}
+                </DeliveryMobileSheet>
               )}
             </PresenceSection>
         </div>

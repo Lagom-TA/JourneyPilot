@@ -1665,7 +1665,7 @@ test('phone sheet closes with Escape and restores the canvas entry', async ({ pa
   await assertOffline(page, fixture);
 });
 
-test('concise delivery keeps unlocated stops and one reason without listing gaps across views', async ({ page }) => {
+test('concise delivery keeps unlocated stops, expandable descriptions and complete gaps', async ({ page }) => {
   const bundle = structuredClone(deliveryBundle());
   const evidenceDir = '../test-results/e2e-evidence/generation-05-concise-delivery';
   const reason = '适合慢步游览。';
@@ -1695,12 +1695,11 @@ test('concise delivery keeps unlocated stops and one reason without listing gaps
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  await expect(page.getByText('晚间游船暂未安排')).toHaveCount(0);
+  await expect(page.getByText('晚间游船暂未安排', { exact: true })).not.toBeVisible();
   await page.getByTestId('day-summary-card-day-2').click();
   const occurrence = page.locator('[data-itinerary-occurrence="d2-museum"]');
-  await expect(occurrence).toContainText(reason);
+  await expect(occurrence).not.toContainText(reason);
   await expect(occurrence.getByRole('button', { name: '在地图查看' })).toHaveCount(0);
-  await expect(page.locator('[data-bundle-map-entity="visit-yongning-gate"]')).toBeVisible();
   await occurrence.getByRole('button', { name: '查看详情' }).click();
   await expect(occurrence.getByText(reason, { exact: true })).toHaveCount(1);
   await page.waitForTimeout(500);
@@ -1710,15 +1709,19 @@ test('concise delivery keeps unlocated stops and one reason without listing gaps
   await page.getByRole('button', { name: '阅读版', exact: true }).click();
   const report = page.getByTestId('full-report');
   await expect(report.getByText(reason, { exact: true })).toHaveCount(1);
-  await expect(report).not.toContainText('晚间游船暂未安排');
+  await expect(report.getByText('晚间游船暂未安排', { exact: true })).toHaveCount(1);
+  await report.locator('.journey-unresolved summary').click();
+  await expect(report.getByText('晚间游船暂未安排', { exact: true })).toBeVisible();
   await expect(report).not.toContainText('费用按行程逐项列出');
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${evidenceDir}/concise-desktop-report.png`, fullPage: true });
   await page.reload();
-  await expect(page.getByText('晚间游船暂未安排')).toHaveCount(0);
+  await expect(page.getByText('晚间游船暂未安排', { exact: true })).not.toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByTestId('bundle-leaflet-map')).toBeVisible();
-  await page.getByRole('button', { name: '第 2 天', exact: true }).click();
+  await page.getByTestId('canvas-pill').click();
+  await page.getByTestId('day-summary-card-day-2').click();
+  await page.locator('[data-itinerary-occurrence="d2-wall"]').getByRole('button', { name: '在地图查看', exact: true }).click();
   await expect(page.locator('[data-bundle-map-entity="visit-yongning-gate"]')).toBeVisible();
   await page.waitForTimeout(500);
   await page.screenshot({ path: `${evidenceDir}/concise-phone-map.png`, fullPage: true });
@@ -2459,33 +2462,21 @@ test('mixed transport display merges headings and keeps station truth', async ({
   await assertOffline(page, fixture);
 });
 
-test('keyboard focus stays within the mobile itinerary sheet', async ({ page }) => {
+test('mobile itinerary sheet keeps the map reachable and restores its opener', async ({ page }) => {
   const fixture = await offlineApp(page, { bundle: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
   const opener = page.getByTestId('canvas-pill');
   await opener.click();
-  const sheet = page.getByRole('dialog', { name: '行程详情' });
+  const sheet = page.getByRole('region', { name: '旅行日程', exact: true });
   const handle = sheet.getByRole('button', { name: '展开行程详情' });
-  await expect(sheet).toBeFocused();
-  await handle.evaluate((node) => {
-    const hiddenPanel = document.createElement('div');
-    hiddenPanel.inert = true;
-    const hiddenButton = document.createElement('button');
-    hiddenButton.textContent = '隐藏面板中的按钮';
-    hiddenPanel.append(hiddenButton);
-    node.after(hiddenPanel);
-  });
-  await handle.focus();
-  await page.keyboard.press('Tab');
-  expect(await sheet.evaluate((node) => node.contains(document.activeElement))).toBe(true);
-  await expect(handle).not.toBeFocused();
-  await handle.focus();
-  await page.keyboard.press('Shift+Tab');
-  expect(await sheet.evaluate((node) => node.contains(document.activeElement))).toBe(true);
-  await page.keyboard.press('Tab');
   await expect(handle).toBeFocused();
+  const marker = page.locator('.leaflet-marker-icon').first();
+  await marker.focus();
+  await expect(marker).toBeFocused();
+  expect(await sheet.evaluate((node) => node.contains(document.activeElement))).toBe(false);
+  await handle.focus();
   await page.keyboard.press('Enter');
   await expect(sheet).toHaveAttribute('data-detent', '92');
   await page.keyboard.press('Escape');

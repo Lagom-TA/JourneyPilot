@@ -196,11 +196,15 @@ export function buildBundleMapPlaces(
   return [...hydratedPlaces, ...distinctEndpoints];
 }
 
-export function groupBundleMapPlaces(places: BundleMapPlace[]): BundleMapPlaceGroup[] {
+export function groupBundleMapPlaces(places: BundleMapPlace[], project?: (place: BundleMapPlace) => { x: number; y: number } | null): BundleMapPlaceGroup[] {
   const groups = new Map<string, BundleMapPlace[]>();
+  const anchors = new Map<string, { x: number; y: number }>();
   for (const place of places) {
     if (!isLocatedBundleMapPlace(place)) continue;
-    const key = `${place.latitude!.toFixed(6)},${place.longitude!.toFixed(6)}`;
+    const point = project?.(place);
+    const nearby = point && [...anchors.entries()].find(([, anchor]) => Math.hypot(point.x - anchor.x, point.y - anchor.y) < 44);
+    const key = nearby ? nearby[0] : `${place.latitude!.toFixed(6)},${place.longitude!.toFixed(6)}`;
+    if (point && !anchors.has(key)) anchors.set(key, point);
     groups.set(key, [...(groups.get(key) ?? []), place]);
   }
   return [...groups.entries()].map(([key, groupedPlaces]) => ({

@@ -15,6 +15,12 @@ const base = {
 };
 
 describe('buildPlacePinHtml', () => {
+  it('renders transport endpoints as a dot without interpreting supplied markup', () => {
+    const html = buildPlacePinHtml({ ...base, endpoint: true, content: '<script>unexpected</script>' });
+    expect(html).toContain('class="journey-endpoint-dot"');
+    expect(html).not.toContain('&lt;');
+    expect(html).not.toContain('<script>');
+  });
   it('renders the expected marker dataset and text', () => {
     const html = buildPlacePinHtml(base);
     expect(html).toContain('data-bundle-map-marker="2"');

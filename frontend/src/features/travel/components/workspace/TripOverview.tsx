@@ -4,6 +4,7 @@ import { DaySummaryCard } from "./DaySummaryCard";
 import { LabelledFactList, TripFactReadout } from "./TripFactReadout";
 import { cn } from "../../../../lib/utils";
 import React from 'react';
+import { isUnscheduledItem } from '../../model/itineraryNavigation';
 interface TripOverviewProps {
     itinerary: PublicStructuredItinerary;
     summaries: readonly DaySummaryVM[];
@@ -45,12 +46,14 @@ export const TripOverview: React.FC<TripOverviewProps> = ({ itinerary, summaries
       </header>)}
 
       <div className="journey-directory-heading">
-        <span>这 {itinerary.duration_days} 天，慢慢走</span>
         <span>每日安排</span>
       </div>
       <ol className="journey-day-directory" aria-label="每日行程摘要">
         {summaries.map((day) => (<li key={day.dayId}>
-            <DaySummaryCard day={day} onOpen={() => onOpenDay(day)} cardRef={(node) => registerDayCard(day.dayId, node)} compact={compact} active={activeDay === day.day}/>
+            <DaySummaryCard day={day} onOpen={() => onOpenDay(day)} cardRef={(node) => registerDayCard(day.dayId, node)} compact={compact} active={activeDay === day.day} unscheduled={itinerary.unresolved.some((text) => {
+              const date = itinerary.day_plans.find((item) => item.day_id === day.dayId)?.date;
+              return isUnscheduledItem(text) && (new RegExp(`第\\s*${day.day}\\s*天`).test(text) || Boolean(date && text.includes(date)));
+            })}/>
           </li>))}
       </ol>
 
