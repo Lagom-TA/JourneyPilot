@@ -9,9 +9,9 @@
 - **快照计算**：cost 在 ``record_calls`` 写入时算好并存库；``run_summary`` 只读库里的
   cost 聚合，不重算，因此改价格表不影响历史行。
 - **未命中价格 → cost_usd=None**：只报 token，不编造成本（``resolve_price`` 返回 None）。
-- **互斥输入桶**：``(input-read-write)×p_in + read×p_read + write×p_write + output×p_out``；
+- **互斥输入 token 类别**：``(input-read-write)×p_in + read×p_read + write×p_write + output×p_out``；
   reasoning 已含在 output_tokens 里，不另算。
-- **聚合走查询期**：表小无需预聚合；``run_summary`` 拉全量行后用纯函数 ``summarize_calls``
+- **查询时聚合**：表小无需预聚合；``run_summary`` 拉全量行后用纯函数 ``summarize_calls``
   聚合，SQL 与测试用内存实现共用同一聚合逻辑，保证形状一致、可单测。
 """
 
@@ -137,7 +137,7 @@ def compute_cost_usd(
     cached_input_tokens: Optional[int],
     cache_write_input_tokens: Optional[int] = None,
 ) -> Optional[float]:
-    """按未缓存/缓存读/缓存写三个互斥输入桶与包含推理的输出计价。"""
+    """按未缓存输入、缓存读取、缓存写入三类互斥输入 token，以及包含推理的输出计价。"""
     if price is None:
         return None
     if input_tokens is None or output_tokens is None:
@@ -151,7 +151,7 @@ def compute_cost_usd(
     cached = max(0, cached_input_tokens or 0)
     written = max(0, cache_write_input_tokens or 0)
     if cached + written > inp:
-        return None  # 桶计数不合法时无法得到准确费用。
+        return None  # 缓存读取和写入 token 数超过输入 token 总数时无法计算费用。
     if (cached_input_tokens is None and price.cached_input_per_1m is not None
             and price.cached_input_per_1m != price.input_per_1m):
         return None

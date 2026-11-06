@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 # 失败摘要进入一次重试的提示词，超过这个长度的细节被截断。
 _FAILURE_CONTEXT_CHAR_LIMIT = 600
 
-# 实际路线超出可用时间窗口时，允许组合回炉修正排程的次数。
+# 实际路线超出可用时间窗时，允许重新组合以调整排程的最大次数。
 _COMPOSITION_RESCHEDULE_LIMIT = 1
 
 
@@ -87,7 +87,7 @@ def _connector_overtime_context(
     overtimed: list[tuple[Any, int, int]],
     response: dict[str, Any] | None = None,
 ) -> str:
-    """把超窗相邻关系压成回炉修正的提示，供下一轮组合使用。"""
+    """将超出时间窗的相邻路段整理为提示，供下一轮行程组合修正。"""
     parts = [
         f"{gap.day_date} "
         f"{gap.from_endpoint.name if gap.from_endpoint else gap.from_place_id}→"
@@ -274,7 +274,7 @@ async def itinerary_planner_node(
                 )
             unfilled = unfilled_connector_gaps(catalog, gaps)
         composition = materialize_skeleton_connectors(skeleton, catalog, gaps, {})
-        # 路线超出可用窗口时，回炉让组合按实际耗时修正排程。
+        # 路线超出可用时间窗时，下一轮组合可按实际耗时调整排程。
         overtimed = overtimed_connector_gaps(catalog, gaps, {})
         if overtimed and (state.composition_reschedule_rounds or 0) < _COMPOSITION_RESCHEDULE_LIMIT:
             logger.info(

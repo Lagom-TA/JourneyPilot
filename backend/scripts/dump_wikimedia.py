@@ -1,11 +1,11 @@
 """
 Wikimedia 双源 dump 工具 — 把 Wikipedia / Wikivoyage 中文条目拉成本地 JSON。
 
-设计原则：
-1. dump-only — 不入库，只落本地 JSON；入库由 backend/scripts/index_knowledge.py 负责
-2. 双源支持 — Wikipedia (百科风) + Wikivoyage (攻略风) 两种叙事
-3. 走 MediaWiki Action API (`prop=extracts&explaintext=1`)，返回纯文本，无需 HTML 解析
-4. 单条记录字段对齐 retrieval-set v0.1 的 doc_source 命名约定
+当前行为：
+- 只将结果写入本地 JSON；入库由 backend/scripts/index_knowledge.py 负责。
+- 支持 Wikipedia 与 Wikivoyage 两种来源。
+- 使用 MediaWiki Action API 的 `prop=extracts&explaintext=1` 获取纯文本。
+- 每条记录包含供 `index_knowledge.py` 使用的 `doc_source` 字段。
 
 使用方式：
   # 拉 Wikipedia 中文 30 篇热门目的地
@@ -52,7 +52,7 @@ USER_AGENT = (
 RETRY_AFTER_DEFAULT_SECONDS = 60.0
 RETRY_BACKOFF_SECONDS = (5.0, 20.0, 60.0, 120.0)
 
-# project → doc_source 前缀（用于 retrieval-set 标注时拼接 doc_source）
+# 项目对应的 doc_source 前缀。
 SOURCE_PREFIX = {
     "wikipedia": "wiki",
     "wikivoyage": "voyage",

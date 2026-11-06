@@ -30,7 +30,7 @@ function researchStepText(step: PlanGateStep): string {
 
 export const TripBriefPlanGate: React.FC<{
   variant?: 'default' | 'workspace';
-  /** 工作区交接期间保留已清除门的最后一帧，供尺寸收起过渡使用。 */
+  /** 工作区交接期间保留计划确认卡片最后一帧，供卡片高度收起过渡使用。 */
   gateOverride?: PlanApprovalGate | null;
 }> = ({ variant = 'default', gateOverride }) => {
   const { state, dispatch, currentStateRef } = useApp();

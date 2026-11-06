@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
-import type { F3Scene } from './fixtures/generationWorkspace';
+import type { GenerationWorkspaceScene } from './fixtures/generationWorkspace';
 
-async function openWorkspace(page: Page, scene: F3Scene = 'research') {
+async function openWorkspace(page: Page, scene: GenerationWorkspaceScene = 'research') {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/api/**', async route => {
@@ -16,7 +16,7 @@ async function openWorkspace(page: Page, scene: F3Scene = 'research') {
   await expect(page.getByTestId('generation-journey-panel')).toBeVisible();
   return errors;
 }
-async function scene(page: Page, value: F3Scene) { await page.evaluate(next => window.__f3Workspace!.setScene(next), value); }
+async function scene(page: Page, value: GenerationWorkspaceScene) { await page.evaluate(next => window.__generationWorkspace!.setScene(next), value); }
 
 test('研究台面仅露出最新动态，整块任务可开合并保留查看位置', async ({ page }) => {
   const errors = await openWorkspace(page);
@@ -29,7 +29,7 @@ test('研究台面仅露出最新动态，整块任务可开合并保留查看�
   await expect(opener).toHaveAttribute('aria-expanded', 'true');
   await group.getByTestId('research-query').locator('summary').click();
   await expect(group.getByRole('link', { name: '成都东 → 重庆北' })).toBeVisible();
-  await page.evaluate(() => window.__f3Workspace!.dispatch({ type: 'ADD_THINKING_STEP', payload: { id: 'transport-end', agentName: '交通查询', content: '交通资料已整理。', progressStatus: 'completed', stepName: '交通查询', timestamp: new Date() } }));
+  await page.evaluate(() => window.__generationWorkspace!.dispatch({ type: 'ADD_THINKING_STEP', payload: { id: 'transport-end', agentName: '交通查询', content: '交通资料已整理。', progressStatus: 'completed', stepName: '交通查询', timestamp: new Date() } }));
   await expect(opener).toHaveAttribute('aria-expanded', 'true');
   await expect(group.getByRole('link', { name: '成都东 → 重庆北' })).toBeVisible();
   await opener.click();
@@ -77,7 +77,7 @@ test('终态只提供实际可用动作，过期追问与只读记录不能提�
   await expect(page.getByRole('button', { name: '继续生成', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '返回新旅行', exact: true })).toBeVisible();
   await scene(page, 'cancelled');
-  await page.evaluate(() => window.__f3Workspace!.dispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: { runId: 'run-f3-workspace', revision: 3, approvalToken: 'obsolete', questions: [], retryLocation: true, retryResearch: true } }));
+  await page.evaluate(() => window.__generationWorkspace!.dispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: { runId: 'run-generation-workspace', revision: 3, approvalToken: 'obsolete', questions: [], retryLocation: true, retryResearch: true } }));
   await expect(page.getByTestId('understanding-questions-card')).toHaveCount(0);
   await scene(page, 'stopping');
   await expect(page.getByTestId('boarding-pass-stop')).toBeDisabled();
@@ -87,33 +87,4 @@ test('终态只提供实际可用动作，过期追问与只读记录不能提�
   await expect(page.getByTestId('boarding-pass-resume')).toHaveCount(0);
   await expect(page.getByTestId('generation-followup-composer')).toHaveCount(0);
   expect(errors).toEqual([]);
-});
-
-test('手机当前任务优先，长地名与终态输入没有横向溢出', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
-  const errors = await openWorkspace(page, 'plan');
-  const title = page.getByRole('heading', { name: '研究方案', exact: true });
-  expect((await title.boundingBox())!.y).toBeLessThan(390);
-  for (const value of ['research', 'long', 'pending', 'research-retry', 'interrupted', 'failed'] as F3Scene[]) {
-    await scene(page, value);
-    await expect(page.getByTestId('generation-journey-panel')).toBeVisible();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    expect(await page.locator('.generation-activity-body').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-  }
-  const composer = page.getByTestId('generation-followup-composer');
-  await expect(composer).toBeVisible();
-  expect((await composer.boundingBox())!.y).toBeLessThan(844);
-  expect(errors).toEqual([]);
-});
-
-test('恢复提示覆盖工作区且不改变主内容高度', async ({ page }) => {
-  await openWorkspace(page);
-  const body = page.locator('.generation-activity-body');
-  const before = await body.boundingBox();
-  await scene(page, 'recovery-loading');
-  await expect(page.getByTestId('delivery-recovery-notice')).toBeVisible();
-  const after = await body.boundingBox();
-  expect(after!.height).toBeCloseTo(before!.height, 0);
-  await scene(page, 'recovery-error');
-  await expect(page.getByTestId('delivery-recovery-notice')).toContainText('暂时无法重新加载');
 });

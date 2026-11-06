@@ -41,7 +41,6 @@ test('真实交付只读：地图、会话、阅读版、PDF 与旅中视图', a
   const mobileNavigation = page.getByRole('dialog', { name: '主导航' });
   await expect(mobileNavigation).toBeVisible();
   await expect.poll(() => mobileNavigation.evaluate((node) => node.getBoundingClientRect().left)).toBe(0);
-  await page.screenshot({ path: testInfo.outputPath('phone-navigation-open.png'), fullPage: true });
   await page.getByRole('button', { name: '收起侧栏', exact: true }).click();
   await expect(mobileNavigation).toHaveCount(0);
   await expect(page.getByTestId('sidebar-scrim')).toHaveCount(0);
@@ -49,8 +48,6 @@ test('真实交付只读：地图、会话、阅读版、PDF 与旅中视图', a
   const canvasSheet = page.getByTestId('canvas-sheet');
   await expect(canvasSheet.getByTestId('interactive-itinerary')).toBeVisible();
   await expect.poll(() => canvasSheet.evaluate((node) => node.getBoundingClientRect().top)).toBeLessThan(500);
-  await page.screenshot({ path: testInfo.outputPath('phone-sheet-open.png'), fullPage: true });
-  await canvasSheet.screenshot({ path: testInfo.outputPath('phone-sheet-panel.png') });
   await page.getByTestId('canvas-sheet').getByRole('button', { name: '阅读版', exact: true }).click();
   await expect(page.getByTestId('report-cover')).toBeVisible();
 });

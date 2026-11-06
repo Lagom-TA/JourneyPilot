@@ -306,7 +306,7 @@ class RunRecoveryService:
     async def _settle_inactive(
         self, candidate: RunRecoveryCandidate
     ) -> Optional[RunRecoveryOutcome]:
-        """已经收口的 Run 只剩残留租约。矛盾的 durable 事实不猜，只标诊断。"""
+        """已进入终态的 Run 只剩残留租约。相互矛盾的持久化状态不作推断，只记录诊断。"""
 
         if (
             candidate.status == TripRunStatus.COMPLETED

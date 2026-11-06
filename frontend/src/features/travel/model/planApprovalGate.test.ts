@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizePlanApprovalGate } from "./planApprovalGate";
 describe('normalizePlanApprovalGate', () => {
-    it('restores the requirement summary without clarification controls', () => {
+    it('restores the approval token without clarification controls', () => {
         const gate = normalizePlanApprovalGate({
             run_id: 'run_test',
             gate: 'plan',
@@ -9,12 +9,10 @@ describe('normalizePlanApprovalGate', () => {
                 plan: {
                     steps: [{ step: 1, agents: ['destination_researcher'], tasks: {} }],
                 },
-                plan_text: 'Research Tokyo',
                 approval_token: 'plan_gate.approval:abc',
                 decision_options: ['approve', 'cancel'],
             },
         });
-        expect(gate?.planText).toBe('Research Tokyo');
         expect(gate?.approvalToken).toBe('plan_gate.approval:abc');
     });
 
@@ -39,7 +37,6 @@ describe('normalizePlanApprovalGate', () => {
         }, 'pending', 'restored');
         expect(gate?.steps).toEqual([]);
         expect(gate?.decisionOptions).toEqual(['retry', 'supplement', 'cancel']);
-        expect(gate?.planText).toBe('可以重试、补充要求或取消。');
         expect(gate?.approvalToken).toBe('failed-plan-token');
     });
 

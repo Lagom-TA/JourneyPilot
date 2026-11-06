@@ -32,7 +32,7 @@ interface ThinkingChainProps {
     activityFocus?: string;
 }
 const ICONS = { planning: Compass, destination: MapPin, transport: TrainFront, stay: BedDouble, itinerary: Map, delivery: FileCheck2 };
-// dispatcher 的 thinking 事件只宣告并行调研开始，没有 progress_status；它不是完成里程碑。
+// “安排查询”事件只表示并行调研已开始，没有阶段完成状态，因此不作为完成标记。
 const TRANSIENT_STAGE_ACTIVITY_AGENTS = new Set(['安排查询']);
 const PLACEHOLDER_PROGRESS = new Set([
     '正在整理需求并查询相关资料',
@@ -259,8 +259,7 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
 }
 export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGenerating, displayContent, isSynthesizing, pendingStatusText, variant = 'default', serverTotalMs, startedAt, regionId, layout = 'default', runStatus, gatePending = false, runKey, initiallyExpanded, forcedCollapsed = false, collapseKey, activityTitle, emptyText, activityStage, stageStatus, activityFocus }) => {
     const interrupted = variant === 'interrupted';
-    // 工作台传入阶段状态后，“是否还在运行”只由该阶段决定；普通聊天不传，
-    // 继续沿用整 Run 的旧口径。
+    // 工作台按传入的阶段状态判断是否仍在运行；普通聊天根据 isGenerating 判断。
     const stageActive = stageStatus === undefined || stageStatus === 'active';
     const live = isGenerating && !interrupted && stageActive;
     const defaultExpanded = initiallyExpanded ?? (live || layout === 'workspace');
@@ -313,9 +312,8 @@ export const ThinkingChain: React.FC<ThinkingChainProps> = ({ steps, isGeneratin
     }, [live]);
     const scopedVisibleSteps = React.useMemo(() => steps.filter(step => (!activityStage || getActivityStageIdForAgent(step.agentName) === activityStage)
         && isPublicActivityStep(step)), [steps, activityStage]);
-    // 生命周期用未过滤事件计算，展示内容再排除失败/内部行动。先删步骤会让
-    // “running → 正常结果 → failed”被误判成仍在进行。工作台再按阶段过滤组，
-    // 阶段状态是组状态的唯一收口。
+    // 先用全部步骤计算组状态，再过滤仅用于展示的失败步骤和内部行动；否则失败事件会丢失，组状态可能判断错误。
+    // 工作台只显示当前阶段的分组，计算这些分组状态时会使用当前阶段状态。
     const groups = React.useMemo(() => researchGroups(steps, live, interrupted, stageStatus)
         .filter(group => !activityStage || group.stage === activityStage)
         .map(group => ({ ...group, steps: group.steps.filter(isPublicActivityStep) }))

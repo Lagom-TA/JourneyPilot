@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 async def clarifier_node(
     state: TravelAgentState, config: Optional[RunnableConfig] = None
 ) -> Dict[str, Any]:
-    """Scope 阶段 — 入口的会话压缩与运行前提检查。
+    """Scope（需求范围检查）阶段：压缩入口会话并检查运行前提。
 
-    旅行基础信息由理解阶段确认，这里不再断言身份是否齐全。
+    旅行基础信息由理解节点确认；此处不校验其是否完整。
     """
 
     stream_queue: Optional["EventBuffer"] = None

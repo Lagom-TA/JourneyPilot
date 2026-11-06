@@ -116,10 +116,10 @@ logger = logging.getLogger(__name__)
 
 
 class RunBudgetExhausted(RuntimeError):
-    """一次新调用会越过预算的某一维。
+    """拒绝会超过任一预算上限的新调用。
 
-    和 `ModelWindowClosed` 同一类：**用户没有取消**，所以调用方必须走确定性收口，
-    不能把它记成 CANCELLED。区别在 reason code —— 时间用完和钱用完不是同一件事。
+    该异常与 `ModelWindowClosed` 一样不表示用户取消了 Run；调用方应按预算耗尽处理，
+    不能将 Run 标记为 CANCELLED。reason code 用于区分预算耗尽和时间窗关闭。
     """
 
     def __init__(

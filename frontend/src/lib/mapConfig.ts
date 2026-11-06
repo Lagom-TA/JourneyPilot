@@ -11,7 +11,7 @@ const DEFAULT_TILE_URL = 'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_c
 const DEFAULT_TILE_ATTRIBUTION = '&copy; <a href="https://amap.com/">高德地图</a>';
 const DEFAULT_TILE_SUBDOMAINS = ['1', '2', '3', '4'];
 
-/** 默认值保持现网瓦片源；部署方可用 env 换成自建或其他瓦片服务。 */
+/** 默认采用高德地图瓦片；部署时可通过环境变量切换为自建或其他瓦片服务。 */
 export function resolveMapTileConfig(
   url: string | undefined,
   attribution: string | undefined,

@@ -268,7 +268,6 @@ class ToolRegistry:
         return len(self._tools)
 
 
-# 全局注册表单例
 _registry: Optional[ToolRegistry] = None
 
 

@@ -15,15 +15,12 @@ HybridRetriever：向量检索（pgvector 余弦相似度）+ lexical full-text 
 | ``fusion_score`` | RRF，``1/(60+rank)`` 之和 | **只编码排名，不编码相关性**；top-1 恒为 0.0164，跨列表的 rank-1 全部同分 |
 | ``rerank_score`` | 精排器给的绝对相关性（LLM 1–5 / CrossEncoder logit） | 跨查询可比，是排序权威 |
 
-融合只**新增** ``fusion_score``，两条臂各自的分数原样带下去。**不许**把 ``score`` 覆盖成
-rank 派生分：相似度会在融合那一步丢掉，下游既无法再施加相关性下限，也分不清"排第一"和
-"真的相关"。
+融合只**新增** ``fusion_score``，并保留两条检索臂各自的分数。不要把 ``score`` 覆盖成
+排名分，否则下游无法区分相关性与排名，也无法继续应用相关性阈值。
 
-Step 4：Reranking 二阶段精排
-  初检：Hybrid Search 扩大候选集；精排：CrossEncoderReranker / LLMReranker
-  精排**不在这一层做**——它属于 ``travel_agent.knowledge.retrieval_pipeline``，那里一次
-  查询只精排一次、在融合后的完整候选池上排，排完的顺序就是最终顺序。本层的
-  ``retrieve(rerank=True)`` 只服务"单查询单集合"这种直接调用。
+二阶段精排
+  Hybrid Search 扩大初检候选集。多集合查询由 ``travel_agent.knowledge.retrieval_pipeline``
+  在合并后的候选池上统一精排；本层的 ``retrieve(rerank=True)`` 用于单查询单集合调用。
 """
 
 from __future__ import annotations

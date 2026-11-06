@@ -146,9 +146,9 @@ class TravelPlanningWorkflow:
         """恢复被中断或失败的 Run 前整理检查点，返回继续执行的图输入。
 
         - 把停下来的这段空档补回运行期限，否则隔久了恢复必然在交付时限处失败。
-        - 检查点停在交付收口、且调度节点已记下交付失败时，直接继续只会把那条失败
-          原样重放；这时清掉失败、把行程组合重置为待执行，回到调度节点重跑组合，
-          并让运行期限回到目标完成点（见 ``renew_deadline_for_composition_retry``）。
+        - 检查点停在交付定稿节点且调度节点已记录交付失败时，继续恢复会重放同一失败。
+          此时清除失败记录，将行程组合重置为待执行并回到调度节点重新组合；运行期限也
+          恢复到目标完成点（见 ``renew_deadline_for_composition_retry``）。
         """
         config = {"configurable": {"thread_id": run_id}}
         snapshot = await self._graph.aget_state(config)

@@ -137,11 +137,7 @@ def reset_channels() -> None:
 
 
 class PeriodicTask:
-    """一个后台轮询协程的启停。
-
-    统一管理启动与取消等待流程；关闭行为的调整（例如给 join 加超时，避免卡住的
-    轮询阻塞 lifespan 收尾）只需改这一处。
-    """
+    """管理后台轮询任务的启动与停止；停止时取消任务并等待其退出。"""
 
     def __init__(
         self, name: str, factory: Callable[[], Coroutine[Any, Any, None]]

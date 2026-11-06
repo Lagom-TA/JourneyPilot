@@ -22,18 +22,14 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // react-markdown 生态是 chat 首屏 Markdown 的静态依赖，拆成懒加载会
-          // 拖慢首帧；这里把它整棵第三方依赖树独立成 vendor chunk，与入口并行
-          // 下载并获得稳定长缓存。motion 的 domMax 由 LazyMotion + CanvasMotion
-          // 动态 import 自动拆成 motion-features chunk，不要在此把它拉回主包。
+          // 将 Markdown 渲染依赖与应用入口分开加载，便于长期缓存。
+          // 动画功能通过动态导入按需加载。
           if (id.includes('node_modules')) {
-            // Keep the interaction libraries independently cacheable after UI changes.
+            // 交互效果依赖独立分包，避免界面更新影响其缓存。
             if (/[/\\]node_modules[/\\](thinking-orbs)[/\\]/.test(id)) {
               return 'interaction-vendor';
             }
-            // react / react-dom / scheduler：全站最稳定的框架内核，独立成
-            // react-vendor chunk——长缓存命中率最高，且把它从 app 入口移出后
-            // 入口 minified raw 降到 500kb 阈值下，消除体积警告。
+            // React 框架依赖独立分包，便于长期缓存。
             if (/[/\\]node_modules[/\\](react|react-dom|scheduler|use-sync-external-store)[/\\]/.test(id)) {
               return 'react-vendor';
             }

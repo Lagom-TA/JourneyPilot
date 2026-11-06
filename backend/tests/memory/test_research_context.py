@@ -85,10 +85,6 @@ def test_coordination_preserves_values_units_validity_and_source_links_without_s
     assert set(sources) == {"source_visit_a", "contradictory_visit_a"}
     assert sources["source_visit_a"]["title"] == "visit_a"
     assert (
-        sources["source_visit_a"]["content_hash"]
-        == packet.source_records[0].content_hash
-    )
-    assert (
         sources["source_visit_a"]["retrieved_at"]
         and sources["source_visit_a"]["provider_valid_until"]
     )

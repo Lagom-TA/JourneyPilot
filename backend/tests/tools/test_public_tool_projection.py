@@ -200,7 +200,7 @@ async def test_tool_events_keep_degraded_in_history_and_drop_fallback_names():
     ctx = ChatPresentation(message_id="m", session_id="s", mode="deep", use_deep_research=True)
     start_info = {
         "name": "global_place_search",
-        "tool_call_id": "t1",
+        "tool_call_id": "place-search",
         "args_summary": '{"query":"西湖","api_key":"sk-secret"}',
         "category": "search",
     }
@@ -211,7 +211,7 @@ async def test_tool_events_keep_degraded_in_history_and_drop_fallback_names():
 
     done_info = {
         "name": "global_place_search",
-        "tool_call_id": "t1",
+        "tool_call_id": "place-search",
         "summary": "找到 1 个结果",
         "status": "degraded",
         "degraded": True,

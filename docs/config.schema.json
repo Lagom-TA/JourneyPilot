@@ -156,7 +156,7 @@
     },
     "EmbeddingConfig": {
       "additionalProperties": false,
-      "description": "Embedding 模型配置（用于 RAG 向量化）\n\nprovider = \"qwen3\"  → 本地 Qwen3-Embedding-0.6B ONNX 推理（默认，首次启动从 HF 下载 ~1.2GB）\nprovider = \"openai\" → OpenAI 兼容 Embedding API（需 api_key + base_url）\nprovider = \"hash\"   → 内置确定性哈希向量（零依赖，仅供 RAG 链路跑通，语义质量低）",
+      "description": "Embedding 模型配置（用于 RAG 向量化）\n\nprovider = \"qwen3\"  → 本地 Qwen3-Embedding-0.6B ONNX 推理（默认，首次启动从 HF 下载 ~1.2GB）\nprovider = \"openai\" → OpenAI 兼容 Embedding API（需 api_key + base_url）\nprovider = \"hash\"   → 内置确定性哈希向量（无需外部依赖，仅用于验证 RAG 检索流程，不具备语义理解能力）",
       "properties": {
         "api_key": {
           "default": "",
@@ -856,7 +856,7 @@
     },
     "RerankConfig": {
       "additionalProperties": false,
-      "description": "Reranking 精排配置（Step 4: 二阶段精排）\n\nprovider = \"cross_encoder\" → BGE-Reranker-v2-m3（需要 pip install sentence-transformers）\nprovider = \"llm\"           → 复用现有 LLM 做相关性评分（开箱即用，推荐）",
+      "description": "Reranking 二阶段精排配置。\n\nprovider = \"cross_encoder\" → BGE-Reranker-v2-m3（需要 pip install sentence-transformers）\nprovider = \"llm\"           → 复用现有 LLM 做相关性评分（开箱即用，推荐）",
       "properties": {
         "enabled": {
           "default": true,
@@ -1166,7 +1166,7 @@
     },
     "ToolExposureConfig": {
       "additionalProperties": false,
-      "description": "Tool Search 按需工具曝光策略。\n\n默认 deferred：worker agent 不再全量注入工具 schema，只带压缩目录（名称+一行\n描述）进 system prompt，由 search_tools 元工具按需激活完整 schema。\n\n- mode: deferred 走按需曝光；full 切换为全量注入，便于排障。\n- worker_only: 仅对 worker agent（destination/transport/accommodation/itinerary）\n  启用；scope/orchestrator 等治理节点不动。\n- min_tools_threshold: 该 agent 可用工具数 >= 阈值才 defer；阈值以下工具少，\n  多一次 search 调用不划算，自动回落 full。",
+      "description": "Tool Search 按需工具曝光策略。\n\n默认 deferred：worker agent 在 system prompt 中接收压缩工具目录（工具名和一行\n描述），并通过 search_tools 按需加载完整 schema。\n\n- mode: deferred 走按需曝光；full 切换为全量注入，便于排障。\n- worker_only: 仅对 worker agent（destination/transport/accommodation/itinerary）\n  启用；需求入口与编排等治理节点不启用按需曝光。\n- min_tools_threshold: 可用工具数达到阈值时才按需加载；低于阈值时工具较少，\n  直接注入完整 schema，避免额外的 search 调用。",
       "properties": {
         "min_tools_threshold": {
           "default": 8,

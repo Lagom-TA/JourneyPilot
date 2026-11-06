@@ -119,7 +119,7 @@ Tests:
 约定：续不上租约就取消处理器；任务结论按本次领取的唯一 `lease_owner` 和有效期过滤，丢失租约的执行者不能覆盖新结论。记忆抽取的事实、画像和已应用标记在同一租约保护事务中提交；重领后复用该标记。其他外部副作用由处理器自身的幂等规则负责。
 Owner: `backend/travel_agent/runtime/background_jobs.py` 的 `_renew_lease`、`backend/travel_agent/storage/background_job_store.py` 的 `complete` / `fail`、`backend/travel_agent/memory/memory_extractor.py`
 Tests:
-- `backend/tests/db/test_b5_memory_rollback.py`
+- `backend/tests/db/test_memory_extraction_rollback.py`
 - `backend/tests/db/test_background_jobs.py`
 - `backend/tests/runtime/test_lease_races.py::test_old_job_handler_cannot_finish_after_a_new_claim`
 
@@ -127,14 +127,14 @@ Tests:
 约定：全部删除在一个事务内取消未完成和可重试的抽取、清除选定记忆及手动管理记录，并只保留不含内容的清空事件；删除前开始的对话不能在删除后重新安排抽取。用户手填偏好不受影响。
 Owner: `backend/travel_agent/storage/memory_lifecycle_store.py`、`backend/travel_agent/storage/background_job_store.py`
 Tests:
-- `backend/tests/db/test_b6_memory_rollback.py`
+- `backend/tests/db/test_memory_lifecycle_rollback.py`
 
 ### INV-MEMORY-002：手动管理与后续总结
 约定：手动添加、单条删除、分类删除及过期清理与其管理记录同事务提交；删除的内容保存在管理记录中，用于后续记忆总结。总结读取当前记忆、画像、偏好和手动操作，基于明确证据更新或删除已有事实。被更新的事实刷新 `created_at`，之后按更新时间参与检索新近度和单值约束的冲突仲裁。模型调用期间状态变化时重试，不能覆盖较新的操作。
 Owner: `backend/travel_agent/storage/memory_lifecycle_store.py`、`backend/travel_agent/memory/manual_facts.py`、`backend/travel_agent/memory/memory_extractor.py`、`backend/travel_agent/memory/memory_store.py` 的 `replace_fact`
 Tests:
-- `backend/tests/db/test_b6_memory_rollback.py`
-- `backend/tests/db/test_b5_memory_rollback.py::test_explicit_change_updates_fact_and_removes_stale_portrait`
+- `backend/tests/db/test_memory_lifecycle_rollback.py`
+- `backend/tests/db/test_memory_extraction_rollback.py::test_explicit_change_updates_fact_and_removes_stale_portrait`
 - `backend/tests/memory/test_extraction_candidates.py`
 
 ### INV-RUN-001：每个 running Run 都有有效租约
@@ -205,7 +205,7 @@ Tests:
 约定：`intent_amendment_router` 的 conditional edge 必须覆盖除 `scope_clarifier`（入口整理）、`understanding_gate`（提问暂停点，补充命令只在 RUNNING 阶段入队）与路由节点自身之外的每个运行节点；守卫从构造好的图上读回落点，不扫描源码。
 Owner: `backend/travel_agent/planning/nodes.py` 的 `AMENDMENT_CONTINUATION_NODES`、`backend/travel_agent/planning/graph.py` 的 `route_after_intent_amendment`、`backend/travel_agent/planning/requirements/amendments.py`
 Tests:
-- `backend/tests/planning/test_node_presentation.py::test_intent_amendments_can_resume_at_every_runtime_node_that_accepts_them`
+- `backend/tests/planning/test_amendment_routing.py::test_continuation_table_equals_graph_branch_targets`
 
 ### INV-INTENT-007：理解问题绑定当轮凭据，回答进入同一理解
 约定：`understanding_gate` 下发的每个问题轮次携带 `approval_token`；回答必须引用当前待答问题并回传同一凭据，凭据不匹配时原样重发问题，不消费状态、不重跑模型。回答全文保存在理解问答与消息历史中，模型据此整理当前需求；模型提问、日期补问和地点重试共用轮次上限。

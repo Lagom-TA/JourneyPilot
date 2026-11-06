@@ -199,7 +199,7 @@ export function confirmedMetroTransferCount(leg: PublicTransportLeg): number {
     }
     return transfers;
 }
-/** 主行站点只消费 Provider 已证实的上车／下车站，不用整段接驳端点或 POI 名称补位。 */
+/** 主行只使用路线数据中的上车站与下车站字段；缺少站点时，不用路线端点或地点名称补齐。 */
 export function transitStations(leg: PublicTransportLeg): {
     from: string | null;
     to: string | null;

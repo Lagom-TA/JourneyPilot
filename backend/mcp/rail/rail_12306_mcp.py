@@ -124,10 +124,8 @@ async def list_tools() -> list[Tool]:
 @server.call_tool()
 async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if name == "get-tickets":
-        # JSON, not prose: the repo binds a real train from these rows in code, and
-        # the governance sanitizer flattens + truncates any long string to a single
-        # 900-char line.  ``tools/mcp_manager.py::_normalized_rail_result`` unwraps
-        # this text back into the payload.
+        # 行程绑定需要读取结构化车次信息。工具管理器会先解开 JSON，
+        # 避免后续结果治理将整段文本压缩并截断。
         text = json.dumps(
             await get_tickets_payload(
                 str(arguments["date"]),

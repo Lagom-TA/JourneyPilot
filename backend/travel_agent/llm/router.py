@@ -890,7 +890,7 @@ class OpenAICompatibleLLM(BaseLLM):
     ) -> AsyncIterator[Dict[str, Any]]:
         """真实读取上游流式响应，同时聚合工具调用与推理重放。
 
-        与非流式 ``ainvoke_with_tools`` 共用同一份请求参数、预算守卫和计量口径，
+        与非流式 ``ainvoke_with_tools`` 共用同一份请求参数、预算检查和调用计量，
         但正文增量来自供应商的实际 chunk，不在本地切分完整结果。``stream_start``
         先给出本次逻辑调用 id；``tool_call_delta`` 只表示上游开始返回工具调用，
         不携带参数，供 ReAct 判断本轮会执行工具。

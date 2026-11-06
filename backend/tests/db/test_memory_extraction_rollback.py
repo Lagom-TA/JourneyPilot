@@ -12,7 +12,7 @@ from travel_agent.storage import database
 
 pytestmark = [
     pytest.mark.postgres,
-    pytest.mark.skipif(os.getenv("JP_B5_ROLLBACK_TESTS") != "1", reason="需要显式启用配置库的临时表验证"),
+    pytest.mark.skipif(os.getenv("JP_MEMORY_EXTRACTION_ROLLBACK_TESTS") != "1", reason="需要显式启用配置库的临时表验证"),
 ]
 
 
@@ -39,9 +39,9 @@ async def memory_database(monkeypatch):
                 "ALTER TABLE memory_relations ADD COLUMN IF NOT EXISTS memory_revision INTEGER NOT NULL DEFAULT 0"
             ))
             for name, field in (("memory_facts", "fact_id"), ("memory_entities", "entity_id"), ("memory_relations", "relation_id")):
-                await connection.execute(text(f"CREATE TEMP SEQUENCE {name}_b5_sequence"))
+                await connection.execute(text(f"CREATE TEMP SEQUENCE {name}_extraction_sequence"))
                 await connection.execute(text(
-                    f"ALTER TABLE {name} ALTER COLUMN {field} SET DEFAULT nextval('pg_temp.{name}_b5_sequence')"
+                    f"ALTER TABLE {name} ALTER COLUMN {field} SET DEFAULT nextval('pg_temp.{name}_extraction_sequence')"
                 ))
             await connection.execute(text("SET LOCAL search_path = pg_temp, public"))
             session = AsyncSession(bind=connection, expire_on_commit=False)
@@ -73,11 +73,11 @@ async def _job(session):
 
     await session.execute(text("""
         INSERT INTO background_jobs (job_id, job_type, dedupe_key, status, lease_owner, lease_expires_at)
-        VALUES ('job-b5', 'memory_extraction', 'turn-b5', 'running', 'owner-1', NOW() + INTERVAL '1 minute')
+        VALUES ('job-extraction', 'memory_extraction', 'turn-extraction', 'running', 'owner-1', NOW() + INTERVAL '1 minute')
     """))
     return BackgroundJob(
-        job_id="job-b5", job_type=BackgroundJobType.MEMORY_EXTRACTION,
-        dedupe_key="turn-b5", status=BackgroundJobStatus.RUNNING, lease_owner="owner-1",
+        job_id="job-extraction", job_type=BackgroundJobType.MEMORY_EXTRACTION,
+        dedupe_key="turn-extraction", status=BackgroundJobStatus.RUNNING, lease_owner="owner-1",
     )
 
 

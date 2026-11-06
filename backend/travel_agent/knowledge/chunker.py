@@ -34,18 +34,14 @@ _SENTENCE_BOUNDARY = re.compile(r'(?<=[。！？!?；\n])\s*')
 
 
 def _exceeded_model_chunking_budget(text: str) -> Optional[int]:
-    """这篇正文超界了吗？超了就交出**做出这个判断的那个数**，没超交出 None。
+    """正文超过模型分块字符上限时返回该上限，否则返回 ``None``。
 
-    ``semantic`` 与 ``contextual`` 两档分块的**模型调用条数由文档大小决定**（逐句
-    一次 embedding、逐段一次 LLM），所以「一次入库最多花多少」这个界必须在
-    **花掉第一次调用之前**判得出来 —— 它的单位因此是字符，不是段数。规则写在这里
-    一次，两个会调模型的分块器都问它；数在 ``config.RAGConfig.model_chunking_max_chars``。
+    语义分块和上下文分块的模型调用次数随正文长度增加，因此必须在首次调用前检查，并共用
+    ``config.RAGConfig.model_chunking_max_chars`` 这一字符上限。返回上限值可供调用方日志
+    使用，避免日志重新读取配置后与本次判断采用不同的值。
 
-    交出那个数而不是一个 bool，是为了让日志印的就是**执行时用的那一份** ——
-    调用方自己再读一次配置来印，那一行随时可以和实际生效的数漂开。
-
-    超界不是失败，是**降档**：按固定窗口分块入库，一次模型都不调。段会差一点，
-    而替代方案是一个用户的一次上传把全站的模型调用排到队尾。
+    超过上限时不视为解析失败：改用固定窗口分块，不调用 embedding 或 LLM，避免单篇大文档
+    长时间占用共享模型连接池。
     """
 
     limit = int(get_settings().rag.model_chunking_max_chars)
@@ -190,7 +186,7 @@ class TextChunker:
 
 
 # ---------------------------------------------------------------------------
-# SemanticChunker — 语义感知分块器（Step 1）
+# SemanticChunker — 语义感知分块器
 # ---------------------------------------------------------------------------
 
 class SemanticChunker:
@@ -241,7 +237,7 @@ class SemanticChunker:
         if not text or not text.strip():
             return []
 
-        # 逐句 embedding 的条数就是句子数，所以先问那道界。
+        # 逐句 embedding 的次数取决于句子数，因此先检查模型分块字符上限。
         over_budget = _exceeded_model_chunking_budget(text)
         if over_budget is not None:
             logger.warning(
@@ -447,8 +443,7 @@ class ContextualChunker:
         if not text or not text.strip():
             return []
 
-        # 规模那道界：超界的正文一次模型都不调 —— 连基础分块也不走语义档，
-        # 因为语义档自己就是逐句 embedding。
+        # 正文超出模型分块字符上限时，直接用固定窗口分块，避免基础分块触发逐句 embedding。
         settings = get_settings().rag
         over_budget = _exceeded_model_chunking_budget(text)
         if over_budget is not None:
@@ -462,7 +457,6 @@ class ContextualChunker:
             plain = TextChunker().split(text, source, metadata)
             return [_chunk_without_prefix(c) for c in plain]
 
-        # Step 1: 获取基础 chunks（语义分块或固定窗口）
         base_chunker = self._get_base_chunker()
         if hasattr(base_chunker, 'split') and asyncio.iscoroutinefunction(base_chunker.split):
             base_chunks = await base_chunker.split(text, source, metadata)
@@ -472,7 +466,6 @@ class ContextualChunker:
         if not base_chunks:
             return []
 
-        # Step 2: 逐段调 LLM 生成上下文前缀 —— 有并发上限、有失败熔断。
         title = source or (metadata or {}).get("title", "本文档")
         doc_beginning = text[:300].strip()
         llm = self._get_llm()

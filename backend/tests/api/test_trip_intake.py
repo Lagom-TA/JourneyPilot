@@ -301,7 +301,7 @@ async def test_form_entry_stores_the_confirmed_identity_on_the_run_row(
     )
     body = chat_body(
         route="trip_planning",
-        messages=[{"role": "user", "content": "从上海去青岛放松几天", "message_id": "f1"}],
+        messages=[{"role": "user", "content": "从上海去青岛放松几天", "message_id": "trip-request"}],
         controlled_trip_identity={
             "origin": origin,
             "destinations": [place],

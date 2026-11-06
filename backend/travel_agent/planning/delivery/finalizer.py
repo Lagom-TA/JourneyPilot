@@ -89,7 +89,7 @@ async def delivery_finalizer_node(
     if not isinstance(trip_store, TripRunStore):
         raise ValueError("trip_run_store is required")
     if state.delivery_failure is not None:
-        # dispatcher 已收口：直接按记录失败，不再走组装/投影。
+        # 调度器已写入 delivery_failure；这里按记录标记失败，跳过组装和投影。
         record = state.delivery_failure
         await _mark_failed(trip_store, state, record)
         cause = record.operation

@@ -392,7 +392,7 @@ def _normalized_amap_place_result(server_name: str, tool_name: str, payload: Any
     # 使用 ``results`` 键（而不是 ``pois``）：``classify_tool_result`` 只把
     # content/result/results/routes/data/text 视为实质内容，``pois`` 键会让带 POI 的
     # 回答被分类为 EMPTY_SUCCESS，导致确定性住宿绑定与地图投影丢失全部 POI。
-    # 这三个工具没有 web 搜索 fallback 边，空判定就是误归类。
+    # 这三个工具没有 Web 搜索备用调用路径，因此将结果判为空会造成误归类。
     return {
         "success": True,
         "provider": "amap",
@@ -483,7 +483,7 @@ class MCPManager:
         self._initialized = False
         self._server_configs: Dict[str, Any] = {}
         self._server_states: Dict[str, MCPServerState] = {}
-        # 每个 server 的会话租约（单会话 + 锁，不是多连接池）。
+        # 每个 MCP 服务器只复用一个会话，并以锁串行化该服务器的调用。
         self._session_leases: Dict[str, _ServerSessionLease] = {}
         self._server_call_locks: Dict[str, asyncio.Lock] = {}
         self._lease_meta_lock = asyncio.Lock()
@@ -492,9 +492,8 @@ class MCPManager:
         """
         初始化 MCP 服务器连接，并将工具注册到 ToolRegistry。
 
-        采用“启动时短连探测、执行时 per-server session lease 复用”的模型：
-        - 启动阶段真实调用 initialize/list_tools，得到健康状态与工具清单（短连接）
-        - 工具执行阶段按 server 复用 ClientSession（同 server 串行；跨 server 可并行）
+        启动时使用短连接调用 initialize/list_tools，获取健康状态与工具清单。
+        执行工具时，每个服务器复用一个 ClientSession 并串行调用；不同服务器可以并行。
         """
         if self._initialized:
             return self.get_server_states()
@@ -950,7 +949,6 @@ class MCPManager:
                 }
 
 
-# 全局 MCPManager 单例
 _mcp_manager: Optional[MCPManager] = None
 
 

@@ -11,7 +11,7 @@ from travel_agent.storage import database
 
 pytestmark = [
     pytest.mark.postgres,
-    pytest.mark.skipif(os.getenv("JP_B6_ROLLBACK_TESTS") != "1", reason="需要显式启用配置库的临时表验证"),
+    pytest.mark.skipif(os.getenv("JP_MEMORY_LIFECYCLE_ROLLBACK_TESTS") != "1", reason="需要显式启用配置库的临时表验证"),
 ]
 
 
@@ -42,9 +42,9 @@ async def memory_database(monkeypatch):
                 "ALTER TABLE memory_relations ADD COLUMN IF NOT EXISTS memory_revision INTEGER NOT NULL DEFAULT 0"
             ))
             for name, field in (("memory_facts", "fact_id"), ("memory_entities", "entity_id"), ("memory_relations", "relation_id")):
-                await connection.execute(text(f"CREATE TEMP SEQUENCE {name}_b6_sequence"))
+                await connection.execute(text(f"CREATE TEMP SEQUENCE {name}_lifecycle_sequence"))
                 await connection.execute(text(
-                    f"ALTER TABLE {name} ALTER COLUMN {field} SET DEFAULT nextval('pg_temp.{name}_b6_sequence')"
+                    f"ALTER TABLE {name} ALTER COLUMN {field} SET DEFAULT nextval('pg_temp.{name}_lifecycle_sequence')"
                 ))
             await connection.execute(text("SET LOCAL search_path = pg_temp, public"))
             session = AsyncSession(bind=connection, expire_on_commit=False)
@@ -75,14 +75,14 @@ async def test_delete_all_cancels_old_jobs_and_fences_delayed_enqueue(memory_dat
     session = memory_database
     await session.execute(text("""
         INSERT INTO user_profiles (user_id, preferences, auto_portrait, revision)
-        VALUES ('b6-user', '{"pace":"轻松悠闲"}', 'old portrait', 3)
+        VALUES ('lifecycle-user', '{"pace":"轻松悠闲"}', 'old portrait', 3)
     """))
     await session.execute(text("""
         INSERT INTO memory_facts (user_id, session_id, content, category, importance)
-        VALUES ('b6-user', 'session', 'old fact', 'preference', 5)
+        VALUES ('lifecycle-user', 'session', 'old fact', 'preference', 5)
     """))
     jobs = BackgroundJobStore()
-    payload = {"user_id": "b6-user", "session_id": "session", "portrait_baseline": "old portrait"}
+    payload = {"user_id": "lifecycle-user", "session_id": "session", "portrait_baseline": "old portrait"}
     old_job, _ = await jobs.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "old-turn", payload)
     (running,) = await jobs.claim(lease_seconds=60)
     assert running.job_id == old_job.job_id
@@ -92,7 +92,7 @@ async def test_delete_all_cancels_old_jobs_and_fences_delayed_enqueue(memory_dat
         {"job_id": dead_job.job_id},
     )
 
-    summary = await MemoryLifecycleStore().delete_all_user_memory(user_id="b6-user")
+    summary = await MemoryLifecycleStore().delete_all_user_memory(user_id="lifecycle-user")
     assert summary.affected_facts == 1
     assert (await session.execute(text("SELECT count(*) FROM memory_facts"))).scalar_one() == 0
     profile = (await session.execute(text("SELECT preferences, auto_portrait, revision FROM user_profiles"))).one()
@@ -104,7 +104,7 @@ async def test_delete_all_cancels_old_jobs_and_fences_delayed_enqueue(memory_dat
     assert await jobs.enqueue_memory_extraction("new-turn", payload, memory_revision_at_start=profile.revision)
     with pytest.raises(MemoryExtractionFailed, match="租约"):
         await MemoryExtractor()._commit_extraction(
-            job=running, user_id="b6-user", session_id="session", source_message_id="message",
+            job=running, user_id="lifecycle-user", session_id="session", source_message_id="message",
             facts=[], embeddings=[], portrait=[], store=MemoryStore(),
             context=MemoryExtractionContext([], [], [], "", 0),
         )
@@ -118,17 +118,17 @@ async def test_delete_all_failure_rolls_back_jobs_and_facts(memory_database, mon
 
     await memory_database.execute(text("""
         INSERT INTO memory_facts (user_id, session_id, content, category, importance)
-        VALUES ('b6-failure', 'session', 'preserve', 'preference', 5)
+        VALUES ('lifecycle-failure', 'session', 'preserve', 'preference', 5)
     """))
     jobs = BackgroundJobStore()
-    job, _ = await jobs.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "rollback-turn", {"user_id": "b6-failure"})
+    job, _ = await jobs.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "rollback-turn", {"user_id": "lifecycle-failure"})
 
     async def fail(*args, **kwargs):
         raise RuntimeError("graph failure")
 
     monkeypatch.setattr(MemoryGraph, "delete_user_graph", fail)
     with pytest.raises(RuntimeError, match="graph failure"):
-        await MemoryLifecycleStore().delete_all_user_memory(user_id="b6-failure")
+        await MemoryLifecycleStore().delete_all_user_memory(user_id="lifecycle-failure")
     assert (await memory_database.execute(text("SELECT count(*) FROM memory_facts"))).scalar_one() == 1
     assert (await jobs.get(job.job_id)).status.value == "pending"
 
@@ -137,15 +137,15 @@ async def test_delete_one_duplicate_audit_rolls_back_fact(memory_database):
     from travel_agent.storage.memory_lifecycle_store import MemoryLifecycleStore
 
     store = MemoryLifecycleStore()
-    await store.delete_by_category(user_id="b5-one", category="unused", request_id="b5-request")
+    await store.delete_by_category(user_id="lifecycle-one", category="unused", request_id="lifecycle-request")
     fact_id = (await memory_database.execute(text("""
         INSERT INTO memory_facts (user_id, session_id, content, category, importance)
-        VALUES ('b5-one', 'session', 'preserve', 'preference', 5)
+        VALUES ('lifecycle-one', 'session', 'preserve', 'preference', 5)
         RETURNING fact_id
     """))).scalar_one()
 
     with pytest.raises(ValueError, match="request_id"):
-        await store.delete_one_fact(user_id="b5-one", fact_id=str(fact_id), request_id="b5-request")
+        await store.delete_one_fact(user_id="lifecycle-one", fact_id=str(fact_id), request_id="lifecycle-request")
     assert (await memory_database.execute(text("SELECT count(*) FROM memory_facts"))).scalar_one() == 1
 
 
@@ -155,7 +155,7 @@ async def test_delete_category_failure_rolls_back_facts(memory_database, monkeyp
 
     await memory_database.execute(text("""
         INSERT INTO memory_facts (user_id, session_id, content, category, importance)
-        VALUES ('b5-category', 'session', 'preserve', 'preference', 5)
+        VALUES ('lifecycle-category', 'session', 'preserve', 'preference', 5)
     """))
 
     async def fail(*args, **kwargs):
@@ -164,7 +164,7 @@ async def test_delete_category_failure_rolls_back_facts(memory_database, monkeyp
     monkeypatch.setattr(MemoryGraph, "delete_user_graph", fail)
     with pytest.raises(RuntimeError, match="graph failure"):
         await MemoryLifecycleStore().delete_by_category(
-            user_id="b5-category", category="preference", clear_graph=True,
+            user_id="lifecycle-category", category="preference", clear_graph=True,
         )
     assert (await memory_database.execute(text("SELECT count(*) FROM memory_facts"))).scalar_one() == 1
     assert (await memory_database.execute(text("SELECT count(*) FROM memory_forgetting_audits"))).scalar_one() == 0
@@ -185,19 +185,19 @@ async def test_manual_delete_retries_stale_extraction_without_cancelling_it(memo
     ))
     fact_id = (await memory_database.execute(text("""
         INSERT INTO memory_facts (user_id, session_id, content, category, importance)
-        VALUES ('b5-race', 'session', '不吃辣', 'preference', 5)
+        VALUES ('lifecycle-race', 'session', '不吃辣', 'preference', 5)
         RETURNING fact_id
     """))).scalar_one()
     jobs = BackgroundJobStore()
-    await jobs.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "b5-race-turn", {"user_id": "b5-race"})
+    await jobs.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "lifecycle-race-turn", {"user_id": "lifecycle-race"})
     (job,) = await jobs.claim(lease_seconds=60)
     extractor, store = MemoryExtractor(), MemoryStore()
-    old_context = await extractor._load_context("b5-race", store=store, db_session=memory_database)
+    old_context = await extractor._load_context("lifecycle-race", store=store, db_session=memory_database)
 
     await MemoryLifecycleStore().delete_one_fact(
-        user_id="b5-race", fact_id=str(fact_id), reason="remove memory fact: 不吃辣",
+        user_id="lifecycle-race", fact_id=str(fact_id), reason="remove memory fact: 不吃辣",
     )
-    history = await UserProfileMemory().get_memory_management_history("b5-race", db_session=memory_database)
+    history = await UserProfileMemory().get_memory_management_history("lifecycle-race", db_session=memory_database)
     assert history[-1]["operation"] == "delete_fact"
     assert history[-1]["items"][0]["content"] == "不吃辣"
     audit_metadata = (await memory_database.execute(text("SELECT metadata FROM memory_forgetting_audits"))).scalar_one()
@@ -205,13 +205,13 @@ async def test_manual_delete_retries_stale_extraction_without_cancelling_it(memo
     candidate = ExtractedFactCandidate(content="喜欢拍照", category="preference", importance=5)
     with pytest.raises(MemoryExtractionFailed, match="手动管理记录已变化"):
         await extractor._commit_extraction(
-            job=job, user_id="b5-race", session_id="session", source_message_id="message",
+            job=job, user_id="lifecycle-race", session_id="session", source_message_id="message",
             facts=[candidate], embeddings=[None], portrait=[], store=store, context=old_context,
         )
     assert (await jobs.get(job.job_id)).status.value == "running"
-    new_context = await extractor._load_context("b5-race", store=store, db_session=memory_database)
+    new_context = await extractor._load_context("lifecycle-race", store=store, db_session=memory_database)
     await extractor._commit_extraction(
-        job=job, user_id="b5-race", session_id="session", source_message_id="message",
+        job=job, user_id="lifecycle-race", session_id="session", source_message_id="message",
         facts=[candidate], embeddings=[None], portrait=[], store=store, context=new_context,
     )
     assert (await memory_database.execute(text("SELECT content FROM memory_facts"))).scalars().all() == ["喜欢拍照"]
@@ -225,14 +225,14 @@ async def test_preference_change_invalidates_inflight_extraction(memory_database
     from travel_agent.storage.background_job_store import BackgroundJobStore
 
     jobs = BackgroundJobStore()
-    await jobs.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "b5-prefs", {"user_id": "b5-prefs"})
+    await jobs.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "lifecycle-prefs", {"user_id": "lifecycle-prefs"})
     (job,) = await jobs.claim(lease_seconds=60)
     extractor, store = MemoryExtractor(), MemoryStore()
-    context = await extractor._load_context("b5-prefs", store=store, db_session=memory_database)
-    await UserProfileMemory().update_preferences("b5-prefs", {"pace": "轻松悠闲"})
+    context = await extractor._load_context("lifecycle-prefs", store=store, db_session=memory_database)
+    await UserProfileMemory().update_preferences("lifecycle-prefs", {"pace": "轻松悠闲"})
     with pytest.raises(MemoryExtractionFailed, match="记录已变化"):
         await extractor._commit_extraction(
-            job=job, user_id="b5-prefs", session_id="session", source_message_id="message",
+            job=job, user_id="lifecycle-prefs", session_id="session", source_message_id="message",
             facts=[ExtractedFactCandidate(content="喜欢拍照", category="preference", importance=5)],
             embeddings=[None], portrait=[], store=store, context=context,
         )
@@ -245,10 +245,10 @@ async def test_delete_all_clears_manual_history_content(memory_database):
 
     await memory_database.execute(text("""
         INSERT INTO user_profiles (user_id, memory_management_history)
-        VALUES ('b5-clear', CAST(:history AS jsonb))
+        VALUES ('lifecycle-clear', CAST(:history AS jsonb))
     """), {"history": '[{"operation":"delete_fact","revision":1,"items":[{"content":"旧内容"}]}]'})
-    await MemoryLifecycleStore().delete_all_user_memory(user_id="b5-clear")
-    history = await UserProfileMemory().get_memory_management_history("b5-clear", db_session=memory_database)
+    await MemoryLifecycleStore().delete_all_user_memory(user_id="lifecycle-clear")
+    history = await UserProfileMemory().get_memory_management_history("lifecycle-clear", db_session=memory_database)
     assert len(history) == 1 and history[0]["operation"] == "clear_all" and history[0]["items"] == []
     assert "旧内容" not in str(history)
 
@@ -264,12 +264,12 @@ async def test_manual_add_delete_and_readd_are_recorded_in_order(memory_database
     settings = SimpleNamespace(embedding=SimpleNamespace(enabled=False))
     monkeypatch.setattr(manual_facts, "get_settings", lambda: settings)
     monkeypatch.setattr(memory_store, "get_settings", lambda: settings)
-    args = {"store": MemoryStore(), "user_id": "b5-history", "content": "不吃辣",
+    args = {"store": MemoryStore(), "user_id": "lifecycle-history", "content": "不吃辣",
             "category": "preference", "profile_for_write": UserProfileMemory}
     first = await save_manual_fact(**args)
-    await MemoryLifecycleStore().delete_one_fact(user_id="b5-history", fact_id=first.fact["fact_id"])
+    await MemoryLifecycleStore().delete_one_fact(user_id="lifecycle-history", fact_id=first.fact["fact_id"])
     second = await save_manual_fact(**args)
-    history = await UserProfileMemory().get_memory_management_history("b5-history", db_session=memory_database)
+    history = await UserProfileMemory().get_memory_management_history("lifecycle-history", db_session=memory_database)
     assert [event["operation"] for event in history] == ["add_fact", "delete_fact", "add_fact"]
     assert [event["revision"] for event in history] == sorted(event["revision"] for event in history)
     assert all(event["items"][0]["content"] == "不吃辣" for event in history)
@@ -291,12 +291,12 @@ async def test_extraction_receives_manual_history_and_saves_other_fact(memory_da
     monkeypatch.setattr(memory_store, "get_settings", lambda: settings)
     fact_id = (await memory_database.execute(text("""
         INSERT INTO memory_facts (user_id, session_id, content, category, importance)
-        VALUES ('b5-input', 'session', '不吃辣', 'preference', 5) RETURNING fact_id
+        VALUES ('lifecycle-input', 'session', '不吃辣', 'preference', 5) RETURNING fact_id
     """))).scalar_one()
-    await MemoryLifecycleStore().delete_one_fact(user_id="b5-input", fact_id=str(fact_id))
+    await MemoryLifecycleStore().delete_one_fact(user_id="lifecycle-input", fact_id=str(fact_id))
     jobs = BackgroundJobStore()
-    await jobs.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "b5-input-turn", {
-        "user_id": "b5-input", "memory_revision_at_start": 0,
+    await jobs.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "lifecycle-input-turn", {
+        "user_id": "lifecycle-input", "memory_revision_at_start": 0,
     })
     (job,) = await jobs.claim(lease_seconds=60)
     extractor = MemoryExtractor()
@@ -305,7 +305,7 @@ async def test_extraction_receives_manual_history_and_saves_other_fact(memory_da
         "portrait": [],
     })
     outcome = await extractor.extract_from_turn(
-        "b5-input", "session", "不吃辣，也喜欢拍照", source_message_id="message", job=job,
+        "lifecycle-input", "session", "不吃辣，也喜欢拍照", source_message_id="message", job=job,
     )
     context = extractor._call_llm.await_args.args[1]
     assert context.management_history[-1]["items"][0]["content"] == "不吃辣"

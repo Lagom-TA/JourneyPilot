@@ -107,7 +107,7 @@ export function useSendMessage() {
             timestamp: new Date(),
             pendingStatusText: options?.assistantPendingLabel,
         };
-        // 流处理器会更新本地消息对象，reducer 必须持有独立快照。
+        // 流处理器会更新 assistantMessage；派发时复制对象，让 reducer 持有独立副本。
         dispatch({ type: 'ADD_MESSAGE', payload: { ...assistantMessage } });
         const ownership = createStreamOwnership(streamToken, startSessionId, startEpoch, initialRunId, ownedController, activeStreamsRef, currentStateRef, sessionRuntimeCacheRef, dispatch);
         const { identity, scopedDispatch, isStreamVisible } = ownership;

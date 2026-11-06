@@ -81,7 +81,7 @@ async def add_memory_fact(request: AddMemoryFactRequest = Body(...)):
     幂等：同一句话添加两次只保留一条，两次返回同一个 `fact_id`，第二次的
     `status` 为 `existing`。去重规则只在此处定义。
     """
-    # 空白判定统一使用 `utils/user_text.py` 的口径。
+    # 空白判定统一调用 `utils/user_text.py` 中的 `is_blank`。
     if is_blank(request.content or ""):
         raise HTTPException(status_code=422, detail="请输入要添加的记忆内容")
     content = (request.content or "").strip()

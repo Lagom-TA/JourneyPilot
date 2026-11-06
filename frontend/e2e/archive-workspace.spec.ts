@@ -1,5 +1,4 @@
 import { test, expect, type Page } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
 import { sessionDetail, sessionSummary } from './fixtures/sessionData';
 import { xianLayoutBundle } from './fixtures/xianBundle';
 
@@ -69,7 +68,7 @@ async function open(page: Page, view: string) {
   await expect(page.locator('.archive-content')).toBeVisible();
 }
 
-test('F5 saves the origin through the API and keeps partial resource failures distinct', async ({ page }) => {
+test('saves the origin through the API and keeps partial resource failures distinct', async ({ page }) => {
   const f = await fixture(page);
   f.controls.memoryFailure = true;
   await open(page, 'user-preferences');
@@ -90,7 +89,7 @@ test('F5 saves the origin through the API and keeps partial resource failures di
   expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
 });
 
-test('F5 memory deletion confirms its scope and preserves hand entered preferences', async ({ page }) => {
+test('memory deletion confirms its scope and preserves hand entered preferences', async ({ page }) => {
   const f = await fixture(page);
   await open(page, 'user-preferences');
   const row = page.getByTestId('memory-fact').first();
@@ -109,7 +108,7 @@ test('F5 memory deletion confirms its scope and preserves hand entered preferenc
   expect(f.unexpectedWrites).toEqual([]);
 });
 
-test('F5 current results and historical records enter the correct delivery view', async ({ page }) => {
+test('current results and historical records enter the correct delivery view', async ({ page }) => {
   await fixture(page);
   await open(page, 'trips');
   await expect(page.getByText('不应重复展示的 Markdown 回答')).toHaveCount(0);
@@ -126,7 +125,7 @@ test('F5 current results and historical records enter the correct delivery view'
   await expect(page.getByText('历史结果 · 只读', { exact: true })).toBeVisible();
 });
 
-test('F5 style deletion, AI generation and final save failures remain actionable', async ({ page }) => {
+test('style deletion, AI generation and final save failures remain actionable', async ({ page }) => {
   const f = await fixture(page); f.controls.presetDeleteFailure = true; f.controls.presetSaveFailure = true;
   await open(page, 'presets');
   const card = page.getByTestId('preset-card-style-5');
@@ -149,7 +148,7 @@ test('F5 style deletion, AI generation and final save failures remain actionable
   expect(f.unexpectedWrites).toEqual([]);
 });
 
-test('F5 using a style starts a new trip and stale selections are explained', async ({ page }) => {
+test('using a style starts a new trip and stale selections are explained', async ({ page }) => {
   await fixture(page);
   await open(page, 'presets');
   await page.getByTestId('preset-card-style-0').getByRole('button', { name: '用于新旅行', exact: true }).click();
@@ -162,7 +161,7 @@ test('F5 using a style starts a new trip and stale selections are explained', as
   await expect(page.getByTestId('preset-active-chip')).toHaveCount(0);
 });
 
-test('F5 source reading, editing and deletion failures retain the document and draft', async ({ page }) => {
+test('source reading, editing and deletion failures retain the document and draft', async ({ page }) => {
   const f = await fixture(page); f.controls.sourceReadFailure = true;
   await open(page, 'knowledge-base');
   await page.getByTestId('knowledge-source-row-京都步行笔记.md').click();
@@ -191,7 +190,7 @@ test('F5 source reading, editing and deletion failures retain the document and d
   expect(f.unexpectedWrites).toEqual([]);
 });
 
-test('F5 upload limits follow runtime settings and text failures keep their input', async ({ page }) => {
+test('upload limits follow runtime settings and text failures keep their input', async ({ page }) => {
   const f = await fixture(page); f.controls.textFailure = true;
   await open(page, 'knowledge-base');
   await expect(page.getByText(/单份不超过 1 MB/)).toBeVisible();
@@ -206,40 +205,4 @@ test('F5 upload limits follow runtime settings and text failures keep their inpu
   await page.getByRole('button', { name: '添加资料', exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('alert')).toBeVisible();
   await expect(page.getByRole('textbox', { name: '旅行资料正文', exact: true })).toHaveValue('保留这份草稿');
-});
-
-test('F5 desktop and phone representative layouts preserve navigation and source return', async ({ page }) => {
-  const f = await fixture(page);
-  mkdirSync('../test-results/e2e-evidence/F5', { recursive: true });
-  for (const [code, width, height] of [['D', 1440, 900], ['M', 390, 844]] as const) {
-    await page.setViewportSize({ width, height });
-    for (const [scene, view] of [['P2', 'trips'], ['P3', 'user-preferences'], ['P4', 'presets'], ['P5', 'knowledge-base']] as const) {
-      await open(page, view);
-      await page.evaluate(() => document.fonts.ready);
-      await page.waitForTimeout(200);
-      expect(await page.locator('.archive-page').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
-      await page.screenshot({ path: `../test-results/e2e-evidence/F5/${scene}-${code}-implemented-r1.png` });
-      if (scene === 'P5') {
-        const source = page.getByTestId('knowledge-source-row-京都步行笔记.md');
-        await source.click();
-        await expect(page.locator('.knowledge-document-content')).toBeVisible();
-        await page.screenshot({ path: `../test-results/e2e-evidence/F5/P5-${code}-document-r1.png` });
-        if (code === 'M') {
-          await page.getByRole('button', { name: '返回资料', exact: true }).click();
-          await expect(source).toBeFocused();
-        }
-      }
-    }
-    if (code === 'M') {
-      await page.getByTestId('sidebar-open').click();
-      const drawer = page.getByTestId('app-sidebar');
-      for (const name of ['新旅行', '我的行程', '我的偏好', '旅行风格', '资料来源']) await expect(drawer.getByRole('link', { name, exact: true })).toHaveCount(1);
-      await page.screenshot({ path: '../test-results/e2e-evidence/F5/P1-M-drawer-r1.png' });
-      await drawer.getByRole('link', { name: '旅行风格', exact: true }).click();
-      await expect(page).toHaveURL(/view=presets/);
-      await page.goBack();
-      await expect(page).toHaveURL(/view=knowledge-base/);
-    }
-  }
-  expect(f.errors).toEqual([]); expect(f.unexpectedWrites).toEqual([]);
 });

@@ -62,8 +62,8 @@ export function createStreamPresentation(scopedDispatch: (action: ChatAction) =>
                     }
                     const now = new Date();
                     const step: ThinkingStep = {
-                        // 服务端给出稳定 step_id；缺失时用 run/节点/轮次/调用/序号兜底。
-                        // 同一片段重放时按 id 覆盖，不重复拼接。
+                        // 使用服务端提供的稳定 step_id；缺失时按运行 ID、节点、轮次、调用 ID 和序号组合生成步骤 ID。
+                        // 同一片段重放时按 ID 更新已有步骤，不重复追加。
                         id: event.step_id || `work-note:${event.run_id || ''}:${event.agent_name || ''}:${event.round ?? 0}:${event.call_id || ''}:${event.seq ?? 0}`,
                         agentName: event.agent_name || '',
                         content: event.content,

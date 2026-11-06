@@ -44,7 +44,7 @@ class _RunExposure:
     injected_tokens: int = 0
     full_tokens: int = 0
     exposed_tool_count: int = 0     # deferred 初始暴露给模型的工具数（含 search_tools）
-    full_tool_count: int = 0        # 全量注入本会暴露的工具数
+    full_tool_count: int = 0        # full 模式会注入的工具总数
 
 
 class ToolExposureLedger:

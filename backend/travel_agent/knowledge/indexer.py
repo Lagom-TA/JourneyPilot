@@ -64,7 +64,7 @@ class KnowledgeIndexer:
         collection: str = "default",
         metadata: Optional[Dict[str, Any]] = None,
     ) -> int:
-        """索引单篇资料：正文落一行、段整批重算。返回写入的 chunk 数量。
+        """索引单篇资料：保存正文并批量重建其分块，返回写入的 chunk 数量。
 
         同一个 `(collection, source)` 再进来一次是**替换**：旧段先删、正文覆盖写。
         分块（可能要调 embedding 与 fast 模型）在事务之外先做完 —— 一次失败不该让

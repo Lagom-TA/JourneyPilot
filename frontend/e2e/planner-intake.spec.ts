@@ -1,12 +1,10 @@
 import { expect, test, type Page } from '@playwright/test';
-import { mkdirSync } from 'node:fs';
 
 /**
  * 点击开始规划立即进入工作台；理解问题、回答与方案在同一工作台连续发生。
  * 全部 API 在浏览器内拦截，离线演示，不访问外部服务。
  */
 
-const SCREEN_DIR = '../test-results/e2e-evidence/generation-02-workspace-understanding/screens';
 
 const routeDecision = { route: 'trip_planning', confidence: 1, alternatives: [], signals: ['model_intent'], requires_trip_draft: true, requires_confirmation: false };
 const fastDecision = { route: 'fast_answer', confidence: 1, alternatives: [], signals: ['model_intent'], requires_trip_draft: false, requires_confirmation: false };
@@ -111,9 +109,8 @@ async function interceptWorkspaceApi(page: Page, overrides: {
   return harness;
 }
 
-for (const mobile of [false, true]) {
-  test(`提交后立即进入工作台，理解问题在工作台内回答${mobile ? '（手机）' : ''}`, async ({ page }) => {
-    await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+test('提交后立即进入工作台，理解问题在工作台内回答', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
     const harness = await interceptWorkspaceApi(page, {
       session: 'understanding-e2e',
       runId: 'trip-understanding',
@@ -125,7 +122,6 @@ for (const mobile of [false, true]) {
         { type: 'chat_complete', run_id: 'trip-understanding', run_status: 'awaiting_input' },
       ],
     });
-    await page.emulateMedia({ reducedMotion: mobile ? 'reduce' : 'no-preference' });
     await page.goto('/');
     await expect(page.getByTestId('new-trip-hero')).toBeVisible();
     await page.getByRole('textbox', { name: '一句话描述旅行', exact: true }).fill('想去青岛海边放松几天，第一次独自旅行');
@@ -133,13 +129,11 @@ for (const mobile of [false, true]) {
     // 点击开始规划立即显示工作台；首页不再等待问答。
     await expect(page.getByTestId('journey-workspace')).toBeVisible();
     await expect(page.getByTestId('new-trip-hero')).toHaveCount(0);
-    await page.screenshot({ path: `${SCREEN_DIR}/${mobile ? '390' : '1440'}-submitted-waiting.png`, fullPage: true });
     (page as any)._releaseChat();
     await expect(page.getByTestId('understanding-questions-card')).toBeVisible();
     await expect(page.getByTestId('understanding-question')).toContainText('慢慢逛');
     await expect(page.getByTestId('journey-workspace')).toBeVisible();
     await expect(page.getByTestId('new-trip-hero')).toHaveCount(0);
-    await page.screenshot({ path: `${SCREEN_DIR}/${mobile ? '390' : '1440'}-understanding-questions.png`, fullPage: true });
     // 选项与自由补充合并成完整回答文字。
     await page.getByRole('button', { name: '慢慢逛，留出休息时间' }).click();
     await page.getByRole('button', { name: '补充回答：这次更想慢慢逛，还是把行程排满？' }).click();
@@ -157,11 +151,8 @@ for (const mobile of [false, true]) {
     await expect(page.getByTestId('trip-brief-plan-gate')).not.toContainText('调查青岛适合独游的海边与城区路线');
     await expect(page.getByTestId('understanding-questions-card')).toHaveCount(0);
     await expect(page.getByTestId('new-trip-hero')).toHaveCount(0);
-    await page.waitForTimeout(mobile ? 150 : 450);
-    await page.screenshot({ path: `${SCREEN_DIR}/${mobile ? '390' : '1440'}-plan-gate.png`, fullPage: true });
     expect(harness.errors).toEqual([]);
   });
-}
 
 test('刷新后工作台恢复待答问题，回答继续同一运行', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });

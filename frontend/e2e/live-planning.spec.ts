@@ -71,7 +71,6 @@ test('真实跨城过夜旅行：需求 → 审批 → 调研 → 行程 → PDF
     await Promise.all(captures);
     expect(runId, '审批阶段必须已持久化真实 Run').not.toBe('');
     console.log(`Live trip ${runId}: waiting for approval`);
-    await page.screenshot({ path: testInfo.outputPath('plan-gate.png'), fullPage: true });
     restoringApproval = true;
     await page.reload();
     await expect(approve).toBeVisible({ timeout: 30_000 });
@@ -105,7 +104,6 @@ test('真实跨城过夜旅行：需求 → 审批 → 调研 → 行程 → PDF
     expect(bundle.workspace.itinerary.visit_stops.length).toBeGreaterThan(0);
     expect(bundle.workspace.itinerary.lodging_stays.length, '跨夜行程必须交付住宿').toBeGreaterThan(0);
     expect(bundle.workspace.itinerary.transport_legs.length, '跨城行程必须交付交通').toBeGreaterThan(0);
-    await page.screenshot({ path: testInfo.outputPath('itinerary.png'), fullPage: true });
     await page.getByRole('button', { name: '阅读版', exact: true }).click();
     await expect(page.getByTestId('report-cover')).toBeVisible();
     const downloadPromise = page.waitForEvent('download');
@@ -126,7 +124,6 @@ test('真实跨城过夜旅行：需求 → 审批 → 调研 → 行程 → PDF
     await expect(page.getByTestId('canvas-sheet').getByTestId('interactive-itinerary')).toBeVisible();
     await page.getByRole('button', { name: '阅读版', exact: true }).click();
     await expect(page.getByTestId('report-cover')).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath('mobile-report.png'), fullPage: true });
     await Promise.all(captures);
     expect(deliveryIds).toContain(bundle.manifest.bundle_id);
     expect(terminalEvents).toContain('chat_complete');

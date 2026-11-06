@@ -79,19 +79,6 @@ function Fixture() {
           payload: { id: 'composition-continue', agentName: 'itinerary_planner', content: '正在吸收返研成果继续安排每天路线', stepName: '行程规划', timestamp: new Date(), progressStatus: 'running' },
         });
       },
-      specialParty() {
-        dispatch({
-          type: 'SET_CONTROLLED_TRIP_IDENTITY',
-          payload: {
-            origin: place('深圳'),
-            destinations: [place('北京'), place('上海'), place('长春')],
-            start_date: '2026-11-02',
-            end_date: '2026-11-12',
-            party: { adults: 2, children: 1, elderly_companions: true, accessibility_required: true },
-            style: { primary: '轻松慢游', secondary_interests: ['当地美食', '人文体验'], source: 'current' },
-          },
-        });
-      },
       longTitle() {
         dispatch({
           type: 'SET_CONTROLLED_TRIP_IDENTITY',
@@ -104,24 +91,6 @@ function Fixture() {
             style: { primary: '经典均衡', secondary_interests: ['当地美食'], source: 'current' },
           },
         });
-      },
-      longPlaceName() {
-        dispatch({
-          type: 'SET_CONTROLLED_TRIP_IDENTITY',
-          payload: {
-            origin: place('上海'),
-            destinations: [place('克孜勒苏柯尔克孜自治州')],
-            start_date: '2026-11-05',
-            end_date: '2026-11-10',
-            party: { adults: 2, children: 0, elderly_companions: false, accessibility_required: false },
-            style: { primary: '经典均衡', secondary_interests: ['当地美食'], source: 'current' },
-          },
-        });
-      },
-      stop() {
-        dispatch({ type: 'SET_STREAMING', payload: false });
-        dispatch({ type: 'SET_TRIP_RUN_STATUS', payload: 'cancelled' });
-        dispatch({ type: 'SET_CURRENT_TRIP_RUN', payload: { runId: 'run-generation-fixture', source: 'live', status: 'cancelled' } });
       },
       failAfterPlanning() {
         dispatch({

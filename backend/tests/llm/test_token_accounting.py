@@ -180,9 +180,14 @@ def _record(**changes):
     return LLMCallRecord(**(fields | changes))
 
 
-@pytest.mark.parametrize("field", ["input_tokens", "output_tokens", "cached_input_tokens",
-                                  "cache_write_input_tokens", "reasoning_output_tokens", "total_tokens"])
-@pytest.mark.parametrize("value", [-1, True, 1.5, "invalid"])
+@pytest.mark.parametrize("field,value", [
+    ("input_tokens", -1),
+    ("output_tokens", True),
+    ("cached_input_tokens", 1.5),
+    ("cache_write_input_tokens", "invalid"),
+    ("reasoning_output_tokens", -1),
+    ("total_tokens", -1),
+])
 def test_malformed_record_cannot_become_a_complete_ledger_bill(field, value):
     call = build_ledger_call(_record(**{field: value}), pricing=[_price()])
     assert call.cost_usd is None

@@ -15,8 +15,8 @@ from .deadlines import DeadlineObservation, observe_run_deadline
 class ModelWindowClosed(RuntimeError):
     """模型、provider 或工具调用在自己的时间窗关闭后才发起。
 
-    与 :class:`RunCancelled` 刻意区分：用户没有取消 TripRun，调用方应走确定性
-    收口，而不是发出取消终态。
+    与 :class:`RunCancelled` 区分：用户没有取消 TripRun，调用方应按时间窗失败处理，
+    不应将 Run 标记为取消终态。
     """
 
     def __init__(
@@ -88,8 +88,8 @@ def remaining_model_seconds(operation: str) -> Optional[float]:
 def remaining_delivery_seconds(operation: str) -> Optional[float]:
     """返回共用的交付预算；截止后拒绝工作。
 
-    ``observation.remaining_seconds`` 就是该预算，口径是 Run 自己快照里的交付
-    截止时间，原因同 :func:`remaining_model_seconds`。
+    ``observation.remaining_seconds`` 是 Run 封存快照中交付截止时间的剩余秒数；
+    阶段判定也使用这份快照，原因同 :func:`remaining_model_seconds`。
     """
 
     check_cancel_requested(current_node.get())

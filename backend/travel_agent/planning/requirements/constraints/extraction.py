@@ -51,7 +51,7 @@ _EXTRACT_SYSTEM_PROMPT = (
 
 @dataclass
 class ConstraintExtractionResult:
-    """自由文本约束抽取结果，显式区分 LLM、fallback 与缺失来源。"""
+    """自由文本约束抽取结果，分别记录模型抽取项、规则补充项和未提取来源。"""
 
     llm_items: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)
     fallback_items: Dict[str, List[Dict[str, Any]]] = field(default_factory=dict)

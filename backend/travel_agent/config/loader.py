@@ -33,10 +33,6 @@ class ConfigError(ValueError):
     """配置读不成一份合法的 `Settings`。"""
 
 
-# --------------------------------------------------------------------------- #
-# 文件定位
-# --------------------------------------------------------------------------- #
-
 def find_config_yaml() -> Optional[Path]:
     """按 ``CONFIG_PATH`` → 向上查找 → 当前目录 定位 config.yaml。
 
@@ -70,10 +66,6 @@ def load_yaml(path: Path) -> Dict[str, Any]:
         return yaml.safe_load(handle) or {}
 
 
-# --------------------------------------------------------------------------- #
-# 构造
-# --------------------------------------------------------------------------- #
-
 def _describe_validation_error(exc: ValidationError, path: Optional[Path]) -> str:
     """把 Pydantic 的报错变成一条能照着改的话：字段路径、当前值、合法范围。"""
 
@@ -99,8 +91,8 @@ def build_settings(data: Dict[str, Any], *, path: Optional[Path] = None) -> Sett
 
     payload = dict(data)
     if "mcp_servers" in payload:
-        # 字段名不是 YAML 的写法：顶层写它会整体替换内置默认，留下一个没有 command
-        # 的 server，工具层静默归零。合并语义只在 `mcp.servers` 这条路上。
+        # 顶层字段会整体替换内置默认，导致对应 MCP 服务器没有启动命令、其工具无法注册。
+        # 只有 `mcp.servers` 会与内置默认合并。
         raise ConfigError(
             "config.yaml 顶层不接受 `mcp_servers`，改写成 `mcp:` → `servers:`："
             "只有那条路会与内置的 MCP 默认合并（照字段名写会把它们整体替换掉）。"
@@ -139,10 +131,6 @@ def _apply_mcp_native_env(settings: Settings) -> None:
                 merged[key] = value
         server.env = merged or None
 
-
-# --------------------------------------------------------------------------- #
-# 生效配置
-# --------------------------------------------------------------------------- #
 
 @dataclass
 class EffectiveConfig:
@@ -210,10 +198,6 @@ def load_effective_config() -> EffectiveConfig:
         sources=sources,
     )
 
-
-# --------------------------------------------------------------------------- #
-# 单例
-# --------------------------------------------------------------------------- #
 
 _effective: Optional[EffectiveConfig] = None
 

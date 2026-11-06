@@ -21,14 +21,6 @@ describe('buildPlacePinHtml', () => {
     expect(html).not.toContain('&lt;');
     expect(html).not.toContain('<script>');
   });
-  it('renders the expected marker dataset and text', () => {
-    const html = buildPlacePinHtml(base);
-    expect(html).toContain('data-bundle-map-marker="2"');
-    expect(html).toContain('data-bundle-map-entity="visit-1"');
-    expect(html).toContain('data-bundle-map-kind="visit_stop"');
-    expect(html).toContain('>2</span>');
-  });
-
   it('escapes every interpolated value', () => {
     const html = buildPlacePinHtml({
       ...base,

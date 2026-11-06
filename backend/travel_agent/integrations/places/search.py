@@ -25,12 +25,12 @@ async def _resolve_identity_inside_relation(
     limit: int,
     is_concrete: Callable[[Dict[str, Any]], bool],
 ) -> list[Dict[str, Any]]:
-    """按别名逐条解析受控 relation 内的具体实体身份，命中即停。
+    """按别名逐条查询受控 relation 中的具体实体身份，命中后停止。
 
-    一条别名一次查询：把整个别名集拼成一条 alternation，再乘上本域的多条 tag
-    predicate，会超出 Overpass 解释器自己的 timeout，返回「provider 不可用」而
-    不是「区域内没有」。Provider 连重试都用尽时结束整条 fallback：那是 provider
-    的判定，不是这条别名的判定，换个别名只会重复消耗同一个时间片。
+    每次查询只使用一个别名。把多个别名合并成一条查询并叠加多条类型条件，会超过
+    Overpass 的超时限制，返回「provider 不可用」而不是「区域内没有结果」。Provider
+    重试耗尽后停止整个备用查询流程；这是 Provider 对该流程的失败结果，换别名只会重复
+    消耗同一段时间。
     """
     for alias in entity_names:
         osm_ids = await search_overpass_place_ids(

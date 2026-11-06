@@ -11,7 +11,7 @@ function waitForRetry(ms: number): Promise<void> {
 }
 export function useCurrentBundleWeatherRefresh(enabled: boolean) {
     const { state, dispatch, currentStateRef } = useApp();
-    // 只有成功处理过的 base bundle 才记录；失败后允许 effect 重新触发时重试。
+    // 成功或版本冲突后记录行程包 ID；可重试的错误不记录，以便依赖更新时再次触发刷新。
     const attemptedBundleIds = React.useRef(new Set<string>());
     const inFlightBundleIds = React.useRef(new Set<string>());
     const bundle = state.deliveryBundle;

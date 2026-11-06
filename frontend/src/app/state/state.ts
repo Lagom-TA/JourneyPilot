@@ -23,7 +23,7 @@ export interface AppState extends ChatState, TravelState {
     mobileCanvasOpen: boolean;
     activePresetId: string | null;
     activePresetName: string | null;
-    /** 打开会话/历史生成记录失败时的显式错误；不参与会话 runtime 快照。 */
+    /** 打开会话或历史生成记录失败时显示的错误；不包含在会话运行状态快照中。 */
     sessionLoadError: {
         sessionId: string | null;
         runId: string | null;

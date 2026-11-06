@@ -315,12 +315,12 @@ class RunExecutionStore:
             return await write(session)
 
     async def list_recovery_candidates(self, *, limit: int = 200) -> List[RunRecoveryCandidate]:
-        """所有「没有仍在运行的执行器」的 run。
+        """返回没有仍在运行执行器的 Run。
 
-        两类都要：活跃状态却没有执行器，以及已经收口却留着租约的行。
-        判据是数据库自己的 `NOW()`，不是调用方的墙钟。
+        包括运行中但没有执行器的 Run，以及已进入终态却仍留有租约的 Run。
+        使用数据库的 ``NOW()`` 判断租约是否过期，不使用调用方时钟。
 
-        **已经判定过的不再返回**：否则每一轮扫描都会重新报告同一批已收口的 Run。
+        已有恢复结论的 Run 不再返回，避免每轮扫描重复报告。
         """
 
         statement = text(

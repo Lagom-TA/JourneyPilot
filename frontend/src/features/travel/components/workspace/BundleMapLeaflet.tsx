@@ -366,10 +366,7 @@ export const BundleMapLeaflet: React.FC<BundleMapLeafletProps> = ({ places, rout
     const pinRoot = React.useRef<HTMLDivElement>(null);
     const seenRoutes = React.useRef(new Set<string>()).current;
     const seenPins = React.useRef(new Set<string>()).current;
-    // MapContainer 可能在 zoom 动画未结束时卸载：Leaflet 的 transition end 回调会访问
-    // 已 teardown 的 map。这里在 remove 前清掉动画标记并 stop()，保留组件卸载路径可恢复。
-    // 移除条件：react-leaflet/leaflet 升级后 map-load-failure 用例不再经过该路径，且确认
-    // 无 zoom 中卸载报错时，可删除此补丁。
+    // 地图可能在缩放动画结束前卸载；移除前清除缩放标记并停止动画，避免结束回调访问已卸载的地图。
     const guardTeardown = React.useCallback((map: L.Map | null) => {
         if (!map) return;
         mapInstance.current = map;

@@ -45,7 +45,7 @@ class ToolExecutionStatus(str, Enum):
 # Tool Gateway 在调用 provider 之前写入的两种确定性能力判定状态
 # （``tools/temporal.py``：请求日期超出 provider 文档窗口，或 provider 不提供
 # 按日期查询）。这类 envelope 是服务端对「provider 能回答什么」的声明，不是执行
-# 结果，因此不能消耗重试、不能触发 fallback，也不能编译成被拒绝的 external_tool
+# 结果，因此不能消耗重试、不能触发备用工具调用，也不能编译成被拒绝的 external_tool
 # SourceRecord。状态放在 ``status`` 上：它是只由 Gateway 写入的封闭枚举，也是
 # ``tools.content.compact_tool_content_for_model`` 裁剪 metadata 之后仍会保留到
 # 下游 transcript 的标记。

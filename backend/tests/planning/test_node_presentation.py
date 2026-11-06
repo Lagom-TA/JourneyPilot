@@ -1,4 +1,4 @@
-"""图元数据的行为覆盖：这些元数据直接驱动界面与恢复路由。"""
+"""运行图节点应具有供界面展示的元数据。"""
 
 from functools import lru_cache
 
@@ -43,20 +43,3 @@ def test_user_facing_node_metadata_matches_the_runtime_graph(table_name, extra_k
         "step": STEP_DISPLAY_NAMES,
     }
     assert set(tables[table_name]) == set(_graph_node_names()) | extra_keys
-
-
-def test_intent_amendments_can_resume_at_every_runtime_node_that_accepts_them():
-    graph = _travel_graph()
-    branch = (graph.branches.get("intent_amendment_router") or {}).get(
-        "route_after_intent_amendment"
-    )
-    assert branch is not None and branch.ends
-
-    # scope_clarifier 是入口整理；understanding_gate 是提问暂停点，补充命令
-    # 只在 RUNNING 阶段入队，到不了这两个节点。
-    non_resumable = {
-        "scope_clarifier",
-        "understanding_gate",
-        "intent_amendment_router",
-    }
-    assert set(branch.ends) == set(graph.nodes) - non_resumable

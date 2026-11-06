@@ -103,9 +103,9 @@ def _check_zip_bomb(raw: bytes, config: IngestConfig) -> None:
 
 
 def inspect_upload(raw: bytes, suffix: str, *, config: Optional[IngestConfig] = None) -> str:
-    """把一份上传过完前两道界，返回归一化后的后缀。
+    """检查扩展名、大小、非空内容及 PDF/DOCX 容器特征。
 
-    在解析之前调用；调用方拿到的是「可以花时间去解析它了」这个结论。
+    通过检查后返回规范化的扩展名，供后续解析使用。
     """
 
     settings = config or get_settings().ingest
@@ -127,14 +127,14 @@ def inspect_upload(raw: bytes, suffix: str, *, config: Optional[IngestConfig] = 
     return normalized
 
 
-#: 一份「进得去」的资料至少要有这么多非空白字符。**这个数只写一次**：它必须对四种
-#: 格式、对上传与批量导入两条入口一视同仁 —— 否则扫描版 PDF 在一条路上被拒、在另一条
-#: 路上变成一次「成功索引 0 个文本块」。
+#: 正文至少要包含这些非空白字符才会进入知识库。**这个数只写一次**：上传与批量导入的
+#: 四种文件格式共用同一门槛，避免同一份扫描版 PDF 在一条入口被拒、在另一条入口被当作
+#: 成功索引但没有文本块。
 MIN_INDEXABLE_CHARS = 8
 
 
 def has_indexable_text(text: str) -> bool:
-    """这份正文够不够进知识库。空白不算字符。"""
+    """正文是否达到知识库索引的最少非空白字符数。"""
 
     return content_length(text) >= MIN_INDEXABLE_CHARS
 
@@ -265,7 +265,7 @@ async def _run_parser_subprocess(
 
 
 async def parse_upload(raw: bytes, suffix: str) -> ParsedDocument:
-    """把一份上传的字节解析成正文。前两道界在这里一并过完。"""
+    """校验上传文件后解析正文；纯文本直接解码，其他格式交给解析器子进程。"""
 
     config = get_settings().ingest
     normalized = inspect_upload(raw, suffix, config=config)
@@ -289,10 +289,9 @@ async def parse_upload(raw: bytes, suffix: str) -> ParsedDocument:
 
 
 async def parse_file(path: Path) -> ParsedDocument:
-    """解析本地磁盘上的一份文档（批量导入那一路），走同一组界。
+    """解析本地文档，并使用与上传入口相同的文件大小和解析限制。
 
-    大小在**读进内存之前**判：一个 8 GB 文件先读完再判 file_too_large，判到的时候
-    进程已经因内存耗尽退出。批量导入必须与上传走同一组限制。
+    先用 ``stat`` 检查文件大小，再读取正文，避免将超限文件载入内存。
     """
 
     config = get_settings().ingest

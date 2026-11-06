@@ -12,6 +12,6 @@ def format_cny(value: float) -> str:
 
 
 def cost_coverage_statement(summary: CostCoverageSummary) -> str | None:
-    """不同计价口径不合并为对外费用总额。"""
+    """不把已知费用小计表述为完整旅行总额。"""
 
     return None

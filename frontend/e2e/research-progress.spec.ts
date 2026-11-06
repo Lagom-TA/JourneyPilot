@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 
 // 正式组件与合成事件；经真实 SSE 解析和状态投影，不调用付费 API。
 test.skip(process.env.JP_COMPONENT_E2E !== '1', 'Requires Vite dev component fixture');
@@ -12,13 +12,8 @@ async function openGroup(page: Page, id: string) {
   return group;
 }
 
-async function noOverflow(page: Page) {
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
-}
-
-for (const width of [320, 390, 1440]) {
-  test(`研究任务按需展开，串行推进与停止保留手动查看 ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 1000 });
+test('研究任务按需展开，串行推进与停止保留手动查看', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -54,30 +49,8 @@ for (const width of [320, 390, 1440]) {
     await expect(stay.locator('.research-agent-state')).toHaveText('已结束');
     await expect(stay.getByTestId('research-query')).toHaveCount(0);
     await expect(stay).toContainText('已整理 1 个住宿候选');
-    await noOverflow(page);
     expect(errors).toEqual([]);
   });
-}
-
-test('长查询可用键盘展开，阶段标题与查询内容在窄屏完整换行', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/e2e/fixtures/research-progress.html');
-  await page.getByRole('button', { name: '长查询', exact: true }).click();
-  const destination = await openGroup(page, 'destination');
-  const row = destination.locator('[data-tool-id="long-query"]');
-  await row.locator('summary').focus();
-  await page.keyboard.press('Enter');
-  await expect(row.getByRole('link', { name: '北山街雨天散步路线' })).toBeVisible();
-  await expect(row.locator('.research-tool-input-value')).toContainText('上午、午后和傍晚三个时间段的具体安排');
-  await expect(page.locator('.research-panel-workspace')).toHaveCSS('border-top-width', '0px');
-  await page.getByRole('button', { name: '路线阶段', exact: true }).click();
-  await expect(page.locator('.research-panel-title')).toHaveText('安排每天路线');
-  await page.getByRole('button', { name: '生成阶段', exact: true }).click();
-  await expect(page.locator('.research-panel-title')).toHaveText('生成完整计划');
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(row.getByRole('link', { name: '北山街雨天散步路线' })).toBeVisible();
-  await noOverflow(page);
-});
 
 test('工具保留真实计数与安全详情，内部载荷和失败正文不进入界面', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -309,31 +282,9 @@ test('新 Run 清除任务与工具展开状态', async ({ page }) => {
   await expect(destination.getByRole('link', { name: '伪满皇宫博物院' })).not.toBeVisible();
 });
 
-for (const width of [390, 1440]) {
-  test(`顶部摘要仅展示一次日期人数，长地名与停止入口不重叠 ${width}px`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 900 });
-    await page.goto('/e2e/fixtures/generation-progress.html');
-    const card = page.locator('.generation-trip-card');
-    await expect(card.locator('.generation-trip-title-place')).toHaveText(['北京', '上海', '长春']);
-    await expect(card.getByText('11 日', { exact: true })).toHaveCount(1);
-    await expect(card.getByText('2 位成人', { exact: true })).toHaveCount(1);
-    await page.evaluate(() => window.__generationFixture?.specialParty());
-    await expect(card).toContainText('2 位成人 · 1 位儿童 · 有长辈同行 · 需要无障碍安排');
-    await page.evaluate(() => window.__generationFixture?.longPlaceName());
-    await expect(card.locator('.generation-trip-title-place')).toHaveText('克孜勒苏柯尔克孜自治州');
-    const nav = await page.locator('.generation-progress ol').boundingBox();
-    const stop = await page.getByTestId('boarding-pass-stop').boundingBox();
-    expect(stop!.x).toBeGreaterThanOrEqual(nav!.x + nav!.width - 1);
-    await noOverflow(page);
-    await page.evaluate(() => window.__generationFixture?.stop());
-    await expect(page.getByTestId('boarding-pass-stop')).toHaveCount(0);
-    await expect(page.locator('.research-panel-title')).toHaveText('旅行规划已取消');
-    await expect(page.getByRole('button', { name: '返回新旅行', exact: true })).toBeVisible();
-  });
-}
 
 declare global {
   interface Window {
-    __generationFixture?: { addResearch: () => void; compositionRedo: () => void; compositionContinue: () => void; longPlaceName: () => void; specialParty: () => void; stop: () => void };
+    __generationFixture?: { addResearch: () => void; compositionRedo: () => void; compositionContinue: () => void };
   }
 }

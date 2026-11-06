@@ -1,5 +1,4 @@
 import { expect, test, type Page } from '@playwright/test';
-import { mkdirSync, writeFileSync } from 'node:fs';
 
 // 在独立 Vite dev server 下运行：
 //   JP_MAP_LOAD_FAILURE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:5174 \
@@ -11,8 +10,6 @@ if (process.env.JP_MAP_LOAD_FAILURE_E2E === '1' && !/^http:\/\/127\.0\.0\.1:\d+$
   throw new Error('Offline suite requires an explicit loopback Vite URL');
 }
 
-const EVIDENCE_DIR = '../test-results/e2e-evidence/map-load-failure';
-const EVIDENCE_SUFFIX = process.env.JP_MAP_EVIDENCE_SUFFIX || 'after-fix';
 const TILE_PATTERN = /^https:\/\/webrd0[1-4]\.is\.autonavi\.com\/appmaptile/;
 // Vite 的依赖缓存目录可自定义，包含 /@fs/ 路径时仍需拦截地图依赖。
 const DEP_PATTERN = /\/deps\/(?:react-leaflet|leaflet)\.js$/;
@@ -78,15 +75,6 @@ async function mountFixture(
   return fixture;
 }
 
-function evidencePath(name: string) {
-  return `${EVIDENCE_DIR}/${name}-${EVIDENCE_SUFFIX}.png`;
-}
-
-function writeEvidence(name: string, payload: unknown) {
-  mkdirSync(EVIDENCE_DIR, { recursive: true });
-  writeFileSync(`${EVIDENCE_DIR}/${name}-${EVIDENCE_SUFFIX}.json`, JSON.stringify(payload, null, 2));
-}
-
 function assertOfflineBoundaries(fixture: OfflineFixture, options: { allowModuleLoadErrors?: boolean } = {}) {
   const unexpectedPageErrors = options.allowModuleLoadErrors
     ? fixture.pageErrors.filter((message) => !/Failed to fetch dynamically imported module/.test(message))
@@ -121,14 +109,6 @@ test('地图离线夹具：已交付行程的地图与日程联动', async ({ pa
   await expect(page.getByTestId('map-place-detail')).toHaveCount(0);
   await expect(page.getByTestId('bundle-map-basemap-state')).toHaveCount(0);
 
-  await page.screenshot({ path: evidencePath('delivered-map'), fullPage: true });
-  writeEvidence('delivered-map', {
-    title: await page.locator('.journey-title-row h1').textContent(),
-    markers: await page.locator('[data-bundle-map-entity]').count(),
-    routes: await page.locator('.leaflet-overlay-pane path[data-route-entity]').count(),
-    basemap: await map.getAttribute('data-basemap-state'),
-    depResponses: fixture.depResponses,
-  });
   assertOfflineBoundaries(fixture);
 });
 
@@ -156,8 +136,6 @@ test('地图离线夹具：加载失败时准确提示、保留日程并通过�
   await page.getByRole('button', { name: '图层', exact: true }).click();
   await expect(page.getByRole('checkbox', { name: '旅行路线', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
-  await page.screenshot({ path: evidencePath('module-load-failure'), fullPage: true });
-  const failureText = (await failure.textContent())?.trim() ?? null;
   const depResponsesBeforeReload = [...fixture.depResponses];
   const failedDepPaths = new Set(depResponsesBeforeReload.filter(({ status }) => status === 504).map(({ url }) => url));
 
@@ -176,14 +154,6 @@ test('地图离线夹具：加载失败时准确提示、保留日程并通过�
       .some(({ url, status }) => status === 200 && failedDepPaths.has(url)),
     { message: '故障解除后同一地图依赖应重新加载成功' },
   ).toBe(true);
-  await page.screenshot({ path: evidencePath('module-load-recovered'), fullPage: true });
 
-  writeEvidence('module-load-failure', {
-    failureText,
-    depResponsesBeforeReload,
-    depResponsesAfterReload: fixture.depResponses.slice(depResponsesBeforeReload.length),
-    recoveredMarkers: await page.locator('[data-bundle-map-entity]').count(),
-    recoveredBasemap: await map.getAttribute('data-basemap-state'),
-  });
   assertOfflineBoundaries(fixture, { allowModuleLoadErrors: true });
 });

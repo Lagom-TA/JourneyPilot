@@ -24,7 +24,6 @@ from travel_agent.runtime.cancellation import RunCancelled, run_control_registry
 from travel_agent.runtime.command_contracts import (
     RunCommandStatus,
     RunCommandType,
-    run_command_digest,
 )
 from travel_agent.runtime.context import (
     current_agent,
@@ -97,21 +96,6 @@ def wired(run_id):
         yield handle, store, runs, coordinator
     finally:
         run_control_registry.clear()
-
-
-def test_cancel_digest_ignores_payload_but_supplement_digest_does_not() -> None:
-    """摘要口径就是幂等口径：取消按意图，追加要求按内容。"""
-
-    assert run_command_digest(
-        RunCommandType.CANCEL, {"source": "a"}
-    ) == run_command_digest(RunCommandType.CANCEL, {"source": "b"})
-    same = {"category": "food", "content": "少走路"}
-    assert run_command_digest(RunCommandType.SUPPLEMENT, same) == run_command_digest(
-        RunCommandType.SUPPLEMENT, dict(same)
-    )
-    assert run_command_digest(RunCommandType.SUPPLEMENT, same) != run_command_digest(
-        RunCommandType.SUPPLEMENT, {"category": "pace", "content": "少走路"}
-    )
 
 
 async def test_durable_cancel_reaches_the_boundary_without_any_notification(

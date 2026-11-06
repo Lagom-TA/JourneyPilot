@@ -1,11 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
 
-// Connect to an already running app; run.sh and Compose own service startup.
+// 测试连接已启动的应用；服务由 run.sh 或 Compose 启动。
 const baseURL = process.env.JOURNEYPILOT_APP_URL || 'http://127.0.0.1:8080';
 
 export default defineConfig({
   testDir: './e2e',
-  // CI 上禁止 .only：一个漏掉的 .only 会让整套门禁静默只跑一个用例。
+  // 防止 CI 因 .only 而跳过其他测试。
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 1 : undefined,
@@ -14,7 +14,7 @@ export default defineConfig({
     : 'list',
   use: {
     baseURL,
-    // 失败时留下能看的东西：一次 CI 上的 e2e 失败如果只有一行报错，等于没有诊断。
+    // 为失败用例保留诊断信息。
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

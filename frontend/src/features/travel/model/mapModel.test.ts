@@ -205,30 +205,13 @@ describe('map viewport focus', () => {
     expect(resolveMapFocusEntityId(undefined)).toBeNull();
   });
 
-  it('keeps the current view when nothing is selected and the geometry is unchanged', () => {
+  it('auto-fits new geometry only when nothing is selected', () => {
     const dataKey = mapViewportDataKey([[31.2304, 121.4737]]);
-
-    expect(shouldAutoFitMap({
-      dataKey,
-      previousDataKey: dataKey,
-      hasSelection: false,
-    })).toBe(false);
-  });
-
-  it('fits initially or after real geometry changes only when nothing is selected', () => {
-    const dataKey = mapViewportDataKey([[31.2304, 121.4737]]);
+    const sameGeometry = mapViewportDataKey([[31.2304, 121.4737]]);
 
     expect(shouldAutoFitMap({ dataKey, previousDataKey: null, hasSelection: false })).toBe(true);
     expect(shouldAutoFitMap({ dataKey, previousDataKey: 'older-data', hasSelection: false })).toBe(true);
+    expect(shouldAutoFitMap({ dataKey, previousDataKey: sameGeometry, hasSelection: false })).toBe(false);
     expect(shouldAutoFitMap({ dataKey, previousDataKey: 'older-data', hasSelection: true })).toBe(false);
-  });
-
-  it('keys viewport data by geometry rather than array identity', () => {
-    const first = mapViewportDataKey([[31.2304, 121.4737]]);
-    const sameGeometry = mapViewportDataKey([[31.2304, 121.4737]]);
-    const changedGeometry = mapViewportDataKey([[30.2741, 120.1551]]);
-
-    expect(sameGeometry).toBe(first);
-    expect(changedGeometry).not.toBe(first);
   });
 });

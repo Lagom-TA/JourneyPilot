@@ -41,8 +41,6 @@ export const AGENT_TO_STAGE: Record<string, StageId> = Object.fromEntries(NODE_S
     [node, stage],
     [display, stage],
 ]));
-// 旧夹具与旧历史里可能还留着这两个内部时代的显示名；真实公开名以后端
-// presentation.py 为准，旧名只做兼容，不再作为新事件的名字。
 const LEGACY_AGENT_ALIASES: Record<string, string> = {
     '理解需求': '理解旅行需求',
     '等待回答': '等待你的回答',
@@ -132,8 +130,7 @@ function latestPopulatedActivityStage(steps: ThinkingStep[]): ActivityStageId | 
             current = stage;
             continue;
         }
-        // 组合反馈的返研轮次确实回到了研究：过程区焦点跟着回到研究，
-        // 重做结束后继续组合的步骤会把焦点再次推进到路线。
+        // 补充调研轮次将当前阶段设回调研；后续路线阶段事件再将阶段推进到路线。
         if (stage === 'research' && parseAgentRound(step.agentName || '').round > 0) {
             current = stage;
             continue;
@@ -347,9 +344,9 @@ function hasStageSteps(steps: ThinkingStep[], stage: ActivityStageId): boolean {
 /**
  * 工作台四阶段的唯一投影：左侧状态、右侧标题和右侧行动都从这里取。
  *
- * 当前阶段沿用 latestActivityStageId 的单调/返研规则；终态则回到最近真正留下
- * 行动的阶段，避免失败前已经输出正文时把焦点误判成交付。阶段状态只表达阶段
- * 本身，工具自己的成败仍由 ThinkingChain 的组状态表达。
+ * 当前阶段按 latestActivityStageId 的规则推进，收到补充调研轮次时可退回调研；
+ * 终态聚焦最近有行动记录的阶段，避免运行失败前已输出正文时误判为交付。
+ * 阶段状态只表达阶段本身，工具成败由 ThinkingChain 的分组状态表达。
  */
 export function deriveActivityStages(steps: ThinkingStep[], signals: ActivityStageSignals): ActivityStageProjection {
     const populated = latestPopulatedActivityStage(steps);

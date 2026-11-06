@@ -11,7 +11,7 @@ from travel_agent.storage import database
 
 pytestmark = [
     pytest.mark.postgres,
-    pytest.mark.skipif(os.getenv("JP_B4_ROLLBACK_TESTS") != "1", reason="需要显式启用配置库的临时表验证"),
+    pytest.mark.skipif(os.getenv("JP_RUNTIME_ROLLBACK_TESTS") != "1", reason="需要显式启用配置库的临时表验证"),
 ]
 
 
@@ -41,10 +41,10 @@ async def rollback_database(monkeypatch):
                     f"CREATE TEMP TABLE {name} (LIKE public.{name} INCLUDING ALL) ON COMMIT DROP"
                 ))
             for name in ("chat_session_events", "trip_run_events"):
-                await connection.execute(text(f"CREATE TEMP SEQUENCE {name}_b4_sequence"))
+                await connection.execute(text(f"CREATE TEMP SEQUENCE {name}_runtime_sequence"))
                 await connection.execute(text(
                     f"ALTER TABLE {name} ALTER COLUMN event_id "
-                    f"SET DEFAULT nextval('pg_temp.{name}_b4_sequence')"
+                    f"SET DEFAULT nextval('pg_temp.{name}_runtime_sequence')"
                 ))
             await connection.execute(text("SET LOCAL search_path = pg_temp"))
             session = AsyncSession(bind=connection, expire_on_commit=False)
@@ -76,14 +76,14 @@ async def test_long_turn_pages_without_repeating(rollback_database, monkeypatch)
     memory = chat_session.ChatSessionMemory()
     for index, steps in [(0, 0), (1, 6)]:
         await memory.save_turn(
-            session_id="session-b4", user_id="local", mode="fast",
+            session_id="session-runtime", user_id="local", mode="fast",
             user_message=f"问题{index}", user_message_id=f"u{index}",
             assistant_message_id=f"a{index}", assistant_content="回答",
             assistant_display_content="回答", controlled_trip_identity=None,
             thinking_steps=[{"step_id": str(n), "content": "过程"} for n in range(steps)],
         )
-    latest = await memory.list_turns("local", "session-b4")
-    older = await memory.list_turns("local", "session-b4", before_turn=latest["next_before"])
+    latest = await memory.list_turns("local", "session-runtime")
+    older = await memory.list_turns("local", "session-runtime", before_turn=latest["next_before"])
     assert len(latest["turns"]) == len(older["turns"]) == 1
     assert latest["turns"][0]["turn_id"] != older["turns"][0]["turn_id"]
     assert not older["has_more"]
@@ -102,7 +102,7 @@ async def test_recovery_and_delivery_reject_a_replaced_lease(rollback_database):
     from travel_agent.storage.trip_run_store import TripRunStore
 
     runs, executions, bundles = TripRunStore(), RunExecutionStore(), DeliveryBundleStore()
-    run = await runs.create_run(session_id="session-b4", user_id="local", mode="deep", resume_policy="checkpoint")
+    run = await runs.create_run(session_id="session-runtime", user_id="local", mode="deep", resume_policy="checkpoint")
     await runs.transition_status(run.run_id, TripRunStatus.RUNNING)
     old = await executions.claim(run.run_id, lease_seconds=45)
     await rollback_database.execute(text(
@@ -144,7 +144,7 @@ async def test_reclaimed_job_rejects_old_owner(rollback_database):
     from travel_agent.storage.background_job_store import BackgroundJobStore
 
     store = BackgroundJobStore()
-    await store.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "b4-turn", {}, max_attempts=2)
+    await store.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "runtime-turn", {}, max_attempts=2)
     (old,) = await store.claim(lease_seconds=45)
     await rollback_database.execute(text(
         "UPDATE background_jobs SET lease_expires_at = NOW() - INTERVAL '1 second' WHERE job_id = :job_id"
@@ -155,7 +155,7 @@ async def test_reclaimed_job_rejects_old_owner(rollback_database):
     assert await store.complete(replacement.job_id, lease_owner=replacement.lease_owner, result={"current": True})
     assert (await store.get(old.job_id)).status is BackgroundJobStatus.COMPLETED
 
-    await store.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "b4-last-attempt", {}, max_attempts=1)
+    await store.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "runtime-last-attempt", {}, max_attempts=1)
     (last,) = await store.claim(lease_seconds=45)
     await rollback_database.execute(text(
         "UPDATE background_jobs SET lease_expires_at = NOW() - INTERVAL '1 second' WHERE job_id = :job_id"
@@ -174,10 +174,10 @@ async def test_expired_leases_are_rejected_inside_a_long_transaction(rollback_da
     from travel_agent.storage.worker_journal_store import JournalConflict, WorkerJournalStore
 
     runs, executions, jobs = TripRunStore(), RunExecutionStore(), BackgroundJobStore()
-    run = await runs.create_run(session_id="b6-clock", user_id="local", mode="fast")
+    run = await runs.create_run(session_id="lease-clock", user_id="local", mode="fast")
     await runs.transition_status(run.run_id, TripRunStatus.RUNNING)
     lease = await executions.claim(run.run_id, lease_seconds=60)
-    job, _ = await jobs.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "b6-clock", {})
+    job, _ = await jobs.enqueue(BackgroundJobType.MEMORY_EXTRACTION, "lease-clock", {})
     (job,) = await jobs.claim(lease_seconds=60)
     await rollback_database.execute(text(
         "UPDATE trip_run_executions SET lease_expires_at = NOW() + INTERVAL '10 milliseconds' WHERE run_id = :run_id"
@@ -206,7 +206,7 @@ async def test_orphan_recovery_settles_status_lease_and_command(rollback_databas
     from travel_agent.storage.trip_run_store import TripRunStore
 
     runs, executions, commands = TripRunStore(), RunExecutionStore(), RunCommandStore()
-    run = await runs.create_run(session_id="session-b4", user_id="local", mode="deep", resume_policy="checkpoint")
+    run = await runs.create_run(session_id="session-runtime", user_id="local", mode="deep", resume_policy="checkpoint")
     await runs.transition_status(run.run_id, TripRunStatus.RUNNING)
     await executions.claim(run.run_id, lease_seconds=45)
     command, _ = await commands.enqueue(run.run_id, RunCommandType.CANCEL, {})
@@ -235,7 +235,7 @@ async def test_waiting_run_keeps_its_pending_command(rollback_database):
     from travel_agent.storage.trip_run_store import TripRunStore
 
     runs, executions, commands = TripRunStore(), RunExecutionStore(), RunCommandStore()
-    run = await runs.create_run(session_id="session-b4", user_id="local", mode="deep")
+    run = await runs.create_run(session_id="session-runtime", user_id="local", mode="deep")
     await runs.transition_status(run.run_id, TripRunStatus.RUNNING)
     await runs.transition_status(run.run_id, TripRunStatus.AWAITING_INPUT)
     await executions.claim(run.run_id, lease_seconds=45)

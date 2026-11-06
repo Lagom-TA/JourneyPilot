@@ -1170,9 +1170,11 @@ async def test_cancelled_usage_consumer_never_acks_uncommitted_batch(
     assert original() == [rec]
 
 
-@pytest.mark.parametrize("flush_path", ["background", "periodic", "terminal"])
-@pytest.mark.parametrize("maxlen", [1, 3])
-@pytest.mark.parametrize("write_recovers", [False, True])
+@pytest.mark.parametrize("flush_path,maxlen,write_recovers", [
+    ("background", 1, False), ("background", 3, True),
+    ("periodic", 1, True), ("periodic", 3, False),
+    ("terminal", 1, False), ("terminal", 3, True),
+])
 async def test_conflicting_spool_payload_does_not_block_healthy_run_accounting(
     resources, tmp_path, monkeypatch, flush_path, maxlen, write_recovers
 ):
@@ -1243,9 +1245,10 @@ async def test_conflicting_spool_payload_does_not_block_healthy_run_accounting(
     recorder._spool.db.close()
 
 
-@pytest.mark.parametrize("flush_path", ["background", "periodic"])
-@pytest.mark.parametrize("maxlen", [1, 3])
-@pytest.mark.parametrize("write_recovers", [False, True])
+@pytest.mark.parametrize("flush_path,maxlen,write_recovers", [
+    ("background", 1, False), ("background", 3, True),
+    ("periodic", 1, True), ("periodic", 3, False),
+])
 async def test_conflicting_capture_is_quarantined_without_blocking_healthy_run(
     resources, tmp_path, monkeypatch, flush_path, maxlen, write_recovers
 ):

@@ -22,11 +22,7 @@ from mcp.types import TextContent, Tool
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-# The rate publisher has one address in this repo.  The deterministic converter
-# (``travel_agent/integrations/currency.py``, which turns a Duffel fare quoted in the
-# account's currency into the ``*_cny`` the delivery contract requires) reads the
-# same publisher, and two spellings of one URL is how a repo ends up asking two
-# different services the same question.
+# 汇率查询与 Duffel 票价换算共用 Frankfurter 地址，避免使用不同的汇率来源。
 from travel_agent.integrations.currency import FRANKFURTER_BASE_URL
 
 BASE_URL = FRANKFURTER_BASE_URL

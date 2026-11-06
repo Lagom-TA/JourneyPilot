@@ -425,7 +425,7 @@ class BackgroundJobStore:
     async def cancel_for_session(self, session_id: str) -> int:
         """会话被删除时取消引用它的未完成任务。
 
-        正在跑的那一条也取消：worker 在写入前会重新校验源消息还在，读不到就自己收口。
+        正在运行的任务也会取消：worker 写入前会重新检查源消息；消息不存在时不会继续写入。
         """
 
         statement = text(

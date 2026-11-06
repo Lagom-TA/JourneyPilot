@@ -159,8 +159,7 @@ async def dispatcher_node(
                 not observation.composition_closed
                 and state.trip_workspace is None
                 and composition_step is not None
-                # 组合已失败（预算耗尽、返研上限等）时不再重入，
-                # 直接收敛到预算与交付收口。
+                # 组合已失败（例如预算耗尽或达到返研上限）时，不再重新调度组合。
                 and "failed"
                 not in {
                     state.agent_status.get(strip_round_suffix(agent))

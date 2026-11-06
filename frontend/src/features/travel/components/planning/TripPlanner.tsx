@@ -318,7 +318,7 @@ export const TripPlanner: React.FC<{
     if (!text || state.isStreaming) return;
     setError('');
     onHomePlanSubmitted?.();
-    // 不指定路径：普通问题走轻量回答，规划想法由模型判断后进入工作台理解。
+    // 不传 route：普通问题走轻量回答，旅行规划想法由模型判断后进入工作台理解。
     await sendMessage(text, {
       newTrip: true,
       assistantPendingLabel: '正在理解你的旅行想法',

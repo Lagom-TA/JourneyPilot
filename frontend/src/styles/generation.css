@@ -1,4 +1,4 @@
-/* 研究台面：旅行身份、阶段定位和当前任务各占一层。 */
+/* 工作区顶部依次展示旅行概览、阶段导航和当前任务。 */
 .generation-journey-panel {
   --desk-gap: clamp(28px, 4vw, 64px);
   --desk-inset: clamp(20px, 4vw, 64px);
@@ -102,7 +102,7 @@
 .research-panel-workspace .research-empty { min-height: 0; padding: 8px 0; justify-content: flex-start; align-items: flex-start; }
 .research-panel-workspace .research-empty p { font-size: 13px; line-height: 1.85; }
 
-/* 确认门与追问占据同一组列，操作紧随内容。 */
+/* 计划确认卡片与补充问题使用相同的左右列布局。 */
 .generation-journey-panel .plan-gate-card.is-workspace, .understanding-questions-card { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.7fr); gap: 0 var(--desk-gap, 40px); width: 100%; min-width: 0; max-width: none; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .generation-journey-panel .plan-gate-card.is-workspace .plan-gate-header h2, .understanding-questions-head h2 { margin: 0; max-width: 6em; font-family: theme('fontFamily.sans'); font-size: clamp(30px, 3.2vw, 48px); font-weight: 750; line-height: 1.28; letter-spacing: -.03em; }
 .plan-gate-content { min-width: 0; }

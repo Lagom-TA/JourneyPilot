@@ -1,4 +1,4 @@
-"""运行控制命令的消费与终态收口。"""
+"""运行控制命令的处理与终态判定。"""
 
 from __future__ import annotations
 
@@ -40,14 +40,14 @@ async def settle_run_terminal_commands(
     reason: Optional[str] = None,
     db_session: Any = None,
 ) -> None:
-    """Run 不再有执行器时，给还没收口的命令一个结论。
+    """Run 进入终态后，为尚未处理的命令写入结果。
 
     「没有命令永远停在 pending」是一条不变量，而它有两个到达点：仍在运行的协调器
     （`RunCommandCoordinator.settle_terminal`）和恢复扫描（`RunRecoveryService`）。
     两处必须使用同一判据，否则同一条命令会因进程当时是否仍在运行而得到两种结果。
 
-    取消命令只在 Run 真的停下来时算 consumed：那是它要的效果。其他终态下留着的取消
-    命令没有被执行（是运行自己结束的），和没能生效的追加要求一样明确拒绝。
+    只有 Run 以 CANCELLED 结束时，取消命令才标记为 CONSUMED。其他终态下，未处理的取消
+    命令和追加要求都标记为 REJECTED。
 
     **顺序不可交换**：先 CONSUMED 掉取消，再统一 REJECTED，否则那条取消会被拒掉。
     """
@@ -133,11 +133,10 @@ class RunCommandCoordinator:
         await self._release_unapplied_claims()
 
     async def _release_unapplied_claims(self) -> None:
-        """手里还没落地的那几条放回 pending。
+        """将尚未生效的追加要求释放回 ``pending``。
 
-        Run 停在 AWAITING_INPUT 时终态收口按设计不运行，handle 连同它的
-        supplements 一起被丢弃。不放回 pending 的话那条要求既不生效也不被拒绝，
-        回执会一直停在 claimed。
+        Run 停在 AWAITING_INPUT 时不会执行终态命令处理。协调器停止后如果不释放这些命令，
+        它们既不会生效也不会被拒绝，回执会一直停在 ``claimed``。
         """
 
         pending = [
@@ -153,7 +152,7 @@ class RunCommandCoordinator:
             logger.warning("未生效命令归还失败 run_id=%s error=%s", self._run_id, exc)
 
     async def settle_terminal(self, run_status: TripRunStatus | str) -> None:
-        """Run 结束时给还没收口的命令一个结论。判据见 `settle_run_terminal_commands`。"""
+        """Run 结束时处理尚未完成的命令；判据见 `settle_run_terminal_commands`。"""
 
         status = (
             run_status.value

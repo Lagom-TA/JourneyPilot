@@ -17,7 +17,7 @@ def exclude_tools(
     available: List[Dict[str, Any]],
     excluded: List[str],
 ) -> List[Dict[str, Any]]:
-    """移除在之前的修复轮次中持久失败的工具。"""
+    """移除当前任务分配中明确排除的工具。"""
     if not excluded:
         return available
     excluded_set = set(excluded)

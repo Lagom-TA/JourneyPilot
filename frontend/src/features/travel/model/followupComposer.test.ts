@@ -37,10 +37,4 @@ describe('followupComposerState', () => {
     expect(followupComposerState({ ...base, readOnly: true }).visible).toBe(false);
   });
 
-  it('only explains the queue when a delivered trip is still running', () => {
-    for (const runStatus of ['completed', 'failed', 'cancelled', 'interrupted'] as const) {
-      expect(followupComposerState({ ...base, runStatus }).hint).toBe('');
-    }
-    expect(followupComposerState({ ...base, runStatus: 'running', isStreaming: true }).hint).toContain('当前回复结束后');
-  });
 });

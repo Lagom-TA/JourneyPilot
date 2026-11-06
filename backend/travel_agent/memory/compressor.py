@@ -116,7 +116,7 @@ def build_context_compaction_event(
 
 
 def _count_tokens(text: str, model: str = "gpt-4o") -> int:
-    """离线 token 估算；计费口径以 API 返回的 usage 为准。"""
+    """离线估算 token 数；实际计费用量以 API 返回的 ``usage`` 为准。"""
     from ..llm.token_counting import estimate_tokens
 
     return estimate_tokens(text, model)

@@ -88,7 +88,7 @@ class EmbeddingConfig(StrictConfig):
 
     provider = "qwen3"  → 本地 Qwen3-Embedding-0.6B ONNX 推理（默认，首次启动从 HF 下载 ~1.2GB）
     provider = "openai" → OpenAI 兼容 Embedding API（需 api_key + base_url）
-    provider = "hash"   → 内置确定性哈希向量（零依赖，仅供 RAG 链路跑通，语义质量低）
+    provider = "hash"   → 内置确定性哈希向量（无需外部依赖，仅用于验证 RAG 检索流程，不具备语义理解能力）
     """
     enabled: bool = Field(default=True, description="启用向量知识检索与自动记忆抽取；关闭后仍可读写手动偏好。")
     provider: str = "qwen3"
@@ -194,7 +194,7 @@ class RAGConfig(StrictConfig):
 
 
 class RerankConfig(StrictConfig):
-    """Reranking 精排配置（Step 4: 二阶段精排）
+    """Reranking 二阶段精排配置。
 
     provider = "cross_encoder" → BGE-Reranker-v2-m3（需要 pip install sentence-transformers）
     provider = "llm"           → 复用现有 LLM 做相关性评分（开箱即用，推荐）
@@ -261,8 +261,6 @@ class RunDeadlineConfig(StrictConfig):
     已经开始的 Run 用它自己封存的快照，改这里不影响在跑的 Run。
     """
 
-    # 默认值按真实联调实测标定：调研 worker 单家耗时常见在 4—7 分钟，
-    # 组合与投影在研究收尾后再各留一段，总窗 30 分钟内可完整交付。
     target_seconds: int = Field(default=900, gt=0)
     closeout_seconds: int = Field(default=1200, gt=0)
     composition_seconds: int = Field(default=1500, gt=0)
@@ -401,12 +399,12 @@ class GeocodingConfig(StrictConfig):
     nominatim_base_url: str = "https://nominatim.openstreetmap.org"
     # Nominatim 合规要求明确标识应用的 User-Agent（禁用 http 库默认 UA）。
     user_agent: str = USER_AGENT
-    # /lookup（批量 osm_id，双语两轮）与 Overpass 的基准超时。这两个端点本来就慢：
+    # /lookup（批量 osm_id，双语两轮）与 Overpass 的基准超时。这两个端点响应较慢：
     # /lookup 一次要 5 个对象的 addressdetails+namedetails，Overpass 另有
-    # ``max(30.0, timeout_seconds)`` 作为下限。两者都只在身份 fallback 里跑，那条路径
-    # 自带 20s 时间片（``_IDENTITY_FALLBACK_BUDGET_SECONDS``），不在首跳同步路径上。
+    # ``max(30.0, timeout_seconds)`` 作为下限。两者只用于地点身份补全的备用查询，
+    # 该路径受 20 秒时间片（``_IDENTITY_FALLBACK_BUDGET_SECONDS``）限制，不阻塞目的地输入时的同步查询。
     timeout_seconds: float = Field(default=10.0, gt=0)
-    # /search 单独的超时：它是「用户敲下目的地」这一跳的同步阻塞点。
+    # /search 单独设定超时；用户提交目的地时会同步等待该查询。
     # 上界由重试序列决定：限速器 1.1s 加 2 次尝试（见
     # ``nominatim_place_search._PROVIDER_MAX_ATTEMPTS``）要控制在 8s 内，
     # 1.1 + 2 × 3.4 = 7.9s，3.4 是满足该上界的最大单次超时。调大只会让调用方
@@ -414,8 +412,7 @@ class GeocodingConfig(StrictConfig):
     search_timeout_seconds: float = Field(default=3.4, gt=0)
     # 公共 Nominatim ≤1 req/s；1.1s 留安全裕量（全局限速器串行保证）。
     min_interval_seconds: float = 1.1
-    # 原始 /search 响应的复用窗口。OSM 的城市/车站/景点 relation 不会移动，与既有的
-    # ``provider_snapshot_cache.place_identity_ttl_seconds`` 同为 7 天口径。
+    # 原始 /search 响应的缓存时间；地点信息可能变化，因此设置有效期。
     search_cache_ttl_seconds: int = Field(default=7 * 24 * 60 * 60, gt=0)
     search_cache_key_prefix: str = Field(
         default="journeypilot:nominatim-search",
@@ -463,14 +460,14 @@ class AgentToolPolicy(StrictConfig):
 class ToolExposureConfig(StrictConfig):
     """Tool Search 按需工具曝光策略。
 
-    默认 ``deferred``：worker agent 不再全量注入工具 schema，只带压缩目录（名称+一行
-    描述）进 system prompt，由 ``search_tools`` 元工具按需激活完整 schema。
+    默认 ``deferred``：worker agent 在 system prompt 中接收压缩工具目录（工具名和一行
+    描述），并通过 ``search_tools`` 按需加载完整 schema。
 
     - ``mode``: ``deferred`` 走按需曝光；``full`` 切换为全量注入，便于排障。
     - ``worker_only``: 仅对 worker agent（destination/transport/accommodation/itinerary）
-      启用；scope/orchestrator 等治理节点不动。
-    - ``min_tools_threshold``: 该 agent 可用工具数 ``>=`` 阈值才 defer；阈值以下工具少，
-      多一次 search 调用不划算，自动回落 full。
+      启用；需求入口与编排等治理节点不启用按需曝光。
+    - ``min_tools_threshold``: 可用工具数达到阈值时才按需加载；低于阈值时工具较少，
+      直接注入完整 schema，避免额外的 search 调用。
     """
 
     mode: str = "deferred"          # "deferred" | "full"
@@ -490,7 +487,7 @@ class ModelPricingItem(StrictConfig):
     provider: str = ""                             # 可选 provider 约束（infer_provider 输出），空=不限
     input_per_1m: float = Field(default=0.0, ge=0)  # 未命中缓存的输入价
     cached_input_per_1m: Optional[float] = Field(default=None, ge=0)
-    cache_write_per_1m: Optional[float] = Field(default=None, ge=0)  # 写入桶总价
+    cache_write_per_1m: Optional[float] = Field(default=None, ge=0)  # 缓存写入 token 单价
     output_per_1m: float = Field(default=0.0, ge=0)  # 包含推理输出
     currency: str = "USD"
     effective_from: str = ""                        # 价格抓取/生效日期

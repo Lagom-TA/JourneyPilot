@@ -268,7 +268,7 @@ class TravelAgentState(BaseModel):
     research_redo_rounds: Annotated[
         Dict[str, int], _take_latest_value_allow_clear
     ] = Field(default_factory=dict)
-    # 实际路线超窗后组合回炉修正排程的已用次数，需求变更时清零。
+    # 路线超出时间窗后用于调整排程的组合重试次数；需求变更时重置为 0。
     composition_reschedule_rounds: int = Field(default=0, ge=0)
 
     placement_skeleton: Optional[ItineraryCompositionDraft] = None

@@ -47,7 +47,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.server.cors_origins,
@@ -56,13 +55,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Gzip 压缩
     app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-    # 请求日志
     app.middleware("http")(request_logging_middleware)
 
-    # 注册路由
     app.include_router(chat.router)
     app.include_router(sessions.router)
     app.include_router(system.router)

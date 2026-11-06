@@ -17,7 +17,7 @@ PricingItem = TypeVar("PricingItem")
 
 
 def default_model_pricing(factory: Callable[..., PricingItem]) -> List[PricingItem]:
-    """内置定价快照（USD / 1M tokens，国际站口径）。
+    """内置国际站模型定价快照（美元 / 百万 tokens）。
 
     分层定价（Qwen）取基础档；价格随时变动，用户可在
     config.yaml 的 `model_pricing` 覆盖。前缀匹配按 pattern 最长优先（见 resolve_price）。

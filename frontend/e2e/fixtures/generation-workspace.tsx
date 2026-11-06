@@ -11,13 +11,13 @@ import type { ControlledTripIdentity, UnderstandingQuestion } from '../../src/fe
 import type { PlanApprovalGate } from '../../src/features/travel/types/planning';
 import type { TripRunStatus } from '../../src/features/travel/types/runs';
 import { deliveryBundle } from './sessionData';
-import type { F3Scene } from './generationWorkspace';
+import type { GenerationWorkspaceScene } from './generationWorkspace';
 import '../../src/index.css';
 import '../../src/styles/home.css';
 import '../../src/styles/layout.css';
 import '../../src/styles/workspace.css';
 
-const runId = 'run-f3-workspace';
+const runId = 'run-generation-workspace';
 const stamp = new Date(Date.now() - 72_000);
 const place = (name: string) => ({ place_id: `manual:${name}`, provider: 'manual_verified' as const, kind: 'city' as const, name, display_name: `${name}，中国`, country_code: 'CN', latitude: 30.6, longitude: 104, admin_path: ['中国', name] });
 const identity: ControlledTripIdentity = {
@@ -29,15 +29,15 @@ const step = (id: string, agentName: string, extra: Partial<ThinkingStep>): Thin
 const research: ThinkingStep[] = [
   step('requirements', '整理旅行需求', { progressStatus: 'completed' }),
   step('destination-end', '目的地调研', { progressStatus: 'completed', content: '已整理成都与重庆的街区、美食与文化体验。' }),
-  step('destination-place', '目的地调研', { isToolCall: true, toolName: 'global_place_search', toolArgs: '{"query":"成都 玉林路"}', toolStatus: 'completed', toolResult: '找到 1 处街区资料', resultPreview: [{ title: '玉林路', detail: '成都武侯区，适合安排街区散步。', url: 'https://example.org/f3/yulin' }] }),
+  step('destination-place', '目的地调研', { isToolCall: true, toolName: 'global_place_search', toolArgs: '{"query":"成都 玉林路"}', toolStatus: 'completed', toolResult: '找到 1 处街区资料', resultPreview: [{ title: '玉林路', detail: '成都武侯区，适合安排街区散步。', url: 'https://example.org/generation/yulin' }] }),
   step('transport-start', '交通查询', { progressStatus: 'running', content: '正在比较成都与重庆之间的城际交通。' }),
-  step('train', '交通查询', { isToolCall: true, toolCallId: 'train-1', toolName: 'train_search', toolArgs: '{"from_name":"成都东","to_name":"重庆北","date":"2026-12-04"}', toolStatus: 'completed', toolResult: '已找到直达车次，正在核对两端车站的市内衔接。', resultPreview: [{ title: '成都东 → 重庆北', detail: '成都东出发，重庆北到达。', url: 'https://example.org/f3/train' }] }),
+  step('train', '交通查询', { isToolCall: true, toolCallId: 'train-1', toolName: 'train_search', toolArgs: '{"from_name":"成都东","to_name":"重庆北","date":"2026-12-04"}', toolStatus: 'completed', toolResult: '已找到直达车次，正在核对两端车站的市内衔接。', resultPreview: [{ title: '成都东 → 重庆北', detail: '成都东出发，重庆北到达。', url: 'https://example.org/generation/train' }] }),
   step('transport-note', '交通查询', { kind: 'work_explanation', content: '会同时比较车站位置与到达后进入市区的交通。' }),
   step('stay-start', '住宿查询', { progressStatus: 'running', content: '正在比较靠近地铁、方便每天出行的住宿区域。' }),
   step('stay-tool', '住宿查询', { isToolCall: true, toolName: 'global_place_search', toolArgs: '{"query":"春熙路 解放碑 住宿"}', toolStatus: 'running' }),
 ];
 const gate: PlanApprovalGate = {
-  gate: 'plan', runId, status: 'pending', source: 'restored', approvalToken: 'offline-f3-plan', revision: 0,
+  gate: 'plan', runId, status: 'pending', source: 'restored', approvalToken: 'offline-generation-plan', revision: 0,
   decisionOptions: ['approve', 'supplement', 'cancel'], steps: [{ step: 1, agents: ['destination_researcher'] }, { step: 2, agents: ['transport_researcher', 'accommodation_researcher'] }],
   planText: '## 街区与当地生活\n\n围绕成都、重庆的老街区、美食和文化体验展开，午后留出休息时间。\n\n## 交通与住宿\n\n比较两城之间的交通衔接和方便出行的住宿区域，再组合每天路线。\n\n## 每日安排\n\n每天集中在相近区域，在散步、参观和休息之间留出余量。',
 };
@@ -51,10 +51,10 @@ const questions: UnderstandingQuestion[] = [
 
 function Harness() {
   const { dispatch } = useApp();
-  const setScene = React.useCallback((scene: F3Scene) => {
+  const setScene = React.useCallback((scene: GenerationWorkspaceScene) => {
     dispatch({ type: 'SESSION_INITIALIZED' });
     dispatch({ type: 'SET_SIDEBAR_COLLAPSED', payload: true });
-    dispatch({ type: 'SET_SESSION_ID', payload: 'f3-workspace' });
+    dispatch({ type: 'SET_SESSION_ID', payload: 'generation-workspace' });
     dispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: null });
     dispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: null });
     dispatch({ type: 'SET_TRIP_SUMMARY_CARD', payload: null });
@@ -62,7 +62,7 @@ function Harness() {
     if (scene === 'home') { dispatch({ type: 'CLEAR_CHAT' }); return; }
     const isPlan = scene.startsWith('plan');
     const isQuestion = ['questions', 'question-next', 'location-retry', 'research-retry'].includes(scene);
-    const statuses: Partial<Record<F3Scene, TripRunStatus>> = { completed: 'completed', partial: 'completed', failed: 'failed', cancelled: 'cancelled', stopping: 'cancel_requested', interrupted: 'interrupted', unrecoverable: 'interrupted', readonly: 'interrupted' };
+    const statuses: Partial<Record<GenerationWorkspaceScene, TripRunStatus>> = { completed: 'completed', partial: 'completed', failed: 'failed', cancelled: 'cancelled', stopping: 'cancel_requested', interrupted: 'interrupted', unrecoverable: 'interrupted', readonly: 'interrupted' };
     const status = isPlan || isQuestion ? 'awaiting_input' : statuses[scene] ?? 'running';
     dispatch({ type: 'SET_CURRENT_TRIP_RUN', payload: { runId, source: 'live', status, readOnly: scene === 'readonly' } });
     dispatch({ type: 'ENTER_WORKSPACE' });
@@ -83,13 +83,13 @@ function Harness() {
     if (scene === 'redo') steps.push(step('redo', '目的地调研（第2轮补充）', { progressStatus: 'running', content: '正在按路线安排补充查询雨天备选。' }));
     if (scene === 'delivery') steps.push(step('delivery', '生成完整计划', { progressStatus: 'running', content: '正在整理日程、地图和阅读版。' }));
     dispatch({ type: 'SET_THINKING_STEPS', payload: steps });
-    dispatch({ type: 'ADD_MESSAGE', payload: { id: `f3-${scene}-${Date.now()}`, role: 'assistant', runId, content: scene === 'failed' ? '这次规划未能完成，旅行要求已保留。' : '', displayContent: scene === 'failed' ? '这次规划未能完成，旅行要求已保留。' : '', type: scene === 'failed' ? 'error' : 'normal', timestamp: stamp, thinkingSteps: steps } });
+    dispatch({ type: 'ADD_MESSAGE', payload: { id: `generation-${scene}-${Date.now()}`, role: 'assistant', runId, content: scene === 'failed' ? '这次规划未能完成，旅行要求已保留。' : '', displayContent: scene === 'failed' ? '这次规划未能完成，旅行要求已保留。' : '', type: scene === 'failed' ? 'error' : 'normal', timestamp: stamp, thinkingSteps: steps } });
     if (isPlan) dispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: { ...gate, source: scene === 'plan-live' ? 'live' : 'restored', planText: scene === 'plan-empty' ? '' : gate.planText, decisionOptions: scene === 'plan-failed' ? ['retry', 'supplement', 'cancel'] : gate.decisionOptions } });
     if (isQuestion) dispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: { runId, revision: scene === 'question-next' ? 1 : 0, approvalToken: 'offline-question', questions: scene === 'questions' ? questions : scene === 'question-next' ? [{ ...questions[0], question: '第二轮只确认节奏，还想调整吗？' }] : [], retryLocation: scene === 'location-retry', retryResearch: scene === 'research-retry', message: scene === 'research-retry' ? '交通查询未完成；目的地与住宿成果已保留。本次重试仍受当前研究时限限制。' : undefined } });
   }, [dispatch]);
   React.useEffect(() => {
-    window.__f3Workspace = { setScene, dispatch };
-    setScene((new URLSearchParams(window.location.search).get('scene') as F3Scene) || 'research');
+    window.__generationWorkspace = { setScene, dispatch };
+    setScene((new URLSearchParams(window.location.search).get('scene') as GenerationWorkspaceScene) || 'research');
   }, [setScene, dispatch]);
   return <MainLayout><TripWorkspaceShell /></MainLayout>;
 }

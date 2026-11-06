@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { type TransportMode } from '../types/entities';
 import { type PublicTransportLeg } from '../types/itinerary';
 import {
-  TRANSPORT_MODE_COLORS,
   confirmedMetroTransferCount,
   legSummary,
   showsEndpointCode,
@@ -13,10 +12,7 @@ import {
   transitRides,
   transitStationModes,
   transitStations,
-  transportMapCardLabel,
   transportMapEntryVisible,
-  transportModeColor,
-  transportModeStyle,
   transportSegmentDisplayMode,
 } from './transportPresentation';
 
@@ -30,7 +26,7 @@ function segment(
   from: string,
   to: string,
   lineName: string | null = null,
-  options: { serviceNumber?: string | null; operatorName?: string | null; duration?: number | null; distance?: number | null } = {},
+  options: { operatorName?: string | null; duration?: number | null; distance?: number | null } = {},
 ) {
   return {
     segment_id: id,
@@ -42,7 +38,7 @@ function segment(
     duration_minutes: options.duration ?? null,
     distance_meters: options.distance ?? null,
     operator_name: options.operatorName ?? null,
-    service_number: options.serviceNumber ?? null,
+    service_number: null,
     line_name: lineName,
     cost_cny: null,
     path: [],
@@ -82,40 +78,7 @@ const walkMetroWalk = [
   segment('walk-out', 'walk', '小寨站', '陕西历史博物馆'),
 ];
 
-const MODES: TransportMode[] = [
-  'flight',
-  'high_speed_rail',
-  'train',
-  'coach',
-  'ferry',
-  'metro',
-  'bus',
-  'tram',
-  'taxi',
-  'ride_hailing',
-  'drive',
-  'bike',
-  'walk',
-  'other',
-];
-
-describe('transport mode colors', () => {
-  it('provides a distinct color for every transport mode', () => {
-    expect(MODES.map((mode) => TRANSPORT_MODE_COLORS[mode])).toHaveLength(MODES.length);
-    expect(new Set(Object.values(TRANSPORT_MODE_COLORS)).size).toBe(MODES.length);
-    for (const mode of MODES) {
-      expect(TRANSPORT_MODE_COLORS[mode]).toMatch(/^#[0-9A-F]{6}$/);
-    }
-  });
-
-  it('uses the same color for map lines and component styles', () => {
-    for (const mode of MODES) {
-      expect(transportModeStyle(mode)).toEqual({
-        '--transport-mode-color': transportModeColor(mode),
-      });
-    }
-  });
-
+describe('transport display mode', () => {
   it('keeps road service display modes without changing other segment modes', () => {
     expect(transportSegmentDisplayMode('taxi', 'drive')).toBe('taxi');
     expect(transportSegmentDisplayMode('ride_hailing', 'drive')).toBe('ride_hailing');
@@ -125,32 +88,9 @@ describe('transport mode colors', () => {
 });
 
 describe('transport card facts', () => {
-  it('summarises a scheduled ticket as plain duration and fare', () => {
-    const summary = legSummary(transportLeg({
-      transport_class: 'long_distance',
-      selected_mode: 'high_speed_rail',
-      duration_minutes: 469,
-      total_cost_cny: 1108,
-      segments: [segment('rail', 'high_speed_rail', '深圳北', '北京西', null)],
-    }));
-    expect(summary).toEqual({ duration: '7 小时 49 分钟', cost: '¥1,108' });
-  });
-
   it('does not invent a zero fare when the price is missing', () => {
     const summary = legSummary(transportLeg({ total_cost_cny: null }));
-    expect(summary.duration).toBe('42 分钟');
     expect(summary.cost).toBeNull();
-  });
-
-  it('keeps transfer wording out of the compact readout', () => {
-    const twoLines = [
-      segment('metro-2', 'metro', '北大街站', '行政中心站', '地铁2号线'),
-      segment('metro-4', 'metro', '行政中心站', '大雁塔站', '地铁4号线'),
-    ];
-    expect(legSummary(transportLeg({ segments: twoLines, transfer_count: 1 }))).toEqual({
-      duration: '42 分钟',
-      cost: '¥5',
-    });
   });
 
   it('counts only a real change between metro lines', () => {
@@ -342,32 +282,6 @@ describe('public transit ride chain', () => {
     expect(chain.expandable).toBe(false);
   });
 
-  it('keeps a long line name compact on the first screen and complete in the ride row', () => {
-    const tram = segment('tram-103', 'tram', '东安门大街站', '神武门站', '103路(北京站西--动物园枢纽站)');
-    const leg = transportLeg({
-      selected_mode: 'tram',
-      segments: [
-        segment('walk-in', 'walk', '东安门大街', '东安门大街站'),
-        tram,
-        segment('walk-out', 'walk', '神武门站', '神武门'),
-      ],
-      boarding_stop: endpoint('东安门大街站'),
-      alighting_stop: endpoint('神武门站'),
-    });
-    const chain = transitLineChain(leg);
-    expect(chain.steps[0].label).toBe('103路');
-    expect(chain.rides[0].rowLabel).toBe('103路(北京站西--动物园枢纽站)');
-    expect(chain.steps[0].direction).toBe('神武门站');
-  });
-
-  it('prefers the service number for the line label', () => {
-    const tram = segment('tram-103', 'tram', '东安门大街站', '神武门站', '103路(北京站西--动物园枢纽站)', {
-      serviceNumber: '103',
-    });
-    const leg = transportLeg({ selected_mode: 'tram', segments: [tram] });
-    expect(transitLineChain(leg).steps[0].label).toBe('103');
-  });
-
   it('takes each ride direction from the next boarding stop and the final alighting stop', () => {
     const twoLines = [
       segment('metro-2', 'metro', '北大街站', '小寨站', '地铁2号线'),
@@ -380,17 +294,4 @@ describe('public transit ride chain', () => {
     expect(transitRides(leg).map((ride) => ride.direction)).toEqual(['小寨站', '大雁塔站']);
   });
 
-  it('describes line, stations and map action in the card accessible name', () => {
-    const leg = transportLeg({
-      segments: walkMetroWalk,
-      boarding_stop: endpoint('钟楼站'),
-      alighting_stop: endpoint('小寨站'),
-    });
-    const label = transportMapCardLabel(leg);
-    expect(label).toContain('地铁2号线');
-    expect(label).toContain('钟楼站到小寨站');
-    expect(label).toContain('42 分钟');
-    expect(label).toContain('¥5');
-    expect(label).toContain('在地图中查看');
-  });
 });

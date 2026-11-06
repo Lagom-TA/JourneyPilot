@@ -3,7 +3,6 @@ import { ChevronDown, Check } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Popover } from './Popover';
 
-/* 菜单仅支持点击选择，尚未实现方向键导航。 */
 export interface SelectOption {
   value: string;
   label: string;

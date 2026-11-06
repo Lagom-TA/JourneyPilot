@@ -1,4 +1,3 @@
-/* 在共享样式入口引入字体，确保所有入口使用相同字形来源。 */
 @import './assets/fonts/fonts.css';
 
 @tailwind base;

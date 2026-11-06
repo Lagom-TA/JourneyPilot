@@ -46,9 +46,8 @@ def _command_from_row(row: Mapping[str, Any]) -> RunCommand:
     )
 
 
-#: 收口时写的那些列。只在 `_SETTLE_SET_CLAUSE` 一处定义，供 `settle` 与
-#: `settle_open_for_run` 共用。只有真的被执行过才写 consumed_at：给一条被拒绝的
-#: 命令盖上「消费于」会让回执读起来像是它生效过。
+#: 更新命令状态与结果时写入的列，由 `settle` 和 `settle_open_for_run` 共用。
+#: 只有状态为 CONSUMED 时才写 `consumed_at`，避免将被拒绝的命令记录为已执行。
 _SETTLE_SET_CLAUSE = f"""
     status = :status,
     consumed_at = CASE
@@ -228,10 +227,9 @@ class RunCommandStore:
         result: Optional[Dict[str, Any]] = None,
         error_code: Optional[str] = None,
     ) -> int:
-        """给命令一个结论。已经有结论的行不再改动。
+        """设置尚未处理命令的状态和结果；已有结果的行保持不变。
 
-        「只改还没收口的行」用于防止重复消费：执行器在标记之后崩溃，重启后再标一次
-        不会改动任何行，结论也不会被后来的那一次覆盖。
+        只更新 pending 或 claimed 状态，保证执行器在写入后崩溃并重试时不会覆盖已有结果。
         """
 
         ids = [str(value) for value in command_ids if str(value).strip()]
@@ -272,10 +270,9 @@ class RunCommandStore:
         error_code: Optional[str] = None,
         db_session: Any = None,
     ) -> List[RunCommand]:
-        """给这个 run 所有未收口的命令一个结论，返回被改动的行。
+        """为该 Run 尚未处理的命令设置状态和结果，返回本次更新的行。
 
-        Run 已经终结时必须走一次：一条留在 pending 的追加要求永远不会有人消费，而回执
-        接口会一直答「还在等」。
+        Run 进入终态时必须调用；否则 pending 状态的追加要求没有消费者，回执会一直显示待处理。
         """
 
         kinds = (

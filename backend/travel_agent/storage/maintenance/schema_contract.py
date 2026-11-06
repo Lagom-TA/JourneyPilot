@@ -62,8 +62,7 @@ MANAGED_TABLES: tuple[str, ...] = (
     "run_worker_journals",
 )
 
-# 「这是不是一个 JourneyPilot 库」的判据。取三张分属不同领域、且从第一版起就存在的表：
-# 任何一张在，就不能把这个库当空库跑迁移。
+# 用于识别已有业务表的探针。任一张表存在，数据库就不能按空库执行迁移。
 PROBE_TABLES: tuple[str, ...] = ("user_profiles", "chat_sessions", "trip_runs")
 
 # LangGraph checkpointer 的表。不进我们的迁移（langgraph 自带 `checkpoint_migrations`
