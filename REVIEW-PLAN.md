@@ -27,7 +27,7 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 
 ## 进度总览
 
-**进度**：后端逻辑 6/6 · 前端页面 4/6 · 文字内容 1/3 · [待决事项](review-plan/decisions.md) 1 项
+**进度**：后端逻辑 6/6 · 前端页面 6/6 · 文字内容 1/3 · [待决事项](review-plan/decisions.md) 1 项
 
 状态：⬜ 未开始 · 🔍 审查中 · 🔧 修复中 · ✅ 已完成 · ↩️ 需复核 · ⏸️ 搁置
 
@@ -42,10 +42,10 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 | B6 | [数据、配置与工程发布](review-plan/stages/B6-data-config-release.md) | `后端逻辑` | B1 | ✅ | Codex | 0 | 2026-11-04 / 8d994d8、9d9a185、3a61d1c、ac523de |
 | F1 | [前端结构、状态与样式体系](review-plan/stages/F1-frontend-foundation.md) | `前端页面` | S0、B4 | ✅ | Codex（采集 / 修复） | 0 | 2026-11-04 / 38bd919、286d9e8 |
 | F2 | [首页与需求输入](review-plan/stages/F2-home-input.md) | `前端页面` | F1 | ✅ | Codex（采集 / 修复） / GPT 6.1 Terra（分析） | 0 | 2026-11-05 / 669f83a、627f341 |
-| F3 | [生成工作台](review-plan/stages/F3-generation-workspace.md) | `前端页面` | F1、B2、B4 | ↩️ | Codex（采集 / 修复） / GPT 6.1 Terra（分析） | 1 | 2026-11-05 / e48c3fc |
-| F4 | [交付工作台](review-plan/stages/F4-delivery-workspace.md) | `前端页面` | F1、B3 | ↩️ | Codex（采集 / 修复） / GPT 6.1 Terra（分析） | 1 | 2026-11-05 / 047bbd2 |
+| F3 | [生成工作台](review-plan/stages/F3-generation-workspace.md) | `前端页面` | F1、B2、B4 | ✅ | Codex（采集 / 修复） / GPT 6.1 Terra（分析） | 0 | 2026-11-05 / e48c3fc |
+| F4 | [交付工作台](review-plan/stages/F4-delivery-workspace.md) | `前端页面` | F1、B3 | ✅ | Codex（采集 / 修复） / GPT 6.1 Terra（分析） | 0 | 2026-11-05 / 047bbd2 |
 | F5 | [我的行程与偏好资料](review-plan/stages/F5-trips-preferences.md) | `前端页面` | F1、B5 | ✅ | Codex（采集 / 修复） / GPT 6.1 Terra（分析） | 0 | 2026-11-05 / cc0f252 |
-| F6 | [动效与交互](review-plan/stages/F6-motion-a11y.md) | `前端页面` | F2–F5 | ✅ | Codex（采集 / 修复） / GPT 6.1 Terra（分析） | 0 | 2026-11-05 / 工作树（未提交） |
+| F6 | [动效与交互](review-plan/stages/F6-motion-a11y.md) | `前端页面` | F2–F5 | ✅ | Codex（采集 / 修复） / GPT 6.1 Terra（分析） | 0 | 2026-11-05 / 3bd2b42 |
 | T1 | [界面文案](review-plan/stages/T1-ui-copy.md) | `文字内容` | F1 | ⬜ | | 9 | |
 | T2 | [提示词与模型产出](review-plan/stages/T2-prompts-outputs.md) | `文字内容` | B2、B3 | ✅ | Claude Sonnet 5.5 | 0 | 2026-11-05 / a118ecc |
 | T3 | [文档与开源门面](review-plan/stages/T3-docs-showcase.md) | `文字内容` | 其余全部 | ⬜ | | 11 | |
@@ -56,7 +56,9 @@ JourneyPilot 是个人代表作，不是商用产品。达标线是“拿得出�
 
 F4 的设计结果、代表状态与验证范围见 [F4-acceptance.md](review-plan/F4-acceptance.md)；F5 见 [F5-acceptance.md](review-plan/F5-acceptance.md)。
 
-F6 采用[空间工作台方向](review-plan/F6-design-options.md)，实现、素材与验证范围见 [F6 验收记录](review-plan/F6-acceptance.md)，改动保留在工作树。
+F6 采用[空间工作台方向](review-plan/F6-design-options.md)，实现、素材与验证范围见 [F6 验收记录](review-plan/F6-acceptance.md)，实现提交 `3bd2b42`。
+
+前端 F1–F6 的综合验收记录见 [acceptance-frontend.md](review-plan/acceptance-frontend.md)：质量门、提醒收口、验收中的修复，以及仍需关注的事项。
 
 ## 标签与人选
 
@@ -82,6 +84,7 @@ review-plan/
 ├── references.md            外部参考库：收录站点、入口、获取方式
 ├── decisions.md             待决事项
 ├── acceptance-backend.md    后端 B1–B6 综合验收记录
+├── acceptance-frontend.md   前端 F1–F6 综合验收记录
 ├── F4-design-options.md     F4 参考调研与选定方向
 ├── F4-acceptance.md         F4 实现与验证范围
 ├── F5-design-options.md     F5 参考调研与选定方向
