@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Awaitable, Callable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
+from travel_agent.llm.task_routing import plain_observation_messages
 from travel_agent.planning.research.evidence import SourceRecord
 from travel_agent.planning.research.packets import ResearchPacket
+from travel_agent.runtime.cancellation import RunCancelled
+from travel_agent.storage.worker_journal_store import JournalConflict
 
 from .failures import _merge_failed_tool_sources
 from .parsing import _parse_packet_lenient_first
@@ -43,21 +46,47 @@ async def parse_research_packet(
 async def parse_research_packet_or_reask(
     raw: str,
     *,
-    reask: Callable[[str], Awaitable[str]],
+    llm: Any,
+    messages: Sequence[Mapping[str, Any]],
     expected_worker: ResearchWorkerKind,
+    degrade_on_reask_error: bool = False,
     **parse_kwargs: Any,
 ) -> ResearchPacket:
-    """首次解析失败时让模型按同一批证据重新输出一次，再失败才交给 worker 失败协议。
+    """首次解析失败时让模型按同一批工具观察重新输出一次，再失败才交给 worker 失败协议。
 
-    只重试输出本身无法解析的情形（``ResearchPacketOutputError``）；``reask`` 自身的
-    异常（供应商错误、研究窗口关闭、取消）原样抛出，不再包一层重试。最多重新请求一次，
-    因为每次重试都是一次付费调用并占用研究时限。
+    只重试输出本身无法解析的情形（``ResearchPacketOutputError``）；最多重新请求一次，
+    因为每次重试都是一次付费调用并占用研究时限。重新请求自身的异常（供应商错误、
+    研究窗口关闭）默认原样抛出、不再重试；调用方另有不依赖模型的保底路径时，传
+    ``degrade_on_reask_error`` 把这类异常转成 ``ResearchPacketOutputError``，让它照常走保底。
+    取消类异常任何情况下都不吞掉。
     """
     try:
         return await parse_research_packet(raw, expected_worker=expected_worker, **parse_kwargs)
     except ResearchPacketOutputError as exc:
         reason = str(exc)[:_REASK_REASON_LIMIT]
         logger.warning("worker=%s Research Packet 首次解析失败，重新请求一次: %s", expected_worker, reason)
-        second = await reask(reason)
+        try:
+            second = await llm.ainvoke(
+                [
+                    *plain_observation_messages(messages),
+                    {
+                        "role": "user",
+                        "content": (
+                            f"上一次输出无法解析为 Research Packet：{reason}\n"
+                            "请基于上面的工具观察重新输出完整结果：只输出一个合法的 JSON 对象，"
+                            "不要使用 Markdown 围栏，不要附加说明文字。"
+                        ),
+                    },
+                ],
+                response_format={"type": "json_object"},
+            )
+        except (RunCancelled, JournalConflict):
+            raise
+        except Exception as reask_exc:
+            if not degrade_on_reask_error:
+                raise
+            logger.warning("worker=%s 重新请求失败，按无法解析处理: %s", expected_worker, type(reask_exc).__name__)
+            raise ResearchPacketOutputError(
+                f"重新请求失败: {type(reask_exc).__name__}"
+            ) from reask_exc
         return await parse_research_packet(second or "", expected_worker=expected_worker, **parse_kwargs)
-

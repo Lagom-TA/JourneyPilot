@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import contextvars
+import math
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Literal, Optional, Tuple
 from pydantic import Field, model_validator
 from travel_agent.runtime.time import utc_now
@@ -154,6 +155,60 @@ def clear_process_deadline_anchor(draft_id: Optional[str] = None) -> None:
     else:
         anchors.pop(draft_id, None)
     _process_monotonic_anchors.set(anchors)
+
+
+def shift_run_deadline(
+    snapshot: RunDeadlineSnapshot, extension_seconds: int, *, now: datetime
+) -> RunDeadlineSnapshot:
+    """把各段时限整体后移，使 Run 暂停期间的墙钟时间不再占用预算。
+
+    进程内的单调锚点同时清除：它按旧基线累计，会把暂停期间重新算进已用时间。
+    """
+    clear_process_deadline_anchor(snapshot.draft_id)
+    shift = timedelta(seconds=extension_seconds)
+    return snapshot.model_copy(
+        update={
+            "target_at": snapshot.target_at + shift,
+            "closeout_at": snapshot.closeout_at + shift,
+            "composition_at": snapshot.composition_at + shift,
+            "delivery_deadline_at": snapshot.delivery_deadline_at + shift,
+            "target_seconds": snapshot.target_seconds + extension_seconds,
+            "closeout_seconds": snapshot.closeout_seconds + extension_seconds,
+            "composition_seconds": snapshot.composition_seconds + extension_seconds,
+            "delivery_deadline_seconds": snapshot.delivery_deadline_seconds + extension_seconds,
+            "last_observed_at": _as_utc(now),
+        }
+    )
+
+
+def renew_deadline_after_interruption(
+    snapshot: RunDeadlineSnapshot, *, now: Optional[datetime] = None
+) -> Optional[RunDeadlineSnapshot]:
+    """恢复被中断的 Run 时，补回从最后一次观测到现在的空档；没有空档时返回 ``None``。
+
+    空档按整秒向上取整，因此每次恢复至多多给不到一秒；多次中断各算各的，
+    ``last_observed_at`` 在每次顺延后前移，同一段空档不会被重复补回。
+    """
+    resumed_at = _as_utc(now or utc_now())
+    gap = (resumed_at - _as_utc(snapshot.last_observed_at)).total_seconds()
+    if gap <= 0:
+        return None
+    return shift_run_deadline(snapshot, math.ceil(gap), now=resumed_at)
+
+
+def renew_deadline_for_composition_retry(
+    snapshot: RunDeadlineSnapshot, *, now: Optional[datetime] = None
+) -> RunDeadlineSnapshot:
+    """重跑行程组合前，让 Run 回到目标完成点，保留原本留给组合与交付的那一段。
+
+    已用时间照实保留；各段时限整体后移，使目标点落在现在。它和研究门的重试顺延
+    是同一种语义，所以不依赖“最后一次观测之后空了多久”：失败的 Run 即使在更早
+    之前就被观测到过期，也能得到一段可用的时限。
+    """
+    resumed_at = _as_utc(now or utc_now())
+    observed, observation = observe_run_deadline(snapshot, now=resumed_at)
+    extension = math.ceil(max(0.0, observation.elapsed_seconds - observed.target_seconds))
+    return shift_run_deadline(observed, extension, now=resumed_at)
 
 
 def observe_run_deadline(

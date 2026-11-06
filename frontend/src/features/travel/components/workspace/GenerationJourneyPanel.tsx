@@ -2,7 +2,7 @@ import { Check, CircleAlert, Loader2, Pause, Play, Square } from 'lucide-react';
 import { useReducedMotion } from 'motion/react';
 import { duration, milliseconds } from '../../../../lib/motion';
 import { useApp } from '../../../../app/state/AppContext';
-import { useSendMessage } from '../../../../app/session/useSendMessage';
+import { useResumeRun } from '../../../../app/session/useResumeRun';
 import { useStopRun } from '../../../../app/session/useStopRun';
 import { followupComposerState } from '../../model/followupComposer';
 import {
@@ -20,7 +20,6 @@ import { cn } from '../../../../lib/utils';
 import React from 'react';
 import '../../../../styles/generation.css';
 
-const RESUME_TEXT = '继续上次被中断的规划';
 const STAGE_ACTIVITY_TITLES: Record<ActivityStageId, string> = {
   requirements: '整理旅行需求',
   research: '查找旅行资料',
@@ -36,13 +35,12 @@ function tripDays(start: string | null, end: string | null): number {
 
 export const GenerationJourneyPanel: React.FC = () => {
   const { state, dispatch } = useApp();
-  const { sendMessage } = useSendMessage();
   const { stopRun } = useStopRun();
-  const [resuming, setResuming] = React.useState(false);
   const [selectedStage, setSelectedStage] = React.useState<ActivityStageId | null>(null);
   const reducedMotion = Boolean(useReducedMotion());
   const identity = state.controlledTripIdentity;
   const runId = state.currentTripRunId;
+  const { resume, resuming } = useResumeRun(runId);
   // 恢复或查看历史 Run 时，正文和错误提示只能取当前 Run 的助手消息。
   // 实时助手消息在 chat_start 时写入 runId，因此这里不需要再混入无归属消息。
   const runMessages = state.currentMessages.filter((message) => message.runId === runId);
@@ -191,20 +189,6 @@ export const GenerationJourneyPanel: React.FC = () => {
   });
   const forceCompactProcess = seenRun !== runId && !hasResearchActivity && (state.isStreaming || gatePending);
   const effectiveGate = gatePending ? state.planApprovalGate : gateSnapshot?.runId === runId ? gateSnapshot : null;
-
-  const resume = async () => {
-    if (resuming || state.isStreaming) return;
-    setResuming(true);
-    try {
-      await sendMessage(RESUME_TEXT, {
-        resumeRunId: runId,
-        route: 'trip_refinement',
-        assistantPendingLabel: '正在从最近的位置继续',
-      });
-    } finally {
-      setResuming(false);
-    }
-  };
 
   const startOver = () => {
     dispatch({ type: 'CLEAR_CHAT' });

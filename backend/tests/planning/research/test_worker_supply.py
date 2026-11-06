@@ -5,10 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
-
 from types import SimpleNamespace
 
-
+import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
@@ -147,7 +146,7 @@ class SupplyModel:
 
     capabilities = SimpleNamespace(supports_json_schema=False)
 
-    def __init__(self, *, supply: dict[str, list[dict]], itinerary: dict, identity: dict, destination_tool_round: bool = False, fail_once: str | None = None):
+    def __init__(self, *, supply: dict[str, list[dict]], itinerary: dict, identity: dict, destination_tool_round: bool = False, fail_once: str | None = None, reask: str = "fail"):
         self.worker_order: list[str] = []
         self.worker_requests: dict[str, str] = {}
         self.started: set[str] = set()
@@ -158,9 +157,17 @@ class SupplyModel:
         self._identity = identity
         self._destination_tool_round = destination_tool_round
         self.fail_once = fail_once
+        # fail_once 的角色首次输出无效后，随后的重新请求按 reask 回复：fail 仍无效，succeed 给出正常结果。
+        self._reask = reask
+        self._reask_worker: str | None = None
 
     async def ainvoke(self, messages, **kwargs):
         system = str(messages[0].get("content", ""))
+        if self._reask_worker and f"JourneyPilot 的 {self._reask_worker}" in system:
+            worker, self._reask_worker = self._reask_worker, None
+            if self._reask == "fail":
+                return "无效数据"
+            return json.dumps({"candidates": self._supply[worker], "source_records": [], "fact_assertions": [], "field_provenance": []}, ensure_ascii=False)
         if "研究协调员" in system:
             return json.dumps({"summary": "围绕文化与慢节奏安排行程。"}, ensure_ascii=False)
         if "旅行规划师" in system:
@@ -212,6 +219,7 @@ class SupplyModel:
             await asyncio.wait_for(self.both_started.wait(), timeout=3)
         if worker == self.fail_once:
             self.fail_once = None
+            self._reask_worker = worker
             yield {"type": "finish", "content": "无效数据", "tool_calls": []}
             return
         if (
@@ -395,6 +403,28 @@ async def test_failed_worker_waits_and_retries_without_repeating_sibling(monkeyp
     assert model.worker_order.count("accommodation_researcher") == 1
     assert result["agent_status"]["transport_researcher"] == "completed"
     assert {"supply_transit_01", "supply_stay_01"} <= set(result["recommendation_catalog"].candidate_index())
+
+
+@pytest.mark.parametrize("worker", ["destination_researcher", "transport_researcher", "accommodation_researcher"])
+async def test_an_unparseable_worker_answer_is_asked_again_before_the_research_gate(monkeypatch, worker):
+    supply = {
+        "destination_researcher": [_visit_candidate(1, "city_hangzhou", "杭州")],
+        "transport_researcher": [_transport_candidate(1, "city_hangzhou")],
+        "accommodation_researcher": [_lodging_candidate(1, "city_hangzhou")],
+    }
+    itinerary = {
+        "itinerary_id": "offline_itinerary", "title": "杭州慢游", "duration_days": 2,
+        "days": [
+            {"day_id": "day_1", "day": 1, "date": "2026-11-05", "destination_id": "city_hangzhou", "placements": [_visit_placement("day_1", "2026-11-05", "city_hangzhou", "supply_visit_01")]},
+            {"day_id": "day_2", "day": 2, "date": "2026-11-06", "destination_id": "city_hangzhou", "placements": [_visit_placement("day_2", "2026-11-06", "city_hangzhou", "supply_visit_01")]},
+        ], "lodging_candidate_ids": ["supply_stay_01"],
+    }
+    model = SupplyModel(supply=supply, itinerary=itinerary, identity=IDENTITY, fail_once=worker, reask="succeed")
+    _, result = await _run_research(monkeypatch, model, IDENTITY)
+    assert not hasattr(model, "retry_gate")
+    assert model.worker_order.count(worker) == 1
+    assert result["agent_status"][worker] == "completed"
+    assert {"supply_visit_01", "supply_transit_01", "supply_stay_01"} <= set(result["recommendation_catalog"].candidate_index())
 
 
 def test_research_retry_deadline_remains_valid_after_waiting():

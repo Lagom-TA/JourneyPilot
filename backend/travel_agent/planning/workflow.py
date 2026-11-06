@@ -11,9 +11,12 @@ from pydantic import ValidationError
 from travel_agent.config.loader import get_settings
 from travel_agent.conversation.messages import build_messages
 from travel_agent.llm.usage import get_usage_recorder
+from travel_agent.planning.assignments import resolve_agent_assignment
 from travel_agent.planning.graph import get_travel_graph
 from travel_agent.planning.nodes import (
     NODE_CLARIFIER,
+    NODE_DELIVERY_FINALIZER,
+    NODE_ITINERARY,
     NODE_PLAN_GATE,
     NODE_RESEARCH_GATE,
     NODE_REQUIREMENTS_PREPARER,
@@ -22,6 +25,10 @@ from travel_agent.planning.nodes import (
 )
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.context import run_attribution
+from travel_agent.runtime.deadlines import (
+    renew_deadline_after_interruption,
+    renew_deadline_for_composition_retry,
+)
 from travel_agent.runtime.local_identity import LOCAL_USER_ID
 from travel_agent.runtime.run_contracts import generate_trip_run_id
 from travel_agent.storage.cost_ledger_store import get_cost_ledger_store
@@ -135,6 +142,59 @@ class TravelPlanningWorkflow:
         checkpoint_id = configurable.get("checkpoint_id")
         return available, str(checkpoint_id) if checkpoint_id else None
 
+    async def _resume_graph_input(self, run_id: str) -> Optional[Command]:
+        """恢复被中断或失败的 Run 前整理检查点，返回继续执行的图输入。
+
+        - 把停下来的这段空档补回运行期限，否则隔久了恢复必然在交付时限处失败。
+        - 检查点停在交付收口、且调度节点已记下交付失败时，直接继续只会把那条失败
+          原样重放；这时清掉失败、把行程组合重置为待执行，回到调度节点重跑组合，
+          并让运行期限回到目标完成点（见 ``renew_deadline_for_composition_retry``）。
+        """
+        config = {"configurable": {"thread_id": run_id}}
+        snapshot = await self._graph.aget_state(config)
+        values = snapshot.values or {}
+        deadline = values.get("run_deadline")
+        parked_on_failure = (
+            values.get("delivery_failure") is not None
+            and NODE_DELIVERY_FINALIZER in (snapshot.next or ())
+        )
+        rewind = self._composition_rewind(values) if parked_on_failure else None
+        if parked_on_failure and rewind is None:
+            logger.warning("检查点带交付失败，但无法定位行程组合的任务分配 run_id=%s", run_id)
+
+        update: Dict[str, Any] = {}
+        if deadline is not None:
+            renewed = (
+                renew_deadline_for_composition_retry(deadline)
+                if rewind is not None
+                else renew_deadline_after_interruption(deadline)
+            )
+            if renewed is not None:
+                update["run_deadline"] = renewed
+
+        if rewind is not None:
+            # 以组合节点的身份写入，让检查点的下一站回到调度节点。
+            await self._graph.aupdate_state(
+                config, {**update, **rewind}, as_node=NODE_ITINERARY
+            )
+            return None
+        return Command(update=update) if update else None
+
+    @staticmethod
+    def _composition_rewind(values: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        try:
+            output_key, _ = resolve_agent_assignment(
+                values.get("agent_assignments") or {}, NODE_ITINERARY
+            )
+        except ValueError:
+            return None
+        return {
+            "delivery_failure": None,
+            "next_agent": None,
+            # 调度节点按 NODE_ITINERARY 判断组合是否失败，返研轮的输出键可能不同。
+            "agent_status": {NODE_ITINERARY: "pending", output_key: "pending"},
+        }
+
     async def astream(
         self,
         user_message: str,
@@ -163,9 +223,12 @@ class TravelPlanningWorkflow:
         effective_run_id = run_id or generate_trip_run_id()
         graph_input: Optional[TravelAgentState | Command]
         if resume_from_checkpoint:
-            graph_input = (
-                Command(resume=resume_payload) if resume_payload is not None else None
-            )
+            if resume_payload is not None:
+                graph_input = Command(resume=resume_payload)
+            else:
+                # 门决定（resume_payload）由各门自己顺延，期限与失败记录只在整条
+                # Run 的恢复时整理。
+                graph_input = await self._resume_graph_input(effective_run_id)
         else:
             messages = build_messages(conversation_history, user_message)
             graph_input = TravelAgentState(

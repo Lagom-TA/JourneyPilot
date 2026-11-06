@@ -1,7 +1,9 @@
-import { CircleAlert, Check, Copy, RefreshCw, ShieldBan, ShieldQuestion, Square } from "lucide-react";
+import { CircleAlert, Check, Copy, Play, RefreshCw, ShieldBan, ShieldQuestion, Square } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import { getChatErrorGuidance } from "../model/chatErrorGuidance";
 import { useApp } from "../../../app/state/AppContext";
+import { useResumeRun } from "../../../app/session/useResumeRun";
+import { showsResumeEntry } from "../model/resumeEntry";
 import { type Message } from "../types/messages";
 import { Markdown } from "./Markdown";
 import { ThinkingChain } from "./ThinkingChain";
@@ -26,6 +28,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerat
     const isWaitingApproval = message.type === 'waiting_approval';
     const isWaiting = isWaitingApproval && state.currentTripRunStatus === 'awaiting_input';
     const isInterrupted = message.type === 'interrupted';
+    const { resume, resuming } = useResumeRun(message.runId ?? null);
+    const lastRunMessageId = React.useMemo(
+        () => [...state.currentMessages].reverse().find((item) => item.role === 'assistant' && item.runId === state.currentTripRunId)?.id,
+        [state.currentMessages, state.currentTripRunId],
+    );
+    const canResume = showsResumeEntry({
+        isUser, isAlertCard, isGenerating: Boolean(isGenerating), messageId: message.id,
+        messageRunId: message.runId, lastRunMessageId, currentRunId: state.currentTripRunId,
+        runStatus: state.currentTripRunStatus, recovery: state.currentTripRunRecovery, readOnly: state.currentTripRunReadOnly,
+    });
     const steps = message.thinkingSteps || [];
     const hasDisplay = Boolean(message.displayContent?.trim());
     const hasThinking = steps.length > 0 || (!!isGenerating && !hasDisplay);
@@ -84,6 +96,14 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerat
 
         {!isUser && !isWaiting && hasThinking && (<ThinkingChain steps={steps} isGenerating={!!isGenerating} displayContent={message.displayContent} isSynthesizing={state.isSynthesizing} pendingStatusText={message.pendingStatusText} variant={isInterrupted || isError ? 'interrupted' : 'default'} serverTotalMs={serverTotalMs} startedAt={message.timestamp} regionId={regionId}/>)}
 
+
+        {canResume && (<div className="flex flex-wrap items-center gap-3 px-1">
+            <button type="button" data-testid="interrupted-resume" onClick={() => void resume()} disabled={resuming} className="inline-flex items-center gap-1.5 rounded-card border border-stroke bg-panel px-3.5 py-2 text-xs font-semibold text-ink shadow-sm transition-[border-color,background-color,color,transform] duration-fast ease-standard hover:border-accent/25 hover:bg-accent-soft hover:text-accent active:translate-y-px disabled:cursor-not-allowed disabled:opacity-45">
+              <Play size={13}/>
+              {resuming ? '正在继续' : '继续生成'}
+            </button>
+            <span className="text-[11px] text-ink-muted">可以从最近的位置继续。</span>
+          </div>)}
 
         {isAlertCard && (<div role="alert" data-testid={isGuardBlocked ? 'guard-blocked-card' : undefined} className={cn('max-w-xl rounded-card px-4 py-4 shadow-sm sm:px-5', isGuardBlocked
                 ? 'border border-stroke bg-panel'

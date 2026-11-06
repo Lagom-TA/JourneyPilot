@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 import math
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict
 
 from langgraph.types import interrupt
@@ -17,7 +17,7 @@ from travel_agent.planning.presentation import get_agent_display_name
 from travel_agent.planning.research.plan import build_worker_assignment
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.cancellation import RunCancelled
-from travel_agent.runtime.deadlines import clear_process_deadline_anchor, utc_now
+from travel_agent.runtime.deadlines import shift_run_deadline, utc_now
 
 
 def research_gate_payload(state: TravelAgentState) -> Dict[str, Any]:
@@ -68,19 +68,7 @@ def _renew_deadline(state: TravelAgentState) -> Any:
     waiting = max(0.0, (now - started).total_seconds())
     elapsed = deadline.checkpointed_elapsed_seconds
     extension = math.ceil(waiting + max(0.0, elapsed - deadline.target_seconds))
-    shift = timedelta(seconds=extension)
-    clear_process_deadline_anchor(deadline.draft_id)
-    return deadline.model_copy(update={
-        "target_at": deadline.target_at + shift,
-        "closeout_at": deadline.closeout_at + shift,
-        "composition_at": deadline.composition_at + shift,
-        "delivery_deadline_at": deadline.delivery_deadline_at + shift,
-        "target_seconds": deadline.target_seconds + int(extension),
-        "closeout_seconds": deadline.closeout_seconds + int(extension),
-        "composition_seconds": deadline.composition_seconds + int(extension),
-        "delivery_deadline_seconds": deadline.delivery_deadline_seconds + int(extension),
-        "last_observed_at": now,
-    })
+    return shift_run_deadline(deadline, int(extension), now=now)
 
 
 async def research_gate_node(state: TravelAgentState) -> Dict[str, Any]:

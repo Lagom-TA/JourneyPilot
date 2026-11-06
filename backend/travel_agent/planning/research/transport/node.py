@@ -27,7 +27,7 @@ from travel_agent.planning.research.output.failures import (
     provider_round_capability_declared,
 )
 from travel_agent.planning.research.output.finalization import (
-    parse_research_packet,
+    parse_research_packet_or_reask,
 )
 from travel_agent.planning.research.output.metadata import (
     build_authoritative_research_packet_metadata,
@@ -214,8 +214,10 @@ async def transport_researcher_node(
             raise RuntimeError(f"研究未完成: {react.error or react.outcome.value}")
 
         finalize_started_at = time.perf_counter()
-        packet = await parse_research_packet(
+        packet = await parse_research_packet_or_reask(
             raw_response or "",
+            llm=llm,
+            messages=messages,
             expected_worker=_NODE_NAME,
             expected_run_id=run_id,
             authoritative_tool_results=authoritative_tool_results,
