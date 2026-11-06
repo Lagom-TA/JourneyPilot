@@ -182,6 +182,15 @@ Owner: `backend/travel_agent/planning/execution.py` 的 `_DEADLINE_BLOCKED_WORKE
 Tests:
 - `backend/tests/runtime/test_run_execution_contract.py::test_the_node_window_table_covers_every_worker_the_plan_dispatches`
 
+### INV-RUN-006：恢复的 Run 不会带着已耗尽的时限或已记录的失败重新开始
+约定：从检查点恢复中断或失败的 Run 时，运行期限先补回停下来的空档（各段时限整体后移，已用时间不变）；检查点停在交付收口、且调度节点已记下交付失败时，清掉该失败、把行程组合重置为待执行并回到调度节点重跑组合，运行期限回到目标完成点（保留原本留给组合与交付的那一段）。否则恢复会在交付时限处立即失败，或把那条失败原样重放。门决定的恢复不走这里，由各门自己顺延期限。
+Owner: `backend/travel_agent/planning/workflow.py` 的 `_resume_graph_input`、`backend/travel_agent/runtime/deadlines.py` 的 `renew_deadline_after_interruption` / `renew_deadline_for_composition_retry` / `shift_run_deadline`
+Tests:
+- `backend/tests/runtime/test_deadline_resume.py::test_the_interruption_gap_is_added_to_every_window_and_stays_valid`
+- `backend/tests/runtime/test_deadline_resume.py::test_a_composition_retry_puts_the_run_back_at_its_target_point`
+- `backend/tests/runtime/test_deadline_resume.py::test_a_run_parked_on_a_recorded_delivery_failure_goes_back_to_composition`
+- `backend/tests/runtime/test_deadline_resume.py::test_the_real_graph_leaves_the_rewound_run_waiting_at_the_dispatcher`
+
 ## 意图与编排
 
 ### INV-INTENT-004：supplement 追加到同一条当前需求
