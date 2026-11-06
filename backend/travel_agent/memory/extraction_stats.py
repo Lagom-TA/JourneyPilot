@@ -75,7 +75,3 @@ def get_memory_extraction_stats() -> MemoryExtractionStats:
         _stats_singleton = MemoryExtractionStats()
     return _stats_singleton
 
-
-def reset_memory_extraction_stats() -> None:
-    global _stats_singleton
-    _stats_singleton = None

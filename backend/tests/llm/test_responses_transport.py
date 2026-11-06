@@ -342,8 +342,8 @@ async def test_understanding_full_tool_round_on_the_strong_responses_model(
 ):
     """理解角色的完整回合：强模型选中 → 返回工具调用 → 结果回传同一模型 → 得出结论。
 
-    primary 配置为 Responses 协议的 gpt-6.1-sol；这条链路过去会被静默降档或
-    直接拒绝，现在必须原档完成。
+    primary 配置为 Responses 协议的 gpt-6.1-sol；整条链路必须在原档位完成，
+    不降档，也不拒绝。
     """
 
     import travel_agent.llm.router as router_module

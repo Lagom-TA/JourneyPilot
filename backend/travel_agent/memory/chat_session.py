@@ -80,66 +80,6 @@ def _truncate_preview(text: str, max_len: int = _PREVIEW_MAX_LEN) -> str:
     return text[:max_len] + "..."
 
 
-def _normalize_choice_option(value: Any, index: int) -> Dict[str, Any]:
-    row = value if isinstance(value, dict) else {}
-    label = str(row.get("label") or "").strip()
-    option_id = str(row.get("id") or "").strip()
-    if not label or not option_id:
-        return {}
-    option: Dict[str, Any] = {"id": option_id, "label": label}
-    description = row.get("description")
-    if isinstance(description, str) and description.strip():
-        option["description"] = description.strip()
-    return option
-
-
-def _normalize_choice_question(value: Any, index: int) -> Dict[str, Any]:
-    row = value if isinstance(value, dict) else {}
-    selection_type = row.get("selection_type") or "single"
-    if selection_type not in {"single", "multiple"}:
-        selection_type = "single"
-    question_id = str(row.get("id") or "").strip()
-    question = str(row.get("question") or "").strip()
-    options = [
-        _normalize_choice_option(option, opt_idx)
-        for opt_idx, option in enumerate(row.get("options") or [])
-    ]
-    options = [option for option in options if option]
-    memory_informed = row.get("memory_informed")
-    memory_basis = row.get("memory_basis")
-    normalized: Dict[str, Any] = {
-        "id": question_id,
-        "question": question,
-        "options": options,
-        "selection_type": selection_type,
-        "memory_informed": memory_informed is True,
-        "memory_basis": [
-            str(item).strip()[:40]
-            for item in (memory_basis if isinstance(memory_basis, list) else [])[:4]
-            if str(item).strip()
-        ],
-    }
-    raw_input = row.get("input")
-    if isinstance(raw_input, dict) and raw_input.get("kind") == "origin":
-        no_value = _normalize_choice_option(raw_input.get("no_value_option") or {}, 0)
-        normalized["input"] = {
-            "kind": "origin",
-            "placeholder": str(
-                raw_input.get("placeholder") or "城市、机场或车站，例如：上海、浦东机场"
-            ).strip()[:80],
-            "no_value_option": {
-                "id": "not_decided",
-                "label": "暂时没想好出发地",
-                "description": str(
-                    no_value.get("description") or "先按目的地内行程调研；交通方案稍后按出发地替换。"
-                ).strip()[:120],
-            },
-        }
-        normalized["options"] = [normalized["input"]["no_value_option"]]
-        normalized["selection_type"] = "single"
-    return normalized
-
-
 def _normalize_context_compaction_event(value: Any) -> Optional[Dict[str, Any]]:
     """校验事件日志中保存的不可变压缩快照。"""
     if not isinstance(value, dict):
@@ -257,8 +197,8 @@ def _project_events_to_messages(rows: List[Dict[str, Any]]) -> List[Dict[str, An
         step_record: Dict[str, Any] = {
             "id": payload.get("step_id", ""),
             "agent_name": payload.get("agent_name", ""),
-            # 旧历史的 tool_args 可能还是原始参数；读取时再脱敏一次，
-            # 不能只靠前端字段白名单。公开说明已在写库前校验，不再二次截断。
+            # tool_args 读取时再脱敏一次，不能只靠前端字段白名单；
+            # 公开说明已在写库前校验，这里不二次截断。
             "content": (
                 payload.get("content", "")
                 if is_work_note
@@ -581,7 +521,7 @@ class ChatSessionMemory:
                 "duration_ms": step.get("duration_ms"),
             }
             if kind:
-                # 只给新类型写扩展字段；旧步骤的 payload 形状保持不变。
+                # 只给带 kind 的步骤写扩展字段；其余步骤的 payload 形状不变。
                 step_payload["kind"] = kind
                 step_payload["round"] = step.get("round")
                 step_payload["call_id"] = step.get("call_id")

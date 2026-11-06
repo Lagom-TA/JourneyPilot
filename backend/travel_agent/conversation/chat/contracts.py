@@ -66,8 +66,7 @@ class GateDecision(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    # 拒收未知字段，避免静默忽略。Pydantic v2 默认的 extra="ignore" 会接受已从
-    # 服务端删除的字段并返回 200，调用方无法得知该字段未生效。
+    # 拒收未知字段，避免静默忽略。
     model_config = ConfigDict(extra="forbid")
 
     messages: List[ChatMessage]

@@ -504,7 +504,7 @@ class OpenAICompatibleLLM(BaseLLM):
             raise ValueError("max_output_tokens must be positive and supported by the model")
         scoped = dict(kwargs)
         if self._use_responses_api:
-            # LangChain 在 Responses 序列化时将该旧键映射为 max_output_tokens。
+            # LangChain 在 Responses 序列化时将该键映射为 max_output_tokens。
             scoped["max_completion_tokens"] = limit
             return scoped, limit
         scoped["max_tokens"] = limit

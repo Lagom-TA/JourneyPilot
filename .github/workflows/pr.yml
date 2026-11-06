@@ -127,7 +127,6 @@ jobs:
           docker run --rm --entrypoint python journeypilot-api:ci backend/journeypilot.py config docs --check
           docker run --rm --entrypoint node journeypilot-api:ci --version | grep -E '^v22\.'
           docker run --rm --entrypoint sh journeypilot-api:ci -c 'test -f /app/backend/static/index.html'
-          docker run --rm --entrypoint sh journeypilot-api:ci -c 'test ! -e /app/docs/audits && test ! -e /app/docs/polish'
           docker run --rm --entrypoint sh journeypilot-api:ci -c 'pg_dump --version'
 
   secrets:

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// 在独立 Vite dev server 下运行：
-//   JP_MAP_LOAD_FAILURE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:5174 \
+// 在 Vite dev server 下运行（`npm run dev` 默认监听 :8080）：
+//   JP_MAP_LOAD_FAILURE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
 //     npx playwright test e2e/map-load-failure.spec.ts
 // 页面只加载本地合成 Bundle；/api 与地图瓦片全部在浏览器内拦截，不读写真实行程。
 test.skip(process.env.JP_MAP_LOAD_FAILURE_E2E !== '1', 'Explicit offline map-load opt-in required');

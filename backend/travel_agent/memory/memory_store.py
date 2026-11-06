@@ -44,8 +44,6 @@ USER_MANUAL_SESSION_ID = "user-manual"
 USER_MANUAL_IMPORTANCE = _IMPORTANCE_MAX
 
 
-
-
 def _fact_row(row: Any) -> Dict[str, Any]:
     """记忆事实的对外结构，列表、按 id 读回与按内容查找共用。
 
@@ -62,24 +60,6 @@ def _fact_row(row: Any) -> Dict[str, Any]:
         "created_at": _iso(row.get("created_at")),
         "expires_at": _iso(row.get("expires_at")),
     }
-
-
-def _is_expired(expires_at: Any, *, now: Optional[datetime] = None) -> bool:
-    if not expires_at:
-        return False
-    now_dt = now or datetime.now(timezone.utc)
-    if now_dt.tzinfo is None:
-        now_dt = now_dt.replace(tzinfo=timezone.utc)
-    if isinstance(expires_at, str):
-        try:
-            expires_at = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-        except Exception:
-            return False
-    if isinstance(expires_at, datetime):
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        return expires_at <= now_dt
-    return False
 
 
 class MemoryStore:

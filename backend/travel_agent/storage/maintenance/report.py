@@ -173,7 +173,7 @@ async def verify_database_contract(engine: Any, *, embedding_dimensions: int) ->
             "这个数据库还没有被版本化迁移纳管（没有 alembic_version），"
             "无法确认它的结构与当前代码匹配"
         )
-        next_action = "journeypilot doctor --json  # 未版本化的库不再自动纳管，需重建或从备份恢复"
+        next_action = "journeypilot doctor --json  # 未版本化的库需重建或从备份恢复"
     else:
         expected = expected_fingerprint_for(revision, line=line)
         if expected is None:

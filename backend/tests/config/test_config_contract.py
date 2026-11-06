@@ -1,4 +1,4 @@
-"""配置合同：严格校验、结构迁移、环境变量覆盖、来源报告、provider capability。"""
+"""配置合同：严格校验、环境变量覆盖、来源报告、provider capability。"""
 
 from __future__ import annotations
 

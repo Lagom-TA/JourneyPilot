@@ -1,4 +1,4 @@
-# JourneyPilot 仓库边界。只写这个仓库会生成的路径。
+# JourneyPilot 忽略规则：本地配置与密钥、运行与构建产物、本地数据，以及编辑器与 agent 工具目录。
 
 # 本地配置与密钥。示例文件可以入库。
 config.yaml
@@ -106,8 +106,7 @@ chromedriver/
 *.code-workspace
 .cursor/
 .zcode/
+.codex/
+.agents/
 .claude/settings.local.json
 .claude/worktrees/
-
-# 本地审查输出，不随仓库发布
-/docs/audits/

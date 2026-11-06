@@ -46,9 +46,7 @@ MAX_COMPLETION_TOKENS = 65536
 
 
 class PrimaryModelConfig(StrictConfig):
-    """主力 LLM 配置（用于复杂规划等高推理任务）
-    默认: MiniMax-M2.7 @ api.minimaxi.com/v1
-    """
+    """主力 LLM 配置（用于复杂规划等高推理任务）。"""
     api_key: str = ""
     model_name: str = "MiniMax-M2.7"
     base_url: str = "https://api.minimaxi.com/v1"
@@ -64,10 +62,10 @@ class PrimaryModelConfig(StrictConfig):
 
 
 class FastModelConfig(StrictConfig):
-    """轻量 LLM 配置（用于简单问答、路由判断等低延迟任务）
+    """轻量 LLM 配置（用于简单问答、路由判断等低延迟任务）。
 
-    方案A（默认）: MiniMax-M2.7 @ api.minimaxi.com/v1
-    方案B（可选）: 本地 Qwen，model_name="qwen3.5:4b", base_url="http://localhost:11434/v1"
+    可指向任意 OpenAI 兼容端点，例如本地 Qwen：
+    model_name="qwen3.5:4b"，base_url="http://localhost:11434/v1"。
     """
     api_key: str = ""
     model_name: str = "MiniMax-M2.7"
@@ -196,7 +194,7 @@ class RAGConfig(StrictConfig):
 class RerankConfig(StrictConfig):
     """Reranking 二阶段精排配置。
 
-    provider = "cross_encoder" → BGE-Reranker-v2-m3（需要 pip install sentence-transformers）
+    provider = "cross_encoder" → BGE-Reranker-v2-m3（需要 uv sync --project backend --group cross-encoder）
     provider = "llm"           → 复用现有 LLM 做相关性评分（开箱即用，推荐）
     """
     enabled: bool = True
@@ -406,7 +404,7 @@ class GeocodingConfig(StrictConfig):
     timeout_seconds: float = Field(default=10.0, gt=0)
     # /search 单独设定超时；用户提交目的地时会同步等待该查询。
     # 上界由重试序列决定：限速器 1.1s 加 2 次尝试（见
-    # ``nominatim_place_search._PROVIDER_MAX_ATTEMPTS``）要控制在 8s 内，
+    # ``integrations/places/retry._PROVIDER_MAX_ATTEMPTS``）要控制在 8s 内，
     # 1.1 + 2 × 3.4 = 7.9s，3.4 是满足该上界的最大单次超时。调大只会让调用方
     # 更晚拿到超时结果；偶发超时由第二次尝试覆盖，成功后写入缓存。
     search_timeout_seconds: float = Field(default=3.4, gt=0)

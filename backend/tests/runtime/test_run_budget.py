@@ -271,7 +271,7 @@ def test_every_budget_dimension_has_a_limit_field_to_reflect_onto():
     """`limit()` 用 `f"max_{dimension}"` 取上限 —— 名字对不上就没有上限。
 
     比的是**两个独立来源**：`BudgetDimension` 这个 Literal，和 pydantic 模型自己
-    报出来的字段集。不能改成遍历 `BUDGET_DIMENSIONS` 去 `hasattr` —— 那张表现在
+    报出来的字段集。不能改成遍历 `BUDGET_DIMENSIONS` 去 `hasattr` —— 那张表
     派生自同一个 Literal，遍历它等于拿一个来源比它自己，恒真。
     """
 
@@ -295,10 +295,10 @@ def test_every_budget_dimension_has_a_limit_field_to_reflect_onto():
 
 
 def test_remaining_budget_reports_every_dimension_and_nothing_else():
-    """从 BUDGET_DIMENSIONS 中删掉一维时，现有用例不会失败，那一维会静默停止执行。
+    """`remaining_budget` 的键必须与预算维度完全一致，不多也不少。
 
-    反射绑定写错会立刻失败（多条用例直接读 `remaining["cost_usd"]`），
-    但「少一维」没有断言能发现。这一条补上这个断言。
+    某一维漏掉时那一维会静默停止执行。反射绑定写错会立刻失败（多条用例直接读
+    `remaining["cost_usd"]`），但「少一维」只有这条断言能发现。
 
     右边取 `get_args`，不取 `BUDGET_DIMENSIONS`：被守的那张表不能同时当标尺。
     """

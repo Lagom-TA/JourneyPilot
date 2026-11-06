@@ -1,4 +1,4 @@
-"""报告合同不再携带 important_notes：它没有任何渲染方。"""
+"""报告合同不含 important_notes：没有任何渲染方消费它。"""
 
 from __future__ import annotations
 

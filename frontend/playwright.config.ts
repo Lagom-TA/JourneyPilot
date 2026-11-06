@@ -5,7 +5,7 @@ const baseURL = process.env.JOURNEYPILOT_APP_URL || 'http://127.0.0.1:8080';
 
 export default defineConfig({
   testDir: './e2e',
-  // 防止 CI 因 .only 而跳过其他测试。
+  // 设置 CI 环境变量时：禁止遗留 .only（避免跳过其他用例）、失败重试一次、单 worker，并额外输出 JUnit 报告。
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 1 : undefined,

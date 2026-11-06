@@ -1,5 +1,5 @@
 {
-  "_note": "由 `journeypilot db write-fingerprint` 生成。这是 revision 0001_baseline 的结构合同：adoption 判定与 API 只读校验都拿活库指纹与它比对。只包含进摘要的项 —— 装没装 zhparser、实际向量维度是环境事实，不在这里。手工编辑这个文件等于篡改校验基准。",
+  "_note": "由 `journeypilot db write-fingerprint` 生成。这是 revision 0001_baseline 的结构合同：API 只读校验与 drift 判定都拿活库指纹与它比对。只包含进摘要的项 —— 装没装 zhparser、实际向量维度是环境事实，不在这里。手工编辑这个文件等于篡改校验基准。",
   "extensions": [
     "pgcrypto",
     "vector"

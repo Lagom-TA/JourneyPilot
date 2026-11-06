@@ -21,10 +21,6 @@ __pycache__
 /out
 dump.rdb
 .coverage
-docs/audits
-docs/review
-docs/design
-docs/polish
 docs/assets
 backend/tests
 frontend/dist
@@ -33,9 +29,9 @@ frontend/e2e
 *.pyc
 config.yaml
 config.md
-.env
-.env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 data
 outputs
 uploads

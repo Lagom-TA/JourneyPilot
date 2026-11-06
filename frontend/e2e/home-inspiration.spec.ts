@@ -213,8 +213,6 @@ test('人数用选项和自填确认，取消不改变草稿，提交保留成�
     const page = await context.newPage();
     const fixture = await openHome(page, viewport);
     await page.getByTestId('planner-structured-tab').click();
-    await expect(page.getByRole('button', { name: '增加成人' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: '减少儿童' })).toHaveCount(0);
     await page.locator('.planner-card').scrollIntoViewIfNeeded();
     const trigger = page.getByTestId('traveler-picker-trigger');
     await trigger.click();
@@ -280,7 +278,6 @@ test('一句话提交只发送文字，等待和失败均保留用户需求', as
     await expect(page.getByRole('button', { name: '再试一次', exact: true })).toBeVisible();
     await expect(page.getByText(text, { exact: true })).toBeVisible();
     await expect(page.getByText('Service unavailable: internal-provider-debug', { exact: true })).toHaveCount(0);
-    await expect(page.getByTestId('error-inspect')).toHaveCount(0);
     expectCleanFixture(fixture);
     await context.close();
   }

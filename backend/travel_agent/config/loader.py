@@ -152,7 +152,7 @@ class EffectiveConfig:
         return redact(self.settings.model_dump(mode="json"))
 
     def report_lines(self) -> List[str]:
-        """``journeypilot config show --effective`` 打的那些行。"""
+        """``journeypilot config show`` 打印的那些行。"""
 
         lines: List[str] = []
         for dotted, value in sorted(_flatten(self.redacted()).items()):

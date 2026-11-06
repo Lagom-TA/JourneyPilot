@@ -287,7 +287,7 @@ async def test_route_confirmation_short_circuits_before_a_run(resources, monkeyp
 
 
 async def test_trip_planning_creates_the_run_immediately(resources, monkeypatch):
-    """点击开始规划不再停留在首页问答：请求立刻建 Run 并进入执行。"""
+    """点击开始规划后立刻建 Run 并进入执行。"""
 
     async def classify(*args, **kwargs):
         return decision(RouteName.TRIP_PLANNING)

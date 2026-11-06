@@ -798,8 +798,6 @@ test('plan gate stays inside the generation workspace through revise retry and a
   await expect(gate.locator('.plan-gate-actions > p')).toHaveCount(0);
   await expect(sidebar.locator('.generation-trip-card')).toContainText('1 位成人');
   await expect(sidebar.locator('.generation-trip-card')).toContainText('当地美食');
-  await expect(page.getByRole('heading', { name: '确认这趟旅行', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: '接下来，我们会这样安排', exact: true })).toHaveCount(0);
   await sidebar.evaluate(node => node.setAttribute('data-mount-probe', 'kept'));
 
   await gate.getByRole('button', { name: '补充或调整旅行要求', exact: true }).click();
@@ -985,10 +983,7 @@ for (const width of [390, 1280]) {
     const structuredTab = page.getByRole('tab', { name: '按条件规划' });
     await structuredTab.click();
     await expect(structuredTab).toHaveAttribute('aria-selected', 'true');
-    const skip = page.getByRole('button', { name: '暂时不用默认值', exact: true });
     const originInput = page.getByRole('textbox', { name: '出发地', exact: true });
-    await expect(skip.or(originInput)).toBeVisible();
-    if (await skip.count()) await skip.click();
     await expect(originInput).toBeVisible();
     const opener = page.getByTestId('date-range-trigger');
     await opener.click();
@@ -1248,7 +1243,7 @@ test('desktop itinerary cards and map stay linked across hover, selection, days 
   await settleMap(page);
   expect((await mapCamera(page, ['visit-terracotta'])).zoom).toEqual(focusedCamera.zoom);
 
-  // 可画市内路线的交通卡片整卡进入路线视野，不再有独立按钮。
+  // 可画市内路线的交通卡片整卡进入路线视野，没有独立按钮。
   const routeEntry = page.locator('[data-itinerary-occurrence="d1-transfer-lunch"]').getByTestId('transport-map-entry');
   await routeEntry.click();
   await expect(page.getByTestId('map-place-detail')).toContainText('24 分钟');
@@ -1430,7 +1425,6 @@ test('mixed transport display merges headings and keeps station truth', async ({
   await expect(directEntry).toHaveAttribute('aria-label', /地铁2号线/);
   await expect(directEntry).toHaveAttribute('aria-label', /钟楼站到小寨站/);
   await expect(directEntry).toHaveAttribute('aria-label', /在地图中查看/);
-  await expect(directOccurrence.getByRole('button', { name: '查看路线', exact: true })).toHaveCount(0);
   await directEntry.focus();
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('map-place-detail')).toBeVisible();
@@ -1495,9 +1489,6 @@ test('mixed transport display merges headings and keeps station truth', async ({
   await expect(pending).toContainText('路线正在更新。');
   await expect(pending.getByTestId('transport-stations')).toHaveCount(0);
   await expect(pending.getByTestId('transport-summary')).toHaveCount(0);
-
-  await expect(page.getByText('查看路线', { exact: true })).toHaveCount(0);
-
 
   await transfer.evaluate((node) => {
     const scroller = node.closest('.journey-content-scroll');
@@ -1635,10 +1626,6 @@ test('普通旅行对话隐藏诊断信息，错误保留恢复操作', async ({
   await page.getByTestId('send-button').click();
   await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
   await sendFrames(page, [{ type: 'error', message: '离线模拟错误' }], true);
-  await expect(page.getByTestId('error-inspect')).toHaveCount(0);
-  await expect(page.getByTestId('context-lens')).toHaveCount(0);
-  await expect(page.getByTestId('cost-ledger')).toHaveCount(0);
-  await expect(page.getByTestId('compact-session')).toHaveCount(0);
   await expect(page.getByText('离线模拟错误', { exact: true })).toHaveCount(0);
   const retry = page.getByRole('button', { name: '再试一次', exact: true });
   await expect(retry).toBeEnabled();

@@ -1,0 +1,7 @@
+{
+  // 这些 .tsx 夹具由 Playwright 加载到浏览器里渲染，引入 src 的大量模块，因此按浏览器端
+  // 代码检查，继承 src 的严格选项。tsconfig.node.json 是 composite，要求所有文件都列入
+  // include，无法承载这类跨目录引用，所以夹具单独成一个 program。
+  "extends": "../../tsconfig.json",
+  "include": ["./*.ts", "./*.tsx", "../../src/vite-env.d.ts"]
+}

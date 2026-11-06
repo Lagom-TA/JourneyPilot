@@ -411,36 +411,6 @@ export function toolResultText(step: Pick<ThinkingStep, 'toolResult'>): string |
         return activation;
     return sanitizeInternalIdentifiers(text);
 }
-const CHINESE_DIGITS: Record<string, number> = {
-    一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9,
-};
-function parseCountValue(value: string): number | null {
-    if (/^\d+$/.test(value))
-        return parseInt(value, 10);
-    if (value === '十')
-        return 10;
-    const tenIndex = value.indexOf('十');
-    if (tenIndex >= 0) {
-        const tens = tenIndex === 0 ? 1 : CHINESE_DIGITS[value[tenIndex - 1]];
-        const ones = tenIndex === value.length - 1 ? 0 : CHINESE_DIGITS[value[tenIndex + 1]];
-        return tens != null && ones != null ? tens * 10 + ones : null;
-    }
-    return CHINESE_DIGITS[value] ?? null;
-}
-export function toolResultCount(summary: string | null): number | null {
-    if (!summary)
-        return null;
-    const match = /(?:找到|搜索到|返回|获取到|整理出|共)\s*(?:等|了)?\s*([0-9]+|[一二两三四五六七八九十]+)\s*(?:个|条|项|处|家|座|班)?\s*[^，。；:：\d]{0,12}?(?:结果|地点|网页|候选|路线|班次|住宿|资料|选项|来源)/.exec(summary);
-    if (!match)
-        return null;
-    return parseCountValue(match[1]);
-}
-export function toolSourceLabel(toolName: string | undefined): string {
-    const name = (toolName || '').trim();
-    if (!name)
-        return KIND_LABELS.other;
-    return KIND_LABELS[classifyTool(name, undefined)];
-}
 function normalizedInvocationPart(value: string | undefined): string {
     return (value || '').replace(/\s+/g, ' ').trim();
 }

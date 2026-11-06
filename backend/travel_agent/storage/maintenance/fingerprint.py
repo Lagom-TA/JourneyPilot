@@ -1,8 +1,7 @@
 """Schema 指纹：从活库读出结构，归一化，算 canonical JSON + SHA-256。
 
 指纹回答一个问题：**这个数据库的结构是不是某个已知 revision 的结构。**
-它用于拒绝对来历不明的库执行 `alembic stamp head`，因为那会把未知结构当成
-最新版本。
+doctor 与 API 的只读校验都拿它判断活库结构是否符合已知 revision。
 
 ## 归一化：哪些差异不算差异
 

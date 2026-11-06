@@ -10,7 +10,6 @@ export const duration = {
   detail: 0.3,
   mapFocus: 0.35,
   emphasis: 0.4,
-  numberRoll: 0.4,
   loop: 1.2,
   loopDrift: 2.4,
 } as const;
@@ -56,15 +55,8 @@ export const transitions = {
   enter: (d: number = duration.slow): Transition => ({ duration: d, ease: easing.decelerate }),
   exit: (d: number = duration.base): Transition => ({ duration: d, ease: easing.accelerate }),
   spatial: spring,
-  numberRoll: (): Transition => ({ duration: duration.numberRoll, ease: easing.decelerate }),
 } as const;
 
-
-export const slideUp: Variants = {
-  hidden: { opacity: 0, y: 8 },
-  visible: { opacity: 1, y: 0, transition: transitions.enter() },
-  exit: { opacity: 0, y: -4, transition: transitions.exit(duration.fast) },
-};
 
 // 不透明表面承接新内容，避免两套正文在交接时透明叠印。
 export const workspaceEnter: Variants = {

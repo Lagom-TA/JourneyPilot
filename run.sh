@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Constants
+#  常量
 # ─────────────────────────────────────────────────────────────────────────────
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="$ROOT_DIR/frontend"
@@ -11,8 +11,8 @@ export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$ROOT_DIR/.venv}"
 FRONTEND_PORT="${FRONTEND_PORT:-8080}"
 BACKEND_PORT=""
 
-# Canonical runtime state for run.sh and E2E discovery. Exactly one
-# instance may be recorded here at a time; start refuses rather than overwrite it.
+# run.sh 与 E2E 端口发现共用的规范运行状态。同一时刻只记录一个实例；
+# start 遇到已有记录时拒绝启动，而不是覆盖它。
 PORTS_FILE="$ROOT_DIR/tmp/journeypilot.ports"
 LOG_DIR="$ROOT_DIR/tmp/logs"
 BACKEND_LOG="$LOG_DIR/backend.log"
@@ -26,7 +26,7 @@ SPINNER_PID=""
 #   JOURNEYPILOT_RUN_DEADLINE__DELIVERY_SECONDS=900 ./run.sh start
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Colors & Icons  (disabled when stdout is not a terminal)
+#  颜色与图标  （stdout 不是终端时禁用）
 # ─────────────────────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
   CYAN=$'\033[0;36m'
@@ -47,7 +47,7 @@ WARN="⚠"
 SPIN=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  UI Primitives
+#  界面基础组件
 # ─────────────────────────────────────────────────────────────────────────────
 
 print_banner() {
@@ -85,12 +85,12 @@ print_item() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Spinner  (braille dot animation, background subshell + \r redraw)
+#  进度指示器  （盲文点阵动画，后台子 shell + \r 重绘）
 # ─────────────────────────────────────────────────────────────────────────────
 
 start_spinner() {
   local msg="$1"
-  # Capture color vars for use inside subshell
+  # 先把颜色变量捕获到局部变量，供子 shell 使用
   local _cyan="$CYAN" _dim="$DIM" _reset="$RESET"
   (
     local i=0
@@ -108,12 +108,12 @@ stop_spinner() {
     kill "$SPINNER_PID" 2>/dev/null || true
     wait "$SPINNER_PID" 2>/dev/null || true
     SPINNER_PID=""
-    printf "\r\033[K"   # clear the spinner line
+    printf "\r\033[K"   # 清除进度指示器所在行
   fi
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Runtime State
+#  运行状态
 # ─────────────────────────────────────────────────────────────────────────────
 
 write_runtime_state() {
@@ -129,7 +129,7 @@ write_runtime_state() {
 }
 
 read_runtime_state() {
-  # Reset before parsing so missing keys don't retain stale values
+  # 解析前先重置，避免缺失的键保留上一次的值
   BACKEND_PID="" FRONTEND_PID="" BACKEND_PORT="" FRONTEND_PORT="8080"
   [[ -f "$PORTS_FILE" ]] || return 0
 
@@ -185,7 +185,7 @@ refuse_running_instance() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Process-tree termination
+#  进程树终止
 # ─────────────────────────────────────────────────────────────────────────────
 # 服务 PID 指向实际启动的后端或前端进程；退出时连同其子进程一起停止。
 
@@ -210,9 +210,8 @@ _pid_start_time() {
     return
   fi
 
-  # macOS has no /proc.  lstart is the kernel-reported process birth time and
-  # stays stable for the life of the PID, so it provides the same identity check
-  # for the local development platform this script explicitly supports.
+  # macOS 没有 /proc。lstart 是内核报告的进程创建时刻，在 PID 存活期间保持不变，
+  # 因此对本脚本明确支持的本地开发平台给出同样的身份校验。
   rest="$(ps -o lstart= -p "$pid" 2>/dev/null)" || return 1
   rest="$(awk '{$1=$1; print}' <<< "$rest")"
   [[ -n "$rest" ]] || return 1
@@ -247,11 +246,10 @@ stop_tree() {
     return 1
   fi
 
-  # macOS still ships Bash 3.2, which has indexed but not associative arrays.
-  # Keep PID and start-time arrays aligned and use a tiny linear membership
-  # check; these trees contain only a handful of wrapper processes.
-  # Index zero is an inert sentinel.  Bash 3.2 with ``set -u`` treats expansion
-  # of a declared-but-empty array as an unbound-variable error.
+  # macOS 自带的仍是 Bash 3.2：有索引数组，没有关联数组。让 PID 数组与启动
+  # 时刻数组保持对齐，用一个很小的线性查找判断成员；这些进程树里只有少数几个
+  # 包装进程。下标 0 是不起作用的哨兵：Bash 3.2 在 ``set -u`` 下展开已声明但
+  # 为空的数组会报未绑定变量。
   local -a started_pids=("")
   local -a started_times=("")
   local -a signalled_pids=("")
@@ -313,7 +311,7 @@ stop_tree() {
     fi
   done
 
-  # 端口现在是 fail-fast 的: restart 紧接着就要重新绑定同一个端口, 所以 stop_tree
+  # 端口是 fail-fast 的: restart 紧接着就要重新绑定同一个端口, 所以 stop_tree
   # 必须等到整棵树真的消失 (fd 随进程回收才释放监听) 再返回, 不能 KILL 完就走。
   # 这一段同样继续采样: 被 KILL 的父进程也可能已经留下了一个后代。
   waited=0
@@ -350,8 +348,8 @@ stop_tree() {
   return 0
 }
 
-# A PID from runtime state grants stop authority only when its live process tree
-# owns the recorded listening port. This rejects stale or reused PIDs.
+# 运行状态里的 PID 只有在它存活的进程树持有所记录的监听端口时，才拥有停止权限。
+# 这样可以拒绝过期或被复用的 PID。
 managed_pid_owns_port() {
   local root="$1"
   local port="$2"
@@ -395,7 +393,7 @@ managed_pid_state() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Cleanup  (trap INT TERM EXIT)
+#  清理  （trap INT TERM EXIT）
 # ─────────────────────────────────────────────────────────────────────────────
 
 cleanup() {
@@ -420,7 +418,7 @@ cleanup() {
 trap cleanup INT TERM EXIT
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Utilities
+#  工具函数
 # ─────────────────────────────────────────────────────────────────────────────
 
 require_command() {
@@ -578,7 +576,7 @@ discover_ports() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Step Functions
+#  启动步骤
 # ─────────────────────────────────────────────────────────────────────────────
 
 step_config() {
@@ -899,7 +897,7 @@ step_start_frontend() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Commands
+#  子命令
 # ─────────────────────────────────────────────────────────────────────────────
 
 cmd_start() {
@@ -1044,7 +1042,7 @@ cmd_restart() {
   # 停不掉就不许再起: 否则 start 会在 fail-fast 的端口上被拒 (好), 或者把仍活着的
   # 那套服务的记录覆盖掉 (坏)。stop 的退出码就是 restart 的准入条件。
   cmd_stop || exit 1
-  # Restore cleanup trap that cmd_stop may have disrupted via the EXIT path
+  # 恢复 cmd_stop 经由 EXIT 路径可能已破坏的清理 trap
   trap cleanup INT TERM EXIT
   cmd_start
 }
@@ -1055,9 +1053,8 @@ cmd_status() {
   print_banner "JOURNEYPILOT" "status"
   read_runtime_state
 
-  # A stale or missing state file must not force status back to the configured
-  # default. Reuse the same health-validated discovery as start; never use
-  # discovery to acquire stop authority over a process.
+  # 状态文件过期或缺失时，不能让 status 退回配置里的默认端口。复用与 start 相同、
+  # 经过健康校验的端口发现；绝不借端口发现获得对进程的停止权限。
   discover_ports
 
   # status 是纯只读命令。立即把服务 PID 移入局部变量，避免脚本退出时全局 cleanup
@@ -1106,7 +1103,7 @@ cmd_status() {
   # 实际发布的宿主端口, 而不是写死 compose 默认值: 端口被改过时 status 不该说谎。
   pg_port=$(docker port journeypilot-postgres 5432 2>/dev/null | head -1 | sed 's/.*://' || true)
   rd_port=$(docker port journeypilot-redis    6379 2>/dev/null | head -1 | sed 's/.*://' || true)
-  pg_port="${pg_port:-55433}"
+  pg_port="${pg_port:-55434}"
   rd_port="${rd_port:-16379}"
 
   if [[ "$pg_status" == "healthy" ]]; then
@@ -1150,7 +1147,7 @@ cmd_logs() {
 
   printf "  ${DIM}%s${RESET}\n\n" "$log_file"
 
-  # Ctrl+C should only stop tail, not kill backend/frontend
+  # Ctrl+C 只应停止 tail，不应终止后端/前端
   trap - INT TERM EXIT
   tail -f "$log_file"
 }
@@ -1162,7 +1159,7 @@ cmd_check() {
   print_section "Environment"
   local status=0
 
-  # Python env
+  # Python 环境
   start_spinner "uv sync ${UV_SYNC_ARGS[*]}..."
   local sync_ok=0
   (cd "$ROOT_DIR" && uv sync --project "$BACKEND_DIR" "${UV_SYNC_ARGS[@]}" >/dev/null 2>&1) && sync_ok=1 || true
@@ -1175,7 +1172,7 @@ cmd_check() {
     status=1
   fi
 
-  # Runtime imports
+  # 运行时导入
   start_spinner "checking imports..."
   local import_ok=0
   check_backend_runtime_imports && import_ok=1 || true
@@ -1224,7 +1221,7 @@ cmd_check() {
     status=1
   fi
 
-  # MCP servers
+  # MCP 服务
   start_spinner "checking MCP servers..."
   local mcp_out
   mcp_out=$(run_in_env python "$BACKEND_DIR/scripts/check_mcp.py" 2>&1 || true)
@@ -1280,7 +1277,7 @@ cmd_help() {
   printf "    ${BOLD}help${RESET}     Show this help\n"
   echo
   printf "  ${CYAN}Environment:${RESET}\n"
-  printf "    ${DIM}JOURNEYPILOT_*${RESET}          config overrides, e.g. ${DIM}JOURNEYPILOT_DATABASE__PORT=55433${RESET}\n"
+  printf "    ${DIM}JOURNEYPILOT_*${RESET}          config overrides, e.g. ${DIM}JOURNEYPILOT_DATABASE__PORT=55434${RESET}\n"
   printf "    ${DIM}FRONTEND_HOST${RESET}           vite dev-server bind address  ${DIM}(default 127.0.0.1)${RESET}\n"
   printf "    ${DIM}JOURNEYPILOT_SERVER__HOST${RESET}  API bind address  ${DIM}(config default 0.0.0.0; prefer 127.0.0.1 when untrusted)${RESET}\n"
   printf "    ${DIM}JOURNEYPILOT_SERVER__RELOAD${RESET}  backend auto-reload  ${DIM}(run.sh forces false)${RESET}\n"
@@ -1290,13 +1287,12 @@ cmd_help() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Subcommand Router
+#  子命令路由
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Sourced rather than executed: define the functions and run nothing. This is
-# what lets infra/scripts/stop_tree_harness.sh drive the real stop_tree instead of a
-# copy of it — the function holds every kill this repo issues, and a copy that
-# drifted from it would verify the wrong code.
+# 被 source 时只定义函数、不执行任何命令。infra/scripts/stop_tree_harness.sh
+# 因此能驱动真实的 stop_tree，而不是它的副本 —— 本仓库发出的全部 kill 都在这个
+# 函数里，副本一旦漂移，验证的就是错误的代码。
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
   return 0
 fi

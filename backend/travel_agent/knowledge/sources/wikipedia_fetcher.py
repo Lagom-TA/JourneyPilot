@@ -5,9 +5,7 @@
 此模块。通过 Wikipedia REST API 的 ``/page/summary/`` 端点获取目的地摘要并索引
 到知识库。API 文档: https://www.mediawiki.org/wiki/API:REST_API
 
-每篇文章生成一个摘要块。需要整篇正文时使用 ``backend/scripts/dump_wikimedia.py``
-（MediaWiki Action API，``prop=extracts&explaintext=1``）把条目落成本地 JSON，
-再用 ``backend/scripts/index_knowledge.py --from-jsondir`` 入库。
+每篇文章生成一个摘要块。
 """
 
 from __future__ import annotations

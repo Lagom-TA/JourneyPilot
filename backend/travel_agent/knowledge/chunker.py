@@ -3,9 +3,9 @@
 将长文档分割为适合嵌入的文本块。
 
 支持三种策略（通过 config.rag.chunker_type 选择）：
-  text        — 固定滑动窗口（默认兼容模式）
+  text        — 固定滑动窗口
   semantic    — 基于 embedding 余弦相似度检测语义边界（异步）
-  contextual  — semantic + LLM 上下文前缀注入，参考 Anthropic Contextual Retrieval（异步）
+  contextual  — semantic + LLM 上下文前缀注入，参考 Anthropic Contextual Retrieval（异步，默认）
 """
 
 from __future__ import annotations

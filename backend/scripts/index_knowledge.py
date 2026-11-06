@@ -2,7 +2,7 @@
 知识库数据导入 CLI 工具
 
 使用方式：
-  # 从 Wikipedia 批量导入目的地摘要（一篇一个块；要整篇正文见下面的 --from-jsondir）
+  # 从 Wikipedia 批量导入目的地摘要（一篇一个块）
   python backend/scripts/index_knowledge.py --wikipedia 日本 京都 东京 泰国 --collection destinations
 
   # 从 Wikipedia 导入所有预定义热门目的地（约 80 个）
@@ -17,10 +17,6 @@
   # 从单个本地文件索引
   python backend/scripts/index_knowledge.py --file ./data/japan_guide.md --collection destinations
 
-  # 从 dump_wikimedia.py 输出目录批量索引（chunker 与 collection 由参数指定）
-  python backend/scripts/index_knowledge.py --from-jsondir data/raw_wikipedia data/raw_wikivoyage \\
-      --collection knowledge_contextual --chunker-type contextual
-
   # 查看所有集合的统计信息
   python backend/scripts/index_knowledge.py --stats
 
@@ -29,16 +25,10 @@
   visa_policies - 签证要求、入境政策（来源：Wikitravel）
   travel_tips   - 实用攻略、预算参考（来源：Wikitravel）
   local_culture - 文化习俗、注意事项（来源：Wikipedia/Wikitravel）
-
-分块对照集合：
-  knowledge_text       - TextChunker 入库（固定窗口分块）
-  knowledge_semantic   - SemanticChunker 入库（语义边界分块）
-  knowledge_contextual - ContextualChunker 入库（Anthropic Contextual Retrieval）
 """
 
 import asyncio
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -129,84 +119,6 @@ async def index_file(file_path: str, collection: str) -> None:
     print(f"完成：索引 {count} 个文本块")
 
 
-def resolve_default_chunker_type() -> str:
-    """调用方未指定分块方式时，返回项目配置中的分块器类型。"""
-    from travel_agent.config.loader import get_settings
-
-    return get_settings().rag.chunker_type
-
-
-async def index_from_jsondirs(
-    jsondirs: list,
-    collection: str,
-    chunker_type: str,
-    drop_existing: bool = False,
-) -> None:
-    """
-    从 dump_wikimedia.py 输出的 JSON 目录批量入库（RAG 实验对照主路径）。
-
-    每个目录下必须有 _manifest.json + 多个 {doc_source}.json 文件。
-    每条 JSON 必含 `doc_source` / `content` / `title` 字段；可选 `project` / `lang` 等。
-
-    入库时 source 字段 = doc_source；metadata 携带 doc_source/title/project/lang，
-    chunker 与 collection 分别由 --chunker-type / --collection 指定。
-    """
-    from travel_agent.storage.maintenance.report import require_database_contract
-    from travel_agent.knowledge.indexer import KnowledgeIndexer
-
-    await require_database_contract()
-    indexer = KnowledgeIndexer(chunker_type=chunker_type)
-
-    if drop_existing:
-        deleted = await indexer.delete_collection(collection)
-        print(f"已清空 collection='{collection}'（删除 {deleted} 个旧 chunk）")
-
-    docs = []
-    for jsondir_str in jsondirs:
-        jsondir = Path(jsondir_str)
-        if not jsondir.is_dir():
-            print(f"⚠ 跳过：{jsondir} 不是目录")
-            continue
-
-        manifest_path = jsondir / "_manifest.json"
-        if manifest_path.exists():
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            file_names = [m["file"] for m in manifest["items"] if m.get("status") == "ok"]
-        else:
-            file_names = sorted(
-                f.name for f in jsondir.glob("*.json") if not f.name.startswith("_")
-            )
-
-        for fname in file_names:
-            payload = json.loads((jsondir / fname).read_text(encoding="utf-8"))
-            if not payload.get("content"):
-                continue
-            docs.append({
-                "content": payload["content"],
-                "source": payload["doc_source"],
-                "metadata": {
-                    "doc_source": payload["doc_source"],
-                    "title": payload.get("title", payload["doc_source"]),
-                    "project": payload.get("project", ""),
-                    "lang": payload.get("lang", ""),
-                    "source_url": payload.get("source_url", ""),
-                    "license": payload.get("license", ""),
-                },
-            })
-
-    print(
-        f"准备入库 {len(docs)} 个文档 → collection='{collection}', chunker='{chunker_type}'"
-    )
-    if not docs:
-        print("⚠ 没有可入库的文档，退出")
-        return
-
-    count = await indexer.index_documents(docs, collection=collection)
-    stats = await indexer.get_collection_stats(collection)
-    print(f"完成：索引 {count} 个 chunk")
-    print(f"集合统计：total={stats.get('total')}, sources={stats.get('sources')}")
-
-
 async def show_stats() -> None:
     from travel_agent.storage.maintenance.report import require_database_contract
     from travel_agent.knowledge.indexer import KnowledgeIndexer
@@ -265,12 +177,6 @@ def main():
         help="索引单个本地文件",
     )
     group.add_argument(
-        "--from-jsondir",
-        nargs="+",
-        metavar="DIR",
-        help="从 dump_wikimedia.py 输出的 JSON 目录批量入库（可多个目录拼合）",
-    )
-    group.add_argument(
         "--stats",
         action="store_true",
         help="显示所有知识库集合的统计信息",
@@ -279,18 +185,7 @@ def main():
     parser.add_argument(
         "--collection", "-c",
         default="destinations",
-        help="目标知识库集合（默认: destinations；RAG 对照建议: knowledge_text / knowledge_semantic / knowledge_contextual）",
-    )
-    parser.add_argument(
-        "--chunker-type",
-        default=None,
-        choices=["text", "semantic", "contextual"],
-        help="chunker 策略（默认读 config.rag.chunker_type；--from-jsondir 时建议显式指定）",
-    )
-    parser.add_argument(
-        "--drop-existing",
-        action="store_true",
-        help="入库前清空目标 collection（--from-jsondir 专用）",
+        help="目标知识库集合（默认: destinations）",
     )
     args = parser.parse_args()
 
@@ -306,21 +201,6 @@ def main():
         asyncio.run(index_directory(args.dir, args.collection))
     elif args.file:
         asyncio.run(index_file(args.file, args.collection))
-    elif args.from_jsondir:
-        # 未指定分块方式时必须读取配置，不能硬编码。分块策略直接影响检索质量，
-        # 默认值若在未声明时换成另一种策略，建出的语料库就与配置声明的不一致。
-        chunker_type = args.chunker_type or resolve_default_chunker_type()
-        if not args.chunker_type:
-            print("⚠ --from-jsondir 建议显式 --chunker-type {text|semantic|contextual}；")
-            print(f"  未指定，已读 config.rag.chunker_type = {chunker_type!r}")
-        asyncio.run(
-            index_from_jsondirs(
-                args.from_jsondir,
-                args.collection,
-                chunker_type,
-                drop_existing=args.drop_existing,
-            )
-        )
 
 
 if __name__ == "__main__":

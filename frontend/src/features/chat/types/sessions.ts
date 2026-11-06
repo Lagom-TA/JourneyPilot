@@ -83,13 +83,3 @@ export interface SessionTurnPage {
     next_before: string | null;
     has_more: boolean;
 }
-export interface ContextCompactionPayload {
-    event_id: string;
-    source: 'manual' | 'automatic';
-    occurred_at: string;
-    messages_compressed: number;
-    tokens_before: number;
-    tokens_after: number;
-    summary: string;
-    key_constraints: string[];
-}

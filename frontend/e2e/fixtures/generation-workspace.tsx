@@ -67,7 +67,7 @@ function Harness() {
     dispatch({ type: 'SET_CURRENT_TRIP_RUN', payload: { runId, source: 'live', status, readOnly: scene === 'readonly' } });
     dispatch({ type: 'ENTER_WORKSPACE' });
     dispatch({ type: 'SET_TRIP_RUN_RECOVERY', payload: ['interrupted', 'readonly'].includes(scene) ? { status: 'resume_available', resumable: true, reason: null } : null });
-    dispatch({ type: 'SET_CONTROLLED_TRIP_IDENTITY', payload: scene === 'pending' ? { ...identity, destinations: [], start_date: null, end_date: null, party: { ...identity.party, total: null, adults: null } } : scene === 'assumed' ? { ...identity, dates_assumed: true } : scene === 'long' ? { ...identity, destinations: ['克孜勒苏柯尔克孜自治州', '呼伦贝尔', '锡林郭勒', '阿拉善左旗', '额济纳旗'].map(place) } : identity });
+    dispatch({ type: 'SET_CONTROLLED_TRIP_IDENTITY', payload: scene === 'pending' ? { ...identity, destinations: [], start_date: null, end_date: null, party: { total: null, adults: null, children: 0, elderly_companions: false, accessibility_required: false } } : scene === 'assumed' ? { ...identity, dates_assumed: true } : scene === 'long' ? { ...identity, destinations: ['克孜勒苏柯尔克孜自治州', '呼伦贝尔', '锡林郭勒', '阿拉善左旗', '额济纳旗'].map(place) } : identity });
     dispatch({ type: 'SET_STREAMING', payload: !isPlan && !isQuestion && ['running', 'cancel_requested'].includes(status) });
     if (scene === 'partial') {
       const bundle = deliveryBundle();

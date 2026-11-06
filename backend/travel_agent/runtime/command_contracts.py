@@ -48,7 +48,7 @@ OPEN_RUN_COMMAND_STATUSES: set[RunCommandStatus] = {
 class RunCommand(BaseModel):
     """一条持久化的运行控制命令。**最终事实在 `trip_run_commands`**。
 
-    进程内 registry 只负责唤醒执行器去读这张表，不再是命令存不存在的判据。
+    进程内 registry 只负责唤醒执行器去读这张表，不决定命令是否存在。
     """
 
     command_id: str

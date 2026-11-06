@@ -68,7 +68,7 @@ async def test_amendment_adapter_preserves_async_run_control_and_sync_policy(
 async def test_entry_compresses_the_session_without_requiring_identity(
     monkeypatch, compaction_fails
 ):
-    """旅行基础信息由理解阶段确认；入口只做会话压缩，缺身份不再拒绝。"""
+    """旅行基础信息由理解阶段确认；入口只做会话压缩，缺身份也不拒绝。"""
 
     calls = []
     queue = asyncio.Queue()

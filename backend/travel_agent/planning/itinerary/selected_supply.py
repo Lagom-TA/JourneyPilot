@@ -1,13 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Dict
 
-from travel_agent.planning.research.candidates import (
-    DiningCandidate,
-    LodgingCandidate,
-    TransportCandidate,
-    VisitCandidate,
-)
 from travel_agent.planning.research.catalog import RecommendationCatalog
 
 def prompt_candidate_ids(
@@ -47,53 +41,3 @@ def prompt_candidate_ids(
         for kind, ids in by_kind.items()
     }
 
-
-def placement_capabilities(
-    catalog: RecommendationCatalog, *, skeleton_only: bool = False
-) -> list[dict[str, Any]]:
-    """只暴露组合合法拓扑所需的强类型落位事实。"""
-    candidates = catalog.candidate_index()
-    capabilities: list[dict[str, Any]] = []
-    for kind, ids in prompt_candidate_ids(
-        catalog, skeleton_only=skeleton_only
-    ).items():
-        for candidate_id in ids:
-            candidate = candidates[candidate_id]
-            item: dict[str, Any] = {
-                "candidate_id": candidate_id,
-                "candidate_kind": candidate.candidate_kind,
-                "destination_id": candidate.destination_id,
-            }
-            if isinstance(candidate, VisitCandidate):
-                item.update(name=candidate.name, place_id=candidate.place_id)
-            elif isinstance(candidate, DiningCandidate):
-                item.update(
-                    name=candidate.branch_name,
-                    place_id=candidate.place_id,
-                    meal_types=candidate.meal_types,
-                )
-            elif isinstance(candidate, TransportCandidate):
-                item.update(
-                    transport_class=candidate.transport_class,
-                    from_place_id=candidate.from_endpoint.place_id,
-                    to_place_id=candidate.to_endpoint.place_id,
-                    duration_minutes=candidate.duration_minutes,
-                    departure_date=(
-                        candidate.departure_at.date().isoformat()
-                        if candidate.departure_at is not None
-                        else None
-                    ),
-                    arrival_date=(
-                        candidate.arrival_at.date().isoformat()
-                        if candidate.arrival_at is not None
-                        else None
-                    ),
-                )
-            elif isinstance(candidate, LodgingCandidate):
-                item.update(
-                    name=candidate.property_name,
-                    check_in_date=candidate.check_in_date.isoformat(),
-                    check_out_date=candidate.check_out_date.isoformat(),
-                )
-            capabilities.append(item)
-    return capabilities

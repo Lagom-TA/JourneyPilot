@@ -1,5 +1,5 @@
 // 确定性的生成工作区组件夹具，不调用模型或后端。
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppProvider } from '../../src/app/state/AppProvider';
 import { useApp } from '../../src/app/state/AppContext';
@@ -19,7 +19,8 @@ function Fixture() {
         destinations: [place('北京'), place('上海'), place('长春')],
         start_date: '2026-11-02',
         end_date: '2026-11-12',
-        party: { adults: 2, children: 0, elderly_companions: false, accessibility_required: false },
+        dates_assumed: false,
+        party: { total: 2, adults: 2, children: 0, elderly_companions: false, accessibility_required: false },
         style: { primary: '经典均衡', secondary_interests: ['当地美食'], source: 'current' },
       },
     });
@@ -87,7 +88,8 @@ function Fixture() {
             destinations: ['呼伦贝尔', '锡林郭勒', '阿拉善左旗', '额济纳旗', '乌兰浩特'].map(place),
             start_date: '2026-11-05',
             end_date: '2026-11-10',
-            party: { adults: 2, children: 0, elderly_companions: false, accessibility_required: false },
+            dates_assumed: false,
+            party: { total: 2, adults: 2, children: 0, elderly_companions: false, accessibility_required: false },
             style: { primary: '经典均衡', secondary_interests: ['当地美食'], source: 'current' },
           },
         });

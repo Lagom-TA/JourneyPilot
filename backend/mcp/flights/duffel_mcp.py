@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""JourneyPilot-owned Duffel v2 MCP server."""
+"""Duffel v2 机票 MCP 服务（stdio）：提供 ``search_flights``，查询一程真实航班方案。"""
 
 from __future__ import annotations
 

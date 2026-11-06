@@ -35,10 +35,7 @@ async function openDelivery(page: Page, options: { days?: number; readonly?: boo
     await route.fulfill({ status, json: body });
   });
   await page.goto('/?view=chat&session_id=A&run_id=run-A');
-  await expect(page.getByTestId('bundle-leaflet-map')).toBeVisible().catch(async (error) => {
-    console.log({ errors, text: (await page.locator('body').innerText()).slice(0, 1800) });
-    throw error;
-  });
+  await expect(page.getByTestId('bundle-leaflet-map')).toBeVisible();
   return { errors, bundle };
 }
 

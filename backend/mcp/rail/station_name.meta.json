@@ -6,6 +6,6 @@
   "byte_size": 167709,
   "record_count": 3375,
   "station_version": null,
-  "station_version_note": "12306 publishes this file with no version token; byte_size and record_count are the only fingerprint upstream gives. station_snapshot_freshness() therefore judges by age and says so. If a version ever appears, record it here and the version comparison takes over.",
-  "refresh": "Re-download source_url verbatim, update every field above, and restart the backend: station_table() caches the parse for the life of the process (see README)."
+  "station_version_note": "12306 不提供版本号，station_version 留空；byte_size 与 record_count 是上游唯一的指纹，station_snapshot_freshness() 按快照年龄判断新旧。",
+  "refresh": "原样重新下载 source_url，更新以上全部字段，并重启后端：station_table() 的解析结果与进程同寿（见 README）。"
 }

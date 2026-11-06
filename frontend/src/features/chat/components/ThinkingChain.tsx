@@ -26,7 +26,7 @@ interface ThinkingChainProps {
     collapseKey?: string;
     activityTitle?: string;
     emptyText?: string;
-    /** 工作台当前展示的四阶段；传入后组状态以阶段状态为准，不再按整 Run 推断。 */
+    /** 工作台当前展示的四阶段；传入后组状态以阶段状态为准，不按整 Run 推断。 */
     activityStage?: ActivityStageId;
     stageStatus?: ActivityStageStatus;
     activityFocus?: string;

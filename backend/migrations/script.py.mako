@@ -4,7 +4,7 @@ Revision ID: ${up_revision}
 Revises: ${down_revision | comma,n}
 Create Date: ${create_date}
 
-## 每条迁移必须回答的六个问题（dev docs P0 §6 强制门禁）
+## 每条迁移必须回答的六个问题
 
 - 影响面：后端 / 前端 / DB / Compose / 配置 / 文档分别是否变化？
 - 数据路径：既有行怎么读、怎么处理；不可逆时说明只能从备份恢复。
@@ -31,7 +31,7 @@ depends_on = ${repr(depends_on)}
 #: 会丢数据或不可逆的迁移 → True，`migrate` 需要 --allow-destructive 才执行。
 destructive = False
 
-#: 能不能 downgrade。False 时唯一的回退路径是从备份恢复，release notes 必须写明。
+#: 能不能 downgrade。False 时唯一的回退路径是从备份恢复，须在上面的 docstring 里写清楚。
 reversible = True
 
 

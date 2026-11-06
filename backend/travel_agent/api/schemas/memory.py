@@ -30,9 +30,8 @@ class MemoryDeleteAllOptions(BaseModel):
     ``clear_auto_portrait`` 仅控制系统生成的画像（``UserProfile.auto_portrait``）；
     用户手填的六组偏好与常用出发地不在任何一次记忆删除范围内。
 
-    ``extra="forbid"`` 是必要配置：三个开关默认值均为 True，若允许多余键，
-    过期客户端发来的旧字段会被静默忽略并启用默认值，使本应返回 422 的请求
-    执行一次全量删除。
+    ``extra="forbid"`` 是必要配置：三个开关默认值均为 True，多余字段若被忽略，
+    本应返回 422 的请求会按默认值执行一次全量删除。
     """
 
     model_config = ConfigDict(extra="forbid")

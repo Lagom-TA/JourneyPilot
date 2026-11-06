@@ -208,9 +208,8 @@ class DeliveryBundleStore:
     async def get_current_bundle_id(self, run_id: str) -> Optional[str]:
         """只读取当前 Bundle 身份，不加载也不校验载荷。
 
-        head 行是权威指针，其外键保证引用的 Bundle 存在，因此只需要身份调用方
-        （事件窗口、revision 冲突响应）不必解析载荷。写入于旧合同的载荷不应让
-        这类读取失败：身份仍然可以确定。
+        head 行是权威指针，其外键保证引用的 Bundle 存在，因此只需要身份的调用方
+        （事件窗口、revision 冲突响应）不必解析载荷；载荷无法解析时身份仍然可以确定。
         """
         async with get_db_session() as session:
             result = await session.execute(

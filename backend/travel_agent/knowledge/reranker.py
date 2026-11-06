@@ -54,7 +54,7 @@ class CrossEncoderReranker(Reranker):
     基于 sentence-transformers CrossEncoder 的精排器。
     使用 BGE-Reranker-v2-m3，首次调用时自动从 HuggingFace 下载（约 1.1GB）。
 
-    需要安装：pip install sentence-transformers
+    需要安装：uv sync --project backend --group cross-encoder
     """
 
     def __init__(self, model_name: str = "BAAI/bge-reranker-v2-m3") -> None:
@@ -71,7 +71,7 @@ class CrossEncoderReranker(Reranker):
             except ImportError as e:
                 raise ImportError(
                     "CrossEncoderReranker 需要安装 sentence-transformers：\n"
-                    "  pip install sentence-transformers\n"
+                    "  uv sync --project backend --group cross-encoder\n"
                     "或在 config.yaml 中将 rerank.provider 设置为 'llm'"
                 ) from e
         return self._model

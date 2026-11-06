@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 # 仅用于离线估算，账单以供应商 usage 为准。
 _TOKEN_ESTIMATE_MODEL = "gpt-4o"
-_TRIM_SAFETY_RATIO = 0.9
 
 
 def count_tokens(text: str, model: str = "gpt-4o") -> int:

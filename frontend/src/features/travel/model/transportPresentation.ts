@@ -161,7 +161,7 @@ export interface LegSummary {
     duration: string | null;
     cost: string | null;
 }
-/** 行程卡片底部只保留值与单位：左侧时长，右侧费用；换乘由公共交通线路链表达，不再重复计数。 */
+/** 行程卡片底部只保留值与单位：左侧时长，右侧费用；换乘由公共交通线路链表达，这里不重复计数。 */
 export function legSummary(leg: PublicTransportLeg): LegSummary {
     if (leg.route_status !== 'ready')
         return { duration: null, cost: null };

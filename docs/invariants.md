@@ -26,8 +26,6 @@ Tests:
 - `backend/tests/db/test_backup.py::test_redaction_keeps_structure_and_drops_secrets`
 - `backend/tests/config/test_config_contract.py::test_secrets_never_survive_the_effective_report`
 
----
-
 ### INV-DB-001：API 进程不执行 DDL
 约定：API 进程不建表、不改列、不删数据；结构变更只由迁移命令执行。
 Owner: `backend/travel_agent/storage/maintenance/migrate.py`（唯一 DDL 执行者）、`backend/travel_agent/storage/database.py`
@@ -112,8 +110,6 @@ Tests:
 - `backend/tests/db/test_background_jobs.py::test_a_claimed_job_is_not_claimable_until_its_lease_expires`
 - `backend/tests/db/test_background_jobs.py::test_attempts_run_out_into_dead`
 - `backend/tests/memory/test_memory_extraction_job.py`
-
----
 
 ### INV-JOB-002：丢失租约的 worker 不写结果
 约定：续不上租约就取消处理器；任务结论按本次领取的唯一 `lease_owner` 和有效期过滤，丢失租约的执行者不能覆盖新结论。记忆抽取的事实、画像和已应用标记在同一租约保护事务中提交；重领后复用该标记。其他外部副作用由处理器自身的幂等规则负责。
@@ -253,8 +249,6 @@ Owner: `backend/travel_agent/planning/research/failure_protocol.py`、`backend/t
 Tests:
 - `backend/tests/planning/research/test_worker_error_protocol_contract.py::test_persisted_failure_prefixes_have_stable_reader_verdict`
 
----
-
 ## 流与会话
 
 ### INV-SESSION-001：一个 turn 永远整块返回
@@ -275,8 +269,6 @@ Tests:
 - `backend/tests/db/test_session_turns.py::test_compaction_only_reads_the_budget_and_moves_the_exact_boundary`
 - `backend/tests/db/test_session_turns.py::test_a_second_compaction_is_incremental`
 - `backend/tests/db/test_session_turns.py::test_a_failed_compaction_leaves_the_anchor_and_boundary_alone`
-
----
 
 ### INV-SESSION-003：翻页代价不随会话长度增长
 约定：先按 `(session_id, event_order)` 倒序取有界一窗再分组，不对整个会话做 GROUP BY；窗口边界可能被截断的 turn 单独处理，往回翻不漏 turn。
@@ -378,8 +370,6 @@ ADR: [ADR-0006](adr/ADR-0006-resource-budgets-and-isolation.md)
 Tests:
 - `backend/tests/llm/test_provider_channels.py::test_ingest_and_online_calls_do_not_share_a_quota`
 - `backend/tests/llm/test_provider_channels.py::test_changing_the_limit_replaces_the_gate`
-
----
 
 ### INV-INGEST-001：不可信文档先过输入边界，再进受限解析单元
 约定：类型（magic bytes + OOXML 必要条目）→ 规模（字节 / 展开量 / 压缩比 / 条目数）→ 解析（子进程 + RLIMIT + 超时杀进程组）；超时不是唯一保护。

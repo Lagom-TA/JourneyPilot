@@ -23,12 +23,12 @@ from travel_agent.config.publication import build_publication_summary, publish_s
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Validate or explicitly publish JourneyPilot system product configuration."
+        description="校验或显式发布 JourneyPilot 系统产品配置。"
     )
     parser.add_argument(
         "--apply",
         action="store_true",
-        help="write the reviewed Python seed to product_configurations and system travel_presets",
+        help="把 Python 种子写入 product_configurations 与系统 travel_presets",
     )
     return parser.parse_args(argv)
 

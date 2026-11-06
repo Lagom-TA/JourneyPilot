@@ -98,7 +98,7 @@ def test_public_manifest_and_event_payload_drop_removed_version_fields():
     assert "contract_version" not in public
     assert set(public) == MANIFEST_FIELDS - {"content_hashes"}
 
-    legacy_event = {**public, "contract_version": "stale"}
-    filtered = public_event_manifest(legacy_event)
+    event_manifest = {**public, "contract_version": "stale"}
+    filtered = public_event_manifest(event_manifest)
     assert filtered == public
     assert "contract_version" not in filtered

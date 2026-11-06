@@ -3,8 +3,8 @@
 两件事，分开：
 
 - **preset** 是帮用户填好模型段的连接模板（`backend/travel_agent/resources/providers/*.yaml`）。
-  它不是默认值：把某家 provider 的 base_url 写成 `models.py` 的默认，会让一次
-  私人部署成为所有人的默认，而且用户更换 provider 后没有任何一处会跟着改。
+  它不参与默认值解析：内置默认只在 `config/models.py` 定义，preset 只在
+  `configure --provider` 时被读取并写入用户的连接段，换 provider 只需覆盖连接段。
 - **capability** 声明这个上游支持什么。preset 上声明，按 base_url 解析；
   认不出的上游使用保守档，不假设未经验证的能力。
 
@@ -117,10 +117,6 @@ def _authority(base_url: str) -> str:
         return f"{host}:{parsed.port}" if parsed.port else host
     except ValueError:
         return ""
-
-
-def reload_presets() -> None:
-    _index.cache_clear()
 
 
 def available_presets() -> List[ProviderPreset]:

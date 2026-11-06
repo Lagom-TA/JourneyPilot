@@ -14,6 +14,21 @@ function endpoint(name: string, placeId: string, latitude: number, longitude: nu
   return { name, place_id: placeId, station_code: stationCode, latitude, longitude };
 }
 
+interface FixtureDayWeather {
+  destination_id: string;
+  destination_name: string;
+  date: string;
+  data_kind: 'forecast' | 'seasonal_baseline' | 'unavailable';
+  observed_at: string | null;
+  weather_data_state: 'current' | 'historical';
+  condition_label: string | null;
+  high_c: number | null;
+  low_c: number | null;
+  precipitation_probability_pct: number | null;
+  wind_speed_kph: number | null;
+  citation_ids: string[];
+}
+
 type FixtureEndpoint = ReturnType<typeof endpoint>;
 type FixtureSegment = ReturnType<typeof segment>;
 
@@ -76,7 +91,7 @@ function leg(
   const first = segments[0].from_endpoint;
   const last = segments.at(-1)!.to_endpoint;
   return {
-    type: 'transport_leg',
+    type: 'transport_leg' as const,
     transport_leg_id: id,
     transport_class: transportClass,
     selected_mode: mode,
@@ -243,17 +258,17 @@ export function xianDeliveryBundle(revision = 1) {
           { day_id: 'day-2', day: 2, date: '2026-11-02', destination_id: XI, theme: '城中慢游 · 博物馆与城墙', timeline: dayTwoBlocks.map((item) => ({ entry_id: item.details.entry_id, entity_type: item.entity_ref.entity_type, entity_id: item.entity_ref.entity_id, projection_role: item.projection_role })), estimated_cost_cny: null },
         ],
         visit_stops: [
-          { type: 'visit_stop', item_id: 'visit-terracotta', day_id: 'day-1', place_id: points.terracotta.place_id!, name: points.terracotta.name, address: '陕西省西安市临潼区秦陵北路', latitude: points.terracotta.latitude, longitude: points.terracotta.longitude, planned_start: '2026-11-01T09:00:00+08:00', planned_end: '2026-11-01T12:00:00+08:00', duration_minutes: 180, estimated_cost_cny: 120, selection_reason: '把兵马俑放在第一天体力充足的上午。', visit_type: 'attraction', opening_window: '08:30–17:00', reservation_required: true, visit_highlights: ['一号坑军阵', '陶俑细节'], intent_explanations: [], evidence_basis: EVIDENCE },
-          { type: 'visit_stop', item_id: 'visit-dayan', day_id: 'day-1', place_id: points.dayan.place_id!, name: points.dayan.name, address: '陕西省西安市雁塔区雁塔南路', latitude: points.dayan.latitude, longitude: points.dayan.longitude, planned_start: '2026-11-01T15:40:00+08:00', planned_end: '2026-11-01T17:40:00+08:00', duration_minutes: 120, estimated_cost_cny: 40, selection_reason: '下午返回市区后衔接大雁塔。', visit_type: 'culture', opening_window: '08:00–17:30', reservation_required: null, visit_highlights: ['大慈恩寺', '雁塔北广场'], intent_explanations: [], evidence_basis: EVIDENCE },
-          { type: 'visit_stop', item_id: 'visit-shaanxi-museum', day_id: 'day-2', place_id: points.museum.place_id!, name: points.museum.name, address: '陕西省西安市雁塔区小寨东路', latitude: points.museum.latitude, longitude: points.museum.longitude, planned_start: '2026-11-02T09:30:00+08:00', planned_end: '2026-11-02T12:00:00+08:00', duration_minutes: 150, estimated_cost_cny: null, selection_reason: '第二天用上午完整参观基本陈列。', visit_type: 'culture', opening_window: '09:00–17:30', reservation_required: true, visit_highlights: ['唐代壁画', '周秦汉唐文物'], intent_explanations: [], evidence_basis: EVIDENCE },
-          { type: 'visit_stop', item_id: 'visit-yongning-gate', day_id: 'day-2', place_id: points.wall.place_id!, name: points.wall.name, address: '陕西省西安市碑林区南大街', latitude: points.wall.latitude, longitude: points.wall.longitude, planned_start: '2026-11-02T14:00:00+08:00', planned_end: '2026-11-02T16:00:00+08:00', duration_minutes: 120, estimated_cost_cny: 54, selection_reason: '午后从南门登城，路线直观。', visit_type: 'attraction', opening_window: '08:00–22:00', reservation_required: null, visit_highlights: ['永宁门城楼', '城墙漫步'], intent_explanations: [], evidence_basis: EVIDENCE },
+          { type: 'visit_stop' as const, item_id: 'visit-terracotta', day_id: 'day-1', place_id: points.terracotta.place_id!, name: points.terracotta.name, address: '陕西省西安市临潼区秦陵北路', latitude: points.terracotta.latitude, longitude: points.terracotta.longitude, planned_start: '2026-11-01T09:00:00+08:00', planned_end: '2026-11-01T12:00:00+08:00', duration_minutes: 180, estimated_cost_cny: 120, selection_reason: '把兵马俑放在第一天体力充足的上午。', visit_type: 'attraction' as const, opening_window: '08:30–17:00', reservation_required: true, visit_highlights: ['一号坑军阵', '陶俑细节'], intent_explanations: [], evidence_basis: EVIDENCE },
+          { type: 'visit_stop' as const, item_id: 'visit-dayan', day_id: 'day-1', place_id: points.dayan.place_id!, name: points.dayan.name, address: '陕西省西安市雁塔区雁塔南路', latitude: points.dayan.latitude, longitude: points.dayan.longitude, planned_start: '2026-11-01T15:40:00+08:00', planned_end: '2026-11-01T17:40:00+08:00', duration_minutes: 120, estimated_cost_cny: 40, selection_reason: '下午返回市区后衔接大雁塔。', visit_type: 'culture' as const, opening_window: '08:00–17:30', reservation_required: null, visit_highlights: ['大慈恩寺', '雁塔北广场'], intent_explanations: [], evidence_basis: EVIDENCE },
+          { type: 'visit_stop' as const, item_id: 'visit-shaanxi-museum', day_id: 'day-2', place_id: points.museum.place_id!, name: points.museum.name, address: '陕西省西安市雁塔区小寨东路', latitude: points.museum.latitude, longitude: points.museum.longitude, planned_start: '2026-11-02T09:30:00+08:00', planned_end: '2026-11-02T12:00:00+08:00', duration_minutes: 150, estimated_cost_cny: null, selection_reason: '第二天用上午完整参观基本陈列。', visit_type: 'culture' as const, opening_window: '09:00–17:30', reservation_required: true, visit_highlights: ['唐代壁画', '周秦汉唐文物'], intent_explanations: [], evidence_basis: EVIDENCE },
+          { type: 'visit_stop' as const, item_id: 'visit-yongning-gate', day_id: 'day-2', place_id: points.wall.place_id!, name: points.wall.name, address: '陕西省西安市碑林区南大街', latitude: points.wall.latitude, longitude: points.wall.longitude, planned_start: '2026-11-02T14:00:00+08:00', planned_end: '2026-11-02T16:00:00+08:00', duration_minutes: 120, estimated_cost_cny: 54, selection_reason: '午后从南门登城，路线直观。', visit_type: 'attraction' as const, opening_window: '08:00–22:00', reservation_required: null, visit_highlights: ['永宁门城楼', '城墙漫步'], intent_explanations: [], evidence_basis: EVIDENCE },
         ],
         dining_stops: [
-          { type: 'dining_stop', item_id: 'dining-lintong', day_id: 'day-1', place_id: points.lunchOne.place_id!, name: points.lunchOne.name, address: '陕西省西安市临潼区人民路', latitude: points.lunchOne.latitude, longitude: points.lunchOne.longitude, planned_start: '2026-11-01T13:00:00+08:00', planned_end: '2026-11-01T14:00:00+08:00', duration_minutes: 60, estimated_cost_cny: 65, selection_reason: '上午游览后在临潼城区用餐。', meal_type: 'lunch', cuisine_types: ['陕西菜'], average_spend_cny: 65, recommended_dishes: ['水盆羊肉', '月牙饼'], reservation_required: null, opening_window: '10:00–21:00', dining_reminders: [], intent_explanations: [], evidence_basis: EVIDENCE },
-          { type: 'dining_stop', item_id: 'dining-xiaozhai', day_id: 'day-2', place_id: points.lunchTwo.place_id!, name: points.lunchTwo.name, address: '陕西省西安市雁塔区小寨西路', latitude: points.lunchTwo.latitude, longitude: points.lunchTwo.longitude, planned_start: '2026-11-02T12:20:00+08:00', planned_end: '2026-11-02T13:10:00+08:00', duration_minutes: 50, estimated_cost_cny: 35, selection_reason: '博物馆参观后步行可达。', meal_type: 'lunch', cuisine_types: ['陕西小吃'], average_spend_cny: 35, recommended_dishes: ['肉夹馍', '凉皮'], reservation_required: false, opening_window: '08:00–21:30', dining_reminders: [], intent_explanations: [], evidence_basis: EVIDENCE },
+          { type: 'dining_stop' as const, item_id: 'dining-lintong', day_id: 'day-1', place_id: points.lunchOne.place_id!, name: points.lunchOne.name, address: '陕西省西安市临潼区人民路', latitude: points.lunchOne.latitude, longitude: points.lunchOne.longitude, planned_start: '2026-11-01T13:00:00+08:00', planned_end: '2026-11-01T14:00:00+08:00', duration_minutes: 60, estimated_cost_cny: 65, selection_reason: '上午游览后在临潼城区用餐。', meal_type: 'lunch' as const, cuisine_types: ['陕西菜'], average_spend_cny: 65, recommended_dishes: ['水盆羊肉', '月牙饼'], reservation_required: null, opening_window: '10:00–21:00', dining_reminders: [], intent_explanations: [], evidence_basis: EVIDENCE },
+          { type: 'dining_stop' as const, item_id: 'dining-xiaozhai', day_id: 'day-2', place_id: points.lunchTwo.place_id!, name: points.lunchTwo.name, address: '陕西省西安市雁塔区小寨西路', latitude: points.lunchTwo.latitude, longitude: points.lunchTwo.longitude, planned_start: '2026-11-02T12:20:00+08:00', planned_end: '2026-11-02T13:10:00+08:00', duration_minutes: 50, estimated_cost_cny: 35, selection_reason: '博物馆参观后步行可达。', meal_type: 'lunch' as const, cuisine_types: ['陕西小吃'], average_spend_cny: 35, recommended_dishes: ['肉夹馍', '凉皮'], reservation_required: false, opening_window: '08:00–21:30', dining_reminders: [], intent_explanations: [], evidence_basis: EVIDENCE },
         ],
         lodging_stays: [
-          { type: 'lodging_stay', stay_id: 'stay-bell-tower', place_id: points.hotel.place_id!, name: points.hotel.name, check_in_date: '2026-11-01', check_out_date: '2026-11-02', check_in_time: '19:00', check_out_time: '08:30', nights: 1, room_type: '双床房', nightly_price_cny: 520, total_price_cny: 520, price_kind: 'reference_estimate', availability_status: 'needs_confirmation', address: '陕西省西安市碑林区南大街', selection_reason: '钟楼附近便于晚间散步和第二天出发。', intent_explanations: [], evidence_basis: EVIDENCE },
+          { type: 'lodging_stay' as const, stay_id: 'stay-bell-tower', place_id: points.hotel.place_id!, name: points.hotel.name, check_in_date: '2026-11-01', check_out_date: '2026-11-02', check_in_time: '19:00', check_out_time: '08:30', nights: 1, room_type: '双床房', nightly_price_cny: 520, total_price_cny: 520, price_kind: 'reference_estimate' as const, availability_status: 'needs_confirmation' as const, address: '陕西省西安市碑林区南大街', selection_reason: '钟楼附近便于晚间散步和第二天出发。', intent_explanations: [], evidence_basis: EVIDENCE },
         ],
         transport_legs: transportLegs,
         custom_blocks: [],
@@ -265,7 +280,7 @@ export function xianDeliveryBundle(revision = 1) {
       weather_adjustments: [] as Array<{
         proposal_id: string;
         date: string;
-        severity: 'low' | 'medium' | 'high';
+        severity: 'medium' | 'high';
         summary: string;
         cost_delta_cny: number | null;
         time_delta_minutes: number | null;
@@ -275,7 +290,7 @@ export function xianDeliveryBundle(revision = 1) {
       source_workspace_revision: revision,
       source_fact_data_revision: revision,
       source_weather_data_revision: revision,
-      status: 'ready',
+      status: 'ready' as const,
       document: {
         title: '离线旅行报告',
         overview: '用两天时间串起临潼、雁塔与西安古城。',
@@ -288,7 +303,7 @@ export function xianDeliveryBundle(revision = 1) {
           { day_id: 'day-2', day: 2, date: '2026-11-02', destination_id: XI, destination_name: '西安', theme: '城中慢游 · 博物馆与城墙', blocks: dayTwoBlocks },
         ],
         selections: [],
-        weather: [],
+        weather: [] as FixtureDayWeather[],
         highlights: ['秦唐文化', '古城漫步'],
         unresolved: [],
       },

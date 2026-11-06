@@ -37,7 +37,7 @@ embedding:
   base_url: "https://api.openai.com/v1"                # provider=openai 时填写
   dimensions: 1024                                     # 必须与数据库列维度一致
 
-# 本模板默认使用本机 PostgreSQL 5433、Redis 6379；使用仓库 Compose 时改为 55433、16379。
+# 本模板默认使用本机 PostgreSQL 5433、Redis 6379；使用仓库 Compose 时改为 55434、16379。
 database:
   host: "localhost"
   port: 5433

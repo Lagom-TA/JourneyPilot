@@ -15,7 +15,7 @@
 - `planning/`、`conversation/`、`memory/`、`knowledge/`：各领域的实际输入、输出和状态变化。
 - `runtime/`、`llm/`、`tools/`、`config/`：执行控制、模型适配、工具调用与配置行为。
 - `integrations/`：供应商适配与外部响应路径；不访问真实网络。
-- `fixtures/`、`support/`：共享的业务数据构造、外部依赖替身与辅助函数；测试与实验脚本直接导入这些定义。
+- `fixtures/`、`support/`：共享的业务数据构造、外部依赖替身与辅助函数；测试直接导入这些定义。
 - `db/`：真实 PostgreSQL 的事务、约束、租约、迁移、备份和恢复；`db/test_offline_sql.py` 只生成并检查 SQL，不连接数据库。
 - 根 `conftest.py` 保留临时数据库隔离：仅使用随机命名的 `jp_test_*` 数据库，同步切换环境、配置和引擎，并在删库前关闭引擎。
 
@@ -34,4 +34,4 @@ uv run --project backend pytest -c backend/pyproject.toml backend/tests/db/test_
 JP_TESTS_REQUIRE_POSTGRES=1 uv run --project backend pytest -c backend/pyproject.toml backend/tests/db -q
 ```
 
-数据库不可用时的 skip 只说明环境缺失，不能作为数据库契约已通过的证据。CI 覆盖范围与手动 job 见 [仓库根 README](../../README.md#development)。
+数据库不可用时的 skip 只说明环境缺失，不能作为数据库契约已通过的证据。CI 自动运行的范围与手动触发的数据库 job 见 [ADR-0009](../../docs/adr/ADR-0009-ci-never-spends-on-providers.md)。

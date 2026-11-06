@@ -32,7 +32,7 @@ describe('run-scoped session history', () => {
         const messages = [assistant('parent', 'run-parent', [step('parent-step')])];
         expect(latestAssistantThinkingSteps(messages, 'run-missing')).toEqual([]);
     });
-    it('未指定 Run 时保留旧的全局取法，供普通聊天恢复使用', () => {
+    it('未指定 Run 时取最新一条助手消息的步骤', () => {
         const messages = [
             assistant('older', 'run-a', [step('older-step')]),
             assistant('latest', 'run-b', [step('latest-step')]),

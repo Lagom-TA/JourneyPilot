@@ -1,4 +1,4 @@
-"""Run start and intake consumption can use the same database transaction."""
+"""Run 启动与 intake 消费可以共用同一个数据库事务。"""
 
 from contextlib import asynccontextmanager
 

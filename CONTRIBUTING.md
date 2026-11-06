@@ -7,7 +7,7 @@
 ```bash
 cp backend/config.example.yaml config.yaml   # 填好模型段；Key 走环境变量
 export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
-JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
+JOURNEYPILOT_DATABASE__PORT=55434 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
 ```
 
 前端与后端的端口、日志、重启行为见 [本地启动排障](docs/local-development-troubleshooting.md)。
@@ -19,6 +19,7 @@ export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
 
 uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
 uv run --project backend python backend/journeypilot.py config docs --check
+uv run --project backend python backend/journeypilot.py config validate
 uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignore=backend/tests/db -q
 
 cd frontend && npm ci && npm run check

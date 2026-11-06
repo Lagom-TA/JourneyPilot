@@ -126,7 +126,7 @@ test('提交后立即进入工作台，理解问题在工作台内回答', async
     await expect(page.getByTestId('new-trip-hero')).toBeVisible();
     await page.getByRole('textbox', { name: '一句话描述旅行', exact: true }).fill('想去青岛海边放松几天，第一次独自旅行');
     await page.getByRole('button', { name: '开始规划', exact: true }).click();
-    // 点击开始规划立即显示工作台；首页不再等待问答。
+    // 点击开始规划立即显示工作台；首页不等待问答。
     await expect(page.getByTestId('journey-workspace')).toBeVisible();
     await expect(page.getByTestId('new-trip-hero')).toHaveCount(0);
     (page as any)._releaseChat();

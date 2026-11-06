@@ -41,15 +41,6 @@ export const AGENT_TO_STAGE: Record<string, StageId> = Object.fromEntries(NODE_S
     [node, stage],
     [display, stage],
 ]));
-const LEGACY_AGENT_ALIASES: Record<string, string> = {
-    '理解需求': '理解旅行需求',
-    '等待回答': '等待你的回答',
-};
-for (const [legacy, current] of Object.entries(LEGACY_AGENT_ALIASES)) {
-    const stage = AGENT_TO_STAGE[current];
-    if (stage)
-        AGENT_TO_STAGE[legacy] = stage;
-}
 export function getStageIdForAgent(agentName: string): StageId | null {
     const { base } = parseAgentRound(agentName);
     return AGENT_TO_STAGE[base] ?? null;
@@ -104,11 +95,6 @@ for (const [node, display, stage] of NODE_STAGES) {
         ACTIVITY_STAGE_BY_NODE[display] = node === 'itinerary_planner' || display === '行程规划' ? 'route' : 'research';
 }
 ACTIVITY_STAGE_BY_NODE['安排查询'] = 'research';
-for (const [legacy, current] of Object.entries(LEGACY_AGENT_ALIASES)) {
-    const stage = ACTIVITY_STAGE_BY_NODE[current];
-    if (stage)
-        ACTIVITY_STAGE_BY_NODE[legacy] = stage;
-}
 export function getActivityStageIdForAgent(agentName: string): ActivityStageId | null {
     return ACTIVITY_STAGE_BY_NODE[parseAgentRound(agentName).base] ?? null;
 }

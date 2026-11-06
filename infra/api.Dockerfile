@@ -24,7 +24,7 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 FROM python:3.11-slim-bookworm AS builder
 
-# 固定 uv 版本：一个会自己升级的安装器让「同一个 commit 构出同一个镜像」不再成立。
+# 固定 uv 版本：一个会自己升级的安装器无法保证「同一个 commit 构出同一个镜像」。
 ARG UV_VERSION=0.9.7
 ARG DEPENDENCY_GROUPS="local-embedding"
 

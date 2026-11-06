@@ -113,7 +113,7 @@
 @media (min-width: 1024px) {
   .recovery-notice {
     top: 16px;
-    /* 桌面端盖住地图顶栏与行程浮面板，但仍低于 Sheet、移动抽屉与模态框。 */
+    /* 桌面端盖住地图顶栏与行程浮面板，但仍低于阅读版与模态框。 */
     z-index: var(--z-recovery-desktop);
   }
 }

@@ -5,11 +5,8 @@ from __future__ import annotations
 from datetime import date
 from datetime import timedelta
 from travel_agent.planning.research.provider_contracts import ProviderRouteLegScope
-from typing import AbstractSet
 from typing import Any
 from typing import Mapping
-from typing import Optional
-from typing import Sequence
 
 
 def _identity_parts(
@@ -105,41 +102,3 @@ def build_required_long_distance_legs(
         )
     return legs
 
-
-def missing_long_distance_leg_roles(
-    required_legs: Sequence[ProviderRouteLegScope],
-    *,
-    day_dates: AbstractSet[date],
-    dates_with_long_distance: AbstractSet[date],
-) -> Optional[list[str]]:
-    """列出计划中的 Day 未交付的必需长途交通段角色。
-
-    返回 ``None`` 表示无法评估，所有读取方必须保持沉默。三种情况：Run 本身
-    不承担长途段；组合出的 Day 没有覆盖某个必需服务日期（身份与行程描述的不
-    是同一趟旅行）；某个服务日期承担多段且至少已有一段（同日往返时「当天有
-    长途段」无法区分一段到达还是两段到达）。
-
-    沉默与空列表含义不同：空列表断言所有必需段都已交付。
-
-    区分同日两段中哪一段缺失需要逐段的交付身份，而交付段的端点是 provider
-    binder 生成的站点级 id（``12306:{telecode}``、机场代码），必需段的端点是
-    受控身份的城市级 id（``osm:relation:…``）；两者不会相等，强行匹配只能靠猜。
-    """
-
-    if not required_legs or any(
-        leg.service_date not in day_dates for leg in required_legs
-    ):
-        return None
-    owed_per_date: dict[date, int] = {}
-    for leg in required_legs:
-        owed_per_date[leg.service_date] = owed_per_date.get(leg.service_date, 0) + 1
-    if any(
-        owed > 1 and service_date in dates_with_long_distance
-        for service_date, owed in owed_per_date.items()
-    ):
-        return None
-    return [
-        leg.leg_role
-        for leg in required_legs
-        if leg.service_date not in dates_with_long_distance
-    ]

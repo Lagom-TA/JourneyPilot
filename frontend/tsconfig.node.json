@@ -15,13 +15,12 @@
      */
     "outDir": "./node_modules/.tmp/tsconfig-node"
   },
-  // Everything that runs on node rather than in the browser — the tooling
-  // configs and the Playwright specs. `references` from tsconfig.json does
-  // not check these outside `tsc -b`, so they all belong in this one program:
-  // checking only vite.config.ts would leave exactly the blind spot this
-  // program exists to close, and an e2e spec that nothing type-checks is a
-  // spec that can reference a removed selector helper and still look fine
-  // until CI runs a browser.
+  // 运行在 node 而非浏览器里的代码：工具链配置和 Playwright 用例。`tsconfig.json`
+  // 的 `references` 只在 `tsc -b` 下才会检查这些文件，所以统一放进这一个 program：
+  // 只检查 vite.config.ts 会留下正是这个 program 要消除的盲区，没有类型检查的用例，
+  // 引用了已删除的选择器辅助函数也看不出来，直到真正跑浏览器才暴露。
+  // e2e/fixtures 下的 .tsx 是在浏览器里渲染的 React 夹具，会引入 src 的大量模块，
+  // 而 `composite` 要求所有文件都列入 include，因此它们由 `tsconfig.json` 检查。
   "include": [
     "vite.config.ts",
     "vitest.config.ts",

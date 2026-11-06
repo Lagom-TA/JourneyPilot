@@ -76,7 +76,7 @@ flowchart LR
 
 ## 快速开始
 
-需要 [uv](https://docs.astral.sh/uv/)、Python 3.11、Node.js 22 或更高版本和 npm，以及带 Compose 的 Docker Desktop 或 Docker Engine。还需要一个可用的模型服务及其凭据。
+需要 [uv](https://docs.astral.sh/uv/)、Python 3.11、Node.js 和 npm，以及带 Compose 的 Docker Desktop 或 Docker Engine。推荐 Node 22（见 `frontend/.nvmrc`）；仅运行前端最低需要 20.19，可选的 Firecrawl MCP 需要 22 或更高版本。还需要一个可用的模型服务及其凭据。
 
 ```bash
 git clone https://github.com/Lagom-TA/JourneyPilot.git
@@ -97,7 +97,7 @@ export JOURNEYPILOT_FAST_MODEL__API_KEY="your-api-key"
 在仓库根目录启动：
 
 ```bash
-JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
+JOURNEYPILOT_DATABASE__PORT=55434 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
 ```
 
 首次启动会安装依赖，通过 Compose 启动 PostgreSQL 和 Redis，执行数据库迁移，再启动 API 和网页。默认本地向量模型会在首次使用时下载。
@@ -135,7 +135,7 @@ docker compose -f infra/compose.yml up -d --build
 docker compose -f infra/compose.yml logs -f api
 ```
 
-网页和 API 均通过 <http://localhost:8001> 访问。Compose 会读取根目录的 `.env`；仅在宿主 shell 中导出模型密钥，不会自动传入 API 容器。数据库和 Redis 也分别向宿主机发布 `55433`、`16379` 端口；设置 `JOURNEYPILOT_DATABASE__PORT` 可让数据库改用其他宿主机端口。
+网页和 API 均通过 <http://localhost:8001> 访问。Compose 会把根目录的 `.env` 整份传入 API 容器；仅在宿主 shell 中导出模型密钥，不会自动传入容器。Compose 自身替换的变量（`JOURNEYPILOT_DATABASE__PORT`、`POSTGRES_IMAGE`、`DEPENDENCY_GROUPS`）来自宿主 shell；要从根目录 `.env` 读取，需要加 `--env-file .env`。数据库和 Redis 也分别向宿主机发布 `55434`、`16379` 端口；设置 `JOURNEYPILOT_DATABASE__PORT` 可让数据库改用其他宿主机端口。
 
 JourneyPilot 面向单用户自托管场景，目前没有账户系统或内建鉴权。请在可信网络中运行；部署到不可信网络前，请配置访问控制，并检查 API、数据库和 Redis 的监听地址。详见[安全策略](SECURITY.md)。
 
@@ -155,7 +155,7 @@ uv run --project backend python backend/scripts/check_mcp.py
 
 `run.sh` 会安装锁定的 Node MCP 依赖；直接启动后端前，可运行 `npm --prefix backend/mcp ci --omit=dev` 安装这些依赖。
 
-默认使用本地 Qwen3 ONNX 模型生成知识库向量，也可配置兼容的远程向量服务。向量结果不完整时，资料索引会失败并保留原资料。仓库附带一份[小规模出厂语料](backend/data/corpus/factory/README.md)，可按说明导入；可选的本地二进制种子不随仓库提供。
+默认使用本地 Qwen3 ONNX 模型生成知识库向量，也可配置兼容的远程向量服务。向量结果不完整时，资料索引会失败并保留原资料。仓库附带一份[小规模出厂语料](backend/data/corpus/factory/README.md)，可按说明导入；可选的本地二进制种子不随仓库提供。默认的 PostgreSQL 镜像不带 `zhparser` 扩展，知识库词法检索使用 PostgreSQL 的 `simple` 文本检索配置，中文分词质量较低；要启用中文分词，请构建 `infra/postgres` 里的可选镜像，并在启动 Compose 时用 `POSTGRES_IMAGE` 指向它。该配置在建表时固定，已有数据库切换时需要重建（见 [ADR-0007](docs/adr/ADR-0007-core-default-enhancements-optional.md)）。
 
 数据库迁移由启动脚本或容器入口在 API 启动前执行。检查数据库状态和创建备份：
 
@@ -170,11 +170,15 @@ uv run --project backend python backend/journeypilot.py backup
 
 ```bash
 # 在仓库根目录运行
+export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
 uv sync --project backend --locked --group local-embedding --group dev
+
+# 提交前检查
 uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
+uv run --project backend python backend/journeypilot.py config docs --check
+uv run --project backend python backend/journeypilot.py config validate
 uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignore=backend/tests/db -q
-npm --prefix frontend ci
-npm --prefix frontend run check
+cd frontend && npm ci && npm run check
 ```
 
 数据库集成测试需要可访问的 PostgreSQL；浏览器测试及真实模型测试的前置条件见[端到端测试说明](frontend/e2e/README.md)。

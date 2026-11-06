@@ -94,8 +94,8 @@ def _api_key() -> str:
     """从唯一配置位置读取 amap web-service key。
 
     key 保存在 ``amap-maps`` MCP server 条目上；这里不新增第二个配置字段来保存
-    同一个密钥。``_env_mapping`` 已允许进程环境覆盖该值，因此设置
-    ``AMAP_MAPS_API_KEY`` 的部署无需修改文件。
+    同一个密钥。该条目的 ``required_env``（见 ``config/mcp_defaults.py``）会从进程环境
+    读取 ``AMAP_MAPS_API_KEY``，因此设置该环境变量的部署无需修改文件。
     """
     server = get_settings().mcp_servers.get("amap-maps")
     key = (

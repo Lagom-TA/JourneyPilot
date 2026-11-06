@@ -444,7 +444,7 @@ def test_research_retry_deadline_remains_valid_after_waiting():
 
 
 async def test_rich_candidate_supply_reaches_composition_and_workspace(monkeypatch):
-    # 14/9/10 明显超过旧配额（12/8/8），并包含一个不可用的未入选住宿候选：
+    # 14/9/10 明显超过短途的候选上限（12/8/8），并包含一个不可用的未入选住宿候选：
     # 它保留在目录里，但不得阻断交付，也不进入可操作选项。
     stays = [_lodging_candidate(index, "city_hangzhou") for index in range(1, 10)]
     stays.append(_lodging_candidate(10, "city_hangzhou", unavailable=True))
@@ -509,13 +509,13 @@ async def test_rich_candidate_supply_reaches_composition_and_workspace(monkeypat
     assert len(lodging_options) == 9
 
 
-def test_candidate_limit_scales_with_trip_size_beyond_old_caps():
+def test_candidate_limit_scales_with_trip_size_beyond_short_trip_caps():
     long_multicity = {
         "start_date": "2026-11-05",
         "end_date": "2026-11-15",
         "destinations": [{"place_id": "city_a"}, {"place_id": "city_b"}, {"place_id": "city_c"}],
     }
-    # 短途保底与旧上限一致，长途多城按规模放宽，且有输出可读性上限。
+    # 短途保底为 12/8/8，长途多城按规模放宽，且有输出可读性上限。
     short = {"start_date": "2026-11-05", "end_date": "2026-11-05", "destinations": [{"place_id": "city_a"}]}
     assert packet_candidate_limit("destination_researcher", trip_identity=short) == 12
     assert packet_candidate_limit("accommodation_researcher", trip_identity=short) == 8

@@ -4,7 +4,6 @@ from travel_agent.planning.delivery.presentation import TRANSPORT_MODE_LABELS
 from travel_agent.planning.delivery.presentation import endpoint_label
 from travel_agent.planning.itinerary.models import DiningStop
 from travel_agent.planning.itinerary.models import LodgingStay
-from travel_agent.planning.itinerary.models import StructuredItinerary
 from travel_agent.planning.itinerary.models import TransportLeg
 from travel_agent.planning.itinerary.models import VisitStop
 from typing import Optional
@@ -142,23 +141,3 @@ def derive_trip_highlights(
     ]
     return [line for line in lines if line][:MAX_TRIP_HIGHLIGHTS]
 
-
-def with_derived_highlights(itinerary: StructuredItinerary) -> StructuredItinerary:
-    """返回带有实体所隐含亮点的同一份行程。
-
-    ``StructuredItinerary`` 无法像 ``cost_summary`` 那样为 ``highlights``
-    设置默认值：推导需要读取交付呈现里的交通文案，而该模块导入了实体模块。
-    因此通过构造器创建的行程会保留调用方传入的 highlights，
-    包括空值；所有写入已有行程的代码都经过本函数补齐。
-    """
-
-    return itinerary.model_copy(
-        update={
-            "highlights": derive_trip_highlights(
-                visits=itinerary.visit_stops,
-                dining=itinerary.dining_stops,
-                lodging=itinerary.lodging_stays,
-                transport_legs=itinerary.transport_legs,
-            )
-        }
-    )

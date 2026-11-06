@@ -1,3 +1,17 @@
+"""出厂语料的本地种子：把出厂集合的分块与向量导出成文件，再灌回数据库。
+
+种子是可选的本地数据（默认目录 `data/corpus/seed/`），不随仓库发布；仓库只携带
+Markdown 基础语料（`data/corpus/factory/`）。种子包含分块正文、元数据和已算好的
+向量，开机自举时直接灌库，省去对出厂语料逐段 embedding。向量体积大且与 embedder
+绑定，所以只作为本地文件存在。
+
+- `manifest.json` 记录 embedder 身份、维度、各集合计数和两个数据文件的 SHA-256；
+  `verify_seed` 只查文件，不连库。
+- 灌库默认只补当前为空的出厂集合；`force` 才清空出厂集合后重灌。
+- 向量必须与查询时的 embedder 处于同一向量空间。种子的 embedder 身份与当前配置
+  不符时，丢弃种子里的向量，用当前 embedder 重算。
+"""
+
 from __future__ import annotations
 
 import hashlib

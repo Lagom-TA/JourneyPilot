@@ -83,14 +83,11 @@ describe('activity stage filtering', () => {
     });
 });
 describe('four-stage activity projection', () => {
-    it('识别真实公开中文名、旧别名与 dispatcher', () => {
+    it('识别后端公开的中文名与 dispatcher', () => {
         expect(getActivityStageIdForAgent('理解旅行需求')).toBe('requirements');
         expect(getActivityStageIdForAgent('等待你的回答')).toBe('requirements');
         expect(getActivityStageIdForAgent('安排查询')).toBe('research');
         expect(getActivityStageIdForAgent('理解旅行需求（第2轮补充）')).toBe('requirements');
-        // 旧夹具仍可读，但新事件使用后端真实公开名。
-        expect(getActivityStageIdForAgent('理解需求')).toBe('requirements');
-        expect(getActivityStageIdForAgent('等待回答')).toBe('requirements');
     });
     it('已完成阶段在 Run 仍运行时保持 done，当前阶段才 active', () => {
         const projection = deriveActivityStages(

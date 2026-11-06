@@ -220,7 +220,7 @@ def test_selection_replacement_uses_its_destination_weather(kind, target_kind):
         visit_stops=[], dining_stops=[entity] if kind == "dining" else [],
         lodging_stays=[entity] if kind == "lodging" else [], transport_legs=[],
         custom_blocks=[],
-        # The middle night of a lodging stay has no check-in/out timeline entry.
+        # 住宿中间的夜晚没有入住/退房时间线条目。
         day_plans=[SimpleNamespace(
             day_id="day-1", date=_TRIP_DATE, destination_id="city-b",
             timeline=[EntityRef(entity_type=entity_type, entity_id=entity_id)]

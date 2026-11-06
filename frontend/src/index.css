@@ -148,7 +148,6 @@
   --z-map-detail: 1001;
   --z-recovery: 1050;
   --z-workspace-panel: 1100;
-  --z-sheet: 1100;
   --z-navigation-scrim: 1110;
   --z-navigation-drawer: 1120;
   --z-recovery-desktop: 1150;
@@ -536,30 +535,6 @@ body {
   color: var(--color-ink);
   box-shadow: var(--shadow-lg);
 }
-
-.neatline {
-  position: absolute;
-  inset: var(--neatline-inset, 0);
-  z-index: 0;
-  pointer-events: none;
-  border: 1px solid rgb(var(--color-ink-rgb) / .16);
-}
-.neatline-tick {
-  position: absolute;
-  width: 13px;
-  height: 13px;
-  border: 0 solid rgb(var(--color-ink-rgb) / .3);
-}
-.neatline-tick-tl { top: -1px; left: -1px; border-top-width: 1px; border-left-width: 1px; }
-.neatline-tick-tr { top: -1px; right: -1px; border-top-width: 1px; border-right-width: 1px; }
-.neatline-tick-bl { bottom: -1px; left: -1px; border-bottom-width: 1px; border-left-width: 1px; }
-.neatline-tick-br { bottom: -1px; right: -1px; border-bottom-width: 1px; border-right-width: 1px; }
-.neatline-enter { animation: hero-fade var(--dur-slow) var(--ease-decelerate) both; }
-
-
-
-
-@keyframes hero-fade { from { opacity: 0; } to { opacity: 1; } }
 
 .research-panel { width: 100%; margin: 12px 0; border: 1px solid var(--color-stroke); border-radius: var(--radius-compact); background: var(--color-panel); overflow: hidden; }
 .research-panel-heading { display: flex; align-items: center; gap: 12px; width: 100%; padding: 18px 20px; color: var(--color-ink); }

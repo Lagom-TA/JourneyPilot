@@ -1,4 +1,4 @@
-# ADR-0011：内容质量由模型负责
+# ADR-0011：内容质量由模型负责，服务端只保证结构与资源边界
 
 状态：已采纳
 影响：`planning/delivery/` 的投影与持久化、`api/schemas/` 的公开交付合同、测试策略
@@ -36,7 +36,7 @@
   `delivery_projector` → `delivery_finalizer`。`intent_amendment_router` 负责计划修改与
   追加要求的路由；Dispatcher 收齐 packet 后构建 `RecommendationCatalog`，模型直接读取
   catalog 组合行程。
-- 持久化产物按当前结构读取；结构不匹配时不加载，也不提供兼容读取层。
+- 持久化产物只按当前结构读取；结构不匹配时不加载。
 - 测试以行为为主：断言给定输入的关键输出或状态变化，不维护质量门禁矩阵或快照对照。
 
 ## 对应不变量

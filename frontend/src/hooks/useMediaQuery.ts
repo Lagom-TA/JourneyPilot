@@ -1,7 +1,7 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { VIEWPORT_QUERIES } from '../lib/breakpoints';
 
-/* 入口与 Sheet 共用断点，避免移动端触点与容器形态不一致。 */
+/* 各处共用同一组视口断点，避免移动端触点与容器形态不一致。 */
 export function useMediaQuery(query: string): boolean {
   const subscribe = useMemo(() => (callback: () => void) => {
     const mql = window.matchMedia(query);

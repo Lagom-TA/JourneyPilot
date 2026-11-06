@@ -1,7 +1,7 @@
 // 确定性的组件 fixture，不调用模型或 provider。
 // 研究按目的地 → 交通 → 住宿串行推进：后续角色只有在前序角色
 // 完成后才开始留下事件，按钮按同一顺序展开各阶段。
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ThinkingChain } from '../../src/features/chat/components/ThinkingChain';
 import { type ThinkingStep } from '../../src/features/chat/types/messages';

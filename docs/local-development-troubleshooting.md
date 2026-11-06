@@ -34,17 +34,17 @@ curl --silent --show-error --fail --max-time 5 \
 
 正常返回 `OK`。连接失败、超时，或正文出现 `Docker Desktop is unable to start`，都表示 Docker 尚不可用；要检查正文，不能只看 curl 退出码。仍不可用时重启 Docker Desktop（会影响其他 Docker 项目），必要时在活动监视器中结束卡住的 Docker 进程。恢复后再运行启动命令；保留现有容器、卷和数据库数据。
 
-Compose 映射到宿主机的端口是 PostgreSQL **55433**、Redis **16379**。`backend/config.example.yaml` 面向本机 PostgreSQL（5433/6379），所以用 Compose 时要显式覆盖：
+Compose 映射到宿主机的端口是 PostgreSQL **55434**、Redis **16379**。`backend/config.example.yaml` 面向本机 PostgreSQL（5433/6379），所以用 Compose 时要显式覆盖：
 
 ```bash
 docker compose -f infra/compose.yml ps
 docker compose -f infra/compose.yml logs --tail=80 postgres redis
-JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
+JOURNEYPILOT_DATABASE__PORT=55434 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
 ```
 
-也可以把 `database.port: 55433`、`redis.port: 16379` 写进 `config.yaml`，之后直接用 `./run.sh`。容器内互联端口不同，不要改 Compose 的容器端口来解决宿主机连接问题。
+也可以把 `database.port: 55434`、`redis.port: 16379` 写进 `config.yaml`，之后直接用 `./run.sh`。容器内互联端口不同，不要改 Compose 的容器端口来解决宿主机连接问题。
 
-Compose 发布 PostgreSQL 宿主机端口时读取同一个 `JOURNEYPILOT_DATABASE__PORT`（未设置时为 55433）。55433 已被其他项目占用时，设置该变量即可换端口，应用与 Compose 会保持一致。
+Compose 发布 PostgreSQL 宿主机端口时读取同一个 `JOURNEYPILOT_DATABASE__PORT`（未设置时为 55434）。宿主机上 55434 被占用时，换一个空闲端口导出该变量即可，应用与 Compose 读取同一个值。这个变量必须来自 shell（或 `docker compose --env-file .env`）：根目录 `.env` 只传入 API 容器，不参与 Compose 的变量替换。
 
 ## PostgreSQL / Redis 连接失败
 
@@ -94,7 +94,9 @@ UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/jour
 UV_PROJECT_ENVIRONMENT="$PWD/.venv" uv run --project backend python backend/journeypilot.py doctor
 ```
 
-配置选择 `rerank.provider=cross_encoder` 时还需要安装 `--group cross-encoder`。迁移被拒绝时按 CLI 输出定位原因：未版本化的非空库会被拒绝；不要擅自删表、清卷或手工 `stamp` 迁移版本。开发、调试和测试统一使用当前配置的数据库，不另建数据库或切换到其他库，除非用户明确要求；删除、清空、重建数据库或其他可能批量破坏现有数据的操作，须先确认影响并取得用户明确授权。API Key 按 README 使用环境变量；排障记录中不要粘贴密钥或完整私有配置。
+`run.sh` 会安装锁定的 Node MCP 依赖。不经 `run.sh`、直接启动后端时，需要先运行 `npm --prefix backend/mcp ci --omit=dev`，否则 Node MCP 服务会显示「未找到 MCP 程序」。
+
+配置选择 `rerank.provider=cross_encoder` 时还需要安装 `--group cross-encoder`。迁移被拒绝时按 CLI 输出定位原因：未版本化的非空库会被拒绝。不要为排障删除行程、清空卷或数据库，也不要擅自删表或手工 `stamp` 迁移版本。API Key 按 README 使用环境变量；排障记录中不要粘贴密钥或完整私有配置。
 
 ## 页面未更新或 API 不通
 

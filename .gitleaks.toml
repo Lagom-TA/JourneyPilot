@@ -5,17 +5,18 @@
 # 给它们开路径白名单只会让「有人 force-add 了一个带真 key 的 config.yaml」变成
 # 静默通过 —— 而那种提交恰恰是最需要被拦下的。
 #
-# CI 的 secrets job 里有一个假密钥自检：种一个 AWS 示例密钥，扫描器必须报出来。
+# CI 的 secrets job 里有一个假密钥自检：种一个合成的、形如 AWS access key 的假
+# 密钥，扫描器必须报出来（刻意不用 AWS 文档里的示例 key，见 pr.yml 中的说明）。
 # 那份自检保证这份配置没有把扫描器关掉。
 
 title = "JourneyPilot"
 
 [extend]
-# Keep default gitleaks rules (sk-*, cloud tokens, etc.).
+# 保留 gitleaks 的默认规则（sk-*、云厂商令牌等）。
 useDefault = true
 
 [allowlist]
-description = "Deterministic false positives only."
+description = "只放行确定性的误报。"
 regexes = [
   # Python 属性表达式会被通用规则误判成凭据。
   '''^reasoning_effort=self\._reasoning_effort$''',

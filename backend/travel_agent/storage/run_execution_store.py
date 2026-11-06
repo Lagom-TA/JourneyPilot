@@ -280,7 +280,7 @@ class RunExecutionStore:
         recovery_reason: str,
         db_session: Any = None,
     ) -> Optional[RunExecution]:
-        """写下恢复判定。没有执行行的历史 run 在这里补一行，判定才有落点。"""
+        """写下恢复判定。没有执行行的 run 在这里补一行，判定才有落点。"""
 
         async def write(session):
             result = await session.execute(

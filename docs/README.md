@@ -18,6 +18,8 @@
 | [参与贡献](../CONTRIBUTING.md) | 开发环境、检查命令与提交要求 |
 | [第三方声明](../NOTICE) | 第三方数据、字体与素材的来源与许可 |
 
+文档和代码注释里的 `journeypilot <子命令>` 是 `uv run --project backend python backend/journeypilot.py <子命令>` 的简写；仓库没有安装控制台脚本。
+
 配置参考与 Schema 由配置模型生成，用下面的命令检查是否一致：
 
 ```bash

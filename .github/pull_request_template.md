@@ -8,7 +8,7 @@
 
 ## 验证方式
 
-- [ ] 后端：`ruff` + `pytest` 非数据库测试 + `config docs --check`
+- [ ] 后端：`ruff`、`config docs --check`、`config validate`、`pytest` 非数据库测试
 - [ ] 前端：`npm run check`
 - [ ] 受影响的行为已手动验证（写清场景）
 - [ ] 文档/注释只描述当前状态；没有新增版本号、兼容层或历史叙事

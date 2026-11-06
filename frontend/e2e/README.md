@@ -1,6 +1,6 @@
 # 端到端测试
 
-先把一套 JourneyPilot 跑起来，再用 `JOURNEYPILOT_APP_URL` 指向入口。Compose 的网页入口通常是 `http://127.0.0.1:8001`；`run.sh` 的前端入口是 `http://127.0.0.1:8080`。命令在 `frontend/` 下执行（Node 版本见 `frontend/.nvmrc`）。
+先把一套 JourneyPilot 跑起来，再用 `JOURNEYPILOT_APP_URL` 指向入口（不设置时为 `http://127.0.0.1:8080`）。Compose 的网页入口通常是 `http://127.0.0.1:8001`，提供构建后的应用；`run.sh` 与 `npm run dev` 的前端入口是 `http://127.0.0.1:8080`，由 Vite dev 服务提供。`/e2e/fixtures/*.html` 组件夹具只有 Vite dev 服务能打开，构建产物与 :8001 都不提供它们。命令在 `frontend/` 下执行（Node 版本见 `frontend/.nvmrc`）。
 
 ```bash
 JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 npm run test:e2e
@@ -21,15 +21,15 @@ npx playwright test --list
 | `home-inspiration.spec.ts` | 是 | 可打开页面（Vite dev 或已构建应用） | 无；`/api/` 在浏览器内拦截 |
 | `planner-intake.spec.ts` | 是 | 可打开页面 | 无；`/api/` 在浏览器内拦截 |
 | `multi-round-intake.spec.ts` | 是 | 可打开页面 | 无；`/api/` 在浏览器内拦截 |
-| `session-state.spec.ts` | `JP_SESSION_STATE_E2E=1` | 可打开页面 | 无；`/api/` 与地图瓦片在浏览器内拦截 |
-| `map-load-failure.spec.ts` | `JP_MAP_LOAD_FAILURE_E2E=1` | 可打开页面 | 无；只模拟瓦片失败 |
-| `generation-workspace.spec.ts` | 是 | 可打开页面 | 无；正式工作台组件，API 在浏览器内拦截 |
+| `session-state.spec.ts` | `JP_SESSION_STATE_E2E=1` | Vite dev 服务；`JOURNEYPILOT_APP_URL` 必须是 `http://127.0.0.1:<端口>`（不接受 `localhost` 或带路径的地址），否则加载时抛错 | 无；`/api/` 与地图瓦片在浏览器内拦截 |
+| `map-load-failure.spec.ts` | `JP_MAP_LOAD_FAILURE_E2E=1` | Vite dev 服务（打开 `/e2e/fixtures/map-load-failure.html`）；`JOURNEYPILOT_APP_URL` 必须是 `http://127.0.0.1:<端口>`，否则加载时抛错 | 无；只模拟瓦片失败 |
+| `generation-workspace.spec.ts` | 是 | Vite dev 服务（打开 `/e2e/fixtures/generation-workspace.html`，:8001 的构建应用不提供） | 无；正式工作台组件，API 在浏览器内拦截 |
 | `archive-workspace.spec.ts` | 是 | 可打开页面 | 无；行程与资料管理在浏览器内拦截，涵盖读取、写入失败与运行配置限制 |
 | `delivery-workspace.spec.ts` | 是 | 可打开页面 | 无；正式交付工作台，API 与瓦片在浏览器内拦截 |
-| `research-progress.spec.ts` | `JP_COMPONENT_E2E=1` | 可打开页面 | 无；使用本地组件样例 |
+| `research-progress.spec.ts` | `JP_COMPONENT_E2E=1` | Vite dev 服务（打开 `/e2e/fixtures/` 下的研究、生成进度与 SSE 夹具） | 无；使用本地组件样例 |
 | `deployment-settings.spec.ts` | `JP_DEPLOYMENT_URL=<局域网 HTTP 地址>` | 单独启动指定子路径和自定义瓦片的 Vite 服务 | API 与瓦片在浏览器内拦截 |
 | `workspace.spec.ts` | 部分；写入用例需 `JP_WRITE_E2E=1` | 完整应用 | 真实资料库与风格写入；只删除本次唯一命名的测试数据 |
-| `live-planning.spec.ts` | `JP_LIVE_E2E=1` | 完整应用与可用模型 | 调用真实付费模型，并保留新建旅行 |
+| `live-planning.spec.ts` | `JP_LIVE_E2E=1`；可选 `JP_LIVE_DESTINATION=<目的地>`（默认 `苏州`） | 完整应用与可用模型 | 调用真实付费模型，并保留新建旅行 |
 | `delivery-readonly.spec.ts` | `JP_READ_RUN_ID=<run_id>`（也接受 `JP_EDIT_RUN_ID`） | 同一会话中较早的已完成测试行程 | 只读；不写入、不撤销 |
 
 ## 常用命令
@@ -39,13 +39,21 @@ npx playwright test --list
 JOURNEYPILOT_APP_URL=http://127.0.0.1:8088 \
   npx playwright test e2e/home-inspiration.spec.ts e2e/planner-intake.spec.ts e2e/multi-round-intake.spec.ts
 
-# 生成工作台、查询来源与 SSE 状态
-JP_COMPONENT_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
-  npx playwright test e2e/generation-workspace.spec.ts e2e/research-progress.spec.ts
+# 生成工作台：需要 Vite dev 服务（run.sh 的前端或 npm run dev，默认 :8080）
+JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
+  npx playwright test e2e/generation-workspace.spec.ts
 
-# 离线会话与地图工作区
-JP_SESSION_STATE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:5173 \
+# 研究进度、生成进度与 SSE 状态夹具：同样需要 Vite dev 服务；只有这个用例读取 JP_COMPONENT_E2E
+JP_COMPONENT_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
+  npx playwright test e2e/research-progress.spec.ts
+
+# 离线会话与地图工作区：JOURNEYPILOT_APP_URL 必须是 http://127.0.0.1:<端口>
+JP_SESSION_STATE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
   npx playwright test e2e/session-state.spec.ts
+
+# 地图瓦片与依赖加载失败：同样需要 http://127.0.0.1:<端口> 的 Vite dev 服务
+JP_MAP_LOAD_FAILURE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
+  npx playwright test e2e/map-load-failure.spec.ts
 
 # 局域网 HTTP、子路径与自定义瓦片；LAN_HOST 为本机局域网地址
 HOST="$LAN_HOST" PORT=8082 VITE_BASE=/journeypilot/ \
@@ -58,7 +66,7 @@ JP_DEPLOYMENT_URL="http://$LAN_HOST:8082" npx playwright test e2e/deployment-set
 JP_WRITE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
   npx playwright test e2e/workspace.spec.ts --workers=1
 
-# 真实付费生成：上海到苏州，当前日期后四天，两日一晚；追问时选择测试选项并提交。
+# 真实付费生成：上海到 JP_LIVE_DESTINATION（默认苏州），当前日期后四天，两日一晚；追问时选择测试选项并提交。
 JP_LIVE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
   npx playwright test e2e/live-planning.spec.ts --workers=1
 
@@ -69,7 +77,7 @@ JP_READ_RUN_ID=trip_xxx JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
 
 ## 证据与失败处理
 
-- Playwright 在测试失败时保留截图、跟踪与视频；CI 报告也写入被 Git 忽略的 `test-results/` 目录。
+- Playwright 在测试失败时保留截图、跟踪与视频；设置 `CI` 环境变量时，还会把 JUnit 报告写入被 Git 忽略的 `test-results/playwright-junit.xml`。
 - 完整规划用例保存 SSE、Run/Bundle 快照、PDF 与浏览器诊断；原始材料可能包含真实请求和服务结果，只能留在忽略目录。
 - 模型输出不确定，外部服务也可能失败。完整规划用例最多等待 35 分钟；失败时先区分应用故障、上游失败与选择器错误，不通过放宽交付要求或改用模拟响应让用例通过。
 - 冒烟测试允许 readiness 返回 503，以检查降级响应合同；判断部署可用仍须确认 `/api/health/ready` 返回 200 且 `status=ready`。

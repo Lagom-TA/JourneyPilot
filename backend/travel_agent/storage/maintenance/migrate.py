@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 ALEMBIC_INI = BACKEND_DIR / "alembic.ini"
 MIGRATIONS_DIR = BACKEND_DIR / "migrations"
 #: 每个**改变了受管结构**的 revision 在这里存一份指纹。API 只读校验与 drift 判定
-#: 都拿活库指纹与这里的存档逐字比对。不改结构的 revision（比如只删合同外的遗留表）
+#: 都拿活库指纹与这里的存档逐字比对。不改结构的 revision（比如只改合同外的表）
 #: 不需要新存档 —— 指纹只覆盖 `MANAGED_TABLES`，它们本来就不在里面。
 FINGERPRINTS_DIR = MIGRATIONS_DIR / "fingerprints"
 
@@ -183,7 +183,7 @@ def load_fingerprint_archive(revision: str) -> dict[str, Any] | None:
 def expected_fingerprint_for(revision: str, *, line: tuple[str, ...] | None = None) -> dict[str, Any] | None:
     """这个 revision 应该长什么样：从它往前找到最近的一份指纹存档。
 
-    往前找而不是要求每个 revision 都有存档：只删合同外遗留表这种迁移不改变受管结构，
+    往前找而不是要求每个 revision 都有存档：只改合同外表的迁移不改变受管结构，
     给它复制一份一模一样的指纹只会制造「两份文件必须同步」的维护负担。
     """
 
@@ -308,8 +308,7 @@ def plan(
     # 有核心表、无版本号 → 拒绝。
     #
     # 判定只有三种结果：空库建、有 alembic_version 按版本号走、其余拒绝。
-    # 不接受「证明结构等于 baseline 后 stamp」的纳管路径：那等于保留一个把来历
-    # 不明的结构标记成最新版本的入口，只省掉一次重建。
+    # 来历不明的结构不会被标记成任何版本。
     return build(
         Decision.REFUSE_UNKNOWN_SCHEMA,
         problems=(
@@ -318,7 +317,7 @@ def plan(
         ),
         next_action=(
             "先 `journeypilot backup` 留档，再重建数据库（`journeypilot migrate` 会建出完整结构）"
-            "或从匹配的备份恢复。本版本不再自动纳管未版本化的库。"
+            "或从匹配的备份恢复。"
         ),
     )
 

@@ -31,12 +31,6 @@ def _mode_value(mode: object) -> str:
     return str(getattr(mode, "value", mode))
 
 
-def provider_route_mode(requested_mode: object) -> str:
-    """把展示方式映射为路线 Provider 支持的道路查询方式。"""
-    requested = _mode_value(requested_mode)
-    return "drive" if requested in _ROAD_DISPLAY_MODES else requested
-
-
 def transport_mode_satisfies(provider_mode: object, requested_mode: object) -> bool:
     """判断 Provider 方式能否承载指定展示方式，出租车与网约车共用道路几何。"""
     provider = _mode_value(provider_mode)

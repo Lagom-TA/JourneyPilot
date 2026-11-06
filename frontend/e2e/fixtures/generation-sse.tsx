@@ -1,5 +1,5 @@
 // 经过真实 SSE 呈现链的确定性生成工作区夹具，不调用模型或后端。
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppProvider } from '../../src/app/state/AppProvider';
 import { useApp } from '../../src/app/state/AppContext';
@@ -37,7 +37,8 @@ const identity = {
   destinations: [place('青岛')],
   start_date: '2026-11-05',
   end_date: '2026-11-08',
-  party: { adults: 1, children: 0, elderly_companions: false, accessibility_required: false },
+  dates_assumed: false,
+  party: { total: 1, adults: 1, children: 0, elderly_companions: false, accessibility_required: false },
   style: { primary: '经典均衡', secondary_interests: ['当地美食'], source: 'current' as const },
 };
 

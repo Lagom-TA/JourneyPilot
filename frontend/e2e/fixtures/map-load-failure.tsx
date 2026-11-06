@@ -1,6 +1,6 @@
 // 确定性的已交付行程组件夹具：只挂载现有 DeliveryWorkspace 与本地 Bundle，
 // 不请求后端、不包含真实用户数据；地图瓦片由 Playwright 在浏览器内拦截。
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppProvider } from '../../src/app/state/AppProvider';
 import { useApp } from '../../src/app/state/AppContext';

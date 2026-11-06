@@ -4,9 +4,7 @@
 # 一个只有一个人维护的仓库里等于没人看。major 仍然单独提，因为 major 需要读
 # changelog。
 #
-# 注意：`uv` 生态要求仓库的 Python 依赖由 uv 管理（backend/uv.lock）。如果
-# Dependabot 报「unsupported ecosystem」，把它换成 `pip` 只会提不改 uv.lock 的
-# PR —— 那些 PR 会在 `uv sync --frozen` 上失败，所以宁可先不配。
+# Python 依赖由 uv 管理（backend/uv.lock），所以用 `uv` 生态而不是 `pip`。
 
 version: 2
 updates:

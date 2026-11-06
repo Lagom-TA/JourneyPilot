@@ -195,7 +195,7 @@
     },
     "FastModelConfig": {
       "additionalProperties": false,
-      "description": "轻量 LLM 配置（用于简单问答、路由判断等低延迟任务）\n\n方案A（默认）: MiniMax-M2.7 @ api.minimaxi.com/v1\n方案B（可选）: 本地 Qwen，model_name=\"qwen3.5:4b\", base_url=\"http://localhost:11434/v1\"",
+      "description": "轻量 LLM 配置（用于简单问答、路由判断等低延迟任务）。\n\n可指向任意 OpenAI 兼容端点，例如本地 Qwen：\nmodel_name=\"qwen3.5:4b\"，base_url=\"http://localhost:11434/v1\"。",
       "properties": {
         "api_key": {
           "default": "",
@@ -625,7 +625,7 @@
     },
     "PrimaryModelConfig": {
       "additionalProperties": false,
-      "description": "主力 LLM 配置（用于复杂规划等高推理任务）\n默认: MiniMax-M2.7 @ api.minimaxi.com/v1",
+      "description": "主力 LLM 配置（用于复杂规划等高推理任务）。",
       "properties": {
         "api_key": {
           "default": "",
@@ -856,7 +856,7 @@
     },
     "RerankConfig": {
       "additionalProperties": false,
-      "description": "Reranking 二阶段精排配置。\n\nprovider = \"cross_encoder\" → BGE-Reranker-v2-m3（需要 pip install sentence-transformers）\nprovider = \"llm\"           → 复用现有 LLM 做相关性评分（开箱即用，推荐）",
+      "description": "Reranking 二阶段精排配置。\n\nprovider = \"cross_encoder\" → BGE-Reranker-v2-m3（需要 uv sync --project backend --group cross-encoder）\nprovider = \"llm\"           → 复用现有 LLM 做相关性评分（开箱即用，推荐）",
       "properties": {
         "enabled": {
           "default": true,

@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""JourneyPilot-owned 12306 MCP server.
+"""12306 铁路 MCP 服务（stdio）。
 
-The server keeps the three tool names and argument shapes the repo couples to,
-and reads the live query path out of ``/otn/leftTicket/init`` on every call.
-All decode logic lives in ``travel_agent.integrations.rail`` so it is unit
-testable without a subprocess.  ``get-tickets`` answers with a JSON payload
-(structured, code-consumed); ``get-interline-tickets`` and
-``get-station-code-of-citys`` answer with the text/JSON string their only
-consumers read.
+提供三个工具：``get-tickets`` 返回结构化 JSON 余票；``get-interline-tickets``
+与 ``get-station-code-of-citys`` 返回文本。每次调用都从
+``/otn/leftTicket/init`` 读取当前查询路径。解码逻辑全部在
+``travel_agent.integrations.rail``，便于不起子进程做单元测试。
 """
 
 from __future__ import annotations

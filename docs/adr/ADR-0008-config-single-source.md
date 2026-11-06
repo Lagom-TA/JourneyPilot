@@ -9,8 +9,12 @@
 - 字段、默认值与校验只在 `config/models.py`；未知字段**拒绝**（`extra="forbid"`）。
 - 环境变量统一 `JOURNEYPILOT_<段>__<字段>`，一处按 schema 解析；认不出的
   `JOURNEYPILOT_*` 变量与类型不符的值都是**错误**。
-- 启动脚本、Compose、README **不定义任何策略**（Deadline、预算、超时、端口默认值）。
-- Provider 的具体连接值是 **preset**（`backend/travel_agent/resources/providers/*.yaml`），不是默认值。
+- 启动脚本、Compose、README **不定义任何策略**（Deadline、预算、超时）。Compose 发布数据库宿主机端口时
+  读取与应用相同的 `JOURNEYPILOT_DATABASE__PORT`，端口只有这一个来源。
+- 模型段（`primary_model`、`fast_model`）的内置默认只在 `config/models.py` 定义（取值见
+  [配置参考](../configuration.md)）；各 Provider 的连接值与能力声明是 **preset**
+  （`backend/travel_agent/resources/providers/*.yaml`），由 `configure --provider` 写入连接段。
+  `backend/config.example.yaml` 展示的是另一家 Provider 的连接值，不代表内置默认。
 - 字段参考表与 JSON Schema 由 schema 生成，CI 检查 diff 为空。
 
 ## 为什么
@@ -22,12 +26,13 @@
 「未知字段静默忽略」是「我改了 YAML 为什么没生效」的唯一来源。同理，一个拼错的环境
 变量名如果什么都不做，那么它和没设是无法区分的。
 
-把某家 provider 的 base_url 写成 Pydantic 默认值，等于让一次私人部署成为所有人的
-默认，而那个人换了 provider 之后没有一处会跟着改。
+连接值与 Provider 能力是两件事：能力差异（`json_schema` 支持、输出上限字段、推理方言）
+声明在 preset 上并按 `base_url` 解析，认不出的上游使用保守档。因此换 Provider 只需覆盖
+连接段，能力声明跟着 `base_url` 走，不写进 `models.py`。
 
 ## 替代方案与为什么没选
 
-- **同时保留旧环境变量名**：两套名字并存会让「改了为什么没生效」更无法回答，兼容层本身也需要维护。
+- **为同一字段提供多套环境变量名**：两套名字并存会让「改了为什么没生效」更无法回答，别名层本身也需要维护。
 - **手写字段文档**：它在第一次改默认值时就落后了，而落后的文档比没有文档更贵。
 
 ## 后果

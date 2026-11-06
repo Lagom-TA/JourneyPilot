@@ -107,8 +107,9 @@ browser. See the [architecture overview](docs/architecture/overview.md) for the 
 
 ## Quick start
 
-You will need [uv](https://docs.astral.sh/uv/), Python 3.11, Node.js 22 or newer and npm,
-Docker Desktop or Docker Engine with Compose, and credentials for a model service.
+You will need [uv](https://docs.astral.sh/uv/), Python 3.11, Node.js and npm, Docker Desktop or Docker
+Engine with Compose, and credentials for a model service. Node 22 is recommended (see `frontend/.nvmrc`);
+the frontend alone needs at least 20.19, and the optional Firecrawl MCP server needs 22 or newer.
 
 ```bash
 git clone https://github.com/Lagom-TA/JourneyPilot.git
@@ -130,7 +131,7 @@ export JOURNEYPILOT_FAST_MODEL__API_KEY="your-api-key"
 Start the app from the repository root:
 
 ```bash
-JOURNEYPILOT_DATABASE__PORT=55433 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
+JOURNEYPILOT_DATABASE__PORT=55434 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
 ```
 
 On first start, the script installs dependencies, starts PostgreSQL and Redis with Compose, runs database
@@ -173,10 +174,12 @@ docker compose -f infra/compose.yml up -d --build
 docker compose -f infra/compose.yml logs -f api
 ```
 
-The web app and API are both available at <http://localhost:8001>. Compose reads the root `.env` file;
-model keys exported only in the host shell are not automatically passed to the API container. PostgreSQL
-and Redis also publish host ports `55433` and `16379` respectively; setting `JOURNEYPILOT_DATABASE__PORT`
-publishes PostgreSQL on a different host port.
+The web app and API are both available at <http://localhost:8001>. Compose passes the root `.env` file
+to the API container; model keys exported only in the host shell are not automatically passed to it.
+Variables that Compose itself substitutes (`JOURNEYPILOT_DATABASE__PORT`, `POSTGRES_IMAGE`,
+`DEPENDENCY_GROUPS`) come from the host shell, or from the root `.env` when you add `--env-file .env`.
+PostgreSQL and Redis also publish host ports `55434` and `16379` respectively; setting
+`JOURNEYPILOT_DATABASE__PORT` publishes PostgreSQL on a different host port.
 
 JourneyPilot is designed for self-hosted, single-user use and has no built-in accounts or authentication.
 Run it on a trusted network; before exposing it to an untrusted network, configure access controls and
@@ -214,6 +217,11 @@ The knowledge base uses a local Qwen3 ONNX embedding model by default; a compati
 service can also be configured. Incomplete embedding results fail indexing and leave the existing document intact.
 The repository includes a [small factory corpus](backend/data/corpus/factory/README.md)
 that can be imported using its instructions. The optional local binary seed is not included.
+The default PostgreSQL image has no `zhparser` extension, so knowledge-base lexical search uses PostgreSQL's
+`simple` text search configuration and segments Chinese less accurately. To enable Chinese segmentation,
+build the optional image in `infra/postgres` and start Compose with `POSTGRES_IMAGE` set to it; the
+configuration is fixed when the schema is created, so switching an existing database needs a rebuild
+(see [ADR-0007](docs/adr/ADR-0007-core-default-enhancements-optional.md)).
 
 The startup script and container entrypoint run database migrations before starting the API. To inspect
 the database or create a backup:
@@ -229,11 +237,15 @@ The database dump and row counts use the same snapshot; restore verifies the req
 
 ```bash
 # Run from the repository root
+export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
 uv sync --project backend --locked --group local-embedding --group dev
+
+# Pre-commit checks
 uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
+uv run --project backend python backend/journeypilot.py config docs --check
+uv run --project backend python backend/journeypilot.py config validate
 uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignore=backend/tests/db -q
-npm --prefix frontend ci
-npm --prefix frontend run check
+cd frontend && npm ci && npm run check
 ```
 
 Database integration tests require a reachable PostgreSQL instance. For browser tests and real-provider

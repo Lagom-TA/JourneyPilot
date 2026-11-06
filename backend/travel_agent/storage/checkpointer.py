@@ -34,9 +34,8 @@ async def build_checkpointer(
     刻意不调用 ``setup()``：建表属于 DDL，由 ``journeypilot migrate`` 负责。
     缺表时在这里抛错，使未迁移的数据库在启动时暴露，而不是第一次 interrupt 时。
 
-    构建 saver 也是其序列化器日志噪声的起点，因此在这里安装去重过滤器：无论
-    服务应用、演练脚本还是种子脚本，构建 checkpointer 都经过这一处。安装是
-    幂等的，只改 logging；序列化器本身不改动（配置
+    构建 saver 也是其序列化器日志噪声的起点，因此在这里安装去重过滤器：构建
+    checkpointer 只经过这一处。安装是幂等的，只改 logging；序列化器本身不改动（配置
     ``allowed_msgpack_modules`` 白名单会切换到严格模式，未列出的类型在恢复时
     会被静默降级为普通 dict，而不是抛错）。
     """
