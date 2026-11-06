@@ -39,10 +39,12 @@
 .generation-activity { display: flex; min-height: 0; min-width: 0; flex: 1; flex-direction: column; overflow: hidden; }
 .generation-activity-body { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 32px var(--desk-inset) 36px; }
 .generation-handoff { display: grid; min-width: 0; align-content: start; }
-.generation-handoff-pane { display: grid; min-height: 0; grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: opacity var(--dur-medium) var(--ease-standard); }
-.generation-handoff-pane-inner { min-height: 0; overflow: hidden; }
+.generation-handoff-pane { display: grid; min-height: 0; grid-template-rows: 1fr; opacity: 1; visibility: visible; transition: opacity var(--dur-slow) var(--ease-decelerate); }
+.generation-handoff-pane-inner { min-height: 0; overflow: hidden; transform: translateX(0); transition: transform var(--dur-slow) var(--ease-decelerate); }
 .generation-handoff.is-gate .generation-handoff-gate .generation-handoff-pane-inner, .generation-handoff:not(.is-gate) .generation-handoff-process .generation-handoff-pane-inner { overflow: visible; }
 .generation-handoff.is-gate .generation-handoff-process, .generation-handoff:not(.is-gate) .generation-handoff-gate { grid-template-rows: 0fr; opacity: 0; visibility: hidden; }
+.generation-handoff.is-gate .generation-handoff-process .generation-handoff-pane-inner { transform: translateX(calc(-1 * var(--distance-content))); }
+.generation-handoff:not(.is-gate) .generation-handoff-gate .generation-handoff-pane-inner { transform: translateX(var(--distance-content)); }
 .generation-handoff.is-instant .generation-handoff-pane, .generation-handoff.is-instant .generation-handoff-pane-inner { transition: none; }
 .generation-status-actions, .generation-activity-error { margin-left: calc((100% - var(--desk-gap)) * .32 + var(--desk-gap)); }
 .generation-status-actions { margin-bottom: 24px; }
@@ -50,7 +52,7 @@
 .generation-run-actions { display: flex; gap: 12px; flex-wrap: wrap; }
 .generation-run-actions button { display: inline-flex; min-height: 40px; align-items: center; gap: 7px; padding: 8px 14px; border: 1px solid var(--color-stroke); border-radius: var(--radius-label); color: var(--color-ink); font-size: 13px; }
 .generation-run-actions button[data-testid='boarding-pass-resume'] { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-on-accent); }
-.generation-stop-btn { display: inline-flex; flex: none; min-height: 34px; align-items: center; justify-content: center; gap: 7px; padding: 6px 11px; border: 1px solid var(--color-stroke); border-radius: var(--radius-label); color: var(--color-ink-secondary); font-size: 12px; transition: color var(--dur-fast), border-color var(--dur-fast), background-color var(--dur-fast); }
+.generation-stop-btn { display: inline-flex; flex: none; min-height: 34px; align-items: center; justify-content: center; gap: 7px; padding: 6px 11px; border: 1px solid var(--color-stroke); border-radius: var(--radius-label); color: var(--color-ink-secondary); font-size: 12px; transition: color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard), background-color var(--dur-fast) var(--ease-standard); }
 .generation-stop-btn:hover:not(:disabled) { color: var(--color-error); border-color: currentColor; background: color-mix(in srgb, var(--color-error) 5%, transparent); }
 .generation-stop-btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 .generation-stop-btn:disabled { opacity: .55; cursor: wait; }
@@ -81,7 +83,7 @@
 .research-panel-workspace .research-agent-state { flex: none; font-size: 12px; line-height: 1.6; }
 .research-panel-workspace .research-agent-update { display: block; margin-top: 17px; padding-left: 11px; border-left: 1px solid var(--color-accent); color: var(--color-ink-secondary); font-size: 13px; line-height: 1.85; }
 .research-panel-workspace .research-agent:not(.is-active) .research-agent-update { margin-top: 8px; padding-left: 0; border-left: 0; }
-.research-panel-workspace .research-agent-chevron { width: 15px; height: 15px; margin-top: 2px; transition: opacity var(--dur-fast), transform var(--dur-medium); }
+.research-panel-workspace .research-agent-chevron { width: 15px; height: 15px; margin-top: 2px; transition: opacity var(--dur-fast) var(--ease-standard), transform var(--dur-medium) var(--ease-standard); }
 .research-panel-workspace .research-agent-body { padding: 0 0 12px; border-top: 1px solid var(--color-stroke); }
 .research-panel-workspace .research-query-summary { min-height: 44px; align-items: flex-start; gap: 8px; padding: 14px 0; }
 .research-panel-workspace .research-query-main { display: block; min-width: 0; }
@@ -142,7 +144,7 @@
 
 @media (hover: hover) and (pointer: fine) {
  @container (width >= 800px) {
-  .research-panel-workspace .research-agent-heading[aria-expanded] .research-agent-chevron, .research-panel-workspace .research-disclosure-icon { opacity: 0; transition: opacity var(--dur-fast); }
+  .research-panel-workspace .research-agent-heading[aria-expanded] .research-agent-chevron, .research-panel-workspace .research-disclosure-icon { opacity: 0; transition: opacity var(--dur-fast) var(--ease-standard); }
   .research-panel-workspace .research-agent-heading[aria-expanded]:hover, .research-panel-workspace .research-agent-heading:focus-visible { background: color-mix(in srgb, var(--color-ink) 4%, transparent); }
   .research-panel-workspace .research-agent-heading:hover .research-agent-chevron, .research-panel-workspace .research-agent-heading:focus-visible .research-agent-chevron, .research-panel-workspace .research-agent-heading[aria-expanded='true'] .research-agent-chevron, .research-panel-workspace summary:hover .research-disclosure-icon, .research-panel-workspace summary:focus-visible .research-disclosure-icon, .research-panel-workspace details[open] > summary .research-disclosure-icon { opacity: 1; }
  }
@@ -187,3 +189,7 @@
 
 .recovery-notice.is-generation { top: auto; bottom: calc(90px + env(safe-area-inset-bottom)); }
 @keyframes generation-spin { to { transform: rotate(360deg); } }
+
+@media (pointer: coarse) {
+  .generation-stop-btn { min-height: var(--touch-target-min); }
+}

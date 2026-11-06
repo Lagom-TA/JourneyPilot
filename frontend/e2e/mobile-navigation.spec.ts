@@ -20,7 +20,7 @@ for (const width of [320, 390, 768]) {
     await expect(page.locator('main')).toHaveAttribute('inert', '');
     await page.getByRole('button', { name: '收起侧栏', exact: true }).focus();
     await page.keyboard.press('Shift+Tab');
-    await expect(page.getByRole('link', { name: '我的偏好', exact: true })).toBeFocused();
+    await expect(page.getByRole('link', { name: '资料来源', exact: true })).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(page.getByRole('button', { name: '收起侧栏', exact: true })).toBeFocused();
     await page.keyboard.press('Escape');

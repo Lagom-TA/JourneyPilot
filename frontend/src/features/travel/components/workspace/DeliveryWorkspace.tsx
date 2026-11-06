@@ -3,6 +3,7 @@ import type { Variants } from 'motion/react';
 import { ArrowLeft, BookOpen, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, Layers3, Map as MapIcon, MessageCircle, Sun, X } from 'lucide-react';
 import { useApp } from '../../../../app/state/AppContext';
 import { useIsMobileViewport } from '../../../../hooks/useMediaQuery';
+import { useOverlayDismiss } from '../../../../hooks/useOverlayDismiss';
 import { CanvasMotion } from '../../../../components/ui/CanvasMotion';
 import { PresenceFrame, PresenceSection } from '../../../../components/ui/PresenceSurface';
 import { ConversationThread } from '../../../chat/components/ConversationThread';
@@ -28,7 +29,7 @@ import { DeliveryMobileSheet } from './DeliveryMobileSheet';
 import { UnresolvedReadout } from './UnresolvedReadout';
 import { ItineraryCardFlow, TimelineEntityDetails, type CardMapSelection, type TimelineEntity } from './ItineraryCardFlow';
 import { cn } from '../../../../lib/utils';
-import { duration, easing } from '../../../../lib/motion';
+import { distance, duration, easing } from '../../../../lib/motion';
 import React from 'react';
 
 interface DeliveryWorkspaceProps {
@@ -40,32 +41,27 @@ type DayPlan = PublicDeliveryBundle['workspace']['itinerary']['day_plans'][numbe
 type PlaceLayer = 'visit_stop' | 'dining_stop' | 'lodging_stay';
 
 const readingLayerVariants: Variants = {
-  enter: { opacity: 0, x: 36 },
+  enter: { x: '100%' },
   visible: {
-    opacity: 1,
     x: 0,
     transition: { duration: duration.detail, ease: easing.decelerate },
   },
   exit: {
-    opacity: 0,
-    x: 36,
-    transition: { duration: duration.base, ease: easing.accelerate },
+    x: '100%',
+    transition: { duration: duration.slow, ease: easing.accelerate },
   },
 };
 
 const contentSceneVariants: Variants = {
   enter: (transition: { direction: number }) => ({
-    opacity: 0,
-    x: transition.direction * 24,
+    x: transition.direction * distance.panel,
   }),
   visible: {
-    opacity: 1,
     x: 0,
     transition: { duration: duration.page, ease: easing.decelerate },
   },
   exit: (transition: { direction: number }) => ({
-    opacity: 0,
-    x: transition.direction * -12,
+    x: transition.direction * -distance.content,
     transition: { duration: duration.fast, ease: easing.accelerate },
   }),
 };
@@ -153,13 +149,16 @@ function TodayNextCard({ node, actualToday }: { node: DayTimelineNodeVM | null; 
   );
 }
 
-function ReadingWorkspace({ bundle }: { bundle: PublicDeliveryBundle }) {
-  const { dispatch } = useApp();
+function ReadingWorkspace({ bundle, onClose }: { bundle: PublicDeliveryBundle; onClose: () => void }) {
+  const backRef = React.useRef<HTMLButtonElement>(null);
+  React.useEffect(() => {
+    backRef.current?.focus({ preventScroll: true });
+  }, []);
   const document = selectCurrentReportDocument(bundle);
   return (
     <section className="reading-workspace" aria-label="旅行阅读版">
       <header className="reading-toolbar">
-        <button type="button" onClick={() => dispatch({ type: 'SET_DELIVERABLE_VIEW', payload: 'interactive_itinerary' })}><ArrowLeft size={15} />返回地图</button>
+        <button ref={backRef} type="button" onClick={onClose}><ArrowLeft size={15} />返回地图</button>
         <span>阅读版</span>
         <PdfDownloadButton bundle={bundle} compact />
       </header>
@@ -189,6 +188,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   const [hiddenLayers, setHiddenLayers] = React.useState<PlaceLayer[]>([]);
   const placeReturnFocusRef = React.useRef<{ entityId: string; occurrenceKey: string | null } | null>(null);
   const conversationReturnFocusRef = React.useRef<string | null>(null);
+  const readingReturnFocusRef = React.useRef<HTMLButtonElement | null>(null);
   const contentScrollRef = React.useRef<HTMLDivElement>(null);
   const floatingPanelRef = React.useRef<HTMLDivElement>(null);
   const [panelOffset, setPanelOffset] = React.useState(0);
@@ -201,6 +201,17 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   const itinerary = bundle?.workspace.itinerary ?? null;
   const view = state.deliverableView;
   const showReading = view === 'full_report' && bundle !== null;
+  const closeReading = React.useCallback(() => {
+    dispatch({ type: 'SET_DELIVERABLE_VIEW', payload: 'interactive_itinerary' });
+    window.requestAnimationFrame(() => {
+      const trigger = readingReturnFocusRef.current;
+      const target = trigger?.isConnected && !trigger.closest('[inert]')
+        ? trigger
+        : document.querySelector<HTMLElement>('[data-testid="canvas-pill"]');
+      target?.focus({ preventScroll: true });
+    });
+  }, [dispatch]);
+  useOverlayDismiss({ open: showReading, onDismiss: closeReading });
 
   const restorePlaceFocus = React.useCallback(() => {
     const target = placeReturnFocusRef.current;
@@ -359,17 +370,8 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
     if (state.currentTripRunReadOnly) setSidebarMode('itinerary');
   }, [state.currentTripRunReadOnly]);
 
-  React.useEffect(() => {
-    if (!selectedEntityId) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closePlaceDetail();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [closePlaceDetail, selectedEntityId]);
+  useOverlayDismiss({ open: selectedEntityId !== null && !showReading, onDismiss: closePlaceDetail });
+  useOverlayDismiss({ open: layersOpen && !showReading, onDismiss: () => setLayersOpen(false) });
 
   const registerDayCard = React.useCallback((dayId: string, node: HTMLButtonElement | null) => {
     if (node) summaryCardRefs.current.set(dayId, node);
@@ -488,7 +490,8 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
     if (isMobile) dispatch({ type: 'SET_MOBILE_CANVAS_OPEN', payload: false });
   }, [closePlaceDetail, dispatch, isMobile, selectedEntityId]);
 
-  const openReading = React.useCallback(() => {
+  const openReading = React.useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    readingReturnFocusRef.current = event.currentTarget;
     dispatch({ type: 'SET_DELIVERABLE_VIEW', payload: 'full_report' });
     dispatch({ type: 'SET_MOBILE_CANVAS_OPEN', payload: false });
   }, [dispatch]);
@@ -651,10 +654,9 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
                 <PresenceFrame
                   className="journey-layer-popover"
                   style={{ transformOrigin: 'top right' }}
-                  initial={{ opacity: 0, y: -4, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: duration.base, ease: easing.decelerate } }}
-                  exit={{ opacity: 0, y: -4, scale: 0.98, transition: { duration: duration.fast, ease: easing.accelerate } }}
-                  onKeyDown={(event) => { if (event.key === 'Escape') setLayersOpen(false); }}
+                  initial={{ opacity: 0, y: -distance.content }}
+                  animate={{ opacity: 1, y: 0, transition: { duration: duration.base, ease: easing.decelerate } }}
+                  exit={{ opacity: 0, y: -distance.content, transition: { duration: duration.fast, ease: easing.accelerate } }}
                 >
                   <h2>地图图层</h2>
                   <label><input type="checkbox" checked={showRoutes} onChange={(event) => setShowRoutes(event.target.checked)} />旅行路线</label>
@@ -681,9 +683,9 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
             data-testid="map-place-detail"
             aria-label="地图地点详情"
             style={{ transformOrigin: 'bottom left' }}
-            initial={{ opacity: 0, y: 8, scale: 0.99 }}
-            animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: duration.page, ease: easing.decelerate } }}
-            exit={{ opacity: 0, y: 6, scale: 0.99, transition: { duration: duration.fast, ease: easing.accelerate } }}
+            initial={{ y: distance.panel }}
+            animate={{ y: 0, transition: { duration: duration.page, ease: easing.decelerate } }}
+            exit={{ y: distance.panel, transition: { duration: duration.fast, ease: easing.accelerate } }}
           >
             <button type="button" aria-label="关闭地点详情" onClick={closePlaceDetail}><X size={16} /></button>
             <TimelineEntityDetails bundle={bundle} entity={selectedEntity} />
@@ -724,7 +726,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
                 : state.currentTripRunId
                   ? <div className="generation-workspace"><GenerationJourneyPanel /></div>
                   : <div className="generation-workspace generation-workspace-conversation"><ConversationThread key={state.conversationEpoch} embedded /></div>}
-              {bundle && !isMobile && <PresenceFrame ref={floatingPanelRef} className="journey-floating-panel" initial={{ opacity: 0, x: reducedMotion ? 0 : -18 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: reducedMotion ? 0 : duration.page, ease: easing.decelerate }}>{navigation}{content}</PresenceFrame>}
+              {bundle && !isMobile && <PresenceFrame ref={floatingPanelRef} className="journey-floating-panel" initial={{ x: reducedMotion ? 0 : -distance.panel }} animate={{ x: 0 }} transition={{ duration: reducedMotion ? 0 : duration.page, ease: easing.decelerate }}>{navigation}{content}</PresenceFrame>}
               {isMobile && bundle && (
                 <DeliveryMobileSheet open={state.mobileCanvasOpen} onClose={closeMobileSheet}>
                   {navigation}{content}
@@ -735,7 +737,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
         <AnimatePresence initial={false}>
           {showReading && bundle && (
             <PresenceFrame className="journey-reading-layer" variants={readingLayerVariants} initial="enter" animate="visible" exit="exit">
-              <ReadingWorkspace bundle={bundle} />
+              <ReadingWorkspace bundle={bundle} onClose={closeReading} />
             </PresenceFrame>
           )}
         </AnimatePresence>

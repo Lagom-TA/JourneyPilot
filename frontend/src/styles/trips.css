@@ -3,7 +3,7 @@
 .my-trip-card { padding: 28px 0; border-bottom: 1px solid var(--color-stroke); }
 .my-trip-title-line { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; }
 .my-trip-title-line h2 { min-width: 0; font-size: 28px; line-height: 1.4; font-weight: 700; letter-spacing: -.025em; overflow-wrap: anywhere; }
-.my-trip-title-line h2 button { text-align: left; transition: color var(--dur-fast); }
+.my-trip-title-line h2 button { text-align: left; transition: color var(--dur-fast) var(--ease-standard); }
 .my-trip-title-line h2 { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .my-trip-title-line h2 button:hover { color: var(--color-chart); }
 .my-trip-status { flex-shrink: 0; color: var(--color-ink-secondary-on-paper); font-size: 12px; }

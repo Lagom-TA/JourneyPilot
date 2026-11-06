@@ -407,7 +407,7 @@
   cursor: grab;
   font-size: 13px;
   touch-action: none;
-  transition: opacity var(--dur-fast), box-shadow var(--dur-fast), border-color var(--dur-fast), background-color var(--dur-fast);
+  transition: opacity var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard), background-color var(--dur-fast) var(--ease-standard);
 }
 
 .destination-token:active { cursor: grabbing; }
@@ -459,8 +459,7 @@
   /* 原来的 6px 行间隙 + 2px 内衬都放在外层：收起时一起收掉，展开时与搜索行一起出现。 */
   padding-top: 8px;
   transition:
-    grid-template-rows var(--dur-slow) var(--ease-standard),
-    padding-top var(--dur-slow) var(--ease-standard);
+    grid-template-rows var(--dur-slow) var(--ease-standard), padding-top var(--dur-slow) var(--ease-standard);
 }
 
 .destination-add-panel.is-closed {
@@ -489,7 +488,7 @@
   border: 1px solid color-mix(in srgb, var(--color-stroke) 74%, transparent);
   border-radius: var(--radius-label);
   background: color-mix(in srgb, var(--color-panel) 68%, transparent);
-  transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
+  transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
 }
 
 .destination-search:focus-within {
@@ -544,7 +543,7 @@
   padding: 8px 10px;
   border-radius: var(--radius-label);
   text-align: left;
-  transition: background-color var(--dur-fast);
+  transition: background-color var(--dur-fast) var(--ease-standard);
 }
 
 .planner-destination-candidate:hover,
@@ -602,7 +601,7 @@
   font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
-  transition: background-color var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
+  transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
 }
 
 .planner-add-destination:hover:not(:disabled) {
@@ -748,7 +747,7 @@
   .atlas-example-card.is-secondary:hover { z-index: 3; transform: rotate(2deg) translateY(-5px); }
   .atlas-example-card:hover .atlas-paper { filter: drop-shadow(0 15px 16px #061e1659) brightness(1.025); }
   .atlas-example-card:hover .atlas-ticket-arrow { transform: translateX(3px); }
-  .atlas-example-card:hover .atlas-paper-sparks > i { animation: atlas-paper-spark 480ms ease-out both; }
+  .atlas-example-card:hover .atlas-paper-sparks > i { animation: atlas-paper-spark var(--dur-spark) var(--ease-decelerate) both; }
   .atlas-example-card:hover .atlas-paper-sparks > i:nth-child(2) { animation-delay: 45ms; }
   .atlas-example-card:hover .atlas-paper-sparks > i:nth-child(3) { animation-delay: 90ms; }
 }

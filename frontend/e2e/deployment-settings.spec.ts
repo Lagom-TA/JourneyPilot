@@ -34,7 +34,8 @@ test('subpath, custom tiles and LAN HTTP browser behavior', async ({ page }) => 
   await expect(map).toHaveAttribute('data-basemap-state', 'ready');
   await expect.poll(() => tileRequests.length).toBeGreaterThan(0);
   await expect(map).toContainText('Offline Tile');
-  await page.getByRole('button', { name: '第 1 天', exact: true }).click();
+  // 全程总览先进入单日对页，地图才展示当日实体。
+  await page.getByTestId('day-summary-card-day-1').click();
   await expect(page.locator('[data-bundle-map-entity]')).toHaveCount(4);
 
   const platform = await page.evaluate(async () => {

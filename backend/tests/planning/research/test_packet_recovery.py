@@ -1,10 +1,12 @@
 """研究成果中可确定的类型缺漏不应丢弃整份数据。"""
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 
 from tests.fixtures.research_packets import make_packet
+from travel_agent.planning.research.output.metadata import build_authoritative_research_packet_metadata
 from travel_agent.planning.research.output.parsing import parse_research_packet_output
 from travel_agent.planning.research.output.policy import ResearchPacketOutputError
 from travel_agent.tools.governance import build_tool_execution_envelope
@@ -127,3 +129,96 @@ def test_failed_tool_record_cannot_support_a_fact():
 
     assert packet.fact_assertions == []
     assert [source.lifecycle_status for source in packet.source_records] == ["rejected"]
+
+
+def test_a_verified_fact_without_any_source_is_dropped_and_the_packet_survives():
+    payload = make_packet(worker="accommodation_researcher").model_dump(mode="json")
+    candidate = payload["candidates"][0]
+    unsourced = {
+        "fact_assertion_id": "fact_check_in",
+        "entity_ref": {"entity_type": "lodging_stay", "entity_id": candidate["candidate_id"]},
+        "field_path": "check_in_date",
+        "asserted_value": "2026-11-09",
+        "unit": None,
+        "currency": None,
+        "criticality": "execution_critical",
+        "status": "verified",
+        "observed_at": None,
+        "effective_from": None,
+        "effective_to": None,
+        "expires_at": None,
+        "source_links": [],
+        "supersedes_assertion_ids": [],
+    }
+    payload["fact_assertions"].append(unsourced)
+    payload["field_provenance"].append({
+        "origin": "user_input",
+        "entity_ref": unsourced["entity_ref"],
+        "field_path": "check_in_date",
+        "reference_ids": ["fact_check_in"],
+    })
+    candidate["fact_assertion_ids"] = [*candidate["fact_assertion_ids"], "fact_check_in"]
+
+    packet = parse_research_packet_output(
+        json.dumps(payload), expected_worker="accommodation_researcher", expected_run_id="run_test"
+    )
+
+    kept = {fact.fact_assertion_id for fact in packet.fact_assertions}
+    assert "fact_check_in" not in kept
+    assert "fact_check_in" not in packet.candidates[0].fact_assertion_ids
+    assert all("fact_check_in" not in item.reference_ids for item in packet.field_provenance)
+
+
+def _transport_payload_without_destination():
+    payload = make_packet(worker="transport_researcher").model_dump(mode="json")
+    for candidate in payload["candidates"]:
+        candidate.pop("destination_id", None)
+    return payload
+
+
+def _metadata(destinations):
+    return build_authoritative_research_packet_metadata(
+        worker_kind="transport_researcher",
+        run_id="run_test",
+        generation_id="generation_test",
+        task_id="transport_researcher",
+        fact_data_revision=1,
+        query_context={"controlled_trip_identity": {"destinations": destinations}},
+        generated_at=datetime(2026, 10, 5, 10, tzinfo=timezone.utc),
+    )
+
+
+def test_a_missing_destination_id_is_taken_from_the_only_trip_destination():
+    packet = parse_research_packet_output(
+        json.dumps(_transport_payload_without_destination()),
+        expected_worker="transport_researcher",
+        expected_run_id="run_test",
+        authoritative_packet_metadata=_metadata([{"place_id": "osm:relation:4430941"}]),
+    )
+
+    assert {item.destination_id for item in packet.candidates} == {"osm:relation:4430941"}
+
+
+def test_a_missing_destination_id_is_not_guessed_for_a_multi_destination_trip():
+    with pytest.raises(ResearchPacketOutputError):
+        parse_research_packet_output(
+            json.dumps(_transport_payload_without_destination()),
+            expected_worker="transport_researcher",
+            expected_run_id="run_test",
+            authoritative_packet_metadata=_metadata([{"place_id": "a"}, {"place_id": "b"}]),
+        )
+
+
+def test_a_destination_id_the_model_provided_is_never_replaced():
+    payload = make_packet(worker="transport_researcher").model_dump(mode="json")
+    provided = payload["candidates"][0]["destination_id"]
+
+    packet = parse_research_packet_output(
+        json.dumps(payload),
+        expected_worker="transport_researcher",
+        expected_run_id="run_test",
+        authoritative_packet_metadata=_metadata([{"place_id": "osm:relation:4430941"}]),
+    )
+
+    assert packet.candidates[0].destination_id == provided
+

@@ -5,10 +5,11 @@ import { cn } from '../../lib/utils';
 import { duration, easing, spring } from '../../lib/motion';
 import { CanvasMotion } from './CanvasMotion';
 import { useOverlayDismiss } from '../../hooks/useOverlayDismiss';
+import { releaseSheet, sheetOffset, type SheetDetent } from '../../lib/sheetDetents';
 
 /* 拖拽需要 domMax，由 CanvasMotion 异步加载。 */
 
-export type SheetDetent = 55 | 92;
+export type { SheetDetent } from '../../lib/sheetDetents';
 
 interface SheetProps {
   open: boolean;
@@ -17,9 +18,6 @@ interface SheetProps {
   initialDetent?: SheetDetent;
   testId?: string;
 }
-
-const PROJECTION_WINDOW_S = 0.2;
-const FLICK_VELOCITY = 900;
 
 function useViewportHeight(): number {
   const [vh, setVh] = useState(() => (typeof window === 'undefined' ? 800 : window.innerHeight));
@@ -42,8 +40,8 @@ export const Sheet: React.FC<SheetProps> = ({
   // 面板固定最大高度，使停靠切换与拖拽只改变 transform。
   const panelHeight = Math.round(vh * 0.92);
   const yFor = useCallback(
-    (detent: SheetDetent) => panelHeight - Math.round(vh * (detent / 100)),
-    [panelHeight, vh]
+    (detent: SheetDetent) => sheetOffset(panelHeight, detent),
+    [panelHeight]
   );
   const closedY = panelHeight;
 
@@ -80,33 +78,11 @@ export const Sheet: React.FC<SheetProps> = ({
 
   const handleDragEnd = useCallback(
     (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-      const position = y.get();
-      const velocity = info.velocity.y;
-
-      if (velocity > FLICK_VELOCITY) {
-        if (detent === 55) {
-          onClose();
-        } else {
-          snapTo(55);
-        }
-        return;
-      }
-      if (velocity < -FLICK_VELOCITY) {
-        snapTo(92);
-        return;
-      }
-
-      const projected = position + velocity * PROJECTION_WINDOW_S;
-      const anchors: Array<{ y: number; resolve: () => void }> = [
-        { y: yFor(92), resolve: () => snapTo(92) },
-        { y: yFor(55), resolve: () => snapTo(55) },
-        { y: closedY, resolve: onClose },
-      ];
-      anchors.reduce((best, anchor) =>
-        Math.abs(anchor.y - projected) < Math.abs(best.y - projected) ? anchor : best
-      ).resolve();
+      const target = releaseSheet(panelHeight, y.get(), info.velocity.y, detent);
+      if (target === 0) onClose();
+      else snapTo(target);
     },
-    [closedY, detent, onClose, snapTo, y, yFor]
+    [detent, onClose, panelHeight, snapTo, y]
   );
 
   return (

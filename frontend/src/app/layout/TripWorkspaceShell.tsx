@@ -1,4 +1,4 @@
-import { AnimatePresence, useReducedMotion } from 'motion/react';
+import { useReducedMotion } from 'motion/react';
 import type { Variants } from 'motion/react';
 import { getCurrentDeliveryBundle } from '../../features/travel/api/delivery';
 import { PresenceFrame } from '../../components/ui/PresenceSurface';
@@ -10,7 +10,7 @@ import { ConversationThread } from '../../features/chat/components/ConversationT
 import { PageSkeleton } from '../components/PageSkeleton';
 import { DeliveryWorkspace } from '../../features/travel/components/workspace/DeliveryWorkspace';
 import { LazyViewBoundary } from '../../components/ui/LazyViewBoundary';
-import { emphasisEnter, slideUp } from '../../lib/motion';
+import { workspaceEnter, workspaceReturn } from '../../lib/motion';
 import React from 'react';
 
 const directHandoff: Variants = {
@@ -79,16 +79,14 @@ export const TripWorkspaceShell: React.FC = () => {
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-bg">
       <div className="relative min-h-0 flex-1" data-testid="trip-workspace-layout">
-        <AnimatePresence mode="popLayout" initial={false}>
           {hasJourneyWorkspace ? (
             <PresenceFrame
               key="journey-workspace"
-              className="h-full min-h-0 w-full"
+              className="h-full min-h-0 w-full bg-bg"
               data-testid="journey-workspace"
-              variants={reducedMotion ? directHandoff : emphasisEnter}
-              initial="hidden"
+              variants={reducedMotion ? directHandoff : workspaceEnter}
+              initial={previousJourneyWorkspaceRef.current === hasJourneyWorkspace ? false : 'hidden'}
               animate="visible"
-              exit="exit"
               onAnimationComplete={focusJourneyWorkspace}
             >
               <LazyViewBoundary
@@ -109,11 +107,10 @@ export const TripWorkspaceShell: React.FC = () => {
               </LazyViewBoundary>
             </PresenceFrame>
           ) : (
-            <PresenceFrame key="workspace-conversation" className="h-full min-h-0 w-full" data-testid="workspace-conversation" variants={reducedMotion ? directHandoff : slideUp} initial="hidden" animate="visible" exit="exit">
+            <PresenceFrame key="workspace-conversation" className="h-full min-h-0 w-full" data-testid="workspace-conversation" variants={reducedMotion ? directHandoff : workspaceReturn} initial={previousJourneyWorkspaceRef.current === hasJourneyWorkspace ? false : 'hidden'} animate="visible">
               <ConversationThread key={state.conversationEpoch} />
             </PresenceFrame>
           )}
-        </AnimatePresence>
       </div>
 
       {state.sessionLoadError && (

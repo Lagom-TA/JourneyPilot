@@ -50,7 +50,7 @@ const ViewRouter: React.FC = () => {
         previousRef.current = { view, conversationEpoch: state.conversationEpoch };
     }, [state.conversationEpoch, view]);
     return (<AnimatePresence mode="popLayout" initial={false} custom={transition}>
-      <PresenceFrame key={view} className="h-full min-h-0 w-full bg-bg" custom={transition} variants={viewTransitionVariants} initial="enter" animate="center" exit="exit">
+      <PresenceFrame key={view} className="view-surface h-full min-h-0 w-full bg-bg" custom={transition} variants={viewTransitionVariants} initial="enter" animate="center" exit="exit">
         <LazyViewBoundary resetKey={boundaryResetKey}>
           <Suspense fallback={<PageSkeleton />}>
             <ViewContent view={view}/>

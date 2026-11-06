@@ -332,6 +332,25 @@ def _raw_usage(message: Any) -> dict[str, Any]:
     return usage if isinstance(usage, dict) else {}
 
 
+def merge_stream_chunk(full: Any, chunk: Any) -> Any:
+    """累加一个流式分块，响应元数据里的字符串取最新值而不是拼接。
+
+    LangChain 相加分块时会把 ``response_metadata`` 中同名的字符串逐块拼接。供应商
+    在多个分块里重复携带 ``finish_reason``（常见于末尾的用量块）时，会得到
+    ``stopstop``、``lengthlength``，既写进成本台账，也使「输出被截断」的判断失效。
+    """
+    if full is None:
+        return chunk
+    merged = full + chunk
+    latest = getattr(chunk, "response_metadata", None) or {}
+    metadata = getattr(merged, "response_metadata", None)
+    if isinstance(metadata, dict):
+        for key, value in latest.items():
+            if isinstance(value, str):
+                metadata[key] = value
+    return merged
+
+
 def response_finish_reason(message: Any) -> Optional[str]:
     """返回供应商的终止原因；``length`` 表示输出达到 max_tokens 被截断。
 

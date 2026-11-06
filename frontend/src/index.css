@@ -166,6 +166,9 @@
   --dur-fast: 160ms;
   --dur-medium: 200ms;
   --dur-expand: 320ms;
+  --dur-spark: 480ms;
+  --delay-content: 60ms;
+  --distance-content: 12px;
   --dur-planner-pulse: 1.8s;
   --dur-planner-sweep: 3s;
   --dur-generation-sweep: 4.6s;
@@ -391,8 +394,7 @@ body {
   opacity: 0;
   transform: translateY(6px);
   transition:
-    opacity var(--dur-slow) var(--ease-decelerate) 60ms,
-    transform var(--dur-slow) var(--ease-decelerate) 60ms;
+    opacity var(--dur-slow) var(--ease-decelerate) var(--delay-content), transform var(--dur-slow) var(--ease-decelerate) var(--delay-content);
 }
 
 .input-expand.expanded > .input-expand-content {
@@ -491,8 +493,7 @@ body {
   color: var(--color-ink-secondary);
   font-size: 16px;
   border-radius: 0;
-  transition: background-color var(--dur-fast) var(--ease-standard),
-              color var(--dur-fast) var(--ease-standard);
+  transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
 }
 .leaflet-container .leaflet-bar.leaflet-control a:first-child,
 .leaflet-container .leaflet-bar.leaflet-control a:last-child { border-radius: 0; }

@@ -33,6 +33,32 @@ def build_authoritative_research_packet_metadata(
     }
 
 
+def _bind_missing_destination_ids(
+    payload: dict[str, Any],
+    authoritative_packet_metadata: Mapping[str, Any] | None,
+) -> None:
+    """单目的地行程里，补上模型漏写的 ``destination_id``。
+
+    ``destination_id`` 是候选的必填字段，交通调研的候选常常漏写它。行程只有一个
+    受控目的地时归属没有歧义，直接取该目的地；有多个目的地时无法判断，保留校验错误。
+    """
+    if authoritative_packet_metadata is None:
+        return
+    context = authoritative_packet_metadata.get("query_context")
+    identity = context.get("controlled_trip_identity") if isinstance(context, Mapping) else None
+    destinations = identity.get("destinations") if isinstance(identity, Mapping) else None
+    if not isinstance(destinations, list) or len(destinations) != 1:
+        return
+    only = destinations[0]
+    place_id = str(only.get("place_id") or "").strip() if isinstance(only, Mapping) else ""
+    candidates = payload.get("candidates")
+    if not place_id or not isinstance(candidates, list):
+        return
+    for candidate in candidates:
+        if isinstance(candidate, dict) and not str(candidate.get("destination_id") or "").strip():
+            candidate["destination_id"] = place_id
+
+
 def _payload_generated_at(payload: Mapping[str, Any]) -> datetime:
     """读取 packet 自带的时间戳，保证派生记录可复现。"""
     raw = payload.get("generated_at")

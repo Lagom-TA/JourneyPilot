@@ -87,6 +87,67 @@ test('F4 mobile sheet keeps the map reachable and provides direct day selection'
   expect(errors).toEqual([]);
 });
 
+test('F6 mobile sheet follows the pointer before release and settles back to the same anchor', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { errors } = await openDelivery(page, { days: 2 });
+  const opener = page.getByTestId('canvas-pill');
+  await opener.click();
+  const sheet = page.getByTestId('canvas-sheet');
+  const handle = page.getByTestId('sheet-handle');
+  await expect(sheet).toHaveAttribute('data-detent', '55');
+  // 入场期间手柄仍在屏幕外：此时的可操作性检查会滚动 overflow 隐藏的祖先容器，先等面板落定。
+  await expect.poll(async () => {
+    const before = (await handle.boundingBox())!.y;
+    await page.waitForTimeout(80);
+    return Math.abs((await handle.boundingBox())!.y - before) < 0.5 && before < 844;
+  }, { message: '面板入场结束' }).toBe(true);
+  await handle.click({ trial: true });
+  const start = (await handle.boundingBox())!;
+  const x = start.x + start.width / 2;
+  const y = start.y + start.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y - 210, { steps: 8 });
+  await expect.poll(async () => (await handle.boundingBox())!.y).toBeLessThan(start.y - 150);
+  await page.waitForTimeout(120);
+  await page.mouse.up();
+  await expect(sheet).toHaveAttribute('data-detent', '92');
+  await handle.click({ trial: true });
+
+  const expanded = (await handle.boundingBox())!;
+  await page.mouse.move(x, expanded.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(x, expanded.y + 100, { steps: 6 });
+  await expect.poll(async () => (await handle.boundingBox())!.y).toBeGreaterThan(expanded.y + 50);
+  await page.waitForTimeout(120);
+  await page.mouse.up();
+  await expect.poll(async () => Math.abs((await handle.boundingBox())!.y - expanded.y)).toBeLessThan(2);
+  await expect(sheet).toHaveAttribute('data-detent', '92');
+  await page.keyboard.press('Escape');
+  await expect(sheet).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  await expect(page.getByTestId('sheet-scrim')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('F6 reading layer is opaque and returns to the retained map when closed during entry', async ({ page }) => {
+  const { errors } = await openDelivery(page, { days: 2 });
+  const map = page.getByTestId('bundle-leaflet-map');
+  await map.evaluate(element => { element.dataset.retainedMap = 'f6'; });
+  await page.getByTestId('day-summary-card-day-1').click();
+  await page.locator('[data-itinerary-occurrence="d1-terracotta"]').getByRole('button', { name: '在地图查看', exact: true }).click();
+  const opener = page.getByRole('button', { name: '阅读版', exact: true });
+  await opener.click();
+  const reading = page.locator('.journey-reading-layer');
+  await expect(reading).toHaveCSS('opacity', '1');
+  await page.keyboard.press('Escape');
+  await expect(reading).toHaveCount(0);
+  await expect(map).toHaveAttribute('data-retained-map', 'f6');
+  await expect(page.getByTestId('map-place-detail')).toBeVisible();
+  await expect(opener).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
 test('F4 mobile history identifies read-only results before opening the sheet', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const { errors } = await openDelivery(page, { readonly: true, days: 1 });

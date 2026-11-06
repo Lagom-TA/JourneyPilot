@@ -15,6 +15,14 @@ export const duration = {
   loopDrift: 2.4,
 } as const;
 
+export const distance = {
+  content: 12,
+  panel: 24,
+  page: 32,
+} as const;
+
+export const milliseconds = (seconds: number): number => Math.round(seconds * 1000);
+
 export const easing = {
   standard: [0.2, 0, 0.38, 0.9],
   decelerate: [0.16, 1, 0.3, 1],
@@ -56,6 +64,17 @@ export const slideUp: Variants = {
   hidden: { opacity: 0, y: 8 },
   visible: { opacity: 1, y: 0, transition: transitions.enter() },
   exit: { opacity: 0, y: -4, transition: transitions.exit(duration.fast) },
+};
+
+// 不透明表面承接新内容，避免两套正文在交接时透明叠印。
+export const workspaceEnter: Variants = {
+  hidden: { x: distance.panel },
+  visible: { x: 0, transition: transitions.enter(duration.detail) },
+};
+
+export const workspaceReturn: Variants = {
+  hidden: { x: -distance.panel },
+  visible: { x: 0, transition: transitions.enter(duration.slow) },
 };
 
 export const emphasisEnter: Variants = {

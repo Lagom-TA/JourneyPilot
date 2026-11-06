@@ -1,5 +1,6 @@
 import { Check, CircleAlert, Loader2, Pause, Play, Square } from 'lucide-react';
 import { useReducedMotion } from 'motion/react';
+import { duration, milliseconds } from '../../../../lib/motion';
 import { useApp } from '../../../../app/state/AppContext';
 import { useSendMessage } from '../../../../app/session/useSendMessage';
 import { useStopRun } from '../../../../app/session/useStopRun';
@@ -93,7 +94,7 @@ export const GenerationJourneyPanel: React.FC = () => {
     }
     const timer = window.setTimeout(
       () => setGateSnapshot(null),
-      reducedMotion ? 0 : 320,
+      reducedMotion ? 0 : milliseconds(duration.slow),
     );
     return () => window.clearTimeout(timer);
   }, [gatePending, reducedMotion, runId, state.planApprovalGate]);
@@ -112,7 +113,7 @@ export const GenerationJourneyPanel: React.FC = () => {
         ?.querySelector<HTMLElement>('[data-testid="thinking-chain"] .research-panel-heading')
         ?.focus();
     };
-    const timer = window.setTimeout(focusCompact, reducedMotion ? 100 : 340);
+    const timer = window.setTimeout(focusCompact, reducedMotion ? 0 : milliseconds(duration.slow));
     return () => window.clearTimeout(timer);
   }, [gatePending, reducedMotion, runId, state.conversationEpoch]);
 
@@ -125,7 +126,7 @@ export const GenerationJourneyPanel: React.FC = () => {
     if (!gatePending) return;
     const timer = window.setTimeout(() => {
       gatePaneRef.current?.querySelector<HTMLElement>('#trip-brief-plan-gate-title')?.focus();
-    }, reducedMotion || state.planApprovalGate?.source === 'restored' ? 0 : 320);
+    }, reducedMotion || state.planApprovalGate?.source === 'restored' ? 0 : milliseconds(duration.slow));
     return () => window.clearTimeout(timer);
   }, [gatePending, gateSnapshot, reducedMotion, state.planApprovalGate?.revision, state.planApprovalGate?.source]);
 

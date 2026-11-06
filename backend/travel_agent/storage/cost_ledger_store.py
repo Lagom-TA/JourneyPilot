@@ -38,6 +38,11 @@ class CostLedgerConflict(Exception):
     """同一个 call id 已存有不同内容。"""
 
 
+# 冲突的记录会留在用量队列里被反复重放；同一个 id 只在首次报告，避免日志被刷屏。
+_REPORTED_CONFLICT_LIMIT = 1024
+_reported_conflicts: set[str] = set()
+
+
 
 
 def _parse_ts(value: Optional[str]) -> Optional[datetime]:
@@ -498,12 +503,16 @@ def _ledger_identity(call: LLMCostCall) -> Tuple[Any, ...]:
 
 def _assert_ledger_idempotent(existing: LLMCostCall, incoming: LLMCostCall) -> None:
     if _ledger_identity(existing) != _ledger_identity(incoming):
-        logger.error(
-            "cost ledger id conflict: id=%s existing_run=%s incoming_run=%s",
-            incoming.id,
-            existing.run_id,
-            incoming.run_id,
-        )
+        if incoming.id not in _reported_conflicts:
+            if len(_reported_conflicts) >= _REPORTED_CONFLICT_LIMIT:
+                _reported_conflicts.clear()
+            _reported_conflicts.add(incoming.id)
+            logger.error(
+                "cost ledger id conflict: id=%s existing_run=%s incoming_run=%s",
+                incoming.id,
+                existing.run_id,
+                incoming.run_id,
+            )
         raise CostLedgerConflict(
             f"LLM call id {incoming.id!r} already stored with different content"
         )

@@ -103,7 +103,8 @@ test('地图离线夹具：已交付行程的地图与日程联动', async ({ pa
   const map = page.getByTestId('bundle-leaflet-map');
   await expect(map).toBeVisible();
   await expect(map).toHaveAttribute('data-basemap-state', 'ready', { timeout: 10_000 });
-  await page.getByRole('button', { name: '第 1 天', exact: true }).click();
+  // 全程总览先进入单日对页，日期按钮才出现。
+  await page.getByTestId('day-summary-card-day-1').click();
   await expect(page.locator('[data-bundle-map-entity]')).toHaveCount(4);
   await expect(page.locator('.leaflet-overlay-pane path[data-route-entity]')).toHaveCount(3);
 
@@ -146,7 +147,8 @@ test('地图离线夹具：加载失败时准确提示、保留日程并通过�
   await expect(page.getByTestId('interactive-itinerary')).toBeVisible();
   await expect(page.locator('.journey-title-row h1')).toHaveText('西安两日 · 秦唐风物');
 
-  // 地图失败不影响左侧日程：切日与图层入口仍工作。
+  // 地图失败不影响左侧日程：进入单日、切日与图层入口仍工作。
+  await page.getByTestId('day-summary-card-day-1').click();
   await page.getByRole('button', { name: '第 2 天', exact: true }).click();
   const currentItinerary = page.locator('.journey-content-scene:not([aria-hidden="true"])').getByTestId('interactive-itinerary');
   await expect(currentItinerary).toContainText('陕西历史博物馆');

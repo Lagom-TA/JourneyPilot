@@ -28,6 +28,7 @@ export function useOverlayDismiss({ open, onDismiss, panelRef, trapFocus = false
     if (trapFocus) focusTraps.push(id);
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
       if (event.key === 'Tab' && trapFocus) {
         if (focusTraps[focusTraps.length - 1] !== id) return;
         const panel = panelRef?.current;

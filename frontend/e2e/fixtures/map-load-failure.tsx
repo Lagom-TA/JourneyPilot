@@ -7,6 +7,8 @@ import { useApp } from '../../src/app/state/AppContext';
 import { DeliveryWorkspace } from '../../src/features/travel/components/workspace/DeliveryWorkspace';
 import { deliveryBundle } from './sessionData';
 import '../../src/index.css';
+import '../../src/styles/layout.css';
+import '../../src/styles/workspace.css';
 
 const fixtureBundle = deliveryBundle();
 

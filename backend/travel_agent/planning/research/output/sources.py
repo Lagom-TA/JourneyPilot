@@ -125,6 +125,14 @@ def _ground_model_tool_sources(
             retained.append(fact)
         payload["fact_assertions"] = retained
 
+    _remove_fact_references(payload, removed_facts)
+    logger.warning("丢弃未经本轮工具调用证实的来源 %d 条", len(dropped))
+
+
+def _remove_fact_references(payload: dict[str, Any], removed_facts: set[str]) -> None:
+    """清除对已丢弃事实的引用；失去全部证据的约束评估降为「证据不足」。"""
+    if not removed_facts:
+        return
     for candidate in payload.get("candidates") or []:
         if not isinstance(candidate, dict):
             continue
@@ -136,7 +144,48 @@ def _ground_model_tool_sources(
             ]
             if evaluation.get("status") in {"passed", "failed"} and not evaluation["fact_assertion_ids"]:
                 evaluation.update(status="unknown", reason_code="missing_evidence")
-    logger.warning("丢弃未经本轮工具调用证实的来源 %d 条", len(dropped))
+    provenance = payload.get("field_provenance")
+    if isinstance(provenance, list):
+        retained = []
+        for item in provenance:
+            if isinstance(item, dict) and isinstance(item.get("reference_ids"), list):
+                references = [ref for ref in item["reference_ids"] if str(ref) not in removed_facts]
+                if not references:
+                    continue
+                item["reference_ids"] = references
+            retained.append(item)
+        payload["field_provenance"] = retained
+
+
+def _drop_unsourced_facts(payload: dict[str, Any]) -> None:
+    """丢弃没有任何支持来源的非缺失事实。
+
+    交付投影要求每条非「缺失」事实至少有一条 ``supports`` / ``qualifies`` 来源。
+    模型会为用户给定的入住日期、晚数等写下「已核实」的事实却不附来源；这些值来自
+    用户输入，没有可公开的出处，留着只会让整份交付在最后一步失败。候选自身仍保留
+    这些字段，丢弃的只是无法引用的断言。
+    """
+    facts = payload.get("fact_assertions")
+    if not isinstance(facts, list):
+        return
+    retained: list[Any] = []
+    removed: set[str] = set()
+    for fact in facts:
+        if isinstance(fact, dict):
+            is_missing = fact.get("status") == "missing" and fact.get("asserted_value") is None
+            supported = any(
+                isinstance(link, Mapping) and link.get("relation") in {"supports", "qualifies"}
+                for link in fact.get("source_links") or []
+            )
+            if not is_missing and not supported:
+                removed.add(str(fact.get("fact_assertion_id") or ""))
+                continue
+        retained.append(fact)
+    if not removed:
+        return
+    payload["fact_assertions"] = retained
+    _remove_fact_references(payload, removed)
+    logger.warning("丢弃没有支持来源的事实 %d 条: %s", len(removed), sorted(removed)[:8])
 
 
 def _sanitize_model_source_records(payload: dict[str, Any], *, default_retrieved_at) -> None:

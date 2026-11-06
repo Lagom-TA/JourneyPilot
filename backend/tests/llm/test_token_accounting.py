@@ -206,6 +206,21 @@ async def test_persisted_details_survive_replay_and_invalid_replay_is_rejected()
         await store.record_calls([replace(record, cache_write_input_tokens=31)], pricing=[_price()])
 
 
+def test_ledger_conflict_is_logged_once_per_call_id(caplog):
+    from travel_agent.storage import cost_ledger_store as ledger
+
+    existing = build_ledger_call(_record(), pricing=[_price()])
+    incoming = build_ledger_call(_record(output_tokens=999, total_tokens=1099), pricing=[_price()])
+    ledger._reported_conflicts.discard(incoming.id)
+
+    with caplog.at_level("ERROR", logger=ledger.logger.name):
+        for _ in range(4):
+            with pytest.raises(CostLedgerConflict):
+                ledger._assert_ledger_idempotent(existing, incoming)
+
+    assert len([item for item in caplog.records if "id conflict" in item.getMessage()]) == 1
+
+
 def test_partial_summary_is_explicit_and_does_not_add_reasoning_twice():
     calls = [build_ledger_call(_record(), pricing=[_price()]), build_ledger_call(
         _record(id="call_2", input_tokens=None, output_tokens=None, total_tokens=None,

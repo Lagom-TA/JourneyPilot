@@ -1,5 +1,5 @@
 import type { Variants } from 'motion/react';
-import { duration, easing, transitions } from '../../lib/motion';
+import { distance, duration, easing, transitions } from '../../lib/motion';
 import type { ActiveView } from '../state/state';
 
 export type ViewTransitionKind = 'same' | 'peer' | 'detail' | 'reset';
@@ -41,25 +41,23 @@ function enterDuration(kind: ViewTransitionKind): number {
 
 export const viewTransitionVariants: Variants = {
   enter: ({ kind, direction }: ViewTransition) => ({
-    x: direction * (kind === 'detail' ? 32 : 24),
-    y: kind === 'reset' ? 12 : 0,
-    scale: kind === 'detail' ? 0.985 : 0.995,
+    opacity: 1,
+    x: direction * (kind === 'detail' ? distance.page : distance.panel),
+    y: kind === 'reset' ? distance.content : 0,
   }),
   center: ({ kind }: ViewTransition) => ({
     opacity: 1,
     x: 0,
     y: 0,
-    scale: 1,
     transition: {
       duration: enterDuration(kind),
       ease: kind === 'detail' ? easing.standard : easing.decelerate,
     },
   }),
   exit: ({ kind, direction }: ViewTransition) => ({
-    opacity: 0,
-    x: direction * -(kind === 'detail' ? 20 : 16),
-    y: kind === 'reset' ? -8 : 0,
-    scale: kind === 'detail' ? 0.99 : 0.995,
+    opacity: 1,
+    x: direction * -distance.content,
+    y: kind === 'reset' ? -distance.content : 0,
     transition: transitions.exit(kind === 'detail' ? duration.base : duration.fast),
   }),
 };

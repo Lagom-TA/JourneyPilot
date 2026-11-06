@@ -14,7 +14,7 @@ test('真实交付只读：地图、会话、阅读版、PDF 与旅中视图', a
   await expect(page.getByTestId('interactive-itinerary')).toBeVisible({ timeout: 30_000 });
   // 只读交付的边界：标记只读，且不出现调整入口与首页引导标题。
   await expect(page.getByText('历史结果 · 只读')).toBeVisible();
-  await expect(page.getByRole('heading', { name: '想去哪里，告诉我。' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /想去哪里，\s*告诉我。/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: '调整', exact: true })).toHaveCount(0);
   await expect(page.getByText('历史结果 · 只读', { exact: true })).toHaveCount(1);
 

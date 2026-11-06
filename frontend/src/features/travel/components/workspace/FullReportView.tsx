@@ -13,6 +13,7 @@ import { unresolvedForDay } from '../../model/itineraryNavigation';
 import { UnresolvedReadout } from './UnresolvedReadout';
 import { EntitySourceList } from './EntitySourceList';
 import { safeHref } from '../../../../lib/safeHref';
+import { splitTitleClauses } from '../../../../lib/titleClauses';
 import React from 'react';
 
 type ReportDocument = NonNullable<PublicDeliveryBundle['report_projection']['document']>;
@@ -128,8 +129,12 @@ function ReportCover({ bundle, document: report, allowPdf }: {
   const identityOverview = `${dateText}，前往${destinations.join('、')}的旅行计划。`;
   return (
     <header data-testid="report-cover" className="report-cover">
-      <h1>{report.title.split(/([零一二三四五六七八九十百〇\d]+(?:天|日|晚))/g).map((part, index) => (
-        <span key={index} className={/[零一二三四五六七八九十百〇\d]+(?:天|日|晚)/.test(part) ? 'report-title-unit' : undefined}>{part}</span>
+      <h1>{splitTitleClauses(report.title).map((clause, clauseIndex) => (
+        <span key={clauseIndex} className="report-title-clause">
+          {clause.split(/([零一二三四五六七八九十百〇\d]+(?:天|日|晚))/g).map((part, index) => (
+            <span key={index} className={/[零一二三四五六七八九十百〇\d]+(?:天|日|晚)/.test(part) ? 'report-title-unit' : undefined}>{part}</span>
+          ))}
+        </span>
       ))}</h1>
       <div className="report-cover-meta">
         {destinations.map((name) => <span key={name}>{name}</span>)}

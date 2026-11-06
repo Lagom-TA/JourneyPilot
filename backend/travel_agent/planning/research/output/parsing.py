@@ -26,6 +26,7 @@ from .lineage import (
 from .metadata import (
     _bind_authoritative_candidate_constraints,
     _bind_authoritative_packet_metadata,
+    _bind_missing_destination_ids,
     _payload_generated_at,
 )
 from .policy import _WORKER_CANDIDATE_MODELS, ResearchPacketOutputError, ResearchWorkerKind
@@ -33,6 +34,7 @@ from .sources import (
     _authoritative_tool_source_records,
     _bind_source_content_hashes,
     _drop_dangling_source_links,
+    _drop_unsourced_facts,
     _ground_rag_chunk_sources,
     _ground_retrieved_sources_in_the_transcript,
     _ground_model_tool_sources,
@@ -177,6 +179,7 @@ def parse_research_packet_output(
     _sanitize_packet_nested_models(payload)
     _restore_candidate_kinds(payload, expected_worker=expected_worker)
     _bind_authoritative_packet_metadata(payload, authoritative_packet_metadata)
+    _bind_missing_destination_ids(payload, authoritative_packet_metadata)
     # worker 域由服务端绑定，不采用模型自报值。
     payload["worker_kind"] = expected_worker
     _bind_authoritative_candidate_constraints(
@@ -219,6 +222,7 @@ def parse_research_packet_output(
             for source in compiled_tool_sources.values()
         ]
     _drop_dangling_source_links(payload)
+    _drop_unsourced_facts(payload)
     try:
         packet = ResearchPacket.model_validate(payload)
     except ValidationError as exc:

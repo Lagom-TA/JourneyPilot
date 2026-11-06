@@ -169,6 +169,7 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
     if (path === '/trip-runs/run-A/control') { expect(request.postDataJSON()).toEqual({ action: 'cancel', session_id: 'A' }); status = 'cancelled'; return json({ accepted: true, run_status: 'cancelled', message: '已取消' }); }
     if (path === '/trip-runs/run-A/supplements') return json({ accepted: true, status: 'pending', command_id: 'supplement-1', message: '已加入当前运行，将在下一个执行边界处理。' });
     if (path === '/trip-runs/run-A/bundle/current/weather/refresh') return json({ refresh_id: request.postDataJSON().refresh_id, attempted: false, committed: false, used_previous_values: true, refusal_reason: null, bundle });
+    if (path === '/config') return json({ ingest: { max_upload_bytes: 10 * 1024 * 1024 } });
     if (path === '/presets') return json([]);
     if (path === '/user/default-origin') return json({ place: null });
     if (path === '/product/trip-planner') return json({ primary_styles: [{ id: 'relaxed', label: '轻松', is_default: true, inference_keywords: [] }], secondary_interests: [], default_adults: 1, default_children: 0, default_elderly_companions: false, default_accessibility_required: false, max_secondary_interests: 3, inspiration_rotation_ms: 5000, inspiration_prompts: [] });
@@ -301,7 +302,7 @@ async function workspaceGeometry(page: Page): Promise<WorkspaceGeometry> {
     const layout = document.querySelector<HTMLElement>('[data-testid="trip-workspace-layout"]');
     if (!layout) throw new Error('workspace layout is missing');
     const rect = layout.getBoundingClientRect();
-    const scroller = layout.querySelector<HTMLElement>('.generation-planning-sidebar');
+    const scroller = layout.querySelector<HTMLElement>('.generation-activity-body');
     const topbar = document.querySelector<HTMLElement>('.app-topbar');
     const round = (value: number) => Math.round(value * 10) / 10;
     return {
@@ -739,7 +740,7 @@ test('取消同一会话的调整后，天气讨论使用仍可查看的父行�
     created_at: '2026-10-25T08:00:00Z', updated_at: '2026-10-25T08:00:00Z',
   };
   const parent = { ...baseRun, run_id: parentId, parent_run_id: null, status: 'completed' as const, request_message_id: firstMessageId };
-  const children: Array<typeof baseRun & { run_id: string; parent_run_id: string; status: 'running' | 'cancel_requested' | 'cancelled'; request_message_id: string }> = [];
+  const children: Array<typeof baseRun & { run_id: string; parent_run_id: string; status: 'running' | 'cancelled'; request_message_id: string }> = [];
   const cancelled: string[] = [];
   let showCancelledEvents = false;
   const fixture = await offlineApp(page);
@@ -781,9 +782,10 @@ test('取消同一会话的调整后，天气讨论使用仍可查看的父行�
       const child = children.find((item) => item.run_id === run.run_id);
       expect(child).toBeDefined();
       expect(request.postDataJSON()).toEqual({ action: 'cancel', session_id: sessionId });
-      child!.status = 'cancel_requested';
+      // 取消已确认：运行不在“正在停止”，之后的新消息可直接发送，而不是排队暂停。
+      child!.status = 'cancelled';
       cancelled.push(child!.run_id);
-      return json({ run_id: child!.run_id, action: 'cancel', command_id: `cancel-${child!.run_id}`, accepted: true, status: 'pending', run_status: 'cancel_requested', message: '取消请求已记录' });
+      return json({ run_id: child!.run_id, action: 'cancel', command_id: `cancel-${child!.run_id}`, accepted: true, status: 'completed', run_status: 'cancelled', message: '已取消' });
     }
     return route.fallback();
   });
@@ -946,8 +948,8 @@ test('浮动的恢复提示不改变工作区几何、滚动位置与键盘焦�
   await disclosure.focus();
   await expect(disclosure).toBeFocused();
   await page.evaluate(() => {
-    const scroller = document.querySelector<HTMLElement>('.generation-planning-sidebar');
-    if (!scroller) throw new Error('generation planning sidebar is missing');
+    const scroller = document.querySelector<HTMLElement>('.generation-activity-body');
+    if (!scroller) throw new Error('generation activity body is missing');
     scroller.scrollTop = 240;
   });
   await page.waitForTimeout(100);
@@ -1099,7 +1101,7 @@ test('已完成规划的恢复提示浮在工作区上方且不占高度', async
   const notice = page.getByTestId('delivery-recovery-notice');
   const panel = page.getByTestId('generation-journey-panel');
   await expect(panel).toBeVisible();
-  await expect(panel.getByRole('heading', { name: '旅行规划已生成', exact: true })).toBeVisible();
+  await expect(panel.locator('h2.research-panel-title', { hasText: '旅行规划已生成' })).toBeVisible();
   await expect(notice).toContainText('暂时无法加载这趟旅行的正式结果，请稍后重试。');
   const geometry = await workspaceGeometry(page);
   const facts = await recoveryNoticeFacts(page);
@@ -1440,7 +1442,8 @@ test('handoff reaches restored and reduced-motion targets without a residual siz
     const style = getComputedStyle(element);
     return { duration: style.transitionDuration, delay: style.transitionDelay };
   });
-  expect(durations.duration.split(',').every((value) => value.trim() === '0s')).toBe(true);
+  // 全局的 reduced-motion 规则把过渡压到 1ms，以保留结束事件；视为瞬时。
+  expect(durations.duration.split(',').every((value) => parseFloat(value) <= 0.001)).toBe(true);
   await expect(gate.getByRole('heading', { name: '研究方案', exact: true })).toBeFocused();
   await page.screenshot({ path: `${evidence}/desktop-2000-handoff-restored-reduced.png`, fullPage: true });
 
@@ -1620,7 +1623,7 @@ for (const width of [390, 1280]) {
     await structuredTab.click();
     await expect(structuredTab).toHaveAttribute('aria-selected', 'true');
     const skip = page.getByRole('button', { name: '暂时不用默认值', exact: true });
-    const originInput = page.getByRole('textbox', { name: '从哪里出发' });
+    const originInput = page.getByRole('textbox', { name: '出发地', exact: true });
     await expect(skip.or(originInput)).toBeVisible();
     if (await skip.count()) await skip.click();
     await expect(originInput).toBeVisible();
@@ -1825,7 +1828,8 @@ test('desktop itinerary cards and map stay linked across hover, selection, days 
   // 相机偏移来自面板右缘，不在测试里复制一个固定像素。
   const expectedShift = (panelBox!.x + panelBox!.width + 20 - mapBox!.x) / 2;
   expect(Math.abs(focusedBox!.x + focusedBox!.width / 2 - (mapBox!.x + mapBox!.width / 2 + expectedShift))).toBeLessThan(40);
-  expect(Math.abs(focusedBox!.y + focusedBox!.height / 2 - (mapBox!.y + mapBox!.height / 2))).toBeLessThan(40);
+  // 地图下沿有全程条，相机竖向居中时会让出它的高度。
+  expect(Math.abs(focusedBox!.y + focusedBox!.height / 2 - (mapBox!.y + mapBox!.height / 2))).toBeLessThan(72);
 
   // 已有锁定项时，hover 其他地点仍只是高亮：相机不动、详情不换。
   await dayan.hover();
@@ -1882,11 +1886,11 @@ test('desktop itinerary cards and map stay linked across hover, selection, days 
   await page.getByRole('button', { name: '返回地图', exact: true }).click();
   await expect(page.getByTestId('itinerary-card-flow')).toBeVisible();
   expect(await page.evaluate(() => (window as unknown as { __journeyMapElement: Element | null }).__journeyMapElement === document.querySelector('[data-testid="bundle-leaflet-map"]'))).toBe(true);
-  // 回到第 1 天：数据上下文再次改变，无选中项时相机回到与初次相同的视野。
+  // 回到第 1 天：地图按上下文恢复离开时的视野（当时停在已聚焦的兵马俑），而不是重新适配全日。
   await page.getByRole('button', { name: '第 1 天', exact: true }).click();
   await expect.poll(async () => (await mapCamera(page, ['visit-terracotta'])).markers['visit-terracotta']).not.toBeNull();
   await settleMap(page);
-  await expectCameraHeld(page, initialCamera);
+  expect((await mapCamera(page, ['visit-terracotta'])).zoom).toEqual(focusedCamera.zoom);
   await page.screenshot({ path: test.info().outputPath('desktop-xian-floating-panel.png'), fullPage: true });
 
   // 可画市内路线的交通卡片整卡进入路线视野，不再有独立按钮。
@@ -1939,7 +1943,7 @@ test('map detail switches selections without overlapping detail panels', async (
   await assertOffline(page, fixture);
 });
 
-test('desktop itinerary layout evidence keeps the panel wide and weather on the date row', async ({ page }) => {
+test('desktop itinerary layout evidence keeps the overview index narrow and clear of the map controls', async ({ page }) => {
   const fixture = await offlineApp(page, { bundle: true, bundleData: xianLayoutBundle({ dayCount: 5, longTitle: true, weather: 'mixed' }) });
   const evidenceDir = '../test-results/e2e-evidence/workspace-visual';
   mkdirSync(evidenceDir, { recursive: true });
@@ -1950,8 +1954,9 @@ test('desktop itinerary layout evidence keeps the panel wide and weather on the 
   await expect(page.locator('.day-summary-card')).toHaveCount(5);
   const panelBox = await page.locator('.journey-floating-panel').boundingBox();
   expect(panelBox).not.toBeNull();
-  expect(panelBox!.width).toBeGreaterThanOrEqual(600);
-  expect(panelBox!.width).toBeLessThanOrEqual(640);
+  // 全程总览是窄索引；单日对页才展开为宽面板（见下一个用例）。
+  expect(panelBox!.width).toBeGreaterThanOrEqual(400);
+  expect(panelBox!.width).toBeLessThanOrEqual(480);
   const controlsBox = await page.locator('.journey-map-top-controls').boundingBox();
   expect(controlsBox).not.toBeNull();
   expect(controlsBox!.x).toBeGreaterThanOrEqual(panelBox!.x + panelBox!.width);
@@ -1961,11 +1966,17 @@ test('desktop itinerary layout evidence keeps the panel wide and weather on the 
   const header = page.getByTestId('day-header-day-1');
   await expect(header).toBeVisible();
   await expect(page.getByTestId('trip-overview')).toHaveCount(0);
-  const metaBox = await header.locator('.journey-day-header-meta').boundingBox();
+  // 日视图入场期间两个元素的位置先后取样会错开；等入场结束后同一时刻读取。
+  await expect.poll(async () => {
+    const [meta, weather] = await Promise.all([
+      header.locator('.journey-day-header-meta').boundingBox(),
+      header.getByTestId('day-weather-badge').boundingBox(),
+    ]);
+    return meta && weather ? Math.abs((weather.y + weather.height / 2) - (meta.y + meta.height / 2)) : Infinity;
+  }).toBeLessThan(4);
   const weatherBox = await header.getByTestId('day-weather-badge').boundingBox();
   const sectionRight = await header.evaluate((node) => node.parentElement!.getBoundingClientRect().right);
-  expect(metaBox && weatherBox).not.toBeNull();
-  expect(Math.abs((weatherBox!.y + weatherBox!.height / 2) - (metaBox!.y + metaBox!.height / 2))).toBeLessThan(4);
+  expect(weatherBox).not.toBeNull();
   expect(sectionRight - (weatherBox!.x + weatherBox!.width)).toBeLessThan(40);
   expect(await header.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(1);
   await page.screenshot({ path: `${evidenceDir}/day-2000.png`, fullPage: true });
@@ -1988,11 +1999,21 @@ test('desktop itinerary layout evidence holds at 1440 and 1280', async ({ page }
     const metaBox = await header.locator('.journey-day-header-meta').boundingBox();
     const weatherBox = await header.getByTestId('day-weather-badge').boundingBox();
     const panelBox = await page.locator('.journey-floating-panel').boundingBox();
-    const controlsBox = await page.locator('.journey-map-top-controls').boundingBox();
+    // 面板宽度变化后，地图控件的避让偏移晚一帧更新；等它让出面板再比较。
+    const controls = page.locator('.journey-map-top-controls');
+    await expect.poll(async () => (await controls.boundingBox())?.x ?? 0).toBeGreaterThanOrEqual((panelBox?.x ?? 0) + (panelBox?.width ?? 0));
+    const controlsBox = await controls.boundingBox();
     expect(metaBox && weatherBox && panelBox && controlsBox).not.toBeNull();
     expect(panelBox!.width).toBeGreaterThanOrEqual(viewport.width === 1440 ? 550 : 510);
     expect(controlsBox!.x).toBeGreaterThanOrEqual(panelBox!.x + panelBox!.width);
-    expect(Math.abs((weatherBox!.y + weatherBox!.height / 2) - (metaBox!.y + metaBox!.height / 2))).toBeLessThan(4);
+    // 日视图入场期间两个元素的位置先后取样会错开；等入场结束后同一时刻读取。
+    await expect.poll(async () => {
+      const [meta, weather] = await Promise.all([
+        header.locator('.journey-day-header-meta').boundingBox(),
+        header.getByTestId('day-weather-badge').boundingBox(),
+      ]);
+      return meta && weather ? Math.abs((weather.y + weather.height / 2) - (meta.y + meta.height / 2)) : Infinity;
+    }).toBeLessThan(4);
     await page.screenshot({ path: `${evidenceDir}/day-${viewport.width}.png`, fullPage: true });
     await assertOffline(page, fixture);
   }
@@ -2187,8 +2208,13 @@ test('mixed transport map keeps every target, mode color and geometry visible', 
   await page.screenshot({ path: test.info().outputPath('desktop-mixed-transport-map-overview.png'), fullPage: true });
   const group = page.locator('[data-bundle-map-group]');
   await expect(group).toHaveCount(1);
-  await group.click();
-  await expect(page.locator('[data-bundle-map-entity="visit-dayan"]')).toBeVisible();
+  // 点击聚合标记会放大到其成员；成员中仍有聚合时继续点击，直到重合点展开。
+  const dayan = page.locator('[data-bundle-map-entity="visit-dayan"]');
+  for (let step = 0; step < 4 && !(await dayan.isVisible()); step += 1) {
+    await page.locator('[data-bundle-map-group]').first().click();
+    await page.waitForTimeout(300);
+  }
+  await expect(dayan).toBeVisible();
   const duplicate = page.locator('[data-bundle-map-entity="visit-dayan-duplicate"]');
   await expect(duplicate).toBeVisible();
   await duplicate.click();

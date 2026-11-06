@@ -52,9 +52,11 @@ Once a plan is ready, you can:
 - Save travel styles and your own reference material for later planning.
 
 The delivery workspace opens on a full map with city stay segments, then expands into an itinerary
-and map spread for a selected day. Nearby places cluster as you zoom out. On phones, a two-position
-bottom panel keeps the map clear while showing the itinerary. Unscheduled items appear on their
-relevant days; descriptions and factual sources expand on demand. PDF export is available in the reading view.
+and map spread for a selected day. Nearby places cluster as you zoom out. On phones, the non-modal
+schedule panel follows the drag and settles to half height, expanded, or closed according to release
+position and velocity; the map remains interactive. The reading view slides in from the side, and
+Escape returns to the retained map view. Unscheduled items appear on their relevant days;
+descriptions and factual sources expand on demand. PDF export is available in the reading view.
 
 My Trips groups current results and read-only history by trip. Preferences, styles, and source material
 use an open archive layout. Sources open for reading with explicit editing; phones return to the list

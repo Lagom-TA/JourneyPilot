@@ -58,3 +58,39 @@ def _sse(chunks):
 
 def join_text(parts):
     return chr(10).join(parts)
+
+
+def test_merge_stream_chunk_keeps_the_latest_string_metadata():
+    from langchain_core.messages import AIMessageChunk
+    from travel_agent.llm.usage import merge_stream_chunk, response_finish_reason
+
+    first = AIMessageChunk(content="a", response_metadata={"model_name": "m"})
+    middle = AIMessageChunk(content="b", response_metadata={"finish_reason": "length"})
+    last = AIMessageChunk(content="", response_metadata={"finish_reason": "length", "token_usage": {"total_tokens": 3}})
+    merged = None
+    for part in (first, middle, last):
+        merged = merge_stream_chunk(merged, part)
+
+    assert merged.content == "ab"
+    assert merged.response_metadata["finish_reason"] == "length"
+    assert merged.response_metadata["model_name"] == "m"
+    assert merged.response_metadata["token_usage"] == {"total_tokens": 3}
+    assert response_finish_reason(merged) == "length"
+
+
+@pytest.mark.asyncio
+async def test_truncated_stream_is_rejected_even_when_finish_reason_repeats(monkeypatch):
+    import travel_agent.llm.router as router_module
+
+    chunks = [
+        _chunk({"role": "assistant", "content": '{"candidates":[{"candidate_id":"a"'}),
+        _chunk({}, finish="length"),
+        _chunk({}, finish="length", usage={"prompt_tokens": 10, "completion_tokens": 12, "total_tokens": 22}),
+    ]
+    def respond(request):
+        return httpx.Response(200, content=_sse(chunks).encode(), headers={"content-type": "text/event-stream"})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        llm = _llm(monkeypatch, client)
+        with pytest.raises(router_module.IncompleteModelResponse, match="length"):
+            [event async for event in llm.ainvoke_with_tools_events([{"role": "user", "content": "查"}], TOOLS)]
+

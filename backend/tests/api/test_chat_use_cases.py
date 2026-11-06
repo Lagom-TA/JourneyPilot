@@ -1424,3 +1424,28 @@ async def test_cancelling_usage_drain_propagates_without_commit_or_ack(
     ack.assert_not_called()
     assert drain() == [rec]
     recorder._spool.db.close()
+
+
+@pytest.mark.asyncio
+async def test_a_repeating_flush_failure_is_logged_once_per_run(resources, caplog):
+    from travel_agent.conversation.chat.accounting import ChatAccounting
+    from travel_agent.llm.usage import UsageRecorder
+
+    recorder = UsageRecorder()
+    recorder.record(usage_call("stuck", "run"))
+    store = InMemoryCostLedgerStore()
+
+    async def rejected(batch):
+        raise ValueError("LLM call id 'llm_x' already stored with different content")
+
+    store.record_calls = rejected
+    accounting = ChatAccounting(
+        run_id="run", message_id="assistant", cost_ledger_store=store,
+        usage_recorder=recorder, trip_run_store=resources.trip_run_store,
+    )
+    with caplog.at_level("WARNING", logger="travel_agent.conversation.chat.accounting"):
+        for _ in range(5):
+            assert await accounting.flush_usage_updates() == []
+
+    assert caplog.text.count("usage 落库失败") == 1
+

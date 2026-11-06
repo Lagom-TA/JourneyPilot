@@ -45,6 +45,7 @@ from .usage import (
     generate_call_id,
     get_usage_recorder,
     infer_provider,
+    merge_stream_chunk,
     read_attribution,
     response_finish_reason,
     response_model_name,
@@ -835,7 +836,7 @@ class OpenAICompatibleLLM(BaseLLM):
                                 sample = extract_usage(chunk)
                                 if sample is not None:
                                     last_usage = sample
-                                full = chunk if full is None else full + chunk
+                                full = merge_stream_chunk(full, chunk)
                                 text = _coerce_text(getattr(chunk, "content", ""))
                                 if text:
                                     if ttft_ms is None:
@@ -933,7 +934,7 @@ class OpenAICompatibleLLM(BaseLLM):
                                 sample = extract_usage(chunk)
                                 if sample is not None:
                                     last_usage = sample
-                                full = chunk if full is None else full + chunk
+                                full = merge_stream_chunk(full, chunk)
                                 text = _coerce_text(getattr(chunk, "content", ""))
                                 if text:
                                     if ttft_ms is None:

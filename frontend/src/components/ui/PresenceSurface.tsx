@@ -30,11 +30,16 @@ export const PresenceFrame = React.forwardRef<HTMLDivElement, HTMLMotionProps<'d
   },
 );
 
-export function PresenceSection({ children, ...props }: HTMLMotionProps<'section'>) {
+export const PresenceSection = React.forwardRef<HTMLElement, HTMLMotionProps<'section'>>(function PresenceSection({ children, ...props }, forwardedRef) {
   const isPresent = useIsPresent();
   const nodeRef = React.useRef<HTMLElement | null>(null);
+  const forwardedRefRef = React.useRef(forwardedRef);
+  forwardedRefRef.current = forwardedRef;
   const setRef = React.useCallback((node: HTMLElement | null) => {
     nodeRef.current = node;
+    const ref = forwardedRefRef.current;
+    if (typeof ref === 'function') ref(node);
+    else if (ref) ref.current = node;
   }, []);
   React.useLayoutEffect(() => {
     nodeRef.current?.toggleAttribute('inert', !isPresent);
@@ -49,4 +54,4 @@ export function PresenceSection({ children, ...props }: HTMLMotionProps<'section
       {children}
     </m.section>
   );
-}
+});

@@ -519,3 +519,50 @@ def test_usage_drain_bounds_successful_local_recovery_attempts(
     assert len(recorder._volatile) == len(records) - batch_size
     assert len(recorder._spool.pending()) == batch_size
     recorder._spool.db.close()
+
+
+async def test_a_stuck_record_is_reported_once_and_stays_pending(caplog):
+    recorder = UsageRecorder()
+    recorder.record(record("poison"))
+    store = InMemoryCostLedgerStore()
+    await store.record_calls([replace(record("poison"), input_tokens=50)], pricing=[])
+    service = UsageFlushService(recorder, store)
+
+    with caplog.at_level("WARNING", logger="travel_agent.runtime.usage_flush"):
+        for _ in range(5):
+            await service.flush()
+
+    reports = [item for item in caplog.records if "poison" in item.getMessage()]
+    assert len(reports) == 1
+    assert {rec.id for rec in recorder.snapshot()} == {"poison"}
+    assert recorder.integrity("run")["capture_complete"] is False
+
+
+async def test_a_record_that_recovers_is_reported_again_if_it_fails_later(caplog):
+    recorder = UsageRecorder()
+    recorder.record(record())
+
+    class Flaky:
+        def __init__(self):
+            self.down = True
+            self.calls = []
+
+        async def record_calls(self, records):
+            if self.down:
+                raise ConnectionError()
+            self.calls.extend(records)
+
+    store = Flaky()
+    service = UsageFlushService(recorder, store)
+    with caplog.at_level("WARNING", logger="travel_agent.runtime.usage_flush"):
+        await service.flush()
+        await service.flush()
+        store.down = False
+        await service.flush()
+        assert not service._reported
+        store.down = True
+        recorder.record(record())
+        await service.flush()
+
+    assert len([item for item in caplog.records if "retry pending" in item.getMessage()]) == 2
+

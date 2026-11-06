@@ -18,6 +18,9 @@ class ChatAccounting:
         self.cost_ledger_store = cost_ledger_store
         self.usage_recorder = usage_recorder
         self.trip_run_store = trip_run_store
+        # 记录被拒时 recorder 会保留它，后续每个周期必然再次失败；同一原因在本 run
+        # 内只报一次，避免周期性重复淹没其它日志。
+        self._reported_flush_failures: set[str] = set()
 
     async def flush_usage_updates(self) -> List[Dict[str, Any]]:
         """周期性排空用量捕获层，计算成本后落库，并返回本 run 的 usage_update 事件。
@@ -34,7 +37,10 @@ class ChatAccounting:
             ledger = await self.cost_ledger_store.record_calls(batch)
             await asyncio.to_thread(self.usage_recorder.ack, batch)
         except Exception as exc:
-            logger.warning(f"usage 落库失败（保留 {len(batch)} 条待重试）: {exc}")
+            reason = str(exc)
+            if reason not in self._reported_flush_failures:
+                self._reported_flush_failures.add(reason)
+                logger.warning(f"usage 落库失败（保留 {len(batch)} 条待重试）: {reason}")
             return []
         events: List[Dict[str, Any]] = []
         for call in ledger:

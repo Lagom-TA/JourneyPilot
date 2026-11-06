@@ -493,27 +493,31 @@ def render_trip_report_pdf(
             None,
         )
         weather_label, weather_marks = _day_weather_label(weather, citation_numbers)
-        meta = " · ".join(
+        place = " · ".join(
             item
             for item in [
                 day.date.isoformat() if day.date else "",
                 day.destination_name,
-                weather_label,
-                day.theme,
             ]
             if item
         )
-        heading_story = Paragraph(
-            escape(f"{heading}  {meta}") + weather_marks, styles["h1"]
-        )
+        # 日期与地点、当日主题、天气各占一行：主题是完整短句，天气带引用角标，
+        # 合在一个大标题里会让角标在行末被拆开。
+        heading_story = [Paragraph(escape(f"{heading}  {place}"), styles["h1"])]
+        if day.theme:
+            heading_story.append(Paragraph(escape(day.theme), styles["h2"]))
+        if weather_label:
+            heading_story.append(
+                Paragraph(escape(weather_label) + weather_marks, styles["small"])
+            )
         if not day.blocks:
-            story.append(heading_story)
+            story.extend(heading_story)
             story.append(Paragraph("当日尚未安排", styles["body"]))
             continue
         first_row = _timeline_row(
             day.blocks[0], citation_numbers, citations_by_id, styles, evidence_basis
         )
-        story.append(KeepTogether([heading_story, first_row, Spacer(1, 2 * mm)]))
+        story.append(KeepTogether([*heading_story, first_row, Spacer(1, 2 * mm)]))
         for block in day.blocks[1:]:
             story.extend(
                 [

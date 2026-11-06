@@ -42,7 +42,7 @@ test('真实跨城过夜旅行：需求 → 审批 → 调研 → 行程 → PDF
 
   try {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: '想去哪里，告诉我。' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: /想去哪里，\s*告诉我。/ })).toBeVisible();
     const destination = process.env.JP_LIVE_DESTINATION || '苏州';
     const start = new Date();
     start.setDate(start.getDate() + 4);
@@ -78,6 +78,10 @@ test('真实跨城过夜旅行：需求 → 审批 → 调研 → 行程 → PDF
     restoringApproval = false;
     await approve.click();
 
+    // 审批后运行开始，若又停在 awaiting_input，就是研究门（如某类调研未完成）等待用户决定；
+    // 本用例不替用户决定，直接以真实状态失败，不空等到超时。审批刚点下时状态可能还没离开
+    // awaiting_input，所以只在已观察到 running 之后才把它视为终止。
+    let sawRunning = false;
     await expect.poll(async () => {
       const response = await request.get(`/api/trip-runs/${runId}`);
       expect(response.ok()).toBeTruthy();
@@ -85,10 +89,11 @@ test('真实跨城过夜旅行：需求 → 审批 → 调研 → 行程 → PDF
       await writeFile(testInfo.outputPath('run.json'), JSON.stringify(detail, null, 2));
       const status = detail.run.status;
       console.log(`Live trip ${runId}: ${status}`);
-      return ['completed', 'failed', 'cancelled', 'interrupted'].includes(status);
+      if (status === 'running') sawRunning = true;
+      return ['completed', 'failed', 'cancelled', 'interrupted'].includes(status) || (sawRunning && status === 'awaiting_input');
     }, { timeout: 1_800_000, intervals: [15_000] }).toBe(true);
     const finalRun = await (await request.get(`/api/trip-runs/${runId}`)).json();
-    expect(finalRun.run.status, JSON.stringify(finalRun.run)).toBe('completed');
+    expect(finalRun.run.status, JSON.stringify({ run: finalRun.run, pending: finalRun.state?.pending_user_choice })).toBe('completed');
 
     await expect(page.getByTestId('interactive-itinerary')).toBeVisible({ timeout: 30_000 });
     const bundleResponse = await request.get(`/api/trip-runs/${runId}/bundle/current`);
