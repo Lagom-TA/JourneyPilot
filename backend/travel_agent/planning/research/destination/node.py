@@ -32,7 +32,7 @@ from travel_agent.planning.research.output.failures import (
     provider_round_capability_declared,
 )
 from travel_agent.planning.research.output.finalization import (
-    parse_research_packet,
+    parse_research_packet_or_reask,
 )
 from travel_agent.planning.research.output.metadata import (
     build_authoritative_research_packet_metadata,
@@ -204,8 +204,26 @@ async def destination_researcher_node(
             raise RuntimeError(f"研究未完成: {react.error or react.outcome.value}")
 
         finalize_started_at = time.perf_counter()
-        packet = await parse_research_packet(
+
+        async def reask(reason: str) -> str:
+            return await llm.ainvoke(
+                [
+                    *plain_observation_messages(messages),
+                    {
+                        "role": "user",
+                        "content": (
+                            f"上一次输出无法解析为 Research Packet：{reason}\n"
+                            "请基于上面的工具观察重新输出完整结果：只输出一个合法的 JSON 对象，"
+                            "不要使用 Markdown 围栏，不要附加说明文字。"
+                        ),
+                    },
+                ],
+                response_format={"type": "json_object"},
+            )
+
+        packet = await parse_research_packet_or_reask(
             raw_response or "",
+            reask=reask,
             expected_worker=_NODE_NAME,
             expected_run_id=run_id,
             authoritative_tool_results=authoritative_tool_results,

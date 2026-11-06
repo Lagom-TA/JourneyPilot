@@ -501,8 +501,25 @@ def _ledger_identity(call: LLMCostCall) -> Tuple[Any, ...]:
     )
 
 
+def _is_interrupted_placeholder(call: LLMCostCall) -> bool:
+    return (
+        call.status == "interrupted"
+        and not call.usage_complete
+        and call.usage_source == "missing"
+    )
+
+
 def _assert_ledger_idempotent(existing: LLMCostCall, incoming: LLMCostCall) -> None:
     if _ledger_identity(existing) != _ledger_identity(incoming):
+        # 进程在调用中途结束后，spool 恢复会给遗留的“开始”记录补一条“中断、用量缺失”的
+        # 占位；若账本里已有同一 run 这次调用的完整记录，账本是权威，占位视为已结算，
+        # 否则它会因内容不同被永久拒绝、一直留在待重试队列。
+        if (
+            existing.run_id == incoming.run_id
+            and existing.usage_complete
+            and _is_interrupted_placeholder(incoming)
+        ):
+            return
         if incoming.id not in _reported_conflicts:
             if len(_reported_conflicts) >= _REPORTED_CONFLICT_LIMIT:
                 _reported_conflicts.clear()

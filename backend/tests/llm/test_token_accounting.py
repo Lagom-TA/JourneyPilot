@@ -221,6 +221,42 @@ def test_ledger_conflict_is_logged_once_per_call_id(caplog):
     assert len([item for item in caplog.records if "id conflict" in item.getMessage()]) == 1
 
 
+def _placeholder(**changes):
+    return _record(
+        status="interrupted", usage_complete=False, usage_source="missing",
+        input_tokens=None, output_tokens=None, total_tokens=None,
+        cached_input_tokens=None, cache_write_input_tokens=None,
+        reasoning_output_tokens=None, **changes,
+    )
+
+
+async def test_an_interrupted_placeholder_never_conflicts_with_the_complete_ledger_record():
+    store = InMemoryCostLedgerStore()
+    await store.record_calls([_record()], pricing=[_price()])
+
+    assert await store.record_calls([_placeholder()], pricing=[_price()]) == []
+
+    assert [(call.status, call.usage_complete) for call in store.calls] == [("ok", True)]
+
+
+async def test_a_placeholder_for_another_run_or_a_different_complete_record_still_conflicts():
+    store = InMemoryCostLedgerStore()
+    await store.record_calls([_record()], pricing=[_price()])
+
+    with pytest.raises(CostLedgerConflict):
+        await store.record_calls([_placeholder(run_id="another_run")], pricing=[_price()])
+    with pytest.raises(CostLedgerConflict):
+        await store.record_calls([_record(output_tokens=999, total_tokens=1099)], pricing=[_price()])
+
+
+async def test_a_complete_record_does_not_replace_an_earlier_incomplete_one():
+    store = InMemoryCostLedgerStore()
+    await store.record_calls([_placeholder()], pricing=[_price()])
+
+    with pytest.raises(CostLedgerConflict):
+        await store.record_calls([_record()], pricing=[_price()])
+
+
 def test_partial_summary_is_explicit_and_does_not_add_reasoning_twice():
     calls = [build_ledger_call(_record(), pricing=[_price()]), build_ledger_call(
         _record(id="call_2", input_tokens=None, output_tokens=None, total_tokens=None,
