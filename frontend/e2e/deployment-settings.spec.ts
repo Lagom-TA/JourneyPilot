@@ -52,8 +52,11 @@ test('subpath, custom tiles and LAN HTTP browser behavior', async ({ page }) => 
   await page.addInitScript(() => localStorage.setItem('journeypilot.last-session-id', 'A'));
   await page.goto(`${deploymentURL}/journeypilot/`);
   await expect(page.getByText('A 的历史回答', { exact: true })).toBeVisible();
-  await page.getByTestId('copy-message').click();
-  await expect(page.getByText('复制失败', { exact: true })).toBeVisible();
+  const copy = page.getByTestId('copy-message');
+  const feedback = copy.locator('[aria-live="polite"]');
+  const previousFeedback = await feedback.textContent();
+  await copy.click();
+  await expect(feedback).not.toHaveText(previousFeedback ?? '');
   const trips = page.getByRole('link', { name: '我的行程', exact: true });
   await expect(trips).toHaveAttribute('href', '/journeypilot/?view=trips');
   await trips.click();

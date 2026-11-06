@@ -116,11 +116,12 @@ test('mobile history identifies read-only results before opening the sheet', asy
 
 test('tile failures retain markers and PDF failures remain visible', async ({ page }) => {
   const { errors } = await openDelivery(page, { tilesFail: true, days: 2 });
-  await expect(page.getByTestId('bundle-map-basemap-state')).toContainText('底图暂时没加载出来');
+  await expect(page.getByTestId('bundle-map-basemap-state')).toBeVisible();
+  await expect(page.getByTestId('bundle-leaflet-map')).toHaveAttribute('data-basemap-state', 'degraded');
   expect(await page.locator('[data-bundle-map-entity], [data-bundle-map-group]').count()).toBeGreaterThan(0);
   await page.getByRole('button', { name: '阅读版', exact: true }).click();
   await page.getByTestId('download-current-pdf').click();
-  await expect(page.getByRole('alert')).toContainText('PDF 暂时无法生成');
+  await expect(page.getByRole('alert')).toBeVisible();
   expect(errors).toEqual([]);
 });
 

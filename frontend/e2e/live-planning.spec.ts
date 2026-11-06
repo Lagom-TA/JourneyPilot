@@ -42,7 +42,7 @@ test('真实跨城过夜旅行：需求 → 审批 → 调研 → 行程 → PDF
 
   try {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: /想去哪里，\s*告诉我。/ })).toBeVisible();
+    await expect(page.getByTestId('new-trip-hero')).toBeVisible();
     const destination = process.env.JP_LIVE_DESTINATION || '苏州';
     const start = new Date();
     start.setDate(start.getDate() + 4);

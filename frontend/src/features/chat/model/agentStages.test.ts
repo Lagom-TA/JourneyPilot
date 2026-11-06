@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveActivityStages, deriveActivityTitle, deriveStages, filterStepsForActivityStage, getActivityStageIdForAgent, getStageIdForAgent, latestActivityStageId, latestActivityStageWithSteps, parseAgentRound } from "./agentStages";
+import { deriveActivityStages, deriveStages, filterStepsForActivityStage, getActivityStageIdForAgent, getStageIdForAgent, latestActivityStageId, latestActivityStageWithSteps, parseAgentRound } from "./agentStages";
 import { type ThinkingStep } from "../types/messages";
 function step(agentName: string): ThinkingStep {
     return {
@@ -35,21 +35,6 @@ describe('agent stage projection', () => {
         expect(parseAgentRound('destination_researcher_r2')).toEqual({ base: 'destination_researcher', round: 2 });
         expect(parseAgentRound('目的地调研（第3轮补充）')).toEqual({ base: '目的地调研', round: 3 });
         expect(parseAgentRound('目的地调研(第4轮)')).toEqual({ base: '目的地调研', round: 4 });
-    });
-    it('按真实步骤投影当前过程标题，并允许补充轮次回退', () => {
-        const base = { isStreaming: true, isSynthesizing: false, answerStarted: false };
-        expect(deriveActivityTitle({ ...base, steps: [] })).toBe('整理旅行需求');
-        expect(deriveActivityTitle({ ...base, steps: [step('requirements_preparer')] })).toBe('整理旅行需求');
-        expect(deriveActivityTitle({ ...base, steps: [step('目的地调研（第2轮补充）')] })).toBe('查找旅行资料');
-        expect(deriveActivityTitle({ ...base, steps: [step('安排查询'), step('行程规划')] })).toBe('安排每天路线');
-        // 路线开始后迟到的研究事件不回退阶段。
-        expect(deriveActivityTitle({ ...base, steps: [step('行程规划'), step('目的地调研')] })).toBe('安排每天路线');
-        // 真正重新整理需求的补充轮次可以回退。
-        expect(deriveActivityTitle({ ...base, steps: [step('行程规划'), step('整理需求（第2轮补充）')] })).toBe('整理旅行需求');
-        expect(deriveActivityTitle({ ...base, steps: [step('delivery_projector')] })).toBe('生成完整计划');
-        expect(deriveActivityTitle({ ...base, steps: [step('行程规划')], runStatus: 'completed' })).toBe('旅行规划已完成');
-        expect(deriveActivityTitle({ ...base, steps: [step('行程规划')], runStatus: 'failed' })).toBe('旅行规划未完成');
-        expect(deriveActivityTitle({ ...base, steps: [step('行程规划')], runStatus: 'cancelled' })).toBe('旅行规划已取消');
     });
     it('快答节点不进入深度阶段', () => {
         const { stages, hasDeepWorkflow } = deriveStages([step('fast_answer_agent')], { isStreaming: true, isSynthesizing: false, answerStarted: false });

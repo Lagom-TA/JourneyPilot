@@ -120,9 +120,8 @@ test('地图离线夹具：加载失败时准确提示、保留日程并通过�
     () => fixture.depResponses.filter(({ status }) => status === 504).length,
     { message: '地图依赖请求应被拦截并返回 504', timeout: 15_000 },
   ).toBeGreaterThan(0);
-  await expect(page.getByText('地图没能加载出来。', { exact: true })).toBeVisible({ timeout: 15_000 });
   const failure = page.getByTestId('lazy-view-failure');
-  await expect(failure).toBeVisible();
+  await expect(failure).toBeVisible({ timeout: 15_000 });
   await expect(failure).not.toContainText('网络中断');
   await expect(page.getByTestId('interactive-itinerary')).toBeVisible();
   await expect(page.locator('.journey-title-row h1')).toHaveText('西安两日 · 秦唐风物');

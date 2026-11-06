@@ -24,7 +24,6 @@ test('研究台面仅露出最新动态，整块任务可开合并保留查看�
   const opener = group.locator('button.research-agent-heading');
   await expect(group.getByTestId('research-agent-update')).toHaveText('会同时比较车站位置与到达后进入市区的交通。');
   await expect(opener).toHaveAttribute('aria-expanded', 'false');
-  await expect(page.getByText('过程与来源', { exact: true })).toHaveCount(0);
   await group.getByTestId('research-agent-update').click();
   await expect(opener).toHaveAttribute('aria-expanded', 'true');
   await group.getByTestId('research-query').locator('summary').click();

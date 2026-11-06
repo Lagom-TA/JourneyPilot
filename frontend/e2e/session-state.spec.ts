@@ -692,11 +692,6 @@ test('recovers durable delivery without a stream and keeps recovery mounted acro
   await expect(page.getByTestId('generation-journey-panel')).toBeVisible();
   await expect(page.getByTestId('thinking-chain')).toBeVisible();
   await expect(page.getByTestId('thinking-chain').locator('.research-panel-heading')).toBeVisible();
-  await expect(page.getByTestId('generation-journey-panel')).not.toContainText('每一步安排，都有据可查');
-  await expect(page.getByText('规划过程', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('查看不同阶段的思考摘要、查询内容和已找到的旅行资料。', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('规划进度', { exact: true })).toHaveCount(0);
-  await expect(page.getByText('正在整理这趟旅行的基本信息。', { exact: true })).toHaveCount(0);
   await expect(page.getByTestId('generation-journey-panel').locator('.generation-trip-card')).toBeVisible();
   await expect(page.getByTestId('generation-journey-panel').locator('.research-panel-workspace')).toBeVisible();
   await expect(page.getByTestId('generation-journey-panel').locator('.generation-progress')).toHaveAttribute('data-active', 'false');

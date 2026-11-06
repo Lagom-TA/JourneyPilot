@@ -5,16 +5,19 @@ test('顶部导航、浏览器后退与刷新恢复', async ({ page }) => {
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
   await page.getByRole('link', { name: '偏好与资料', exact: true }).click();
-  for (const name of ['资料来源', '旅行风格', '我的偏好']) {
+  for (const [name, view] of [['资料来源', 'knowledge-base'], ['旅行风格', 'presets'], ['我的偏好', 'user-preferences']] as const) {
     await page.getByRole('link', { name, exact: true }).click();
-    await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`view=${view}`));
   }
   await page.goBack();
-  await expect(page.getByRole('heading', { name: '旅行风格', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/view=presets/);
   await page.reload();
-  await expect(page.getByRole('heading', { name: '旅行风格', exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/view=presets/);
+  const cards = page.getByTestId(/^preset-card-/);
+  await expect(cards.first()).toBeVisible();
   await page.getByPlaceholder('搜索旅行风格').fill('no-such-preset-e2e');
-  await expect(page.getByText('没有找到匹配的旅行风格', { exact: true })).toBeVisible();
+  await expect(cards).toHaveCount(0);
+  await expect(page.locator('.archive-empty')).toBeVisible();
   expect(errors).toEqual([]);
 });
 

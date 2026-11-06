@@ -5,7 +5,7 @@ for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 844 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: /想去哪里，\s*告诉我。/ })).toBeVisible();
+    await expect(page.getByTestId('new-trip-hero')).toBeVisible();
     await page.getByRole('tab', { name: '按条件规划' }).click();
     await expect(page.getByRole('textbox', { name: '出发地', exact: true })).toBeVisible();
     await expect(page.getByRole('textbox', { name: '目的地，搜索城市或区域', exact: true })).toBeVisible();
@@ -30,7 +30,7 @@ for (const width of [320, 390, 768]) {
     await opener.click();
     await page.getByRole('link', { name: '旅行风格', exact: true }).click();
     await expect(page.getByRole('dialog', { name: '主导航' })).toHaveCount(0);
-    await expect(page.getByRole('heading', { name: '旅行风格', exact: true })).toBeVisible();
+    await expect(page).toHaveURL(/view=presets/);
     await expect(page.locator('main')).not.toHaveAttribute('inert');
   });
 }

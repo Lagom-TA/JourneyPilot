@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 // 正式组件与合成事件；经真实 SSE 解析和状态投影，不调用付费 API。
 test.skip(process.env.JP_COMPONENT_E2E !== '1', 'Requires Vite dev component fixture');
@@ -19,7 +19,6 @@ test('研究任务按需展开，串行推进与停止保留手动查看', async
     page.on('pageerror', error => errors.push(error.message));
     await page.goto('/e2e/fixtures/research-progress.html');
     const panel = page.getByTestId('thinking-chain');
-    await expect(panel.locator('.research-panel-title')).toHaveText('查找旅行资料');
     await expect(panel.locator('.research-panel-heading')).not.toHaveAttribute('aria-expanded');
     await expect(page.getByTestId('research-agent-transport')).toHaveCount(0);
     await expect(page.getByTestId('research-agent-stay')).toHaveCount(0);

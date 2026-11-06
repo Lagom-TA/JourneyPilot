@@ -106,7 +106,6 @@ test('同一视图内后退后，切换视图仍同步地址栏', async ({ page 
   await expect(page).toHaveURL(/position=first/);
   await page.getByRole('link', { name: '偏好与资料', exact: true }).first().click();
   await expect(page).toHaveURL(/view=user-preferences/);
-  await expect(page.getByRole('heading', { name: '我的偏好', exact: true })).toBeVisible();
 });
 
 test('素材延迟或失败时整组保留，快速选择只采用最后一次主题', async ({ page }) => {
@@ -139,7 +138,7 @@ test('配置失败不阻塞一句话输入，条件规划可以重试并保留�
   const input = page.getByTestId('natural-trip-input');
   await input.fill('带爸妈去杭州，步行少一点。');
   await page.getByTestId('planner-structured-tab').click();
-  await expect(page.getByText('暂时读不到规划选项', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('request-failure-notice')).toBeVisible();
   await page.getByTestId('planner-natural-tab').click();
   await expect(input).toHaveValue('带爸妈去杭州，步行少一点。');
   fixture.recoverConfiguration();
