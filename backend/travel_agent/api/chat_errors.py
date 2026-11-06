@@ -20,67 +20,67 @@ def raise_chat_preparation_error(error: Exception) -> NoReturn:
             raise HTTPException(status_code=400, detail="消息内容不能为空") from error
         if error.reason is PreparationRejection.ROUTE_UNAVAILABLE:
             raise HTTPException(
-                status_code=503, detail="暂时无法判断这句话要走哪条处理路径，请重试"
+                status_code=503, detail="暂时无法理解你的意图，请重试"
             ) from error
         if error.reason is PreparationRejection.REFINEMENT_REQUIRES_RUN:
             raise HTTPException(
-                status_code=422, detail="调整行程需要已有 TripRun"
+                status_code=422, detail="调整行程需要先完成一次规划"
             ) from error
         if error.reason is PreparationRejection.GATE_REQUIRES_RUN:
             raise HTTPException(
-                status_code=400, detail="gate_decision 需要提供 run_id"
+                status_code=400, detail="确认操作需要指定当前规划记录"
             ) from error
         if error.reason is PreparationRejection.GATE_REQUIRES_CHECKPOINT:
             raise HTTPException(
-                status_code=409, detail="当前服务未启用 checkpoint，无法使用计划审批门"
+                status_code=409, detail="当前服务未启用进度保存，无法执行确认操作"
             ) from error
         if error.reason is PreparationRejection.PLAN_GATE_DISABLED:
             raise HTTPException(
                 status_code=409,
                 detail={
                     "code": "plan_gate_disabled",
-                    "message": "当前服务未启用计划审批门，完整调研不可用；快问快答仍可继续。",
+                    "message": "当前服务未启用方案确认，完整规划暂不可用；旅行问答仍可继续。",
                 },
             ) from error
         if error.reason is PreparationRejection.RUN_NOT_FOUND:
-            raise HTTPException(status_code=404, detail="TripRun 不存在") from error
+            raise HTTPException(status_code=404, detail="未找到这趟规划记录") from error
         if error.reason is PreparationRejection.IDENTITY_LOCKED:
             raise HTTPException(
                 status_code=409,
-                detail="基础旅行身份已锁定。请结束当前草稿或运行，再新建旅行。",
+                detail="基础旅行身份已锁定。请先结束当前规划，再新建旅行。",
             ) from error
         if error.reason is PreparationRejection.RUN_STATUS_NOT_CONTINUABLE:
             raise HTTPException(
                 status_code=409,
-                detail=f"TripRun 当前状态不可继续: {error.current_status}",
+                detail=f"当前规划状态不可继续：{error.current_status}",
             ) from error
         if error.reason is PreparationRejection.GATE_DECISION_REQUIRED:
             raise HTTPException(
                 status_code=409,
-                detail="TripRun 正在等待审批门决策，需携带 gate_decision 断点续跑",
+                detail="当前规划正在等待你的确认，请先提交确认结果",
             ) from error
         if error.reason is PreparationRejection.GATE_NODE_REQUIRED:
             raise HTTPException(
-                status_code=409, detail="TripRun 当前节点不是可提交审批决策的断点"
+                status_code=409, detail="当前规划不在等待确认的步骤"
             ) from error
         if error.reason is PreparationRejection.PROJECTION_FAILURE:
             raise HTTPException(
                 status_code=409,
                 detail={
                     "code": _PROJECTION_FAILURE_REASON_CODE,
-                    "message": "这次运行的结果无法生成可展示的方案，断点续跑会得到同一个结果。请重新规划这趟旅行。",
+                    "message": "上次规划的结果无法生成可展示的方案，继续规划会得到相同结果。请重新规划这趟旅行。",
                 },
             ) from error
         if error.reason is PreparationRejection.RESUME_REQUIRES_CHECKPOINT:
             raise HTTPException(
-                status_code=409, detail="当前服务未启用 checkpoint，无法断点续跑"
+                status_code=409, detail="当前服务未启用进度保存，无法继续上次规划"
             ) from error
         if error.reason is PreparationRejection.RUN_NOT_RESUMABLE:
             raise HTTPException(
                 status_code=409,
                 detail={
                     "code": "run_not_resumable",
-                    "message": "上次运行没有可继续的检查点，请重新规划这趟旅行。",
+                    "message": "上次规划没有可继续的进度，请重新规划这趟旅行。",
                 },
             ) from error
         if error.reason is PreparationRejection.CHECKPOINT_CONTRACT_MISMATCH:
@@ -93,20 +93,20 @@ def raise_chat_preparation_error(error: Exception) -> NoReturn:
             ) from error
         if error.reason is PreparationRejection.CHECKPOINT_NOT_FOUND:
             raise HTTPException(
-                status_code=409, detail="未找到该 TripRun 的 checkpoint，无法断点续跑"
+                status_code=409, detail="未找到可继续的规划进度，请重新规划这趟旅行"
             ) from error
         if error.reason is PreparationRejection.RESUME_STATUS_RACE:
             raise HTTPException(
-                status_code=409, detail="TripRun 已被其他请求恢复或状态已变化"
+                status_code=409, detail="这趟规划已在其他请求中继续或状态已变化"
             ) from error
         if error.reason is PreparationRejection.GATE_STATUS_NOT_CONTINUABLE:
             raise HTTPException(
-                status_code=409, detail="TripRun 当前状态不可提交计划审批决策"
+                status_code=409, detail="当前规划状态不可提交确认结果"
             ) from error
         if error.reason is PreparationRejection.GATE_VERSION_STALE:
             detail: dict = {
                 "code": "plan_gate_version_stale",
-                "message": "待确认内容已变化或缺少版本凭据，请刷新后查看最新进展再回答。",
+                "message": "确认信息缺失或已过期，请刷新后查看最新进展再回答。",
             }
             if error.current_revision is not None:
                 detail["current_revision"] = error.current_revision
@@ -130,7 +130,7 @@ def raise_chat_preparation_error(error: Exception) -> NoReturn:
             status_code=409,
             detail={
                 "code": "run_already_executing",
-                "message": "这次运行正在别处执行，请刷新后查看当前状态。",
+                "message": "这趟旅行正在其他页面或窗口中规划，请刷新后查看当前状态。",
             },
         ) from error
     raise error

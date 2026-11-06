@@ -131,7 +131,7 @@ def _extract_geocode_summary(result: Dict[str, Any]) -> str:
                 return f"已定位坐标（{float(lat):.4f}°N, {float(lng):.4f}°E）"
     except Exception:
         pass
-    return "地理编码完成"
+    return "地点定位完成"
 
 
 def _extract_weather_summary(result: Dict[str, Any]) -> str:
@@ -214,10 +214,9 @@ def _extract_search_summary(result: Dict[str, Any]) -> str:
                     for item in unique[:3]
                 ]
                 names = [name for name in names if name]
-                suffix = f"等 {count} 个地点"
                 if names:
-                    return f"找到 {suffix}：{', '.join(names)}"
-                return f"找到 {suffix}"
+                    return f"找到 {count} 个地点：{'、'.join(names)}"
+                return f"找到 {count} 个地点"
     except Exception:
         pass
     return "搜索完成"
@@ -257,7 +256,7 @@ def _extract_direction_summary(result: Dict[str, Any]) -> str:
                         int(distance) / 1000 if str(distance).isdigit() else distance
                     )
                     parts.append(
-                        f"{dist_km:.1f}km"
+                        f"{dist_km:.1f} 公里"
                         if isinstance(dist_km, float)
                         else str(dist_km)
                     )
@@ -284,7 +283,7 @@ def _extract_station_summary(result: Dict[str, Any]) -> str:
                 v.get("station_name", k) for k, v in data.items() if isinstance(v, dict)
             ]
             if stations:
-                return f"已获取车站代码：{', '.join(stations)}"
+                return f"已获取车站代码：{'、'.join(stations)}"
     except Exception:
         pass
     return "车站代码查询完成"

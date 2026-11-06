@@ -115,7 +115,7 @@ def _source_record(
     source_id = f"weather-source-{_canonical_hash([request.destination_id, response.provider_name, content_hash])[:24]}"
     public_excerpt = (
         f"{request.destination_name} {request.start_date.isoformat()}–{request.end_date.isoformat()} "
-        "weather forecast"
+        "天气预报"
     )
     if response.data_kind == "seasonal_baseline":
         baseline = response.raw_snapshot.get("journeypilot_baseline")

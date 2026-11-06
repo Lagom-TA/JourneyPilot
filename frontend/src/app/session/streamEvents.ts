@@ -37,7 +37,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
             payload: { endTime: new Date(), tsMs: terminal.ts_ms },
         });
         if (!assistantMessage.content.trim()) {
-            const readyMessage = '旅行方案已保存，可在右侧查看行程。';
+            const readyMessage = '旅行方案已保存，可以查看完整行程。';
             assistantMessage.content = readyMessage;
             assistantMessage.displayContent = readyMessage;
         }
@@ -263,7 +263,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     scopedDispatch({ type: 'MARK_PENDING_DECISIONS_CANCELLED' });
                     const finalContent = typeof event.final_content === 'string' && event.final_content.trim()
                         ? event.final_content
-                        : '已取消当前规划。已产生的阶段性内容会保留在本次 Trip Run 记录中。';
+                        : '已取消当前规划。已产生的阶段性内容会保留在本次生成记录中。';
                     assistantMessage.content = finalContent;
                     assistantMessage.displayContent = finalContent;
                     if (hadPendingDecision) {
@@ -340,8 +340,8 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     scopedDispatch({
                         type: 'UPDATE_LAST_MESSAGE',
                         payload: {
-                            content: event.message || '发生错误',
-                            displayContent: event.message || '发生错误',
+                            content: event.message || '请求未完成，请稍后重试。',
+                            displayContent: event.message || '请求未完成，请稍后重试。',
                             type: event.run_status === 'interrupted' ? 'interrupted' : 'error',
                             streamCompleted: true,
                             pendingStatusText: undefined,

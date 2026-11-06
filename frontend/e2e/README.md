@@ -23,9 +23,9 @@ npx playwright test --list
 | `multi-round-intake.spec.ts` | 是 | 可打开页面 | 无；`/api/` 在浏览器内拦截 |
 | `session-state.spec.ts` | `JP_SESSION_STATE_E2E=1` | 可打开页面 | 无；`/api/` 与地图瓦片在浏览器内拦截 |
 | `map-load-failure.spec.ts` | `JP_MAP_LOAD_FAILURE_E2E=1` | 可打开页面 | 无；只模拟瓦片失败 |
-| `f3-workspace.spec.ts` | 无 | 可打开页面 | 无；正式工作台组件，API 在浏览器内拦截 |
-| `f5-archive.spec.ts` | 无 | 可打开页面 | 无；行程与资料管理在浏览器内拦截，涵盖读取、写入失败与运行配置限制 |
-| `f4-workspace.spec.ts` | 无 | 可打开页面 | 无；正式交付工作台，API 与瓦片在浏览器内拦截 |
+| `f3-workspace.spec.ts` | 是 | 可打开页面 | 无；正式工作台组件，API 在浏览器内拦截 |
+| `f5-archive.spec.ts` | 是 | 可打开页面 | 无；行程与资料管理在浏览器内拦截，涵盖读取、写入失败与运行配置限制 |
+| `f4-workspace.spec.ts` | 是 | 可打开页面 | 无；正式交付工作台，API 与瓦片在浏览器内拦截 |
 | `research-progress.spec.ts` | `JP_COMPONENT_E2E=1` | 可打开页面 | 无；使用本地组件样例 |
 | `deployment-settings.spec.ts` | `JP_DEPLOYMENT_URL=<局域网 HTTP 地址>` | 单独启动指定子路径和自定义瓦片的 Vite 服务 | API 与瓦片在浏览器内拦截 |
 | `workspace.spec.ts` | 部分；写入用例需 `JP_WRITE_E2E=1` | 完整应用 | 真实资料库与风格写入；只删除本次唯一命名的测试数据 |
@@ -69,7 +69,7 @@ JP_READ_RUN_ID=trip_xxx JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
 
 ## 证据与失败处理
 
-- 截图、JSON 几何数据与附件写入 `test-results/e2e-evidence/`；trace、video、junit 报告也在 `test-results/` 下，均已被 Git 忽略。
+- 截图、JSON 几何数据与附件写入仓库根目录或 `frontend/` 下的 `test-results/e2e-evidence/`；trace、video、junit 报告也在 `test-results/` 下，均已被 Git 忽略。
 - 完整规划用例保存 SSE、Run/Bundle 快照、截图、PDF 与浏览器诊断；原始材料可能包含真实请求和服务结果，只能留在忽略目录。
 - 模型输出不确定，外部服务也可能失败。完整规划用例最多等待 35 分钟；失败时先区分应用故障、上游失败与选择器错误，不通过放宽交付要求或改用模拟响应让用例通过。
 - 冒烟测试允许 readiness 返回 503，以检查降级响应合同；判断部署可用仍须确认 `/api/health/ready` 返回 200 且 `status=ready`。

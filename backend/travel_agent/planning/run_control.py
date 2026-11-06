@@ -49,7 +49,7 @@ async def cancel_run(
         return RunControlOutcome(
             command=command,
             run=initial_run,
-            message="取消请求已记录，正在等待工作流协作退出。",
+            message="已收到停止请求，正在结束当前规划。",
         )
     try:
         run = await trip_run_store.request_cancel(
@@ -100,8 +100,8 @@ async def cancel_run(
         )
         settled = await command_store.get(run_id, command.command_id)
         return RunControlOutcome(
-            command=settled or command, run=run, message="运行已停止。"
+            command=settled or command, run=run, message="规划已停止。"
         )
     return RunControlOutcome(
-        command=command, run=run, message="取消请求已记录，正在等待工作流协作退出。"
+        command=command, run=run, message="已收到停止请求，正在结束当前规划。"
     )

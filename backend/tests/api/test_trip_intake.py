@@ -328,4 +328,4 @@ async def test_fast_answer_never_raises_planning_gates(resources):
 async def test_planning_without_checkpoint_support_is_refused(resources, planning_route):
     response = await request("POST", "/api/chat-stream", _planning_body("m1"))
     assert response.status_code == 409
-    assert "checkpoint" in response.json()["detail"]
+    assert "未启用方案确认" in str(response.json()["detail"]) or "未启用进度保存" in str(response.json()["detail"])

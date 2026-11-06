@@ -34,9 +34,9 @@ async def add_trip_run_supplement(
     components = get_components()
     detail = await components.trip_run_store.get_detail(run_id, event_limit=0)
     if detail is None:
-        raise HTTPException(status_code=404, detail="TripRun 不存在")
+        raise HTTPException(status_code=404, detail="未找到这趟规划记录")
     if request.session_id and detail.run.session_id != request.session_id:
-        raise HTTPException(status_code=403, detail="无权修改该 TripRun")
+        raise HTTPException(status_code=403, detail="无权修改这趟规划记录")
     try:
         await reject_running_supplement(
             run=detail.run,
@@ -61,9 +61,9 @@ async def control_trip_run(
     components = get_components()
     detail = await components.trip_run_store.get_detail(run_id, event_limit=0)
     if detail is None:
-        raise HTTPException(status_code=404, detail="TripRun 不存在")
+        raise HTTPException(status_code=404, detail="未找到这趟规划记录")
     if request.session_id and detail.run.session_id != request.session_id:
-        raise HTTPException(status_code=403, detail="无权控制该 TripRun")
+        raise HTTPException(status_code=403, detail="无权控制这趟规划记录")
     try:
         outcome = await cancel_run(
             run_id,

@@ -2,6 +2,6 @@
 
 APP_NAME = "JourneyPilot"
 
-PROJECT_URL = "https://github.com/journeypilot"
+PROJECT_URL = "https://github.com/Lagom-TA/JourneyPilot"
 
 USER_AGENT = f"{APP_NAME} ({PROJECT_URL})"

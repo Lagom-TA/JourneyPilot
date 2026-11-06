@@ -184,7 +184,7 @@ rerank:
 # 地理编码与地点身份查询。
 geocoding:
   nominatim_base_url: "https://nominatim.openstreetmap.org"
-  user_agent: "JourneyPilot (https://github.com/journeypilot)"
+  user_agent: "JourneyPilot (https://github.com/Lagom-TA/JourneyPilot)"
   # /lookup 和 Overpass 的超时；仅用于地点身份的后备查询。
   timeout_seconds: 10.0
   # 用户提交目的地时 /search 的单次超时。
@@ -201,7 +201,7 @@ geocoding:
 routing:
   transitous_base_url: "https://api.transitous.org"
   amap_base_url: "https://restapi.amap.com"
-  user_agent: "JourneyPilot (https://github.com/journeypilot)"
+  user_agent: "JourneyPilot (https://github.com/Lagom-TA/JourneyPilot)"
   timeout_seconds: 20.0
   min_interval_seconds: 1.0
 

@@ -38,7 +38,7 @@ export function planRequestedRun(input: {
 
 export function sessionLoadFailureMessage(failure: SessionLoadFailure | null): string {
     if (failure === 'run_session_mismatch') {
-        return '这次生成记录不属于当前会话，暂时无法打开。';
+        return '这次生成记录不属于这趟旅行，暂时无法打开。';
     }
     return '暂时无法打开这次生成记录，请重试。';
 }

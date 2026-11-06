@@ -61,7 +61,7 @@ async def delivery_projection_node(state: TravelAgentState) -> Dict[str, Any]:
         generated_at=generated_at,
     )
     return {
-        "messages": [AIMessage(content="正式旅行交付内容已构建，正在保存。")],
+        "messages": [AIMessage(content="行程方案已整理完成，正在保存。")],
         "trip_workspace": workspace,
         "fact_store_snapshot": facts,
         "report_projection": report,

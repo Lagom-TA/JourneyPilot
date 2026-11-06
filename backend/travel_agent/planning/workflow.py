@@ -127,7 +127,7 @@ class TravelPlanningWorkflow:
                 logger.warning("计划门检查点缺少当前研究方案 run_id=%s", run_id)
                 raise CheckpointContractError("当前版本无法继续这次旧规划，请重新规划这趟旅行。")
             if NODE_RESEARCH_GATE in snapshot.next and not state.research_failed_workers:
-                raise CheckpointContractError("研究重试检查点缺少未完成的角色。")
+                raise CheckpointContractError("当前版本无法继续这次旧规划，请重新规划这趟旅行。")
             if NODE_UNDERSTANDING_GATE in snapshot.next and state.understanding_pending_questions is None:
                 logger.warning("理解门检查点缺少待答问题 run_id=%s", run_id)
                 raise CheckpointContractError("当前版本无法继续这次旧规划，请重新规划这趟旅行。")

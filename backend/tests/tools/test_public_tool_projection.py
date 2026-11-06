@@ -133,7 +133,7 @@ def test_knowledge_empty_and_partial_failure_are_distinct():
     ) == "部分资料库暂不可用"
     assert summarize_tool_result(
         {"documents": [{"content": "x"}], "failures": [{"collection": "destinations"}]}
-    ) == "读到 1 段知识库资料（部分来源暂不可用）"
+    ) == "读到 1 段资料库资料（部分来源暂不可用）"
 
 
 def test_web_text_content_uses_readable_preview_without_line_count():

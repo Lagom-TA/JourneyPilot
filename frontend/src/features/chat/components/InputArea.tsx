@@ -135,7 +135,7 @@ export const InputArea: React.FC<{
             }
         }
         catch {
-            setOptimizeError('优化服务暂时不可用，请稍后重试');
+            setOptimizeError('补全服务暂时不可用，请稍后重试');
         }
         finally {
             setIsOptimizing(false);
@@ -185,8 +185,8 @@ export const InputArea: React.FC<{
     const inputDisabled = (state.isStreaming || state.currentTripRunStatus === 'running'
         || state.currentTripRunStatus === 'created' || state.currentTripRunStatus === 'cancel_requested')
         && (!state.deliveryBundle || !state.currentSessionId);
-    const normalPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改……' : '描述这趟旅行：目的地、日期、同行人、预算、偏好…');
-    const stoppedPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改……' : '告诉 JourneyPilot 这趟行程想怎么调整…');
+    const normalPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改…' : '描述这趟旅行：目的地、日期、同行人、预算、偏好…');
+    const stoppedPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改…' : '说说这趟行程想怎么调整…');
     return (<div className="w-full">
       {pending.items.length > 0 && <section className="mb-2 rounded-card border border-stroke bg-panel p-3" aria-label="待发送消息">
         <p className="mb-2 text-xs text-ink-secondary">
@@ -224,7 +224,7 @@ export const InputArea: React.FC<{
                   </Button>
                   {!minimal && <button onClick={handleNewChat} className={cn('flex-shrink-0 flex items-center gap-1.5 h-8 px-3 rounded-card', 'text-xs font-medium text-ink-secondary', 'border border-stroke/60 bg-transparent', 'hover:bg-ink/5 hover:text-ink hover:border-stroke/60', 'transition-[color,background-color,opacity] duration-base ease-standard')}>
                     <Plus size={13}/>
-                    新建行程
+                    新旅行
                   </button>}
                 </>) : (<>
                   <textarea ref={textareaRef} data-testid="brief-input" aria-label="旅行需求" value={input} onChange={(e) => {

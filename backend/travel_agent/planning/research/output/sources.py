@@ -6,6 +6,7 @@ from typing import Any, Mapping, Sequence
 
 from travel_agent.integrations.provider_environment import snapshot_data_environment
 from travel_agent.knowledge.fragments import is_rag_chunk_source_id
+from travel_agent.planning.delivery.source_presentation import clean_public_source_title
 from travel_agent.planning.research.evidence import (
     ProviderSnapshotProvenance,
     SourceRecord,
@@ -88,7 +89,7 @@ def _ground_model_tool_sources(
         kept.append({
             "source_record_id": source_id,
             "source_kind": "external_tool",
-            "title": f"{tool_name} 查询结果",
+            "title": clean_public_source_title(f"{tool_name} 查询结果"),
             "provider_name": str(envelope.get("server_name") or tool_name),
             "public_excerpt": str(envelope.get("result_summary") or "")[:900],
             "retrieved_at": observed_at,

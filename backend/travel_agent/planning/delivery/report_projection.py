@@ -80,9 +80,9 @@ def _reportable_selection_options(
 _PUBLIC_COMPARISON_LABELS = {
     "branch_name": "具体餐厅",
     "property_name": "具体住宿",
-    "place_id": "实体身份已核验",
-    "provider_place_type": "实体类型已核验",
-    "provider_country_code": "所在国家或地区已核验",
+    "place_id": "地点信息已核实",
+    "provider_place_type": "地点类型已核实",
+    "provider_country_code": "所在国家或地区已核实",
     "address": "地址",
     "average_spend_cny": "人均消费",
     "nightly_price_cny": "每晚价格",
@@ -113,7 +113,7 @@ def _public_comparison_facts(field_paths: Sequence[str]) -> list[str]:
         label = _PUBLIC_COMPARISON_LABELS.get(field_path)
         if label and label not in labels:
             labels.append(label)
-    return labels or ["实体与来源已核验"]
+    return labels or ["地点与来源已核实"]
 
 
 def _report_destinations(workspace: TripWorkspace) -> list[ReportDestination]:
@@ -265,7 +265,7 @@ def _entity_block(
         summary = f"从 {entity.name} 办理退房"
         payload = {key: payload[key] for key in ("check_out_date", "check_out_time")}
     elif isinstance(entity, LodgingStay) and projection_role == "check_in":
-        summary = f"入住 {entity.name}，覆盖 {entity.nights} 晚"
+        summary = f"入住 {entity.name}，连住 {entity.nights} 晚"
     elif isinstance(entity, TransportLeg) and projection_role == "departure":
         summary = f"从 {entity.from_endpoint.name} 出发"
     elif isinstance(entity, TransportLeg) and projection_role == "arrival":

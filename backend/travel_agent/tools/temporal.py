@@ -258,8 +258,8 @@ def evaluate_temporal_request(
             requested_start=requested,
             requested_end=requested,
             user_message=(
-                f"{capability.provider_name} 当前工具只提供 Provider 标记日期的最新数据，"
-                f"不能把 latest 声明为 {requested.isoformat()} 的日期事实。"
+                f"当前汇率工具仅提供最新汇率，"
+                f"不能作为所选日期 {requested.isoformat()} 的历史或远期汇率。"
             ),
         )
     supported_start = (
@@ -281,7 +281,7 @@ def evaluate_temporal_request(
             supported_start=supported_start,
             supported_end=supported_end,
             user_message=(
-                f"{capability.provider_name} 不支持查询 {requested.isoformat()}："
+                f"暂不支持查询 {requested.isoformat()}："
                 f"该日期早于当前可查询起点 {supported_start.isoformat()}。"
             ),
         )
@@ -314,8 +314,8 @@ def evaluate_temporal_request(
             supported_start=supported_start,
             supported_end=supported_end,
             user_message=(
-                f"{capability.provider_name} 的精确数据只支持到 "
-                f"{supported_end.isoformat()}，不会查询或复制到目标日期 "
+                f"当前工具的精确数据最远支持到 "
+                f"{supported_end.isoformat()}，暂未覆盖目标日期 "
                 f"{requested.isoformat()}。"
             ),
         )

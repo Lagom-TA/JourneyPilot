@@ -59,7 +59,7 @@ const Month: React.FC<{
         cells.push(day);
     while (cells.length % 7)
         cells.push(null);
-    return (<section className="min-w-0 flex-1" aria-label={`${month.getFullYear()}年${month.getMonth() + 1}月`}>
+    return (<section className="min-w-0 flex-1" aria-label={`${month.getFullYear()} 年 ${month.getMonth() + 1} 月`}>
       <h3 className="mb-3 text-center text-sm font-semibold text-ink">{month.getFullYear()} 年 {month.getMonth() + 1} 月</h3>
       <div className="grid grid-cols-7 gap-1">
         {WEEKDAYS.map((item) => <span key={item} className="py-1 text-center text-[11px] text-ink-secondary">{item}</span>)}

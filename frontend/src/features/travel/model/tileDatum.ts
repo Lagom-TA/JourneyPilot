@@ -1,3 +1,5 @@
+import { getMapTileConfig } from '../../../lib/mapConfig';
+
 export function withinChinaCoordinateBox(lng: number, lat: number): boolean {
     return lng > 73.66 && lng < 135.05 && lat > 3.86 && lat < 53.55;
 }
@@ -40,11 +42,12 @@ export function wgs84ToGcj02(lng: number, lat: number): [
     const [dlng, dlat] = gcjOffset(lng, lat);
     return [lng + dlng, lat + dlat];
 }
-// 存储坐标保持 WGS-84，仅在高德瓦片渲染前转换。
+// 存储坐标保持 WGS-84，按瓦片坐标系转换渲染坐标。
 export function toTileDatum(latitude: number, longitude: number): [
     number,
     number
 ] {
+    if (getMapTileConfig().datum === 'wgs84') return [latitude, longitude];
     const [lng, lat] = wgs84ToGcj02(longitude, latitude);
     return [lat, lng];
 }

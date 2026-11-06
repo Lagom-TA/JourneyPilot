@@ -10,13 +10,9 @@
 | 地域印刷 | `print-northwest` 西北、`print-jiangnan` 江南、`print-island` 海岸、`print-southwest` 山城 |
 | 比例适配 | `tag-luggage-wide` 横行李签 |
 
-## 来源与生成参数
+## 来源
 
-- 生成日期：2026-11-04。
-- 服务与模型：[OpenRouter / GPT Image 2.5 Sunburst](https://openrouter.ai/openai/gpt-image-2.5-sunburst)，模型标识 `openai/gpt-image-2.5-sunburst`，质量 `max`。
-- 每个物件独立生成；后续纸型与印刷图参考自生成的 `ticket-main` 母版，统一纸材、色彩与光向。
-- 请求使用透明背景。生产版本去除空白余量和极低 Alpha 像素，以 WebP 质量 90 编码，保留纸边及透明孔位。
-- 每件完整提示词、实际请求参数、参考关系、返回用量及导出尺寸保存在同名 `.webp.json`。`manifest.json` 提供名称、家族与尺寸索引。
+- 素材由 [OpenRouter / GPT Image 2.5 Sunburst](https://openrouter.ai/openai/gpt-image-2.5-sunburst) 生成，使用统一的纸材、色彩与光向，以透明 WebP 提供。
 
 ## 使用
 

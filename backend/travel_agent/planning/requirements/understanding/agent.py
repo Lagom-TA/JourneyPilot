@@ -89,7 +89,7 @@ async def understanding_agent_node(state: Any, config: Optional[RunnableConfig] 
     while True:
         estimated, _ = estimate_request_tokens({"messages": messages})
         if estimated > UNDERSTANDING_PROMPT_MAX_ESTIMATED_TOKENS:
-            raise UnderstandingFailed("理解阶段的上下文过长，请精简要求后重新开始规划。")
+            raise UnderstandingFailed("旅行要求过长，请精简内容后重新开始规划。")
         react = await asyncio.wait_for(
             streaming_react_loop(
                 llm=llm,
@@ -148,8 +148,12 @@ async def understanding_agent_node(state: Any, config: Optional[RunnableConfig] 
             }]
         needs_retry = action == "ready" and not missing_dates and not identity.destinations
         if (pending or needs_retry) and rounds >= UNDERSTANDING_MAX_ROUNDS:
+            if needs_retry:
+                raise UnderstandingFailed(
+                    "已达到目的地核实上限，请填写具体的城市或区域后重新开始规划。"
+                )
             raise UnderstandingFailed(
-                "已达到理解阶段的提问上限或地点重试上限，请整理要求后重新开始规划。"
+                "已达到提问上限，仍未明确旅行日期或目的地，请补充具体条件后重新开始规划。"
             )
         _append_final_answer(messages, react.content)
         await _persist_run_identity(config, state.run_id, identity)

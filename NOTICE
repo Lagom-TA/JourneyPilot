@@ -19,12 +19,13 @@ JourneyPilot 以 MIT 许可证发布，见 [LICENSE](LICENSE)。本文件记录�
 ## 品牌与界面素材
 
 - `frontend/src/assets/brand/` 与 `frontend/src/assets/marks/` 为项目自有品牌素材，随仓库以 MIT 发布。
-- `docs/assets/logo-lockup-*.png` 为项目 logo。
-- 此前用于 README 的产品截图已从本仓库移除，不再随发布分发。
+- `frontend/src/assets/home/` 与 `frontend/src/assets/paper/` 为项目生成的原创界面素材；来源与使用说明见各目录的 README。
+- `docs/assets/` 中的 logo、界面截图和社交预览图用于展示项目。界面截图使用示例数据。
+- `docs/assets/map-workspace.png` 与 `docs/assets/demo.gif` 中的地图画面来自 © [Stadia Maps](https://stadiamaps.com/attribution/)、© [OpenMapTiles](https://openmaptiles.org/) 和 © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)。这些第三方地图内容按各自条款使用；应用默认底图仍为高德地图。
 
 ## 地图瓦片
 
-运行时默认请求高德地图瓦片（`frontend/src/lib/mapConfig.ts`），署名显示在 Leaflet attribution 中。瓦片不随仓库分发，使用需遵守上游条款；部署方可用 `VITE_MAP_TILE_URL` / `VITE_MAP_TILE_ATTRIBUTION` 换成自有或其他瓦片服务。
+运行时默认请求高德地图瓦片（`frontend/src/lib/mapConfig.ts`），署名显示在 Leaflet attribution 中。地图瓦片不作为独立资源随仓库分发，使用需遵守上游条款；部署方可用 `VITE_MAP_TILE_URL` / `VITE_MAP_TILE_ATTRIBUTION` 换成自有或其他瓦片服务，并用 `VITE_MAP_TILE_DATUM` 设置对应坐标系。
 
 ## 依赖
 

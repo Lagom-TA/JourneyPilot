@@ -14,7 +14,7 @@ export const TRANSPORT_MODE_LABELS: Record<TransportMode, string> = {
     drive: '自驾',
     bike: '骑行',
     walk: '步行',
-    other: '其它交通',
+    other: '其他交通',
 };
 export const BOOKING_LABELS: Record<PublicTransportLeg['booking_status'], string> = {
     not_required: '无需预订',

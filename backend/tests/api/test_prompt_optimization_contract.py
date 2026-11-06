@@ -50,7 +50,7 @@ async def test_short_prompt_keeps_the_inline_200_response(client) -> None:
         response = await http.post("/api/optimize-prompt", json={"prompt": "杭州"})
     assert response.status_code == 200
     assert response.json()["success"] is False
-    assert response.json()["error_message"] == "提示词太短，请补充更多信息后重试"
+    assert response.json()["error_message"] == "描述太短，请补充更多信息后重试"
 
 
 async def test_injection_prompt_is_still_blocked_by_input_guard(client) -> None:

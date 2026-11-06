@@ -211,7 +211,7 @@ export function useSessionManager() {
                 payload: {
                     sessionId,
                     runId: requestedRunId ?? null,
-                    message: '暂时无法打开这个会话，请重试。',
+                    message: '暂时无法打开这趟旅行，请重试。',
                 },
             });
         }
@@ -242,7 +242,7 @@ export function useSessionManager() {
         catch {
             dispatch({
                 type: 'SET_SESSION_LOAD_ERROR',
-                payload: { sessionId: null, runId: null, message: '暂时无法读取旅行会话，请重试。' },
+                payload: { sessionId: null, runId: null, message: '暂时无法读取旅行记录，请重试。' },
             });
         }
         finally {

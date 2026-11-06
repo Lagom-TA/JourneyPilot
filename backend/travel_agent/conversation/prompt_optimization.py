@@ -15,7 +15,7 @@ async def prepare_prompt_optimization(prompt: str) -> tuple[str, dict | None]:
         return prompt, {
             "success": False,
             "optimized_prompt": "",
-            "error_message": "提示词太短，请补充更多信息后重试",
+            "error_message": "描述太短，请补充更多信息后重试",
         }
 
     guard_result = await check_input_guard(prompt)
@@ -73,6 +73,6 @@ async def optimize_travel_prompt(
         return {
             "success": False,
             "optimized_prompt": "",
-            "error_message": "提示词信息量不足，请补充目的地、天数等更多信息后重试",
+            "error_message": "描述信息量不足，请补充目的地、天数等更多信息后重试",
         }
     return {"success": True, "optimized_prompt": result_text, "error_message": None}

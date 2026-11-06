@@ -76,7 +76,7 @@ export const UserPreferencesPage: React.FC = () => {
     setMemoryFeedback(null);
     try {
       await deleteMemoryFact(fact.fact_id, { reason: `remove memory fact: ${fact.content}` });
-      setMemoryFeedback({ message: '已从记忆列表删除，画像将在后续总结时更新。' });
+      setMemoryFeedback({ message: '已从记忆列表删除，偏好总结将在后续对话中同步更新。' });
       await refreshFacts();
     } catch (err) { setMemoryFeedback({ message: describeRequestFailure(err, '删除', '这条记忆').message, error: true }); }
     finally { setBusy(false); setDeletingFactId(null); }
@@ -88,7 +88,7 @@ export const UserPreferencesPage: React.FC = () => {
     try {
       await deleteAllMemory({ reason: 'user requested full first-party memory deletion', clear_auto_portrait: true, clear_graph: true, clear_session_anchors: true });
       setShowDeleteAllModal(false);
-      setMemoryFeedback({ message: '旅行记忆与自动画像已清空，手填偏好和常用出发地已保留。' });
+      setMemoryFeedback({ message: '旅行记忆已全部清空，手填偏好和常用出发地已保留。' });
       await refreshFacts();
     } catch (err) { setDeleteAllFeedback({ message: describeRequestFailure(err, '删除', '全部记忆').message, error: true }); }
     finally { setBusy(false); }
@@ -138,13 +138,13 @@ export const UserPreferencesPage: React.FC = () => {
             <ConfirmAction onConfirm={() => void handleDeleteFact(fact)} confirmLabel="确认删除" confirmPending={deletingFactId === fact.fact_id} disabled={busy || adding} className="border-transparent bg-transparent px-0" triggerClassName="text-ink-secondary">删除</ConfirmAction>
           </div>) : <p className="archive-note">还没有旅行记忆。</p>}
         </>}
-        <details className="preference-detail"><summary>记忆如何使用与管理</summary><p>记忆会用于后续规划；与本次要求冲突时，以本次为准。手动添加或单条删除的操作及相关内容会发送给配置的快速模型，参与后续总结。旧画像在下一次总结前仍可能用于规划。</p>
+        <details className="preference-detail"><summary>记忆如何使用与管理</summary><p>记忆会用于后续规划；与本次要求冲突时，以本次为准。手动添加或单条删除后，系统会同步更新你的偏好总结；更新完成前，规划仍可能参考此前总结的内容。</p>
           <div className="memory-tools"><Button variant="ghost" size="sm" disabled={busy || adding || !!factsError} onClick={() => void handleRetentionCleanup()}><Clock3 size={14} />清理过期</Button><Button variant="ghost" size="sm" data-testid="memory-delete-all" disabled={busy || adding || !!factsError} onClick={() => { setDeleteAllFeedback(null); setShowDeleteAllModal(true); }}><Eraser size={14} />删除全部记忆</Button></div>
         </details>
       </section>
     </PageShell>
     <Modal open={showDeleteAllModal} onClose={() => { if (!busy) setShowDeleteAllModal(false); }} title="删除全部记忆？">
-      <p className="text-sm leading-relaxed text-ink-secondary">将清除 {facts.length} 条记忆、自动画像、关联、对话摘要及手动管理内容。删除前对话的待处理记忆任务也会取消。</p>
+      <p className="text-sm leading-relaxed text-ink-secondary">将清除 {facts.length} 条记忆、对话偏好总结及手动管理内容。正在整理的记忆也会一并取消。</p>
       <p className="mt-3 text-sm leading-relaxed text-ink">手填偏好和常用出发地保留。</p>
       <FeedbackLine value={deleteAllFeedback} />
       <div className="mt-6 flex justify-end gap-3"><Button variant="secondary" size="sm" disabled={busy} onClick={() => setShowDeleteAllModal(false)}>取消</Button><Button size="sm" data-testid="memory-delete-all-confirm" loading={busy} onClick={() => void handleDeleteAll()}>删除全部记忆</Button></div>

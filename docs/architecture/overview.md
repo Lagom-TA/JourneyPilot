@@ -9,7 +9,7 @@ JourneyPilot 是一个**单机、单进程、单用户**的自托管旅行规划
   │  SSE + REST
   ▼
 FastAPI 进程
-  ├─ LangGraph 工作流（确认需求 → 串行研究 → 组合行程 → 交付）
+  ├─ LangGraph 工作流（确认需求 → 目的地研究 → 交通与住宿并行研究 → 组合行程 → 交付）
   ├─ 进程内 asyncio worker（durable command / background job 的消费者）
   ├─ 受限线程与子进程（PDF 渲染、文档解析、本地推理）
   └─ MCP stdio 子进程（外部数据源）
@@ -44,7 +44,7 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
   追加要求。`constraints/` 分开参数、记忆来源、抽取与展示；`understanding/` 承载需求理解与
   追问门；`approval.py` 提供计划门交互；`amendments.py` / `supplements.py` 维护变更。
 - `planning/research/`：研究方案、任务分派、供应商责任与结果、packet 与候选目录组装。
-  `dispatch.py` 按执行计划逐个派发 worker，收齐后由 `assembly.py` 的 `build_candidate_catalog`
+  `dispatch.py` 按执行计划分组派发 worker，收齐后由 `assembly.py` 的 `build_candidate_catalog`
   构建 `RecommendationCatalog`；`destination/`、`transport/`、`accommodation/` 各自拥有身份绑定
   与工作节点；`failure_protocol.py` 固定失败前缀语义。
 - `planning/itinerary/`：行程草稿生成、地点解析、住宿基点、开放时间与已选供应的物化。

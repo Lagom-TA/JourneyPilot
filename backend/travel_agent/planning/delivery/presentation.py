@@ -37,7 +37,7 @@ TRANSPORT_MODE_LABELS: dict[TransportMode, str] = {
     TransportMode.DRIVE: "自驾",
     TransportMode.BIKE: "骑行",
     TransportMode.WALK: "步行",
-    TransportMode.OTHER: "其它交通",
+    TransportMode.OTHER: "其他交通",
 }
 
 
@@ -73,7 +73,7 @@ _VISIT_TYPE_LABELS = {
     "culture": "文化",
     "shopping": "购物",
     "nature": "自然",
-    "other": "其它",
+    "other": "其他",
 }
 
 
@@ -82,7 +82,7 @@ _MEAL_TYPE_LABELS = {
     "lunch": "午餐",
     "dinner": "晚餐",
     "snack": "小吃",
-    "other": "其它",
+    "other": "其他",
 }
 
 

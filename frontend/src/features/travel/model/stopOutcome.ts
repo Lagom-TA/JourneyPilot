@@ -13,7 +13,7 @@ export function stopOutcomeFromError(error: unknown): StopOutcome {
         return {
             stopped: true,
             status,
-            message: status === 'cancelled' ? null : '这次运行已经结束了，不需要再停止。',
+            message: status === 'cancelled' ? null : '这次规划已经结束了，不需要再停止。',
         };
     }
     return {

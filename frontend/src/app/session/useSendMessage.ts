@@ -128,8 +128,8 @@ export function useSendMessage() {
                 scopedDispatch({
                     type: 'UPDATE_LAST_MESSAGE',
                     payload: {
-                        content: `请求失败: ${error.message}`,
-                        displayContent: `请求失败: ${error.message}`,
+                        content: `请求失败：${error.message}`,
+                        displayContent: `请求失败：${error.message}`,
                         type: 'error',
                         streamCompleted: true,
                     },

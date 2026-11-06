@@ -71,7 +71,7 @@ export function DeliveryMobileSheet({ open, onClose, children }: { open: boolean
               ref={handleRef}
               type="button"
               data-testid="sheet-handle"
-              aria-label={detent === 92 ? '收起行程详情' : '展开行程详情'}
+              aria-label={detent === 92 ? '收起旅行日程' : '展开旅行日程'}
               aria-expanded={detent === 92}
               onPointerDown={(event) => { dragged.current = false; dragControls.start(event); }}
               onClick={() => { if (dragged.current) { dragged.current = false; return; } snapTo(detent === 55 ? 92 : 55); }}

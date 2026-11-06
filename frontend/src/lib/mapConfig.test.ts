@@ -7,6 +7,13 @@ describe('resolveMapTileConfig', () => {
     expect(config.url).toContain('webrd0{s}.is.autonavi.com');
     expect(config.attribution).toContain('高德地图');
     expect(config.subdomains).toEqual(['1', '2', '3', '4']);
+    expect(config.datum).toBe('gcj02');
+  });
+
+  it('accepts an explicit datum and rejects unknown values', () => {
+    expect(resolveMapTileConfig(undefined, undefined, ' WGS84 ').datum).toBe('wgs84');
+    expect(resolveMapTileConfig(undefined, undefined, 'gcj02').datum).toBe('gcj02');
+    expect(() => resolveMapTileConfig(undefined, undefined, 'invalid')).toThrow('VITE_MAP_TILE_DATUM');
   });
 
   it('uses configured tile url and attribution', () => {

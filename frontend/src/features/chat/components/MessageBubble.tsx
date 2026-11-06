@@ -84,7 +84,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isGenerat
         {isWaiting && (<div aria-live="polite" className="flex w-full min-w-0 overflow-hidden rounded-card border border-accent/15 bg-[var(--color-accent-soft)] shadow-sm">
             <div className="flex w-full items-center gap-2 px-4 py-3">
               <ShieldQuestion size={14} className="flex-shrink-0 text-accent"/>
-              <span className="flex-1 text-sm font-medium leading-relaxed text-ink">等待批准方案</span>
+              <span className="flex-1 text-sm font-medium leading-relaxed text-ink">等待确认方案</span>
               <span className="flex items-center gap-[5px]">
                 <span className="waiting-dot inline-block h-[5px] w-[5px] rounded-full bg-accent"/>
                 <span className="waiting-dot inline-block h-[5px] w-[5px] rounded-full bg-accent"/>

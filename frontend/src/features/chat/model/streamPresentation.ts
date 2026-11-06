@@ -67,7 +67,7 @@ export function createStreamPresentation(scopedDispatch: (action: ChatAction) =>
                         id: event.step_id || `work-note:${event.run_id || ''}:${event.agent_name || ''}:${event.round ?? 0}:${event.call_id || ''}:${event.seq ?? 0}`,
                         agentName: event.agent_name || '',
                         content: event.content,
-                        stepName: event.step_name || '模型工作说明',
+                        stepName: event.step_name || '工作说明',
                         timestamp: now,
                         tsMs: event.ts_ms,
                         kind: 'work_explanation',

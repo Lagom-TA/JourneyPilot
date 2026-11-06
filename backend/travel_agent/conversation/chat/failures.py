@@ -12,6 +12,7 @@ from travel_agent.planning.delivery.public.bundle import (
 )
 from travel_agent.utils.json_helpers import strip_think_blocks
 from travel_agent.planning.delivery.completion import DeliveryFinalizationError
+from travel_agent.planning.requirements.understanding.agent import UnderstandingFailed
 from travel_agent.runtime.cancellation import RunCancelled, stop_verdict
 from travel_agent.runtime.budget import RunBudgetExhausted
 from travel_agent.runtime.events import run_ts_ms
@@ -111,7 +112,7 @@ async def cancel_chat(
     if not verdict.user_decision:
         yield {
             "type": "error",
-            "message": "这次规划被中断了（本机执行记录丢失），可以稍后继续。",
+            "message": "这次规划意外中断，可以稍后继续。",
             "message_id": message_id,
             "run_id": trip_run.run_id,
             "run_status": verdict.terminal_status,
@@ -205,12 +206,19 @@ async def fail_chat(
     public_failure_message = "旅行方案暂时无法生成，请稍后重试。"
     if isinstance(terminal_failure, RunBudgetExhausted):
         terminal_reason_code = terminal_failure.reason_code
-        public_failure_message = "本次规划的模型调用额度已用尽，调整运行预算后请重新规划。"
+        public_failure_message = "本次规划的调用额度已用尽，调整预算上限后请重新规划。"
     elif isinstance(terminal_failure, (ModelWindowClosed, DeliveryDeadlineExceeded)):
         terminal_reason_code = "run_deadline_exhausted"
-        public_failure_message = "本次规划已超过运行时限，请重新规划。"
+        public_failure_message = "本次规划已超过处理时限，请重新规划。"
+    elif isinstance(terminal_failure, UnderstandingFailed):
+        terminal_reason_code = "understanding_failed"
+        msg = str(terminal_failure).strip()
+        if msg and not re.search(r"[:][ ]|[A-Za-z_]{3,}", msg):
+            public_failure_message = msg
     elif isinstance(terminal_failure, DeliveryFinalizationError):
         terminal_reason_code = terminal_failure.record.failure_class.value
+        if terminal_failure.record.public_message:
+            public_failure_message = terminal_failure.record.public_message
     elif isinstance(terminal_failure, PublicProjectionContractViolation):
         terminal_reason_code = "public_projection_contract_violation"
     else:

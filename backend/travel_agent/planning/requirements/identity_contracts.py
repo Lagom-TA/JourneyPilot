@@ -109,7 +109,7 @@ class ControlledTripIdentity(_StrictInputModel):
         ]
         if invalid:
             raise ValueError(
-                f"目的地只支持城市、行政区域、岛屿或景区型区域: {', '.join(invalid)}"
+                f"目的地只支持城市、行政区域、岛屿或景区型区域：{'、'.join(invalid)}"
             )
         if len({item.place_id for item in self.destinations}) != len(self.destinations):
             raise ValueError("目的地不能重复")

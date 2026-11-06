@@ -606,7 +606,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   ) : null;
 
   const content = bundle && (
-    <section className="journey-content" aria-label={conversationOpen ? '调整旅行会话' : '行程卡片'}>
+    <section className="journey-content" aria-label={conversationOpen ? '调整行程对话' : '行程卡片'}>
       <div className="journey-content-viewport">
         <AnimatePresence mode="popLayout" initial={false} custom={sceneTransition}>
           <PresenceFrame

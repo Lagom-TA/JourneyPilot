@@ -8,6 +8,7 @@ from travel_agent.planning.delivery.projections import PublicSourceSummary
 from travel_agent.planning.delivery.projections import PublicSupportedValue
 from travel_agent.planning.delivery.source_presentation import (
     _public_source_presentation,
+    public_fact_field_label,
 )
 from travel_agent.planning.itinerary.options import SELECTION_SLOT_ENTITY_TYPES
 from travel_agent.planning.references import EntityRef
@@ -156,7 +157,7 @@ def project_public_citations(
                 fact_status=fact.status if fact.status != "superseded" else "stale",
                 supported_values=[
                     PublicSupportedValue(
-                        label=fact.field_path,
+                        label=public_fact_field_label(fact.field_path),
                         value=fact.asserted_value,
                         unit=fact.unit,
                         currency=fact.currency,

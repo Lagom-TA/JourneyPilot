@@ -71,25 +71,49 @@ export function getChatErrorGuidance(raw: string, kind: ChatErrorKind): ChatErro
     }
     if (/delivery_integrity_projection_failure/i.test(message)) {
         return {
-            title: '这次运行的结果无法展示',
-            description: '这趟旅行的结果没能生成可以展示的方案，继续这次运行会得到同一个结果。请重新规划这趟旅行。',
+            title: '这次规划的结果无法展示',
+            description: '这趟旅行的结果没能生成可以展示的方案，继续规划会得到相同结果。请重新规划这趟旅行。',
             action: null,
         };
     }
     if (/基础旅行身份已锁定|identity_locked/i.test(message)) {
         return { title: '需要重新确认旅行信息', description: '目的地、日期和同行人已用于当前计划。请取消本次规划，回到新旅行修改后重新开始。', action: null };
     }
-    if (/\b409\b|conflict|revision[ _-]?conflict|out[ _-]?of[ _-]?date/i.test(message)) {
+    if (/\brun_already_executing\b/i.test(message)) {
+        return {
+            title: '这趟旅行正在其他窗口规划',
+            description: '请刷新页面，查看这趟旅行当前的规划进度。',
+            action: 'reload',
+            actionLabel: '刷新页面',
+        };
+    }
+    if (/\b(?:bundle_revision_conflict|report_out_of_date)\b/i.test(message)) {
         return {
             title: '这次旅行结果刚刚更新过',
-            description: '服务端已经有更新的一版行程，为了不覆盖它，这次操作没有执行。请查看当前的行程结果；如果这次修改仍然需要，请在最新结果上重新发起。',
+            description: '这趟旅行已经有更新的一版行程，为了不覆盖它，这次操作没有执行。请查看当前的行程结果；如果这次修改仍然需要，请在最新结果上重新发起。',
             action: null,
+        };
+    }
+    if (/\bplan_gate_version_stale\b/i.test(message)) {
+        return {
+            title: '需要重新确认规划信息',
+            description: '确认信息缺失或已过期，请刷新页面，查看最新进展后再回答。',
+            action: 'reload',
+            actionLabel: '刷新页面',
+        };
+    }
+    if (/\b409\b|\bconflict\b/i.test(message)) {
+        return {
+            title: '这次操作暂时无法执行',
+            description: '请刷新页面，查看这趟旅行的最新状态后再试。',
+            action: 'reload',
+            actionLabel: '刷新页面',
         };
     }
     if (/delivery[ _-]?integrity|delivery bundle|bundle (?:schema|revision|persistence)|atomic (?:save|persist|finaliz)/i.test(message)) {
         return {
             title: '旅行结果需要重新加载',
-            description: '当前旅行结果未能安全保存。请刷新页面后重新载入；你的需求不会因此丢失。',
+            description: '当前旅行结果未能安全保存。请刷新页面后重新加载；你的需求不会因此丢失。',
             action: 'reload',
             actionLabel: '重新加载',
         };

@@ -19,6 +19,11 @@ from travel_agent.planning.delivery.public.itinerary import _public_endpoint
 from travel_agent.planning.delivery.public.itinerary import _public_entity_ref
 from travel_agent.planning.delivery.public.itinerary import _public_segments
 from travel_agent.planning.delivery.public.itinerary import _timestamp
+from travel_agent.planning.delivery.source_presentation import (
+    clean_public_source_excerpt,
+    clean_public_source_title,
+    public_fact_field_label,
+)
 from travel_agent.planning.delivery.travel_content import public_selection_text
 from travel_agent.planning.references import EntityType
 from typing import Any
@@ -34,14 +39,22 @@ def _public_citation(citation: PublicCitationProjection) -> Dict[str, Any]:
         "field_paths": list(citation.field_paths),
         "fact_status": citation.fact_status,
         "supported_values": [
-            value.model_dump(mode="json") for value in citation.supported_values
+            {
+                **value.model_dump(mode="json"),
+                "label": public_fact_field_label(value.label),
+            }
+            for value in citation.supported_values
         ],
         "sources": [
             {
                 "source_record_id": source.source_record_id,
                 "source_kind": source.source_kind,
-                "title": source.title,
-                "public_excerpt": source.public_excerpt,
+                "title": clean_public_source_title(
+                    source.title,
+                    source.public_excerpt,
+                    source_record_id=source.source_record_id,
+                ),
+                "public_excerpt": clean_public_source_excerpt(source.public_excerpt),
                 "canonical_url": source.canonical_url,
                 "retrieved_at": source.retrieved_at.isoformat(),
                 "observed_at": source.observed_at.isoformat()

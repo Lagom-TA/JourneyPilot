@@ -10,7 +10,16 @@ from pypdf import PdfReader
 from reportlab.lib.styles import getSampleStyleSheet
 
 from travel_agent.integrations.pdf_readiness import PdfFontUnavailable
-from travel_agent.planning.delivery.pdf_export import _timeline_row, render_trip_report_pdf
+from travel_agent.planning.delivery.pdf_export import (
+    _build_pdf_sources,
+    _timeline_row,
+    render_trip_report_pdf,
+)
+from travel_agent.planning.delivery.source_presentation import (
+    clean_public_source_excerpt,
+    clean_public_source_title,
+    public_fact_field_label,
+)
 from travel_agent.planning.references import EntityRef, EntityType
 
 
@@ -119,3 +128,126 @@ def test_pdf_places_each_citation_next_to_the_supported_field():
     assert "博物馆</b><super>[1]</super>" in text
     assert "开放：09:00–17:00<super>[2]</super>" in text
     assert "¥80" in text
+
+
+def test_pdf_groups_identical_sources_and_cleans_provider_machine_prefixes():
+    source_a = SimpleNamespace(
+        source_record_id="sr_train_1",
+        source_kind="external_tool",
+        provider_name="12306",
+        observed_at=None,
+        content_hash="hash",
+        title="12306 余票查询：乐山→重庆北（2026-11-18 参考日，无结果）",
+        public_excerpt="bookable_train_count=0，参考日无乐山直达重庆北的可售车次。",
+        canonical_url=None,
+        retrieved_at=datetime(2026, 11, 4, 3, 55, 50, tzinfo=timezone.utc),
+        rag_chunk_content=None,
+    )
+    source_b = SimpleNamespace(
+        source_record_id="sr_train_1",
+        source_kind="external_tool",
+        provider_name="12306",
+        observed_at=None,
+        content_hash="hash",
+        title="12306 余票查询：乐山→重庆北（2026-11-18 参考日，无结果）",
+        public_excerpt="bookable_train_count=0，参考日无乐山直达重庆北的可售车次。",
+        canonical_url=None,
+        retrieved_at=datetime(2026, 11, 4, 3, 55, 50, tzinfo=timezone.utc),
+        rag_chunk_content=None,
+    )
+    citations = [
+        SimpleNamespace(
+            citation_id="c1",
+            entity_ref=EntityRef(entity_type=EntityType.TRANSPORT_LEG, entity_id="leg_1"),
+            field_paths=["from_endpoint"],
+            sources=[source_a],
+        ),
+        SimpleNamespace(
+            citation_id="c2",
+            entity_ref=EntityRef(entity_type=EntityType.TRANSPORT_LEG, entity_id="leg_1"),
+            field_paths=["to_endpoint"],
+            sources=[source_b],
+        ),
+    ]
+    numbers, entries = _build_pdf_sources(citations)
+
+    assert numbers == {"c1": 1, "c2": 1}
+    assert len(entries) == 1
+    assert entries[0]["number"] == 1
+    assert entries[0]["excerpt"] == "参考日无乐山直达重庆北的可售车次。"
+    assert clean_public_source_title("get-tickets 查询结果") == "车次查询结果"
+    assert clean_public_source_excerpt("成都市 2026-12-05–2026-12-09 weather forecast") == "成都市 2026-12-05–2026-12-09 天气预报"
+    assert public_fact_field_label("opening_window") == "开放时间"
+
+
+def test_pdf_keeps_distinct_sources_and_snapshots_with_identical_display_text():
+    base = dict(
+        source_record_id="route_1",
+        source_kind="external_tool",
+        provider_name="路线查询",
+        title="路线查询结果",
+        public_excerpt="路线查询结果",
+        canonical_url=None,
+        retrieved_at=datetime(2026, 11, 4, 3, 55, tzinfo=timezone.utc),
+        observed_at=None,
+        content_hash="hash",
+        rag_chunk_content=None,
+    )
+    sources = [
+        SimpleNamespace(**base),
+        SimpleNamespace(**{**base, "source_record_id": "route_2"}),
+        SimpleNamespace(**{**base, "retrieved_at": datetime(2026, 11, 5, 3, 55, tzinfo=timezone.utc)}),
+    ]
+    citations = [
+        SimpleNamespace(
+            citation_id="c1",
+            entity_ref=EntityRef(entity_type=EntityType.TRANSPORT_LEG, entity_id="leg_1"),
+            sources=sources,
+        ),
+        SimpleNamespace(
+            citation_id="c2",
+            entity_ref=EntityRef(entity_type=EntityType.WEATHER_DAY, entity_id="day_1"),
+            sources=[sources[1]],
+        ),
+    ]
+
+    numbers, entries = _build_pdf_sources(citations)
+
+    assert numbers == {"c1": [1, 2, 3], "c2": 2}
+    assert [entry["source"].retrieved_at for entry in entries] == [
+        source.retrieved_at for source in sources
+    ]
+
+
+def test_rendered_pdf_includes_distinct_sources_and_retrieval_times():
+    bundle = _bundle()
+    times = [
+        datetime(2026, 11, 4, 3, 55, tzinfo=timezone.utc),
+        datetime(2026, 11, 5, 3, 55, tzinfo=timezone.utc),
+    ]
+    sources = [
+        SimpleNamespace(
+            source_record_id=f"route_{index}", source_kind="external_tool",
+            provider_name="路线查询", title="路线查询结果", public_excerpt="路线查询结果",
+            canonical_url=None, retrieved_at=timestamp, observed_at=None,
+            content_hash="hash", rag_chunk_content=None,
+        )
+        for index, timestamp in enumerate(times, 1)
+    ]
+    bundle.report_projection.citations = [SimpleNamespace(
+        citation_id="c1",
+        entity_ref=EntityRef(entity_type=EntityType.TRANSPORT_LEG, entity_id="leg_1"),
+        sources=sources,
+    )]
+    try:
+        artifact = render_trip_report_pdf(bundle, exported_at=times[0])
+    except PdfFontUnavailable as exc:
+        if os.getenv("JOURNEY_PDF_FONT_REQUIRED") == "1":
+            pytest.fail(f"no embeddable CJK font for PDF export: {exc}")
+        pytest.skip(f"no embeddable CJK font for PDF export: {exc}")
+
+    text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(artifact.content)).pages)
+    assert "[1] 交通安排" in text
+    assert "[2] 交通安排" in text
+    for timestamp in times:
+        assert timestamp.astimezone().strftime("%Y-%m-%d %H:%M") in text

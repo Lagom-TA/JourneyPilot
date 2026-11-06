@@ -33,7 +33,7 @@ describe('toolResultText', () => {
     it('已知工具使用同一组中文别名，未知工具也回退到中文类别', () => {
         const stepFor = (toolName: string, category: ThinkingStep['toolCategory'] = 'search') => ({ id: toolName, agentName: '目的地调研', content: '', stepName: '', timestamp: new Date(), isToolCall: true, toolName, toolCategory: category });
         expect(describeToolStep(stepFor('global_place_search')).categoryLabel).toBe('地点搜索');
-        expect(describeToolStep(stepFor('knowledge_search')).categoryLabel).toBe('知识库检索');
+        expect(describeToolStep(stepFor('knowledge_search')).categoryLabel).toBe('资料库检索');
         expect(describeToolStep(stepFor('brave_web_search')).categoryLabel).toBe('网页搜索');
         expect(describeToolStep(stepFor('firecrawl_search')).categoryLabel).toBe('网页搜索');
         expect(describeToolStep(stepFor('tavily_search')).categoryLabel).toBe('网页搜索');
@@ -74,7 +74,7 @@ describe('toolResultText', () => {
     });
     it('激活摘要按工具语义转成中文能力，内部名不会漏出', () => {
         const text = toolResultText(step('激活工具：global_place_search, knowledge_search'));
-        expect(text).toBe('已启用：地点搜索、知识库检索');
+        expect(text).toBe('已启用：地点搜索、资料库检索');
         const web = toolResultText(step('激活工具：brave_local_search, brave_web_search, firecrawl_search, free_web_search, tavily_search'));
         expect(web).toContain('网页搜索');
         for (const internal of ['global_place_search', 'knowledge_search', 'brave_local_search', 'brave_web_search', 'firecrawl_search', 'free_web_search', 'tavily_search']) {
@@ -118,7 +118,7 @@ describe('isPublicActivityStep', () => {
         expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'knowledge_search', toolStatus: 'completed', toolResult: '没有匹配的结果' }))).toBe(false);
         expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'free_web_search', toolStatus: 'completed', toolResult: '没有匹配的结果' }))).toBe(false);
         expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'knowledge_search', toolStatus: 'running' }))).toBe(true);
-        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'knowledge_search', toolStatus: 'completed', toolResult: '读到 2 段知识库资料', resultPreview: [{ title: '资料' }] }))).toBe(true);
+        expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'knowledge_search', toolStatus: 'completed', toolResult: '读到 2 段资料库资料', resultPreview: [{ title: '资料' }] }))).toBe(true);
         expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'knowledge_search', toolStatus: 'degraded', toolResult: '没有匹配的结果' }))).toBe(true);
         expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'global_place_search', toolStatus: 'completed', toolResult: '没有匹配的结果' }))).toBe(true);
         expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'hotel_search', toolStatus: 'capability_declared', toolResult: '最远可查 11-15，你的 11-20 尚未进入窗口' }))).toBe(true);

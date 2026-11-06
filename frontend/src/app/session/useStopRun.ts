@@ -54,8 +54,8 @@ export function useStopRun() {
                     : {
                         id: lastMsg.id,
                         type: 'error',
-                        content: cancelMessage || '已断开本地流，但后端取消未确认。',
-                        displayContent: cancelMessage || '已断开本地流，但后端取消未确认。',
+                        content: cancelMessage || '这个页面已经停止接收结果，但规划可能仍在继续。稍后回到这趟旅行看它的状态。',
+                        displayContent: cancelMessage || '这个页面已经停止接收结果，但规划可能仍在继续。稍后回到这趟旅行看它的状态。',
                         streamCompleted: true,
                     },
             });

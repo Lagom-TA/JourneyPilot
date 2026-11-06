@@ -69,8 +69,9 @@ VITE_PROXY_TARGET=http://127.0.0.1:9000 npm run dev
 | `VITE_OUT_DIR` | 构建输出目录 | `../backend/static` |
 | `VITE_MAP_TILE_URL` | Leaflet 瓦片地址（支持 `{s}/{z}/{x}/{y}`） | 现网高德瓦片 |
 | `VITE_MAP_TILE_ATTRIBUTION` | 底图署名 HTML | 高德地图署名 |
+| `VITE_MAP_TILE_DATUM` | 瓦片坐标系：`gcj02` 或 `wgs84` | `gcj02` |
 
-`VITE_BASE` 和 `VITE_MAP_TILE_*` 在 Vite 启动或前端构建时读取；修改后需要重启开发服务器或重新构建。子路径部署还需要静态服务器或反向代理把该路径映射到前端产物，后端默认只提供根路径。示例见 `.env.example`。
+`VITE_BASE` 和 `VITE_MAP_TILE_*` 在 Vite 启动或前端构建时读取；修改后需要重启开发服务器或重新构建。更换底图时，按瓦片提供方的坐标系设置 `VITE_MAP_TILE_DATUM`；WGS-84 底图应设为 `wgs84`，无效值会导致地图配置初始化失败。子路径部署还需要静态服务器或反向代理把该路径映射到前端产物，后端默认只提供根路径。示例见 `.env.example`。
 
 ## 检查与构建
 

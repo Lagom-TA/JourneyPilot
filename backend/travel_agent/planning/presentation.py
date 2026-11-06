@@ -12,7 +12,7 @@ AGENT_DISPLAY_NAMES: Final[Dict[str, str]] = {
     "understanding_agent": "理解旅行需求",
     "understanding_gate": "等待你的回答",
     "requirements_preparer": "整理需求",
-    "research_plan_generator": "研究生成",
+    "research_plan_generator": "研究方案",
     "minimum_delivery_draft_builder": "行程框架",
     "intent_amendment_router": "要求更新",
     "trip_summary_card_brief": "旅行摘要",
@@ -40,7 +40,7 @@ STEP_DISPLAY_NAMES: Final[Dict[str, str]] = {
     "understanding_agent": "理解并核实旅行需求",
     "understanding_gate": "等待你的回答",
     "requirements_preparer": "整理旅行需求",
-    "research_plan_generator": "生成研究计划",
+    "research_plan_generator": "生成研究方案",
     "minimum_delivery_draft_builder": "整理行程框架",
     "intent_amendment_router": "处理新增要求",
     "trip_summary_card_brief": "整理旅行摘要",
@@ -76,7 +76,7 @@ def get_agent_display_name(agent_name: str) -> str:
     if m:
         base_label = AGENT_DISPLAY_NAMES.get(m.group(1))
         if base_label is not None:
-            return f"{base_label}（第{m.group(2)}轮补充）"
+            return f"{base_label}（第 {m.group(2)} 轮补充）"
 
     return agent_name
 

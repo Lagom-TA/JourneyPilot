@@ -343,7 +343,7 @@
           "type": "number"
         },
         "user_agent": {
-          "default": "JourneyPilot (https://github.com/journeypilot)",
+          "default": "JourneyPilot (https://github.com/Lagom-TA/JourneyPilot)",
           "title": "User Agent",
           "type": "string"
         }
@@ -912,7 +912,7 @@
           "type": "string"
         },
         "user_agent": {
-          "default": "JourneyPilot (https://github.com/journeypilot)",
+          "default": "JourneyPilot (https://github.com/Lagom-TA/JourneyPilot)",
           "title": "User Agent",
           "type": "string"
         }

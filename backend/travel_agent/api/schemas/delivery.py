@@ -47,7 +47,7 @@ class PublicDeliveryBundleResponse(BaseModel):
     """不可变 Delivery Bundle 的消费端投影。
 
     顶层结构固定；内层的行程、报告、地图仍是由 ``public_delivery_bundle``
-    投影出的结构化 dict，OpenAPI 中不再把整个 Bundle 表示为不透明的 dict。
+    投影出的结构化 dict；OpenAPI 展示固定的顶层结构。
     """
 
     model_config = {"extra": "forbid"}

@@ -116,7 +116,7 @@ async def delivery_finalizer_node(
             operation="delivery_deadline_guard",
             attempts=1,
             retry_exhausted=True,
-            public_message="旅行方案未能在交付时限内完成。",
+            public_message="本次规划已超过处理时限，请重新规划。",
         )
         await _mark_failed(trip_store, state, record)
         raise DeliveryFinalizationError(record, exc) from exc

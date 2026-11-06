@@ -119,13 +119,13 @@ def preparation_actions(entity: object) -> list[str]:
             minutes = planned_boarding_buffer_minutes(entity.selected_mode)
             at = entity.departure_at - timedelta(minutes=minutes)
             preparation.append(
-                f"建议{at:%H:%M}前抵达出发站点，预留{minutes}分钟进站。"
+                f"建议 {at:%H:%M} 前抵达出发站点，预留 {minutes} 分钟进站。"
             )
             if entity.arrival_at:
                 arrival_minutes = planned_alighting_buffer_minutes(entity.selected_mode)
                 ready_at = entity.arrival_at + timedelta(minutes=arrival_minutes)
                 preparation.append(
-                    f"抵达后预留{arrival_minutes}分钟出站，接驳可安排在{ready_at:%H:%M}之后。"
+                    f"抵达后预留 {arrival_minutes} 分钟出站，接驳可安排在 {ready_at:%H:%M} 之后。"
                 )
             if (
                 entity.arrival_at

@@ -82,7 +82,7 @@ export const UnderstandingQuestionsCard: React.FC<{
     if (retry) {
       setSubmitting(true);
       try {
-        await sendMessage(retryResearch ? '重试未完成的研究' : '重新查询目的地', {
+        await sendMessage(retryResearch ? '重试未完成的研究' : '重试地点查询', {
           resumeRunId: runId,
           route: 'trip_refinement',
           gateDecision: { action: 'retry', approval_token: approvalToken },

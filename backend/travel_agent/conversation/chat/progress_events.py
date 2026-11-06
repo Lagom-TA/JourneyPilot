@@ -124,7 +124,7 @@ async def _handle_work_explanation(
         {
             "step_id": step_id,
             "agent_name": agent_name,
-            "step_name": "模型工作说明",
+            "step_name": "工作说明",
             "content": content,
             "timestamp": now_iso,
             "end_time": now_iso,
@@ -291,12 +291,11 @@ async def _handle_state_update(
         if execution_plan:
             agents_desc = " → ".join(
                 "、".join(get_agent_display_name(a) for a in group)
-                + ("（并行）" if len(group) > 1 else "")
                 for group in execution_plan
             )
-            thinking_content = f"制定调研计划：{agents_desc}"
+            thinking_content = f"制定调研安排：{agents_desc}"
         else:
-            thinking_content = "制定调研计划中..."
+            thinking_content = "正在制定调研安排…"
 
         yield {
             "type": "thinking",

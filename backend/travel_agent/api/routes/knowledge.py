@@ -73,7 +73,7 @@ def _require_vector_knowledge() -> None:
     if not get_settings().embedding.enabled:
         raise HTTPException(
             status_code=503,
-            detail={"code": "knowledge_disabled", "message": "向量知识库已由配置关闭"},
+            detail={"code": "knowledge_disabled", "message": "资料库功能未启用"},
         )
 
 
@@ -131,7 +131,7 @@ async def index_text(request: KnowledgeUploadRequest):
         return KnowledgeUploadResponse(
             chunks_indexed=count,
             collection=logical_collection,
-            message=f"成功索引 {count} 个文本块",
+            message=f"已收录 {count} 段资料",
         )
     except Exception as exc:
         raise internal_server_error(exc, log_message="知识库索引失败") from exc
@@ -203,7 +203,7 @@ async def upload_file(
         return KnowledgeUploadResponse(
             chunks_indexed=count,
             collection=logical_collection,
-            message=f"文件 [{file.filename}] 已成功索引 {count} 个文本块",
+            message=f"「{file.filename}」已收录 {count} 段资料",
         )
     except Exception as exc:
         raise internal_server_error(exc, log_message="文件索引失败") from exc
@@ -237,7 +237,7 @@ async def delete_collection(collection_name: str):
         return KnowledgeDeleteResponse(
             collection=logical_collection,
             deleted_chunks=count,
-            message=f"已删除资料库的 {count} 个文档块",
+            message=f"已删除资料库中的 {count} 段资料",
         )
     except Exception as exc:
         raise internal_server_error(exc, log_message="知识库集合删除失败") from exc
@@ -308,7 +308,7 @@ async def update_source_document(
         return KnowledgeUploadResponse(
             chunks_indexed=count,
             collection=logical_collection,
-            message=f"已重新整理成 {count} 个文本块",
+            message=f"已重新整理为 {count} 段资料",
         )
     except Exception as exc:
         raise internal_server_error(exc, log_message="资料改写失败") from exc

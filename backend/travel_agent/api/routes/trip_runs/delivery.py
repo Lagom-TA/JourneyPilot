@@ -58,7 +58,7 @@ async def read_current_delivery_bundle(
     await _get_authorized_run(run_id, session_id=session_id)
     bundle = await components.delivery_bundle_store.get_current(run_id)
     if bundle is None:
-        raise HTTPException(status_code=404, detail="当前 Delivery Bundle 不存在")
+        raise HTTPException(status_code=404, detail="当前旅行方案不存在")
     response_bundle = bundle.model_copy(
         update={"map_projection": project_stored_bundle_map(bundle)}
     )

@@ -425,7 +425,7 @@ test('减少动态效果时场景立即切换且不保留装饰动效', async ({
 });
 
 test('人数用选项和自填确认，取消不改变草稿，提交保留成人儿童', async ({ browser }) => {
-  const evidence = '../output/review/F2';
+  const evidence = '../test-results/e2e-evidence/F2';
   mkdirSync(evidence, { recursive: true });
   for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
     const context = await browser.newContext({ viewport, deviceScaleFactor: 2 });
@@ -476,7 +476,7 @@ test('人数用选项和自填确认，取消不改变草稿，提交保留成�
 });
 
 test('一句话提交只发送文字，等待和失败均保留用户需求', async ({ browser }) => {
-  const evidence = '../output/review/F2';
+  const evidence = '../test-results/e2e-evidence/F2';
   mkdirSync(evidence, { recursive: true });
   for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
     const context = await browser.newContext({ viewport });
@@ -1063,7 +1063,7 @@ test('目的地候选在 Escape、外部操作和切换模式后收起且旧搜�
 
 test('首页在宽窄屏和断点保持主操作可见，条件表单自然展开', async ({ browser }) => {
   test.setTimeout(90_000);
-  const evidence = '../output/review/F2';
+  const evidence = '../test-results/e2e-evidence/F2';
   mkdirSync(evidence, { recursive: true });
   const results: Record<string, unknown> = {};
   const viewports = [

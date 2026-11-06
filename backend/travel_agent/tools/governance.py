@@ -179,9 +179,9 @@ _OPAQUE_RESULT_SUMMARY = "已取到结果"
 _ROUTE_MODE_LABELS: Dict[str, str] = {
     "walk": "步行",
     "bike": "骑行",
-    "drive": "驾车",
+    "drive": "自驾",
     "bus": "公交",
-    "coach": "长途客车",
+    "coach": "长途巴士",
     "ferry": "轮渡",
     "metro": "地铁",
     "tram": "有轨电车",
@@ -228,7 +228,7 @@ def _summarize_route(route: Any) -> Optional[str]:
     distance = route.get("distance")
     duration = route.get("duration")
     if str(distance).isdigit():
-        raw.append(f"{int(distance) / 1000:.1f}km")
+        raw.append(f"{int(distance) / 1000:.1f} 公里")
     if str(duration).isdigit():
         raw.append(f"约 {int(duration) // 60} 分钟")
     return "路线：" + "，".join(raw) if raw else None
@@ -302,7 +302,7 @@ def _summarize_structured_collection(value: Any) -> Optional[str]:
             ) or data.get("retrieval_status") == "partial_failure"
             if documents:
                 suffix = "（部分来源暂不可用）" if partial else ""
-                return f"读到 {len(documents)} 段知识库资料{suffix}"
+                return f"读到 {len(documents)} 段资料库资料{suffix}"
             if partial:
                 return "部分资料库暂不可用"
             return _EMPTY_RESULT_SUMMARY

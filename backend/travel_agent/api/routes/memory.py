@@ -68,7 +68,7 @@ async def list_memory_facts():
         return MemoryFactListResponse(facts=facts, total=len(facts))
     except Exception as e:
         logger.error("读取 memory facts 失败: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="memory fact list failed")
+        raise HTTPException(status_code=500, detail="读取旅行记忆失败，请稍后重试")
 
 
 @router.post("/memory/facts", response_model=AddMemoryFactResponse)
@@ -83,7 +83,7 @@ async def add_memory_fact(request: AddMemoryFactRequest = Body(...)):
     """
     # 空白判定统一使用 `utils/user_text.py` 的口径。
     if is_blank(request.content or ""):
-        raise HTTPException(status_code=422, detail="memory content is required")
+        raise HTTPException(status_code=422, detail="请输入要添加的记忆内容")
     content = (request.content or "").strip()
     category = (request.category or "").strip() or "preference"
     store = MemoryStore()
@@ -94,12 +94,12 @@ async def add_memory_fact(request: AddMemoryFactRequest = Body(...)):
         )
         return AddMemoryFactResponse(status=result.status, fact=_fact_item(result.fact))
     except ManualFactSaveFailed as exc:
-        raise HTTPException(status_code=500, detail="memory fact save failed") from exc
+        raise HTTPException(status_code=500, detail="保存旅行记忆失败，请稍后重试") from exc
     except HTTPException:
         raise
     except Exception as e:
         logger.error("写入 memory fact 失败: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="memory fact save failed")
+        raise HTTPException(status_code=500, detail="保存旅行记忆失败，请稍后重试")
 
 
 @router.delete("/memory/facts/{fact_id}", response_model=MemoryDeletionResponse)
@@ -119,7 +119,7 @@ async def delete_memory_fact(
         return _deletion_response(summary)
     except Exception as e:
         logger.error("删除 memory fact 失败: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="memory fact delete failed")
+        raise HTTPException(status_code=500, detail="删除旅行记忆失败，请稍后重试")
 
 
 @router.delete("/memory/categories/{category}", response_model=MemoryDeletionResponse)
@@ -142,7 +142,7 @@ async def delete_memory_category(
         return _deletion_response(summary)
     except Exception as e:
         logger.error("按 category 删除 memory 失败: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="memory category delete failed")
+        raise HTTPException(status_code=500, detail="删除该类旅行记忆失败，请稍后重试")
 
 
 @router.delete("/memory", response_model=MemoryDeletionResponse)
@@ -163,7 +163,7 @@ async def delete_all_user_memory(
         return _deletion_response(summary)
     except Exception as e:
         logger.error("删除全部 user memory 失败: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="user memory delete failed")
+        raise HTTPException(status_code=500, detail="清空旅行记忆失败，请稍后重试")
 
 
 @router.post("/memory/retention/cleanup", response_model=MemoryDeletionResponse)
@@ -182,7 +182,7 @@ async def cleanup_expired_memory(
         return _deletion_response(summary)
     except Exception as e:
         logger.error("清理 expired memory 失败: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="memory retention cleanup failed")
+        raise HTTPException(status_code=500, detail="清理过期记忆失败，请稍后重试")
 
 
 @router.get("/memory/forgetting-audits", response_model=MemoryForgettingAuditListResponse)
@@ -201,4 +201,4 @@ async def list_memory_forgetting_audits(limit: int = Query(default=50, ge=1, le=
         )
     except Exception as e:
         logger.error("读取 forgetting audit 失败: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail="memory forgetting audit read failed")
+        raise HTTPException(status_code=500, detail="读取记忆清理记录失败，请稍后重试")

@@ -19,7 +19,7 @@ function placeClue(day: DaySummaryVM): string | null {
 }
 export const DaySummaryCard: React.FC<DaySummaryCardProps> = ({ day, onOpen, cardRef, compact = false, active = false, unscheduled = false }) => {
     const metadata = [day.dateLabel, day.weekdayLabel, day.destinationLabel].filter((value): value is string => Boolean(value));
-    const accessibleLabel = [`查看第 ${day.day} 天`, ...metadata, day.theme].filter(Boolean).join('：');
+    const accessibleLabel = [`查看第 ${day.day} 天`, metadata.join(' · '), day.theme].filter(Boolean).join('：');
     const clue = placeClue(day);
     return (<button ref={cardRef} type="button" data-testid={`day-summary-card-${day.dayId}`} aria-label={accessibleLabel} aria-pressed={active} onClick={onOpen} className={cn('day-summary-card group', compact && 'is-compact', active && 'is-active')}>
       <span className="day-summary-ordinal" aria-hidden>{String(day.day).padStart(2, '0')}</span>

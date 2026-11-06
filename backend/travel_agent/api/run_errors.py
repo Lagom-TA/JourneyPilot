@@ -33,20 +33,20 @@ async def raise_bundle_revision_conflict(run_id: str, bundle_store) -> NoReturn:
 
 def raise_run_use_case_error(error: Exception) -> NoReturn:
     if isinstance(error, RunNotFound):
-        raise HTTPException(status_code=404, detail="TripRun 不存在") from error
+        raise HTTPException(status_code=404, detail="未找到这趟规划记录") from error
     if isinstance(error, RunNotCancellable):
         raise HTTPException(
             status_code=409,
             detail={
                 "code": "run_not_cancellable",
-                "message": "这次运行已经结束，无法再停止。请刷新后查看当前状态。",
+                "message": "这次规划已经结束，无法再停止。请刷新后查看当前状态。",
                 "status": error.current_status,
             },
         ) from error
     if isinstance(error, LockedIdentitySupplement):
         raise HTTPException(
             status_code=409,
-            detail="基础旅行身份已锁定。请结束当前草稿或运行，再新建旅行。",
+            detail="基础旅行身份已锁定。请先结束当前规划，再新建旅行。",
         ) from error
     if isinstance(error, RunNotAcceptingSupplement):
         raise HTTPException(
@@ -54,12 +54,12 @@ def raise_run_use_case_error(error: Exception) -> NoReturn:
             detail=(
                 "请等待当前回复结束，再围绕已有行程发送新消息。"
                 if error.has_delivery
-                else "首份旅行方案交付前，不能在运行中追加要求。"
+                else "首份旅行方案交付前，暂不支持中途追加要求。"
             ),
         ) from error
     if isinstance(error, DeliveryBundleMissing):
         raise HTTPException(
-            status_code=404, detail="当前 Delivery Bundle 不存在"
+            status_code=404, detail="当前旅行方案不存在"
         ) from error
     if isinstance(error, ReportRevisionChanged):
         raise HTTPException(

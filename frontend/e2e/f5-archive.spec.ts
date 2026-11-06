@@ -210,7 +210,7 @@ test('F5 upload limits follow runtime settings and text failures keep their inpu
 
 test('F5 desktop and phone representative layouts preserve navigation and source return', async ({ page }) => {
   const f = await fixture(page);
-  mkdirSync('../output/review/F5', { recursive: true });
+  mkdirSync('../test-results/e2e-evidence/F5', { recursive: true });
   for (const [code, width, height] of [['D', 1440, 900], ['M', 390, 844]] as const) {
     await page.setViewportSize({ width, height });
     for (const [scene, view] of [['P2', 'trips'], ['P3', 'user-preferences'], ['P4', 'presets'], ['P5', 'knowledge-base']] as const) {
@@ -218,12 +218,12 @@ test('F5 desktop and phone representative layouts preserve navigation and source
       await page.evaluate(() => document.fonts.ready);
       await page.waitForTimeout(200);
       expect(await page.locator('.archive-page').evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
-      await page.screenshot({ path: `../output/review/F5/${scene}-${code}-implemented-r1.png` });
+      await page.screenshot({ path: `../test-results/e2e-evidence/F5/${scene}-${code}-implemented-r1.png` });
       if (scene === 'P5') {
         const source = page.getByTestId('knowledge-source-row-京都步行笔记.md');
         await source.click();
         await expect(page.locator('.knowledge-document-content')).toBeVisible();
-        await page.screenshot({ path: `../output/review/F5/P5-${code}-document-r1.png` });
+        await page.screenshot({ path: `../test-results/e2e-evidence/F5/P5-${code}-document-r1.png` });
         if (code === 'M') {
           await page.getByRole('button', { name: '返回资料', exact: true }).click();
           await expect(source).toBeFocused();
@@ -234,7 +234,7 @@ test('F5 desktop and phone representative layouts preserve navigation and source
       await page.getByTestId('sidebar-open').click();
       const drawer = page.getByTestId('app-sidebar');
       for (const name of ['新旅行', '我的行程', '我的偏好', '旅行风格', '资料来源']) await expect(drawer.getByRole('link', { name, exact: true })).toHaveCount(1);
-      await page.screenshot({ path: '../output/review/F5/P1-M-drawer-r1.png' });
+      await page.screenshot({ path: '../test-results/e2e-evidence/F5/P1-M-drawer-r1.png' });
       await drawer.getByRole('link', { name: '旅行风格', exact: true }).click();
       await expect(page).toHaveURL(/view=presets/);
       await page.goBack();

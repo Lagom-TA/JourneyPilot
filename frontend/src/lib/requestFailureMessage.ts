@@ -17,14 +17,14 @@ export function describeRequestFailure(
 ): RequestFailure {
   if (error instanceof ApiError) {
     if (error.status === 403) {
-      return { message: `当前用户无法${action}${subject}。`, recovery: 'none' };
+      return { message: `你暂时无法${action}${subject}。`, recovery: 'none' };
     }
     if (error.status === 400 || error.status === 422) {
       return { message: `${action}请求的信息不完整，请刷新页面后重试。`, recovery: 'reload' };
     }
     if (error.status === 404 || error.status === 405) {
       return {
-        message: `找不到${subject}的服务地址，请确认 JourneyPilot 正在运行，然后刷新页面。`,
+        message: `暂时连不上${subject}服务，请确认 JourneyPilot 已启动后刷新页面。`,
         recovery: 'reload',
       };
     }
@@ -36,12 +36,14 @@ export function describeRequestFailure(
     }
     // 收到未单独分类的 HTTP 响应不代表网络断开，重复请求未必能恢复。
     return {
-      message: `服务端没有接受这次${action}，请刷新页面后再试。`,
+      message: `未能完成这次${action}，请刷新页面后再试。`,
       recovery: 'reload',
     };
   }
   return {
-    message: `无法连接服务，${action}不到${subject}，请检查网络后重试。`,
+    message: action === '读取'
+      ? `无法连接服务，读不到${subject}，请检查网络后重试。`
+      : `无法连接服务，暂时无法${action}${subject}，请检查网络后重试。`,
     recovery: 'retry',
   };
 }

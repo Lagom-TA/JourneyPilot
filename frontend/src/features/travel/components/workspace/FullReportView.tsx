@@ -11,7 +11,7 @@ import { DayTimeline } from './DayTimeline';
 import { LabelledFactList } from './TripFactReadout';
 import { unresolvedForDay } from '../../model/itineraryNavigation';
 import { UnresolvedReadout } from './UnresolvedReadout';
-import { EntitySourceList } from './EntitySourceList';
+import { cleanPublicSourceExcerpt, EntitySourceList } from './EntitySourceList';
 import { safeHref } from '../../../../lib/safeHref';
 import { splitTitleClauses } from '../../../../lib/titleClauses';
 import React from 'react';
@@ -82,7 +82,7 @@ export function PdfDownloadButton({ bundle, compact = false }: {
       if (detail.code === 'report_out_of_date') {
         try {
           await loadCurrent();
-          setMessage('行程刚刚更新，已载入最新结果。请再次导出。');
+          setMessage('行程刚刚更新，已加载最新结果。请再次导出。');
         } catch {
           setMessage('行程刚刚更新，请重新打开当前行程后再导出。');
         }
@@ -100,6 +100,7 @@ export function PdfDownloadButton({ bundle, compact = false }: {
       <button
         type="button"
         data-testid="download-current-pdf"
+        aria-label={compact ? (status === 'loading' ? '正在准备 PDF' : '导出 PDF') : undefined}
         disabled={status === 'loading'}
         onClick={() => void download()}
         className={compact ? 'journey-view-action' : 'inline-flex min-h-10 items-center justify-center gap-2 rounded-card bg-accent px-3.5 text-xs font-semibold text-white transition-colors hover:bg-[var(--color-accent-hover)] disabled:cursor-wait disabled:opacity-65'}
@@ -224,12 +225,13 @@ export function FullReportView({ bundle, allowPdf = true }: {
           <ol>
             {references.map((source, index) => {
               const href = safeHref(source.canonical_url);
+              const excerpt = cleanPublicSourceExcerpt(source.public_excerpt);
               return (
                 <li key={source.source_record_id}>
                   <span>{String(index + 1).padStart(2, '0')}</span>
                   <div>
                     <h3>{href ? <a href={href} target="_blank" rel="noreferrer">{source.title}</a> : source.title}</h3>
-                    {source.public_excerpt && <p>{source.public_excerpt}</p>}
+                    {excerpt && <p>{excerpt}</p>}
                   </div>
                 </li>
               );

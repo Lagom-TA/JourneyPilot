@@ -16,9 +16,18 @@ import { UnderstandingQuestionsCard } from './UnderstandingQuestionsCard';
 import { type PlanApprovalGate } from '../../types/planning';
 import { ThinkingChain } from '../../../chat/components/ThinkingChain';
 import { InputArea } from '../../../chat/components/InputArea';
+import { getChatErrorGuidance } from '../../../chat/model/chatErrorGuidance';
 import { cn } from '../../../../lib/utils';
 import React from 'react';
 import '../../../../styles/generation.css';
+
+function generationErrorText(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^请求失败\s*[：:]|^SSE\s|^\d{3}\b|delivery_integrity_projection_failure|identity_locked|failed to fetch|networkerror/i.test(trimmed)) {
+    return getChatErrorGuidance(trimmed, 'fault').description;
+  }
+  return trimmed;
+}
 
 const STAGE_ACTIVITY_TITLES: Record<ActivityStageId, string> = {
   requirements: '整理旅行需求',
@@ -303,7 +312,7 @@ export const GenerationJourneyPanel: React.FC = () => {
                 </div>
               )}
               {lastAssistant?.type === 'error' && (
-                <p role="alert" className="generation-activity-error">{lastAssistant.displayContent || lastAssistant.content}</p>
+                <p role="alert" className="generation-activity-error">{generationErrorText(lastAssistant.displayContent || lastAssistant.content)}</p>
               )}
               <div
                 ref={handoffRef}

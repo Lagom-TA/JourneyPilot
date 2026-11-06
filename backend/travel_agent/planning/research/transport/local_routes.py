@@ -113,7 +113,7 @@ def _route_packet(
             provider_name=provider_name,
             public_excerpt=(
                 f"{route['from_endpoint']['name']} → "
-                f"{route['to_endpoint']['name']} · {route['duration_minutes']} min"
+                f"{route['to_endpoint']['name']} · {route['duration_minutes']} 分钟"
             )[:900],
             retrieved_at=retrieved_at,
             observed_at=observed_at,

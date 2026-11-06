@@ -35,7 +35,7 @@ def _build_plan_gate_payload(state: TravelAgentState) -> Dict[str, Any]:
         {"step": index, "agents": group, "tasks": {worker: plan.summary for worker in group}}
         for index, group in enumerate(groups, 1)
     ] if plan else []
-    text = plan.summary if plan else "可以重试、补充要求或取消。"
+    text = plan.summary if plan else "研究方案暂时未能生成，你可以重试、补充要求或取消。"
     payload: Dict[str, Any] = {
         "gate": "plan",
         "revision": state.plan_gate_revision_count,

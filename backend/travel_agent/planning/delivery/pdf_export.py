@@ -29,10 +29,16 @@ from travel_agent.planning.delivery.evidence_basis import REFERENCE_SERVICE
 from travel_agent.planning.delivery.evidence_basis import REFERENCE_SERVICE_LABEL
 from travel_agent.planning.delivery.presentation import weather_freshness_text
 from travel_agent.planning.delivery.projections import PublicCitationProjection
+from travel_agent.planning.delivery.source_presentation import (
+    clean_public_source_excerpt,
+    clean_public_source_title,
+)
 from travel_agent.planning.references import EntityType
 from travel_agent.schema import StrictModel
 from typing import Any
 from typing import Iterable
+from typing import Mapping
+from typing import Sequence
 
 
 class ReportOutOfDateError(RuntimeError):
@@ -105,10 +111,19 @@ def _rendered_lines(details: dict[str, Any], key: str) -> list[str]:
     return [item for item in value if isinstance(item, str) and item]
 
 
-def _citation_marks(ids: Iterable[str], citation_numbers: dict[str, int]) -> str:
-    numbers = sorted(
-        {citation_numbers[item] for item in ids if item in citation_numbers}
-    )
+def _citation_marks(
+    ids: Iterable[str], citation_numbers: Mapping[str, int | Sequence[int]]
+) -> str:
+    collected: set[int] = set()
+    for item in ids:
+        if item not in citation_numbers:
+            continue
+        target = citation_numbers[item]
+        if isinstance(target, int):
+            collected.add(target)
+        else:
+            collected.update(target)
+    numbers = sorted(collected)
     return "".join(f"<super>[{number}]</super>" for number in numbers)
 
 
@@ -225,15 +240,10 @@ def _styles():
     }
 
 
-def _source_story(
-    citations: list[PublicCitationProjection],
-    citation_numbers: dict[str, int],
-    styles: dict[str, ParagraphStyle],
-) -> list[Any]:
-
-    if not citations:
-        return []
-    story: list[Any] = [Spacer(1, 4 * mm)]
+def _build_pdf_sources(
+    citations: Sequence[PublicCitationProjection],
+) -> tuple[dict[str, int | list[int]], list[dict[str, Any]]]:
+    """按去重后的来源分组分配 1..N 编号，避免同一来源在正文与文末重复挂大量角标。"""
     entity_labels = {
         "visit_stop": "景点与体验",
         "dining_stop": "餐饮安排",
@@ -242,39 +252,76 @@ def _source_story(
         "custom_block": "自定义安排",
         "weather_day": "当日天气",
     }
-    source_entries: dict[str, dict[str, Any]] = {}
+    source_entries: dict[tuple[Any, ...], dict[str, Any]] = {}
+    citation_numbers: dict[str, int | list[int]] = {}
     for citation in citations:
-        number = citation_numbers[citation.citation_id]
         entity_label = entity_labels.get(
             citation.entity_ref.entity_type.value, "行程事实"
         )
+        numbers_for_citation: list[int] = []
         for source in citation.sources:
-            entry = source_entries.setdefault(
-                source.source_record_id,
-                {"source": source, "numbers": [], "entity_labels": []},
+            clean_title = clean_public_source_title(
+                source.title,
+                source.public_excerpt,
+                source_record_id=source.source_record_id,
             )
-            if number not in entry["numbers"]:
-                entry["numbers"].append(number)
+            clean_excerpt = clean_public_source_excerpt(source.public_excerpt)
+            key = (
+                source.source_record_id,
+                source.source_kind,
+                source.provider_name,
+                source.title,
+                source.public_excerpt,
+                source.canonical_url,
+                source.retrieved_at,
+                source.observed_at,
+                source.content_hash,
+                source.rag_chunk_content,
+            )
+            entry = source_entries.get(key)
+            if entry is None:
+                entry = {
+                    "source": source,
+                    "title": clean_title,
+                    "excerpt": clean_excerpt,
+                    "number": len(source_entries) + 1,
+                    "entity_labels": [],
+                }
+                source_entries[key] = entry
             if entity_label not in entry["entity_labels"]:
                 entry["entity_labels"].append(entity_label)
+            if entry["number"] not in numbers_for_citation:
+                numbers_for_citation.append(entry["number"])
+        if len(numbers_for_citation) == 1:
+            citation_numbers[citation.citation_id] = numbers_for_citation[0]
+        elif numbers_for_citation:
+            citation_numbers[citation.citation_id] = numbers_for_citation
+    return citation_numbers, list(source_entries.values())
 
-    for index, entry in enumerate(source_entries.values()):
+
+def _source_story(
+    source_entries: Sequence[dict[str, Any]],
+    styles: dict[str, ParagraphStyle],
+) -> list[Any]:
+    if not source_entries:
+        return []
+    story: list[Any] = [Spacer(1, 4 * mm)]
+    for index, entry in enumerate(source_entries):
         source = entry["source"]
-        number_marks = ", ".join(str(number) for number in entry["numbers"])
+        number = entry["number"]
         entity_summary = "、".join(entry["entity_labels"])
-        title = escape(source.title)
+        title = escape(entry["title"])
         if source.canonical_url:
             title = f'<link href="{escape(source.canonical_url)}" color="#2477E8">{title}</link>'
+        retrieved_text = source.retrieved_at.astimezone().strftime("%Y-%m-%d %H:%M")
         story.append(
             KeepTogether(
                 [
-                    *([Paragraph("来源", styles["h1"])] if index == 0 else []),
-                    Paragraph(f"[{number_marks}] {entity_summary}", styles["h2"]),
+                    *([Paragraph("参考资料", styles["h1"])] if index == 0 else []),
+                    Paragraph(f"[{number}] {entity_summary}", styles["h2"]),
                     Paragraph(title, styles["body"]),
-                    Paragraph(escape(source.public_excerpt), styles["small"]),
-                    Paragraph(
-                        f"取得时间：{source.retrieved_at.isoformat()}", styles["small"]
-                    ),
+                    Paragraph(escape(entry["excerpt"]), styles["small"]),
+                    Paragraph(f"取得时间：{retrieved_text}", styles["small"]),
                 ]
             )
         )
@@ -284,7 +331,9 @@ def _source_story(
     return story
 
 
-def _day_weather_label(day: Any, citation_numbers: dict[str, int]) -> tuple[str, str]:
+def _day_weather_label(
+    day: Any, citation_numbers: Mapping[str, int | Sequence[int]]
+) -> tuple[str, str]:
     if day is None:
         return "", ""
     label = day.condition_label or (
@@ -330,8 +379,8 @@ _FACT_CITATION_FIELDS = {
 def _field_citation_marks(
     block: Any,
     fields: set[str],
-    citations: dict[str, PublicCitationProjection],
-    citation_numbers: dict[str, int],
+    citations: Mapping[str, PublicCitationProjection],
+    citation_numbers: Mapping[str, int | Sequence[int]],
 ) -> str:
     ids = [
         item for item in block.citation_ids
@@ -342,8 +391,8 @@ def _field_citation_marks(
 
 def _timeline_row(
     block: Any,
-    citation_numbers: dict[str, int],
-    citations: dict[str, PublicCitationProjection],
+    citation_numbers: Mapping[str, int | Sequence[int]],
+    citations: Mapping[str, PublicCitationProjection],
     styles: dict[str, ParagraphStyle],
     evidence_basis: EvidenceBasisView,
 ) -> Table:
@@ -425,9 +474,7 @@ def render_trip_report_pdf(
     document = bundle.report_projection.document
     assert document is not None
     citations = bundle.report_projection.citations
-    citation_numbers = {
-        citation.citation_id: index for index, citation in enumerate(citations, start=1)
-    }
+    citation_numbers, source_entries = _build_pdf_sources(citations)
     citations_by_id = {citation.citation_id: citation for citation in citations}
 
     evidence_basis = EvidenceBasisView.from_itinerary(bundle.workspace.itinerary)
@@ -526,7 +573,7 @@ def render_trip_report_pdf(
                 ]
             )
 
-    story.extend(_source_story(citations, citation_numbers, styles))
+    story.extend(_source_story(source_entries, styles))
     pdf.build(story, onFirstPage=footer, onLaterPages=footer)
     filename = f"journeypilot-{bundle.manifest.bundle_id}.pdf"
     return PdfExportArtifact(

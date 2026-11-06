@@ -77,7 +77,7 @@ function ToolActivity({ step, stopped, open, onOpenChange, visibleSummary }: {
     const statusText = running && stopped ? '已停止' : noResult ? '无结果' : toolStatusLabel(display.status);
     const resultLine = running
         ? ''
-        : result || (display.status === 'failed' ? '本次行动未完成，没有可公开的结果。' : '没有结果');
+        : result || (display.status === 'failed' ? '本次查询未完成，暂无可用结果。' : '无结果');
     // 折叠行已经显示结果时，展开详情不再重复同一句；只有“没有结果”这类
     // 限制说明才需要单独一行。
     const showResultLine = Boolean(resultLine && resultLine !== headline && resultLine !== visibleSummary);
@@ -229,7 +229,7 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
         {status}
         {hasDetails && <ChevronDown size={15} className={cn('research-agent-chevron', open && 'rotate-180')} aria-hidden/>}
       </span>
-      {summary && <span className="research-agent-update" data-testid="research-agent-update" title={summaryIsWorkNote ? '模型生成的工作说明，不是已核实的旅行事实' : undefined}>{summary}</span>}
+      {summary && <span className="research-agent-update" data-testid="research-agent-update" title={summaryIsWorkNote ? '规划过程中的工作说明，不是已核实的旅行事实' : undefined}>{summary}</span>}
     </span>
   </> : <>
     <span className="research-agent-icon"><Icon size={18} strokeWidth={1.6}/></span>
@@ -249,7 +249,7 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
             ? <ToolActivity key={item.key} step={item.step} stopped={interrupted || group.status !== 'running'} open={openToolIds.has(item.step.id)} onOpenChange={(open) => onToolOpenChange(item.step!.id, open)} visibleSummary={workspace ? summary : undefined}/>
             : item.kind === 'note'
                 ? <li key={item.key} className="research-work-note" data-testid="research-work-note">
-                    <span className="research-work-note-label" title="模型生成的工作说明，不是已核实的旅行事实">模型工作说明</span>
+                    <span className="research-work-note-label" title="规划过程中的工作说明，不是已核实的旅行事实">工作说明</span>
                     <span className="research-work-note-text">{item.text}</span>
                   </li>
                 : <li key={item.key} className="research-milestone-row"><p className="research-milestone">{item.text}</p></li>)}

@@ -17,15 +17,15 @@ import { isTripRunStatus } from '../../types/runs';
 import React from 'react';
 
 const RESEARCH_STEP_LABELS: Record<string, string> = {
-  destination_researcher: '目的地研究',
-  transport_researcher: '交通研究',
-  accommodation_researcher: '住宿研究',
-  itinerary_planner: '组合行程',
+  destination_researcher: '目的地调研',
+  transport_researcher: '交通查询',
+  accommodation_researcher: '住宿查询',
+  itinerary_planner: '行程规划',
 };
 
 function researchStepText(step: PlanGateStep): string {
   const labels = step.agents.map(agent => RESEARCH_STEP_LABELS[agent] || agent);
-  return labels.join('、') + (labels.length > 1 ? '（并行）' : '');
+  return labels.join('、');
 }
 
 export const TripBriefPlanGate: React.FC<{
@@ -213,7 +213,7 @@ export const TripBriefPlanGate: React.FC<{
                   placeholder="例如：每天少安排一个景点，住宿选在地铁附近，首日中午后开始活动。"
                 />
                 {guide.trim() && <p role="status">请先提交修改，或清空内容后确认当前方案。</p>}
-                {guide.trim() && draftStorageUnavailable && <p role="status">回答尚未保存，刷新页面会清空，请先提交。</p>}
+                {guide.trim() && draftStorageUnavailable && <p role="status">修改内容尚未保存，刷新页面会清空，请先提交。</p>}
                 {showEditor && <Button variant="secondary" data-testid="plan-gate-supplement" disabled={decisionBlocked || !guide.trim()} onClick={() => void submit('supplement')}>
                   {submitting === 'supplement' ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
                   按修改重新整理

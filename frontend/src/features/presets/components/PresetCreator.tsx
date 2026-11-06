@@ -221,7 +221,7 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="preset-duration" className="block text-xs font-medium text-ink-secondary mb-1.5">时长建议</label>
-                  <Input id="preset-duration" value={constraints.duration || ''} onChange={(e) => setConstraints({ ...constraints, duration: e.target.value || undefined })} placeholder="如 3-5天" className="h-9"/>
+                  <Input id="preset-duration" value={constraints.duration || ''} onChange={(e) => setConstraints({ ...constraints, duration: e.target.value || undefined })} placeholder="如：3–5 天" className="h-9"/>
                 </div>
                 <div>
                   <div role="group" aria-label="预算档位"><p className="block text-xs font-medium text-ink-secondary mb-1.5">预算档位</p>
@@ -232,7 +232,7 @@ export const PresetCreator: React.FC<PresetCreatorProps> = ({ preset, onClose })
                   <SelectMenu testId="preset-pace" value={constraints.pace || ''} options={toSelectOptions(selectValuesIncludingStored(PACE_VALUES, constraints.pace))} onChange={(v) => setConstraints({ ...constraints, pace: v || undefined })} placeholder="不限" className="h-9"/></div>
                 </div>
                 <div>
-                  <div role="group" aria-label="输出风格"><p className="block text-xs font-medium text-ink-secondary mb-1.5">输出风格</p>
+                  <div role="group" aria-label="呈现方式"><p className="block text-xs font-medium text-ink-secondary mb-1.5">呈现方式</p>
                   <SelectMenu testId="preset-output-style" value={constraints.output_style || ''} options={toSelectOptions(selectValuesIncludingStored(OUTPUT_STYLE_VALUES, constraints.output_style))} onChange={(v) => setConstraints({ ...constraints, output_style: v || undefined })} placeholder="不限" className="h-9"/></div>
                 </div>
               </div>

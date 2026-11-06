@@ -22,6 +22,20 @@ JourneyPilot 是一个开源、自托管的 AI 旅行规划工作台。告诉它
 
 产品界面目前使用简体中文。
 
+[快速开始](#快速开始) · [系统架构](#系统架构) · [文档索引](docs/README.md)
+
+![JourneyPilot 首页：旅行输入与灵感卡片](docs/assets/home.png)
+
+JourneyPilot 把研究方案、每日行程、地图和阅读版放在一起。你可以先确认研究方案，再查看调研进展；保存的旅行也可以随时打开并继续调整。
+
+![JourneyPilot 交互演示：旅行灵感、研究与行程](docs/assets/demo.gif)
+
+| 确认研究方案 | 在地图上探索行程 |
+| --- | --- |
+| ![等待确认的研究方案](docs/assets/research-plan.png) | ![地图与行程工作台](docs/assets/map-workspace.png) |
+
+[查看阅读版](docs/assets/reading.png)。画面使用不同旅行的示例数据；演示经过剪辑，用于展示界面，不代表模型质量或响应速度的评测结果。地图画面：© [Stadia Maps](https://stadiamaps.com/attribution/) © [OpenMapTiles](https://openmaptiles.org/) © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)。
+
 ## 规划一趟旅行
 
 首页默认用一句话描述旅行，偏好直接写进描述；切换到“按条件规划”可以直接填写路线、日期、同行人数、预算和旅行风格，人数支持点选与自填。两种方式各自保留草稿；旅行票据与行李签呈现同一提案，场景缓慢轮换，悬停或填写时暂停，点选只更新当前方式，不会直接提交。完整规划会先梳理需求，必要时核实地点并继续提问；确认研究方案后，再开展地点、住宿、交通和天气的正式研究。
@@ -45,6 +59,20 @@ JourneyPilot 是一个开源、自托管的 AI 旅行规划工作台。告诉它
 手动添加或删除记忆时，系统会保留操作及相关内容，供之后的记忆总结参考，并发送给配置的快速模型。用户明确改变想法时，系统可以更新已有记忆。画像会在下一次对话记忆总结运行时整理，在此之前规划仍可能使用旧画像；删除全部记忆会清空操作记录中的内容，只保留不含内容的清空记录。
 
 来源、价格和实时信息取决于所用服务。价格按单项展示，暂不汇总；PDF 会标明尚未安排的事项。部分路线可能是估算，房态、车票和预约情况也可能变化；JourneyPilot 不代为预订或支付。
+
+## 系统架构
+
+```mermaid
+flowchart LR
+  Browser["React · Vite<br/>旅行工作台"] -->|REST + SSE| API["FastAPI"]
+  API --> Flow["LangGraph<br/>需求 → 研究 → 行程 → 交付"]
+  Flow --> Tools["MCP · 外部数据服务"]
+  API --> DB[("PostgreSQL · pgvector")]
+  Flow --> DB
+  API --> Cache[("Redis")]
+```
+
+后端协调模型与工具调用，持久化旅行状态和结果，并向浏览器推送进度。分层与数据流详见[架构总览](docs/architecture/overview.md)。
 
 ## 快速开始
 
@@ -122,6 +150,8 @@ uv run --project backend python backend/scripts/check_mcp.py
 ```
 
 默认工具包含网页搜索、OpenStreetMap/Nominatim、12306 和汇率查询；规划天气使用内置的 Open-Meteo 适配器。第三方 Open-Meteo MCP 默认禁用：该包启动时会向第三方域名发送运行通知，可将 `mcp.servers.open-meteo.disabled` 设为 `false` 显式启用。高德、百度、Tavily、Brave、Duffel 等服务可按需配置。工具同名时保留已注册的来源，MCP 服务按配置顺序注册。数据覆盖范围和调用结果由各服务决定，中国境内路线查询需要高德密钥。模型及外部服务可能产生费用。
+
+默认地图瓦片使用 GCJ-02 坐标；更换为 WGS-84 底图时，请在启动或构建前端时设置 `VITE_MAP_TILE_DATUM=wgs84`，详见[前端说明](frontend/README.md)。
 
 `run.sh` 会安装锁定的 Node MCP 依赖；直接启动后端前，可运行 `npm --prefix backend/mcp ci --omit=dev` 安装这些依赖。
 

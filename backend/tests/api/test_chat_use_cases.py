@@ -50,14 +50,14 @@ from tests.support.memory_stores import InMemoryCostLedgerStore
                 )
             },
             422,
-            "调整行程需要已有 TripRun",
+            "调整行程需要先完成一次规划",
         ),
         (
             {"gate_decision": {"action": "approve"}},
             400,
-            "gate_decision 需要提供 run_id",
+            "确认操作需要指定当前规划记录",
         ),
-        ({"run_id": "missing"}, 404, "TripRun 不存在"),
+        ({"run_id": "missing"}, 404, "未找到这趟规划记录"),
     ],
 )
 async def test_preparation_http_errors_leave_no_orphan_or_model(
@@ -192,7 +192,7 @@ async def test_stale_plan_gate_decision_is_rejected_before_lease(
     assert response.status_code == 409
     assert response.json()["detail"] == {
         "code": "plan_gate_version_stale",
-        "message": "待确认内容已变化或缺少版本凭据，请刷新后查看最新进展再回答。",
+        "message": "确认信息缺失或已过期，请刷新后查看最新进展再回答。",
         "current_revision": 1,
     }
     assert resources.trip_run_store.runs[run.run_id].status is TripRunStatus.AWAITING_INPUT
@@ -220,7 +220,7 @@ async def test_current_plan_gate_token_passes_version_check(resources):
     )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "未找到该 TripRun 的 checkpoint，无法断点续跑"
+    assert response.json()["detail"] == "未找到可继续的规划进度，请重新规划这趟旅行"
     assert resources.trip_run_store.runs[run.run_id].status is TripRunStatus.AWAITING_INPUT
     assert not resources.run_execution_store.rows
 
@@ -270,7 +270,7 @@ async def test_cancel_plan_gate_decision_does_not_require_a_token(resources):
     )
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "当前服务未启用 checkpoint，无法断点续跑"
+    assert response.json()["detail"] == "当前服务未启用进度保存，无法继续上次规划"
     assert resources.trip_run_store.runs[run.run_id].status is TripRunStatus.AWAITING_INPUT
     assert not resources.run_execution_store.rows
 
@@ -399,7 +399,7 @@ async def test_resume_claims_lease_before_status_and_releases_cas_loser(
         response = await request("POST", "/api/chat-stream", body)
         assert (
             response.status_code == 409
-            and response.json()["detail"] == "TripRun 已被其他请求恢复或状态已变化"
+            and response.json()["detail"] == "这趟规划已在其他请求中继续或状态已变化"
         )
         assert ("lease.release", "resume_lost_status_race") in log
         assert run.status is TripRunStatus.INTERRUPTED
@@ -519,7 +519,7 @@ async def test_cancel_completed_race_settles_command_before_409(resources, monke
 
 @pytest.mark.parametrize(
     "resource,detail",
-    [("control", "无权控制该 TripRun"), ("supplements", "无权修改该 TripRun")],
+    [("control", "无权控制这趟规划记录"), ("supplements", "无权修改这趟规划记录")],
 )
 async def test_session_authorization_precedes_control_writes(
     resources, resource, detail

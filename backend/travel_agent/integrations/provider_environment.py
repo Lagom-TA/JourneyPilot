@@ -12,7 +12,7 @@ DataEnvironment = Literal["production", "sandbox"]
 
 
 SANDBOX_EVIDENCE_NOTE = (
-    "本方案中部分交通班次的依据来自供应商的开发（沙箱）环境，"
+    "本方案中部分交通班次来自测试数据，"
     "班次、时刻与价格仅供规划参考，不可直接预订。"
 )
 

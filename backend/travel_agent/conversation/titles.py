@@ -110,7 +110,7 @@ def _question_shaped_title(user_message: str) -> str:
         return FALLBACK_TITLE
     if len(text) <= TITLE_MAX_LEN:
         return text
-    return text[:TITLE_MAX_LEN] + "..."
+    return text[:TITLE_MAX_LEN] + "…"
 
 
 def derive_session_title(

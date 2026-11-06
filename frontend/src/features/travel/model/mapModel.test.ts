@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type TransportEndpoint, type TransportSegment } from '../types/entities';
 import { type MapProjection } from '../types/report';
 import {
@@ -58,6 +58,26 @@ function route(overrides: Partial<ProjectedRoute> = {}): ProjectedRoute {
 }
 
 describe('map route geometry', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(['gcj02', 'wgs84'] as const)('uses %s consistently for markers and all route geometries', (datum) => {
+    vi.stubEnv('VITE_MAP_TILE_DATUM', datum);
+    const marker = pointOnTileDatum(SHANGHAI)!;
+    if (datum === 'wgs84') {
+      expect(marker).toEqual([31.2304, 121.4737]);
+    } else {
+      expect(marker[0]).toBeCloseTo(31.22846, 4);
+      expect(marker[1]).toBeCloseTo(121.47822, 4);
+    }
+    for (const geometry of [
+      segment({ path: [SHANGHAI, HANGZHOU] }),
+      segment(),
+      segment({ mode: 'flight' }),
+    ]) {
+      expect(routeLines(route({ segments: [geometry] }))[0].points[0]).toEqual(marker);
+    }
+  });
+
   it('uses every provider path point and preserves segment identity', () => {
     const path = [SHANGHAI, SUZHOU, HANGZHOU];
     const lines = routeLines(route({

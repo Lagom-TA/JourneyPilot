@@ -615,7 +615,7 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
               role="listitem"
               tabIndex={0}
               data-testid={`destination-token-${index}`}
-              aria-label={`第 ${index + 1} 站 ${place.name}。按住可拖动排序，也可以用方向键调整顺序，Delete 删除。`}
+              aria-label={`第 ${index + 1} 站 ${place.name}。按住可拖动排序，也可以用方向键调整顺序，按删除键移除。`}
               className={cn(
                 'destination-token',
                 dragFrom === index && 'is-dragging',

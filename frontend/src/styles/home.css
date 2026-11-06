@@ -456,7 +456,7 @@
   display: grid;
   min-width: 0;
   grid-template-rows: 1fr;
-  /* 原来的 6px 行间隙 + 2px 内衬都放在外层：收起时一起收掉，展开时与搜索行一起出现。 */
+  /* 收起时同时收起顶部间距，展开时与搜索行一同显示。 */
   padding-top: 8px;
   transition:
     grid-template-rows var(--dur-slow) var(--ease-standard), padding-top var(--dur-slow) var(--ease-standard);

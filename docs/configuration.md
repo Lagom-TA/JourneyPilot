@@ -123,7 +123,7 @@
 | `provider_channels.embedding` | int | `4` | >= 1 | `JOURNEYPILOT_PROVIDER_CHANNELS__EMBEDDING` |
 | `provider_channels.max_queue_wait_seconds` | float | `180.0` | > 0 | `JOURNEYPILOT_PROVIDER_CHANNELS__MAX_QUEUE_WAIT_SECONDS` |
 | `geocoding.nominatim_base_url` | str | `https://nominatim.openstreetmap.org` | — | `JOURNEYPILOT_GEOCODING__NOMINATIM_BASE_URL` |
-| `geocoding.user_agent` | str | `JourneyPilot (https://github.com/journeypilot)` | — | `JOURNEYPILOT_GEOCODING__USER_AGENT` |
+| `geocoding.user_agent` | str | `JourneyPilot (https://github.com/Lagom-TA/JourneyPilot)` | — | `JOURNEYPILOT_GEOCODING__USER_AGENT` |
 | `geocoding.timeout_seconds` | float | `10.0` | > 0 | `JOURNEYPILOT_GEOCODING__TIMEOUT_SECONDS` |
 | `geocoding.search_timeout_seconds` | float | `3.4` | > 0 | `JOURNEYPILOT_GEOCODING__SEARCH_TIMEOUT_SECONDS` |
 | `geocoding.min_interval_seconds` | float | `1.1` | — | `JOURNEYPILOT_GEOCODING__MIN_INTERVAL_SECONDS` |
@@ -132,7 +132,7 @@
 | `geocoding.search_cache_redis_timeout_seconds` | float | `0.25` | > 0 | `JOURNEYPILOT_GEOCODING__SEARCH_CACHE_REDIS_TIMEOUT_SECONDS` |
 | `routing.transitous_base_url` | str | `https://api.transitous.org` | — | `JOURNEYPILOT_ROUTING__TRANSITOUS_BASE_URL` |
 | `routing.amap_base_url` | str | `https://restapi.amap.com` | — | `JOURNEYPILOT_ROUTING__AMAP_BASE_URL` |
-| `routing.user_agent` | str | `JourneyPilot (https://github.com/journeypilot)` | — | `JOURNEYPILOT_ROUTING__USER_AGENT` |
+| `routing.user_agent` | str | `JourneyPilot (https://github.com/Lagom-TA/JourneyPilot)` | — | `JOURNEYPILOT_ROUTING__USER_AGENT` |
 | `routing.timeout_seconds` | float | `20.0` | — | `JOURNEYPILOT_ROUTING__TIMEOUT_SECONDS` |
 | `routing.min_interval_seconds` | float | `1.0` | — | `JOURNEYPILOT_ROUTING__MIN_INTERVAL_SECONDS` |
 | `provider_snapshot_cache.enabled` | bool | `True` | — | `JOURNEYPILOT_PROVIDER_SNAPSHOT_CACHE__ENABLED` |

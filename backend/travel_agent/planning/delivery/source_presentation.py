@@ -6,9 +6,130 @@ from travel_agent.planning.research.evidence import SourceRecord
 from typing import Any
 from typing import Mapping
 import json
+import re
 
 
 _PAYLOAD_RESULT_KEYS = ("results", "content")
+
+PUBLIC_FACT_FIELD_LABELS: dict[str, str] = {
+    "name": "名称",
+    "branch_name": "餐厅名称",
+    "property_name": "住宿名称",
+    "place_id": "地点信息",
+    "provider_place_type": "地点类型",
+    "provider_country_code": "所在国家或地区",
+    "address": "地址",
+    "latitude": "坐标",
+    "longitude": "坐标",
+    "opening_window": "开放时间",
+    "reservation_required": "预约要求",
+    "visit_type": "类型",
+    "meal_type": "餐次",
+    "cuisine_types": "菜系",
+    "average_spend_cny": "人均消费",
+    "estimated_cost_cny": "参考费用",
+    "nightly_price_cny": "每晚价格",
+    "total_price_cny": "整段价格",
+    "check_in_date": "入住日期",
+    "check_out_date": "退房日期",
+    "check_in_time": "入住时间",
+    "check_out_time": "退房时间",
+    "nights": "入住晚数",
+    "room_type": "房型",
+    "facilities": "设施",
+    "availability_status": "房态",
+    "from_endpoint": "出发站点",
+    "to_endpoint": "到达站点",
+    "boarding_stop": "上车站点",
+    "alighting_stop": "下车站点",
+    "selected_mode": "交通方式",
+    "segments": "班次与路线",
+    "departure_at": "出发时间",
+    "arrival_at": "抵达时间",
+    "duration_minutes": "耗时",
+    "distance_meters": "距离",
+    "transfer_count": "换乘",
+    "booking_status": "预订要求",
+    "total_cost_cny": "票价",
+    "condition_label": "天气状况",
+    "high_c": "最高气温",
+    "low_c": "最低气温",
+    "precipitation_probability_pct": "降水概率",
+    "wind_speed_kph": "风速",
+}
+
+_TOOL_SOURCE_TITLE_LABELS: dict[str, str] = {
+    "get-tickets": "车次查询结果",
+    "get-interline-tickets": "中转车次查询结果",
+    "get-station-code-of-citys": "车站代码查询结果",
+    "search_flights": "航班查询结果",
+    "global_place_search": "地点搜索结果",
+    "maps_text_search": "地点搜索结果",
+    "maps_around_search": "周边搜索结果",
+    "maps_geo": "地点定位结果",
+    "maps_weather": "天气查询结果",
+    "maps_direction_driving": "驾车路线查询结果",
+    "maps_direction_walking": "步行路线查询结果",
+    "maps_direction_transit_integrated": "公共交通路线查询结果",
+    "free_web_search": "网页搜索结果",
+    "tavily_search": "网页搜索结果",
+    "brave_web_search": "网页搜索结果",
+    "firecrawl_search": "网页搜索结果",
+    "knowledge_search": "资料库检索结果",
+}
+
+_MACHINE_KV_PREFIX_RE = re.compile(
+    r"^(?:\s*[a-z][a-z0-9]*(?:_[a-z0-9]+)+=[^，,；;\s]+[，,；;\s]*)+"
+)
+_INLINE_MACHINE_KV_RE = re.compile(
+    r"[，,；;\s]*\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+=[^，,；;\s]+[，,；;]?"
+)
+_ROUTE_MIN_UNIT_RE = re.compile(r"\b(\d+)\s*min\b")
+_WEATHER_FORECAST_SUFFIX_RE = re.compile(r"\s+weather forecast$", re.IGNORECASE)
+_TOOL_QUERY_TITLE_RE = re.compile(r"^([A-Za-z0-9_:-]+)\s+查询结果$")
+_TOOL_DEGRADATION_TITLE_RE = re.compile(r"^[A-Za-z0-9_:-]+\s+degradation$", re.IGNORECASE)
+
+
+def public_fact_field_label(label: str) -> str:
+    """将事实字段路径映射为面向用户的中文标签。"""
+    cleaned = str(label or "").strip()
+    return PUBLIC_FACT_FIELD_LABELS.get(cleaned, cleaned)
+
+
+def clean_public_source_excerpt(excerpt: str) -> str:
+    """清理来源摘录中的机器键值对、内部术语与英文单位，保留旅行事实。"""
+    text = str(excerpt or "").strip()
+    if not text:
+        return ""
+    cleaned = _MACHINE_KV_PREFIX_RE.sub("", text).strip()
+    cleaned = _INLINE_MACHINE_KV_RE.sub("", cleaned).strip(" ，,；;")
+    cleaned = cleaned.replace("POI 编码与经纬度", "地点位置与坐标")
+    cleaned = _WEATHER_FORECAST_SUFFIX_RE.sub(" 天气预报", cleaned)
+    cleaned = _ROUTE_MIN_UNIT_RE.sub(r"\1 分钟", cleaned)
+    return cleaned or text
+
+
+def clean_public_source_title(
+    title: str, excerpt: str = "", *, source_record_id: str = ""
+) -> str:
+    """清理来源标题中的英文工具名与内部记录前缀。"""
+    raw = str(title or "").strip()
+    lowered = raw.lower()
+    if " place record: " in lowered:
+        entity_name = raw.split(":", 1)[-1].strip()
+        return f"地点资料：{entity_name}"
+    if " route: " in lowered:
+        route_label = str(excerpt or "").split(" · ", 1)[0].strip()
+        return f"交通路线：{route_label}" if route_label else "交通路线"
+    if source_record_id.startswith("weather-source-"):
+        return "天气参考"
+    m = _TOOL_QUERY_TITLE_RE.match(raw)
+    if m:
+        tool_key = m.group(1).lower()
+        return _TOOL_SOURCE_TITLE_LABELS.get(tool_key, "工具查询结果")
+    if _TOOL_DEGRADATION_TITLE_RE.match(raw):
+        return "备用来源记录"
+    return raw
 
 
 def _payload_public_excerpt(payload: object) -> tuple[str | None, str | None]:
@@ -124,19 +245,11 @@ def _web_openable_url(url: str | None) -> str | None:
 def _public_source_presentation(source: SourceRecord) -> tuple[str, str, str | None]:
     """把含审计字段的 SourceRecord 转成面向普通用户的来源文案。"""
 
-    title = source.title
     excerpt = source.public_excerpt.strip()
     canonical_url = source.canonical_url
-    lowered = title.lower()
-
-    if " place record: " in lowered:
-        entity_name = title.split(":", 1)[-1].strip()
-        title = f"地点资料：{entity_name}"
-    elif " route: " in lowered:
-        route_label = excerpt.split(" · ", 1)[0].strip()
-        title = f"交通路线：{route_label}" if route_label else "交通路线"
-    elif source.source_record_id.startswith("weather-source-"):
-        title = "天气参考"
+    title = clean_public_source_title(
+        source.title, excerpt, source_record_id=source.source_record_id
+    )
 
     snapshot_result = source.snapshot.get("sanitized_result")
     structured_excerpt, result_url = (
@@ -156,4 +269,5 @@ def _public_source_presentation(source: SourceRecord) -> tuple[str, str, str | N
             payload = source.snapshot.get("sanitized_result")
         rendered = _rendered_payload_excerpt(payload)
         excerpt = rendered or "已核对外部结果。"
+    excerpt = clean_public_source_excerpt(excerpt)
     return title, excerpt, _web_openable_url(canonical_url)

@@ -102,7 +102,7 @@ def relabel_to_logical_collections(
 
 class CollectionAddressInvalid(ValueError):
     code = "collection_address_invalid"
-    message = "资料库地址不是一个合法的逻辑集合名"
+    message = "资料库名称无效，请刷新页面后重试"
 
 
 def normalize_collection(collection: str) -> str:

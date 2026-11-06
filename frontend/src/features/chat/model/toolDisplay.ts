@@ -87,7 +87,7 @@ const KIND_LABELS: Record<DisplayKind, string> = {
     flight: '班次查询',
     train: '班次查询',
     currency: '汇率换算',
-    knowledge: '知识库检索',
+    knowledge: '资料库检索',
     calculation: '预算计算',
     internal: '整理规划',
     data: '旅行数据',
@@ -205,7 +205,7 @@ function routeSubject(args: ArgsMap): string | null {
     const destination = firstArg(args, ['to_name', 'destination', 'to', 'to_city', 'arrival', 'arrival_city', 'target']);
     const date = firstArg(args, ['date', 'departure_date', 'travel_date']);
     if (origin && destination)
-        return [truncate(origin, 18), '->', truncate(destination, 18), date ? `· ${date}` : ''].join(' ').trim();
+        return [truncate(origin, 18), '→', truncate(destination, 18), date ? `· ${date}` : ''].join(' ').trim();
     return firstArg(args, ['route', 'query', 'q']);
 }
 function classifyTool(toolName: string | undefined, category: ToolCategory | undefined): DisplayKind {
@@ -263,8 +263,8 @@ function subjectForKind(kind: DisplayKind, args: ArgsMap): string | null {
             const from = firstArg(args, ['from', 'base', 'base_currency']);
             const to = firstArg(args, ['to', 'target', 'to_currency', 'target_currency', 'to_currencies']);
             if (amount && from && to)
-                return `${amount} ${from} -> ${to}`;
-            return from && to ? `${from} -> ${to}` : null;
+                return `${amount} ${from} → ${to}`;
+            return from && to ? `${from} → ${to}` : null;
         }
         case 'internal':
             // search_tools 的 query 是内部能力标识，不能当作旅行者可读的查询主题。

@@ -129,11 +129,16 @@ def _event_response(event) -> Optional[TripRunEventResponse]:
             "message": "这次请求未通过安全策略检查，已被拒绝执行。",
         }
     elif event.event_type == "run.failed":
+        reason = str(event.payload.get("reason_code") or "")
+        message = "旅行方案暂时无法生成，请稍后重试。"
+        if reason.startswith("run_budget_exhausted"):
+            message = "本次规划的调用额度已用尽，调整预算上限后请重新规划。"
+        elif reason == "run_deadline_exhausted":
+            message = "本次规划已超过处理时限，请重新规划。"
         payload = {
             "status": TripRunStatus.FAILED.value,
-            "message": "旅行方案暂时无法生成，请稍后重试。",
+            "message": message,
         }
-        reason = event.payload.get("reason_code")
         if reason:
             payload["reason_code"] = reason
     elif event.event_type in {"run.created", "run.started", "run.control_requested"}:

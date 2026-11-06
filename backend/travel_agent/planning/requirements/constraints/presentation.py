@@ -37,7 +37,7 @@ def referenced_context_sections(pack: Any) -> List[Dict[str, Any]]:
 
 
 _UNKNOWN_ALLERGEN_DINING_NOTE = (
-    "有食物过敏，而系统没有拿到过敏原是什么："
+    "你提到了食物过敏，但未说明具体过敏原："
     "本行程没有替你排除任何过敏原，请点餐前向店员说明过敏情况并逐一确认食材。"
 )
 

@@ -64,7 +64,7 @@ def _failed_tool_sources(
             SourceRecord(
                 source_record_id=f"source_tool_failure_{audit_id}",
                 source_kind="external_tool",
-                title=f"{tool_name} degradation",
+                title="备用来源记录",
                 provider_name=str(
                     envelope.get("server_name")
                     or envelope.get("tool_name")
@@ -72,7 +72,7 @@ def _failed_tool_sources(
                 ),
                 public_excerpt=(
                     failure_detail
-                    or str(envelope.get("result_summary") or "tool degraded")
+                    or str(envelope.get("result_summary") or "未取到结果")
                 )[:900],
                 retrieved_at=retrieved_at,
                 content_hash=_canonical_snapshot_hash(snapshot),

@@ -24,11 +24,29 @@ that itinerary together with a map and reading view in one workspace.
 
 The current product interface is in Simplified Chinese.
 
+[Quick start](#quick-start) · [How it works](#architecture) · [Documentation](docs/README.md)
+
+![JourneyPilot home page with a travel prompt and inspiration cards](docs/assets/home.png)
+
+JourneyPilot brings the research plan, day-by-day itinerary, map, and reading view together. You can
+review the research plan before it starts, follow its progress, and return to a saved trip to refine it.
+
+![JourneyPilot demonstration: inspiration, research, and itinerary](docs/assets/demo.gif)
+
+| Review the research plan | Explore the itinerary on a map |
+| --- | --- |
+| ![Research plan awaiting confirmation](docs/assets/research-plan.png) | ![Itinerary and map workspace](docs/assets/map-workspace.png) |
+
+[See the reading view](docs/assets/reading.png). The examples use illustrative data from different trips;
+the edited demonstration shows the interface, not a benchmark of model quality or speed. Map images:
+© [Stadia Maps](https://stadiamaps.com/attribution/) © [OpenMapTiles](https://openmaptiles.org/)
+© [OpenStreetMap contributors](https://www.openstreetmap.org/copyright).
+
 ## Plan a trip
 
 The home page starts with a free-text description, including any travel preferences. Switch to the
 structured form to enter the route, dates, companions, budget, and travel style. Companions use
-a choice panel with custom counts. Each mode keeps its own draft;
+a choice panel with custom counts. Each mode keeps its own draft.
 A travel ticket and luggage tag present one proposal. Scenes rotate slowly and pause while you hover
 or edit; choosing either paper fills the current mode without submitting it. For a
 full plan, JourneyPilot reviews the request, verifies places and asks follow-up questions when needed,
@@ -71,6 +89,21 @@ and keeps only a content-free record of the reset.
 Sources, prices, and live information depend on the services used. Prices are shown for individual items
 without a combined total, and the PDF identifies items that remain unplanned. Some local routes may be estimates,
 and availability can change. JourneyPilot does not make bookings or process payments.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  Browser["React · Vite<br/>Travel workspace"] -->|REST + SSE| API["FastAPI"]
+  API --> Flow["LangGraph<br/>Requirements → Research → Itinerary → Delivery"]
+  Flow --> Tools["MCP · Data providers"]
+  API --> DB[("PostgreSQL · pgvector")]
+  Flow --> DB
+  API --> Cache[("Redis")]
+```
+
+The backend coordinates model and tool calls, persists trip state and results, and streams progress to the
+browser. See the [architecture overview](docs/architecture/overview.md) for the boundaries and data flow.
 
 ## Quick start
 
@@ -170,6 +203,9 @@ providers can be configured as needed.
 On tool-name collisions, the registered owner is retained; MCP servers register in configuration order.
 Coverage and results depend on each service; routes within mainland China require an Amap key. Model and
 provider calls may incur charges.
+
+The default map tiles use GCJ-02 coordinates. When configuring a WGS-84 tile source, set
+`VITE_MAP_TILE_DATUM=wgs84` when starting or building the frontend; see the [frontend guide](frontend/README.md).
 
 `run.sh` installs the locked Node MCP dependencies. Before starting the backend directly, run
 `npm --prefix backend/mcp ci --omit=dev` to install them.

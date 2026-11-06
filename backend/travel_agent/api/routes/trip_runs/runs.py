@@ -28,7 +28,7 @@ router = APIRouter(prefix="/api/trip-runs", tags=["trip-runs"])
 async def create_trip_run(request: TripRunCreateRequest) -> TripRunResponse:
     if request.route_decision.route.value != "trip_planning":
         raise HTTPException(
-            status_code=422, detail="只有已确认的旅行规划可以创建规划 TripRun"
+            status_code=422, detail="只有已确认的旅行规划可以创建规划记录"
         )
     components = get_components()
     run = await components.trip_run_store.create_run(
@@ -89,7 +89,7 @@ async def read_trip_run(
     await _get_authorized_run(run_id, session_id=session_id)
     detail = await components.trip_run_store.get_detail(run_id, event_limit=event_limit)
     if detail is None:
-        raise HTTPException(status_code=404, detail="TripRun 不存在")
+        raise HTTPException(status_code=404, detail="未找到这趟规划记录")
     execution = await components.run_execution_store.get(run_id)
     return TripRunDetailResponse(
         run=_run_response(detail.run),

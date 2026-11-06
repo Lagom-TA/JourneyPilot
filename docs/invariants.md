@@ -203,7 +203,7 @@ Tests:
 
 ### INV-INTENT-006：意图变更能从每个节点续跑，除了明确不该的三个
 约定：`intent_amendment_router` 的 conditional edge 必须覆盖除 `scope_clarifier`（入口整理）、`understanding_gate`（提问暂停点，补充命令只在 RUNNING 阶段入队）与路由节点自身之外的每个运行节点；守卫从构造好的图上读回落点，不扫描源码。
-Owner: `backend/travel_agent/planning/graph.py` 的 `amendment_continuations` 与 `route_after_intent_amendment`、`backend/travel_agent/planning/requirements/amendments.py`
+Owner: `backend/travel_agent/planning/nodes.py` 的 `AMENDMENT_CONTINUATION_NODES`、`backend/travel_agent/planning/graph.py` 的 `route_after_intent_amendment`、`backend/travel_agent/planning/requirements/amendments.py`
 Tests:
 - `backend/tests/planning/test_node_presentation.py::test_intent_amendments_can_resume_at_every_runtime_node_that_accepts_them`
 
