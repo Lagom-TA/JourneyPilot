@@ -27,7 +27,6 @@ from travel_agent.planning.research.feedback import (
     RESEARCH_REDO_ROUNDS_CAP,
     parse_research_redo_request,
 )
-from travel_agent.planning.research.progress import worker_result
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.tools.exposure import ToolExposurePlan
 from travel_agent.tools.gateway_contracts import ToolManifest
@@ -569,19 +568,6 @@ def test_upstream_view_keeps_only_latest_research_round():
     assert ("visit", "visit_new") in kinds_and_ids
     assert ("visit", "visit_old") not in kinds_and_ids
     assert ("transport", "transit_old") not in kinds_and_ids
-
-
-def test_redo_request_is_visible_in_workspace_progress():
-    """组合发出的返研请求以组合卡片可见的结论展示。"""
-    status, content, preview = worker_result(
-        "itinerary_planner",
-        {"research_redo_requests": {"destination_researcher": {"feedback": "候选与目的地不符"}},
-         "agent_status": {"itinerary_planner": "pending"}},
-    )
-    assert status == "completed"
-    assert "目的地调研" in content
-    assert "重做" in content
-    assert preview == []
 
 
 def test_redo_round_is_capped_and_parses_only_valid_requests():

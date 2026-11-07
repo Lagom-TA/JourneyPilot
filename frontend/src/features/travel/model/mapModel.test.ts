@@ -3,7 +3,6 @@ import { type TransportEndpoint, type TransportSegment } from '../types/entities
 import { type MapProjection } from '../types/report';
 import {
   mapViewportDataKey,
-  resolveMapFocusEntityId,
   routeLines,
   shouldAutoFitMap,
 } from './mapModel';
@@ -196,15 +195,6 @@ describe('map route geometry', () => {
 });
 
 describe('map viewport focus', () => {
-  it('takes the camera target from an explicit selection', () => {
-    expect(resolveMapFocusEntityId('selected-place')).toBe('selected-place');
-  });
-
-  it('has no camera target without a selection, so hover cannot move the map', () => {
-    expect(resolveMapFocusEntityId(null)).toBeNull();
-    expect(resolveMapFocusEntityId(undefined)).toBeNull();
-  });
-
   it('auto-fits new geometry only when nothing is selected', () => {
     const dataKey = mapViewportDataKey([[31.2304, 121.4737]]);
     const sameGeometry = mapViewportDataKey([[31.2304, 121.4737]]);

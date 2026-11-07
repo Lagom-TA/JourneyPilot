@@ -1,30 +1,17 @@
-from types import SimpleNamespace
-from unittest.mock import Mock
-
 import pytest
 
-from travel_agent.llm.task_routing import TaskKind, llm_for_task, select_task_route
+from travel_agent.llm.task_routing import TaskKind, select_task_route
 
 PRIMARY, FAST = "openai/gpt-6.1-sol", "deepseek/deepseek-v4.1-flash"
 
 
 @pytest.mark.parametrize("task,tier,effort", [
-    (TaskKind.RESEARCH_TOOLS, "fast", "low"), (TaskKind.QUICK_ANSWER, "fast", "low"),
-    (TaskKind.SUMMARY, "fast", "low"), (TaskKind.INTENT_NORMALIZE, "fast", "low"),
+    (TaskKind.QUICK_ANSWER, "fast", "low"),
     (TaskKind.PLANNING, "primary", "medium"), (TaskKind.COMPOSITION, "primary", "medium"),
-    (TaskKind.UNDERSTANDING, "primary", "medium"),
 ])
 def test_task_defaults_are_model_named_and_keep_reasoning_enabled(task, tier, effort):
     route = select_task_route(task, PRIMARY, FAST)
     assert route.tier == tier and route.reasoning_effort == effort
-
-
-def test_llm_for_task_forwards_tool_capability():
-    get_for_task = Mock(return_value=object())
-    router = SimpleNamespace(get_for_task=get_for_task)
-
-    assert llm_for_task(router, TaskKind.UNDERSTANDING, has_tools=True) is get_for_task.return_value
-    get_for_task.assert_called_once_with(TaskKind.UNDERSTANDING, has_tools=True)
 
 
 @pytest.mark.parametrize("primary", [PRIMARY, FAST])

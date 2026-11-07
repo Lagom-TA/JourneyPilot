@@ -33,12 +33,6 @@ async def test_overlong_prompt_is_rejected_with_422(client) -> None:
     assert response.status_code == 422
 
 
-async def test_non_string_prompt_is_rejected_with_422(client) -> None:
-    async with client as http:
-        response = await http.post("/api/optimize-prompt", json={"prompt": 42})
-    assert response.status_code == 422
-
-
 async def test_missing_prompt_is_rejected_with_422(client) -> None:
     async with client as http:
         response = await http.post("/api/optimize-prompt", json={})

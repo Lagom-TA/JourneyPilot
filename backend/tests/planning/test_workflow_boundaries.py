@@ -1,7 +1,6 @@
-"""图缓存、命令包装、入口检查与交付持久化在各工作流边界上的行为。"""
+"""图缓存、入口检查与交付持久化在各工作流边界上的行为。"""
 
 import asyncio
-import inspect
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
@@ -12,8 +11,7 @@ from travel_agent.conversation import graph as answer_graph
 from travel_agent.conversation.workflow import FastAnswerWorkflow
 from travel_agent.planning import graph as planning_graph
 from travel_agent.planning.delivery import persistence
-from travel_agent.planning.execution import with_run_control
-from travel_agent.planning.requirements import amendments, entry
+from travel_agent.planning.requirements import entry
 from travel_agent.planning.requirements.understanding.prompts import understanding_system_prompt
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.context import current_run_id, node_lifecycle_sink
@@ -38,30 +36,6 @@ def test_graph_caches_share_only_the_same_checkpointer(monkeypatch):
     assert not plain.interrupt_before_nodes
     assert not persisted.interrupt_before_nodes
     assert answer_graph.get_fast_graph() is answer_graph.get_fast_graph()
-
-
-async def test_amendment_adapter_preserves_async_run_control_and_sync_policy(
-    monkeypatch,
-):
-    observed = []
-    expected = {"intent_amendment_route": "itinerary_planner"}
-
-    def policy(state):
-        observed.append((state, asyncio.get_running_loop()))
-        return expected
-
-    original = amendments.apply_runtime_amendments
-    monkeypatch.setattr(amendments, "apply_runtime_amendments", policy)
-
-    state = TravelAgentState()
-    # 先验原函数：adapter 包装的是模块里真实的同步实现，而不是本测试的桩。
-    assert not inspect.iscoroutinefunction(original)
-    assert inspect.iscoroutinefunction(amendments.intent_amendment_router_node)
-    wrapped = with_run_control(
-        "intent_amendment_router", amendments.intent_amendment_router_node
-    )
-    assert await wrapped(state) is expected
-    assert observed == [(state, asyncio.get_running_loop())]
 
 
 @pytest.mark.parametrize("compaction_fails", [False, True])

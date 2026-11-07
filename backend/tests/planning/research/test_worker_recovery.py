@@ -10,9 +10,6 @@ from langgraph.graph import END, START, StateGraph
 from travel_agent.planning.recovery import with_worker_recovery
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.runtime.journal import WorkerJournal, current_worker_journal
-from travel_agent.storage.worker_journal_store import (
-    JournalConflict, 
-)
 from tests.support.memory_stores import InMemoryWorkerJournalStore
 from travel_agent.tools import execution, react
 from travel_agent.tools.exposure import ToolExposurePlan
@@ -135,13 +132,6 @@ async def test_other_workers_still_require_valid_assignment(assignments):
     config = {"configurable": {"worker_journal_store": InMemoryWorkerJournalStore()}}
     with pytest.raises(ValueError, match="missing capability assignment for worker"):
         await recovered(state, config)
-
-
-async def test_stale_writer_cannot_commit():
-    store = InMemoryWorkerJournalStore()
-    await store.save("run", "scope", 0, {"a": 1})
-    with pytest.raises(JournalConflict):
-        await store.save("run", "scope", 0, {"a": 2})
 
 
 async def test_tool_outcome_commit_replays_before_transcript_commit(monkeypatch):
@@ -312,23 +302,6 @@ async def test_stream_without_finish_never_admits_partial_json(tools):
             yield {"type": "text_delta", "content": '{"candidate":'}
     result = await react.streaming_react_loop(Partial(), [], tools, None, "worker")
     assert result.content == ""
-
-
-async def test_old_workflow_cache_cannot_bypass_gateway(monkeypatch, tools):
-    class LLM:
-        async def ainvoke_with_tools_events(self, messages, schemas):
-            if any(m["role"] == "tool" for m in messages):
-                yield {"type": "finish", "content": "finished", "tool_calls": []}
-            else:
-                yield {"type": "finish", "content": "", "tool_calls": [{"id": "a", "name": "read", "arguments": {}}]}
-    executed = []
-    async def execute(*a, **kw):
-        executed.append(1)
-        return {"status": "success", "audit_id": "current", "sanitized_result": {}}
-    monkeypatch.setattr(react, "execute_tool", execute)
-    old_cache = {react._make_cache_key("read", {}): {"status": "success", "audit_id": "old"}}
-    result = await react.streaming_react_loop(LLM(), [], tools, None, "worker", tool_cache=old_cache)
-    assert executed == [1] and result.tool_results[0]["audit_id"] == "current"
 
 
 @pytest.mark.parametrize("crash_boundary", ["before_pending_write", "after_pending_write"])

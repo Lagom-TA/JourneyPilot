@@ -1,16 +1,5 @@
 import { type ThinkingStep } from "../types/messages";
-export type StageId = 'planning' | 'research' | 'synthesis';
-export type StageStatus = 'pending' | 'active' | 'done';
-export interface StageDef {
-    id: StageId;
-    label: string;
-    responsibility: string;
-}
-export const STAGE_DEFS: StageDef[] = [
-    { id: 'planning', label: '规划', responsibility: '理解你的需求，整理旅行信息并准备相关查询' },
-    { id: 'research', label: '调研', responsibility: '查询目的地、交通和住宿，安排每日行程' },
-    { id: 'synthesis', label: '交付', responsibility: '汇总旅行内容并保存完整计划' },
-];
+type StageId = 'planning' | 'research' | 'synthesis';
 const NODE_STAGES: ReadonlyArray<readonly [
     node: string,
     display: string,
@@ -37,19 +26,6 @@ const NODE_STAGES: ReadonlyArray<readonly [
     ['delivery_projector', '整理行程', 'synthesis'],
     ['delivery_finalizer', '保存计划', 'synthesis'],
 ];
-export const AGENT_TO_STAGE: Record<string, StageId> = Object.fromEntries(NODE_STAGES.flatMap(([node, display, stage]) => [
-    [node, stage],
-    [display, stage],
-]));
-export function getStageIdForAgent(agentName: string): StageId | null {
-    const { base } = parseAgentRound(agentName);
-    return AGENT_TO_STAGE[base] ?? null;
-}
-const STAGE_INDEX: Record<StageId, number> = {
-    planning: 0,
-    research: 1,
-    synthesis: 2,
-};
 export function parseAgentRound(agentName: string): {
     base: string;
     round: number;
@@ -126,10 +102,6 @@ function latestPopulatedActivityStage(steps: ThinkingStep[]): ActivityStageId | 
     }
     return current;
 }
-/** 最新一次真正留下行动事件的阶段；不看 Run 状态，用于按阶段过滤过程。 */
-export function latestActivityStageWithSteps(steps: ThinkingStep[]): ActivityStageId | null {
-    return latestPopulatedActivityStage(steps);
-}
 /**
  * 当前最新活动阶段。门与等待确认只在需求阶段生效：研究或路线已经留下行动时，
  * 门是返工确认，不能把已完成的阶段重新标成进行中。完成、合成与开始输出归到
@@ -152,9 +124,6 @@ export function latestActivityStageId(args: {
     if (args.runStatus === 'completed' || args.isSynthesizing || args.answerStarted)
         return 'delivery';
     return populated ?? (args.isStreaming ? 'requirements' : null);
-}
-export function filterStepsForActivityStage(steps: ThinkingStep[], stage: ActivityStageId): ThinkingStep[] {
-    return steps.filter(step => getActivityStageIdForAgent(step.agentName || '') === stage);
 }
 export function deriveActivityTitle(args: {
     steps: ThinkingStep[];
@@ -184,101 +153,6 @@ export function deriveActivityTitle(args: {
         return ACTIVITY_STAGE_TITLES[current];
     return args.isStreaming ? ACTIVITY_STAGE_TITLES.requirements : '旅行规划记录';
 }
-export interface StageView extends StageDef {
-    status: StageStatus;
-    startedAt?: Date;
-    endedAt?: Date;
-    elapsedMs?: number;
-    stalled?: boolean;
-}
-export interface DerivedStages {
-    stages: StageView[];
-    hasDeepWorkflow: boolean;
-}
-export interface StageSignals {
-    isStreaming: boolean;
-    isSynthesizing: boolean;
-    answerStarted: boolean;
-    completed?: boolean;
-}
-export function deriveStages(steps: ThinkingStep[], signals: StageSignals): DerivedStages {
-    const touched = new Set<StageId>();
-    let lastStageIndex = -1;
-    const timingByStage: Partial<Record<StageId, {
-        startedAt: Date;
-        endedAt?: Date;
-    }>> = {};
-    for (const step of steps) {
-        const { base } = parseAgentRound(step.agentName || '');
-        const stage = AGENT_TO_STAGE[base];
-        if (!stage)
-            continue;
-        touched.add(stage);
-        lastStageIndex = STAGE_INDEX[stage];
-        const startedAt = step.timestamp instanceof Date ? step.timestamp : new Date(step.timestamp);
-        const endedAt = step.endTime instanceof Date ? step.endTime : step.endTime ? new Date(step.endTime) : undefined;
-        const current = timingByStage[stage];
-        if (!current || startedAt < current.startedAt) {
-            timingByStage[stage] = { startedAt, endedAt: endedAt ?? current?.endedAt };
-        }
-        else if (endedAt && (!current.endedAt || endedAt > current.endedAt)) {
-            current.endedAt = endedAt;
-        }
-    }
-    const { isStreaming, isSynthesizing, answerStarted } = signals;
-    const synthesisActive = isSynthesizing || (isStreaming && answerStarted);
-    const synthesisDone = signals.completed === true;
-    let headIndex: number;
-    let headActive: boolean;
-    if (synthesisDone) {
-        headIndex = STAGE_INDEX.synthesis;
-        headActive = false;
-    }
-    else if (synthesisActive) {
-        headIndex = STAGE_INDEX.synthesis;
-        headActive = true;
-    }
-    else if (lastStageIndex >= 0) {
-        headIndex = lastStageIndex;
-        headActive = isStreaming;
-    }
-    else {
-        headIndex = -1;
-        headActive = false;
-    }
-    const now = Date.now();
-    const stages: StageView[] = STAGE_DEFS.map((def) => {
-        const idx = STAGE_INDEX[def.id];
-        let status: StageStatus;
-        if (headIndex < 0) {
-            status = 'pending';
-        }
-        else if (idx < headIndex) {
-            status = 'done';
-        }
-        else if (idx === headIndex) {
-            status = headActive ? 'active' : synthesisDone ? 'done' : 'pending';
-        }
-        else {
-            status = touched.has(def.id) ? 'done' : 'pending';
-        }
-        const timing = timingByStage[def.id];
-        const elapsedMs = timing?.startedAt
-            ? (timing.endedAt?.getTime() ?? (status === 'active' ? now : timing.startedAt.getTime())) -
-                timing.startedAt.getTime()
-            : undefined;
-        return {
-            ...def,
-            status,
-            startedAt: timing?.startedAt,
-            endedAt: timing?.endedAt,
-            elapsedMs,
-            stalled: status === 'active' && elapsedMs !== undefined && elapsedMs > 60000,
-        };
-    });
-    return { stages, hasDeepWorkflow: touched.size >= 2 };
-}
-
 export type ActivityStageStatus = 'pending' | 'active' | 'done' | 'failed' | 'stopped';
 export const ACTIVITY_STAGE_ORDER: readonly ActivityStageId[] = ['requirements', 'research', 'route', 'delivery'];
 export interface ActivityStageView {

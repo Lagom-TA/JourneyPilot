@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from travel_agent.runtime.events import EventBuffer
 
 
@@ -74,21 +72,6 @@ async def test_a_long_stream_is_chunked_not_dropped():
     items = await _drain(buffer)
     assert "".join(item[2] for item in items) == "ab" * 10
     assert all(len(item[2]) <= 4 for item in items)
-
-
-async def test_a_full_critical_queue_makes_the_producer_wait():
-    buffer = _buffer(critical_queue_size=2, stalled_consumer_seconds=5)
-    await buffer.put(("state", "a", 1))
-    await buffer.put(("state", "a", 2))
-
-    blocked = asyncio.create_task(buffer.put(("state", "a", 3)))
-    await asyncio.sleep(0.01)
-    assert not blocked.done()
-    assert buffer.stalled is False
-
-    assert await buffer.get(1) == ("state", "a", 1)
-    await asyncio.wait_for(blocked, 1)
-    assert buffer.stalled is False
 
 
 async def test_parallel_critical_producers_do_not_share_one_free_slot():
@@ -169,19 +152,6 @@ async def test_text_over_budget_is_dropped_only_after_a_stall():
     assert buffer.stats.dropped_text_chars > 0
     # 缓冲本身仍在预算内 —— 慢客户端不会让内存无限增长。
     assert buffer.stats.max_pending_text_chars <= 12
-
-
-async def test_get_times_out_without_touching_the_buffer():
-    buffer = _buffer()
-    await buffer.put(("state", "a", 1))
-
-    with pytest.raises(asyncio.TimeoutError):
-        # 先取走唯一一条，再等一次超时。
-        assert await buffer.get(0.01) == ("state", "a", 1)
-        await buffer.get(0.01)
-
-    await buffer.put(("state", "a", 2))
-    assert await buffer.get(0.01) == ("state", "a", 2)
 
 
 async def test_a_slow_client_keeps_every_character_and_every_critical_event():

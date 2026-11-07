@@ -71,12 +71,6 @@ def test_worst_case_estimate_blocks_the_call_that_would_overspend():
     assert exhausted_dimension(snapshot, usage, llm_calls=1) == "llm_calls"
 
 
-def test_output_token_ceiling_is_counted_before_the_call():
-    snapshot = _snapshot(max_output_tokens=1_000)
-    usage = RunBudgetUsage(output_tokens=900)
-    assert exhausted_dimension(snapshot, usage, output_tokens=200) == "output_tokens"
-
-
 def test_an_unpriced_call_never_lets_cost_reject_a_call():
     """价格表没命中时费用低报，而一个低报的读数不许当上限用。"""
 

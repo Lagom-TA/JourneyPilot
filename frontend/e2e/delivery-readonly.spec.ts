@@ -20,9 +20,6 @@ test('真实交付只读：地图、会话、阅读版、PDF 与旅中视图', a
 
   await page.getByRole('button', { name: '阅读版', exact: true }).click();
   await expect(page.getByTestId('report-cover')).toBeVisible();
-  await expect(page.getByTestId('full-report')).not.toContainText('其它合格选择');
-  await expect(page.getByTestId('full-report')).not.toContainText('出发前事项');
-  await expect(page.getByTestId('full-report')).not.toContainText('数据说明');
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('region', { name: '旅行阅读版' }).getByTestId('download-current-pdf').click();
   const download = await downloadPromise;

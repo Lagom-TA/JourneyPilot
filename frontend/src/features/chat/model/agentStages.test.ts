@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveActivityStages, deriveStages, filterStepsForActivityStage, getActivityStageIdForAgent, getStageIdForAgent, latestActivityStageId, latestActivityStageWithSteps, parseAgentRound } from "./agentStages";
+import { deriveActivityStages, getActivityStageIdForAgent, latestActivityStageId, parseAgentRound } from "./agentStages";
 import { type ThinkingStep } from "../types/messages";
 function step(agentName: string): ThinkingStep {
     return {
@@ -11,37 +11,10 @@ function step(agentName: string): ThinkingStep {
     };
 }
 describe('agent stage projection', () => {
-    it('只在服务端确认完成后将全部阶段标为完成', () => {
-        const signals = { isStreaming: false, isSynthesizing: false, answerStarted: true };
-        expect(deriveStages([], signals).stages.every(stage => stage.status === 'pending')).toBe(true);
-        expect(deriveStages([], { ...signals, completed: true }).stages.every(stage => stage.status === 'done')).toBe(true);
-        expect(deriveStages([step('delivery_projector')], { ...signals, answerStarted: false, completed: false }).stages.find(stage => stage.id === 'synthesis')?.status).toBe('pending');
-    });
-    it.each([
-        ['中文节点', '目的地调研', 'research'],
-        ['内部节点', 'delivery_finalizer', 'synthesis'],
-        ['中文补研节点', '目的地调研（第2轮补充）', 'research'],
-        ['内部补研节点', 'destination_researcher_r2', 'research'],
-    ] as const)('%s 映射到 %s', (_label, agentName, stage) => {
-        expect(getStageIdForAgent(agentName)).toBe(stage);
-    });
-    it('把实际节点投影到阶段状态', () => {
-        const { stages, hasDeepWorkflow } = deriveStages([step('planner'), step('目的地调研（第2轮补充）')], { isStreaming: true, isSynthesizing: false, answerStarted: false });
-        expect(hasDeepWorkflow).toBe(true);
-        expect(stages.find((stage) => stage.id === 'planning')?.status).toBe('done');
-        expect(stages.find((stage) => stage.id === 'research')?.status).toBe('active');
-    });
     it('解析中英文节点名与补充轮次', () => {
         expect(parseAgentRound('destination_researcher_r2')).toEqual({ base: 'destination_researcher', round: 2 });
         expect(parseAgentRound('目的地调研（第3轮补充）')).toEqual({ base: '目的地调研', round: 3 });
         expect(parseAgentRound('目的地调研(第4轮)')).toEqual({ base: '目的地调研', round: 4 });
-    });
-    it('快答节点不进入深度阶段', () => {
-        const { stages, hasDeepWorkflow } = deriveStages([step('fast_answer_agent')], { isStreaming: true, isSynthesizing: false, answerStarted: false });
-        expect(getStageIdForAgent('fast_answer_agent')).toBeNull();
-        expect(getStageIdForAgent('旅行顾问')).toBeNull();
-        expect(hasDeepWorkflow).toBe(false);
-        expect(stages.every((stage) => stage.status === 'pending')).toBe(true);
     });
 });
 describe('activity stage filtering', () => {
@@ -72,14 +45,6 @@ describe('activity stage filtering', () => {
         expect(latestActivityStageId({ ...base, steps: routeSteps, runStatus: 'completed' })).toBe('delivery');
         expect(latestActivityStageId({ ...base, steps: routeSteps, isSynthesizing: true })).toBe('delivery');
         expect(latestActivityStageId({ ...base, steps: routeSteps, answerStarted: true })).toBe('delivery');
-    });
-    it('按阶段过滤时保留顺序，并单独给出最近有内容的阶段', () => {
-        const steps = [step('requirements_preparer'), step('目的地调研'), step('交通查询'), step('行程规划')];
-        expect(filterStepsForActivityStage(steps, 'research').map(item => item.agentName)).toEqual(['目的地调研', '交通查询']);
-        expect(filterStepsForActivityStage(steps, 'delivery')).toEqual([]);
-        expect(latestActivityStageWithSteps(steps)).toBe('route');
-        expect(latestActivityStageWithSteps(steps.slice(0, 3))).toBe('research');
-        expect(latestActivityStageWithSteps([step('fast_answer_agent')])).toBeNull();
     });
 });
 describe('four-stage activity projection', () => {

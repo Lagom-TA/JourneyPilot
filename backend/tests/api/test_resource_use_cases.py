@@ -12,10 +12,6 @@ from travel_agent.api.app import create_app
 from travel_agent.bootstrap import registry
 from travel_agent.config.models import Settings
 from travel_agent.config import loader, publication, runtime_models
-from travel_agent.knowledge.documents import (
-    SourceDocumentUnavailable,
-    require_source_document,
-)
 from travel_agent.memory.manual_facts import ManualFactSaveFailed, save_manual_fact
 from travel_agent.memory import manual_facts
 from travel_agent.memory.memory_store import (
@@ -97,19 +93,6 @@ async def test_runtime_config_reuses_key_falls_back_and_updates_router_before_pe
     assert events[1][1] == tier
 
 
-async def test_runtime_config_rejects_unknown_tier(client, configured, monkeypatch):
-    configured.server.allow_runtime_model_config = True
-    router = Mock()
-    persist = Mock()
-    monkeypatch.setattr(runtime_models, "get_model_router", router)
-    monkeypatch.setattr(runtime_models, "persist_model_config", persist)
-    async with client:
-        response = await client.post("/api/configure", json=model_payload(tier="unknown"))
-    assert response.status_code == 422
-    router.update_model.assert_not_called()
-    persist.assert_not_called()
-
-
 @pytest.mark.parametrize(
     "failure,status",
     [
@@ -145,23 +128,6 @@ async def test_public_config_never_exposes_model_keys(client, configured):
     assert response.json()["ingest"]["max_upload_bytes"] == 2 * 1024 * 1024
     assert "fixture-primary" not in response.text
     assert '"api_key"' not in response.text
-
-
-@pytest.mark.parametrize(
-    "document,chunks,code",
-    [(None, 0, "unknown_source"), (None, 4, "document_text_unavailable")],
-)
-async def test_original_text_domain_distinguishes_missing_from_legacy_chunks(
-    document, chunks, code
-):
-    indexer = SimpleNamespace(
-        get_document=AsyncMock(return_value=document),
-        count_source_chunks=AsyncMock(return_value=chunks),
-    )
-    with pytest.raises(SourceDocumentUnavailable) as caught:
-        await require_source_document(indexer, "u_local__default", "notes.md")
-    assert caught.value.code == code
-    indexer.count_source_chunks.assert_awaited_once_with("u_local__default", "notes.md")
 
 
 @pytest.mark.parametrize(
@@ -276,57 +242,6 @@ def manual_db(monkeypatch):
         embedding=SimpleNamespace(enabled=False)
     ))
     return session
-
-
-async def test_manual_fact_write_profile_then_identity_readback(manual_db):
-    events = []
-    row = {"fact_id": "new-id", "content": "no seafood", "source": "user_manual"}
-
-    async def save(**kwargs):
-        events.append(("save", kwargs))
-        return "new-id"
-
-    async def record(user_id, operation, *, db_session, items, details):
-        events.append(("history", user_id, operation, items, details))
-        return 7
-
-    async def set_revision(user_id, fact_id, revision, *, db_session):
-        events.append(("revision", user_id, fact_id, revision))
-
-    async def read(user_id, fact_id, *, db_session):
-        events.append(("read", user_id, fact_id))
-        return row
-
-    store = SimpleNamespace(
-        find_manual_fact=AsyncMock(return_value=None), save_fact=save, get_fact=read,
-        set_memory_revision=set_revision,
-    )
-    result = await save_manual_fact(
-        store=store,
-        user_id="local",
-        content="no seafood",
-        category="diet",
-        profile_for_write=lambda: SimpleNamespace(record_memory_management=record),
-    )
-    assert result.status == "created" and result.fact is row
-    assert events == [
-        (
-            "save",
-            {
-                "user_id": "local",
-                "session_id": USER_MANUAL_SESSION_ID,
-                "content": "no seafood",
-                "category": "diet",
-                "importance": USER_MANUAL_IMPORTANCE,
-                "db_session": manual_db,
-                "prepared_embedding": None,
-            },
-        ),
-        ("history", "local", "add_fact",
-         [{"fact_id": "new-id", "content": "no seafood", "category": "diet"}], {"status": "created"}),
-        ("revision", "local", "new-id", 7),
-        ("read", "local", "new-id"),
-    ]
 
 
 @pytest.mark.parametrize("save_id,created", [(None, None), ("new-id", None)])

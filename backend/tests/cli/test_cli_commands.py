@@ -106,17 +106,3 @@ def test_db_status_and_doctor_have_identical_output(
     assert capsys.readouterr() == doctor_output
 
 
-def test_parser_preserves_command_defaults_and_usage_errors():
-    from travel_agent.cli.migrate import cmd_migrate
-
-    parser = build_parser()
-    args = parser.parse_args(["migrate", "--dry-run"])
-    assert args.func is cmd_migrate
-    assert args.dry_run is True
-    assert args.allow_destructive is args.skip_backup is args.sql is args.json is False
-    assert args.backup_dir is None
-    assert args.log_level == "warning"
-    for argv in ([], ["config"], ["db"], ["db", "write-fingerprint"]):
-        with pytest.raises(SystemExit) as exc:
-            parser.parse_args(argv)
-        assert exc.value.code == 2

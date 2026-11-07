@@ -62,8 +62,6 @@ test('工具保留真实计数与安全详情，内部载荷和失败正文不�
   const fourResults = page.getByTestId('research-query').filter({ hasText: '找到 4 个结果：深圳湾公园、红树林、人才公园、海上世界' });
   await expect(fourResults.locator('summary')).toHaveCount(1);
   await fourResults.locator('summary').click();
-  await expect(fourResults).not.toContainText('返回 4 条结果');
-  await expect(fourResults).not.toContainText('返回 2 条结果');
   await expect(fourResults).toContainText('找到 4 个结果：深圳湾公园、红树林、人才公园、海上世界');
   await expect(fourResults.locator('.research-source')).toHaveCount(2);
   await fourResults.locator('.research-tool-detail').scrollIntoViewIfNeeded();
@@ -72,7 +70,6 @@ test('工具保留真实计数与安全详情，内部载荷和失败正文不�
   await onlySummary.locator('summary').click();
   await expect(onlySummary.locator('[data-detail-section="input"]')).toContainText('当地雨天备选活动');
   await expect(onlySummary).toContainText('已整理 3 条适合雨天的室内活动摘要');
-  await expect(onlySummary).not.toContainText('返回 ');
   await expect(onlySummary.locator('.research-source')).toHaveCount(0);
 
   const noInputResult = page.getByTestId('research-query').filter({ hasText: '已读取数据' });

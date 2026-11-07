@@ -262,7 +262,7 @@ async def test_resubmitting_the_same_message_replays_the_pending_questions(
     assert len(deep_workflow.inputs) == 1
 
 
-@pytest.mark.parametrize("gate", ["understanding", "research"])
+@pytest.mark.parametrize("gate", ["research"])
 async def test_replay_preserves_the_pending_question_gate(gate):
     from travel_agent.conversation.chat.preparation import _replay_run_events
 

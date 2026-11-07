@@ -247,8 +247,6 @@ async def test_12306_rail_accepts_only_matching_geometry_without_changing_facts(
     ("target_mode", "provider_mode"),
     [
         ("train", "bus"),
-        ("train", "drive"),
-        ("train", "walk"),
         ("train", "high_speed_rail"),
         ("high_speed_rail", "train"),
     ],

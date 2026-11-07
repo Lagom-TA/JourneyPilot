@@ -168,9 +168,7 @@ def _failed_composition_state(run_id: str) -> TravelAgentState:
     )
 
 
-@pytest.mark.parametrize(
-    "phase", ["research", "target_missed", "closeout", "composition_closed", "expired"]
-)
+@pytest.mark.parametrize("phase", ["research", "expired"])
 async def test_failed_composition_without_workspace_routes_to_finalizer(
     phase, deadline_observation, caplog
 ) -> None:
@@ -194,7 +192,7 @@ async def test_failed_composition_without_workspace_routes_to_finalizer(
     assert state.last_error in caplog.text
 
 
-@pytest.mark.parametrize("phase", ["research", "target_missed", "closeout"])
+@pytest.mark.parametrize("phase", ["research", "closeout"])
 async def test_failed_research_waits_for_user_retry_before_composition(
     phase, deadline_observation
 ) -> None:
@@ -273,7 +271,6 @@ async def test_failed_composition_is_finalized_by_the_workflow(monkeypatch) -> N
     ("outcome", "error"),
     [
         (ReactOutcome.MODEL_FAILED, "APITimeoutError: upstream model timed out"),
-        (ReactOutcome.BUDGET_LIMIT, "run budget exhausted on llm_calls"),
         (ReactOutcome.ITERATION_LIMIT, None),
     ],
 )

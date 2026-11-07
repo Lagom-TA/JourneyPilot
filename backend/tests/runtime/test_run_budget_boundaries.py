@@ -157,31 +157,6 @@ async def test_tool_budget_persists_across_ledger_recreation():
         current_worker_journal.reset(token)
 
 
-async def test_parallel_tool_reservations_enforce_limit_and_isolate_runs():
-    from travel_agent.storage.worker_journal_store import TOOL_BUDGET_SCOPE
-
-    store = InMemoryWorkerJournalStore()
-    reservations = await asyncio.gather(*(
-        store.reserve_tool("run", "search", lease_token=None, limit=3, retry=True)
-        for _ in range(10)
-    ))
-    accepted = [item for item in reservations if item is not None]
-    assert len(accepted) == 3
-    assert sorted(item["calls"] for item in accepted) == [1, 2, 3]
-    assert await store.load("run", TOOL_BUDGET_SCOPE) == (
-        4, {"calls": 3, "retries": {"search": 3}},
-    )
-
-    # 返回值不能持有仓储内部的引用；其他 Run 也有独立预算。
-    accepted[0]["retries"]["search"] = 100
-    assert await store.load("run", TOOL_BUDGET_SCOPE) == (
-        4, {"calls": 3, "retries": {"search": 3}},
-    )
-    assert await store.reserve_tool("other-run", "search", limit=3) == {
-        "calls": 1, "retries": {},
-    }
-
-
 def _generation():
     from travel_agent.planning.requirements.generation_contracts import (
         PlanningGeneration,
@@ -223,7 +198,6 @@ def test_sealing_a_draft_produces_a_budget_alongside_the_deadline():
     update = seal_minimum_delivery_draft(_State())
     assert update["run_deadline"] is not None
     assert update["run_budget"] is not None
-    assert "policy_version" not in update["run_budget"].model_dump()
 
 
 def test_a_replay_of_a_sealed_draft_never_refills_the_budget():

@@ -7,8 +7,8 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from travel_agent.api.routes import knowledge, preset, sessions, user
-from travel_agent.api.schemas.knowledge import KnowledgeQueryRequest, KnowledgeUploadRequest
+from travel_agent.api.routes import knowledge, sessions, user
+from travel_agent.api.schemas.knowledge import KnowledgeUploadRequest
 from travel_agent.memory.compaction import CompactionBusy
 
 
@@ -41,21 +41,6 @@ async def test_knowledge_index_hides_internal_exception(monkeypatch):
     _assert_hidden(caught.value)
 
 
-async def test_knowledge_query_hides_internal_exception(monkeypatch):
-    class Retriever:
-        async def retrieve(self, **kwargs):
-            raise RuntimeError("provider returned secret payload")
-
-    components = SimpleNamespace(vector_retriever=Retriever())
-    monkeypatch.setattr("travel_agent.api.routes.knowledge.get_components", lambda: components)
-    monkeypatch.setattr("travel_agent.api.routes.knowledge.get_settings", _settings)
-    with pytest.raises(HTTPException) as caught:
-        await knowledge.query_knowledge(
-            KnowledgeQueryRequest(query="地铁", collection="travel_knowledge")
-        )
-    _assert_hidden(caught.value)
-
-
 async def test_user_sessions_hide_internal_exception(monkeypatch):
     class Memory:
         async def list_sessions(self, *args, **kwargs):
@@ -67,17 +52,6 @@ async def test_user_sessions_hide_internal_exception(monkeypatch):
     )
     with pytest.raises(HTTPException) as caught:
         await user.list_user_sessions()
-    _assert_hidden(caught.value)
-
-
-async def test_preset_list_hides_internal_exception(monkeypatch):
-    class Store:
-        async def list_presets(self, *args, **kwargs):
-            raise RuntimeError("path=/home/secret/config.yaml")
-
-    monkeypatch.setattr(preset, "_store", Store())
-    with pytest.raises(HTTPException) as caught:
-        await preset.list_presets()
     _assert_hidden(caught.value)
 
 

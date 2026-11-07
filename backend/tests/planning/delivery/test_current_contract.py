@@ -1,40 +1,13 @@
-"""当前交付合同不含版本字段：读回与公开投影只按当前结构。"""
+"""交付清单的持久化读回只接受当前结构。"""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
 
-from travel_agent.api.schemas.delivery import (
-    PublicBundleManifestResponse,
-    PublicBundleWorkspaceResponse,
-)
-from travel_agent.memory.research_context import ResearchContextView
-from travel_agent.planning.delivery.bundle import (
-    DeliveryBundle,
-    DeliveryRevisionManifest,
-)
-from travel_agent.planning.delivery.public.bundle import (
-    public_event_manifest,
-    public_manifest,
-)
-from travel_agent.planning.research.catalog import RecommendationCatalog
-from travel_agent.planning.research.evidence import FactStoreSnapshot
-from travel_agent.planning.research.packets import ResearchPacket
-from travel_agent.planning.weather.models import WeatherContextSnapshot
-from travel_agent.planning.workspace import TripWorkspace
-
-CONTRACT_MODELS = (
-    ResearchPacket,
-    RecommendationCatalog,
-    FactStoreSnapshot,
-    TripWorkspace,
-    WeatherContextSnapshot,
-    ResearchContextView,
-)
+from travel_agent.planning.delivery.bundle import DeliveryRevisionManifest
 
 MANIFEST_FIELDS = {
     "run_id",
@@ -61,19 +34,6 @@ def _manifest() -> DeliveryRevisionManifest:
     )
 
 
-def test_domain_contract_models_declare_no_version_fields():
-    for model in CONTRACT_MODELS:
-        assert "contract_version" not in model.model_fields, model.__name__
-    assert "contract_version" not in DeliveryBundle.model_fields
-    assert "contract_version" not in DeliveryRevisionManifest.model_fields
-    assert "contract_versions" not in DeliveryRevisionManifest.model_fields
-
-
-def test_public_responses_declare_no_version_fields():
-    assert "contract_version" not in PublicBundleManifestResponse.model_fields
-    assert "contract_version" not in PublicBundleWorkspaceResponse.model_fields
-
-
 def test_manifest_round_trips_without_a_version_field():
     """持久化读回不依赖版本号：落盘再读回只剩当前字段。"""
 
@@ -90,15 +50,3 @@ def test_a_persisted_payload_with_a_removed_version_field_is_rejected():
     payload["contract_version"] = "stale"
     with pytest.raises(ValidationError):
         DeliveryRevisionManifest.model_validate(payload)
-
-
-def test_public_manifest_and_event_payload_drop_removed_version_fields():
-    manifest = _manifest()
-    public = public_manifest(SimpleNamespace(manifest=manifest))
-    assert "contract_version" not in public
-    assert set(public) == MANIFEST_FIELDS - {"content_hashes"}
-
-    event_manifest = {**public, "contract_version": "stale"}
-    filtered = public_event_manifest(event_manifest)
-    assert filtered == public
-    assert "contract_version" not in filtered

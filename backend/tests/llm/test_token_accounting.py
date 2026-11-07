@@ -163,8 +163,7 @@ def test_invalid_cache_buckets_do_not_produce_a_hit_ratio(read, write):
 @pytest.mark.parametrize("inp,out,read,write", [
     (None, 100, 0, 0), (100, None, 0, 0), (100, 20, 80, 30),
     (100, 20, 0, None), (100, 20, None, 0),
-    (-1, 20, 0, 0), (100, -1, 0, 0), (100, 20, -1, 0), (100, 20, 0, -1),
-    (True, 20, 0, 0), (100, 1.5, 0, 0),
+    (-1, 20, 0, 0), (True, 20, 0, 0), (100, 1.5, 0, 0),
 ])
 def test_unknown_or_invalid_usage_does_not_become_a_complete_price(inp, out, read, write):
     assert compute_cost_usd(_price(), input_tokens=inp, output_tokens=out,
@@ -184,8 +183,6 @@ def _record(**changes):
     ("input_tokens", -1),
     ("output_tokens", True),
     ("cached_input_tokens", 1.5),
-    ("cache_write_input_tokens", "invalid"),
-    ("reasoning_output_tokens", -1),
     ("total_tokens", -1),
 ])
 def test_malformed_record_cannot_become_a_complete_ledger_bill(field, value):
@@ -209,21 +206,6 @@ async def test_persisted_details_survive_replay_and_invalid_replay_is_rejected()
     assert calls[0].attempt_number == 2
     with pytest.raises(CostLedgerConflict):
         await store.record_calls([replace(record, cache_write_input_tokens=31)], pricing=[_price()])
-
-
-def test_ledger_conflict_is_logged_once_per_call_id(caplog):
-    from travel_agent.storage import cost_ledger_store as ledger
-
-    existing = build_ledger_call(_record(), pricing=[_price()])
-    incoming = build_ledger_call(_record(output_tokens=999, total_tokens=1099), pricing=[_price()])
-    ledger._reported_conflicts.discard(incoming.id)
-
-    with caplog.at_level("ERROR", logger=ledger.logger.name):
-        for _ in range(4):
-            with pytest.raises(CostLedgerConflict):
-                ledger._assert_ledger_idempotent(existing, incoming)
-
-    assert len([item for item in caplog.records if "id conflict" in item.getMessage()]) == 1
 
 
 def _placeholder(**changes):

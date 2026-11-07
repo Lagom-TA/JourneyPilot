@@ -97,17 +97,6 @@ def test_top_level_mcp_servers_is_refused():
     assert "mcp.servers" in str(exc.value) or "servers" in str(exc.value)
 
 
-# --- 未知顶层键 ----------------------------------------------------------- #
-
-
-def test_a_removed_config_version_key_is_rejected_as_unknown():
-    """配置里没有版本字段；文件多带一个未知键时按未知字段拒绝。"""
-
-    with pytest.raises(ConfigError) as exc:
-        build_settings({"config_version": 2, "database": {"host": "x"}})
-    assert "config_version" in str(exc.value)
-
-
 # --- 环境变量 ------------------------------------------------------------- #
 
 

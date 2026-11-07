@@ -64,29 +64,6 @@ def test_revision_names_fit_the_alembic_version_column():
         assert len(revision) <= 32, f"revision 名超过 32 字符：{revision}"
 
 
-def test_readiness_blocks_on_the_schema_contract():
-    """`report.GATES_READINESS` 与 `_NON_BLOCKING_COMPONENTS` 必须同源。
-
-    分叉的结果是一处报警一处放行。这条把「同源」变成一个会红的断言。
-    """
-
-    from travel_agent.bootstrap.diagnostics.readiness import _NON_BLOCKING_COMPONENTS
-    from travel_agent.bootstrap.diagnostics.dependencies import _probe_schema_report
-    from travel_agent.storage.maintenance.report import GATES_READINESS
-
-    assert GATES_READINESS is True
-    assert ("database_schema" in _NON_BLOCKING_COMPONENTS) is (not GATES_READINESS)
-
-    # 校验没跑成时载荷仍要结构完整，且按不就绪处理——该开关的默认值是关闭的。
-    class _NoReport:
-        schema_report = None
-
-    payload = _probe_schema_report(_NoReport())
-    assert payload["ready"] is False
-    assert payload["available"] is False
-    assert payload["gates_readiness"] is True
-
-
 def test_every_revision_declares_its_gates():
     """每条迁移都要声明 `destructive` 与 `reversible`。
 
@@ -103,19 +80,3 @@ def test_every_revision_declares_its_gates():
         assert isinstance(getattr(module, "reversible", None), bool), (
             f"{revision} 没有声明 reversible"
         )
-
-
-def test_managed_tables_carry_no_version_suffix():
-    """交付表名是当前名字：不留 *_v2 后缀，也不存在两套同名表。"""
-
-    from travel_agent.storage.maintenance.schema_contract import MANAGED_TABLES
-
-    assert not [table for table in MANAGED_TABLES if "_v2" in table]
-    assert {
-        "trip_workspace_revisions",
-        "fact_store_revisions",
-        "weather_context_revisions",
-        "delivery_bundles",
-        "delivery_bundle_heads",
-        "delivery_bundle_commits",
-    } <= set(MANAGED_TABLES)

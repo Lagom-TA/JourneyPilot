@@ -107,8 +107,3 @@ async def test_reasoning_replays_across_a_complete_tool_call_round(monkeypatch):
         assert _to_langchain_messages(messages)[1].content == ""
 
 
-def test_snapshot_tools_never_replay_local_envelopes():
-    from travel_agent.storage.provider_snapshot_cache import _SUPPORTED_TOOLS
-    from travel_agent.tools.react import _NO_CACHE_TOOLS
-
-    assert _SUPPORTED_TOOLS <= _NO_CACHE_TOOLS

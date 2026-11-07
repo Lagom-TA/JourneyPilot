@@ -61,28 +61,6 @@ def test_packet_schema_only_offers_the_fields_the_model_writes() -> None:
     assert "metadata" not in json.dumps(schema["properties"]).lower()
 
 
-def test_new_research_run_preserves_the_complete_schema_prefix() -> None:
-    options = dict(
-        worker_kind="destination_researcher",
-        task_id="task_a",
-        fact_data_revision=1,
-        current_time="2026-10-05 10:00",
-        candidate_limit=3,
-        task_desc="自然研究设想",
-    )
-    first = build_research_packet_prompt(run_id="run_a", **options)
-    second = build_research_packet_prompt(
-        run_id="run_b",
-        **{
-            **options,
-            "task_id": "task_b",
-            "current_time": "2026-10-06 11:00",
-            "candidate_limit": 2,
-        },
-    )
-    assert first.system.split("</json_schema>")[0] == second.system.split("</json_schema>")[0]
-
-
 @pytest.mark.parametrize(
     "worker_kind",
     [

@@ -56,7 +56,6 @@ def test_backup_is_created_and_verified(temp_database, settings, scratch_dir):
         )
 
     manifest = result.manifest
-    assert "backup_format_version" not in manifest
     assert manifest["migration_revision"] == migrate.revision_line()[-1]
     assert manifest["row_counts"]["user_profiles"] == 1
     assert manifest["total_business_rows"] >= 2

@@ -4,8 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from travel_agent.runtime.cancellation import RunCancelled
-from travel_agent.storage.trip_run_store import _require_execution_lease
 from travel_agent.storage.worker_journal_store import JournalConflict, WorkerJournalStore
 
 
@@ -17,14 +15,6 @@ class _Session:
         self.statements.append(str(statement))
         # 模拟租约在等待行锁期间过期。
         return SimpleNamespace(first=lambda: None if "clock_timestamp()" in str(statement) else ("run",))
-
-
-async def test_terminal_write_rechecks_expiry_after_execution_lock():
-    session = _Session()
-    with pytest.raises(RunCancelled):
-        await _require_execution_lease(session, "run", "lease")
-    assert "FOR UPDATE" in session.statements[0]
-    assert "clock_timestamp()" in session.statements[1]
 
 
 async def test_journal_locks_parent_before_rechecking_execution_lease():

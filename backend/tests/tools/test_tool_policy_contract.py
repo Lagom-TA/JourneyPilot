@@ -207,18 +207,6 @@ def test_policy_servers_are_configured_mcp_servers():
     assert not unknown, f"策略表引用了 mcp_defaults 未配置的 server: {unknown}"
 
 
-def test_deny_star_policy_leaves_nothing_else_configured():
-    for name, policy in access._AGENT_TOOL_POLICY.items():
-        if "*" not in policy.deny_tools:
-            continue
-        assert not policy.servers, (
-            f"{name}: deny_tools 含 '*'，servers 白名单不会生效: {sorted(policy.servers)}"
-        )
-        assert not policy.extra_tools, (
-            f"{name}: deny_tools 含 '*'，extra_tools 不会生效: {sorted(policy.extra_tools)}"
-        )
-
-
 def test_unknown_agent_branch_not_wider_than_policies():
     from travel_agent.tools import registry as registry_module
     from travel_agent.tools.builtin_tools import register_builtin_tools

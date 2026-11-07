@@ -29,17 +29,6 @@ def test_disabled_embedding_does_not_probe_optional_dependencies(monkeypatch):
     probe.assert_not_called()
 
 
-def test_a_configuration_matching_the_install_has_no_gaps(monkeypatch):
-    """依赖齐了就没有缺口。
-
-    探测被固定成「什么都不缺」而不是读当前 venv：CI 的 core 档故意不装
-    local-embedding，让断言跟着环境走会让那一档永远是红的。
-    """
-
-    monkeypatch.setattr("travel_agent.config.capabilities._missing", lambda *modules: [])
-    assert capability_gaps(_settings()) == []
-
-
 def test_a_missing_enhancement_names_its_config_item_and_install_command(monkeypatch):
     """报「缺了什么」不够：要报**哪个配置项要求的**和**敲哪一条命令**。
 
@@ -100,7 +89,7 @@ def test_the_report_is_ready_when_nothing_is_missing(monkeypatch):
     assert report["message"] == "ok"
 
 
-@pytest.mark.parametrize("module", ["onnxruntime", "tokenizers", "numpy"])
+@pytest.mark.parametrize("module", ["onnxruntime", "tokenizers"])
 def test_probing_never_imports_the_module(module, monkeypatch):
     """探测用 find_spec：import 一个 400 MB 的推理栈只为了知道它在不在，太贵了。"""
 

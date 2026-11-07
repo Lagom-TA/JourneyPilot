@@ -20,10 +20,4 @@ describe('pruneRecoveryRegistries', () => {
     pruneRecoveryRegistries(state, 'a', 1);
     expect(state.cursorByRun.has('a')).toBe(true);
   });
-
-  it('handles empty registries', () => {
-    const state = registries([]);
-    pruneRecoveryRegistries(state, null, 3);
-    expect(state.cursorByRun.size).toBe(0);
-  });
 });

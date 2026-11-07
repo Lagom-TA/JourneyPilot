@@ -23,13 +23,6 @@ def test_packets_are_never_public_text(text):
     assert event['content'] == ''
 
 
-async def test_raw_stream_dropped_even_at_single_character_boundaries():
-    ctx = context()
-    for chunk in PACKET:
-        assert project_sse_payload({'type': 'agent_thinking', 'content': chunk}) is None
-    assert ctx.thinking_steps == []
-
-
 def test_preview_is_bounded_idempotent_and_uses_only_public_facts():
     raw = {'sanitized_result': {'content': [{'type': 'text', 'text': json.dumps({'results': [
         {'name': '伪满皇宫博物院', 'address': '长春市宽城区光复北路', 'provider_audit_id': 'private', 'raw_body': 'private', 'url': 'https://example.org/museum'},

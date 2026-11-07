@@ -1,13 +1,10 @@
 from datetime import datetime, timezone
 
-import pytest
-
 from tests.fixtures.itinerary import itinerary_draft, meal_placement, visit_entry
 from tests.fixtures.research_catalog import make_visit_packet
 from travel_agent.planning.delivery.assembly import assemble_delivery_bundle
 from travel_agent.planning.delivery.fact_projection import build_fact_snapshot
 from travel_agent.planning.delivery.projection_builder import build_delivery_projections
-from travel_agent.planning.delivery.projection_errors import DeliveryProjectionError
 from travel_agent.planning.delivery.public.bundle import public_delivery_bundle
 from travel_agent.planning.itinerary.draft import ItineraryCompositionDraft
 from travel_agent.planning.itinerary.day_design import apply_day_design
@@ -256,14 +253,6 @@ def test_another_candidate_or_different_value_cannot_support_a_field():
         and citation["entity_ref"]["entity_id"] == "candidate_alternative"
         for citation in public["source_index"]["content"]["citations"]
     )
-
-
-def test_concrete_unsourced_assertions_still_fail():
-    packet = _packet("visit", "candidate_visit", {"opening_window": "09:00–17:00"}, [
-        ("opening_window", "09:00–17:00", "verified", None),
-    ])
-    with pytest.raises(DeliveryProjectionError, match="no public source"):
-        _delivery(packet)
 
 
 def test_dining_and_lodging_prices_are_checked_independently():

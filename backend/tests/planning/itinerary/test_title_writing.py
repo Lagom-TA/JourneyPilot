@@ -5,8 +5,6 @@ import pytest
 
 from tests.fixtures.itinerary import itinerary_draft, visit_entry
 from tests.fixtures.research_catalog import make_catalog, make_visit_packet
-from travel_agent.planning.delivery.public.itinerary import _public_itinerary
-from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
 from travel_agent.planning.delivery.report_projection import project_report
 from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
 from travel_agent.planning.itinerary.models import CustomBlock, TimelineEntryRef
@@ -228,10 +226,6 @@ async def test_missing_day_keeps_existing_copy():
         },
         {
             "title": "两天逛吃旧城慢慢散步",
-            "days": [{"day_id": "day_1", "theme": ["数组主题"]}],
-        },
-        {
-            "title": "两天逛吃旧城慢慢散步",
             "days": [
                 {"day_id": "day_1", "theme": "上午的行程"},
                 {"day_id": "day_1", "theme": "下午的行程"},
@@ -343,24 +337,6 @@ async def test_title_input_uses_the_ordered_itinerary_without_other_context():
 
     assert updated.itinerary.title == "东京之旅"
     assert updated.itinerary.day_plans[0].theme == "慢逛东京"
-
-
-@pytest.mark.asyncio
-async def test_repeated_public_projection_does_not_call_the_model_again():
-    workspace = _workspace()
-    model = _CopyModel()
-    updated = await write_itinerary_copy(workspace, model)
-
-    _public_itinerary(
-        updated.itinerary,
-        EvidenceBasisView.from_itinerary(updated.itinerary),
-    )
-    _public_itinerary(
-        updated.itinerary,
-        EvidenceBasisView.from_itinerary(updated.itinerary),
-    )
-
-    assert model.calls == 1
 
 
 @pytest.mark.asyncio

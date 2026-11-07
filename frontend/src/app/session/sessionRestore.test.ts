@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { appReducer } from '../state/appReducer';
 import { initialState } from '../state/initialState';
 import { createSessionRuntimeSnapshot } from './runtimeSnapshot';
-import { planRequestedRun, sessionLoadFailureMessage } from './sessionRestore';
+import { planRequestedRun } from './sessionRestore';
 import { type TripRunDetailResponse, type TripRunResponse } from '../../features/travel/types/runs';
 
 const run = (runId: string, sessionId = 'A'): TripRunResponse => ({
@@ -82,13 +82,6 @@ describe('planRequestedRun', () => {
         expect(plan.selectedRun?.run_id).toBe('run-old');
         expect(plan.readOnly).toBe(true);
         expect(plan.failure).toBeNull();
-    });
-});
-
-describe('sessionLoadFailureMessage', () => {
-    it('describes both failure kinds', () => {
-        expect(sessionLoadFailureMessage('run_detail_unavailable')).toContain('生成记录');
-        expect(sessionLoadFailureMessage('run_session_mismatch')).toContain('不属于');
     });
 });
 

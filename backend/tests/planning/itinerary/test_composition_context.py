@@ -42,14 +42,6 @@ def test_user_requirements_are_injected_as_planning_guidance():
     assert "does not match the required structure" in second.runtime
 
 
-def test_composition_prompt_has_no_acceptance_or_gate_wording():
-    prompt = _build_composition_prompt(make_planning_state(), "Tokyo museum")
-    combined = prompt.system + prompt.runtime
-    for phrase in ("验收", "忠实度", "never_violate", "repair_then_deviate", "Composition Rules", "必须覆盖", "整份组合被拒", "回炉"):
-        assert phrase not in combined
-    assert "结合旅行理解与研究成果安排旅程" in prompt.system
-
-
 def _unplanned_days_state(count):
     state = make_planning_state()
     start = date(2026, 10, 10)

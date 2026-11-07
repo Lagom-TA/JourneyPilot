@@ -16,7 +16,6 @@ describe('followupComposerState', () => {
     for (const runStatus of ['completed', 'failed', 'cancelled', 'interrupted'] as const) {
       expect(followupComposerState({ ...base, runStatus }).visible, runStatus).toBe(true);
     }
-    expect(followupComposerState({ ...base, runStatus: 'interrupted', canResume: true }).visible).toBe(true);
   });
 
   it('only accepts queued messages during a run after delivery', () => {

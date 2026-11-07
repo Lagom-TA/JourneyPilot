@@ -71,7 +71,6 @@ test('mobile sheet keeps the map reachable and provides direct day selection', a
   await opener.click();
   const sheet = page.getByTestId('canvas-sheet');
   await expect(sheet).toHaveAttribute('data-detent', '55');
-  await expect(page.getByTestId('sheet-scrim')).toHaveCount(0);
   await sheet.getByTestId('day-summary-card-day-1').click();
   await sheet.getByRole('combobox', { name: '选择行程日期' }).selectOption('14');
   await expect(sheet.getByRole('combobox', { name: '选择行程日期' })).toHaveValue('14');

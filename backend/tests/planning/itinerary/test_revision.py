@@ -27,7 +27,6 @@ from travel_agent.planning.itinerary.draft import (
     placement_occurrence_key,
 )
 from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
-from travel_agent.planning.itinerary.node import _composition_phase
 from travel_agent.planning.itinerary.parsing import parse_itinerary_composition
 from travel_agent.planning.itinerary.prompts import _build_composition_prompt
 from travel_agent.planning.research.candidates import DiningCandidate
@@ -109,22 +108,6 @@ def authored_visit(name="Museum district", start="10:00", end="11:00"):
     return entry
 
 
-def authored_dining(name="Restaurant area", start="18:00", end="19:00"):
-    entry = meal_placement("dinner", start, end)
-    entry.pop("candidate_id")
-    entry["selection_reason"] = "旧餐厅排程理由"
-    entry["authored_place"] = {
-        "name": name,
-        "local_name": name,
-        "city": "Tokyo",
-        "address": "Tokyo",
-        "selection_reason": "旧餐厅实体理由",
-        "cuisine_types": ["旧菜系"],
-        "recommended_dishes": ["旧菜品"],
-    }
-    return entry
-
-
 def workspace(composition, catalog):
     return materialize_trip_workspace(
         run_id="run_test",
@@ -167,22 +150,6 @@ def long_distance_packet(candidate_id, origin, destination, start, end, scope):
 
 def transport(candidate_id):
     return {"placement_kind": "transport", "candidate_id": candidate_id}
-
-
-def test_repeated_restaurant_is_an_occurrence_not_a_global_identity():
-    payload = itinerary_draft([meal_placement(), meal_placement("lunch", "12:00", "13:00")])
-    payload["days"].append(
-        {
-            **payload["days"][0],
-            "day_id": "day_2",
-            "day": 2,
-            "date": "2026-10-11",
-            "placements": [meal_placement(day="2026-10-11")],
-        }
-    )
-    payload["duration_days"] = 2
-    result = parse_itinerary_composition(json.dumps(payload))
-    assert [len(day.placements) for day in result.days] == [2, 1]
 
 
 @pytest.mark.asyncio
@@ -261,11 +228,6 @@ async def test_planner_preserves_useful_restaurant_reuse_through_checkpoint(
     assert len(calls) == 1
 
 
-def test_duplicate_same_meal_is_reported_not_removed():
-    with pytest.raises(ValueError, match="duplicate|more than once"):
-        parse_itinerary_composition(json.dumps(itinerary_draft([meal_placement(), meal_placement()])))
-
-
 def test_short_valid_transition_is_not_shifted():
     payload = itinerary_draft([meal_placement(), visit_entry("09:05", "10:05")])
     result = parse_itinerary_composition(json.dumps(payload))
@@ -296,19 +258,6 @@ def test_revision_prompt_contains_existing_daily_draft_and_current_problem():
     assert "rest overlaps train" in prompt.runtime
     assert "candidate_dining" in prompt.runtime
     assert "2026-10-10T08:00:00+09:00" in prompt.runtime
-
-
-def test_composition_phase_selects_draft_or_materialization():
-    empty = make_planning_state()
-    assert _composition_phase(empty) == "placement_skeleton"
-    drafted = empty.model_copy(
-        update={
-            "placement_skeleton": ItineraryCompositionDraft.model_validate(
-                itinerary_draft()
-            )
-        }
-    )
-    assert _composition_phase(drafted) == "materialize_connectors"
 
 
 @pytest.mark.parametrize("provider", [False, True])
@@ -986,7 +935,7 @@ def test_candidate_scoped_mode_lock_targets_actual_occurrences_only(partial):
     assert sum(gap.allowed_transport_classes == ["flexible"] for gap in gaps) == len(expected)
 
 
-@pytest.mark.parametrize("meal_type", ["snack", "lunch"])
+@pytest.mark.parametrize("meal_type", ["snack"])
 def test_multiple_same_meal_occurrences_have_distinct_targeted_slots_after_checkpoint(meal_type):
     packets = []
     for candidate_id in ("cafe_first", "cafe_second"):

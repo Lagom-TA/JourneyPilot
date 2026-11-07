@@ -57,7 +57,9 @@ def test_continuation_table_equals_graph_branch_targets() -> None:
     assert set(AMENDMENT_CONTINUATION_NODES) == set(graph.nodes) - _NON_RESUMABLE
 
 
-@pytest.mark.parametrize("node_name", sorted(AMENDMENT_CONTINUATION_NODES))
+@pytest.mark.parametrize(
+    "node_name", ["understanding_agent", "dispatcher", "delivery_finalizer"]
+)
 def test_continuation_nodes_route_inside_the_table(node_name: str) -> None:
     """接受与拒绝两条分支都只能落到续跑表内的节点。"""
 

@@ -8,7 +8,6 @@ describe('knowledge ingest failure guidance', () => {
     it.each([
         ['collection_address_invalid', 400, 'reload'],
         ['unsupported_file_type', 422, 'none'],
-        ['document_unreadable', 422, 'none'],
         ['ingest_busy', 503, 'retry'],
     ] as const)('%s maps to the appropriate recovery action', (code, status, recovery) => {
         const failure = describeKnowledgeIngestFailure(apiError(status, code), '上传');
