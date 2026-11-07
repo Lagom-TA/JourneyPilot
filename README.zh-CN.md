@@ -18,15 +18,11 @@
 
 </div>
 
-JourneyPilot 是一个开源、自托管的 AI 旅行规划工作台。告诉它想去哪里、什么时候出发，以及同行人和旅行偏好，它会查找资料，整理每天的行程，并把日程、地图和阅读版放在同一个工作区。
-
-产品界面目前使用简体中文。
+JourneyPilot 是一个开源、自托管的 AI 旅行规划工作台。告诉它你想去哪里、什么时候出发、和谁同行，它会搜集目的地资料，编排每日行程，并把日程、交互地图和深度阅读版呈现在同一个工作区里。
 
 [快速开始](#快速开始) · [系统架构](#系统架构) · [文档索引](docs/README.md)
 
 ![JourneyPilot 首页：旅行输入与灵感卡片](docs/assets/home.png)
-
-JourneyPilot 把研究方案、每日行程、地图和阅读版放在一起。你可以先确认研究方案，再查看调研进展；保存的旅行也可以随时打开并继续调整。
 
 ![JourneyPilot 交互演示：旅行灵感、研究与行程](docs/assets/demo.gif)
 
@@ -34,31 +30,21 @@ JourneyPilot 把研究方案、每日行程、地图和阅读版放在一起。�
 | --- | --- |
 | ![等待确认的研究方案](docs/assets/research-plan.png) | ![地图与行程工作台](docs/assets/map-workspace.png) |
 
-[查看阅读版](docs/assets/reading.png)。画面使用不同旅行的示例数据；演示经过剪辑，用于展示界面，不代表模型质量或响应速度的评测结果。地图画面：© [Stadia Maps](https://stadiamaps.com/attribution/) © [OpenMapTiles](https://openmaptiles.org/) © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)。
+[查看阅读版](docs/assets/reading.png) · 地图底图：© [Stadia Maps](https://stadiamaps.com/attribution/) © [OpenMapTiles](https://openmaptiles.org/) © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
 
 ## 规划一趟旅行
 
-首页默认用一句话描述旅行，偏好直接写进描述；切换到“按条件规划”可以直接填写路线、日期、同行人数、预算和旅行风格，人数支持点选与自填。两种方式各自保留草稿；旅行票据与行李签呈现同一提案，场景缓慢轮换，悬停或填写时暂停，点选只更新当前方式，不会直接提交。完整规划会先梳理需求，必要时核实地点并继续提问；确认研究方案后，再开展地点、住宿、交通和天气的正式研究。
-生成工作台以行程摘要、四阶段导航和当前任务组织内容。调研任务默认显示最新动态，点击整块任务可展开或收起查询、来源与公开工作说明；手动展开的记录在任务结束后保持可读。停止按钮位于阶段导航右侧；追问与研究方案各使用独立的提交区。
-研究未完成时会保留已有成果；重试沿用本次规划的时限设置。
-连接断开时，本次执行会中断；重新打开后可查看已保存的状态和内容，支持继续的规划需要手动继续。
-不同会话可以同时生成；切换会话不会中断其他会话的运行。
-启用运行预算时，模型调用前会估算开销；价格或用量不完整时，费用上限无法保证精确生效。
+**从想法到研究方案**
+你可以直接用一句话描述旅行想法，也可以切换到结构化表单填写路线、日期、同行人数、预算和旅行风格；首页还准备了多组旅行灵感提案，点击即可带入修改。开始规划后，系统会先梳理需求、核实目的地信息，并在关键偏好尚不明确时向你追问。在展开大规模搜索前，JourneyPilot 会先给出一份研究方案，由你确认或补充方向后再正式启动调研。
 
-规划完成后，你可以：
+**多维度调研与日程编排**
+围绕确认的研究方案，系统会并行搜集景点、住宿、交通（含 12306 铁路、航班与市内路线）以及当地天气，并在工作台实时展示各阶段的调研进展与参考来源。调研完成后，零散的资料会被整理为按天展开的行程，兼顾地理动线、开放时段与游览节奏。
 
-- 按天查看景点、餐饮、住宿与交通，在地图上找到行程中的地点。
-- 打开阅读版、查看可用的资料来源，或导出 PDF。
-- 在同一趟旅行中继续对话，提出调整；有需要时可以分几轮补充细节。天气有变化时，也可以把建议带入对话。
-- 保存旅行风格和自己的资料，让后续规划参考。
+**地图、日程与阅读版联动**
+交付工作台将全程路线图、城市停留分段和每日日程结合在同一视野中。点击任意一天的行程，可以在地图上查看对应的景点、餐厅、住宿和交通接驳；切换至阅读版即可通读附带资料来源的完整路书，或直接导出为 PDF 旅行手册。
 
-交付工作台以满幅地图和城市停留段呈现全程，进入某天后展开日程与地图对页。密集地点随缩放聚合；手机日程面板跟手拖动，按释放位置和速度吸附到半屏、展开或关闭，地图仍可操作。阅读版从侧面进入，可按 Esc 返回原地图视野；尚未安排的事项在相关日期显示，完整说明与事实来源按需展开，阅读版提供 PDF 导出。
-
-“我的行程”按旅行收拢当前结果与只读历史。偏好、风格和资料采用开放档案版式；资料可阅读后编辑，手机可回到原列表入口。选择旅行风格会进入新旅行，所选风格在输入区可见。
-
-手动添加或删除记忆时，系统会保留操作及相关内容，供之后的记忆总结参考，并发送给配置的快速模型。用户明确改变想法时，系统可以更新已有记忆。画像会在下一次对话记忆总结运行时整理，在此之前规划仍可能使用旧画像；删除全部记忆会清空操作记录中的内容，只保留不含内容的清空记录。
-
-来源、价格和实时信息取决于所用服务。价格按单项展示，暂不汇总；PDF 会标明尚未安排的事项。部分路线可能是估算，房态、车票和预约情况也可能变化；JourneyPilot 不代为预订或支付。
+**持续微调与个人偏好积累**
+生成的行程可以随时通过对话继续打磨——无论是调整某一天的节奏、替换景点，还是根据天气变化准备备选方案，都能在同一趟旅行上下文中完成。你的历史行程、常用旅行风格、个人偏好以及参考资料都会保存在本地档案中，供后续规划直接调用。
 
 ## 系统架构
 
@@ -72,11 +58,13 @@ flowchart LR
   API --> Cache[("Redis")]
 ```
 
-后端协调模型与工具调用，持久化旅行状态和结果，并向浏览器推送进度。分层与数据流详见[架构总览](docs/architecture/overview.md)。
+后端负责协调大模型与外部工具调用，通过 PostgreSQL 与 Redis 持久化会话状态和行程结果，并以 SSE 流式向浏览器推送实时进展。模块划分与完整数据流见[架构总览](docs/architecture/overview.md)。
 
 ## 快速开始
 
-需要 [uv](https://docs.astral.sh/uv/)、Python 3.11、Node.js 和 npm，以及带 Compose 的 Docker Desktop 或 Docker Engine。推荐 Node 22（见 `frontend/.nvmrc`）；仅运行前端最低需要 20.19，可选的 Firecrawl MCP 需要 22 或更高版本。还需要一个可用的模型服务及其凭据。
+运行环境需要 [uv](https://docs.astral.sh/uv/)、Python 3.11、Node.js（推荐 22，见 `frontend/.nvmrc`）、Docker（含 Compose），以及可用的大模型 API 密钥。
+
+**1. 克隆仓库并初始化配置文件**
 
 ```bash
 git clone https://github.com/Lagom-TA/JourneyPilot.git
@@ -85,7 +73,9 @@ cp backend/config.example.yaml config.yaml
 export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
 ```
 
-选择模型配置模板。下面以 DeepSeek 为例；`--list` 可以查看其他模板。按实际服务填写 API Key：
+**2. 选择模型预设并配置 API Key**
+
+下面以 DeepSeek 为例（可通过 `--list` 查看全部支持的供应商预设）：
 
 ```bash
 uv run --project backend python backend/journeypilot.py configure --list
@@ -94,54 +84,52 @@ export JOURNEYPILOT_PRIMARY_MODEL__API_KEY="your-api-key"
 export JOURNEYPILOT_FAST_MODEL__API_KEY="your-api-key"
 ```
 
-在仓库根目录启动：
+**3. 启动服务**
 
 ```bash
 JOURNEYPILOT_DATABASE__PORT=55434 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
 ```
 
-首次启动会安装依赖，通过 Compose 启动 PostgreSQL 和 Redis，执行数据库迁移，再启动 API 和网页。默认本地向量模型会在首次使用时下载。
-
-启动脚本会复用已有的 PostgreSQL 和 Redis 容器，不会因 Compose 配置变化自动重建它们。如需应用容器配置变更，请先检查影响，再自行运行 Compose。
+首次启动会自动安装前后端依赖，通过 Docker Compose 启动 PostgreSQL 与 Redis，执行数据库迁移，随后启动后端 API 与前端开发服务。
 
 | 服务 | 地址 |
 | --- | --- |
-| 网页 | <http://localhost:8080> |
+| 网页工作台 | <http://localhost:8080> |
 | API 文档 | <http://localhost:8001/docs> |
 | 就绪检查 | <http://localhost:8001/api/health/ready> |
 
-`run.sh` 在前台管理服务；可以在另一个终端查看状态或停止：
+日常管理命令（在另一个终端中执行）：
 
 ```bash
 ./run.sh status
-./run.sh logs backend       # 前端日志：./run.sh logs frontend
+./run.sh logs backend       # 查看前端日志：./run.sh logs frontend
 ./run.sh check
 ./run.sh stop
 ```
 
-上面的数据库和 Redis 端口与仓库 Compose 配置一致。再次执行 `./run.sh restart` 时，需要重新提供这两个环境变量，或将端口写入 `config.yaml`。停止时，API 会关闭后台任务和 MCP 会话，刷写用量后再关闭数据库与 Redis 连接。启动问题见[本地开发排障](docs/local-development-troubleshooting.md)。
+若使用 `./run.sh restart` 重启服务，请同样带上端口环境变量，或将端口直接写入 `config.yaml`。遇到环境或端口问题可查阅[本地启动排障](docs/local-development-troubleshooting.md)。
 
 ## 使用 Docker Compose
 
-也可以将网页与 API 一起运行在容器中。先按上面的步骤准备 `config.yaml`，再在仓库根目录创建 `.env`，填写模型及需要的数据服务密钥，例如：
+除本地开发脚本外，也可以将前端与后端一并运行在容器中。先按上文准备好 `config.yaml`，然后在仓库根目录创建 `.env` 文件填入所需的服务密钥：
 
 ```dotenv
 JOURNEYPILOT_PRIMARY_MODEL__API_KEY=your-api-key
 JOURNEYPILOT_FAST_MODEL__API_KEY=your-api-key
 ```
 
+构建并启动容器：
+
 ```bash
 docker compose -f infra/compose.yml up -d --build
 docker compose -f infra/compose.yml logs -f api
 ```
 
-网页和 API 均通过 <http://localhost:8001> 访问。Compose 会把根目录的 `.env` 整份传入 API 容器；仅在宿主 shell 中导出模型密钥，不会自动传入容器。Compose 自身替换的变量（`JOURNEYPILOT_DATABASE__PORT`、`POSTGRES_IMAGE`、`DEPENDENCY_GROUPS`）来自宿主 shell；要从根目录 `.env` 读取，需要加 `--env-file .env`。数据库和 Redis 也分别向宿主机发布 `55434`、`16379` 端口；设置 `JOURNEYPILOT_DATABASE__PORT` 可让数据库改用其他宿主机端口。
-
-JourneyPilot 面向单用户自托管场景，目前没有账户系统或内建鉴权。请在可信网络中运行；部署到不可信网络前，请配置访问控制，并检查 API、数据库和 Redis 的监听地址。详见[安全策略](SECURITY.md)。
+启动后，网页与 API 均通过 <http://localhost:8001> 访问。关于自托管部署的网络与访问控制建议，请参阅[安全策略](SECURITY.md)。
 
 ## 配置与数据
 
-设置来自内置默认值、`config.yaml` 和环境变量，环境变量优先。常用标量字段可通过 `JOURNEYPILOT_<段>__<字段>` 覆盖，例如 `JOURNEYPILOT_DATABASE__PORT`。完整字段、默认值与环境变量见[配置参考](docs/configuration.md)。
+系统配置按“内置默认值 → `config.yaml` → 环境变量”的顺序合并，环境变量优先级最高。常用配置项均可通过 `JOURNEYPILOT_<段>__<字段>` 覆盖（如 `JOURNEYPILOT_DATABASE__PORT`）。完整字段说明见[配置参考](docs/configuration.md)。
 
 ```bash
 uv run --project backend python backend/journeypilot.py config validate
@@ -149,27 +137,19 @@ uv run --project backend python backend/journeypilot.py config show
 uv run --project backend python backend/scripts/check_mcp.py
 ```
 
-默认工具包含网页搜索、OpenStreetMap/Nominatim、12306 和汇率查询；规划天气使用内置的 Open-Meteo 适配器。第三方 Open-Meteo MCP 默认禁用：该包启动时会向第三方域名发送运行通知，可将 `mcp.servers.open-meteo.disabled` 设为 `false` 显式启用。高德、百度、Tavily、Brave、Duffel 等服务可按需配置。工具同名时保留已注册的来源，MCP 服务按配置顺序注册。数据覆盖范围和调用结果由各服务决定，中国境内路线查询需要高德密钥。模型及外部服务可能产生费用。
-
-默认地图瓦片使用 GCJ-02 坐标；更换为 WGS-84 底图时，请在启动或构建前端时设置 `VITE_MAP_TILE_DATUM=wgs84`，详见[前端说明](frontend/README.md)。
-
-`run.sh` 会安装锁定的 Node MCP 依赖；直接启动后端前，可运行 `npm --prefix backend/mcp ci --omit=dev` 安装这些依赖。
-
-默认使用本地 Qwen3 ONNX 模型生成知识库向量，也可配置兼容的远程向量服务。向量结果不完整时，资料索引会失败并保留原资料。知识由用户提供，仓库不包含知识语料或本地二进制种子。默认的 PostgreSQL 镜像不带 `zhparser` 扩展，知识库词法检索使用 PostgreSQL 的 `simple` 文本检索配置，中文分词质量较低；要启用中文分词，请构建 `infra/postgres` 里的可选镜像，并在启动 Compose 时用 `POSTGRES_IMAGE` 指向它。该配置在建表时固定，已有数据库切换时需要重建（见 [ADR-0007](docs/adr/ADR-0007-core-default-enhancements-optional.md)）。
-
-数据库迁移由启动脚本或容器入口在 API 启动前执行。检查数据库状态和创建备份：
+- **数据与工具服务**：开箱内置网页搜索、OpenStreetMap/Nominatim 地理编码、12306 铁路查询、Open-Meteo 天气及汇率转换；支持按需接入高德地图、百度地图、Tavily、Brave Search、Duffel 等服务。
+- **个人知识库**：内置基于 Qwen3 ONNX 的本地向量嵌入模型与 `pgvector` 检索，也支持配置远程 Embedding 服务。
+- **健康检查与备份**：支持通过命令行检查数据库状态或创建数据快照备份：
 
 ```bash
 uv run --project backend python backend/journeypilot.py doctor
 uv run --project backend python backend/journeypilot.py backup
 ```
 
-备份的数据库转储与行数清单来自同一快照，恢复前会校验所需文件和校验值。
-
 ## 开发
 
 ```bash
-# 在仓库根目录运行
+# 安装后端依赖（在仓库根目录执行）
 export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
 uv sync --project backend --locked --group local-embedding --group dev
 
@@ -181,11 +161,11 @@ uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignor
 cd frontend && npm ci && npm run check
 ```
 
-数据库集成测试需要可访问的 PostgreSQL；浏览器测试及真实模型测试的前置条件见[端到端测试说明](frontend/e2e/README.md)。
+数据库集成测试与浏览器端到端测试的运行方式分别见[后端测试说明](backend/tests/README.md)与[端到端测试说明](frontend/e2e/README.md)。
 
-- [文档索引](docs/README.md) · [系统架构](docs/architecture/overview.md) · [配置参考](docs/configuration.md)
+- [文档索引](docs/README.md) · [架构总览](docs/architecture/overview.md) · [配置参考](docs/configuration.md)
 - [参与贡献](CONTRIBUTING.md) · [安全策略](SECURITY.md)
 
 ## 许可
 
-[MIT License](LICENSE)。第三方数据、字体和素材见 [NOTICE](NOTICE)。
+本项目采用 [MIT License](LICENSE) 开源。第三方数据、字体与素材声明见 [NOTICE](NOTICE)。

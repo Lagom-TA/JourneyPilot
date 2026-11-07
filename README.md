@@ -18,18 +18,11 @@
 
 </div>
 
-JourneyPilot is an open-source, self-hosted AI travel planning workspace. Give it a destination, dates,
-travel companions, and preferences. It researches the trip, builds a day-by-day itinerary, and brings
-that itinerary together with a map and reading view in one workspace.
-
-The current product interface is in Simplified Chinese.
+JourneyPilot is an open-source, self-hosted AI travel planning workspace (with a Simplified Chinese interface). Tell it where you want to go, when you are traveling, and who is coming along—it researches destinations, builds a day-by-day itinerary, and brings your schedule, interactive map, and reading view together in one place.
 
 [Quick start](#quick-start) · [How it works](#architecture) · [Documentation](docs/README.md)
 
 ![JourneyPilot home page with a travel prompt and inspiration cards](docs/assets/home.png)
-
-JourneyPilot brings the research plan, day-by-day itinerary, map, and reading view together. You can
-review the research plan before it starts, follow its progress, and return to a saved trip to refine it.
 
 ![JourneyPilot demonstration: inspiration, research, and itinerary](docs/assets/demo.gif)
 
@@ -37,58 +30,21 @@ review the research plan before it starts, follow its progress, and return to a 
 | --- | --- |
 | ![Research plan awaiting confirmation](docs/assets/research-plan.png) | ![Itinerary and map workspace](docs/assets/map-workspace.png) |
 
-[See the reading view](docs/assets/reading.png). The examples use illustrative data from different trips;
-the edited demonstration shows the interface, not a benchmark of model quality or speed. Map images:
-© [Stadia Maps](https://stadiamaps.com/attribution/) © [OpenMapTiles](https://openmaptiles.org/)
-© [OpenStreetMap contributors](https://www.openstreetmap.org/copyright).
+[See the reading view](docs/assets/reading.png) · Map tiles: © [Stadia Maps](https://stadiamaps.com/attribution/) © [OpenMapTiles](https://openmaptiles.org/) © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
 
 ## Plan a trip
 
-The home page starts with a free-text description, including any travel preferences. Switch to the
-structured form to enter the route, dates, companions, budget, and travel style. Companions use
-a choice panel with custom counts. Each mode keeps its own draft.
-A travel ticket and luggage tag present one proposal. Scenes rotate slowly and pause while you hover
-or edit; choosing either paper fills the current mode without submitting it. For a
-full plan, JourneyPilot reviews the request, verifies places and asks follow-up questions when needed,
-then presents a research plan for approval before researching places, stays, transport, and weather.
-The generation workspace combines a trip summary, four-stage navigation, and the current task.
-Research tasks show their latest update; click a task to toggle queries, sources, and public work notes.
-Manually opened records stay open when a task ends. The stop control sits beside stage navigation;
-follow-up questions and research approval each have their own submission area.
-If research is interrupted, completed results are retained and retries use the original plan's time limits.
-Disconnecting interrupts the current execution. Reopening restores saved state and content; resumable
-plans continue only when you choose to resume them.
-Different sessions can run at the same time; switching sessions leaves their ongoing runs active.
-When a run budget is enabled, model calls are checked against an estimate; incomplete pricing or usage
-means the cost limit cannot be guaranteed precisely.
+**From idea to research plan**
+Start by describing your trip in a single sentence, or switch to the structured form to fill in your route, dates, companions, budget, and travel style. You can also pick from curated inspiration proposals on the home page to jump-start a draft. Before running deep searches, JourneyPilot organizes your requirements, verifies destinations, asks brief clarifying questions when key preferences are open, and presents a research plan for you to review and confirm.
 
-Once a plan is ready, you can:
+**Multi-source research and scheduling**
+Once the research plan is confirmed, JourneyPilot gathers information in parallel across attractions, neighborhoods to stay, transport options (including China Railway 12306, flights, and local routing), and weather forecasts. You can follow live progress and inspect sources as tasks run. The findings are then assembled into a structured daily schedule paced around geography and opening hours.
 
-- Explore daily stops, meals, stays, and transport alongside a map.
-- Read the report, inspect available sources, or export a PDF.
-- Continue the conversation to request changes and clarify them over several turns, including adjustments suggested by a weather update.
-- Save travel styles and your own reference material for later planning.
+**Map, itinerary, and reading view in sync**
+The delivery workspace pairs a full-route interactive map and city stay segments with your daily schedule. Selecting any day highlights its stops, dining, lodging, and transit links right on the map. Whenever you want a clean long-form overview, slide open the reading view to browse the full guide with source citations or export it as a PDF travel handbook.
 
-The delivery workspace opens on a full map with city stay segments, then expands into an itinerary
-and map spread for a selected day. Nearby places cluster as you zoom out. On phones, the non-modal
-schedule panel follows the drag and settles to half height, expanded, or closed according to release
-position and velocity; the map remains interactive. The reading view slides in from the side, and
-Escape returns to the retained map view. Unscheduled items appear on their relevant days;
-descriptions and factual sources expand on demand. PDF export is available in the reading view.
-
-My Trips groups current results and read-only history by trip. Preferences, styles, and source material
-use an open archive layout. Sources open for reading with explicit editing; phones return to the list
-entry. Choosing a travel style starts a new trip and shows the selection beside the planning input.
-
-When you manually add or delete memories, JourneyPilot retains the action and affected content as feedback
-for later memory summaries and sends it to the configured fast model. Explicit new statements can update
-existing memories. The portrait is reconciled when a conversation memory summary next runs; until then,
-the previous portrait may still be used for planning. Deleting all memory clears the management history
-and keeps only a content-free record of the reset.
-
-Sources, prices, and live information depend on the services used. Prices are shown for individual items
-without a combined total, and the PDF identifies items that remain unplanned. Some local routes may be estimates,
-and availability can change. JourneyPilot does not make bookings or process payments.
+**Iterative refinement and personal memory**
+Planning doesn't end with the first draft. You can continue chatting in the same workspace to adjust daily pacing, swap stops, or adapt to weather changes over multiple turns. Saved trips, reusable travel styles, personal preferences, and reference materials live in your local archive so future plans can build on what you like.
 
 ## Architecture
 
@@ -102,14 +58,13 @@ flowchart LR
   API --> Cache[("Redis")]
 ```
 
-The backend coordinates model and tool calls, persists trip state and results, and streams progress to the
-browser. See the [architecture overview](docs/architecture/overview.md) for the boundaries and data flow.
+The backend orchestrates LLM and tool calls, persists trip state and deliverables in PostgreSQL and Redis, and streams live progress to the browser over SSE. See the [architecture overview](docs/architecture/overview.md) for module boundaries and data flow.
 
 ## Quick start
 
-You will need [uv](https://docs.astral.sh/uv/), Python 3.11, Node.js and npm, Docker Desktop or Docker
-Engine with Compose, and credentials for a model service. Node 22 is recommended (see `frontend/.nvmrc`);
-the frontend alone needs at least 20.19, and the optional Firecrawl MCP server needs 22 or newer.
+Prerequisites: [uv](https://docs.astral.sh/uv/), Python 3.11, Node.js (Node 22 recommended, see `frontend/.nvmrc`), Docker with Compose, and API credentials for an LLM provider.
+
+**1. Clone the repository and create a config file**
 
 ```bash
 git clone https://github.com/Lagom-TA/JourneyPilot.git
@@ -118,8 +73,9 @@ cp backend/config.example.yaml config.yaml
 export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
 ```
 
-Choose a model configuration preset. This example uses DeepSeek; `--list` shows the available presets.
-Set the keys for your own provider:
+**2. Choose a model preset and set your API key**
+
+The example below uses DeepSeek (`--list` shows all built-in provider presets):
 
 ```bash
 uv run --project backend python backend/journeypilot.py configure --list
@@ -128,24 +84,21 @@ export JOURNEYPILOT_PRIMARY_MODEL__API_KEY="your-api-key"
 export JOURNEYPILOT_FAST_MODEL__API_KEY="your-api-key"
 ```
 
-Start the app from the repository root:
+**3. Start the services**
 
 ```bash
 JOURNEYPILOT_DATABASE__PORT=55434 JOURNEYPILOT_REDIS__PORT=16379 ./run.sh start
 ```
 
-On first start, the script installs dependencies, starts PostgreSQL and Redis with Compose, runs database
-migrations, and launches the API and web app. The default local embedding model downloads on first use.
-The script reuses existing PostgreSQL and Redis containers and does not recreate them when Compose
-configuration changes. To apply container configuration changes, check their impact and run Compose yourself.
+On first run, `run.sh` installs dependencies, starts PostgreSQL and Redis via Docker Compose, applies database migrations, and launches both the backend API and frontend dev server.
 
 | Service | URL |
 | --- | --- |
-| Web app | <http://localhost:8080> |
+| Web workspace | <http://localhost:8080> |
 | API documentation | <http://localhost:8001/docs> |
 | Readiness check | <http://localhost:8001/api/health/ready> |
 
-`run.sh` supervises the services in the foreground. Use another terminal to inspect or stop them:
+Manage the running services from another terminal:
 
 ```bash
 ./run.sh status
@@ -154,43 +107,29 @@ configuration changes. To apply container configuration changes, check their imp
 ./run.sh stop
 ```
 
-The database and Redis ports above match the included Compose configuration. Pass those environment
-variables again when using `./run.sh restart`, or set the ports in `config.yaml`. On shutdown, the API
-stops background work and MCP sessions, flushes usage, and closes database and Redis connections. See
-[local development troubleshooting](docs/local-development-troubleshooting.md) if startup fails.
+Include the port environment variables again when running `./run.sh restart`, or persist them in `config.yaml`. For common setup issues, see [local development troubleshooting](docs/local-development-troubleshooting.md).
 
 ## Run with Docker Compose
 
-You can also run the web app and API together in containers. Prepare `config.yaml` as above, then create
-`.env` in the repository root with the model and data-service credentials you need, for example:
+To run the web app and API together in containers, prepare `config.yaml` as shown above and create a `.env` file in the repository root with your API keys:
 
 ```dotenv
 JOURNEYPILOT_PRIMARY_MODEL__API_KEY=your-api-key
 JOURNEYPILOT_FAST_MODEL__API_KEY=your-api-key
 ```
 
+Build and start the stack:
+
 ```bash
 docker compose -f infra/compose.yml up -d --build
 docker compose -f infra/compose.yml logs -f api
 ```
 
-The web app and API are both available at <http://localhost:8001>. Compose passes the root `.env` file
-to the API container; model keys exported only in the host shell are not automatically passed to it.
-Variables that Compose itself substitutes (`JOURNEYPILOT_DATABASE__PORT`, `POSTGRES_IMAGE`,
-`DEPENDENCY_GROUPS`) come from the host shell, or from the root `.env` when you add `--env-file .env`.
-PostgreSQL and Redis also publish host ports `55434` and `16379` respectively; setting
-`JOURNEYPILOT_DATABASE__PORT` publishes PostgreSQL on a different host port.
-
-JourneyPilot is designed for self-hosted, single-user use and has no built-in accounts or authentication.
-Run it on a trusted network; before exposing it to an untrusted network, configure access controls and
-check the API, database, and Redis listening addresses. See the [security policy](SECURITY.md).
+Both the web app and API will be served at <http://localhost:8001>. For self-hosted network and access-control guidance, see the [security policy](SECURITY.md).
 
 ## Configuration and data
 
-Settings come from built-in defaults, `config.yaml`, and environment variables, in that order. Common
-scalar settings can be overridden with `JOURNEYPILOT_<SECTION>__<FIELD>`, for example
-`JOURNEYPILOT_DATABASE__PORT`. The [configuration reference](docs/configuration.md) lists the fields,
-defaults, and environment variables.
+Settings load from built-in defaults, `config.yaml`, and environment variables (in increasing order of precedence). Any scalar field can be overridden via `JOURNEYPILOT_<SECTION>__<FIELD>`, such as `JOURNEYPILOT_DATABASE__PORT`. Full details are in the [configuration reference](docs/configuration.md).
 
 ```bash
 uv run --project backend python backend/journeypilot.py config validate
@@ -198,44 +137,19 @@ uv run --project backend python backend/journeypilot.py config show
 uv run --project backend python backend/scripts/check_mcp.py
 ```
 
-Built-in tools include web search, OpenStreetMap/Nominatim, China Railway 12306, and exchange rates. Trip
-planning uses the built-in Open-Meteo weather adapter. The third-party Open-Meteo MCP server is disabled
-by default because it sends a startup notification to a third-party domain. Set
-`mcp.servers.open-meteo.disabled` to `false` to enable it. Amap, Baidu, Tavily, Brave, Duffel, and other
-providers can be configured as needed.
-On tool-name collisions, the registered owner is retained; MCP servers register in configuration order.
-Coverage and results depend on each service; routes within mainland China require an Amap key. Model and
-provider calls may incur charges.
-
-The default map tiles use GCJ-02 coordinates. When configuring a WGS-84 tile source, set
-`VITE_MAP_TILE_DATUM=wgs84` when starting or building the frontend; see the [frontend guide](frontend/README.md).
-
-`run.sh` installs the locked Node MCP dependencies. Before starting the backend directly, run
-`npm --prefix backend/mcp ci --omit=dev` to install them.
-
-The knowledge base uses a local Qwen3 ONNX embedding model by default; a compatible remote embedding
-service can also be configured. Incomplete embedding results fail indexing and leave the existing document intact.
-Knowledge is supplied by users; the repository includes no knowledge corpus or local binary seed.
-The default PostgreSQL image has no `zhparser` extension, so knowledge-base lexical search uses PostgreSQL's
-`simple` text search configuration and segments Chinese less accurately. To enable Chinese segmentation,
-build the optional image in `infra/postgres` and start Compose with `POSTGRES_IMAGE` set to it; the
-configuration is fixed when the schema is created, so switching an existing database needs a rebuild
-(see [ADR-0007](docs/adr/ADR-0007-core-default-enhancements-optional.md)).
-
-The startup script and container entrypoint run database migrations before starting the API. To inspect
-the database or create a backup:
+- **Tools and data providers**: Built-in tools cover web search, OpenStreetMap/Nominatim geocoding, China Railway 12306 schedules, Open-Meteo weather forecasts, and currency exchange rates. You can also configure Amap, Baidu Maps, Tavily, Brave Search, Duffel, and other MCP providers.
+- **Knowledge base**: Personal reference materials are indexed locally using a built-in Qwen3 ONNX embedding model and `pgvector`, or with a compatible remote embedding endpoint.
+- **Health checks and backups**: Inspect system health or create a consistent database backup via the CLI:
 
 ```bash
 uv run --project backend python backend/journeypilot.py doctor
 uv run --project backend python backend/journeypilot.py backup
 ```
 
-The database dump and row counts use the same snapshot; restore verifies the required files and checksums first.
-
 ## Development
 
 ```bash
-# Run from the repository root
+# Install backend dependencies (run from repository root)
 export UV_PROJECT_ENVIRONMENT="$PWD/.venv"
 uv sync --project backend --locked --group local-embedding --group dev
 
@@ -247,12 +161,11 @@ uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignor
 cd frontend && npm ci && npm run check
 ```
 
-Database integration tests require a reachable PostgreSQL instance. For browser tests and real-provider
-planning tests, see the [end-to-end test guide](frontend/e2e/README.md).
+See the [backend test guide](backend/tests/README.md) and [end-to-end test guide](frontend/e2e/README.md) for database integration and browser test workflows.
 
 - [Documentation index](docs/README.md) · [Architecture](docs/architecture/overview.md) · [Configuration](docs/configuration.md)
 - [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md)
 
 ## License
 
-[MIT License](LICENSE). Third-party data, fonts, and assets are listed in [NOTICE](NOTICE).
+Released under the [MIT License](LICENSE). Third-party data, fonts, and visual assets are listed in [NOTICE](NOTICE).

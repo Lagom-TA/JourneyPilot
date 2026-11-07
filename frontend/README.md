@@ -1,92 +1,83 @@
 # JourneyPilot 前端
 
-JourneyPilot 的旅行工作台前端：React 18 + TypeScript + Vite + Tailwind CSS + Leaflet + Motion。开发时直接对接本地 FastAPI + LangGraph 后端。
+JourneyPilot 的 Web 旅行工作台前端，基于 React 18、TypeScript、Vite、Tailwind CSS、Leaflet 与 Motion 构建，配合 FastAPI + LangGraph 后端提供交互式行程规划与地图探索体验。
 
-## 目录
+## 目录结构
 
-- `src/features/`：按聊天、旅行、知识库、偏好设置和预设划分功能；每个功能自带组件、API 与类型。
-- `src/components/ui/`：无业务依赖的共享界面组件。
-- `src/app/`：应用壳、布局、导航、会话与全局状态。
-- `src/lib/`：HTTP 客户端、运行时配置、地图配置、动效与通用工具。
+- `src/features/`：按业务领域（`chat`、`travel`、`knowledge`、`preferences`、`presets`）组织组件、接口调用与模型定义。
+- `src/components/ui/`：通用的无业务耦合基础界面组件。
+- `src/app/`：应用外壳、整体布局、路由导航、会话管理与全局状态。
+- `src/lib/`：HTTP 客户端、运行时配置、地图底图配置、动效参数与通用工具函数。
+- `src/styles/`：按页面与工作台模块拆分的样式表。
 
-## 请求与会话
+## 核心数据流与状态
 
-- 所有 REST 请求经 `src/lib/http.ts`；`src/lib/runtimeConfig.ts` 用 `VITE_API_BASE` 解析 API 前缀（默认 `/api`）。
-- 聊天流：`src/features/chat/api/streamChat.ts` 消费 `POST /api/chat-stream`（SSE）；`src/app/session/` 负责流归属、断线恢复与事件处理。
-- 不同会话的运行流独立保存；切换会话时保留各自的实时快照，停止当前会话不会中断其他会话。
-- 状态：`src/app/state/` 只有唯一 reducer 与 provider；会话切换、恢复、清空与正式 Bundle 确认都经过同一更新边界。
-- 正式交付只接受完整 `DeliveryBundle`，过程事件可以流式；报告、行程、地图、来源与天气来自同一份交付记录。
-- 交付以地图画幅呈现全程，城市导航按连续停留段分组，单日展开为日程与地图对页；地图保持挂载并按上下文保留视野。手机日程面板为非模态的两档面板，拖动手柄时持续跟手，释放后按位置与速度吸附，地图按半屏可见区域避让。阅读版以不透明侧向表面进入，Esc 或返回按钮关闭后恢复入口焦点与地图视野。未安排事项按天关联，资料缺口与事实来源按需展开。
-
-## 行程与个人资料
-
-`PageShell` 与 `styles/archive.css` 组织开放档案页，页面统一滚动；偏好分类在桌面标题下与手机标题后显示。行程按会话收拢生成记录，当前与历史共用正式会话恢复边界。选择旅行风格通过 `useStartNewTrip` 新建旅行；首页只在有选择或失效提示时显示风格上下文。资料正文默认只读，编辑与取消明确分开，保存失败保留草稿。文件上限来自 `/api/config` 的 `ingest.max_upload_bytes`，上传仍由服务端最终校验。
+- **REST 与配置解析**：所有 HTTP 请求统一经过 `src/lib/http.ts`，由 `src/lib/runtimeConfig.ts` 根据 `VITE_API_BASE` 解析接口前缀（默认为 `/api`）。
+- **流式规划会话（SSE）**：`src/features/chat/api/streamChat.ts` 消费 `POST /api/chat-stream` 事件流，`src/app/session/` 负责维护各会话的流生命周期、断线恢复与多会话并行快照。
+- **全局状态与交付物**：`src/app/state/` 提供集中式的状态 reducer 与 Context Provider。规划完成后，前端接收完整的 `DeliveryBundle`，统一驱动日程表、交互地图、阅读版、资料来源与天气面板。
 
 ## 样式与视口
 
-- `src/index.css` 定义全局 token、基础样式和共享过程样式；`src/styles/` 按首页、应用壳、开放档案、行程列表与工作台分文件，由 `src/main.tsx` 按顺序加载；生成过程的 `generation.css` 与人数选择器的 `traveler-picker.css` 由使用它们的组件（`ThinkingChain`、`GenerationJourneyPanel`、`TravelerPicker`）自行引入。全局组件和复杂布局使用语义类，组件内部的简单排列使用 Tailwind 工具类。
-- 颜色、圆角、阴影、CSS 动效和全局层级使用 `src/index.css` 的 token；Motion 使用 `src/lib/motion.ts` 中的秒制时长与缓动，交通方式颜色集中在 `src/features/travel/model/transportPresentation.ts`。
-- `breakpoints.json` 定义 Tailwind 与 JS 共用的 `sm` 640、`md` 768、`lg` 1024、`xl` 1280 和 `2xl` 1536 像素断点。CSS 媒体查询使用相同边界；480、1440、1800 像素和高度 760 像素是局部布局的补充条件。
-- 字体通过 Fontsource 本地加载：Inter 处理拉丁字符，Noto Sans SC 处理中文正文；档案页和主要交付标题使用 Noto Sans SC 粗体；衬线标题优先使用本地 14 字子集，缺失字符回退到完整的 Noto Serif SC，最后回退系统字体。字体使用 `font-display: swap`。
+- **样式组织**：`src/index.css` 定义全局 CSS 变量（颜色、圆角、阴影、动效与层级 token）及基础样式；`src/styles/` 存放首页、档案页与工作台布局样式；动效时长与缓动统一定义在 `src/lib/motion.ts`，交通方式配色集中在 `src/features/travel/model/transportPresentation.ts`。
+- **响应式断点**：`breakpoints.json` 定义 Tailwind 与 JS 共享的断点（`sm` 640px、`md` 768px、`lg` 1024px、`xl` 1280px、`2xl` 1536px）。
+- **字体加载**：通过 Fontsource 本地加载 Inter（西文）、Noto Sans SC（中文正文与粗体标题）及 Noto Serif SC（衬线装饰标题）。
 
-全局层级以同一层叠上下文内的数值为准；组件内部的 0–50 只控制局部层叠。
+全局浮层与面板遵循统一的 `z-index` 层级规划：
 
-| token | 值 | 用途 |
+| Token | 数值 | 用途 |
 |---|---:|---|
-| `--z-map-empty` | 900 | 地图空状态 |
-| `--z-map-controls` / `--z-map-detail` | 1000 / 1001 | 地图控件和地点详情 |
-| `--z-recovery` | 1050 | 移动端恢复提示 |
-| `--z-workspace-panel` / `--z-sheet` | 1100 | 行程浮面板和底部抽屉 |
-| `--z-navigation-scrim` / `--z-navigation-drawer` | 1110 / 1120 | 移动导航遮罩和抽屉 |
-| `--z-recovery-desktop` | 1150 | 桌面端恢复提示 |
-| `--z-reading` / `--z-dialog` | 1200 | 阅读层、模态框、弹出层和日历 |
-| `--z-destination-menu` | 1400 | 目的地搜索候选 |
+| `--z-map-empty` | 900 | 地图空状态提示 |
+| `--z-map-controls` / `--z-map-detail` | 1000 / 1001 | 地图缩放控件与地点详情卡片 |
+| `--z-recovery` | 1050 | 移动端状态恢复提示 |
+| `--z-workspace-panel` / `--z-sheet` | 1100 | 工作台浮动面板与移动端底部抽屉 |
+| `--z-navigation-scrim` / `--z-navigation-drawer` | 1110 / 1120 | 移动端导航遮罩与抽屉菜单 |
+| `--z-recovery-desktop` | 1150 | 桌面端状态恢复提示 |
+| `--z-reading` / `--z-dialog` | 1200 | 阅读版抽屉、模态对话框、弹出层与日历 |
+| `--z-destination-menu` | 1400 | 目的地搜索候选下拉列表 |
 
-## 本地运行
+## 本地开发
 
-以下命令在 `frontend/` 目录执行（Node 版本见 `.nvmrc`，最低 20.19）：
+在 `frontend/` 目录下执行（推荐 Node 22，见 `.nvmrc`）：
 
 ```bash
 npm ci
-npm run dev   # http://localhost:8080
+npm run dev   # 访问 http://localhost:8080
 ```
 
-`vite.config.ts` 把 `/api` 代理到 `http://127.0.0.1:8001`；后端在其它地址时改代理目标：
+开发服务器默认将 `/api` 代理至 `http://127.0.0.1:8001`。若后端运行在其他地址，可通过环境变量指定代理目标：
 
 ```bash
 VITE_PROXY_TARGET=http://127.0.0.1:9000 npm run dev
 ```
 
-`VITE_API_BASE` 是**浏览器实际请求的 API 前缀**（默认 `/api`）；构建给独立域名/端口使用时才需要改成绝对地址，并同步配置后端 CORS。LLM provider key 只应放在后端环境中，不要写进前端 `.env`。
-
 ## 环境变量
 
-| 变量 | 作用 | 默认值 |
+| 变量 | 说明 | 默认值 |
 |---|---|---|
-| `VITE_API_BASE` | 浏览器请求的 API 前缀 | `/api` |
-| `VITE_PROXY_TARGET` | 开发服务器 `/api` 代理目标 | `http://127.0.0.1:8001` |
-| `VITE_BASE` | 子路径部署时的 Vite `base` | `/` |
-| `VITE_OUT_DIR` | 构建输出目录 | `../backend/static` |
-| `VITE_MAP_TILE_URL` | Leaflet 瓦片地址（支持 `{s}/{z}/{x}/{y}`） | 高德瓦片（默认） |
-| `VITE_MAP_TILE_ATTRIBUTION` | 底图署名 HTML | 高德地图署名 |
-| `VITE_MAP_TILE_DATUM` | 瓦片坐标系：`gcj02` 或 `wgs84` | `gcj02` |
+| `VITE_API_BASE` | 浏览器发起请求的 API 路径前缀 | `/api` |
+| `VITE_PROXY_TARGET` | Vite 开发服务器的 `/api` 代理目标地址 | `http://127.0.0.1:8001` |
+| `VITE_BASE` | 子路径部署时的前端基础路径 | `/` |
+| `VITE_OUT_DIR` | 构建产物输出目录 | `../backend/static` |
+| `VITE_MAP_TILE_URL` | Leaflet 瓦片地址模板（支持 `{s}/{z}/{x}/{y}`） | 高德地图瓦片 |
+| `VITE_MAP_TILE_ATTRIBUTION` | 地图底图署名 HTML | 高德地图署名 |
+| `VITE_MAP_TILE_DATUM` | 底图瓦片坐标系（`gcj02` 或 `wgs84`） | `gcj02` |
 
-`VITE_BASE` 和 `VITE_MAP_TILE_*` 在 Vite 启动或前端构建时读取；修改后需要重启开发服务器或重新构建。更换底图时，按瓦片提供方的坐标系设置 `VITE_MAP_TILE_DATUM`；WGS-84 底图应设为 `wgs84`，无效值会导致地图配置初始化失败。子路径部署还需要静态服务器或反向代理把该路径映射到前端产物，后端默认只提供根路径。示例见 `.env.example`。
+`VITE_BASE` 与 `VITE_MAP_TILE_*` 在启动开发服务器或执行构建时读取；切换为 OpenStreetMap 等 WGS-84 底图时，请将 `VITE_MAP_TILE_DATUM` 设为 `wgs84`。配置示例见 `.env.example`。
 
 ## 检查与构建
 
 ```bash
-npm run type-check   # tsc --noEmit（app、node 与 e2e 夹具三套配置）
-npm run lint         # ESLint
-npm run test         # Vitest 单元测试
-npm run build        # 产物写入 ../backend/static（VITE_OUT_DIR 可覆盖）
-npm run check        # type-check + lint + test + build（CI 同款）
+npm run type-check   # 运行 TypeScript 类型检查
+npm run lint         # 运行 ESLint 代码检查
+npm run test         # 运行 Vitest 单元测试
+npm run build        # 构建生产产物至 ../backend/static
+npm run check        # 依次执行 type-check、lint、test 与 build
 ```
 
-子路径部署：
+子路径构建示例：
 
 ```bash
 VITE_BASE=/journeypilot/ VITE_OUT_DIR=dist npm run build
 ```
 
-端到端（Playwright）用例、开关与证据位置见 [e2e/README.md](e2e/README.md)。
+Playwright 浏览器端到端测试说明请参阅 [e2e/README.md](e2e/README.md)。
