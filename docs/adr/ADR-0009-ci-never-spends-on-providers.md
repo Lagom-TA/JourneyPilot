@@ -5,16 +5,15 @@
 
 ## 决定
 
-PR 和 main 推送自动运行：
+PR 和 main 推送自动运行；`changes` 作业按变更路径决定哪些作业运行，没受影响的作业直接跳过，手动触发时全部运行，工作流文件本身变化时相关作业全部运行：
 
-- 后端：ruff；`config validate` 与 `config docs --check`；非数据库单元测试（覆盖率下限 `--cov-fail-under=60`）与离线迁移 SQL；迁移脚本目录只有一个 alembic head。PDF 字体缺失时 PDF 测试失败而不是跳过。
-- 前端：`npm run check`（类型检查、lint、单元测试、构建）。
-- MCP：`npm ci` 与站表数据模块的语法检查。
-- shell：`bash -n`、固定版本的 shellcheck，以及 `infra/scripts/supervise_harness.sh` 的服务监督检查。
-- Docker：`docker compose config`、API 镜像构建与镜像 smoke（`config validate`、`config docs --check`、Node 22、前端静态产物、`pg_dump`）。
-- 密钥扫描：gitleaks，外加一次种入合成密钥、要求扫描器报出的自检。
+- 后端（`backend/`、生成的配置文档变化时）：ruff；`config validate` 与 `config docs --check`；非数据库单元测试与离线迁移 SQL；迁移脚本目录只有一个 alembic head。只安装 `dev` 依赖组，不装本地 embedding 组：单元测试不依赖它。PDF 字体缺失时 PDF 测试失败而不是跳过。
+- 前端与 MCP（`frontend/`、`backend/mcp/` 变化时，同一个 Node 22 作业）：`npm run check`（类型检查、lint、单元测试、构建）；MCP 的 `npm ci` 与站表数据模块语法检查。
+- shell（`.sh` 文件变化时）：`bash -n`、固定版本的 shellcheck，以及 `infra/scripts/supervise_harness.sh` 的服务监督检查。
+- Docker（后端、前端、`infra/` 变化时）：`docker compose config`、带层缓存的 API 镜像构建与镜像 smoke（`config validate`、`config docs --check`、Node 22、前端静态产物、`pg_dump`）。
+- 密钥扫描（每次运行）：gitleaks，外加一次种入合成密钥、要求扫描器报出的自检。
 
-依赖安装使用锁文件，不另设重复安装矩阵或源码字符串检查。
+依赖安装使用锁文件，不另设重复安装矩阵或源码字符串检查，也不设覆盖率下限：覆盖率数字不说明测试是否有用。
 
 数据库迁移和集成测试在 Actions 的 `PR` 工作流中手动触发，使用 PostgreSQL 与 Redis service container，不调用付费 Provider。完整应用、浏览器交互与真实 Provider 的验证不在自动门禁里：需要时在隔离环境手动运行，并使用显式提供的低额度 Key；不能用 CI 通过代替实际功能验证。
 

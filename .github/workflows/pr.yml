@@ -8,31 +8,88 @@ on:
 
 permissions:
   contents: read
+  # paths-filter 在 pull_request 事件里通过 API 读取变更文件。
   pull-requests: read
 
 concurrency:
-  group: pr-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  # 同一分支上更新的提交会取代尚未跑完的旧运行；手动触发的运行不被取消。
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 env:
   UV_VERSION: "0.9.7"
   PYTHON_VERSION: "3.11"
 
 jobs:
-  backend-unit:
-    name: backend · lint + unit
+  # 只跑受变更影响的作业：被跳过的作业在必需检查里算通过。手动触发时全部运行。
+  # 工作流文件本身变化时，所有相关作业都运行。
+  changes:
+    name: changes
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 3
+    outputs:
+      backend: ${{ steps.scope.outputs.backend }}
+      frontend: ${{ steps.scope.outputs.frontend }}
+      mcp: ${{ steps.scope.outputs.mcp }}
+      shell: ${{ steps.scope.outputs.shell }}
+      image: ${{ steps.scope.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'docs/configuration.md'
+              - 'docs/config.schema.json'
+              - '.github/actions/setup-backend/**'
+              - '.github/workflows/pr.yml'
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/pr.yml'
+            mcp:
+              - 'backend/mcp/**'
+              - '.github/workflows/pr.yml'
+            shell:
+              - '**/*.sh'
+              - '.github/workflows/pr.yml'
+            image:
+              - 'backend/**'
+              - 'frontend/**'
+              - 'infra/**'
+              - 'docs/configuration.md'
+              - 'docs/config.schema.json'
+              - 'README.md'
+              - '.dockerignore'
+              - '.github/workflows/pr.yml'
+      - id: scope
+        run: |
+          {
+            echo "backend=${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend }}"
+            echo "frontend=${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.frontend }}"
+            echo "mcp=${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.mcp }}"
+            echo "shell=${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.shell }}"
+            echo "image=${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.image }}"
+          } | tee -a "$GITHUB_OUTPUT"
+
+  backend:
+    name: backend · lint + unit
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
     env:
       # 字体缺失时 PDF 测试必须失败，而不是 skip：CI 装了字体，skip 就是门禁失效。
       JOURNEY_PDF_FONT_REQUIRED: "1"
     steps:
       - uses: actions/checkout@v4
+      # 单元测试不依赖本地 embedding（ONNX）依赖组，只装 dev 组。
       - uses: ./.github/actions/setup-backend
         with:
           uv-version: ${{ env.UV_VERSION }}
           python-version: ${{ env.PYTHON_VERSION }}
-          groups: "--group local-embedding --group dev"
+          groups: "--group dev"
           cjk-font: "true"
       - run: uv run --project backend ruff check --config backend/pyproject.toml backend/travel_agent/ backend/tests/ backend/scripts/
       - name: Configuration
@@ -41,8 +98,7 @@ jobs:
           uv run --project backend python backend/journeypilot.py config docs --check
       - name: Unit tests and offline migrations
         run: |
-          uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignore=backend/tests/db -q \
-            --cov=travel_agent --cov-report=term-missing:skip-covered --cov-fail-under=60
+          uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignore=backend/tests/db -q
           uv run --project backend pytest -c backend/pyproject.toml backend/tests/db/test_offline_sql.py -q
       - name: Migrations have a single head
         # 两个 head 意味着 alembic 不知道该往哪走，而 `upgrade head` 会直接报错。
@@ -52,42 +108,39 @@ jobs:
           echo "$heads"
           test "$(printf '%s\n' "$heads" | grep -c '(head)')" -eq 1
 
-  frontend:
-    name: frontend · type-check + unit + build
+  node:
+    name: node · frontend + mcp
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.mcp == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: frontend
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version-file: frontend/.nvmrc
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci --no-audit --no-fund
-      - run: npm run check
-
-  mcp:
-    name: mcp · node deps
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: backend/mcp/package-lock.json
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/mcp/package-lock.json
+      - name: Frontend · type-check + lint + unit + build
+        if: needs.changes.outputs.frontend == 'true'
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run check
       # 这些 MCP server 由 npx 拉起，版本由 lockfile 决定。`npm ci` 是唯一能证明
       # 「lockfile 与 package.json 一致、且能装出来」的检查。
-      - run: npm ci --prefix backend/mcp --no-audit --no-fund
-      - name: Syntax-check the bundled data module
-        run: node --check backend/mcp/rail/station_name.js
+      - name: MCP · locked install + data module syntax
+        if: needs.changes.outputs.mcp == 'true'
+        run: |
+          npm ci --prefix backend/mcp --no-audit --no-fund
+          node --check backend/mcp/rail/station_name.js
 
   shell:
     name: shell · syntax + shellcheck
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -107,27 +160,40 @@ jobs:
             bash -n "$f"
           done
       - name: shellcheck
-        run: shellcheck --severity=warning $(git ls-files '*.sh')
+        run: git ls-files -z '*.sh' | xargs -0 shellcheck --severity=warning
       - name: Check service supervision
         run: bash infra/scripts/supervise_harness.sh
 
   docker:
     name: docker · image + compose
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Validate compose file
         run: docker compose -f infra/compose.yml config >/dev/null
+      - uses: docker/setup-buildx-action@v3
+      # 层缓存按 Dockerfile 各阶段分别命中：只改源码时，依赖安装层直接复用。
       - name: Build API image
-        run: docker build -f infra/api.Dockerfile -t journeypilot-api:ci .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/api.Dockerfile
+          load: true
+          tags: journeypilot-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: Image smoke checks
         run: |
-          docker run --rm --entrypoint python journeypilot-api:ci backend/journeypilot.py config validate
-          docker run --rm --entrypoint python journeypilot-api:ci backend/journeypilot.py config docs --check
-          docker run --rm --entrypoint node journeypilot-api:ci --version | grep -E '^v22\.'
-          docker run --rm --entrypoint sh journeypilot-api:ci -c 'test -f /app/backend/static/index.html'
-          docker run --rm --entrypoint sh journeypilot-api:ci -c 'pg_dump --version'
+          docker run --rm --entrypoint sh journeypilot-api:ci -ec '
+            python backend/journeypilot.py config validate
+            python backend/journeypilot.py config docs --check
+            node --version | grep -E "^v22\."
+            test -f /app/backend/static/index.html
+            pg_dump --version
+          '
 
   secrets:
     name: security · secrets
