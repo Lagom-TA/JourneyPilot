@@ -104,6 +104,8 @@ check_stop_race() (
 )
 
 check_changed_identity() (
+  # stopped 与 unsure 由 run.sh 的 stop_recorded_service 按动态作用域写入。
+  # shellcheck disable=SC2034
   local temp_dir stopped=0 unsure=0 pid
   # shellcheck source=../../run.sh
   source "$ROOT/run.sh"
@@ -148,9 +150,13 @@ check_mcp_locked_install() (
   trap - INT TERM EXIT
   temp_dir="$(mktemp -d)"
   trap 'rm -rf "$temp_dir"' EXIT
+  # BACKEND_DIR 由 run.sh 的 step_mcp_deps 读取。
+  # shellcheck disable=SC2034
   BACKEND_DIR="$temp_dir"
   mkdir -p "$temp_dir/mcp"
   : > "$temp_dir/mcp/package-lock.json"
+  # step_mcp_deps 先检查 Node 主版本；固定为通过，检查结果就不依赖运行机器装的 Node。
+  node() { return 0; }
   npm() { printf '%s\n' "$@" > "$temp_dir/npm-args"; }
   step_mcp_deps >/dev/null
   grep -Fx -- ci "$temp_dir/npm-args" >/dev/null

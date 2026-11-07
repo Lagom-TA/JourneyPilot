@@ -207,6 +207,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_ENABLE_COMMENTS: "false"
+          # 固定扫描器版本，与下面自检用的镜像一致；不固定时 action 每次取最新版，
+          # 新规则可能让一段不变的历史突然报出新的命中。
+          GITLEAKS_VERSION: "8.30.1"
       - name: The scanner still catches a planted key
         # 白名单收窄之后必须证明它没有把扫描器关掉：种一个合成密钥，扫描器必须
         # 报出来。
