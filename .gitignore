@@ -62,18 +62,12 @@ backups/
 uploads/
 dump.rdb
 
-# 数据库与本地知识库。出厂语料随仓库发布，backend/data 的其余内容不发布。
+# 数据库与本地知识库。
 *.db
 *.sqlite
 *.sqlite3
 *.db-journal
 data/
-!backend/data/
-backend/data/*
-!backend/data/corpus/
-backend/data/corpus/*
-!backend/data/corpus/factory/
-!backend/data/corpus/factory/**
 
 # 仓库根目录的临时测试脚本。正式测试在 backend/tests。
 test_*.py

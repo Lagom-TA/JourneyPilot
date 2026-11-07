@@ -69,7 +69,7 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
   适配器不导入规划状态。`tools/` 负责工具注册、授权、执行和 MCP 会话，在需要时调用外部适配器。
 - `storage/` 负责持久化与缓存，包括 Run、交付、命令、用量、审计及维护操作；`memory/` 负责
   会话历史及摘要存取、偏好、生命周期合同与记忆提取任务。
-- `knowledge/` 负责资料解析、分块、索引、检索与出厂语料；`llm/` 负责模型请求、路由、
+- `knowledge/` 负责资料解析、分块、索引和检索；`llm/` 负责模型请求、路由、
   用量记录及定价所需数据。
 - `config/`：`models.py`（唯一 schema）、`loader.py`（加载与来源）、`providers.py`（preset 能力）、
   `redaction.py`（脱敏）、`capabilities.py`（依赖检查）。`utils/` 只放通用坐标、文本、JSON 与

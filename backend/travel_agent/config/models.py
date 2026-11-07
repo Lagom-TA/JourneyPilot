@@ -184,7 +184,6 @@ class RAGConfig(StrictConfig):
     #
     # ``model_chunking_max_chars``：超过该长度的正文不调用模型，直接按固定窗口
     # 分块。这个判断必须在发起任何调用之前完成，因此单位是字符而不是段数。
-    # 60000 取出厂语料最大单篇（约 25000 字符 / 197 段）的两倍余量。
     model_chunking_max_chars: int = Field(default=60_000, ge=1)
     # 本篇累计失败达到该条数就停止调用 LLM，其余段落保留原文入库。上游限流时
     # 继续发送只会加重限流，而少几条上下文前缀只影响检索效果。

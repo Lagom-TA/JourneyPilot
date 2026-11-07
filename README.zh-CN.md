@@ -155,7 +155,7 @@ uv run --project backend python backend/scripts/check_mcp.py
 
 `run.sh` 会安装锁定的 Node MCP 依赖；直接启动后端前，可运行 `npm --prefix backend/mcp ci --omit=dev` 安装这些依赖。
 
-默认使用本地 Qwen3 ONNX 模型生成知识库向量，也可配置兼容的远程向量服务。向量结果不完整时，资料索引会失败并保留原资料。仓库附带一份[小规模出厂语料](backend/data/corpus/factory/README.md)，可按说明导入；可选的本地二进制种子不随仓库提供。默认的 PostgreSQL 镜像不带 `zhparser` 扩展，知识库词法检索使用 PostgreSQL 的 `simple` 文本检索配置，中文分词质量较低；要启用中文分词，请构建 `infra/postgres` 里的可选镜像，并在启动 Compose 时用 `POSTGRES_IMAGE` 指向它。该配置在建表时固定，已有数据库切换时需要重建（见 [ADR-0007](docs/adr/ADR-0007-core-default-enhancements-optional.md)）。
+默认使用本地 Qwen3 ONNX 模型生成知识库向量，也可配置兼容的远程向量服务。向量结果不完整时，资料索引会失败并保留原资料。知识由用户提供，仓库不包含知识语料或本地二进制种子。默认的 PostgreSQL 镜像不带 `zhparser` 扩展，知识库词法检索使用 PostgreSQL 的 `simple` 文本检索配置，中文分词质量较低；要启用中文分词，请构建 `infra/postgres` 里的可选镜像，并在启动 Compose 时用 `POSTGRES_IMAGE` 指向它。该配置在建表时固定，已有数据库切换时需要重建（见 [ADR-0007](docs/adr/ADR-0007-core-default-enhancements-optional.md)）。
 
 数据库迁移由启动脚本或容器入口在 API 启动前执行。检查数据库状态和创建备份：
 

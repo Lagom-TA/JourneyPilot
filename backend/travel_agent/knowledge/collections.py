@@ -12,7 +12,7 @@ from travel_agent.runtime.local_identity import LOCAL_USER_ID
 
 USER_KNOWLEDGE_COLLECTION = "travel_knowledge"
 
-# 出厂语料：对所有用户相同。Markdown 基础语料随仓库发布，向量种子是可选的本地数据。
+# 本地共享集合；向量种子是可选的本地数据。
 FACTORY_KNOWLEDGE_COLLECTIONS = (
     "destinations",
     "local_culture",

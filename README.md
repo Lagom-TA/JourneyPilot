@@ -215,8 +215,7 @@ The default map tiles use GCJ-02 coordinates. When configuring a WGS-84 tile sou
 
 The knowledge base uses a local Qwen3 ONNX embedding model by default; a compatible remote embedding
 service can also be configured. Incomplete embedding results fail indexing and leave the existing document intact.
-The repository includes a [small factory corpus](backend/data/corpus/factory/README.md)
-that can be imported using its instructions. The optional local binary seed is not included.
+Knowledge is supplied by users; the repository includes no knowledge corpus or local binary seed.
 The default PostgreSQL image has no `zhparser` extension, so knowledge-base lexical search uses PostgreSQL's
 `simple` text search configuration and segments Chinese less accurately. To enable Chinese segmentation,
 build the optional image in `infra/postgres` and start Compose with `POSTGRES_IMAGE` set to it; the
