@@ -24,7 +24,13 @@ from travel_agent.planning.delivery.source_presentation import (
     clean_public_source_title,
     public_fact_field_label,
 )
+from travel_agent.planning.delivery.travel_content import clean_date_assumption_text
+from travel_agent.planning.delivery.travel_content import public_lodging_details
+from travel_agent.planning.delivery.travel_content import public_lodging_reasons
+from travel_agent.planning.delivery.travel_content import public_lodging_text
 from travel_agent.planning.delivery.travel_content import public_selection_text
+from travel_agent.planning.delivery.travel_content import public_trip_title
+from travel_agent.planning.delivery.travel_content import public_trip_unresolved
 from travel_agent.planning.references import EntityType
 from typing import Any
 from typing import Dict
@@ -82,8 +88,16 @@ def _public_report_block(
         "projection_role": block.projection_role,
         "title": block.title,
         "entity_kind": block.entity_kind,
-        "summary": block.summary,
-        "details": dict(block.details),
+        "summary": (
+            clean_date_assumption_text(block.summary)
+            if block.entity_kind == "lodging"
+            else block.summary
+        ),
+        "details": (
+            public_lodging_details(block.details)
+            if block.entity_kind == "lodging"
+            else dict(block.details)
+        ),
         "citation_ids": list(block.citation_ids),
     }
     if block.entity_kind != "custom":
@@ -126,12 +140,19 @@ def _public_report_selection(section: ReportSelectionSection) -> Dict[str, Any]:
                 "rank": option.rank,
                 "selected": option.selected,
                 "recommended": option.recommended,
-                "selection_reasons": [
-                    public_selection_text(reason) for reason in option.selection_reasons
-                ],
-                "tradeoff": public_selection_text(option.tradeoff)
-                if option.tradeoff
-                else None,
+                "selection_reasons": (
+                    public_lodging_reasons(option.selection_reasons)
+                    if section.slot_type == "lodging"
+                    else [
+                        public_selection_text(reason)
+                        for reason in option.selection_reasons
+                    ]
+                ),
+                "tradeoff": (
+                    (public_lodging_text(option.tradeoff) or None)
+                    if section.slot_type == "lodging"
+                    else public_selection_text(option.tradeoff)
+                ) if option.tradeoff else None,
                 "comparison_facts": list(option.comparison_facts),
                 "availability_status": option.availability_status,
                 "citation_ids": list(option.citation_ids),
@@ -164,7 +185,7 @@ def _public_report_document(
     document: TripReportDocument, view: EvidenceBasisView
 ) -> Dict[str, Any]:
     return {
-        "title": document.title,
+        "title": public_trip_title(document.title),
         "overview": document.overview,
         "destinations": [
             item.model_dump(mode="json") for item in document.destinations
@@ -178,7 +199,7 @@ def _public_report_document(
         ],
         "weather": [_public_report_weather_day(day) for day in document.weather],
         "highlights": list(document.highlights),
-        "unresolved": list(document.unresolved),
+        "unresolved": public_trip_unresolved(document.unresolved),
     }
 
 

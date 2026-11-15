@@ -4,6 +4,7 @@ import { type PublicTransportLeg } from '../types/itinerary';
 import {
   confirmedMetroTransferCount,
   legSummary,
+  legService,
   showsEndpointCode,
   transitDisplayMode,
   transitLineChain,
@@ -171,6 +172,29 @@ describe('transport card facts', () => {
       alighting_stop: endpoint('小寨站'),
       segments: walkMetroWalk,
     }))).toEqual({ from: '钟楼站', to: '小寨站' });
+  });
+
+  it('shows flight numbers across segments without repeating the airline', () => {
+    const flight = transportLeg({
+      selected_mode: 'flight',
+      transport_class: 'long_distance',
+      segments: [
+        { ...segment('first', 'flight', '广州', '上海', '中国国航', { operatorName: '中国国航' }), service_number: 'CA1234' },
+        { ...segment('second', 'flight', '上海', '海口', '中国国航', { operatorName: '中国国航' }), service_number: 'CA5678' },
+      ],
+    });
+    expect(legService(flight)).toEqual({ serviceNumber: 'CA1234 → CA5678', lineName: '中国国航', operator: '中国国航' });
+    expect(legService({ ...flight, segments: [{ ...flight.segments[0], service_number: null }] }))
+      .toEqual({ serviceNumber: null, lineName: '中国国航', operator: null });
+    expect(legService({ ...flight, segments: [{ ...flight.segments[0], service_number: null }, flight.segments[1]] })?.serviceNumber).toBe('CA5678');
+    expect(legService({ ...flight, route_status: 'pending' })).toBeNull();
+  });
+
+  it('keeps a numbered railway service', () => {
+    const rail = transportLeg({ selected_mode: 'high_speed_rail', segments: [
+      { ...segment('rail', 'high_speed_rail', '北京西', '西安北'), service_number: 'G382' },
+    ] });
+    expect(legService(rail)?.serviceNumber).toBe('G382');
   });
 
   it('keeps airport codes but drops railway station codes', () => {

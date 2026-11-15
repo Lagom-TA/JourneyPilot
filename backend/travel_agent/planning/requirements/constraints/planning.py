@@ -13,6 +13,7 @@ from travel_agent.planning.requirements.constraints.loading import load_constrai
 from travel_agent.planning.requirements.constraints.resolution import (
     _dedupe_constraints,
     _resolve_conflicts,
+    normalize_constraint_pack,
 )
 from travel_agent.planning.requirements.constraints.sources import (
     _auto_portrait_block,
@@ -24,19 +25,23 @@ from travel_agent.planning.requirements.constraints.sources import (
 
 
 def _empty_pack(state: Any) -> Dict[str, Any]:
-    return {
+    now = datetime.now(timezone.utc).isoformat()
+    constraints = _dedupe_constraints(
+        _map_preset_constraints(_get(state, "preset_pack_constraints"), now)
+    )
+    return normalize_constraint_pack({
         "pack_meta": {
             "run_id": _get(state, "run_id") or "",
             "user_id": _get(state, "user_id") or "",
             "session_id": _get(state, "session_id") or "",
-            "built_at": datetime.now(timezone.utc).isoformat(),
+            "built_at": now,
             "missing_source_layers": ["application_components_unavailable"],
             "partial_reasons": [],
         },
-        "constraints": [],
-        "hard_constraints": [],
-        "soft_preferences": [],
-    }
+        "constraints": constraints,
+        "hard_constraints": [item for item in constraints if item["type"] == "hard"],
+        "soft_preferences": [item for item in constraints if item["type"] == "soft"],
+    })
 
 
 async def build_planning_constraint_pack(state: Any) -> Dict[str, Any]:
@@ -74,7 +79,7 @@ async def build_planning_constraint_pack(state: Any) -> Dict[str, Any]:
         )
     constraints = _resolve_conflicts(_dedupe_constraints(constraints))
     active = [item for item in constraints if item["status"] == "active"]
-    return {
+    return normalize_constraint_pack({
         "pack_meta": {
             "run_id": _get(state, "run_id") or "",
             "user_id": _get(state, "user_id") or "",
@@ -87,4 +92,4 @@ async def build_planning_constraint_pack(state: Any) -> Dict[str, Any]:
         "constraints": constraints,
         "hard_constraints": [item for item in active if item["type"] == "hard"],
         "soft_preferences": [item for item in active if item["type"] == "soft"],
-    }
+    })

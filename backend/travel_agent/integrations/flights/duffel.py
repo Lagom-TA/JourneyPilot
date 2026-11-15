@@ -87,16 +87,26 @@ def _provider_datetime(value: object, place: Mapping[str, Any]) -> str:
 
 
 def _segment(raw: Mapping[str, Any], index: int) -> dict[str, Any]:
-    carrier = raw.get("operating_carrier") or raw.get("marketing_carrier") or {}
-    carrier_code = str(carrier.get("iata_code") or "").strip()
-    flight_number = str(
-        raw.get("operating_carrier_flight_number")
-        or raw.get("marketing_carrier_flight_number")
-        or ""
-    ).strip()
-    service_number = (
-        f"{carrier_code}{flight_number}" if carrier_code and flight_number else None
-    )
+    carrier: Mapping[str, Any] = {}
+    service_number = None
+    # 共享航班的承运人代码和班号必须来自同一组，缺一不可跨组拼接。
+    for kind in ("operating", "marketing"):
+        candidate = raw.get(f"{kind}_carrier")
+        if not isinstance(candidate, Mapping):
+            continue
+        if not carrier:
+            carrier = candidate
+        code = candidate.get("iata_code")
+        number = raw.get(f"{kind}_carrier_flight_number")
+        if not isinstance(code, str) or not isinstance(number, str):
+            continue
+        code, number = code.strip().upper(), number.strip().upper()
+        if re.fullmatch(r"[A-Z0-9]{2}", code) and re.fullmatch(
+            r"[0-9]{1,4}[A-Z]?", number
+        ):
+            carrier = candidate
+            service_number = f"{code}{number}"
+            break
     return {
         "segment_id": str(raw.get("id") or f"segment_{index}"),
         "mode": "flight",

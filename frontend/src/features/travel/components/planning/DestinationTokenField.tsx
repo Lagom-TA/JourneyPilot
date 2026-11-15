@@ -1,7 +1,8 @@
 import { Check, MapPin, Plus, X } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { createPlaceSearchRunner, type PlaceSearchCandidate } from '../../model/placeSearch';
+import { samePlace } from '../../model/placeSearch';
 import type { PlaceIdentity } from '../../types/planner';
+import { usePlaceSearch } from './usePlaceSearch';
 import { cn } from '../../../../lib/utils';
 import React from 'react';
 
@@ -15,6 +16,7 @@ interface DestinationTokenFieldProps {
   values: Values;
   queries: string[];
   onChange: (values: Values, queries: string[]) => void;
+  active?: boolean;
   className?: string;
   /** 首页规划卡用它把“新增搜索是否展开”同步到外层布局，其他入口可不传。 */
   onAddStateChange?: (state: DestinationAddState) => void;
@@ -49,69 +51,43 @@ function queriesFor(places: PlaceIdentity[], drafts: string[], open: boolean): s
 
 const DestinationSearch: React.FC<{
   query: string;
-  selectedIds: Set<string>;
+  selectedPlaces: PlaceIdentity[];
   inputRef: (node: HTMLInputElement | null) => void;
   onQueryChange: (query: string) => void;
   onSelect: (place: PlaceIdentity) => void;
   onBackspace: () => void;
+  active: boolean;
   ariaLabel?: string;
-}> = ({ query, selectedIds, inputRef, onQueryChange, onSelect, onBackspace, ariaLabel = '新增目的地，搜索城市或区域' }) => {
-  const [candidates, setCandidates] = React.useState<PlaceSearchCandidate[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState('');
-  const [anchor, setAnchor] = React.useState<{ top: number; left: number; width: number } | null>(null);
+}> = ({ query, selectedPlaces, inputRef, onQueryChange, onSelect, onBackspace, active, ariaLabel = '新增目的地，搜索城市或区域' }) => {
+  const [dismissed, setDismissed] = React.useState(false);
+  const [focused, setFocused] = React.useState(false);
+  const [composing, setComposing] = React.useState(false);
+  const { candidates, loading, error, search, cancel } = usePlaceSearch('destination', query, active && focused && !dismissed && !composing);
+  const [anchor, setAnchor] = React.useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null);
   const rootRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
   const localInputRef = React.useRef<HTMLInputElement | null>(null);
   const composingRef = React.useRef(false);
-  const dismissedRef = React.useRef(false);
-  const searchSeqRef = React.useRef(0);
-  const runner = React.useMemo(() => createPlaceSearchRunner('destination'), []);
-
-  React.useEffect(() => () => runner.cancel(), [runner]);
 
   React.useEffect(() => {
-    dismissedRef.current = false;
+    setDismissed(false);
   }, [query]);
 
   const closePanel = React.useCallback(() => {
-    dismissedRef.current = true;
-    searchSeqRef.current += 1;
-    runner.cancel();
-    setCandidates([]);
-    setError('');
-    setLoading(false);
-  }, [runner]);
-
-  const search = React.useCallback(async (raw: string) => {
-    const next = raw.trim();
-    if (next.length < 2 || dismissedRef.current) return;
-    const seq = searchSeqRef.current + 1;
-    searchSeqRef.current = seq;
-    const current = () => seq === searchSeqRef.current && !dismissedRef.current;
-    await runner.run(next, {
-      setLoading: (value) => { if (current()) setLoading(value); },
-      setError: (value) => { if (current()) setError(value); },
-      setCandidates: (value) => { if (current()) setCandidates(value); },
-    });
-  }, [runner]);
+    setDismissed(true);
+    setFocused(false);
+    cancel();
+  }, [cancel]);
+  const wasActive = React.useRef(active);
 
   React.useEffect(() => {
-    const next = query.trim();
-    if (next.length < 2) {
-      runner.cancel();
-      setCandidates([]);
-      setError('');
-      setLoading(false);
-      return;
-    }
-    if (dismissedRef.current) return;
-    const timer = window.setTimeout(() => void search(next), 280);
-    return () => window.clearTimeout(timer);
-  }, [query, search, runner]);
+    if (!active) closePanel();
+    else if (!wasActive.current) setDismissed(false);
+    wasActive.current = active;
+  }, [active, closePanel]);
 
-  const visible = candidates.filter(({ place }) => !selectedIds.has(place.place_id));
-  const open = visible.length > 0 || Boolean(error);
+  const visible = candidates.filter(({ place }) => !selectedPlaces.some((selected) => samePlace(selected, place)));
+  const open = active && focused && !dismissed && !composing && (visible.length > 0 || Boolean(error));
 
   React.useEffect(() => {
     if (!open) return undefined;
@@ -135,7 +111,7 @@ const DestinationSearch: React.FC<{
   }, [closePanel, open]);
 
   React.useEffect(() => {
-    if (!open) return undefined;
+    if (!focused) return undefined;
     const checkHidden = () => {
       const node = rootRef.current;
       if (!node || node.offsetParent === null || getComputedStyle(node).visibility === 'hidden' || node.closest('[aria-hidden="true"]')) {
@@ -144,20 +120,63 @@ const DestinationSearch: React.FC<{
     };
     const timer = window.setInterval(checkHidden, 150);
     return () => window.clearInterval(timer);
-  }, [closePanel, open]);
+  }, [closePanel, focused]);
 
   const updateAnchor = React.useCallback(() => {
-    const field = localInputRef.current?.closest('.destination-search');
-    if (!field) return;
+    const field = rootRef.current;
+    const panel = panelRef.current;
+    if (!field || !panel) return;
     const rect = field.getBoundingClientRect();
-    const width = Math.min(Math.max(rect.width, 280), window.innerWidth - 24);
-    const estimatedHeight = Math.min(280, window.innerHeight - 24);
-    const below = rect.bottom + 6 + estimatedHeight <= window.innerHeight - 12;
-    setAnchor({
-      top: below ? rect.bottom + 6 : Math.max(12, rect.top - estimatedHeight - 6),
-      left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
-      width,
-    });
+    const viewport = window.visualViewport;
+    const leftEdge = viewport?.offsetLeft ?? 0;
+    const topEdge = viewport?.offsetTop ?? 0;
+    const rightEdge = leftEdge + (viewport?.width ?? window.innerWidth);
+    const bottomEdge = topEdge + (viewport?.height ?? window.innerHeight);
+    const margin = 12;
+    const gap = 6;
+    const width = Math.max(0, Math.min(Math.max(rect.width, 280), rightEdge - leftEdge - margin * 2));
+    const left = Math.max(leftEdge + margin, Math.min(rect.left, rightEdge - margin - width));
+
+    let visibleTop = topEdge;
+    let visibleBottom = bottomEdge;
+    let visibleLeft = leftEdge;
+    let visibleRight = rightEdge;
+    for (let parent = field.parentElement; parent; parent = parent.parentElement) {
+      const style = getComputedStyle(parent);
+      if (!/(auto|scroll|hidden|clip)/.test(`${style.overflowX} ${style.overflowY}`)) continue;
+      const bounds = parent.getBoundingClientRect();
+      if (/(auto|scroll|hidden|clip)/.test(style.overflowY)) {
+        visibleTop = Math.max(visibleTop, bounds.top);
+        visibleBottom = Math.min(visibleBottom, bounds.bottom);
+      }
+      if (/(auto|scroll|hidden|clip)/.test(style.overflowX)) {
+        visibleLeft = Math.max(visibleLeft, bounds.left);
+        visibleRight = Math.min(visibleRight, bounds.right);
+      }
+    }
+    if (rect.bottom <= visibleTop || rect.top >= visibleBottom || rect.right <= visibleLeft || rect.left >= visibleRight) {
+      setAnchor(null);
+      return;
+    }
+
+    // 先固定最终宽度，再按未受限内容高度选择方向。
+    if (panel.style.width !== `${width}px`) panel.style.width = `${width}px`;
+    const height = Math.min(280, panel.scrollHeight + panel.offsetHeight - panel.clientHeight);
+    const above = Math.max(0, rect.top - topEdge - margin - gap);
+    const below = Math.max(0, bottomEdge - margin - rect.bottom - gap);
+    const placeBelow = height <= below || (height > above && below >= above);
+    const maxHeight = Math.min(280, placeBelow ? below : above);
+    if (maxHeight < 44) {
+      setAnchor(null);
+      return;
+    }
+    const renderedHeight = Math.min(height, maxHeight);
+    const top = placeBelow ? rect.bottom + gap : rect.top - gap - renderedHeight;
+    setAnchor((current) => (
+      current && current.top === top && current.left === left && current.width === width && current.maxHeight === maxHeight
+        ? current
+        : { top, left, width, maxHeight }
+    ));
   }, []);
 
   React.useLayoutEffect(() => {
@@ -165,27 +184,34 @@ const DestinationSearch: React.FC<{
       setAnchor(null);
       return undefined;
     }
-    updateAnchor();
-    window.addEventListener('resize', updateAnchor);
-    window.addEventListener('scroll', updateAnchor, true);
-    return () => {
-      window.removeEventListener('resize', updateAnchor);
-      window.removeEventListener('scroll', updateAnchor, true);
+    let frame = 0;
+    const update = () => {
+      updateAnchor();
+      frame = window.requestAnimationFrame(update);
     };
-  }, [open, updateAnchor, visible.length, error]);
+    update();
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, updateAnchor]);
 
   const select = (place: PlaceIdentity) => {
-    if (selectedIds.has(place.place_id)) return;
-    dismissedRef.current = true;
-    searchSeqRef.current += 1;
-    runner.cancel();
-    setCandidates([]);
-    setError('');
+    if (selectedPlaces.some((selected) => samePlace(selected, place))) return;
+    closePanel();
     onSelect(place);
   };
 
   return (
-    <div ref={rootRef} className="destination-search" data-testid="destination-search">
+    <div
+      ref={rootRef}
+      className="destination-search"
+      data-testid="destination-search"
+      onBlur={() => {
+        window.setTimeout(() => {
+          const active = document.activeElement;
+          if (rootRef.current?.contains(active) || panelRef.current?.contains(active)) return;
+          closePanel();
+        }, 120);
+      }}
+    >
       <MapPin size={15} className="destination-search-icon" aria-hidden />
       <input
         ref={(node) => {
@@ -194,22 +220,24 @@ const DestinationSearch: React.FC<{
         }}
         value={query}
         onChange={(event) => {
-          dismissedRef.current = false;
+          cancel();
+          setFocused(true);
+          setDismissed(false);
           onQueryChange(event.target.value);
         }}
-        onBlur={() => {
-          window.setTimeout(() => {
-            const active = document.activeElement;
-            if (rootRef.current?.contains(active) || panelRef.current?.contains(active)) return;
-            closePanel();
-          }, 120);
+        onFocus={() => setFocused(true)}
+        onCompositionStart={() => {
+          composingRef.current = true;
+          setComposing(true);
+          cancel();
         }}
-        onCompositionStart={() => { composingRef.current = true; }}
         onCompositionEnd={() => {
           composingRef.current = false;
-          dismissedRef.current = false;
+          setComposing(false);
+          setDismissed(false);
         }}
         onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing || composingRef.current) return;
           if (event.key === 'Escape') {
             event.preventDefault();
             closePanel();
@@ -217,11 +245,11 @@ const DestinationSearch: React.FC<{
           }
           if (event.key === 'Enter') {
             event.preventDefault();
-            dismissedRef.current = false;
-            void search(query);
+            setDismissed(false);
+            search();
             return;
           }
-          if (event.key === 'Backspace' && !query && !event.nativeEvent.isComposing && !composingRef.current) {
+          if (event.key === 'Backspace' && !query) {
             event.preventDefault();
             onBackspace();
           }
@@ -232,12 +260,12 @@ const DestinationSearch: React.FC<{
         autoComplete="off"
       />
       {loading && <span className="destination-search-state" role="status">搜索中…</span>}
-      {open && anchor && createPortal(
+      {open && createPortal(
         <div
           ref={panelRef}
           className="planner-destination-candidates"
           data-testid="destination-candidates"
-          style={{ top: anchor.top, left: anchor.left, width: anchor.width }}
+          style={{ top: anchor?.top ?? 0, left: anchor?.left ?? 0, width: anchor?.width ?? 280, maxHeight: anchor?.maxHeight ?? 280, visibility: anchor ? 'visible' : 'hidden' }}
         >
           {visible.map(({ place }) => (
             <button
@@ -261,7 +289,7 @@ const DestinationSearch: React.FC<{
   );
 };
 
-export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ values, queries, onChange, className, onAddStateChange }) => {
+export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ values, queries, onChange, active = true, className, onAddStateChange }) => {
   const confirmed = React.useMemo(() => confirmedPlaces(values), [values]);
   const confirmedKey = confirmed.map((place) => place.place_id).join(DRAFT_SEPARATOR);
   const [open, setOpen] = React.useState(() => {
@@ -297,10 +325,6 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
   } | null>(null);
   const searchId = React.useId();
   const full = confirmed.length >= MAX_DESTINATIONS;
-  const selectedIds = React.useMemo(
-    () => new Set(confirmed.map((place) => place.place_id)),
-    [confirmed],
-  );
   const addState: DestinationAddState = full
     ? 'limit'
     : confirmed.length === 0
@@ -393,7 +417,7 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
   };
 
   const selectPlace = (place: PlaceIdentity) => {
-    if (full || selectedIds.has(place.place_id)) return;
+    if (full || confirmed.some((selected) => samePlace(selected, place))) return;
     const next = [...confirmed, place];
     if (next.length >= MAX_DESTINATIONS) {
       setOpen(false);
@@ -595,7 +619,8 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
         <div id={searchId} className="destination-base-search">
           <DestinationSearch
             query={draft}
-            selectedIds={selectedIds}
+            active={active}
+            selectedPlaces={confirmed}
             inputRef={(node) => { inputRef.current = node; }}
             onQueryChange={updateDraft}
             onSelect={selectPlace}
@@ -685,7 +710,8 @@ export const DestinationTokenField: React.FC<DestinationTokenFieldProps> = ({ va
             {open ? (
               <DestinationSearch
                 query={draft}
-                selectedIds={selectedIds}
+                active={active}
+                selectedPlaces={confirmed}
                 inputRef={(node) => { inputRef.current = node; }}
                 onQueryChange={updateDraft}
                 onSelect={selectPlace}

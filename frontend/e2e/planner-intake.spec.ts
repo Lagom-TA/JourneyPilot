@@ -98,7 +98,7 @@ async function interceptWorkspaceApi(page: Page, overrides: {
     if (path === '/user/default-origin') return json({ place: null });
     if (path === '/places/search') {
       const query = new URL(route.request().url()).searchParams.get('q') ?? '';
-      const name = ['上海', '青岛'].find(item => query.includes(item)) ?? '青岛';
+      const name = ['上海', '甲地'].find(item => query.includes(item)) ?? '甲地';
       return json({ candidates: [{ place: place(name, `offline:${name}`), confidence: 1, requires_confirmation: true }] });
     }
     if (path === '/presets' || path === '/user/preference-options') return json([]);
@@ -143,6 +143,9 @@ test('提交后立即进入工作台，理解问题在工作台内回答', async
     const decision = harness.chatRequests.at(-1)!.gate_decision;
     expect(decision.answers[0].text).toContain('慢慢逛，留出休息时间');
     expect(decision.answers[0].text).toContain('第二天想睡到自然醒');
+    expect(harness.chatRequests.at(-1)!.messages[0].content).toBe(
+      '助手提问：这次更想慢慢逛，还是把行程排满？\n旅行者回答：慢慢逛，留出休息时间；第二天想睡到自然醒',
+    );
     expect(decision.approval_token).toBe('understanding_gate.approval:e2e-1');
     // 回答后方案在同一工作台出现，理解卡退场，没有首页闪回。
     await expect(page.getByTestId('trip-brief-plan-gate')).toBeVisible();
@@ -216,7 +219,11 @@ test('表单完整身份直接进入方案确认', async ({ page }) => {
     runId: 'trip-form',
     firstChat: () => [
       { type: 'chat_start', session_id: 'form-e2e', run_id: 'trip-form', message_id: 'assistant-1', route_decision: routeDecision },
-      { type: 'approval_gate_raised', run_id: 'trip-form', gate: 'plan', run_status: 'awaiting_input', payload: planGatePayload },
+      { type: 'approval_gate_raised', run_id: 'trip-form', gate: 'plan', run_status: 'awaiting_input', payload: {
+        ...planGatePayload,
+        plan: { steps: [{ step: 1, agents: ['destination_researcher'], tasks: { destination_researcher: '调查甲地适合独游的路线' } }] },
+        plan_text: '从上海出发去甲地，2026-11-05 至 2026-11-07，独自旅行。',
+      } },
       { type: 'chat_complete', run_id: 'trip-form', run_status: 'awaiting_input' },
     ],
   });
@@ -224,9 +231,10 @@ test('表单完整身份直接进入方案确认', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('planner-structured-tab').click();
   await page.getByRole('textbox', { name: '出发地', exact: true }).fill('上海');
-  await page.getByRole('button', { name: '上海 上海，中国', exact: true }).click();
-  await page.getByRole('textbox', { name: '目的地，搜索城市或区域' }).fill('青岛');
-  await page.getByRole('button', { name: '青岛 青岛，中国', exact: true }).click();
+  await page.getByRole('button', { name: /^上海(?:\s|$)/ }).first().click();
+  const destination = page.getByRole('textbox', { name: '目的地，搜索城市或区域', exact: true });
+  await destination.fill('甲地');
+  await page.getByTestId('destination-candidates').getByRole('button').filter({ hasText: '甲地' }).first().click();
   await page.getByTestId('date-range-trigger').click();
   const dialog = page.getByTestId('date-range-dialog');
   await expect(dialog).toBeVisible();
@@ -235,12 +243,25 @@ test('表单完整身份直接进入方案确认', async ({ page }) => {
   await dialog.getByRole('button', { name: /确认日期/ }).click();
   await page.getByRole('button', { name: '开始规划', exact: true }).click();
   await expect(page.getByTestId('journey-workspace')).toBeVisible();
+  await expect.poll(() => harness.chatRequests.length).toBe(1);
+  const pendingPanel = page.getByTestId('generation-journey-panel');
+  await expect(pendingPanel).toBeVisible();
+  await expect(pendingPanel.getByRole('heading', { name: '目的地顺序：甲地' })).toBeVisible();
+  await expect(pendingPanel.getByText(harness.chatRequests[0].messages[0].content, { exact: true })).toBeVisible();
+  await expect(page.locator('.generation-workspace-conversation')).toHaveCount(0);
+  await expect(pendingPanel.getByTestId('boarding-pass-stop')).toBeVisible();
+  await expect(pendingPanel.getByTestId('boarding-pass-stop')).toBeEnabled();
   (page as any)._releaseChat();
   await expect(page.getByTestId('trip-brief-plan-gate')).toBeVisible();
   await expect(page.getByTestId('understanding-questions-card')).toHaveCount(0);
   const body = harness.chatRequests[0];
   expect(body.route).toBe('trip_planning');
-  expect(body.controlled_trip_identity.destinations[0].name).toBe('青岛');
+  expect(body.controlled_trip_identity.origin).toMatchObject({ name: '上海', kind: 'city', country_code: 'CN' });
+  expect(body.controlled_trip_identity.origin.place_id).toBeTruthy();
+  expect(body.controlled_trip_identity.destinations[0]).toMatchObject({ name: '甲地', place_id: 'offline:甲地' });
+  expect(body.controlled_trip_identity.party).toMatchObject({ total: 1, adults: 1, children: 0 });
+  expect(body.controlled_trip_identity.style).toEqual({ primary: '经典均衡', secondary_interests: [], source: 'current' });
+  expect(body.messages[0].content).toContain('风格：经典均衡');
   expect(harness.errors).toEqual([]);
 });
 

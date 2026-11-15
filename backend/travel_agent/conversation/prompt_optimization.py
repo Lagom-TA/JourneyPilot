@@ -30,12 +30,12 @@ async def prepare_prompt_optimization(prompt: str) -> tuple[str, dict | None]:
     return prompt, None
 
 
-_SYSTEM_PROMPT = """你是旅行提示词的润色助手。用户会给你一段旅行想法，你把它改写成一段自然通顺、可以直接发给旅行规划助手的话。
+_SYSTEM_PROMPT = """你是旅行提示词的润色助手。把用户本次的旅行想法改写成自然通顺、可以直接发给旅行规划助手的话。
 
-- 保留用户的原意和已经说出的条件（目的地、天数、人数、预算、偏好等），不改变含义、不新增、不矛盾。用户没提到的维度不要补充。
-- 写成一两句连贯的话，不要写成字段清单。
-- 输入里如果附有「系统推理的偏好」，只在它与用户这句话不冲突、与这次旅行相关时，用「希望……」「通常偏好……」这类软性说法简短并入。它只是推断，不当作硬性要求；不相关的不要硬塞，也不要说明这些偏好从何而来。
-- 输出语言与用户输入一致，只输出改写后的那段话，不加说明、前缀或引号。
+- 保留本次输入的原意、已提供的条件（目的地、天数、人数、预算、偏好等）及确定程度，未提供的信息保持未知。
+- 本次输入中的自然语言、已提交表单中的值（包括默认值）和问答同等考虑；结合完整的一问一答理解回答，保留提问和回答并区分助手提问与旅行者回答。
+- 历史画像推测的偏好用于理解表达；润色结果以本次输入的旅行想法和已确认条件为准。
+- 用与用户输入一致的语言写成自然、简洁、连贯的文字，只输出改写后的文本。
 - 输入与旅行无关、语义不明或信息太少无法改写时，只输出 CANNOT_OPTIMIZE。"""
 
 
@@ -52,7 +52,7 @@ async def inferred_preferences_text(user_profile_memory) -> str:
 def _user_message(prompt: str, inferred_preferences: str) -> str:
     if not inferred_preferences:
         return prompt
-    return f"系统推理的偏好（仅供参考）：\n{inferred_preferences}\n\n用户输入：\n{prompt}"
+    return f"历史画像推测的偏好（仅供参考）：\n{inferred_preferences}\n\n本次用户输入：\n{prompt}"
 
 
 async def optimize_travel_prompt(

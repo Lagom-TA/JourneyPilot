@@ -3,6 +3,13 @@ export const RESEARCH_START_TEXT = '开始调研';
 export function messageText(message?: Pick<Message, 'displayContent' | 'content'> | null): string {
     return (message?.displayContent || message?.content || '').trim();
 }
+const DELIVERY_READY_TEXT = '旅行方案已保存，可以查看完整行程。';
+export function hideDeliveryReadyNotice(message: Message): Message {
+    if (message.role !== 'assistant' || (message.type && message.type !== 'normal') || messageText(message) !== DELIVERY_READY_TEXT
+        || (message.content.trim() && message.content.trim() !== DELIVERY_READY_TEXT))
+        return message;
+    return { ...message, content: '', displayContent: '' };
+}
 export function isResearchStartMessage(message: Message): boolean {
     return message.role === 'user' && messageText(message) === RESEARCH_START_TEXT;
 }

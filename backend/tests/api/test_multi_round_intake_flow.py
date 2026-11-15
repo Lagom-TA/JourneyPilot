@@ -88,7 +88,10 @@ class UnderstandingModel:
         if "研究协调员" in system:
             payload = json.loads(messages[-1]["content"])
             self.plan_request = payload
-            return json.dumps({"summary": "围绕海边与慢节奏安排青岛。"}, ensure_ascii=False)
+            return json.dumps({
+                "summary": "围绕海边与慢节奏安排青岛。",
+                "agent_guidance": "关注青岛海边休闲体验，按旅行者希望慢慢逛的偏好安排节奏。",
+            }, ensure_ascii=False)
         raise AssertionError("多轮理解测试不应调用其他模型路径")
 
 

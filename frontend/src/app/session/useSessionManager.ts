@@ -20,13 +20,13 @@ export function useSessionManager() {
     const { state, dispatch, activeStreamsRef, currentStateRef, sessionRuntimeCacheRef, setPendingFollowups } = useApp();
     const openSessionSeqRef = useRef(0);
     const earlierHistoryInFlightRef = useRef(false);
-    const cacheCurrentRuntimeIfStreaming = useCallback((nextSessionId: string) => {
+    const cacheCurrentRuntimeIfStreaming = useCallback((nextSessionId: string, nextRunId?: string) => {
         const current = currentStateRef.current;
         const currentSessionId = current.currentSessionId;
-        if (currentSessionId === nextSessionId)
-            return;
         const activeStream = findSessionStream(activeStreamsRef.current, currentSessionId, current.conversationEpoch);
-        if (!activeStream)
+        if (!activeStream || current.currentTripRunReadOnly)
+            return;
+        if (currentSessionId === nextSessionId && (!nextRunId || nextRunId === activeStream.runId))
             return;
         sessionRuntimeCacheRef.current.set(currentSessionId ?? pendingStreamCacheKey(activeStream.token), createSessionRuntimeSnapshot(current));
     }, [activeStreamsRef, currentStateRef, sessionRuntimeCacheRef]);
@@ -42,19 +42,26 @@ export function useSessionManager() {
         const currentBeforeOpen = currentStateRef.current;
         const activeStream = findSessionStream(activeStreamsRef.current, sessionId, currentBeforeOpen.conversationEpoch);
         const useLiveStream = Boolean(activeStream && (!requestedRunId || requestedRunId === activeStream.runId));
-        if (useLiveStream && currentBeforeOpen.currentSessionId === sessionId) {
+        if (useLiveStream && currentBeforeOpen.currentSessionId === sessionId
+            && !currentBeforeOpen.currentTripRunReadOnly
+            && (!requestedRunId || currentBeforeOpen.currentTripRunId === requestedRunId)) {
             setLastSession(sessionId);
             return;
         }
-        cacheCurrentRuntimeIfStreaming(sessionId);
+        cacheCurrentRuntimeIfStreaming(sessionId, requestedRunId);
         const cachedRuntime = sessionRuntimeCacheRef.current.get(sessionId);
         if (useLiveStream && cachedRuntime) {
-            currentStateRef.current = {
-                ...currentStateRef.current,
-                ...cachedRuntime,
-                conversationEpoch: currentStateRef.current.conversationEpoch + 1,
-            };
-            dispatch({ type: 'RESTORE_SESSION_RUNTIME', payload: cachedRuntime });
+            const restoreAction = { type: 'RESTORE_SESSION_RUNTIME' as const, payload: cachedRuntime };
+            currentStateRef.current = appReducer(currentStateRef.current, restoreAction);
+            dispatch(restoreAction);
+            setLastSession(sessionId);
+            return;
+        }
+        if (!activeStream && cachedRuntime && (!requestedRunId || requestedRunId === cachedRuntime.currentTripRunId)) {
+            const restoreAction = { type: 'RESTORE_SESSION_RUNTIME' as const, payload: cachedRuntime };
+            sessionRuntimeCacheRef.current.delete(sessionId);
+            currentStateRef.current = appReducer(currentStateRef.current, restoreAction);
+            dispatch(restoreAction);
             setLastSession(sessionId);
             return;
         }
@@ -65,7 +72,7 @@ export function useSessionManager() {
         ]);
         if (seq !== openSessionSeqRef.current)
             return;
-        cacheCurrentRuntimeIfStreaming(sessionId);
+        cacheCurrentRuntimeIfStreaming(sessionId, requestedRunId);
         const latestRun = runListResult?.runs[0] || null;
         const requestedRunIsLatest = Boolean(requestedRunId && latestRun?.run_id === requestedRunId);
         let requestedRunDetail: TripRunDetailResponse | null = null;
@@ -175,6 +182,7 @@ export function useSessionManager() {
             planApprovalGate: restoredPlanGate,
             understandingQuestions: restoredUnderstandingQuestions,
             workspaceActive: Boolean(selectedRun) || messages.length > 0,
+            homeSubmissionPending: null,
             pendingRouteConfirmation: null,
             lastRouteDecision: null,
             controlledTripIdentity: restoredIdentity,
@@ -186,8 +194,11 @@ export function useSessionManager() {
             mobileCanvasOpen: false,
             inputMode: 'normal',
         };
-        cacheCurrentRuntimeIfStreaming(sessionId);
+        cacheCurrentRuntimeIfStreaming(sessionId, requestedRunId);
         const restoreAction = { type: 'RESTORE_SESSION_RUNTIME' as const, payload: restoredRuntime };
+        if (!requestedRunId && !findSessionStream(activeStreamsRef.current, sessionId, currentStateRef.current.conversationEpoch)) {
+            sessionRuntimeCacheRef.current.delete(sessionId);
+        }
         currentStateRef.current = appReducer(currentStateRef.current, restoreAction);
         dispatch(restoreAction);
         if (runPlan.failure) {
@@ -251,6 +262,7 @@ export function useSessionManager() {
     }, [activeStreamsRef, currentStateRef, dispatch, openSession, refreshSessions]);
     const deleteSession = useCallback(async (sessionId: string) => {
         await deleteSessionRequest(sessionId);
+        sessionRuntimeCacheRef.current.delete(sessionId);
         setPendingFollowups(previous => {
             const next = { ...previous };
             delete next[sessionId];
@@ -267,7 +279,7 @@ export function useSessionManager() {
                 setLastSession(null);
             }
         }
-    }, [dispatch, openSession, refreshSessions, setPendingFollowups, state.currentSessionId]);
+    }, [dispatch, openSession, refreshSessions, sessionRuntimeCacheRef, setPendingFollowups, state.currentSessionId]);
     const renameSession = useCallback(async (sessionId: string, nextTitle: string) => {
         const trimmed = nextTitle.trim();
         if (!trimmed)

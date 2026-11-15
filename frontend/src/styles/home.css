@@ -35,9 +35,11 @@
 .app-shell:has(.new-trip-hero) .app-brand img { filter: brightness(0) invert(1); }
 
 .new-trip-hero {
+  position: relative;
   height: 100%;
   min-height: 0;
   overflow-y: auto;
+  overflow-anchor: none;
   overscroll-behavior: contain;
   background: var(--home-forest);
   color: var(--home-cream);
@@ -100,6 +102,37 @@
   --color-accent-soft-rgb: 225 234 214;
   --color-stroke-rgb: 210 216 199;
   box-shadow: 0 18px 40px #061e1630;
+  transition: box-shadow 240ms var(--ease-decelerate);
+}
+
+.new-trip-content .planner-card::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  z-index: 1;
+  padding: 2px;
+  border-radius: calc(var(--radius-micro) + 2px);
+  background: linear-gradient(125deg, #f4d3a3, #c2d19e 32%, #80ac8c 57%, #e5b592 85%, #f5dcae);
+  opacity: 0;
+  pointer-events: none;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  transition: opacity 240ms var(--ease-decelerate);
+}
+
+.new-trip-content .planner-card:focus-within {
+  box-shadow: 0 20px 48px #061e1647, 0 0 0 3px #f0d6ac20, 0 0 30px #e8c69d35, inset 0 1px 0 #ffffffd9;
+}
+.new-trip-content .planner-card:focus-within::before { opacity: 1; }
+
+@keyframes planner-focus-breathe {
+  0%, 100% { opacity: .75; }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .new-trip-content .planner-card:focus-within::before { animation: planner-focus-breathe 4.8s ease-in-out infinite; }
 }
 
 .new-trip-hero ::selection { background: var(--home-yellow); color: var(--home-ink); }
@@ -130,7 +163,7 @@
 .planner-mode-tabs > button[aria-selected='true'] { border-bottom-color: var(--home-orange, var(--color-accent)); color: var(--color-ink); }
 .planner-mode-tabs > button:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 
-.planner-panels { min-width: 0; }
+.planner-panels { min-width: 0; transition: height var(--dur-slow) var(--ease-decelerate); }
 .planner-panel { min-width: 0; padding-top: 16px; }
 .planner-panel[hidden] { display: none; }
 .planner-panel-natural { display: flex; flex-direction: column; }
@@ -227,7 +260,6 @@
 }
 
 .planner-natural-input { position: relative; min-width: 0; }
-.planner-natural-input:focus-within { outline: 1px solid var(--color-accent); outline-offset: 5px; }
 .planner-natural-input textarea {
   display: block;
   width: 100%;
@@ -255,7 +287,7 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
-.planner-action-area { display: flex; flex-wrap: wrap; justify-content: flex-end; margin-top: 10px; }
+.planner-action-area { display: flex; min-height: 48px; flex-wrap: wrap; justify-content: flex-end; margin-top: 10px; }
 .planner-action-area .planner-error { flex-basis: 100%; }
 .planner-home-flow-status {
   display: flex;
@@ -698,9 +730,9 @@
 .atlas-scene-tabs > button[aria-selected='true'] { border-color: #fffdf23d; background: #fffdf20d; color: var(--home-cream); }
 .atlas-scene-tabs > button:focus-visible { outline: 2px solid var(--home-cream); outline-offset: -3px; }
 .atlas-tab-label { position: relative; z-index: 1; }
-.atlas-tab-frost { position: absolute; inset: 0; border-radius: inherit; background: #fffdf242; box-shadow: inset 0 1px 0 #fffdf240; pointer-events: none; }
-.atlas-scene-tabs > button[aria-selected='false'] .atlas-tab-frost { display: none; }
-.atlas-examples { display: grid; align-items: start; justify-items: start; padding-top: 12px; }
+.atlas-tab-progress { position: absolute; inset: 0; border-radius: inherit; background: #fffdf242; box-shadow: inset 0 1px 0 #fffdf240; transform: scaleX(0); transform-origin: left center; pointer-events: none; }
+.atlas-examples { padding-top: 12px; }
+.atlas-paper-group { display: grid; align-items: start; justify-items: start; width: 100%; }
 .atlas-example-card { position: relative; isolation: isolate; display: block; min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--home-ink); text-align: left; cursor: pointer; transition: transform var(--dur-base) var(--ease-decelerate); }
 .atlas-example-card.is-primary { z-index: 2; width: 100%; aspect-ratio: 1480 / 652; transform: rotate(-4deg); }
 .atlas-example-card.is-secondary { z-index: 1; width: 48%; aspect-ratio: 865 / 1426; margin-top: 36px; margin-right: 10px; justify-self: end; transform: rotate(5deg); }
@@ -731,6 +763,19 @@
 .atlas-paper-sparks > i:nth-child(3) { top: 4%; right: 5px; width: 3px; height: 3px; background: var(--home-orange); }
 @keyframes atlas-paper-spark { 0% { opacity: 0; transform: translate(0, 0) scale(.5); } 30% { opacity: .9; } 100% { opacity: 0; transform: translate(7px, -17px) rotate(35deg) scale(.8); } }
 
+.home-place-attribution {
+  position: absolute;
+  right: max(6vw, calc((100vw - 1600px) / 2));
+  bottom: 6px;
+  z-index: 2;
+  color: var(--home-cream);
+  font-size: 11px;
+  line-height: 16px;
+  text-shadow: 0 1px 3px #102c25;
+}
+.home-place-attribution:hover { text-decoration: underline; }
+.home-place-attribution:focus-visible { outline: 2px solid var(--home-cream); outline-offset: 3px; }
+
 @container planner (width < 520px) {
   .planner-route-fields { display: block; }
   .planner-route-fields > div:last-child { margin-top: 14px; }
@@ -751,11 +796,19 @@
   .atlas-example-card:hover .atlas-paper-sparks > i:nth-child(2) { animation-delay: 45ms; }
   .atlas-example-card:hover .atlas-paper-sparks > i:nth-child(3) { animation-delay: 90ms; }
 }
+@media (width >= 1024px) {
+  .new-trip-content .planner-card { padding-block: 18px; }
+  .new-trip-content .planner-panel-structured { padding-top: 14px; }
+  .new-trip-content .planner-condition-fields { gap: 10px 24px; margin-top: 12px; }
+  .new-trip-content .planner-preference-block { margin-top: 8px; }
+  .new-trip-content .planner-action-area { margin-top: 2px; }
+}
 @media (width < 1024px) and (width >= 640px) {
   .new-trip-stage { gap: 24px; grid-template-columns: minmax(0, 1.08fr) minmax(260px, 1fr); padding: 40px 24px; }
   .new-trip-copy h1 { font-size: clamp(44px, 6.7vw, 65px); }
   .planner-card { padding: 20px; }
   .new-trip-content .planner-card { margin-top: 48px; }
+  .home-place-attribution { right: 24px; }
   .travel-atlas { max-width: 380px; }
   .atlas-example-card.is-secondary { width: 52%; margin-top: 32px; margin-right: 5px; }
   .atlas-artwork { object-position: 72% center; }
@@ -778,16 +831,20 @@
   .atlas-tag-moment { font-size: clamp(12px, 3.6cqw, 15px); }
   .atlas-highlights { grid-column: 1 / -1; font-size: 10px; gap: 4px 12px; }
   .atlas-artwork { object-position: 76% center; }
+  .home-place-attribution { right: 22px; }
   .home-landscape::after { background: linear-gradient(180deg, #102c2566, #102c2533 45%, #102c2580); }
 }
 @media (width < 350px) {
   .new-trip-stage { padding-inline: 16px; }
   .planner-card { padding: 16px; }
 }
-@media (width >= 1024px) and (height < 760px) {
-  .new-trip-stage { padding-block: 28px; }
-  .new-trip-copy h1 { font-size: clamp(56px, 6.3vw, 80px); }
-  .new-trip-content .planner-card { margin-top: 44px; }
+@media (width >= 1024px) and (height < 850px) {
+  .new-trip-stage { gap: clamp(24px, 3vw, 48px); padding-block: 16px; }
+  .new-trip-copy h1 { font-size: clamp(56px, 5.5vw, 72px); }
+  .new-trip-content .planner-card { margin-top: 28px; }
+  .travel-atlas { max-width: min(380px, calc((100dvh - 240px) * 1.24)); }
+  .atlas-toolbar { margin-bottom: 20px; }
+  .atlas-example-card.is-secondary { margin-top: 24px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .atlas-example-card, .atlas-paper, .atlas-ticket-arrow, .planner-pending-dot { animation: none; transition: none; }
@@ -795,6 +852,8 @@
 }
 @media (forced-colors: active) {
   .planner-card { border: 1px solid CanvasText; background: Canvas; color: CanvasText; box-shadow: none; }
+  .new-trip-content .planner-card::before { display: none; }
+  .new-trip-content .planner-card:focus-within { outline: 2px solid Highlight; outline-offset: 2px; box-shadow: none; }
   .atlas-example-card { outline: 1px solid CanvasText; color: CanvasText; }
   .atlas-paper { forced-color-adjust: none; }
   .atlas-scene-tabs > button[aria-selected='true'] { border-color: Highlight; }

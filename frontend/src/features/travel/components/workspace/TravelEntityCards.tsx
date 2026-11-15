@@ -56,6 +56,17 @@ function MetaLine({ values }: {
         return null;
     return <p className="break-words text-[11px] leading-5 text-ink-muted">{visible.join(' · ')}</p>;
 }
+export function VisitStopFacts({ stop }: { stop: PublicVisitStop }) {
+    const highlights = stop.visit_highlights.filter((item) => item.trim());
+    return (<div className="journey-place-facts">
+      <MetaLine values={[
+        stop.address,
+        stop.opening_window ? `开放 ${stop.opening_window}` : null,
+        reservationLabel(stop.reservation_required),
+      ]}/>
+      {highlights.length > 0 && <p className="journey-place-highlights">{highlights.join(' · ')}</p>}
+    </div>);
+}
 export function VisitStopCard({ stop }: {
     stop: PublicVisitStop;
 }) {
@@ -75,14 +86,25 @@ export function VisitStopCard({ stop }: {
           <div className="mt-1.5 max-w-[70ch]">
             <MetaLine values={[
             durationLabel(stop.duration_minutes),
-            stop.opening_window ? `开放 ${stop.opening_window}` : null,
-            reservationLabel(stop.reservation_required),
             stop.estimated_cost_cny == null ? null : money.format(stop.estimated_cost_cny),
         ]}/>
-                     </div>
+            <VisitStopFacts stop={stop}/>
+          </div>
         </div>
       </div>
     </article>);
+}
+export function DiningStopFacts({ stop }: { stop: PublicDiningStop }) {
+    return (<div className="journey-place-facts">
+      <MetaLine values={[
+        stop.address,
+        stop.cuisine_types.length ? stop.cuisine_types.join(' · ') : null,
+        reservationLabel(stop.reservation_required),
+        stop.opening_window ? `营业 ${stop.opening_window}` : null,
+      ]}/>
+      {stop.recommended_dishes.length > 0 && <p className="journey-place-highlights">{stop.recommended_dishes.join(' · ')}</p>}
+      {stop.dining_reminders.map((reminder) => <p key={reminder} className="journey-place-highlights">{reminder}</p>)}
+    </div>);
 }
 export function DiningStopCard({ stop }: {
     stop: PublicDiningStop;
@@ -103,17 +125,25 @@ export function DiningStopCard({ stop }: {
           <div className="mt-1.5 max-w-[70ch]">
             <MetaLine values={[
             stop.average_spend_cny == null ? null : `人均 ${money.format(stop.average_spend_cny)}`,
-            stop.cuisine_types.length ? stop.cuisine_types.join(' · ') : null,
-            reservationLabel(stop.reservation_required),
-            stop.opening_window ? `营业 ${stop.opening_window}` : null,
         ]}/>
-            {stop.dining_reminders.map((reminder) => (<p key={reminder} className="mt-1.5 max-w-[70ch] break-words text-xs leading-5 text-ink-secondary">
-                <strong className="font-semibold text-ink">用餐提醒：</strong>{reminder}
-              </p>))}
-                     </div>
+            <DiningStopFacts stop={stop}/>
+          </div>
         </div>
       </div>
     </article>);
+}
+export function LodgingStayFacts({ stay, role }: { stay: PublicLodgingStay; role: 'full' | 'check_in' | 'check_out' }) {
+    return (<div className="journey-place-facts">
+      <MetaLine values={[
+        stay.address,
+        role === 'check_in' ? null : `入住 ${dateLabel(stay.check_in_date)}${stay.check_in_time ? ` ${stay.check_in_time}` : ''}`,
+        role === 'check_out' ? null : `退房 ${dateLabel(stay.check_out_date)}${stay.check_out_time ? ` ${stay.check_out_time}` : ''}`,
+        `${stay.nights} 晚`,
+        stay.room_type,
+        stay.total_price_cny == null ? null : lodgingPriceLabel(stay.price_kind, 'total', stay.total_price_cny),
+      ]}/>
+      {stay.selection_reason && <p className="journey-place-highlights">{stay.selection_reason}</p>}
+    </div>);
 }
 export function LodgingStayCard({ stay }: {
     stay: PublicLodgingStay;
@@ -143,7 +173,7 @@ export function LodgingStayCard({ stay }: {
             stay.nightly_price_cny == null ? null : lodgingPriceLabel(stay.price_kind, 'nightly', stay.nightly_price_cny),
             stay.total_price_cny == null ? null : lodgingPriceLabel(stay.price_kind, 'total', stay.total_price_cny),
         ]}/>
-        <p className="mt-1 break-words text-xs leading-5 text-ink-secondary"><strong className="font-semibold text-ink">选择理由：</strong>{stay.selection_reason}</p>
+        {stay.selection_reason && <p className="mt-1 break-words text-xs leading-5 text-ink-secondary"><strong className="font-semibold text-ink">选择理由：</strong>{stay.selection_reason}</p>}
              </div>
     </article>);
 }

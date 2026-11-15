@@ -110,12 +110,12 @@ def _merge_amendment_rejections(
 def _merge_reference_services(
     a: List["ProviderReferenceService"], b: List["ProviderReferenceService"]
 ) -> List["ProviderReferenceService"]:
-    """按行程和请求日期合并参考班次；空列表清除当前结果。"""
+    """按区间和请求日期合并参考班次；空列表清除当前结果。"""
     if not b:
         return []
     merged: Dict[Any, "ProviderReferenceService"] = {}
     for item in [*(a or []), *(b or [])]:
-        merged[(item.leg_role, item.requested_date)] = item
+        merged[(item.leg_role, item.from_name, item.to_name, item.requested_date)] = item
     return list(merged.values())
 
 
@@ -188,6 +188,8 @@ class TravelAgentState(BaseModel):
     run_id: str = ""
 
     controlled_trip_identity: Dict[str, Any] = Field(default_factory=dict)
+    # 保留本次提交值的来源，当前旅行理解仍以 controlled_trip_identity 为准。
+    submitted_trip_identity: Optional[Dict[str, Any]] = None
     route_decision: Dict[str, Any] = Field(default_factory=dict)
     refinement_action: str = ""
     refinement_context: str = ""
@@ -272,6 +274,8 @@ class TravelAgentState(BaseModel):
     composition_reschedule_rounds: int = Field(default=0, ge=0)
 
     placement_skeleton: Optional[ItineraryCompositionDraft] = None
+    # 重排尚未完成时用于确定性收口，避免超时丢失已完成的其他日期。
+    composition_fallback_skeleton: Optional[ItineraryCompositionDraft] = None
     composition_mutations: Annotated[
         List[CompositionMutation], _merge_composition_mutations
     ] = Field(default_factory=list)

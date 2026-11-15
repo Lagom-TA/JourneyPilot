@@ -5,6 +5,7 @@ import { PageShell, type SurfaceState } from '../../../components/ui/PageShell';
 import { useApp } from '../../../app/state/AppContext';
 import { useSessionManager } from '../../../app/session/useSessionManager';
 import { useStartNewTrip } from '../../../app/session/useStartNewTrip';
+import { type SessionRuntimeSnapshot } from '../../../app/session/runtimeSnapshot';
 import { listTripRuns } from '../api/runs';
 import { type TripRunResponse, type TripRunStatus } from '../types/runs';
 import { type ChatSession } from '../../chat/types/messages';
@@ -16,11 +17,11 @@ const STATUS_LABELS: Record<TripRunStatus, string> = {
   failed: '生成失败', interrupted: '已中断', cancel_requested: '正在停止', cancelled: '已取消',
 };
 
-function openLabel(run: TripRunResponse | undefined): string {
-  if (!run) return '查看对话';
-  if (run.status === 'completed') return '查看行程';
-  if (run.status === 'awaiting_input') return '继续规划';
-  if (['created', 'running', 'cancel_requested'].includes(run.status)) return '查看进度';
+function openLabel(status: TripRunStatus | null): string {
+  if (!status) return '查看对话';
+  if (status === 'completed') return '查看行程';
+  if (status === 'awaiting_input') return '继续规划';
+  if (['created', 'running', 'cancel_requested'].includes(status)) return '查看进度';
   return '查看记录';
 }
 
@@ -28,6 +29,7 @@ interface TripGroup {
   session: ChatSession | null;
   sessionId: string;
   runs: TripRunResponse[];
+  liveRuntime: SessionRuntimeSnapshot | null;
 }
 
 function formatDateTime(value: string): string {
@@ -37,42 +39,71 @@ function formatDateTime(value: string): string {
 }
 
 export const MyTripsPage: React.FC = () => {
-  const { state, dispatch } = useApp();
-  const { openSession } = useSessionManager();
+  const { state, dispatch, activeStreamsRef, sessionRuntimeCacheRef } = useApp();
+  const { openSession, refreshSessions } = useSessionManager();
   const startNewTrip = useStartNewTrip();
   const [runs, setRuns] = React.useState<TripRunResponse[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<RequestFailure | null>(null);
   const [query, setQuery] = React.useState('');
+  const loadSequenceRef = React.useRef(0);
 
-  const loadRuns = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadRuns = React.useCallback(async (background = false) => {
+    const sequence = ++loadSequenceRef.current;
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
-      setRuns((await listTripRuns({ mode: 'deep', limit: 80 })).runs);
+      const result = await listTripRuns({ mode: 'deep', limit: 80 });
+      if (sequence !== loadSequenceRef.current) return;
+      setRuns(result.runs);
+      setError(null);
+      setLoading(false);
     } catch (err) {
-      setError(describeRequestFailure(err, '读取', '旅行记录'));
-    } finally { setLoading(false); }
+      if (sequence !== loadSequenceRef.current) return;
+      if (!background) setError(describeRequestFailure(err, '读取', '旅行记录'));
+      setLoading(false);
+    }
   }, []);
-  React.useEffect(() => { void loadRuns(); }, [loadRuns]);
+  React.useEffect(() => {
+    void loadRuns();
+    void refreshSessions().catch(() => {});
+    const timer = window.setInterval(() => void loadRuns(true), 3000);
+    return () => { window.clearInterval(timer); loadSequenceRef.current += 1; };
+  }, [loadRuns, refreshSessions]);
 
-  const groups = React.useMemo<TripGroup[]>(() => {
-    const bySession = new Map<string, TripRunResponse[]>();
-    for (const run of runs) bySession.set(run.session_id, [...(bySession.get(run.session_id) ?? []), run]);
-    const ids = new Set([...bySession.keys(), ...state.sessions.map(session => session.id)]);
-    return [...ids].map(sessionId => ({
-      sessionId,
-      session: state.sessions.find(session => session.id === sessionId) ?? null,
-      runs: bySession.get(sessionId) ?? [],
-    })).sort((a, b) => {
-      const updated = (group: TripGroup) => group.session?.updatedAt.toISOString() ?? group.runs[0]?.updated_at ?? '';
-      return updated(b).localeCompare(updated(a));
-    });
-  }, [runs, state.sessions]);
-  const visibleGroups = React.useMemo(() => {
-    const keyword = query.trim().toLocaleLowerCase('zh-CN');
-    return keyword ? groups.filter(group => `${group.runs[0]?.title ?? ''} ${group.session?.title ?? ''}`.toLocaleLowerCase('zh-CN').includes(keyword)) : groups;
-  }, [groups, query]);
+  const liveRuntimes = new Map<string, SessionRuntimeSnapshot>();
+  for (const stream of activeStreamsRef.current.values()) {
+    const sessionId = stream.sessionId;
+    if (!sessionId) continue;
+    const runtime = state.currentSessionId === sessionId && !state.currentTripRunReadOnly
+      && (!stream.runId || !state.currentTripRunId || stream.runId === state.currentTripRunId)
+      ? state : sessionRuntimeCacheRef.current.get(sessionId);
+    if (runtime?.currentTripRunId && runtime.currentTripRunStatus) liveRuntimes.set(sessionId, runtime);
+  }
+  for (const [sessionId, runtime] of sessionRuntimeCacheRef.current) {
+    if ((state.currentSessionId !== sessionId || state.currentTripRunReadOnly)
+      && runtime.currentSessionId === sessionId && runtime.currentTripRunId && runtime.currentTripRunStatus
+      && !liveRuntimes.has(sessionId)) liveRuntimes.set(sessionId, runtime);
+  }
+  if (state.currentSessionId && !state.currentTripRunReadOnly && state.currentTripRunId && state.currentTripRunStatus) {
+    liveRuntimes.set(state.currentSessionId, state);
+  }
+  const bySession = new Map<string, TripRunResponse[]>();
+  for (const run of runs) bySession.set(run.session_id, [...(bySession.get(run.session_id) ?? []), run]);
+  const ids = new Set([...bySession.keys(), ...state.sessions.map(session => session.id), ...liveRuntimes.keys()]);
+  const groups: TripGroup[] = [...ids].map(sessionId => ({
+    sessionId,
+    session: state.sessions.find(session => session.id === sessionId) ?? null,
+    runs: bySession.get(sessionId) ?? [],
+    liveRuntime: liveRuntimes.get(sessionId) ?? null,
+  })).sort((a, b) => {
+    const updated = (group: TripGroup) => group.session?.updatedAt.toISOString() ?? group.runs[0]?.updated_at ?? '';
+    return updated(b).localeCompare(updated(a));
+  });
+  const keyword = query.trim().toLocaleLowerCase('zh-CN');
+  const visibleGroups = keyword ? groups.filter(group => `${group.runs[0]?.title ?? ''} ${group.session?.title ?? ''}`.toLocaleLowerCase('zh-CN').includes(keyword)) : groups;
 
   const openRun = (sessionId: string, runId?: string) => {
     const url = new URL(window.location.href);
@@ -82,7 +113,10 @@ export const MyTripsPage: React.FC = () => {
     else url.searchParams.delete('run_id');
     window.history.pushState(null, '', `${url.pathname}${url.search}${url.hash}`);
     dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'chat' });
-    void openSession(sessionId, runId);
+    if (state.currentSessionId !== sessionId || state.currentTripRunReadOnly
+      || (runId && state.currentTripRunId !== runId)) {
+      void openSession(sessionId, runId);
+    }
   };
   const surfaceState: SurfaceState = loading ? { kind: 'loading' } : error
     ? { kind: 'error', title: '暂时读不到旅行记录', failure: error, onRetry: () => void loadRuns() }
@@ -98,19 +132,22 @@ export const MyTripsPage: React.FC = () => {
     </div> : <div className="my-trips-list">
       {visibleGroups.map(group => {
         const latest = group.runs[0];
-        const rawTitle = latest?.title?.trim() || group.session?.title?.trim() || '未命名旅行';
+        const status = group.liveRuntime?.currentTripRunStatus ?? latest?.status ?? null;
+        const liveMessage = group.liveRuntime?.currentMessages.find(message => message.role === 'user');
+        const rawTitle = latest?.title?.trim() || group.session?.title?.trim() || liveMessage?.displayContent.trim() || '未命名旅行';
         const title = parseSessionTitle(rawTitle);
         return <article className="my-trip-card" key={group.sessionId} data-testid={`trip-card-${group.sessionId}`}>
           <div className="my-trip-title-line">
             <h2><button type="button" onClick={() => openRun(group.sessionId)}>{title.kind === 'trip' ? title.destination : title.text}</button></h2>
-            <span className={`my-trip-status${latest?.status === 'completed' ? ' is-complete' : ''}`}>{latest ? STATUS_LABELS[latest.status] : '旅行问答'}</span>
+            <span className={`my-trip-status${status === 'completed' ? ' is-complete' : ''}`}>{status ? STATUS_LABELS[status] : '旅行问答'}</span>
           </div>
           <div className="my-trip-meta">
             {title.kind === 'trip' && title.origin && <span>{title.origin}出发</span>}
             {title.kind === 'trip' && title.dates && <span>{title.dates}</span>}
-            <span>更新于 {formatDateTime(group.session?.updatedAt.toISOString() ?? latest?.updated_at ?? '')}</span>
+            {(group.session || latest) && <span>更新于 {formatDateTime(group.session?.updatedAt.toISOString() ?? latest?.updated_at ?? '')}</span>}
           </div>
-          <div className="my-trip-actions"><button type="button" className="archive-link" onClick={() => openRun(group.sessionId)}>{openLabel(latest)}<ArrowRight size={15} /></button></div>
+          {(status === 'created' || status === 'running') && <p className="my-trip-progress" role="status">正在规划，切换页面不会停止；可随时回来查看进度。</p>}
+          <div className="my-trip-actions"><button type="button" className="archive-link" onClick={() => openRun(group.sessionId)}>{openLabel(status)}<ArrowRight size={15} /></button></div>
           {group.runs.length > 1 && <details className="my-trip-history">
             <summary>{group.runs.length} 次生成记录</summary>
             <ol>{group.runs.map((run, index) => <li key={run.run_id}>

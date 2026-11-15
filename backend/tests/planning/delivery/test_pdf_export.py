@@ -84,7 +84,9 @@ def test_pdf_contains_trip_content_without_noise_sections():
         day=1, date=date(2026, 10, 26), destination_id="city",
         destination_name="目的地", theme="待安排", blocks=[],
     )]
-    bundle.report_projection.document.unresolved = ["缺少可核实的交通安排"]
+    bundle.report_projection.document.unresolved = [
+        "缺少可核实的交通安排", "入住日期为规划假设。", "出行前核对开放时间和票价。"
+    ]
     try:
         artifact = render_trip_report_pdf(
             bundle,
@@ -101,6 +103,8 @@ def test_pdf_contains_trip_content_without_noise_sections():
     assert "已列费用约 ¥100" not in text
     assert "当日尚未安排" in text
     assert "缺少可核实的交通安排" in text
+    assert "入住日期为规划假设" not in text
+    assert "出行前核对开放时间和票价" not in text
     assert "其它合格选择" not in text
     assert "出发前事项" not in text
     assert "数据说明" not in text
@@ -128,6 +132,21 @@ def test_pdf_places_each_citation_next_to_the_supported_field():
     assert "博物馆</b><super>[1]</super>" in text
     assert "开放：09:00–17:00<super>[2]</super>" in text
     assert "¥80" in text
+
+
+def test_pdf_marks_nested_flight_number_citations():
+    block = SimpleNamespace(
+        entity_ref=EntityRef(entity_type=EntityType.TRANSPORT_LEG, entity_id="leg"),
+        entity_kind="transport", title="飞机 · 广州 → 海口", summary="广州 → 海口",
+        citation_ids=["flight"],
+        details={"time_label": "09:00", "duration_label": "1 小时", "price_label": "",
+                 "facts": [], "notes": [], "segment_lines": ["CZ1234 广州 → 海口"]},
+    )
+    citations = {"flight": SimpleNamespace(field_paths=["segments[0].service_number"])}
+    normal = getSampleStyleSheet()["Normal"]
+    basis = SimpleNamespace(stated_basis_for=lambda *_: None)
+    row = _timeline_row(block, {"flight": 1}, citations, {"timeline_time": normal, "timeline_title": normal}, basis)
+    assert "CZ1234 广州 → 海口<super>[1]</super>" in row._cellvalues[0][1].text
 
 
 def test_pdf_groups_identical_sources_and_cleans_provider_machine_prefixes():
@@ -180,13 +199,13 @@ def test_pdf_groups_identical_sources_and_cleans_provider_machine_prefixes():
     assert public_fact_field_label("opening_window") == "开放时间"
 
 
-def test_pdf_keeps_distinct_sources_and_snapshots_with_identical_display_text():
+def test_pdf_keeps_distinct_sources_and_deduplicates_same_record():
     base = dict(
         source_record_id="route_1",
         source_kind="external_tool",
         provider_name="路线查询",
-        title="路线查询结果",
-        public_excerpt="路线查询结果",
+        title="当地交通局路线资料",
+        public_excerpt="公交路线及运营安排",
         canonical_url=None,
         retrieved_at=datetime(2026, 11, 4, 3, 55, tzinfo=timezone.utc),
         observed_at=None,
@@ -213,10 +232,37 @@ def test_pdf_keeps_distinct_sources_and_snapshots_with_identical_display_text():
 
     numbers, entries = _build_pdf_sources(citations)
 
-    assert numbers == {"c1": [1, 2, 3], "c2": 2}
+    assert numbers == {"c1": [1, 2], "c2": 2}
     assert [entry["source"].retrieved_at for entry in entries] == [
-        source.retrieved_at for source in sources
+        source.retrieved_at for source in sources[:2]
     ]
+
+
+def test_pdf_does_not_number_generic_sources_without_meaningful_content():
+    source = SimpleNamespace(
+        source_record_id="flight-search", source_kind="external_tool",
+        title="航班查询结果", public_excerpt="找到 1 条结果", canonical_url=None,
+    )
+    citation = SimpleNamespace(
+        citation_id="flight", entity_ref=EntityRef(
+            entity_type=EntityType.TRANSPORT_LEG, entity_id="leg"
+        ), sources=[source],
+    )
+
+    assert _build_pdf_sources([citation]) == ({}, [])
+    bundle = _bundle()
+    bundle.report_projection.citations = [citation]
+    try:
+        artifact = render_trip_report_pdf(
+            bundle, exported_at=datetime(2026, 11, 4, tzinfo=timezone.utc)
+        )
+    except PdfFontUnavailable as exc:
+        if os.getenv("JOURNEY_PDF_FONT_REQUIRED") == "1":
+            pytest.fail(f"no embeddable CJK font for PDF export: {exc}")
+        pytest.skip(f"no embeddable CJK font for PDF export: {exc}")
+    text = "\n".join(page.extract_text() or "" for page in PdfReader(BytesIO(artifact.content)).pages)
+    assert "航班查询结果" not in text
+    assert "参考资料" not in text
 
 
 def test_rendered_pdf_includes_distinct_sources_and_retrieval_times():
@@ -228,7 +274,7 @@ def test_rendered_pdf_includes_distinct_sources_and_retrieval_times():
     sources = [
         SimpleNamespace(
             source_record_id=f"route_{index}", source_kind="external_tool",
-            provider_name="路线查询", title="路线查询结果", public_excerpt="路线查询结果",
+            provider_name="路线查询", title="当地交通局路线资料", public_excerpt="公交路线及运营安排",
             canonical_url=None, retrieved_at=timestamp, observed_at=None,
             content_hash="hash", rag_chunk_content=None,
         )

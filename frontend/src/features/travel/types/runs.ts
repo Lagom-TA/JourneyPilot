@@ -39,13 +39,25 @@ export function tripRunRecoveryFromDetail(detail: {
     execution: TripRunExecutionResponse | null;
     available_actions: string[];
 } | null): TripRunRecovery | null {
-    if (!detail?.execution)
+    if (!detail || (!detail.execution && !detail.available_actions.includes('resume')))
         return null;
+    // available_actions 是服务端的动作授权；即使没有执行租约记录，也要保留 resume。
     return {
-        status: detail.execution.status,
-        reason: detail.execution.recovery_reason,
+        status: detail.execution?.status ?? 'idle',
+        reason: detail.execution?.recovery_reason ?? null,
         resumable: detail.available_actions.includes('resume'),
     };
+}
+export function isTripRunResumeAvailable(input: {
+    status: TripRunStatus | null;
+    recovery: TripRunRecovery | null;
+    readOnly: boolean;
+    isStreaming: boolean;
+}): boolean {
+    return !input.readOnly
+        && !input.isStreaming
+        && (input.status === 'failed' || input.status === 'interrupted')
+        && input.recovery?.resumable === true;
 }
 export interface TripRunControlRequest {
     action: 'cancel';

@@ -169,7 +169,10 @@ class SupplyModel:
                 return "无效数据"
             return json.dumps({"candidates": self._supply[worker], "source_records": [], "fact_assertions": [], "field_provenance": []}, ensure_ascii=False)
         if "研究协调员" in system:
-            return json.dumps({"summary": "围绕文化与慢节奏安排行程。"}, ensure_ascii=False)
+            return json.dumps({
+                "summary": "围绕文化与慢节奏安排行程。",
+                "agent_guidance": "关注博物馆和街区漫步等文化体验，安排时保持慢节奏。",
+            }, ensure_ascii=False)
         if "旅行规划师" in system:
             self.composition_request = "\n".join(str(m.get("content", "")) for m in messages)
             return json.dumps(self._itinerary, ensure_ascii=False)

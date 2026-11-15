@@ -72,6 +72,9 @@ test('saves the origin through the API and keeps partial resource failures disti
   const f = await fixture(page);
   f.controls.memoryFailure = true;
   await open(page, 'user-preferences');
+  const attribution = page.getByRole('link', { name: '地点数据 © OpenStreetMap contributors' });
+  await expect(attribution).toBeVisible();
+  await expect(attribution).toHaveAttribute('href', 'https://www.openstreetmap.org/copyright');
   await expect(page.getByTestId('request-failure-notice')).toBeVisible();
   await expect(page.getByText('还没有旅行记忆。', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: '保存出发地', exact: true }).click();

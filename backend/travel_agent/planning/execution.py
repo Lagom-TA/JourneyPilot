@@ -85,15 +85,56 @@ def _is_research_redo_round(node_name: str, state: Any) -> bool:
         return False
 
 
+def _has_valid_placement_skeleton(state: Any) -> bool:
+    """判断关闭组合窗口后是否有资格做无外部调用的确定性物化。"""
+    fallback = getattr(state, "composition_fallback_skeleton", None)
+    has_failure = getattr(state, "composition_failure_context", None) is not None
+    skeleton = fallback if fallback is not None and has_failure else getattr(state, "placement_skeleton", None)
+    generation = getattr(state, "planning_generation", None)
+    catalog = getattr(state, "recommendation_catalog", None)
+    if skeleton is None or generation is None or catalog is None:
+        return False
+    if getattr(state, "trip_workspace", None) is not None:
+        return False
+    if fallback is None and getattr(state, "composition_failure_context", None) is not None:
+        return False
+    return (
+        catalog.generation_id == generation.generation_id
+        and catalog.fact_data_revision == getattr(state, "fact_data_revision", None)
+        and all(
+            not placement.candidate_id or placement.candidate_id in catalog.candidate_index()
+            for day in skeleton.days
+            for placement in day.placements
+        )
+        and all(
+            not candidate_id or candidate_id in catalog.candidate_index()
+            for candidate_id in skeleton.lodging_candidate_ids
+        )
+    )
+
+
 def _worker_window_closed(
     node_name: str,
     observation: DeadlineObservation,
     *,
     model_window: ModelWindow,
+    state: Any = None,
 ) -> bool:
     """判断 ``node_name`` 所属的模型调用窗口是否已关闭。"""
 
     if model_window == "composition":
+        if (
+            node_name in _COMPOSITION_WORKER_NODES
+            and not observation.composition_closed
+        ):
+            return False
+        if (
+            node_name in _COMPOSITION_WORKER_NODES
+            and observation.composition_closed
+            and observation.phase != "expired"
+            and _has_valid_placement_skeleton(state)
+        ):
+            return False
         return observation.composition_closed
     return observation.research_closed
 
@@ -308,6 +349,7 @@ def with_run_control(node_name: str, fn: NodeFn) -> Callable[..., Awaitable[Any]
                             node_name,
                             observation,
                             model_window=model_window,
+                            state=state,
                         )
                     ):
                         # 返研状态按当前任务轮次记录，供 dispatcher 汇合和重试。

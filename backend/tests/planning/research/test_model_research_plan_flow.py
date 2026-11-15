@@ -50,7 +50,10 @@ class OfflineModel:
             self.plan_instructions.append(system)
             changed = "园林" in payload["整理后的旅行要求"]
             interest = "园林" if changed else "博物馆"
-            return json.dumps({"summary": f"围绕{interest}与慢节奏安排杭州，每天最多两个景点。"}, ensure_ascii=False)
+            return json.dumps({
+                "summary": f"- 围绕{interest}安排杭州慢游。\n- 每天少安排景点，留出休息时间。",
+                "agent_guidance": f"研究{interest}与适合慢游的安排，每天最多两个景点，返程不跨日。",
+            }, ensure_ascii=False)
         if "旅行规划师" in system:
             self.composition_request = "\n".join(str(message.get("content", "")) for message in messages)
             return json.dumps({
@@ -215,8 +218,10 @@ async def test_confirmed_idea_and_travel_understanding_reach_research_and_delive
     assert model.plan_instructions[0] == model.plan_instructions[1]
     requirements = model.plan_requests[-1]["整理后的旅行要求"]
     assert all(text in requirements for text in ("喜欢园林", "返程不要跨日", "步行少一些", "每天最多两个景点", "使用火车"))
-    assert gate["plan_text"] == "围绕园林与慢节奏安排杭州，每天最多两个景点。"
-    assert first_gate["plan_text"] == "围绕博物馆与慢节奏安排杭州，每天最多两个景点。"
+    assert gate["plan_text"] == "- 围绕园林安排杭州慢游。\n- 每天少安排景点，留出休息时间。"
+    assert first_gate["plan_text"] == "- 围绕博物馆安排杭州慢游。\n- 每天少安排景点，留出休息时间。"
+    guidance = "研究园林与适合慢游的安排，每天最多两个景点，返程不跨日。"
+    assert guidance not in json.dumps(gate, ensure_ascii=False)
     workers = (
         "destination_researcher",
         "transport_researcher",
@@ -228,7 +233,8 @@ async def test_confirmed_idea_and_travel_understanding_reach_research_and_delive
     ]
     for worker in workers:
         assert any(step["tasks"].get(worker) == gate["plan_text"] for step in gate["plan"]["steps"])
-        assert model.worker_requests[worker].count(gate["plan_text"]) == 1
+        assert model.worker_requests[worker].count(guidance) == 1
+        assert gate["plan_text"] not in model.worker_requests[worker]
         assert requirements in model.worker_requests[worker]
     assert calls == ["杭州园林实际检索"]
     assert "每天最多两个景点" in model.worker_requests["destination_researcher"]
@@ -240,7 +246,8 @@ async def test_confirmed_idea_and_travel_understanding_reach_research_and_delive
     assert budget.peek_ledger("offline-flow").tool_calls == 1
     assert requirements in model.composition_request
     assert gate["plan"]["steps"][2]["tasks"]["itinerary_planner"] == gate["plan_text"]
-    assert model.composition_request.count(gate["plan_text"]) == 1
+    assert model.composition_request.count(guidance) == 1
+    assert gate["plan_text"] not in model.composition_request
     assert result["recommendation_catalog"].generation_id == result["planning_generation"].generation_id
     candidate = result["recommendation_catalog"].candidate_index()["garden_candidate"]
     assert candidate.place_id == "garden_place" and candidate.fact_assertion_ids

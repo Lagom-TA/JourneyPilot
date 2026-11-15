@@ -13,12 +13,15 @@ interface OverlayDismissOptions {
   panelRef?: React.RefObject<HTMLElement>;
   /* 模态浮层：Tab/Shift+Tab 在面板内循环。 */
   trapFocus?: boolean;
+  restoreFocus?: boolean;
 }
 
-export function useOverlayDismiss({ open, onDismiss, panelRef, trapFocus = false }: OverlayDismissOptions): void {
+export function useOverlayDismiss({ open, onDismiss, panelRef, trapFocus = false, restoreFocus = true }: OverlayDismissOptions): void {
   // 回调使用 ref，避免渲染时重挂 effect 改变嵌套浮层栈序。
   const onDismissRef = useRef(onDismiss);
   onDismissRef.current = onDismiss;
+  const restoreFocusRef = useRef(restoreFocus);
+  restoreFocusRef.current = restoreFocus;
 
   useEffect(() => {
     if (!open) return undefined;
@@ -68,12 +71,12 @@ export function useOverlayDismiss({ open, onDismiss, panelRef, trapFocus = false
       });
       return () => {
         cancelAnimationFrame(frame);
-        if (opener && document.contains(opener)) opener.focus();
+        if (restoreFocusRef.current && opener && document.contains(opener)) opener.focus();
       };
     }
 
     return () => {
-      if (opener && document.contains(opener)) opener.focus();
+      if (restoreFocusRef.current && opener && document.contains(opener)) opener.focus();
     };
   }, [open, panelRef]);
 }

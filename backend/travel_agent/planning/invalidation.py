@@ -35,6 +35,7 @@ def invalidation_update() -> Dict[str, Any]:
         "weather_impacts": {},
         "provider_reference_services": [],
         "placement_skeleton": None,
+        "composition_fallback_skeleton": None,
         "composition_mutations": [],
         "trip_workspace": None,
         "composition_failure_context": None,

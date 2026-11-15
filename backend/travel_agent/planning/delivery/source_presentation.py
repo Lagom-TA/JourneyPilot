@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from travel_agent.planning.research.evidence import SourceRecord
 from typing import Any
+from typing import Iterable
 from typing import Mapping
+from urllib.parse import urlsplit
 import json
 import re
+import unicodedata
 
 
 _PAYLOAD_RESULT_KEYS = ("results", "content")
@@ -271,3 +274,151 @@ def _public_source_presentation(source: SourceRecord) -> tuple[str, str, str | N
         excerpt = rendered or "已核对外部结果。"
     excerpt = clean_public_source_excerpt(excerpt)
     return title, excerpt, _web_openable_url(canonical_url)
+
+
+_GENERIC_DISPLAY_TITLE_RE = re.compile(
+    r"^(?:(?:航班|航线|机票|车次|中转车次|车站代码|地点|周边|位置|地图|路线|路径|"
+    r"驾车路线|步行路线|公共交通路线|公交路线|交通路线|天气|网页|网络|资料库|酒店|"
+    r"住宿|景点|餐厅|工具|数据|信息|交通)?(?:查询|搜索|检索|定位)(?:结果|记录|信息|数据|摘要)?|"
+    r"地点资料(?:[：:].*)?|交通路线(?:[：:].*)?|天气参考|备用来源记录|外部来源|资料来源|"
+    r"参考资料|来源|未知来源|无标题|已取到结果|没有匹配的结果|未取到结果|无结果|"
+    r"[a-z0-9_:-]+\s+查询结果|unknown|untitled)$",
+    re.IGNORECASE,
+)
+_TOOL_RESULT_SUMMARY_RE = re.compile(
+    r"^(?:找到\s*\d+\s*(?:个结果|条结果|条网页|个地点|条路线)|"
+    r"读到\s*\d+\s*段资料库资料|已核对\s*(?:\d+\s*条)?外部结果|已取到结果|"
+    r"没有匹配的结果|未取到结果|无结果)(?:[：:。.!！…\s]|$)"
+)
+_TOOL_ROUTE_SUMMARY_RE = re.compile(
+    r"^(?:步行|骑行|自驾|公交|地铁|有轨电车|火车|高铁|长途巴士|轮渡)?\s*·?\s*"
+    r".+?\s*[→➜]\s*.+?(?:\s*·\s*约?\s*\d+\s*分钟)?$"
+)
+_SOURCE_CONTENT_MARKER_RE = re.compile(
+    r"公告|通知|须知|规定|政策|指南|官网|官方网站|官方信息|提醒|说明|报告|票务|官方|建议|"
+    r"提示|开放|闭馆|预售|发售|维修|维护|暂停|关闭|停运|延期|延误|调整|取消|更新|变更|恢复|"
+    r"查询|发布|article|notice|guide|official|policy|report|advisory|update",
+    re.IGNORECASE,
+)
+_GENERATED_PLACE_TITLE_RE = re.compile(r"^地点资料[：:]")
+_PLACE_ADDRESS_RE = re.compile(
+    r"^(?:地址[：:]\s*)?[^，,；;。.!！\n]{1,80}(?:省|市|区|县|街道|街|路|号|镇|乡|村|大厦|广场|园区)$"
+)
+_ENTITY_FACT_PREFIX_RE = re.compile(
+    r"^(?:名称|餐厅名称|住宿名称|地址|地点|出发站点|到达站点|出发时间|抵达时间|出发|抵达|"
+    r"耗时|距离|换乘|交通方式|开放时间|营业时间|费用|参考费用|票价|坐标)[：:]\s*"
+)
+
+
+def _is_tool_route_summary(text: str) -> bool:
+    return bool(_TOOL_ROUTE_SUMMARY_RE.match(text) and not _SOURCE_CONTENT_MARKER_RE.search(text))
+
+
+def _source_text_key(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text).lower()
+    return "".join(char for char in normalized if unicodedata.category(char)[0] in {"L", "N"})
+
+
+def _source_link(url: str | None) -> tuple[str, str] | None:
+    """仅展示可解析的 HTTP(S) 来源地址，不使用账号密码或其他协议。"""
+    if not isinstance(url, str):
+        return None
+    href = url.strip()
+    if not re.match(r"^https?://", href, re.IGNORECASE) or any(
+        ord(char) < 32 or ord(char) == 127 for char in href
+    ):
+        return None
+    try:
+        parsed = urlsplit(href)
+        host = parsed.hostname
+        if not host or parsed.username or parsed.password or "@" in parsed.netloc:
+            return None
+        if "\\" in parsed.netloc or any(char.isspace() for char in parsed.netloc):
+            return None
+        if any(char in host for char in "%#?[]"):
+            return None
+        _ = parsed.port
+        # 与浏览器 URL 的主机标识一致，国际域名显示其 ASCII 形式。
+        host = host.encode("idna").decode("ascii") if ":" not in host else f"[{host}]"
+    except (UnicodeError, ValueError):
+        return None
+    return href, host
+
+
+def _collect_source_value_keys(value: Any, keys: set[str], depth: int = 0) -> None:
+    if depth > 5 or value is None:
+        return
+    if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+        key = _source_text_key(str(value))
+        if len(key) >= 2:
+            keys.add(key)
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            _collect_source_value_keys(item, keys, depth + 1)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _collect_source_value_keys(item, keys, depth + 1)
+
+
+def _is_repeated_entity_excerpt(excerpt: str, value_keys: set[str]) -> bool:
+    pieces = [part.strip() for part in re.split(r"[，,；;。·|\n]+", excerpt) if part.strip()]
+    return bool(pieces) and all(
+        len(key) >= 2 and key in value_keys
+        for piece in pieces
+        for key in [_source_text_key(_ENTITY_FACT_PREFIX_RE.sub("", piece))]
+    )
+
+
+def present_public_source(
+    source: Any, supported_values: Iterable[Any] = ()
+) -> tuple[str | None, str | None, str | None] | None:
+    """选择可展示的来源标题、非重复摘要和安全链接，不改变引用数据。"""
+    raw_excerpt = str(source.public_excerpt or "").strip()
+    raw_title = clean_public_source_title(
+        source.title, raw_excerpt, source_record_id=source.source_record_id
+    )
+    link = _source_link(source.canonical_url)
+    value_keys: set[str] = set()
+    for value in supported_values:
+        _collect_source_value_keys(value, value_keys)
+    is_tool = source.source_kind == "external_tool"
+
+    title = raw_title
+    if (
+        _GENERIC_DISPLAY_TITLE_RE.match(title)
+        or _TOOL_RESULT_SUMMARY_RE.match(title)
+        or title.startswith(("{", "["))
+        or (is_tool and (
+            _is_tool_route_summary(title)
+            or _is_repeated_entity_excerpt(title, value_keys)
+            or not _INLINE_MACHINE_KV_RE.sub("", _MACHINE_KV_PREFIX_RE.sub("", title)).strip(" ，,；;")
+        ))
+    ):
+        title = ""
+
+    # 不回退到纯机器字段原文，它不能作为用户可读的来源。
+    excerpt = ""
+    if not raw_excerpt.startswith(("{", "[")):
+        excerpt = _MACHINE_KV_PREFIX_RE.sub("", raw_excerpt).strip()
+        excerpt = _INLINE_MACHINE_KV_RE.sub("", excerpt).strip(" ，,；;")
+        excerpt = excerpt.replace("POI 编码与经纬度", "地点位置与坐标")
+        excerpt = _WEATHER_FORECAST_SUFFIX_RE.sub(" 天气预报", excerpt)
+        excerpt = _ROUTE_MIN_UNIT_RE.sub(r"\1 分钟", excerpt)
+    if excerpt and (
+        _GENERIC_DISPLAY_TITLE_RE.match(excerpt)
+        or _TOOL_RESULT_SUMMARY_RE.match(excerpt)
+        or (is_tool and _GENERATED_PLACE_TITLE_RE.match(raw_title) and _PLACE_ADDRESS_RE.match(excerpt))
+        or (is_tool and _is_tool_route_summary(excerpt))
+        or (is_tool and _is_repeated_entity_excerpt(excerpt, value_keys))
+    ):
+        excerpt = ""
+    if title and excerpt:
+        if _source_text_key(title) == _source_text_key(excerpt):
+            excerpt = ""
+        elif excerpt.startswith(title) and re.match(r"[\s。:：;；,，—-]", excerpt[len(title):]):
+            excerpt = re.sub(r"^[\s。:：;；,，—-]+", "", excerpt[len(title):])
+
+    display_title = title or (link[1] if link else None)
+    if not display_title and not excerpt:
+        return None
+    return display_title, excerpt or None, link[0] if link else None

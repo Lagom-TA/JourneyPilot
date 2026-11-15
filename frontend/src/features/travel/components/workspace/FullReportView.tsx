@@ -11,8 +11,7 @@ import { DayTimeline } from './DayTimeline';
 import { LabelledFactList } from './TripFactReadout';
 import { unresolvedForDay } from '../../model/itineraryNavigation';
 import { UnresolvedReadout } from './UnresolvedReadout';
-import { cleanPublicSourceExcerpt, EntitySourceList } from './EntitySourceList';
-import { safeHref } from '../../../../lib/safeHref';
+import { EntitySourceList, selectVisiblePublicSources } from './EntitySourceList';
 import { splitTitleClauses } from '../../../../lib/titleClauses';
 import React from 'react';
 
@@ -187,12 +186,7 @@ export function FullReportView({ bundle, allowPdf = true }: {
   const summaries = selectDaySummaries(bundle);
   const summariesByDayId = new Map(summaries.map((summary) => [summary.dayId, summary]));
   const assignedUnresolved = new Set(bundle.workspace.itinerary.day_plans.flatMap((day) => unresolvedForDay(bundle, day.day_id)));
-  const seenReferences = new Set<string>();
-  const references = bundle.source_index.content.citations.flatMap((citation) => citation.sources).filter((source) => {
-    if (seenReferences.has(source.source_record_id)) return false;
-    seenReferences.add(source.source_record_id);
-    return true;
-  });
+  const references = selectVisiblePublicSources(bundle.source_index.content.citations);
 
   return (
     <article data-testid="full-report" className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-7 sm:py-8">
@@ -223,19 +217,15 @@ export function FullReportView({ bundle, allowPdf = true }: {
         <footer id="report-references" className="report-references" aria-labelledby="report-references-heading">
           <h2 id="report-references-heading">参考资料</h2>
           <ol>
-            {references.map((source, index) => {
-              const href = safeHref(source.canonical_url);
-              const excerpt = cleanPublicSourceExcerpt(source.public_excerpt);
-              return (
-                <li key={source.source_record_id}>
-                  <span>{String(index + 1).padStart(2, '0')}</span>
-                  <div>
-                    <h3>{href ? <a href={href} target="_blank" rel="noreferrer">{source.title}</a> : source.title}</h3>
-                    {excerpt && <p>{excerpt}</p>}
-                  </div>
-                </li>
-              );
-            })}
+            {references.map(({ source_record_id, title, href, excerpt }, index) => (
+              <li key={source_record_id}>
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                <div>
+                  {title && <h3>{href ? <a href={href} target="_blank" rel="noreferrer">{title}</a> : title}</h3>}
+                  {excerpt && <p>{excerpt}</p>}
+                </div>
+              </li>
+            ))}
           </ol>
         </footer>
       )}

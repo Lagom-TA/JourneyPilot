@@ -23,16 +23,14 @@ from travel_agent.integrations.pdf_readiness import _FONT_NAME
 from travel_agent.integrations.pdf_readiness import _register_pdf_font
 from travel_agent.planning.delivery.bundle import DeliveryBundle
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
-from travel_agent.planning.delivery.evidence_basis import PUBLIC_REFERENCE
-from travel_agent.planning.delivery.evidence_basis import PUBLIC_REFERENCE_LABEL
 from travel_agent.planning.delivery.evidence_basis import REFERENCE_SERVICE
 from travel_agent.planning.delivery.evidence_basis import REFERENCE_SERVICE_LABEL
 from travel_agent.planning.delivery.presentation import weather_freshness_text
 from travel_agent.planning.delivery.projections import PublicCitationProjection
-from travel_agent.planning.delivery.source_presentation import (
-    clean_public_source_excerpt,
-    clean_public_source_title,
-)
+from travel_agent.planning.delivery.source_presentation import present_public_source
+from travel_agent.planning.delivery.travel_content import public_lodging_details
+from travel_agent.planning.delivery.travel_content import public_trip_title
+from travel_agent.planning.delivery.travel_content import public_trip_unresolved
 from travel_agent.planning.references import EntityType
 from travel_agent.schema import StrictModel
 from typing import Any
@@ -128,7 +126,6 @@ def _citation_marks(
 
 
 _STATED_BASIS_LABELS = {
-    PUBLIC_REFERENCE: PUBLIC_REFERENCE_LABEL,
     REFERENCE_SERVICE: REFERENCE_SERVICE_LABEL,
 }
 
@@ -136,9 +133,7 @@ _STATED_BASIS_LABELS = {
 def _evidence_basis_mark(block: Any, evidence_basis: EvidenceBasisView) -> str:
     """为没有引用编号的条目注明证据基础。
 
-    ``cited_source`` 已带编号标记，无需重复；``public_reference`` 没有来源，
-    不说明会被读成遗漏；``reference_service`` 是供应商未对出行日期确认的真实
-    班次，最需要注明。样式与详情行一致，使用小号灰字。
+    仅对参考班次显示其依据；没有可展示来源时不补充笼统的来源说明。
     """
 
     basis = evidence_basis.stated_basis_for(
@@ -252,50 +247,56 @@ def _build_pdf_sources(
         "custom_block": "自定义安排",
         "weather_day": "当日天气",
     }
-    source_entries: dict[tuple[Any, ...], dict[str, Any]] = {}
-    citation_numbers: dict[str, int | list[int]] = {}
+    grouped: dict[str, dict[str, Any]] = {}
     for citation in citations:
         entity_label = entity_labels.get(
             citation.entity_ref.entity_type.value, "行程事实"
         )
-        numbers_for_citation: list[int] = []
         for source in citation.sources:
-            clean_title = clean_public_source_title(
-                source.title,
-                source.public_excerpt,
-                source_record_id=source.source_record_id,
+            group = grouped.setdefault(source.source_record_id, {
+                "sources": [], "values": [], "entity_labels": []
+            })
+            group["sources"].append(source)
+            group["values"].extend(
+                value.value for value in getattr(citation, "supported_values", [])
             )
-            clean_excerpt = clean_public_source_excerpt(source.public_excerpt)
-            key = (
-                source.source_record_id,
-                source.source_kind,
-                source.provider_name,
-                source.title,
-                source.public_excerpt,
-                source.canonical_url,
-                source.retrieved_at,
-                source.observed_at,
-                source.content_hash,
-                source.rag_chunk_content,
-            )
-            entry = source_entries.get(key)
-            if entry is None:
-                entry = {
-                    "source": source,
-                    "title": clean_title,
-                    "excerpt": clean_excerpt,
-                    "number": len(source_entries) + 1,
-                    "entity_labels": [],
-                }
-                source_entries[key] = entry
-            if entity_label not in entry["entity_labels"]:
-                entry["entity_labels"].append(entity_label)
-            if entry["number"] not in numbers_for_citation:
-                numbers_for_citation.append(entry["number"])
-        if len(numbers_for_citation) == 1:
-            citation_numbers[citation.citation_id] = numbers_for_citation[0]
-        elif numbers_for_citation:
-            citation_numbers[citation.citation_id] = numbers_for_citation
+            if entity_label not in group["entity_labels"]:
+                group["entity_labels"].append(entity_label)
+
+    source_entries: dict[str, dict[str, Any]] = {}
+    for source_id, group in grouped.items():
+        presentations = [
+            (source, presentation)
+            for source in group["sources"]
+            if (presentation := present_public_source(source, group["values"]))
+            is not None
+        ]
+        if not presentations:
+            continue
+        source, (title, excerpt, href) = next(
+            ((source, presentation) for source, presentation in presentations if presentation[2]),
+            presentations[0],
+        )
+        source_entries[source_id] = {
+            "source": source,
+            "title": title or "",
+            "excerpt": excerpt or "",
+            "href": href,
+            "number": len(source_entries) + 1,
+            "entity_labels": group["entity_labels"],
+        }
+
+    citation_numbers: dict[str, int | list[int]] = {}
+    for citation in citations:
+        numbers = list(dict.fromkeys(
+            source_entries[source.source_record_id]["number"]
+            for source in citation.sources
+            if source.source_record_id in source_entries
+        ))
+        if len(numbers) == 1:
+            citation_numbers[citation.citation_id] = numbers[0]
+        elif numbers:
+            citation_numbers[citation.citation_id] = numbers
     return citation_numbers, list(source_entries.values())
 
 
@@ -311,16 +312,16 @@ def _source_story(
         number = entry["number"]
         entity_summary = "、".join(entry["entity_labels"])
         title = escape(entry["title"])
-        if source.canonical_url:
-            title = f'<link href="{escape(source.canonical_url)}" color="#2477E8">{title}</link>'
+        if entry["href"] and title:
+            title = f'<link href="{escape(entry["href"])}" color="#2477E8">{title}</link>'
         retrieved_text = source.retrieved_at.astimezone().strftime("%Y-%m-%d %H:%M")
         story.append(
             KeepTogether(
                 [
                     *([Paragraph("参考资料", styles["h1"])] if index == 0 else []),
                     Paragraph(f"[{number}] {entity_summary}", styles["h2"]),
-                    Paragraph(title, styles["body"]),
-                    Paragraph(escape(entry["excerpt"]), styles["small"]),
+                    *([Paragraph(title, styles["body"])] if title else []),
+                    *([Paragraph(escape(entry["excerpt"]), styles["small"])] if entry["excerpt"] else []),
                     Paragraph(f"取得时间：{retrieved_text}", styles["small"]),
                 ]
             )
@@ -384,7 +385,11 @@ def _field_citation_marks(
 ) -> str:
     ids = [
         item for item in block.citation_ids
-        if item in citations and fields.intersection(citations[item].field_paths)
+        if item in citations and any(
+            path == field or path.startswith((f"{field}.", f"{field}["))
+            for field in fields
+            for path in citations[item].field_paths
+        )
     ]
     return _citation_marks(ids, citation_numbers)
 
@@ -396,7 +401,11 @@ def _timeline_row(
     styles: dict[str, ParagraphStyle],
     evidence_basis: EvidenceBasisView,
 ) -> Table:
-    details = block.details
+    details = (
+        public_lodging_details(block.details)
+        if block.entity_kind == "lodging"
+        else block.details
+    )
     marks = _field_citation_marks(
         block, _TITLE_CITATION_FIELDS.get(block.entity_kind, set()), citations, citation_numbers
     )
@@ -479,6 +488,7 @@ def render_trip_report_pdf(
 
     evidence_basis = EvidenceBasisView.from_itinerary(bundle.workspace.itinerary)
     styles = _styles()
+    title = public_trip_title(document.title)
     buffer = BytesIO()
 
     def footer(canvas, doc) -> None:
@@ -496,13 +506,13 @@ def render_trip_report_pdf(
         leftMargin=20 * mm,
         topMargin=18 * mm,
         bottomMargin=18 * mm,
-        title=document.title,
+        title=title,
         author="JourneyPilot",
         subject=f"Bundle {bundle.manifest.bundle_id}",
     )
     story: list[Any] = [
         Paragraph("JOURNEYPILOT · 旅行方案", styles["eyebrow"]),
-        Paragraph(escape(document.title), styles["title"]),
+        Paragraph(escape(title), styles["title"]),
         Paragraph(escape(document.overview), styles["body"]),
     ]
 
@@ -522,9 +532,10 @@ def render_trip_report_pdf(
             story.append(Paragraph(escape(highlight), styles["body"]))
         story.append(Spacer(1, 2 * mm))
 
-    if document.unresolved:
+    unresolved = public_trip_unresolved(document.unresolved)
+    if unresolved:
         story.append(Paragraph("待安排事项", styles["h1"]))
-        for item in document.unresolved:
+        for item in unresolved:
             story.append(Paragraph(escape(item), styles["body"]))
 
     for day in document.days:

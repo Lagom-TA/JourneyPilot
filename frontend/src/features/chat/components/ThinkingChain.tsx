@@ -1,6 +1,6 @@
 import { ArrowUpRight, Check, ChevronDown, Compass, FileCheck2, Map, MapPin, Pause, CircleAlert, Search, TrainFront, BedDouble } from "lucide-react";
 import { type ThinkingStep } from "../types/messages";
-import { dedupeToolSteps, describeToolStep, isNoResultSummary, isPublicActivityStep, toolResultText, toolStatusLabel } from "../model/toolDisplay";
+import { dedupeToolSteps, describeToolStep, groupToolSteps, isNoResultSummary, isPublicActivityStep, toolResultText, toolStatusLabel } from "../model/toolDisplay";
 import { isWorkExplanationStep, publicProgressText, researchGroups, workExplanationText, type ResearchGroup } from "../model/researchProgress";
 import { deriveActivityTitle, getActivityStageIdForAgent, parseAgentRound, type ActivityStageId, type ActivityStageStatus } from "../model/agentStages";
 import { AgentOrb } from "./AgentOrb";
@@ -96,7 +96,7 @@ function ToolActivity({ step, stopped, open, onOpenChange, visibleSummary }: {
             <dd className="research-tool-input-value">{field.value}</dd>
           </div>)}</dl>
       </div>}
-      <div className="research-tool-field" data-detail-section="result">
+      {(running || showResultLine || previews.length > 0) && <div className="research-tool-field" data-detail-section="result">
         {running
         ? <p className="research-tool-empty">正在处理，结果返回后会显示在这里。</p>
         : <>
@@ -109,10 +109,10 @@ function ToolActivity({ step, stopped, open, onOpenChange, visibleSummary }: {
             </div>)}
           </div>}
         </>}
-      </div>
+      </div>}
     </div>
   </div>;
-    return <li className="research-query" data-testid="research-query" data-tool-id={step.toolCallId || step.id}>
+    return <li className={cn('research-query', running && 'is-running', display.status === 'failed' && 'is-failed', display.status === 'completed' && 'is-completed')} data-testid="research-query" data-tool-id={step.toolCallId || step.id} data-tool-status={display.status}>
     {hasDetails
         ? <details open={open} onToggle={(event) => {
                 const next = event.currentTarget.open;
@@ -124,6 +124,31 @@ function ToolActivity({ step, stopped, open, onOpenChange, visibleSummary }: {
       </details>
         : <div className="research-query-summary">{summary}</div>}
   </li>;
+}
+function ToolActivityGroup({ steps, stopped, open, onOpenChange, openToolIds, onToolOpenChange }: {
+    steps: ThinkingStep[];
+    stopped: boolean;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    openToolIds: ReadonlySet<string>;
+    onToolOpenChange: (id: string, open: boolean) => void;
+}) {
+    const displays = steps.map(describeToolStep);
+    const running = displays.some(display => display.status === 'running');
+    const finished = displays.filter(display => display.status !== 'running').length;
+    const label = displays[0].categoryLabel;
+    const status = running && !stopped ? '进行中' : running ? '已停止' : '已结束';
+    return <li className={cn('research-tool-group', running && !stopped && 'is-running')} data-testid="research-tool-group">
+      <button type="button" className="research-tool-group-heading" aria-expanded={open} onClick={() => onOpenChange(!open)}>
+        <span className="research-query-dot" aria-hidden/>
+        <span className="research-tool-group-label">{label} · {steps.length} 次</span>
+        <span className="research-tool-group-status">{running && !stopped ? `进行中 · ${finished} 已结束` : status}</span>
+        <ChevronDown size={14} className={cn('research-tool-group-chevron', open && 'rotate-180')} aria-hidden/>
+      </button>
+      {open && <ol className="research-tool-group-items" aria-label={`${label}的各次调用`}>
+        {steps.map(step => <ToolActivity key={step.toolCallId || step.id} step={step} stopped={stopped} open={openToolIds.has(step.id)} onOpenChange={(next) => onToolOpenChange(step.id, next)}/>)}
+      </ol>}
+    </li>;
 }
 function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, onClearTools, duplicateTitle, runTerminal }: {
     group: ResearchGroup;
@@ -137,6 +162,7 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
 }) {
     const region = useId();
     const [open, setOpen] = useState(layout !== 'workspace' && group.status === 'running');
+    const [openToolGroups, setOpenToolGroups] = useState<Record<string, boolean>>({});
     const previousStatus = React.useRef(group.status);
     const previousRunTerminal = React.useRef(runTerminal);
     React.useEffect(() => {
@@ -163,7 +189,8 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
         previousRunTerminal.current = runTerminal;
     }, [group.steps, onClearTools, runTerminal, layout]);
     const Icon = ICONS[group.id as keyof typeof ICONS] || Compass;
-    const activitySteps = dedupeToolSteps(group.steps);
+    const workspace = layout === 'workspace';
+    const activitySteps = workspace ? group.steps : dedupeToolSteps(group.steps);
     const tools = activitySteps.filter(s => s.isToolCall);
     const progressSteps = activitySteps.filter(s => !s.isToolCall && s.progressStatus);
     const runningTool = [...tools].reverse().find(s => s.toolStatus === 'running');
@@ -179,18 +206,34 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
             : informativeProgressText(latestRunningProgress?.content) || informativeProgressText(latestCompletedProgress?.content) || workExplanationText(latestWorkNote?.content) || latestResult
         )
         : informativeProgressText(latestCompletedProgress?.content) || latestResult;
-    const workspace = layout === 'workspace';
     const summaryIsWorkNote = summary && summary === workExplanationText(latestWorkNote?.content);
     // 工具、公开说明与阶段里程碑按到达顺序渲染；同一工具调用只保留一条折叠行。
     const activityItems: Array<{
         key: string;
-        kind: 'tool' | 'note' | 'milestone';
+        kind: 'tool' | 'tool_group' | 'note' | 'milestone';
         step?: ThinkingStep;
+        steps?: ThinkingStep[];
         text?: string;
     }> = [];
     const seenToolIds = new Set<string>();
     const seenMilestones = new Set<string>();
-    for (const step of activitySteps) {
+    const displayGroups = workspace
+        ? groupToolSteps(activitySteps)
+        : activitySteps.map(step => ({ kind: 'step' as const, step }));
+    for (const item of displayGroups) {
+        if (item.kind === 'tool_group') {
+            if (item.steps.length >= 3) {
+                activityItems.push({ key: `tool-group-${item.key}`, kind: 'tool_group', steps: item.steps });
+                continue;
+            }
+            for (const step of item.steps) {
+                const key = step.toolCallId || step.id;
+                seenToolIds.add(key);
+                activityItems.push({ key: `tool-${key}`, kind: 'tool', step });
+            }
+            continue;
+        }
+        const step = item.step;
         if (step.isToolCall) {
             const key = step.toolCallId || step.id;
             if (seenToolIds.has(key))
@@ -216,7 +259,7 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
         activityItems.push({ key: `milestone-${step.id}`, kind: 'milestone', text });
     }
     const hasDetails = activityItems.length > 0;
-    if (workspace && duplicateTitle && !summary && !hasDetails && group.status !== 'failed') return null;
+    if (workspace && !summary && !hasDetails && ((duplicateTitle && group.status !== 'failed') || (group.id === 'dispatch' && group.status === 'completed'))) return null;
     const issues = tools.filter(s => s.toolStatus === 'failed' || s.toolStatus === 'capability_declared').length;
     const status = <span className={cn('research-agent-state', group.status === 'running' && 'is-active')}>
       {group.status === 'failed' ? <CircleAlert size={11}/> : group.status === 'completed' ? <Check size={11}/> : group.status === 'stopped' ? <Pause size={11}/> : <span className="research-status-dot"/>}
@@ -224,12 +267,10 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
     </span>;
     const content = workspace ? <>
     <span className="research-agent-summary">
-      <span className="research-agent-line">
-        {!duplicateTitle && <span className="research-agent-title">{group.title}</span>}
-        {status}
-        {hasDetails && <ChevronDown size={15} className={cn('research-agent-chevron', open && 'rotate-180')} aria-hidden/>}
-      </span>
+      <span className="research-agent-title">{duplicateTitle ? '' : group.title}</span>
       {summary && <span className="research-agent-update" data-testid="research-agent-update" title={summaryIsWorkNote ? '规划过程中的工作说明，不是已核实的旅行事实' : undefined}>{summary}</span>}
+      {status}
+      {hasDetails && <ChevronDown size={15} className={cn('research-agent-chevron', open && 'rotate-180')} aria-hidden/>}
     </span>
   </> : <>
     <span className="research-agent-icon"><Icon size={18} strokeWidth={1.6}/></span>
@@ -240,19 +281,21 @@ function AgentCard({ group, interrupted, layout, openToolIds, onToolOpenChange, 
     </span>
     {hasDetails && <ChevronDown size={16} className={cn('research-agent-chevron', open && 'rotate-180')}/>}
   </>;
-    return <section className={cn('research-agent', workspace && 'research-agent-flat', duplicateTitle && 'is-stage-group', group.status === 'running' && 'is-active', group.status === 'failed' && 'is-failed')} data-testid={`research-agent-${group.id}`} data-status={group.status}>
+    return <section className={cn('research-agent', workspace && 'research-agent-flat', duplicateTitle && 'is-stage-group', group.status === 'running' && 'is-active', group.status === 'failed' && 'is-failed', group.status === 'completed' && 'is-completed', group.status === 'stopped' && 'is-stopped')} data-testid={`research-agent-${group.id}`} data-status={group.status}>
     {!hasDetails ? <div className="research-agent-heading">{content}</div>
             : <button type="button" className="research-agent-heading" aria-expanded={open} aria-controls={region} onClick={() => setOpen(v => !v)}>{content}</button>}
     {open && hasDetails && <div id={region} className="research-agent-body">
-      <ol className="research-queries">
+      <ol className="research-queries" {...(workspace ? { tabIndex: 0, 'aria-label': `${group.title}的过程记录，可上下滚动` } : {})}>
         {activityItems.map(item => item.kind === 'tool' && item.step
             ? <ToolActivity key={item.key} step={item.step} stopped={interrupted || group.status !== 'running'} open={openToolIds.has(item.step.id)} onOpenChange={(open) => onToolOpenChange(item.step!.id, open)} visibleSummary={workspace ? summary : undefined}/>
-            : item.kind === 'note'
-                ? <li key={item.key} className="research-work-note" data-testid="research-work-note">
-                    <span className="research-work-note-label" title="规划过程中的工作说明，不是已核实的旅行事实">工作说明</span>
-                    <span className="research-work-note-text">{item.text}</span>
-                  </li>
-                : <li key={item.key} className="research-milestone-row"><p className="research-milestone">{item.text}</p></li>)}
+            : item.kind === 'tool_group' && item.steps
+                ? <ToolActivityGroup key={item.key} steps={item.steps} stopped={interrupted || group.status !== 'running'} open={openToolGroups[item.key] ?? item.steps.some(step => openToolIds.has(step.id))} onOpenChange={(open) => setOpenToolGroups(previous => ({ ...previous, [item.key]: open }))} openToolIds={openToolIds} onToolOpenChange={onToolOpenChange}/>
+                : item.kind === 'note'
+                    ? <li key={item.key} className="research-work-note" data-testid="research-work-note">
+                        <span className="sr-only">模型过程说明，尚非已核实的旅行事实：</span>
+                        <span className="research-work-note-text">{item.text}</span>
+                      </li>
+                    : <li key={item.key} className="research-milestone-row"><p className="research-milestone">{item.text}</p></li>)}
       </ol>
     </div>}
   </section>;

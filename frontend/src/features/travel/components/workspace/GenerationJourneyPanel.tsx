@@ -14,6 +14,9 @@ import {
 import { TripBriefPlanGate } from '../planning/TripBriefPlanGate';
 import { UnderstandingQuestionsCard } from './UnderstandingQuestionsCard';
 import { type PlanApprovalGate } from '../../types/planning';
+import { planGateFromRunEvents } from '../../model/planApprovalGate';
+import { getTripRunEventWindow } from '../../api/runs';
+import { isTripRunResumeAvailable } from '../../types/runs';
 import { ThinkingChain } from '../../../chat/components/ThinkingChain';
 import { InputArea } from '../../../chat/components/InputArea';
 import { getChatErrorGuidance } from '../../../chat/model/chatErrorGuidance';
@@ -51,17 +54,30 @@ export const GenerationJourneyPanel: React.FC = () => {
   const runId = state.currentTripRunId;
   const { resume, resuming } = useResumeRun(runId);
   // 恢复或查看历史 Run 时，正文和错误提示只能取当前 Run 的助手消息。
-  // 实时助手消息在 chat_start 时写入 runId，因此这里不需要再混入无归属消息。
-  const runMessages = state.currentMessages.filter((message) => message.runId === runId);
+  // 等待首页请求的首个事件时，临时助手消息尚未归属 Run。
+  const runMessages = runId
+    ? state.currentMessages.filter((message) => message.runId === runId)
+    : state.homeSubmissionPending ? state.currentMessages : [];
   const lastAssistant = [...runMessages].reverse().find((message) => message.role === 'assistant');
+  const pendingUserMessage = state.homeSubmissionPending
+    ? [...state.currentMessages].reverse().find((message) => message.role === 'user')
+    : null;
   const answerStarted = lastAssistant?.type !== 'error' && Boolean(lastAssistant?.content?.trim());
   const runStatus = state.currentTripRunStatus;
   const recovery = state.currentTripRunRecovery;
-  const canResume = !state.currentTripRunReadOnly && runStatus === 'interrupted' && recovery?.resumable === true;
+  const canResume = isTripRunResumeAvailable({
+    status: runStatus,
+    recovery,
+    readOnly: state.currentTripRunReadOnly,
+    isStreaming: state.isStreaming || resuming,
+  });
   const gatePending = Boolean(state.planApprovalGate && state.planApprovalGate.status !== 'cancelled');
   const hadGateOnMount = React.useRef(gatePending);
   const [seenRun, setSeenRun] = React.useState<string | null>(gatePending ? runId : null);
   const [gateSnapshot, setGateSnapshot] = React.useState<PlanApprovalGate | null>(gatePending ? state.planApprovalGate : null);
+  // 方案门关闭后仍保留最后一版，供用户点回“需求”阶段查看确认过的研究方案。
+  const [stagePlan, setStagePlan] = React.useState<PlanApprovalGate | null>(null);
+  const stagePlanLoadKey = React.useRef<string | null>(null);
   const previousGate = React.useRef({ pending: gatePending, runId, epoch: state.conversationEpoch });
   const handoffRef = React.useRef<HTMLDivElement>(null);
   const processPaneRef = React.useRef<HTMLDivElement>(null);
@@ -69,6 +85,8 @@ export const GenerationJourneyPanel: React.FC = () => {
   // 阶段选择只属于当前 Run；换 Run 或开启新会话轮次时回到“只跟随最新阶段”。
   React.useEffect(() => {
     setSelectedStage(null);
+    setStagePlan(null);
+    stagePlanLoadKey.current = null;
   }, [runId, state.conversationEpoch]);
   const understandingPending = Boolean(
     runStatus === 'awaiting_input' && state.understandingQuestions && state.understandingQuestions.runId === runId,
@@ -97,6 +115,7 @@ export const GenerationJourneyPanel: React.FC = () => {
     if (gatePending && state.planApprovalGate) {
       setSeenRun(runId);
       setGateSnapshot(state.planApprovalGate);
+      setStagePlan(state.planApprovalGate);
       return;
     }
     const timer = window.setTimeout(
@@ -105,6 +124,35 @@ export const GenerationJourneyPanel: React.FC = () => {
     );
     return () => window.clearTimeout(timer);
   }, [gatePending, reducedMotion, runId, state.planApprovalGate]);
+
+  // 刷新或打开历史 Run 后没有实时方案快照，点时从持久事件中取回最近一次计划门。
+  React.useEffect(() => {
+    if (selectedStage !== 'requirements' || stagePlan?.runId === runId || gatePending || understandingPending || !runId)
+      return;
+    const loadKey = `${state.conversationEpoch}:${runId}`;
+    if (stagePlanLoadKey.current === loadKey)
+      return;
+    stagePlanLoadKey.current = loadKey;
+    let cancelled = false;
+    getTripRunEventWindow(runId, {
+      sessionId: state.currentSessionId,
+      afterSequence: 0,
+      limit: 200,
+    })
+      .then((window) => {
+        if (cancelled)
+          return;
+        const plan = planGateFromRunEvents(window.events, runId);
+        if (plan)
+          setStagePlan(plan);
+      })
+      .catch(() => {
+        // 事件缺失时保留阶段行动记录，不阻断工作台。
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedStage, stagePlan, gatePending, understandingPending, runId, state.conversationEpoch, state.currentSessionId]);
 
   React.useEffect(() => {
     const previous = previousGate.current;
@@ -132,12 +180,14 @@ export const GenerationJourneyPanel: React.FC = () => {
       (gatePaneRef.current as HTMLElement & { inert: boolean }).inert = !gatePending;
     if (!gatePending) return;
     const timer = window.setTimeout(() => {
+      const active = document.activeElement;
+      if (active && active !== document.body && gatePaneRef.current?.contains(active)) return;
       gatePaneRef.current?.querySelector<HTMLElement>('#trip-brief-plan-gate-title')?.focus();
     }, reducedMotion || state.planApprovalGate?.source === 'restored' ? 0 : milliseconds(duration.slow));
     return () => window.clearTimeout(timer);
   }, [gatePending, gateSnapshot, reducedMotion, state.planApprovalGate?.revision, state.planApprovalGate?.source]);
 
-  if (!runId) return null;
+  if (!runId && !state.homeSubmissionPending) return null;
 
   const stages: Array<{ id: ActivityStageId; title: string; status: ActivityStageStatus }> = stageProjection.stages;
   const days = identity ? tripDays(identity.start_date, identity.end_date) : 0;
@@ -171,27 +221,35 @@ export const GenerationJourneyPanel: React.FC = () => {
   const hideEmptyProcess = state.thinkingSteps.length === 0
     && !state.isStreaming
     && (runStatus === 'failed' || runStatus === 'cancelled' || runStatus === 'interrupted');
-  const statusMessage = runStatus === 'interrupted' && canResume ? '可以从最近的位置继续。' : null;
-  const progressTitle = runStatus === 'failed'
-    ? '旅行规划未完成'
-    : runStatus === 'cancelled'
-      ? '旅行规划已取消'
-      : runStatus === 'interrupted'
-        ? '旅行规划已中断'
-        : runStatus === 'cancel_requested'
-          ? '正在停止规划'
-          : runStatus === 'awaiting_input'
-          ? understandingPending
-            ? state.understandingQuestions?.retryResearch ? '等待重试研究' : state.understandingQuestions?.retryLocation ? '等待核实目的地' : '等待你的回答'
-            : '等待确认研究方案'
-          : runStatus === 'completed'
-            ? '旅行规划已生成'
-            : '正在规划你的旅行';
+  // 需求阶段回看确认过的方案；门仍在等待或正在追问时由各自卡片占位。
+  const stagePlanView = selectedStage === 'requirements' && !gatePending && !understandingPending && stagePlan?.runId === runId
+    ? stagePlan
+    : null;
+  const statusMessage = canResume
+    ? runStatus === 'failed' ? '可以从最近的检查点重试。' : '可以从最近的位置继续。'
+    : null;
+  const progressTitle = state.homeSubmissionPending && !runId
+    ? lastAssistant?.pendingStatusText || '正在理解你的旅行想法'
+    : runStatus === 'failed'
+      ? '旅行规划未完成'
+      : runStatus === 'cancelled'
+        ? '旅行规划已取消'
+        : runStatus === 'interrupted'
+          ? '旅行规划已中断'
+          : runStatus === 'cancel_requested'
+            ? '正在停止规划'
+            : runStatus === 'awaiting_input'
+              ? understandingPending
+                ? state.understandingQuestions?.retryResearch ? '等待重试研究' : state.understandingQuestions?.retryLocation ? '等待核实目的地' : '等待你的回答'
+                : '等待确认研究方案'
+              : runStatus === 'completed'
+                ? '旅行规划已生成'
+                : '正在规划你的旅行';
 
   const canStartOver = !state.currentTripRunReadOnly && (runStatus === 'failed' || runStatus === 'cancelled' || (runStatus === 'interrupted' && !canResume));
   // cancel_requested 只是“正在停止”，仍按运行中展示；真正取消/失败/中断才切到终态。
   const runStopped = runStatus === 'failed' || runStatus === 'cancelled' || runStatus === 'interrupted';
-  const showActiveSweep = state.isStreaming && !gatePending && (runStatus === null || runStatus === 'running');
+  const showActiveSweep = Boolean(runId) && state.isStreaming && !gatePending && (runStatus === null || runStatus === 'running');
   const hasResearchActivity = state.thinkingSteps.some((step) => {
     const stage = getActivityStageIdForAgent(step.agentName);
     return stage === 'research' || stage === 'route' || stage === 'delivery';
@@ -209,7 +267,7 @@ export const GenerationJourneyPanel: React.FC = () => {
   };
 
   return (
-    <div className={cn('generation-journey-panel', understandingPending && 'generation-has-questions')} data-testid="generation-journey-panel">
+    <div className={cn('generation-journey-panel', understandingPending && 'generation-has-questions', state.homeSubmissionPending && !runId && 'is-awaiting-route')} data-testid="generation-journey-panel">
         <div className="generation-planning-layout">
           <header className="generation-planning-sidebar">
             <section className="generation-trip-card" aria-label="旅行信息">
@@ -228,12 +286,13 @@ export const GenerationJourneyPanel: React.FC = () => {
                     </h1>
                   ) : (
                     <h1 tabIndex={-1} data-workspace-handoff-focus className="generation-trip-title-idea">
-                      <span>目的地待确认</span>
+                      <span>{state.homeSubmissionPending && !runId ? '你的旅行想法' : '目的地待确认'}</span>
                     </h1>
                   )}
                 </div>
               </div>
-              <div className="generation-trip-card-meta">
+              {pendingUserMessage && <p className="generation-submitted-request">{pendingUserMessage.displayContent || pendingUserMessage.content}</p>}
+              {(!state.homeSubmissionPending || identity) && <div className="generation-trip-card-meta">
                 <div className="generation-trip-fact" role="group" aria-label={`${departureText}，${dateText}`}>
                   <span className="generation-trip-fact-value">
                     <span>{departureText}</span>
@@ -251,12 +310,14 @@ export const GenerationJourneyPanel: React.FC = () => {
                     </span>
                   </div>
                 )}
-              </div>
+              </div>}
             </section>
 
-            <section className="generation-progress" data-active={showActiveSweep ? 'true' : 'false'} aria-label="旅行生成进度">
+            <section className="generation-progress" data-active={showActiveSweep ? 'true' : 'false'} data-run-status={runStatus || (state.homeSubmissionPending ? 'pending' : 'idle')} aria-label="旅行生成进度">
               <h2 className="sr-only">{progressTitle}</h2>
-              <ol>
+              {state.homeSubmissionPending && !runId ? (
+                <p className="generation-route-status" role="status">正在确认处理方式</p>
+              ) : <ol>
                 {stages.map((stage, index) => {
                   const selected = selectedStage === stage.id;
                   return (
@@ -286,7 +347,7 @@ export const GenerationJourneyPanel: React.FC = () => {
                     </li>
                   );
                 })}
-              </ol>
+              </ol>}
               {(state.isStreaming || runStatus === 'cancel_requested') && !state.currentTripRunReadOnly && !gatePending && !understandingPending && (
                 <button type="button" data-testid="boarding-pass-stop" className="generation-stop-btn" onClick={() => void stopRun()} disabled={runStatus === 'cancel_requested'} aria-label={runStatus === 'cancel_requested' ? '正在停止' : '停止生成'} title={runStatus === 'cancel_requested' ? '正在停止' : '停止生成'}>
                   {runStatus === 'cancel_requested' ? <Loader2 size={13} className="generation-stage-spinner" /> : <Square size={12} />}
@@ -300,13 +361,14 @@ export const GenerationJourneyPanel: React.FC = () => {
             )}
           </header>
 
-          <main className={cn('generation-activity', gatePending && 'is-confirming')} aria-label="规划与调研动态">
+          <main className={cn('generation-activity', gatePending && 'is-confirming')} data-live={showActiveSweep ? 'true' : 'false'} aria-label="规划与调研动态">
             <div className="generation-activity-body">
               {(statusMessage || canResume || canStartOver) && (
                 <div className="generation-status-actions">
                   {statusMessage && <p role="status">{statusMessage}</p>}
                   <div className="generation-run-actions">
-                    {canResume && <button type="button" data-testid="boarding-pass-resume" onClick={() => void resume()} disabled={resuming}><Play size={14} />{resuming ? '正在继续' : '继续生成'}</button>}
+                    {canResume && <button type="button" data-testid="boarding-pass-resume" onClick={() => void resume()} disabled={resuming}><Play size={14} />{resuming ? '正在重试' : runStatus === 'failed' ? '从上次位置重试' : '继续生成'}</button>}
+                    {canResume && runStatus === 'failed' && <span className="text-xs text-ink-muted">重试会再次调用模型，可能产生费用；动态资料可能已过期，请重新核实。</span>}
                     {canStartOver && <button type="button" onClick={startOver}>返回新旅行</button>}
                   </div>
                 </div>
@@ -326,7 +388,7 @@ export const GenerationJourneyPanel: React.FC = () => {
                   aria-hidden={gatePending}
                 >
                   <div className="generation-handoff-pane-inner">
-                    {hideEmptyProcess && <h2 className="generation-terminal-title" tabIndex={-1}>{progressTitle}</h2>}
+                    {hideEmptyProcess && !stagePlanView && <h2 className="generation-terminal-title" tabIndex={-1}>{progressTitle}</h2>}
                     {understandingPending && state.understandingQuestions && (
                       <UnderstandingQuestionsCard
                         key={`${state.understandingQuestions.runId}:${state.understandingQuestions.revision}`}
@@ -339,7 +401,14 @@ export const GenerationJourneyPanel: React.FC = () => {
                         message={state.understandingQuestions.message}
                       />
                     )}
-                    {!hideEmptyProcess && (
+                    {stagePlanView ? (
+                      <TripBriefPlanGate
+                        variant="workspace"
+                        gateOverride={stagePlanView}
+                        readOnly
+                        headingId="trip-brief-stage-plan-title"
+                      />
+                    ) : !hideEmptyProcess && (
                       <ThinkingChain
                         steps={state.thinkingSteps}
                         isGenerating={state.isStreaming}
@@ -348,12 +417,12 @@ export const GenerationJourneyPanel: React.FC = () => {
                         pendingStatusText={lastAssistant?.pendingStatusText}
                         variant={runStopped ? 'interrupted' : 'default'}
                         startedAt={lastAssistant?.timestamp}
-                        regionId={`generation-thinking-${runId}`}
+                        regionId={`generation-thinking-${runId ?? 'pending'}`}
                         layout="workspace"
                         runStatus={runStatus}
                         gatePending={gatePending}
-                        runKey={runId}
-                        activityTitle={resuming ? '正在继续生成' : !selectedStage && (runStopped || runStatus === 'cancel_requested' || runStatus === 'completed') ? progressTitle : activityTitle}
+                        runKey={runId ?? undefined}
+                        activityTitle={state.homeSubmissionPending && !runId ? progressTitle : resuming ? '正在继续生成' : !selectedStage && (runStopped || runStatus === 'cancel_requested' || runStatus === 'completed') ? progressTitle : activityTitle}
                         emptyText={emptyActivityText}
                         activityStage={activityStage ?? undefined}
                         activityFocus={!selectedStage || selectedStage === stageProjection.currentStage ? state.tripSummaryCard?.currentFocus : undefined}

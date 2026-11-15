@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.itinerary.draft import (
@@ -15,6 +15,7 @@ from travel_agent.planning.itinerary.draft import (
 )
 from travel_agent.planning.nodes import NODE_ITINERARY
 from travel_agent.planning.tool_context import build_tool_context_from_state
+from travel_agent.runtime.cancellation import check_cancel_requested
 from travel_agent.runtime.operations import ModelWindowClosed, await_model_operation
 from travel_agent.planning.itinerary.place_resolution import (
     AuthoredPlaceScope,
@@ -65,6 +66,8 @@ async def _locate_authored_places(
     composition: ItineraryCompositionDraft,
     scopes: Dict[str, AuthoredPlaceScope],
     tools: AuthoredPlaceToolAccess,
+    *,
+    remaining_seconds: Optional[Callable[[], float]] = None,
 ) -> ItineraryCompositionDraft:
     """补齐能定位到的撰写地点；定位不到的条目保留内容，不写坐标。"""
     pending = [ref for ref in authored_places(composition) if not ref.place.is_located]
@@ -77,10 +80,20 @@ async def _locate_authored_places(
         key = authored_place_key(place)
         if key in located or key in attempted:
             continue
-        # 同一地点在同一份草稿里只检索一次；查不到时保留内容、不写坐标。
-        attempted.add(key)
         try:
-            # 单个未知地点不占用其他条目的定位时间。
+            # 每次调用前读取共享余量，避免后续地点占用交付阶段的时间。
+            remaining = remaining_seconds() if remaining_seconds is not None else None
+            if remaining is not None and remaining <= 0:
+                check_cancel_requested()
+                break
+            entry_budget = (
+                min(_AUTHORED_ENTRY_BUDGET_SECONDS, remaining)
+                if remaining is not None
+                else _AUTHORED_ENTRY_BUDGET_SECONDS
+            )
+            # 同一地点在同一份草稿里只检索一次；查不到时保留内容、不写坐标。
+            attempted.add(key)
+
             async def _resolve_within_budget(
                 place: AuthoredPlaceBase = place,
                 kind: str = ref.kind,
@@ -99,7 +112,7 @@ async def _locate_authored_places(
                             scope=scope,
                             tools=tools,
                         ),
-                        timeout=_AUTHORED_ENTRY_BUDGET_SECONDS,
+                        timeout=entry_budget,
                     )
                 except asyncio.TimeoutError as spent:
                     raise _AuthoredEntryBudgetSpent(place.name) from spent
@@ -159,11 +172,18 @@ def _reuse_place_location(place, located):
 async def locate_authored_composition(
     composition: ItineraryCompositionDraft,
     state: TravelAgentState,
+    *,
+    remaining_seconds: Optional[Callable[[], float]] = None,
 ) -> ItineraryCompositionDraft:
-    """补齐撰写地点的地图身份，找不到的条目保留内容并按无坐标处理。"""
+    """补齐撰写地点的地图身份；共享余量耗尽时保留未定位的内容。
+
+    ``remaining_seconds`` 在每次定位前读取，可返回无穷大；不传时仅限制单点时间。
+    """
     scopes = authored_place_scopes(state.controlled_trip_identity)
     tools = _authored_place_tool_access(state)
-    return await _locate_authored_places(composition, scopes, tools)
+    return await _locate_authored_places(
+        composition, scopes, tools, remaining_seconds=remaining_seconds
+    )
 
 
 def _reuse_located_places(

@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from typing import Any, Dict, List, Mapping, Optional
 
-from travel_agent.planning.requirements.constraints.items import _public_summary
+from travel_agent.planning.requirements.constraints.items import (
+    _priority_for,
+    _public_summary,
+    _source_is_current,
+)
 from travel_agent.planning.requirements.constraints.parameters import (
     _allergy_allergen_key,
     _canonical_accommodation_params,
@@ -78,6 +83,80 @@ def _item_source(item: Dict[str, Any]) -> str:
     return ""
 
 
+def _item_is_current(item: Dict[str, Any]) -> bool:
+    """混合来源或来源未明的条目保留为参考。"""
+    refs = item.get("source_refs")
+    return isinstance(refs, list) and bool(refs) and all(
+        isinstance(ref, dict)
+        and ref.get("scope") != "historical"
+        and _source_is_current(str(ref.get("source") or ""))
+        for ref in refs
+    )
+
+
+def _demote_reference_item(item: Dict[str, Any]) -> None:
+    if not _item_is_current(item):
+        item["type"] = "soft"
+        item["priority"] = _priority_for("soft", str(item.get("confidence") or ""))
+        item["enforcement_scope"] = ["advisory"]
+        item["candidate_worker_kinds"] = []
+        item.pop("unsupported_hard_category", None)
+
+
+def normalize_constraint_pack(
+    pack: Any, *, preset_pack_constraints: Any = None
+) -> Dict[str, Any]:
+    """按来源重建约束分组，且不改变传入的包。"""
+    from travel_agent.planning.requirements.constraints.items import _now_iso
+    from travel_agent.planning.requirements.constraints.sources import _map_preset_constraints
+
+    normalized = deepcopy(pack) if isinstance(pack, dict) else {}
+    existing = normalized.get("constraints")
+    if not isinstance(existing, list) or not existing:
+        existing = [
+            item
+            for key in ("hard_constraints", "soft_preferences")
+            for item in (normalized.get(key) if isinstance(normalized.get(key), list) else [])
+        ]
+    constraints = [item for item in existing if isinstance(item, dict)]
+
+    applied = _map_preset_constraints(preset_pack_constraints, _now_iso())
+    if applied:
+        applied_values = {(item["category"], item["value"]) for item in applied}
+        for item in constraints:
+            if (item.get("category"), item.get("value")) in applied_values:
+                continue
+            for ref in item.get("source_refs") or []:
+                if isinstance(ref, dict) and ref.get("source") == "preset":
+                    ref["scope"] = "historical"
+
+    for item in constraints:
+        if item.get("status") is None:
+            item["status"] = "active"
+        _demote_reference_item(item)
+
+    if applied:
+        present = {
+            (item.get("category"), item.get("value"))
+            for item in constraints
+            if item.get("status") in (None, "active")
+            and _item_is_current(item)
+            and any(
+                isinstance(ref, dict) and ref.get("source") == "preset"
+                for ref in item.get("source_refs") or []
+            )
+        }
+        constraints.extend(
+            item for item in applied if (item["category"], item["value"]) not in present
+        )
+
+    active = [item for item in constraints if item.get("status") in (None, "active")]
+    normalized["constraints"] = constraints
+    normalized["hard_constraints"] = [item for item in active if item.get("type") == "hard"]
+    normalized["soft_preferences"] = [item for item in active if item.get("type") == "soft"]
+    return normalized
+
+
 def _resolve_conflicts(
     constraints: List[Dict[str, Any]], *, source_order: Optional[Mapping[str, int]] = None
 ) -> List[Dict[str, Any]]:
@@ -99,7 +178,8 @@ def _resolve_conflicts(
 
     by_cat: Dict[str, List[Dict[str, Any]]] = {}
     for c in constraints:
-        by_cat.setdefault(c["category"], []).append(c)
+        if _item_is_current(c):
+            by_cat.setdefault(c["category"], []).append(c)
     for cat, group in by_cat.items():
         if cat in _SINGULAR_CATEGORIES and len(group) > 1:
             ordered = sorted(group, key=rank, reverse=True)
@@ -188,7 +268,18 @@ def _dedupe_constraints(constraints: List[Dict[str, Any]]) -> List[Dict[str, Any
     index_by_key: Dict[tuple[Any, ...], int] = {}
     out: List[Dict[str, Any]] = []
     for c in constraints:
-        key = semantic_key(c)
+        _demote_reference_item(c)
+        refs = c.get("source_refs")
+        sources = tuple(
+            sorted(
+                {
+                    (str(ref.get("source") or ""), str(ref.get("scope") or ""))
+                    if isinstance(ref, dict) else ("", "")
+                    for ref in refs
+                }
+            )
+        ) if isinstance(refs, list) else ()
+        key = (sources, semantic_key(c))
         if key in index_by_key:
             merge_item(out[index_by_key[key]], c)
         else:

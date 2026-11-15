@@ -25,8 +25,11 @@ describe('showsResumeEntry', () => {
         expect(showsResumeEntry({ ...base, messageRunId: 'run-parent' })).toBe(false);
         expect(showsResumeEntry({ ...base, messageRunId: undefined })).toBe(false);
     });
-    it('Run 没被中断、接口不允许恢复或只读历史时不出现', () => {
-        expect(showsResumeEntry({ ...base, runStatus: 'failed' })).toBe(false);
+    it('接口允许恢复的失败 Run 也显示入口', () => {
+        expect(showsResumeEntry({ ...base, runStatus: 'failed' })).toBe(true);
+        expect(showsResumeEntry({ ...base, runStatus: 'failed', recovery: { status: 'non_resumable', reason: null, resumable: false } })).toBe(false);
+    });
+    it('Run 不可恢复或只读历史时不出现', () => {
         expect(showsResumeEntry({ ...base, runStatus: 'completed' })).toBe(false);
         expect(showsResumeEntry({ ...base, recovery: { status: 'non_resumable', reason: null, resumable: false } })).toBe(false);
         expect(showsResumeEntry({ ...base, recovery: null })).toBe(false);

@@ -6,6 +6,8 @@ from travel_agent.planning.delivery.bundle import DeliveryBundle
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
 from travel_agent.planning.delivery.public.itinerary import _day
 from travel_agent.planning.delivery.public.itinerary import _public_itinerary
+from travel_agent.planning.delivery.travel_content import public_lodging_reasons
+from travel_agent.planning.delivery.travel_content import public_lodging_text
 from travel_agent.planning.delivery.travel_content import public_selection_text
 from travel_agent.planning.itinerary.options import SelectionSlot
 from travel_agent.planning.workspace import TripWorkspace
@@ -26,12 +28,19 @@ def _public_selection_slot(slot: SelectionSlot) -> Dict[str, Any]:
                 "rank": option.rank,
                 "selected": option.option_id == slot.selected_option_id,
                 "recommended": option.option_id == slot.recommended_option_id,
-                "selection_reasons": [
-                    public_selection_text(reason) for reason in option.selection_reasons
-                ],
-                "tradeoff": public_selection_text(option.tradeoff)
-                if option.tradeoff
-                else None,
+                "selection_reasons": (
+                    public_lodging_reasons(option.selection_reasons)
+                    if slot.slot_type == "lodging"
+                    else [
+                        public_selection_text(reason)
+                        for reason in option.selection_reasons
+                    ]
+                ),
+                "tradeoff": (
+                    (public_lodging_text(option.tradeoff) or None)
+                    if slot.slot_type == "lodging"
+                    else public_selection_text(option.tradeoff)
+                ) if option.tradeoff else None,
                 "comparison_facts": list(option.comparison_facts),
                 "availability_status": option.availability_status,
             }

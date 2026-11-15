@@ -127,9 +127,14 @@ def available_run_actions(
     """
 
     actions: List[str] = []
-    resumable = run.status in _RESUMABLE_STATUSES and (
-        run.resume_policy == TripRunResumePolicy.CHECKPOINT
-        or run.status == TripRunStatus.CREATED
+    # 投影失败后的恢复请求会在准备阶段被拒绝，不能向界面暴露一个必然失败的入口。
+    resumable = (
+        run.last_error_code != "projection_failure"
+        and run.status in _RESUMABLE_STATUSES
+        and (
+            run.resume_policy == TripRunResumePolicy.CHECKPOINT
+            or run.status == TripRunStatus.CREATED
+        )
     )
     if execution is not None and execution.recovery_status in {
         RunRecoveryStatus.NON_RESUMABLE,

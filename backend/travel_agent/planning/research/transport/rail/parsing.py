@@ -3,7 +3,11 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Mapping, Optional
 
-from travel_agent.integrations.rail.stations import city_station_telecodes
+from travel_agent.integrations.rail.stations import (
+    city_station_code,
+    city_station_telecodes,
+    resolve_station_code,
+)
 
 _RAIL_RECORD_TEXT_FIELDS = (
     "train_code",
@@ -83,21 +87,27 @@ _CN_CITY_STATION_TELECODES: Dict[str, tuple[str, ...]] = {
 
 
 def _builtin_station_telecode(city_name: str) -> Optional[str]:
-    """返回城市首选的（第一个）内置车站电报码。"""
-    bare = _normalize_cn_city_for_rail(city_name)
-    codes = _CN_CITY_STATION_TELECODES.get(bare) or _CN_CITY_STATION_TELECODES.get(
-        city_name.strip()
-    )
-    return codes[0] if codes else None
+    """优先使用配置的枢纽站，否则查询本地 12306 站表。"""
+    candidates = _builtin_station_telecode_candidates(city_name)
+    return candidates[0] if candidates else None
 
 
 def _builtin_station_telecode_candidates(city_name: str) -> List[str]:
-    """返回 get-tickets 依次尝试的车站电报码，高铁枢纽优先。"""
+    """返回城市首选站码，未配置时使用本地站表中的代表站。"""
     bare = _normalize_cn_city_for_rail(city_name)
     codes = _CN_CITY_STATION_TELECODES.get(bare) or _CN_CITY_STATION_TELECODES.get(
         city_name.strip()
     )
-    return list(codes) if codes else []
+    if codes:
+        return list(codes)
+    city_codes = city_station_telecodes(bare)
+    code = city_station_code(bare)
+    if code:
+        return [code]
+    if city_codes:
+        return [sorted(city_codes)[0]]
+    code = resolve_station_code(bare)
+    return [code] if code else []
 
 
 def _parse_station_codes(text: str) -> Dict[str, str]:
@@ -118,16 +128,18 @@ def _parse_station_codes(text: str) -> Dict[str, str]:
     return codes
 
 
-def _rail_train_records(envelope: Mapping[str, Any]) -> List[Dict[str, Any]]:
-    """从 Tool Gateway 信封中读取结构化的 ``get-tickets`` 班次行。"""
+def _indexed_rail_train_records(
+    envelope: Mapping[str, Any],
+) -> List[tuple[int, Dict[str, Any]]]:
+    """读取结构化班次及其在原始结果中的位置。"""
     result = envelope.get("sanitized_result")
     if not isinstance(result, Mapping):
         return []
     rows = result.get("results")
     if not isinstance(rows, list):
         return []
-    trains: List[Dict[str, Any]] = []
-    for row in rows:
+    trains: List[tuple[int, Dict[str, Any]]] = []
+    for index, row in enumerate(rows):
         if not isinstance(row, Mapping) or row.get("truncated") is True:
             continue
         train = {
@@ -144,8 +156,13 @@ def _rail_train_records(envelope: Mapping[str, Any]) -> List[Dict[str, Any]]:
             if isinstance(price, (int, float)) and not isinstance(price, bool)
             else None
         )
-        trains.append(train)
+        trains.append((index, train))
     return trains
+
+
+def _rail_train_records(envelope: Mapping[str, Any]) -> List[Dict[str, Any]]:
+    """从 Tool Gateway 信封中读取结构化的 ``get-tickets`` 班次行。"""
+    return [train for _, train in _indexed_rail_train_records(envelope)]
 
 
 def _rail_station_scope(city_name: str, requested_code: str) -> frozenset[str]:

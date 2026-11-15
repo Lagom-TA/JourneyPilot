@@ -2,6 +2,12 @@
 .view-surface { position: relative; z-index: 1; }
 .view-surface[aria-hidden='true'] { z-index: 0; pointer-events: none; }
 
+.workspace-handoff-frame { position: absolute; inset: 0; z-index: 1; }
+.workspace-handoff-frame[aria-hidden='true'] { pointer-events: none; }
+.workspace-handoff-frame:not(.is-journey)[aria-hidden='true'] { z-index: 0; }
+.workspace-handoff-frame.is-journey[aria-hidden='true'] { visibility: hidden; }
+.workspace-handoff-frame.is-journey::before { position: absolute; inset: -12px 0 0; z-index: -1; background: linear-gradient(to bottom, transparent, var(--color-bg)); content: ''; }
+
 .app-shell {
   display: flex;
   width: 100%;

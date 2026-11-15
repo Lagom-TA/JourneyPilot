@@ -3,6 +3,15 @@ import { test, expect, type Page } from '@playwright/test';
 // 正式组件与合成事件；经真实 SSE 解析和状态投影，不调用付费 API。
 test.skip(process.env.JP_COMPONENT_E2E !== '1', 'Requires Vite dev component fixture');
 
+test.beforeEach(async ({ page, baseURL }) => {
+  const localOrigin = new URL(baseURL!).origin;
+  await page.route('**/*', route => {
+    const url = new URL(route.request().url());
+    if (url.origin !== localOrigin || url.pathname.startsWith('/api/')) return route.abort();
+    return route.continue();
+  });
+});
+
 async function openGroup(page: Page, id: string) {
   const group = page.getByTestId(`research-agent-${id}`);
   const button = group.locator('button.research-agent-heading');

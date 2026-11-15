@@ -1,4 +1,4 @@
-"""把已确认的研究设想交给各角色。"""
+"""把研究指引交给各角色。"""
 
 from __future__ import annotations
 
@@ -56,12 +56,12 @@ async def planner_node(state: TravelAgentState) -> Dict[str, Any]:
     if plan is None or state.planning_generation is None:
         raise ValueError("任务分派需要当前研究方案")
     assignments = {
-        worker: build_worker_assignment(state, worker, plan.summary)
+        worker: build_worker_assignment(state, worker, plan.task_guidance)
         for group in RESEARCH_EXECUTION_PLAN
         for worker in group
         if worker != "itinerary_planner"
     }
-    assignments["itinerary_planner"] = {"objective": plan.summary}
+    assignments["itinerary_planner"] = {"objective": plan.task_guidance}
     return {
         "execution_plan": RESEARCH_EXECUTION_PLAN,
         "current_plan_step": 0,

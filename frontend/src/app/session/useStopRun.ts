@@ -38,6 +38,9 @@ export function useStopRun() {
             return;
         }
         abortSessionStream(activeStreamsRef.current, currentStateRef.current);
+        if (state.homeSubmissionPending) {
+            dispatch({ type: 'SET_HOME_SUBMISSION_PENDING', payload: { token: state.homeSubmissionPending, pending: false } });
+        }
         dispatch({ type: 'SET_STREAMING', payload: false });
         if (cancelAccepted && hadPendingDecision) {
             dispatch({ type: 'MARK_PENDING_DECISIONS_CANCELLED' });
@@ -50,7 +53,15 @@ export function useStopRun() {
             dispatch({
                 type: 'UPDATE_MESSAGE_BY_ID',
                 payload: uiState.markLastInterrupted
-                    ? { id: lastMsg.id, type: 'interrupted', streamCompleted: true }
+                    ? {
+                        id: lastMsg.id,
+                        type: 'interrupted',
+                        streamCompleted: true,
+                        ...(!runId && !lastMsg.content.trim() ? {
+                            content: '已停止等待。你可以补充需求或重新开始。',
+                            displayContent: '已停止等待。你可以补充需求或重新开始。',
+                        } : {}),
+                    }
                     : {
                         id: lastMsg.id,
                         type: 'error',
@@ -64,6 +75,7 @@ export function useStopRun() {
         activeStreamsRef,
         currentStateRef,
         state.currentMessages,
+        state.homeSubmissionPending,
         state.currentTripRunId,
         state.currentTripRunStatus,
         state.currentSessionId,

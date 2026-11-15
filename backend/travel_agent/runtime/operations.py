@@ -116,9 +116,13 @@ async def await_model_operation(awaitable: Awaitable[Any], *, operation: str) ->
         raise
     if remaining is None:
         return await awaitable
+    timer = asyncio.timeout(remaining)
     try:
-        return await asyncio.wait_for(awaitable, timeout=remaining)
+        async with timer:
+            return await awaitable
     except asyncio.TimeoutError as exc:
+        if not timer.expired():
+            raise
         _deadline, observation = observe_current_run_deadline()
         if observation is None:  # pragma: no cover - 上下文被重置的防御分支
             raise

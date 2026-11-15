@@ -18,8 +18,18 @@ from travel_agent.runtime.run_contracts import (
 from travel_agent.runtime.run_lifecycle import available_run_actions
 
 
-def _run(status: TripRunStatus, *, policy: TripRunResumePolicy = TripRunResumePolicy.CHECKPOINT) -> TripRun:
-    return TripRun(run_id="trip_x", status=status, resume_policy=policy)
+def _run(
+    status: TripRunStatus,
+    *,
+    policy: TripRunResumePolicy = TripRunResumePolicy.CHECKPOINT,
+    last_error_code: str | None = None,
+) -> TripRun:
+    return TripRun(
+        run_id="trip_x",
+        status=status,
+        resume_policy=policy,
+        last_error_code=last_error_code,
+    )
 
 
 @pytest.mark.parametrize(
@@ -65,6 +75,20 @@ def test_resume_available_keeps_resume() -> None:
         run_id="trip_x", recovery_status=RunRecoveryStatus.RESUME_AVAILABLE
     )
     assert available_run_actions(_run(TripRunStatus.INTERRUPTED), execution) == ["resume"]
+
+
+@pytest.mark.parametrize("status", [TripRunStatus.FAILED, TripRunStatus.INTERRUPTED])
+def test_projection_failure_does_not_expose_resume(status: TripRunStatus) -> None:
+    """投影失败的恢复请求会被准备阶段拒绝，动作表不能显示继续入口。"""
+
+    run = _run(status, last_error_code="projection_failure")
+    assert available_run_actions(run) == []
+
+
+@pytest.mark.parametrize("status", [TripRunStatus.FAILED, TripRunStatus.INTERRUPTED])
+def test_other_failure_codes_keep_checkpoint_resume(status: TripRunStatus) -> None:
+    run = _run(status, last_error_code="run_deadline_exhausted")
+    assert available_run_actions(run) == ["resume"]
 
 
 def test_executor_id_is_not_just_a_pid() -> None:

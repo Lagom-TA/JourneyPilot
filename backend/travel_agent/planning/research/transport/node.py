@@ -19,6 +19,8 @@ from travel_agent.planning.invalidation import generation_packet_key
 from travel_agent.planning.requirements.constraint_applicability import (
     active_hard_constraint_ids,
 )
+from travel_agent.planning.research.candidates import TransportCandidate
+from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.research.errors import format_worker_last_error
 from travel_agent.planning.research.feedback import append_research_redo_messages
 from travel_agent.planning.research.output.failures import (
@@ -34,7 +36,9 @@ from travel_agent.planning.research.output.metadata import (
 )
 from travel_agent.planning.research.output.options import provider_evidence_outcomes
 from travel_agent.planning.research.output.policy import packet_candidate_limit
+from travel_agent.planning.research.output.sources import _remove_fact_references
 from travel_agent.planning.research.output.transcript import authoritative_tool_messages
+from travel_agent.planning.research.packets import ResearchPacket
 from travel_agent.planning.research.prompts import build_research_packet_prompt
 from travel_agent.planning.research.reference_service_contracts import (
     ProviderReferenceService,
@@ -42,6 +46,7 @@ from travel_agent.planning.research.reference_service_contracts import (
 from travel_agent.planning.research.transport.rail.binding import (
     discover_domestic_rail_route,
 )
+from travel_agent.planning.research.transport.rail.followup import compile_rail_followup_packet
 from travel_agent.planning.research.transport.scope import (
     _NODE_NAME,
     transport_provider_assignments,
@@ -69,6 +74,90 @@ _LAST_ERROR_LOG_LIMIT = 600
 
 
 _MAX_TOOL_ITERATIONS = 5
+
+
+def _merge_initial_rail_packet(
+    packet: ResearchPacket,
+    rail: ResearchPacket,
+    *,
+    active_constraint_ids: List[str],
+) -> ResearchPacket:
+    """保留真实铁路候选，并合并模型已经提及的同一班次。"""
+    payload = packet.model_dump(mode="python")
+    rail_fields = {fact.field_path for fact in rail.fact_assertions}
+
+    def replaces_rail_field(field_path: str) -> bool:
+        return any(
+            field_path == field or field_path.startswith((f"{field}.", f"{field}["))
+            for field in rail_fields
+        )
+
+    for candidate in rail.candidates:
+        existing = next(
+            (
+                item for item in packet.candidates
+                if isinstance(item, TransportCandidate)
+                and item.transport_class == "long_distance"
+                and item.selected_mode.value in {"train", "high_speed_rail"}
+                and item.departure_at == candidate.departure_at
+                and item.from_endpoint.station_code == candidate.from_endpoint.station_code
+                and item.to_endpoint.station_code == candidate.to_endpoint.station_code
+                and (
+                    item.route_id in {candidate.route_id, candidate.segments[0].service_number}
+                    or any(
+                        segment.service_number == candidate.segments[0].service_number
+                        for segment in item.segments
+                    )
+                )
+            ),
+            None,
+        )
+        candidate_id = existing.candidate_id if existing is not None else candidate.candidate_id
+        if existing is None and any(
+            item["candidate_id"] == candidate_id for item in payload["candidates"]
+        ):
+            continue
+        candidate_data = candidate.model_dump(mode="python")
+        if existing is not None:
+            old_facts = {
+                fact["fact_assertion_id"] for fact in payload["fact_assertions"]
+                if fact["entity_ref"]["entity_id"] == candidate_id
+                and replaces_rail_field(fact["field_path"])
+            }
+            payload["fact_assertions"] = [
+                fact for fact in payload["fact_assertions"]
+                if fact["fact_assertion_id"] not in old_facts
+            ]
+            payload["field_provenance"] = [
+                item for item in payload["field_provenance"]
+                if item["entity_ref"]["entity_id"] != candidate_id
+                or not replaces_rail_field(item["field_path"])
+            ]
+            _remove_fact_references(payload, old_facts)
+            current = next(
+                item for item in payload["candidates"] if item["candidate_id"] == candidate_id
+            )
+            for field in rail_fields | {"provider_evidence_scope_id", "observed_at"}:
+                current[field] = candidate_data[field]
+        else:
+            candidate_data["active_constraint_ids"] = list(active_constraint_ids)
+            payload["candidates"].append(candidate_data)
+        for fact in rail.fact_assertions:
+            if fact.entity_ref.entity_id == candidate.candidate_id:
+                fact_data = fact.model_dump(mode="python")
+                fact_data["entity_ref"]["entity_id"] = candidate_id
+                payload["fact_assertions"].append(fact_data)
+        for item in rail.field_provenance:
+            if item.entity_ref.entity_id == candidate.candidate_id:
+                provenance = item.model_dump(mode="python")
+                provenance["entity_ref"]["entity_id"] = candidate_id
+                payload["field_provenance"].append(provenance)
+    source_ids = {source["source_record_id"] for source in payload["source_records"]}
+    payload["source_records"].extend(
+        source.model_dump(mode="python") for source in rail.source_records
+        if source.source_record_id not in source_ids
+    )
+    return ResearchPacket.model_validate(payload)
 
 
 async def transport_researcher_node(
@@ -185,6 +274,8 @@ async def transport_researcher_node(
             reference_services=reference_services,
             required_route_scopes=required_route_scopes,
         )
+        # 只有确定性发现阶段产生的选中班次可以直接复用其筛选结果。
+        initial_rail_results = list(authoritative_tool_results)
         react = await streaming_react_loop(
             llm=llm,
             messages=messages,
@@ -223,7 +314,30 @@ async def transport_researcher_node(
             authoritative_tool_results=authoritative_tool_results,
             expected_active_constraint_ids=active_constraint_ids,
             authoritative_packet_metadata=authoritative_packet_metadata,
+            required_route_scopes=required_route_scopes,
         )
+        catalog = RecommendationCatalog(
+            generation_id=generation_id,
+            fact_data_revision=state.fact_data_revision,
+            weather_data_revision=0,
+        )
+        for envelope in initial_rail_results:
+            metadata = envelope.get("metadata") or {}
+            leg = metadata.get("rail_route_leg") or {}
+            if not metadata.get("rail_selected_train") or not leg:
+                continue
+            rail = compile_rail_followup_packet(
+                state=state,
+                catalog=catalog,
+                envelope=envelope,
+                task_id=output_key,
+                existing_candidate_ids=set(),
+                service_date=str(leg.get("service_date") or ""),
+            )
+            if rail is not None:
+                packet = _merge_initial_rail_packet(
+                    packet, rail, active_constraint_ids=active_constraint_ids
+                )
 
         logger.info(
             "TransportResearcher 完成，key=%s candidates=%d facts=%d sources=%d finalize_ms=%.0f",

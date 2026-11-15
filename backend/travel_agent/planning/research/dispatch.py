@@ -155,16 +155,26 @@ async def dispatcher_node(
                     "research_gate_started_at": utc_now().isoformat(),
                 }
             composition_step = _composition_step(plan, step)
+            from travel_agent.planning.execution import _has_valid_placement_skeleton
+
             owes_composition = (
-                not observation.composition_closed
-                and state.trip_workspace is None
+                state.trip_workspace is None
                 and composition_step is not None
-                # 组合已失败（例如预算耗尽或达到返研上限）时，不再重新调度组合。
-                and "failed"
-                not in {
-                    state.agent_status.get(strip_round_suffix(agent))
-                    for agent in plan[composition_step]
-                }
+                and observation.phase != "expired"
+                and (
+                    not observation.composition_closed
+                    or _has_valid_placement_skeleton(state)
+                )
+                # 组合已失败或有明确失败上下文时，不再重入，除非只是窗口关闭后的
+                # 合法骨架确定性物化。
+                and (
+                    _has_valid_placement_skeleton(state)
+                    or "failed"
+                    not in {
+                        state.agent_status.get(strip_round_suffix(agent))
+                        for agent in plan[composition_step]
+                    }
+                )
             )
             if owes_composition:
                 logger.info(

@@ -380,12 +380,24 @@ export interface LegService {
 export function legService(leg: PublicTransportLeg): LegService | null {
     if (leg.route_status !== 'ready')
         return null;
-    const segment = leg.segments.find((entry) => entry.service_number || entry.line_name);
+    const clean = (value: string | null) => value?.trim() || null;
+    const serviceSegments = leg.selected_mode === 'flight'
+        ? leg.segments.filter((entry) => entry.mode === 'flight')
+        : leg.segments;
+    const segment = serviceSegments.find((entry) => clean(entry.service_number))
+        ?? serviceSegments.find((entry) => clean(entry.line_name) || clean(entry.operator_name));
     if (!segment)
         return null;
+    const numbers = leg.selected_mode === 'flight'
+        ? [...new Set(serviceSegments.map((entry) => clean(entry.service_number)).filter((value): value is string => Boolean(value)))]
+        : [];
+    const serviceNumber = numbers.length > 0 ? numbers.join(' → ') : clean(segment.service_number);
+    const lineName = clean(segment.line_name);
+    const operators = [...new Set(serviceSegments.map((entry) => clean(entry.operator_name)).filter((value): value is string => Boolean(value)))];
+    const operator = leg.selected_mode === 'flight' ? (operators.length === 1 ? operators[0] : null) : clean(segment.operator_name);
     return {
-        serviceNumber: segment.service_number,
-        lineName: segment.line_name,
-        operator: segment.operator_name,
+        serviceNumber,
+        lineName,
+        operator: operator === (serviceNumber ?? lineName) ? null : operator,
     };
 }

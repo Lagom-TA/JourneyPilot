@@ -1,4 +1,4 @@
-import { m, useReducedMotion } from 'motion/react';
+import { m } from 'motion/react';
 import { ArrowRight, ChevronDown } from 'lucide-react';
 import { getTripPlannerConfiguration } from '../../api/planner';
 import { getDefaultOrigin } from '../../../settings/api/defaultOrigin';
@@ -12,6 +12,7 @@ import { Button } from '../../../../components/ui/Button';
 import { Skeleton } from '../../../../components/ui/Skeleton';
 import { useApp } from '../../../../app/state/AppContext';
 import { useSendMessage } from '../../../../app/session/useSendMessage';
+import { useMediaQuery } from '../../../../hooks/useMediaQuery';
 import { ActivePresetContext } from '../../../presets/components/ActivePresetContext';
 import { DateRangePicker } from './DateRangePicker';
 import { PlaceField } from './PlaceField';
@@ -100,11 +101,14 @@ export const TripPlanner: React.FC<{
 }) => {
   const { state } = useApp();
   const { sendMessage } = useSendMessage();
-  const reducedMotion = useReducedMotion();
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const naturalInputRef = React.useRef<HTMLTextAreaElement>(null);
   const budgetInputRef = React.useRef<HTMLInputElement>(null);
   const originTouchedRef = React.useRef(false);
   const plannerRef = React.useRef<HTMLElement>(null);
+  const panelsRef = React.useRef<HTMLDivElement>(null);
+  const panelContentRef = React.useRef<HTMLDivElement>(null);
+  const panelHeightRef = React.useRef<number | null>(null);
   const [mode, setMode] = React.useState<PlannerMode>(compact ? 'structured' : 'natural');
   const modeRef = React.useRef(mode);
   modeRef.current = mode;
@@ -128,7 +132,6 @@ export const TripPlanner: React.FC<{
   const [children, setChildren] = React.useState(0);
   const [elderly, setElderly] = React.useState(false);
   const [primary, setPrimary] = React.useState('');
-  const [primaryTouched, setPrimaryTouched] = React.useState(false);
   const [interests, setInterests] = React.useState<string[]>([]);
   const [more, setMore] = React.useState(false);
   const [budget, setBudget] = React.useState('');
@@ -211,7 +214,6 @@ export const TripPlanner: React.FC<{
     setChildren(0);
     setElderly(false);
     setPrimary(scene.primary);
-    setPrimaryTouched(true);
     setInterests([]);
     setBudget(`${scene.budgetCny}`);
     setBudgetInvalid(false);
@@ -286,8 +288,8 @@ export const TripPlanner: React.FC<{
       end_date: endDate || null,
       dates_assumed: false,
       party: { total: adults ? adults + children : null, adults: adults || null, children, elderly_companions: elderly, accessibility_required: null },
-      style: primaryTouched || interests.length > 0
-        ? { primary, secondary_interests: interests, source: primaryTouched ? 'current' : 'suggested' }
+      style: primary
+        ? { primary, secondary_interests: interests, source: 'current' }
         : null,
     };
     const numericBudget = parsedBudget.value;
@@ -300,7 +302,7 @@ export const TripPlanner: React.FC<{
     else if (startDate) facts.push(`开始日期：${startDate}`);
     else if (endDate) facts.push(`结束日期：${endDate}`);
     if (adults) facts.push(`同行：${adults} 位成人${children ? `、${children} 位儿童` : ''}${elderly ? '、长辈同行' : ''}`);
-    if (primaryTouched) facts.push(`风格：${primary}${interests.length ? `（${interests.join('、')}）` : ''}`);
+    if (primary) facts.push(`风格：${primary}${interests.length ? `（${interests.join('、')}）` : ''}`);
     else if (interests.length) facts.push(`兴趣：${interests.join('、')}`);
     if (numericBudget !== null) facts.push(`总预算约 ${numericBudget.toLocaleString('zh-CN')} 元`);
     const summary = [guidedText.trim(), `按条件规划——${facts.join('；')}`].filter(Boolean).join('\n');
@@ -331,63 +333,85 @@ export const TripPlanner: React.FC<{
     panelId: `${tabsId}-${tab.id}-panel`,
   })), [tabsId]);
 
+  React.useLayoutEffect(() => {
+    const panels = panelsRef.current;
+    const content = panelContentRef.current;
+    const previousHeight = panelHeightRef.current;
+    if (!panels || !content || previousHeight === null) return;
+    panelHeightRef.current = null;
+    const nextHeight = content.offsetHeight;
+    if (reducedMotion || Math.abs(nextHeight - previousHeight) < 1) {
+      panels.style.height = '';
+      return;
+    }
+
+    panels.style.transition = 'none';
+    panels.style.height = `${previousHeight}px`;
+    void panels.offsetHeight;
+    panels.style.transition = '';
+    panels.style.height = `${nextHeight}px`;
+
+    // 输入或浮层需要稳定锚点时，立即回到内容的自然高度。
+    const finishInteraction = () => {
+      panels.style.transition = 'none';
+      panels.style.height = '';
+      void panels.offsetHeight;
+      panels.style.transition = '';
+    };
+    panels.addEventListener('pointerdown', finishInteraction, { capture: true, once: true });
+    panels.addEventListener('focusin', finishInteraction, { once: true });
+    const finish = (event: TransitionEvent) => {
+      if (event.target !== panels || event.propertyName !== 'height') return;
+      const target = content.offsetHeight;
+      if (Math.abs(panels.getBoundingClientRect().height - target) >= 1) {
+        panels.style.height = `${target}px`;
+        return;
+      }
+      panels.style.height = '';
+    };
+    panels.addEventListener('transitionend', finish);
+    let fallback = window.setTimeout(finishInteraction, 600);
+    const observer = new ResizeObserver(() => {
+      if (!panels.style.height) return;
+      const next = content.offsetHeight;
+      if (Math.abs(next - parseFloat(panels.style.height)) < 1) return;
+      if (Math.abs(next - panels.getBoundingClientRect().height) < 1) {
+        panels.style.height = '';
+      } else {
+        panels.style.height = `${next}px`;
+        window.clearTimeout(fallback);
+        fallback = window.setTimeout(finishInteraction, 600);
+      }
+    });
+    observer.observe(content);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(fallback);
+      panels.removeEventListener('pointerdown', finishInteraction, true);
+      panels.removeEventListener('focusin', finishInteraction);
+      panels.removeEventListener('transitionend', finish);
+    };
+  }, [mode, reducedMotion]);
+
+  React.useLayoutEffect(() => {
+    if (reducedMotion && panelsRef.current) panelsRef.current.style.height = '';
+  }, [reducedMotion]);
+
   const tabs = (
     <SegmentedTabs
       aria-label="旅行规划方式"
+      preventScrollOnFocus
       tabs={plannerTabs}
       value={mode}
       onChange={(next) => {
+        if (next === mode) return;
+        panelHeightRef.current = panelsRef.current?.getBoundingClientRect().height ?? null;
         setMode(next);
         setError('');
       }}
       className="planner-mode-tabs"
     />
   );
-
-  if (mode === 'structured' && configError) {
-    return (
-      <section className={cn('planner-card', compact && 'planner-card-compact')} data-mode={mode} aria-label="旅行规划卡">
-        {tabs}
-        <div
-          className="planner-config-state"
-          role="tabpanel"
-          id={`${tabsId}-${mode}-panel`}
-          aria-labelledby={`${tabsId}-${mode}-tab`}
-        >
-          <RequestFailureNotice
-            title="暂时读不到规划选项"
-            failure={configError}
-            onRetry={() => void loadConfiguration()}
-            className="planner-config-notice"
-          />
-        </div>
-      </section>
-    );
-  }
-
-  if (mode === 'structured' && (!config || !extracted)) {
-    return (
-      <section className={cn('planner-card', compact && 'planner-card-compact')} data-mode={mode} aria-label="旅行规划卡">
-        {tabs}
-        <div
-          className="planner-config-state"
-          role="tabpanel"
-          id={`${tabsId}-${mode}-panel`}
-          aria-labelledby={`${tabsId}-${mode}-tab`}
-          aria-label="正在读取旅行规划配置"
-        >
-          <div className="planner-loading-content">
-            {[0, 1, 2].map((row) => (
-              <div key={row} className="flex flex-col gap-2">
-                <Skeleton radius="label" className="h-3 w-20" />
-                <Skeleton radius="label" className="h-11 w-full" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-    );
-  }
 
   return (
     <m.section
@@ -400,133 +424,157 @@ export const TripPlanner: React.FC<{
       <div className="planner-standard-flow">
         {compact ? <p className="planner-compact-label">确认旅行信息</p> : tabs}
         {!compact && <ActivePresetContext />}
-        <div className="planner-panels">
-          <m.div
-            role="tabpanel"
-            id={`${tabsId}-natural-panel`}
-            aria-labelledby={`${tabsId}-natural-tab`}
-            hidden={mode !== 'natural'}
-            className={cn('planner-panel planner-panel-natural', mode === 'natural' ? 'is-active' : 'is-inactive')}
-            initial={false}
-            animate={{ opacity: mode === 'natural' ? 1 : 0, y: mode === 'natural' ? 0 : -4 }}
-            transition={{ duration: reducedMotion ? 0 : duration.base, ease: easing.decelerate }}
-          >
-            <div className="planner-natural-input">
-              <textarea
-                ref={naturalInputRef}
-                id="natural-trip-brief"
-                data-testid="natural-trip-input"
-                aria-label="一句话描述旅行"
-                value={naturalText}
-                maxLength={500}
-                onChange={(event) => setNaturalText(event.target.value)}
-                onKeyDown={(event) => {
-                  if (!event.nativeEvent.isComposing && (event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-                    event.preventDefault();
-                    void submitNatural();
-                  }
-                }}
-                rows={3}
-                disabled={state.isStreaming}
-                placeholder="从北京去成都和重庆，7 天，轻松一点。"
-              />
-              {naturalText.length >= 400 && <span className="planner-character-count">{naturalText.length}/500</span>}
-            </div>
-          </m.div>
-          <m.div
-            role="tabpanel"
-            id={`${tabsId}-structured-panel`}
-            aria-labelledby={`${tabsId}-structured-tab`}
-            hidden={mode !== 'structured'}
-            className={cn(
-              'planner-panel planner-panel-structured',
-              mode === 'structured' ? 'is-active' : 'is-inactive',
-              destinationCollapsed && 'is-destination-collapsed',
-            )}
-            initial={false}
-            animate={{ opacity: mode === 'structured' ? 1 : 0, y: mode === 'structured' ? 0 : 4 }}
-            transition={{ duration: reducedMotion ? 0 : duration.base, ease: easing.decelerate }}
-          >
-            {config && extracted && (
-              <>
-                <div className="planner-route-fields">
-                  <PlaceField role="origin" value={origin} onChange={(place) => { originTouchedRef.current = true; setOrigin(place); }} onQueryChange={(query) => { originTouchedRef.current = true; setOriginQuery(query); }} label="出发地" initialQuery={extracted.origin} />
-                  <div className="planner-destination-field-wrap">
-                    <span className="planner-field-label">目的地</span>
-                    <DestinationTokenField
-                      values={destinations}
-                      queries={destinationQueries}
-                      onAddStateChange={handleDestinationAddState}
-                      onChange={(nextValues, nextQueries) => {
-                        setDestinations(nextValues);
-                        setDestinationQueries(nextQueries);
-                        setError('');
-                      }}
-                    />
+        <div ref={panelsRef} className="planner-panels">
+          <div ref={panelContentRef}>
+            <m.div
+              role="tabpanel"
+              id={`${tabsId}-natural-panel`}
+              aria-labelledby={`${tabsId}-natural-tab`}
+              hidden={mode !== 'natural'}
+              className={cn('planner-panel planner-panel-natural', mode === 'natural' ? 'is-active' : 'is-inactive')}
+              initial={false}
+              animate={{ opacity: mode === 'natural' ? 1 : 0, y: mode === 'natural' ? 0 : -4 }}
+              transition={{ duration: reducedMotion ? 0 : duration.base, ease: easing.decelerate }}
+            >
+              <div className="planner-natural-input">
+                <textarea
+                  ref={naturalInputRef}
+                  id="natural-trip-brief"
+                  data-testid="natural-trip-input"
+                  aria-label="一句话描述旅行"
+                  value={naturalText}
+                  maxLength={500}
+                  onChange={(event) => setNaturalText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (!event.nativeEvent.isComposing && (event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                      event.preventDefault();
+                      void submitNatural();
+                    }
+                  }}
+                  rows={3}
+                  disabled={state.isStreaming}
+                  placeholder="从北京去成都和重庆，7 天，轻松一点。"
+                />
+                {naturalText.length >= 400 && <span className="planner-character-count">{naturalText.length}/500</span>}
+              </div>
+            </m.div>
+            <m.div
+              role="tabpanel"
+              id={`${tabsId}-structured-panel`}
+              aria-labelledby={`${tabsId}-structured-tab`}
+              hidden={mode !== 'structured'}
+              className={cn(
+                'planner-panel planner-panel-structured',
+                mode === 'structured' ? 'is-active' : 'is-inactive',
+                destinationCollapsed && 'is-destination-collapsed',
+              )}
+              initial={false}
+              animate={{ opacity: mode === 'structured' ? 1 : 0, y: mode === 'structured' ? 0 : 4 }}
+              transition={{ duration: reducedMotion ? 0 : duration.base, ease: easing.decelerate }}
+            >
+              {configError ? (
+                <div className="planner-config-state">
+                  <RequestFailureNotice
+                    title="暂时读不到规划选项"
+                    failure={configError}
+                    onRetry={() => void loadConfiguration()}
+                    className="planner-config-notice"
+                  />
+                </div>
+              ) : !config || !extracted ? (
+                <div className="planner-config-state" aria-label="正在读取旅行规划配置" role="status">
+                  <div className="planner-loading-content">
+                    {[0, 1, 2].map((row) => (
+                      <div key={row} className="flex flex-col gap-2">
+                        <Skeleton radius="label" className="h-3 w-20" />
+                        <Skeleton radius="label" className="h-11 w-full" />
+                      </div>
+                    ))}
                   </div>
                 </div>
-
-                <div className="planner-condition-fields">
-                  <div className="planner-date-field">
-                    <span className="planner-field-label">日期</span>
-                    <DateRangePicker
-                      start={startDate}
-                      end={endDate}
-                      hideLabel
-                      condensed
-                      onChange={(nextStart, nextEnd) => { setStartDate(nextStart); setEndDate(nextEnd); setError(''); }}
-                    />
-                  </div>
-                  <TravelerPicker adults={adults} childrenCount={children} onChange={(nextAdults, nextChildren) => { setAdults(nextAdults); setChildren(nextChildren); }} />
-                  <div className={cn('planner-budget-field', budgetInvalid && 'is-invalid')}>
-                    <label htmlFor="planner-budget" className="planner-field-label">总预算 <span className="planner-optional">可选</span></label>
-                    <div className="planner-budget-input">
-                      <span aria-hidden>¥</span>
-                      <input
-                        ref={budgetInputRef}
-                        id="planner-budget"
-                        inputMode="decimal"
-                        type="text"
-                        value={budget}
-                        onChange={(event) => { setBudget(event.target.value); setBudgetInvalid(false); }}
-                        onBlur={() => setBudgetInvalid(Boolean(parseTripBudget(budget).error))}
-                        placeholder="不限"
-                        aria-label="预算（可选）"
-                        aria-invalid={budgetInvalid || undefined}
-                        aria-describedby={budgetInvalid ? 'planner-budget-error' : undefined}
+              ) : (
+                <>
+                  <div className="planner-route-fields">
+                    <PlaceField active={mode === 'structured'} role="origin" value={origin} onChange={(place) => { originTouchedRef.current = true; setOrigin(place); }} onQueryChange={(query) => { originTouchedRef.current = true; setOriginQuery(query); }} label="出发地" initialQuery={extracted.origin} showAttribution={compact} />
+                    <div className="planner-destination-field-wrap">
+                      <span className="planner-field-label">目的地</span>
+                      <DestinationTokenField
+                        active={mode === 'structured'}
+                        values={destinations}
+                        queries={destinationQueries}
+                        onAddStateChange={handleDestinationAddState}
+                        onChange={(nextValues, nextQueries) => {
+                          setDestinations(nextValues);
+                          setDestinationQueries(nextQueries);
+                          setError('');
+                        }}
                       />
                     </div>
-                    {budgetInvalid && <span id="planner-budget-error" className="planner-field-error" role="alert">金额无效</span>}
                   </div>
-                  <div className="planner-style-field">
-                    <label htmlFor="planner-style" className="planner-field-label">旅行风格</label>
-                    <div className="planner-select-control">
-                      <select id="planner-style" aria-label="旅行风格" value={primary} onChange={(event) => { setPrimary(event.target.value); setPrimaryTouched(true); }}>
-                        {config.primary_styles.map((style) => <option key={style.id} value={style.label}>{style.label}</option>)}
-                      </select>
-                      <ChevronDown size={15} aria-hidden />
-                    </div>
-                  </div>
-                </div>
 
-                <div className="planner-preference-block">
-                  <button type="button" aria-expanded={more} className="planner-more-preferences" onClick={() => setMore(!more)}>更多偏好 <ChevronDown size={13} aria-hidden /></button>
-                  {more && (
-                    <div className="planner-more-preferences-options">
-                      <button type="button" aria-pressed={elderly} onClick={() => setElderly(!elderly)} className={cn(CHIP, elderly ? CHIP_ON : CHIP_OFF)}>长辈同行</button>
-                      {config.secondary_interests.map((interest) => (
-                        <button key={interest.id} type="button" aria-pressed={interests.includes(interest.label)} disabled={!interests.includes(interest.label) && interests.length >= config.max_secondary_interests} onClick={() => setInterests((items) => items.includes(interest.label) ? items.filter((item) => item !== interest.label) : [...items, interest.label])} className={cn(CHIP, interests.includes(interest.label) ? CHIP_ON : CHIP_OFF, 'disabled:opacity-40')}>{interest.label}</button>
-                      ))}
+                  <div className="planner-condition-fields">
+                    <div className="planner-date-field">
+                      <span className="planner-field-label">日期</span>
+                      <DateRangePicker
+                        start={startDate}
+                        end={endDate}
+                        hideLabel
+                        condensed
+                        active={mode === 'structured'}
+                        onChange={(nextStart, nextEnd) => { setStartDate(nextStart); setEndDate(nextEnd); setError(''); }}
+                      />
                     </div>
-                  )}
-                </div>
-              </>
-            )}
-          </m.div>
+                    <TravelerPicker active={mode === 'structured'} adults={adults} childrenCount={children} onChange={(nextAdults, nextChildren) => { setAdults(nextAdults); setChildren(nextChildren); }} />
+                    <div className={cn('planner-budget-field', budgetInvalid && 'is-invalid')}>
+                      <label htmlFor="planner-budget" className="planner-field-label">总预算 <span className="planner-optional">可选</span></label>
+                      <div className="planner-budget-input">
+                        <span aria-hidden>¥</span>
+                        <input
+                          ref={budgetInputRef}
+                          id="planner-budget"
+                          inputMode="decimal"
+                          type="text"
+                          value={budget}
+                          onChange={(event) => { setBudget(event.target.value); setBudgetInvalid(false); }}
+                          onBlur={() => setBudgetInvalid(Boolean(parseTripBudget(budget).error))}
+                          placeholder="不限"
+                          aria-label="预算（可选）"
+                          aria-invalid={budgetInvalid || undefined}
+                          aria-describedby={budgetInvalid ? 'planner-budget-error' : undefined}
+                        />
+                      </div>
+                      {budgetInvalid && <span id="planner-budget-error" className="planner-field-error" role="alert">金额无效</span>}
+                    </div>
+                    <div className="planner-style-field">
+                      <label htmlFor="planner-style" className="planner-field-label">旅行风格</label>
+                      <div className="planner-select-control">
+                        <select id="planner-style" aria-label="旅行风格" value={primary} onChange={(event) => setPrimary(event.target.value)}>
+                          {config.primary_styles.map((style) => <option key={style.id} value={style.label}>{style.label}</option>)}
+                        </select>
+                        <ChevronDown size={15} aria-hidden />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="planner-preference-block">
+                    <button type="button" aria-expanded={more} className="planner-more-preferences" onClick={() => setMore(!more)}>更多偏好 <ChevronDown size={13} aria-hidden /></button>
+                    {more && (
+                      <div className="planner-more-preferences-options">
+                        <button type="button" aria-pressed={elderly} onClick={() => setElderly(!elderly)} className={cn(CHIP, elderly ? CHIP_ON : CHIP_OFF)}>长辈同行</button>
+                        {config.secondary_interests.map((interest) => (
+                          <button key={interest.id} type="button" aria-pressed={interests.includes(interest.label)} disabled={!interests.includes(interest.label) && interests.length >= config.max_secondary_interests} onClick={() => setInterests((items) => items.includes(interest.label) ? items.filter((item) => item !== interest.label) : [...items, interest.label])} className={cn(CHIP, interests.includes(interest.label) ? CHIP_ON : CHIP_OFF, 'disabled:opacity-40')}>{interest.label}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </m.div>
+          </div>
         </div>
-        {(mode === 'natural' || Boolean(config && extracted)) && (
-          <div className="planner-action-area">
-            {error && <p className="planner-error" role="alert">{error}</p>}
+        <div className="planner-action-area">
+          {error && <p className="planner-error" role="alert">{error}</p>}
+          {(mode === 'natural' || Boolean(config && extracted && !configError)) && (
             <Button
               size="lg"
               className="planner-main-action"
@@ -535,8 +583,8 @@ export const TripPlanner: React.FC<{
             >
               {state.isStreaming ? '正在整理…' : '开始规划'} <ArrowRight size={17} aria-hidden />
             </Button>
-          </div>
-        )}
+          )}
+        </div>
         {homeFlowActive && (homeError || homePendingLabel) && (
           <div className={cn('planner-home-flow-status', homeError && 'is-error')} role={homeError ? 'alert' : 'status'} aria-live="polite">
             {homeError ? (

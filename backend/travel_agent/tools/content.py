@@ -36,12 +36,16 @@ _PLACE_IDENTITY_KEYS = (
 
 
 _ROUTE_IDENTITY_KEYS = (
+    "candidate_id",
     "route_id",
+    "scope_id",
     "mode",
     "transport_class",
     "selected_mode",
     "from_endpoint",
     "to_endpoint",
+    "from",
+    "to",
     "boarding_stop",
     "alighting_stop",
     "from_place_id",
@@ -51,9 +55,13 @@ _ROUTE_IDENTITY_KEYS = (
     "duration_minutes",
     "distance_meters",
     "cost",
+    "total_cost_cny",
     "segments",
     "provider",
     "train_no",
+    "service_number",
+    "sources",
+    "observed_at",
     "prices",
 )
 
@@ -255,6 +263,18 @@ def compact_tool_content_for_model(tool_result: Any) -> str:
     text = json.dumps(compact, ensure_ascii=False, default=str)
     if len(text) <= _TOOL_CONTENT_CHAR_LIMIT:
         return text
+
+    if isinstance(compact, dict) and compact.get("tool_name") == "request_transport_research":
+        payload = compact.get("sanitized_result")
+        if isinstance(payload, dict) and payload.get("routes"):
+            # 保留可用于行程的路线，长篇研究记录不会挤掉候选标识。
+            payload.pop("research_notes", None)
+            text = json.dumps(compact, ensure_ascii=False, default=str)
+            while len(text) > _TOOL_CONTENT_CHAR_LIMIT and len(payload["routes"]) > 1:
+                payload["routes"].pop()
+                text = json.dumps(compact, ensure_ascii=False, default=str)
+            if len(text) <= _TOOL_CONTENT_CHAR_LIMIT:
+                return text
 
     if isinstance(compact, dict):
         payload = compact.get("sanitized_result", compact)

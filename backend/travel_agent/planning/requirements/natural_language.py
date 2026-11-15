@@ -15,14 +15,21 @@ from travel_agent.schema import StrictModel
 
 class ResearchPlan(StrictModel):
     summary: str = Field(min_length=1)
+    agent_guidance: str | None = None
 
-    @field_validator("summary")
+    @field_validator("summary", "agent_guidance")
     @classmethod
-    def require_text(cls, value: str) -> str:
+    def require_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         value = value.strip()
         if not value:
             raise ValueError("研究设想不能为空")
         return value
+
+    @property
+    def task_guidance(self) -> str:
+        return self.agent_guidance if self.agent_guidance is not None else self.summary
 
 
 def next_generation(state: Any, requirements: str) -> PlanningGeneration:

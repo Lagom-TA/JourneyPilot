@@ -417,6 +417,186 @@ export function xianMixedTransportBundle() {
   return bundle;
 }
 
+type FixtureRailSegment = Omit<FixtureSegment, 'departure_at' | 'arrival_at' | 'duration_minutes' | 'distance_meters' | 'cost_cny'> & {
+  departure_at: string | null;
+  arrival_at: string | null;
+  duration_minutes: number | null;
+  distance_meters: number | null;
+  cost_cny: number | null;
+};
+type FixtureRailLeg = Omit<ReturnType<typeof leg>, 'segments' | 'evidence_basis' | 'distance_meters'> & {
+  segments: FixtureRailSegment[];
+  distance_meters: number | null;
+  evidence_basis: 'public_reference' | 'cited_source';
+};
+type FixtureRailVisit = Omit<ReturnType<typeof xianDeliveryBundle>['workspace']['itinerary']['visit_stops'][number], 'estimated_cost_cny' | 'opening_window' | 'reservation_required'> & {
+  estimated_cost_cny: number | null;
+  opening_window: string | null;
+  reservation_required: boolean | null;
+};
+type FixtureRailBlock = Omit<ReturnType<typeof block>, 'evidence_basis' | 'citation_ids'> & {
+  evidence_basis: 'public_reference' | 'cited_source';
+  citation_ids: string[];
+};
+type FixtureRailRoute = Omit<ReturnType<typeof xianDeliveryBundle>['map_projection']['content']['routes'][number], 'segments' | 'citation_ids'> & {
+  segments: FixtureRailSegment[];
+  citation_ids: string[];
+};
+type FixtureRailCitation = {
+  citation_id: string;
+  entity_ref: ReturnType<typeof ref>;
+  field_paths: string[];
+  fact_status: 'verified';
+  supported_values: Array<{ label: string; value: unknown; unit: string | null; currency: string | null }>;
+  sources: Array<{ source_record_id: string; source_kind: 'external_tool'; title: string; public_excerpt: string; canonical_url: string | null; retrieved_at: string; observed_at: string | null }>;
+};
+
+/** 12306 班次采用既有铁路展示样例；日期和来源记录用于离线测试。 */
+export function intercityRailCandidateBundle(): ReturnType<typeof xianDeliveryBundle> {
+  const bundle = structuredClone(xianDeliveryBundle());
+  const shenzhen = 'manual:shenzhen';
+  const beijing = 'manual:beijing';
+  const park = endpoint('深圳湾公园', 'manual:shenzhen-bay-park', 22.515, 113.97);
+  const from = endpoint('深圳北', '12306:IOQ', 22.609, 114.029, 'IOQ');
+  const to = endpoint('北京西', '12306:BXP', 39.8955, 116.3216, 'BXP');
+  const departure = '2026-11-02T11:41:00+08:00';
+  const arrival = '2026-11-02T19:30:00+08:00';
+  const railSegment = {
+    ...segment('seg_G382', 'high_speed_rail', from, to, 469, 0, [], {
+      serviceNumber: 'G382',
+      operatorName: '中国铁路',
+    }),
+    departure_at: departure,
+    arrival_at: arrival,
+    distance_meters: null,
+    cost_cny: 1108,
+  };
+  const rail: FixtureRailLeg = {
+    type: 'transport_leg' as const,
+    transport_leg_id: 'leg-12306-g382',
+    transport_class: 'long_distance' as const,
+    selected_mode: 'high_speed_rail' as const,
+    from_endpoint: from,
+    to_endpoint: to,
+    boarding_stop: null,
+    alighting_stop: null,
+    departure_at: departure,
+    arrival_at: arrival,
+    duration_minutes: 469,
+    distance_meters: null,
+    total_cost_cny: 1108,
+    transfer_count: 0,
+    segments: [railSegment],
+    booking_status: 'unknown' as const,
+    route_status: 'ready' as const,
+    mode_preference: { locked_mode: null, excluded_modes: [] },
+    intent_explanations: [],
+    evidence_basis: 'cited_source',
+    is_micro_transport: false,
+  };
+  const entry: FixtureRailBlock = {
+    ...block('d2-12306-g382', 'transport_leg', rail.transport_leg_id, 'transport', '乘高铁前往北京', '从深圳北乘高铁前往北京西。', '11:41', { mode: 'high_speed_rail', duration: '7 小时 49 分钟' }),
+    citation_ids: ['citation-rail-segments', 'citation-rail-duration'],
+    evidence_basis: 'cited_source' as const,
+  };
+  const source = {
+    source_record_id: 'source-12306-g382',
+    source_kind: 'external_tool' as const,
+    title: '12306 车次查询',
+    public_excerpt: '',
+    canonical_url: null,
+    retrieved_at: '2026-10-25T08:00:00Z',
+    observed_at: '2026-10-25T08:00:00Z',
+  };
+  const citations: FixtureRailCitation[] = [
+    {
+      citation_id: 'citation-rail-segments',
+      entity_ref: entry.entity_ref,
+      field_paths: ['segments'],
+      fact_status: 'verified',
+      supported_values: [{ label: '班次与路线', value: [railSegment], unit: null, currency: null }],
+      sources: [source],
+    },
+    {
+      citation_id: 'citation-rail-duration',
+      entity_ref: entry.entity_ref,
+      field_paths: ['duration_minutes'],
+      fact_status: 'verified',
+      supported_values: [{ label: '耗时', value: rail.duration_minutes, unit: '分钟', currency: null }],
+      sources: [source],
+    },
+  ];
+
+  const firstVisit: FixtureRailVisit = {
+    ...bundle.workspace.itinerary.visit_stops[0],
+    item_id: 'visit-shenzhen-bay',
+    place_id: park.place_id!,
+    name: park.name,
+    address: '广东省深圳市南山区滨海大道',
+    latitude: park.latitude,
+    longitude: park.longitude,
+    duration_minutes: 120,
+    estimated_cost_cny: null,
+    selection_reason: '在海滨步道散步。',
+    opening_window: null,
+    reservation_required: null,
+    visit_highlights: [],
+  };
+  const firstBlock = block('d1-shenzhen-bay', 'visit_stop', firstVisit.item_id, 'visit', park.name, '沿海滨步道散步。', '09:00', { duration: '2 小时' });
+  const timelineEntry = (item: Pick<typeof firstBlock, 'entity_ref' | 'details' | 'projection_role'>) => ({
+    entry_id: item.details.entry_id,
+    entity_type: item.entity_ref.entity_type,
+    entity_id: item.entity_ref.entity_id,
+    projection_role: item.projection_role,
+  });
+  const itinerary = bundle.workspace.itinerary;
+  itinerary.title = '深圳与北京两日';
+  itinerary.destination_ids = [shenzhen, beijing];
+  itinerary.highlights = [];
+  (itinerary as { visit_stops: FixtureRailVisit[] }).visit_stops = [firstVisit];
+  itinerary.dining_stops = [];
+  itinerary.lodging_stays = [];
+  (itinerary as { transport_legs: FixtureRailLeg[] }).transport_legs = [rail];
+  itinerary.day_plans[0].destination_id = shenzhen;
+  itinerary.day_plans[0].theme = '深圳海滨';
+  itinerary.day_plans[0].timeline = [timelineEntry(firstBlock)];
+  itinerary.day_plans[1].destination_id = beijing;
+  itinerary.day_plans[1].theme = '深圳北至北京西';
+  itinerary.day_plans[1].timeline = [timelineEntry(entry)];
+  const document = bundle.report_projection.document!;
+  document.title = itinerary.title;
+  document.overview = '先游览深圳，再乘高铁前往北京。';
+  document.destinations = [
+    { destination_id: shenzhen, display_name: '深圳' },
+    { destination_id: beijing, display_name: '北京' },
+  ];
+  document.highlights = [];
+  document.days[0] = { ...document.days[0], destination_id: shenzhen, destination_name: '深圳', theme: '深圳海滨', blocks: [firstBlock] };
+  document.days[1] = { ...document.days[1], destination_id: beijing, destination_name: '北京', theme: '深圳北至北京西', blocks: [] };
+  (document.days[1] as { blocks: FixtureRailBlock[] }).blocks = [entry];
+  (bundle.report_projection as { citations: FixtureRailCitation[] }).citations = citations;
+  (bundle.source_index.content as { citations: FixtureRailCitation[] }).citations = citations;
+  bundle.map_projection.content.places = [{
+    entity_ref: firstBlock.entity_ref,
+    name: park.name,
+    place_id: park.place_id!,
+    latitude: park.latitude,
+    longitude: park.longitude,
+    citation_ids: [],
+  }];
+  (bundle.map_projection.content as { routes: FixtureRailRoute[] }).routes = [{
+    entity_ref: entry.entity_ref,
+    transport_class: rail.transport_class,
+    selected_mode: rail.selected_mode,
+    route_status: rail.route_status,
+    from_endpoint: rail.from_endpoint,
+    to_endpoint: rail.to_endpoint,
+    segments: rail.segments,
+    citation_ids: entry.citation_ids,
+  }];
+  return bundle;
+}
+
 export function xianLayoutBundle({ dayCount, longTitle = false, weather = 'none' }: {
   dayCount: number;
   longTitle?: boolean;

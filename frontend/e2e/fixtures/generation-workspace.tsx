@@ -6,6 +6,7 @@ import { useApp } from '../../src/app/state/AppContext';
 import { MainLayout } from '../../src/app/layout/MainLayout';
 import { TripWorkspaceShell } from '../../src/app/layout/TripWorkspaceShell';
 import { MotionProviders } from '../../src/app/motion/MotionProviders';
+import { TripBriefPlanGate } from '../../src/features/travel/components/planning/TripBriefPlanGate';
 import type { ThinkingStep } from '../../src/features/chat/types/messages';
 import type { ControlledTripIdentity, UnderstandingQuestion } from '../../src/features/travel/types/planner';
 import type { PlanApprovalGate } from '../../src/features/travel/types/planning';
@@ -39,7 +40,7 @@ const research: ThinkingStep[] = [
 const gate: PlanApprovalGate = {
   gate: 'plan', runId, status: 'pending', source: 'restored', approvalToken: 'offline-generation-plan', revision: 0,
   decisionOptions: ['approve', 'supplement', 'cancel'], steps: [{ step: 1, agents: ['destination_researcher'] }, { step: 2, agents: ['transport_researcher', 'accommodation_researcher'] }],
-  planText: '## 街区与当地生活\n\n围绕成都、重庆的老街区、美食和文化体验展开，午后留出休息时间。\n\n## 交通与住宿\n\n比较两城之间的交通衔接和方便出行的住宿区域，再组合每天路线。\n\n## 每日安排\n\n每天集中在相近区域，在散步、参观和休息之间留出余量。',
+  planText: '- 逛逛成都和重庆的街区，尝尝当地美食。\n- 比较两城间的交通和方便出行的住宿。\n- 每天安排相近区域，留出休息时间。',
 };
 const questions: UnderstandingQuestion[] = [
   { id: 'pace', kind: 'single', question: '这趟旅行更想慢慢逛，还是多看几个地方？', options: [{ id: 'slow', label: '慢慢逛，留出休息时间' }, { id: 'full', label: '多看几个地方' }] },
@@ -91,6 +92,7 @@ function Harness() {
     window.__generationWorkspace = { setScene, dispatch };
     setScene((new URLSearchParams(window.location.search).get('scene') as GenerationWorkspaceScene) || 'research');
   }, [setScene, dispatch]);
-  return <MainLayout><TripWorkspaceShell /></MainLayout>;
+  const card = new URLSearchParams(window.location.search).get('variant') === 'card';
+  return <MainLayout>{card ? <div className="p-4"><TripBriefPlanGate /></div> : <TripWorkspaceShell />}</MainLayout>;
 }
 createRoot(document.getElementById('root')!).render(<AppProvider><MotionProviders><Harness /></MotionProviders></AppProvider>);

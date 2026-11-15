@@ -14,6 +14,7 @@ from travel_agent.llm.task_routing import TaskKind, llm_for_task
 from travel_agent.llm.token_counting import estimate_request_tokens
 from travel_agent.planning.nodes import NODE_UNDERSTANDING_AGENT
 from travel_agent.planning.requirements.constraints.planning import build_planning_constraint_pack
+from travel_agent.planning.requirements.constraints.resolution import normalize_constraint_pack
 from travel_agent.planning.requirements.identity_contracts import (
     ControlledTripIdentity,
 )
@@ -74,16 +75,29 @@ async def understanding_agent_node(state: Any, config: Optional[RunnableConfig] 
     tool_context = build_tool_context_from_state(state)
 
     current_time = state.current_time or datetime.now().strftime("%Y-%m-%d %A %H:%M:%S")
-    constraint_pack = state.constraint_pack or await build_planning_constraint_pack(state)
-    context_state = state.model_copy(update={"constraint_pack": constraint_pack, "current_time": current_time})
-    messages: List[Dict[str, Any]] = (
-        list(state.understanding_messages) or initial_understanding_messages(context_state)
+    constraint_pack = normalize_constraint_pack(
+        state.constraint_pack or await build_planning_constraint_pack(state),
+        preset_pack_constraints=state.preset_pack_constraints,
     )
-    if state.understanding_messages and messages and messages[-1].get("role") == "user":
-        messages = [
-            *messages,
-            {"role": "user", "content": f"本轮参考时间：{current_time}"},
-        ]
+    context_state = state.model_copy(update={"constraint_pack": constraint_pack, "current_time": current_time})
+    previous = state.understanding_messages or []
+    previous_tail = []
+    for index, message in enumerate(previous):
+        if message.get("role") in {"assistant", "tool"}:
+            previous_tail = previous[index:]
+            break
+    # 当前输入与真实问答优先保留，接近总上限时先缩减可选背景。
+    for limits in ({}, {"reference_token_budget": 0}, {"reference_token_budget": 0, "dialogue_token_budget": 0}):
+        messages = initial_understanding_messages(context_state, **limits)
+        messages.extend(dict(item) for item in previous_tail)
+        if previous and messages[-1].get("role") == "user":
+            messages[-1] = {
+                **messages[-1],
+                "content": f"{messages[-1].get('content', '')}\n\n本轮参考时间：{current_time}",
+            }
+        estimated, _ = estimate_request_tokens({"messages": messages})
+        if estimated <= UNDERSTANDING_PROMPT_MAX_ESTIMATED_TOKENS:
+            break
     rounds = int(state.understanding_rounds or 0)
     repair = 0
     while True:
@@ -122,6 +136,8 @@ async def understanding_agent_node(state: Any, config: Optional[RunnableConfig] 
                 raise ValueError("trip_identity 必须是对象")
             if not isinstance(requirements, str) or not requirements.strip():
                 raise ValueError("requirements 必须是整理后的旅行要求")
+            if action == "ready" and parsed.get("questions") not in (None, []):
+                raise ValueError("ready 时 questions 必须为空")
             bound_identity = bind_understanding_places(
                 raw_identity,
                 state.controlled_trip_identity or {},

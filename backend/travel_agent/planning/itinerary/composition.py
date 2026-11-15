@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from typing import Any, Union
 
 from travel_agent.planning.state import TravelAgentState
@@ -20,16 +22,66 @@ from travel_agent.planning.research.transport.followup import (
     research_transport_followup,
 )
 from travel_agent.planning.research.catalog import RecommendationCatalog
+from travel_agent.runtime.operations import ModelWindowClosed, remaining_model_seconds
+from travel_agent.tools.governance import build_tool_execution_envelope
 from travel_agent.tools.react import streaming_react_loop
 from travel_agent.tools.result import ReactOutcome
 
+logger = logging.getLogger(__name__)
+
+
+class CompositionTimeExhausted(ValueError):
+    """组合在运行时限内未能产生完整草稿。"""
+
+
 # 组合补查的工具调用轮数上限；与 Worker 的迭代上限同一量级。
 _COMPOSITION_TOOL_ITERATIONS = 5
+# 为最终草稿保留模型时间；最后一小段留给地点、路线物化与交付。
+_FINAL_ANSWER_RESERVE_SECONDS = 180.0
+_MATERIALIZATION_RESERVE_SECONDS = 20.0
+_TRANSPORT_FOLLOWUP_LIMIT_SECONDS = 45.0
 
 _COMPOSITION_FINAL_ROUND_NOTICE = (
-    "工具调用轮数已用完，本轮必须直接输出完整的行程草稿 JSON 对象"
-    "或返研请求 JSON 对象，不要再调用任何工具。"
+    "补查时间已用完。请直接基于已经取得的资料输出完整的行程草稿 JSON 对象；"
+    "不要再调用工具或请求返研。无法安全安排的事项写入 day_design.unresolved，"
+    "不要编造交通路线、时间或来源。"
 )
+
+
+def _remaining_composition_seconds(operation: str) -> float:
+    """组合窗口已关闭时返回零，取消请求仍由运行时向上传播。"""
+    try:
+        remaining = remaining_model_seconds(operation)
+    except ModelWindowClosed:
+        return 0.0
+    return float("inf") if remaining is None else remaining
+
+
+def _remaining_materialization_seconds() -> float:
+    """可用于地点与交通补查的时间，留出本地物化余量。"""
+    return max(
+        0.0,
+        _remaining_composition_seconds("itinerary.materialization")
+        - _MATERIALIZATION_RESERVE_SECONDS,
+    )
+
+
+def _can_reschedule() -> bool:
+    """完整重排只在留有成稿与物化时间时启动。"""
+    return _remaining_composition_seconds("itinerary.reschedule") > (
+        _FINAL_ANSWER_RESERVE_SECONDS + _MATERIALIZATION_RESERVE_SECONDS
+    )
+
+
+def _remaining_exploration_seconds() -> float:
+    """给当前封存期限留出最终成稿和物化的时间。"""
+    remaining = remaining_model_seconds("itinerary.composition.exploration")
+    if remaining is None:
+        return float("inf")
+    return max(
+        0.0,
+        remaining - _FINAL_ANSWER_RESERVE_SECONDS - _MATERIALIZATION_RESERVE_SECONDS,
+    )
 
 
 async def _compose_draft(
@@ -53,6 +105,7 @@ async def _compose_draft(
         task_desc,
         skeleton_only=True,
         strict_wire_schema=False,
+        dynamic_transport=True,
     )
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": prompt.system},
@@ -68,19 +121,39 @@ async def _compose_draft(
         ])
     previous = state.placement_skeleton
     current_catalog = state.recommendation_catalog
+    followup_remaining = _TRANSPORT_FOLLOWUP_LIMIT_SECONDS
+    closing_answer_required = False
 
     async def transport_followup(arguments: Any, call_id: str) -> dict[str, Any]:
-        nonlocal current_catalog
+        nonlocal current_catalog, followup_remaining
         if not isinstance(arguments, dict):
             arguments = {}
+        available = min(followup_remaining, _remaining_exploration_seconds())
+        if available <= 0:
+            return build_tool_execution_envelope(
+                tool_name=FOLLOWUP_TOOL_NAME,
+                arguments=arguments,
+                status="failed",
+                error="交通补查时间已用完，相关路线仍待确认。",
+                source="local",
+                category="internal",
+            )
+        started = time.monotonic()
         response, current_catalog = await research_transport_followup(
             state.model_copy(update={"recommendation_catalog": current_catalog}),
             question=str(arguments.get("question") or ""),
             arrangement=arguments.get("current_arrangement") or "",
             destination_id=str(arguments.get("destination_id") or ""),
+            from_destination_id=str(arguments.get("from_destination_id") or ""),
+            to_destination_id=str(arguments.get("to_destination_id") or ""),
+            service_date=str(arguments.get("service_date") or ""),
             stream_queue=stream_queue,
             request_id=call_id,
+            max_duration_seconds=available,
         )
+        followup_remaining = max(0.0, followup_remaining - (time.monotonic() - started))
+        if catalog_updates is not None:
+            catalog_updates.append(current_catalog)
         return response
 
     for attempt in range(2):
@@ -96,6 +169,9 @@ async def _compose_draft(
             final_round_notice=_COMPOSITION_FINAL_ROUND_NOTICE,
             journal_key=f"composition_react_{attempt}",
             local_tool_handlers={FOLLOWUP_TOOL_NAME: transport_followup},
+            exploration_remaining=(
+                (lambda: float("inf")) if closing_answer_required else _remaining_exploration_seconds
+            ),
         )
         for tool_result in react.tool_results:
             if tool_result.get("tool_name") == FOLLOWUP_TOOL_NAME:
@@ -104,17 +180,29 @@ async def _compose_draft(
             catalog_updates.append(current_catalog)
         if react.outcome is not ReactOutcome.FINAL_ANSWER:
             detail = f": {react.error}" if react.error else ""
-            raise ValueError(
+            error = (
                 f"composition tool loop ended without a final answer: "
                 f"{react.outcome.value}{detail}"
             )
+            if react.outcome is ReactOutcome.BUDGET_LIMIT:
+                raise CompositionTimeExhausted(error)
+            raise ValueError(error)
         content = react.content
         if not isinstance(content, str):
             content = json.dumps(content, ensure_ascii=False)
         redo = parse_research_redo_request(content)
         if redo is not None:
-            request = ResearchRedoRequest.model_validate(redo)
-            return request
+            if _remaining_exploration_seconds() > 0:
+                return ResearchRedoRequest.model_validate(redo)
+            if attempt:
+                raise ValueError("composition requested research after the final-answer reserve")
+            logger.info("行程组合不再启动返研，保留时间生成可交付草稿")
+            messages.extend([
+                {"role": "assistant", "content": content},
+                {"role": "user", "content": _COMPOSITION_FINAL_ROUND_NOTICE},
+            ])
+            closing_answer_required = True
+            continue
         try:
             draft = _reuse_located_places(
                 _parse_exact_llm_composition(content), previous
@@ -138,6 +226,7 @@ async def _compose_draft(
                     },
                 ]
             )
+            closing_answer_required = _remaining_exploration_seconds() <= 0
             continue
         return draft
     raise AssertionError("composition attempt budget exhausted")

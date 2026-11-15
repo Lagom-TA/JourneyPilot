@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dedupeToolSteps, describeToolStep, isNoResultSummary, isPublicActivityStep, toolResultText } from "./toolDisplay";
+import { dedupeToolSteps, describeToolStep, groupToolSteps, isNoResultSummary, isPublicActivityStep, toolResultText } from "./toolDisplay";
 import { type ThinkingStep } from "../types/messages";
 function step(toolResult: string | undefined): Pick<ThinkingStep, 'toolResult'> {
     return { toolResult };
@@ -93,6 +93,97 @@ describe('isPublicActivityStep', () => {
         expect(isPublicActivityStep(base({ isToolCall: true, toolName: 'hotel_search', toolStatus: 'capability_declared', toolResult: '最远可查 11-15，你的 11-20 尚未进入窗口' }))).toBe(true);
     });
 });
+describe('groupToolSteps', () => {
+    const tool = (id: string, toolName: string | undefined = 'global_place_search', extra: Partial<ThinkingStep> = {}): ThinkingStep => ({
+        id, toolCallId: id, toolName, isToolCall: true, agentName: '交通查询', content: '', stepName: '', timestamp: new Date('2026-01-01'), toolStatus: 'completed', ...extra,
+    });
+    it('按真实名称聚合相邻调用，保留不同参数、结果、状态与来源', () => {
+        const first = tool('a', 'global_place_search', { toolArgs: 'query=西湖', toolResult: '找到西湖', resultPreview: [{ title: '西湖', url: 'https://example.com/a' }] });
+        const second = tool('b', 'GLOBAL_PLACE_SEARCH', { toolArgs: 'query=灵隐寺', toolResult: '找到灵隐寺', fromCache: true, resultPreview: [{ title: '灵隐寺', url: 'https://example.com/b' }] });
+        const third = tool('c', 'global_place_search', { toolStatus: 'running', toolArgs: 'query=雷峰塔' });
+        const other = tool('d', 'maps_weather');
+        const result = groupToolSteps([first, second, third, other]);
+        expect(result).toHaveLength(2);
+        expect(result[0]).toMatchObject({ kind: 'tool_group', key: 'a', toolName: 'global_place_search', steps: [first, second, third] });
+        if (result[0].kind !== 'tool_group') throw new Error('expected group');
+        expect(result[0].steps[0]).toBe(first);
+        expect(result[0].steps[1]).toBe(second);
+        expect(result[0].callEvents).toEqual([[first], [second], [third]]);
+        expect(result[1]).toMatchObject({ kind: 'step', step: other });
+    });
+    it('同参数同结果的不同 ID 也是独立调用', () => {
+        const first = tool('a', 'get-tickets', { toolArgs: 'date=2026-01-01', toolResult: '找到 1 条车次' });
+        const second = { ...first, id: 'b', toolCallId: 'b' };
+        const result = groupToolSteps([first, second]);
+        expect(result[0]).toMatchObject({ kind: 'tool_group', steps: [first, second] });
+    });
+    it('说明、里程碑和不同工具均打断相邻分组', () => {
+        const note = tool('note', undefined, { isToolCall: false, kind: 'work_explanation', content: '继续确认。' });
+        const milestone = tool('milestone', undefined, { isToolCall: false, progressStatus: 'completed' });
+        const steps = [tool('a'), note, tool('b'), milestone, tool('c'), tool('d', 'maps_weather'), tool('e')];
+        expect(groupToolSteps(steps).map(item => item.kind)).toEqual(steps.map(() => 'step'));
+    });
+    it('不同工具的重放事件也会打断相邻分组', () => {
+        const first = tool('a', 'maps_weather');
+        const second = tool('b', 'get-tickets');
+        const replay = { ...first, id: 'a-replay' };
+        const third = tool('c', 'get-tickets');
+        const items = groupToolSteps([first, second, replay, third]);
+        expect(items.map(item => item.kind)).toEqual(['step', 'step', 'step']);
+        if (items[0].kind !== 'step') throw new Error('expected step');
+        expect(items[0].events).toEqual([first, replay]);
+    });
+    it('状态更新、追加调用和延迟补充 toolCallId 不改变首 ID 组键', () => {
+        const first = tool('step-a', 'get-tickets', { toolCallId: undefined, toolStatus: 'running' });
+        const second = tool('b', 'get-tickets', { toolStatus: 'running' });
+        const before = groupToolSteps([first, second]);
+        const updated = { ...first, toolCallId: 'call-a', toolStatus: 'completed' as const, toolResult: '找到车次' };
+        const after = groupToolSteps([updated, { ...second, toolStatus: 'completed' }, tool('c', 'get-tickets')]);
+        expect(before[0]).toMatchObject({ kind: 'tool_group', key: 'step-a' });
+        expect(after[0]).toMatchObject({ kind: 'tool_group', key: 'step-a', steps: [updated, expect.anything(), expect.anything()] });
+    });
+    it('同一 toolCallId 重放仅算一次，同时保留输入、结果、来源及原始事件', () => {
+        const start = tool('step-a', 'get-tickets', { toolCallId: 'call-a', toolStatus: 'running', toolArgs: 'fromStation=北京南' });
+        const result = tool('step-result', 'get-tickets', { toolCallId: 'call-a', toolStatus: 'completed', toolArgs: undefined, toolResult: '找到车次', resultPreview: [{ title: 'G1', url: 'https://example.com/g1' }] });
+        const replay = { ...start, id: 'step-replay' };
+        const next = tool('b', 'get-tickets', { toolStatus: 'running' });
+        const groups = groupToolSteps([start, next, result, replay]);
+        expect(groups).toHaveLength(1);
+        if (groups[0].kind !== 'tool_group') throw new Error('expected group');
+        expect(groups[0].key).toBe('step-a');
+        expect(groups[0].steps).toHaveLength(2);
+        expect(groups[0].steps[0]).toMatchObject({ id: 'step-a', toolCallId: 'call-a', toolStatus: 'completed', toolArgs: 'fromStation=北京南', toolResult: '找到车次', resultPreview: result.resultPreview });
+        expect(groups[0].callEvents).toEqual([[start, result, replay], [next]]);
+    });
+    it('缺失或未知名称、内部调用、无稳定 ID 及非工具均不聚合', () => {
+        for (const patch of [
+            { toolName: undefined }, { toolName: ' ' }, { toolName: 'unknown' }, { toolName: '未知工具' },
+            { toolName: 'search_tools' }, { toolCategory: 'internal' as const }, { id: '', toolCallId: '' }, { isToolCall: false },
+        ]) {
+            const first = tool('a', 'global_place_search', patch);
+            const second = tool('b', 'global_place_search', patch);
+            expect(groupToolSteps([first, second]).map(item => item.kind)).toEqual(['step', 'step']);
+        }
+    });
+});
+
+describe('铁路工具展示', () => {
+    it.each(['get-tickets', 'get-interline-tickets', '12306-train:get-tickets', 'GET_TICKETS'])('将 %s 映射为火车查询并展示车站参数', (toolName) => {
+        const display = describeToolStep({ id: 'rail', agentName: '交通查询', content: '', stepName: '', timestamp: new Date(), isToolCall: true, toolName, toolCategory: 'data', toolStatus: 'running', toolArgs: JSON.stringify({ fromStation: '北京南', toStation: '上海虹桥', date: '2026-12-01' }) });
+        expect(display.kind).toBe('train');
+        expect(display.categoryLabel).toBe('班次查询');
+        expect(display.actionText).toContain('正在查询火车');
+        expect(display.subject).toBe('北京南 → 上海虹桥 · 2026-12-01');
+        expect(display.inputs).toEqual([{ label: '出发地', value: '北京南' }, { label: '目的地', value: '上海虹桥' }, { label: '日期', value: '2026-12-01' }]);
+    });
+    it('摘要不展示机器标识或原始参数字段', () => {
+        expect(toolResultText(step('激活工具：get-tickets, get-interline-tickets'))).toBe('已启用：班次查询');
+        expect(toolResultText(step('get-tickets 未返回结果，改用 get-interline-tickets'))).toBe('班次查询 未返回结果，改用 班次查询');
+        expect(toolResultText(step('fromStation=北京南, toStation=上海虹桥'))).toBeNull();
+        expect(toolResultText(step('tool_call_id=123'))).toBeNull();
+    });
+});
+
 describe('tool row semantics', () => {
     const base = (extra: Partial<ThinkingStep>): ThinkingStep => ({ id: 's', agentName: '目的地调研', content: '', stepName: '', timestamp: new Date(), ...extra });
     it('recognizes no-result summaries', () => {

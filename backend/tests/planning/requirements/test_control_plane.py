@@ -372,7 +372,7 @@ async def test_retry_regenerates_the_plan_and_updates_the_gate(monkeypatch):
 
     class Model:
         async def ainvoke(self, *_args, **_kwargs):
-            return '{"summary":"重新安排"}'
+            return '{"summary":"重新安排","agent_guidance":"研究适合园林慢游的安排"}'
 
     monkeypatch.setattr(research_plan_node, "llm_for_task", lambda *_args, **_kwargs: Model())
 

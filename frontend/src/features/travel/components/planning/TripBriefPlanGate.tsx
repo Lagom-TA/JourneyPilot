@@ -32,7 +32,10 @@ export const TripBriefPlanGate: React.FC<{
   variant?: 'default' | 'workspace';
   /** 工作区交接期间保留计划确认卡片最后一帧，供卡片高度收起过渡使用。 */
   gateOverride?: PlanApprovalGate | null;
-}> = ({ variant = 'default', gateOverride }) => {
+  /** 只读回看：隐藏确认、补充与取消操作，不占用标题焦点。 */
+  readOnly?: boolean;
+  headingId?: string;
+}> = ({ variant = 'default', gateOverride, readOnly = false, headingId = 'trip-brief-plan-gate-title' }) => {
   const { state, dispatch, currentStateRef } = useApp();
   const { sendMessage } = useSendMessage();
   const workspace = variant === 'workspace';
@@ -49,17 +52,19 @@ export const TripBriefPlanGate: React.FC<{
   const draftKey = gate ? planGateDraftKey(state.currentSessionId, gate.runId, gate.approvalToken) : null;
 
   React.useEffect(() => {
+    if (readOnly) return;
     const saved = readPlanGateDraft(draftKey);
     setGuide(saved.value);
     setDraftStorageUnavailable(!saved.available);
     setEditing(false);
     setError('');
     setStalePlan(false);
-  }, [revisionKey, draftKey]);
+  }, [revisionKey, draftKey, readOnly]);
 
   React.useEffect(() => {
-    if (!workspace && gate?.runId) document.querySelector<HTMLElement>('#trip-brief-plan-gate-title')?.focus();
-  }, [workspace, gate?.runId, gate?.revision, gate?.approvalToken]);
+    if (readOnly || workspace || !gate?.runId) return;
+    document.querySelector<HTMLElement>(`#${headingId}`)?.focus();
+  }, [readOnly, workspace, headingId, gate?.runId, gate?.revision, gate?.approvalToken]);
 
   React.useEffect(() => {
     if (error && !state.isStreaming && !submitting && !refreshing) errorRef.current?.focus();
@@ -165,9 +170,17 @@ export const TripBriefPlanGate: React.FC<{
   };
 
   return (
-    <m.section data-testid="trip-brief-plan-gate" aria-labelledby="trip-brief-plan-gate-title" className={cn('plan-gate-card', workspace && 'is-workspace')} variants={emphasisEnter} initial={workspace ? false : 'hidden'} animate="visible">
+    <m.section
+      data-testid="trip-brief-plan-gate"
+      data-readonly={readOnly ? 'true' : undefined}
+      aria-labelledby={headingId}
+      className={cn('plan-gate-card', workspace && 'is-workspace', readOnly && 'is-readonly')}
+      variants={emphasisEnter}
+      initial={workspace ? false : 'hidden'}
+      animate="visible"
+    >
       <header className="plan-gate-header">
-        <h2 id="trip-brief-plan-gate-title" tabIndex={-1}>{generationFailed ? '研究方案暂未生成' : '研究方案'}</h2>
+        <h2 id={headingId} tabIndex={-1}>{generationFailed ? '研究方案暂未生成' : '研究方案'}</h2>
         {!workspace && <span>{identity ? generationFailed ? '可以重试生成方案，也可以补充要求后再试。' : '这是本次准备怎样研究和安排的设想，确认后开始调研，或补充调整。' : '请确认本次旅行的需求与安排。'}</span>}
       </header>
       <div className="plan-gate-content">
@@ -179,19 +192,19 @@ export const TripBriefPlanGate: React.FC<{
         )}
 
         {planText && (
-          <section className="plan-gate-plan" aria-labelledby="plan-gate-plan-title">
-            <h3 id="plan-gate-plan-title" className={workspace ? 'sr-only' : undefined}>{generationFailed ? '方案生成情况' : '研究与安排设想'}</h3>
+          <section className="plan-gate-plan" aria-labelledby={`${headingId}-plan`}>
+            <h3 id={`${headingId}-plan`} className={workspace ? 'sr-only' : undefined}>{generationFailed ? '方案生成情况' : '研究与安排设想'}</h3>
             <Markdown content={planText} className="plan-gate-plan-text" />
-            {!workspace && !generationFailed && gate.steps.length > 0 && <p className="plan-gate-plan-note">
+            {!workspace && !readOnly && !generationFailed && gate.steps.length > 0 && <p className="plan-gate-plan-note">
               研究安排：{gate.steps.map(researchStepText).join(' → ')}
             </p>}
-            {!workspace && !generationFailed && <p className="plan-gate-plan-note">确认后开始研究；有修改会重新整理方案。</p>}
+            {!workspace && !readOnly && !generationFailed && <p className="plan-gate-plan-note">确认后开始研究；有修改会重新整理方案。</p>}
           </section>
         )}
 
         {!planText && <p className="plan-gate-note">暂时没有可展示的研究设想。</p>}
 
-        {canRevise && (
+        {!readOnly && canRevise && (
           <div className="plan-gate-edit">
             <button type="button" aria-expanded={editing} onClick={() => setEditing((value) => !value)} disabled={decisionBlocked}>
               <PencilLine size={15} />补充或调整旅行要求
@@ -223,10 +236,10 @@ export const TripBriefPlanGate: React.FC<{
           </div>
         )}
 
-        {error && <p ref={errorRef} role="alert" tabIndex={-1} className="plan-gate-error">{error}</p>}
-        {stalePlan && <Button variant="secondary" type="button" disabled={controlsBlocked} onClick={() => void refreshPlan()}>{refreshing ? '正在刷新计划…' : '刷新当前计划'}</Button>}
+        {!readOnly && error && <p ref={errorRef} role="alert" tabIndex={-1} className="plan-gate-error">{error}</p>}
+        {!readOnly && stalePlan && <Button variant="secondary" type="button" disabled={controlsBlocked} onClick={() => void refreshPlan()}>{refreshing ? '正在刷新计划…' : '刷新当前计划'}</Button>}
 
-        <div className="plan-gate-actions">
+        {!readOnly && <div className="plan-gate-actions">
           {!workspace && <p>{gate.revision > 0 ? '修改后会按这一版要求重新整理。' : '确认后开始查询资料，再安排每天路线。'}</p>}
           <div>
             {entries.cancel && <button type="button" disabled={controlsBlocked} onClick={() => void submit('cancel')}>取消规划</button>}
@@ -239,7 +252,7 @@ export const TripBriefPlanGate: React.FC<{
               确认并开始生成
             </Button>}
           </div>
-        </div>
+        </div>}
       </div>
     </m.section>
   );

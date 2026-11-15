@@ -34,9 +34,9 @@ export function parseAgentRound(agentName: string): {
     const m = /^(.+?)_r(\d+)$/.exec(name);
     if (m)
         return { base: m[1], round: parseInt(m[2], 10) };
-    const display = /^(.+?)[（(]第(\d+)轮(?:补充)?[）)]$/.exec(name);
+    const display = /^(.+?)\s*[（(]\s*第\s*(\d+)\s*轮\s*(?:补充)?\s*[）)]$/.exec(name);
     if (display)
-        return { base: display[1], round: parseInt(display[2], 10) };
+        return { base: display[1].trimEnd(), round: parseInt(display[2], 10) };
     return { base: name, round: 0 };
 }
 export type ActivityStageId = 'requirements' | 'research' | 'route' | 'delivery';
@@ -71,6 +71,7 @@ for (const [node, display, stage] of NODE_STAGES) {
         ACTIVITY_STAGE_BY_NODE[display] = node === 'itinerary_planner' || display === '行程规划' ? 'route' : 'research';
 }
 ACTIVITY_STAGE_BY_NODE['安排查询'] = 'research';
+ACTIVITY_STAGE_BY_NODE['研究方案'] = 'requirements';
 export function getActivityStageIdForAgent(agentName: string): ActivityStageId | null {
     return ACTIVITY_STAGE_BY_NODE[parseAgentRound(agentName).base] ?? null;
 }

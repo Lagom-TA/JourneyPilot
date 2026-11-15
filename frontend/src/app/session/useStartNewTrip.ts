@@ -1,14 +1,23 @@
 import { useCallback } from 'react';
 import { useApp } from '../state/AppContext';
+import { appReducer } from '../state/appReducer';
 import { useSessionManager } from './useSessionManager';
-import { abortSessionStream } from './streamRegistry';
+import { createSessionRuntimeSnapshot } from './runtimeSnapshot';
+import { findSessionStream, pendingStreamCacheKey } from './streamRegistry';
 
 export function useStartNewTrip() {
-  const { state, dispatch, activeStreamsRef } = useApp();
+  const { dispatch, activeStreamsRef, currentStateRef, sessionRuntimeCacheRef } = useApp();
   const { setLastSession } = useSessionManager();
   return useCallback(() => {
-    abortSessionStream(activeStreamsRef.current, state);
-    dispatch({ type: 'CLEAR_CHAT' });
+    const current = currentStateRef.current;
+    const stream = findSessionStream(activeStreamsRef.current, current.currentSessionId, current.conversationEpoch);
+    if (stream) {
+      sessionRuntimeCacheRef.current.set(current.currentSessionId ?? pendingStreamCacheKey(stream.token), createSessionRuntimeSnapshot(current));
+    }
+    const clearAction = { type: 'CLEAR_CHAT' as const };
+    // 在 React 提交下一帧之前，流事件也必须写入原会话的快照。
+    currentStateRef.current = appReducer(current, clearAction);
+    dispatch(clearAction);
     setLastSession(null);
     const url = new URL(window.location.href);
     url.searchParams.delete('session_id');
@@ -16,5 +25,5 @@ export function useStartNewTrip() {
     url.searchParams.set('view', 'chat');
     window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
     dispatch({ type: 'SET_ACTIVE_VIEW', payload: 'chat' });
-  }, [activeStreamsRef, dispatch, setLastSession, state]);
+  }, [activeStreamsRef, currentStateRef, dispatch, sessionRuntimeCacheRef, setLastSession]);
 }

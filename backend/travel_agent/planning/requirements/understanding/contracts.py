@@ -41,11 +41,22 @@ def validate_understanding_questions(raw: object) -> List[UnderstandingQuestion]
     seen_ids: set[str] = set()
     for item in raw:
         question = UnderstandingQuestion.model_validate(item)
+        question.id = question.id.strip()
+        if not question.id or not question.question.strip():
+            raise ValueError("问题标识和问题内容不能为空")
         if question.id in seen_ids:
             raise ValueError(f"问题标识重复: {question.id}")
         seen_ids.add(question.id)
         if len(question.options) > MAX_UNDERSTANDING_OPTIONS_PER_QUESTION:
             raise ValueError(f"问题 {question.id} 选项过多")
+        option_ids: set[str] = set()
+        for option in question.options:
+            option.id = option.id.strip()
+            if not option.id or not option.label.strip():
+                raise ValueError(f"问题 {question.id} 的选项标识和内容不能为空")
+            if option.id in option_ids:
+                raise ValueError(f"问题 {question.id} 的选项标识重复: {option.id}")
+            option_ids.add(option.id)
         questions.append(question)
     return questions
 

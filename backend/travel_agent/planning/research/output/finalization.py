@@ -6,6 +6,7 @@ from typing import Any, Mapping, Sequence
 from travel_agent.llm.task_routing import plain_observation_messages
 from travel_agent.planning.research.evidence import SourceRecord
 from travel_agent.planning.research.packets import ResearchPacket
+from travel_agent.planning.research.provider_contracts import ProviderEvidenceScope
 from travel_agent.runtime.cancellation import RunCancelled
 from travel_agent.storage.worker_journal_store import JournalConflict
 
@@ -28,6 +29,7 @@ async def parse_research_packet(
     expected_active_constraint_ids: Sequence[str] | None = None,
     authoritative_packet_metadata: Mapping[str, Any] | None = None,
     authoritative_source_records: Sequence[SourceRecord] = (),
+    required_route_scopes: Sequence[ProviderEvidenceScope] = (),
 ) -> ResearchPacket:
     """只解析一次 worker 返回值；失败后是否重新请求模型由调用方决定。"""
     evidence_messages = authoritative_tool_messages(authoritative_tool_results)
@@ -39,6 +41,7 @@ async def parse_research_packet(
         authoritative_tool_results=authoritative_tool_results,
         authoritative_packet_metadata=authoritative_packet_metadata,
         authoritative_source_records=authoritative_source_records,
+        required_route_scopes=required_route_scopes,
     )
     return _merge_failed_tool_sources(packet, evidence_messages)
 

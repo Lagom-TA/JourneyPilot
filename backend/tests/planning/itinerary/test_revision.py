@@ -517,6 +517,115 @@ def test_overnight_display_reuses_one_billed_transport_entity():
     restore_planning_state(make_planning_state(), trip_workspace=result)
 
 
+def _multi_city_lodging_draft(lodging_ids=()):
+    payload = itinerary_draft([meal_placement("lunch", "12:00", "13:00", "2026-11-10")])
+    payload.update(duration_days=5, lodging_candidate_ids=list(lodging_ids))
+    payload["days"] = [
+        {
+            "day_id": f"day_{index + 1}",
+            "day": index + 1,
+            "date": f"2026-11-{10 + index}",
+            "destination_id": "haikou" if index < 3 else "sanya",
+            "placements": [
+                meal_placement("lunch", "12:00", "13:00", f"2026-11-{10 + index}")
+            ],
+        }
+        for index in range(5)
+    ]
+    return ItineraryCompositionDraft.model_validate(payload)
+
+
+def _lodging_packet(candidate_id, destination, check_in, check_out, **updates):
+    from travel_agent.planning.research.candidates import LodgingCandidate
+
+    packet = visit_packet(candidate_id)
+    data = {
+        key: value
+        for key, value in packet.candidates[0].model_dump().items()
+        if key in LodgingCandidate.model_fields
+    }
+    data.update(
+        candidate_kind="lodging",
+        destination_id=destination,
+        property_name=candidate_id,
+        check_in_date=check_in,
+        check_out_date=check_out,
+        nights=(date.fromisoformat(check_out) - date.fromisoformat(check_in)).days,
+        provider_place_type="hotel",
+        availability_status="needs_confirmation",
+    )
+    data.update(updates)
+    payload = packet.model_dump()
+    payload.update(
+        worker_kind="accommodation_researcher",
+        candidates=[LodgingCandidate.model_validate(data).model_dump()],
+    )
+    return ResearchPacket.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    ("destination", "check_in", "check_out", "expected"),
+    [
+        ("haikou", "2026-11-10", "2026-11-12", ("2026-11-10", "2026-11-12")),
+        ("haikou", "2026-11-10", "2026-11-13", ("2026-11-10", "2026-11-13")),
+        ("haikou", "2026-11-10", "2026-11-14", ("2026-11-10", "2026-11-13")),
+        ("haikou", "2026-11-08", "2026-11-11", ("2026-11-10", "2026-11-11")),
+        ("sanya", "2026-11-10", "2026-11-14", ("2026-11-13", "2026-11-14")),
+    ],
+)
+def test_lodging_window_uses_selected_destination_nights_and_candidate_dates(
+    destination, check_in, check_out, expected
+):
+    from travel_agent.planning.itinerary.adjacency import _destination_stay_window
+
+    result = _destination_stay_window(
+        _multi_city_lodging_draft(),
+        destination,
+        date.fromisoformat(check_in),
+        date.fromisoformat(check_out),
+    )
+    assert result == tuple(map(date.fromisoformat, expected))
+
+
+def test_selected_lodgings_cover_transfer_night_only_with_a_matching_candidate():
+    from travel_agent.planning.itinerary.adjacency import selected_lodging_by_night
+
+    first = _lodging_packet(
+        "hotel_first", "haikou", "2026-11-10", "2026-11-12",
+        price_kind="live_quote", availability_status="confirmed", total_price_cny=600,
+    )
+    last = _lodging_packet("hotel_last", "haikou", "2026-11-12", "2026-11-13")
+    next_city = _lodging_packet("hotel_sanya", "sanya", "2026-11-10", "2026-11-14")
+    catalog = make_catalog(restaurant_packet(), first, last, next_city)
+    draft = _multi_city_lodging_draft(["hotel_first", "hotel_last", "hotel_sanya"])
+    candidates = catalog.candidate_index()
+    partial = draft.model_copy(update={"lodging_candidate_ids": ["hotel_first", "hotel_sanya"]})
+    assert date(2026, 11, 12) not in selected_lodging_by_night(partial, candidates)
+    _, connected_partial = connect(partial, catalog)
+    booked_stay = workspace(connected_partial, catalog).itinerary.lodging_stays[0]
+    assert (booked_stay.check_out_date, booked_stay.nights) == (date(2026, 11, 12), 2)
+    assert (booked_stay.price_kind, booked_stay.availability_status, booked_stay.total_price_cny) == (
+        "live_quote", "confirmed", 600
+    )
+    nights = selected_lodging_by_night(draft, candidates)
+    assert {night.isoformat(): candidate.candidate_id for night, candidate in nights.items()} == {
+        "2026-11-10": "hotel_first",
+        "2026-11-11": "hotel_first",
+        "2026-11-12": "hotel_last",
+        "2026-11-13": "hotel_sanya",
+    }
+    _, connected = connect(draft, catalog)
+    result = workspace(connected, catalog)
+    assert [
+        (stay.name, stay.check_in_date.isoformat(), stay.check_out_date.isoformat())
+        for stay in result.itinerary.lodging_stays
+    ] == [
+        ("hotel_first", "2026-11-10", "2026-11-12"),
+        ("hotel_last", "2026-11-12", "2026-11-13"),
+        ("hotel_sanya", "2026-11-13", "2026-11-14"),
+    ]
+
+
 def test_lodging_morning_and_evening_are_distinct_occurrences():
     from travel_agent.planning.research.candidates import LodgingCandidate
 

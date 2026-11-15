@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from typing import Any, Dict
 
 from langchain_core.messages import AIMessage
@@ -11,7 +13,12 @@ from travel_agent.planning.tool_context import build_tool_context_from_state
 from travel_agent.llm.router import get_model_router
 from travel_agent.llm.task_routing import TaskKind, llm_for_task
 from travel_agent.planning.assignments import resolve_agent_assignment
-from travel_agent.planning.itinerary.composition import _compose_draft
+from travel_agent.planning.itinerary.composition import (
+    CompositionTimeExhausted,
+    _can_reschedule,
+    _compose_draft,
+    _remaining_materialization_seconds,
+)
 from travel_agent.planning.research.feedback import (
     RESEARCH_REDO_ROUNDS_CAP,
     ResearchRedoRequest,
@@ -28,6 +35,7 @@ from travel_agent.planning.itinerary.connectors import (
 )
 from travel_agent.planning.itinerary.locations import locate_authored_composition
 from travel_agent.planning.itinerary.materialize import materialize_trip_workspace
+from travel_agent.planning.itinerary.partial_closeout import build_partial_closeout
 from travel_agent.planning.itinerary.rail_paths import complete_rail_route_paths
 from travel_agent.planning.itinerary.requirements import _draft_user_input_anchors
 from travel_agent.planning.itinerary.title_writing import write_itinerary_copy
@@ -49,6 +57,26 @@ _FAILURE_CONTEXT_CHAR_LIMIT = 600
 
 # 实际路线超出可用时间窗时，允许重新组合以调整排程的最大次数。
 _COMPOSITION_RESCHEDULE_LIMIT = 1
+_CONNECTOR_FOLLOWUP_LIMIT_SECONDS = 45.0
+
+
+def _skeleton_is_current(state: TravelAgentState, skeleton: Any) -> bool:
+    generation = state.planning_generation
+    catalog = state.recommendation_catalog
+    if generation is None or catalog is None or state.trip_workspace is not None:
+        return False
+    if state.composition_failure_context is not None:
+        return False
+    if catalog.generation_id != generation.generation_id or catalog.fact_data_revision != state.fact_data_revision:
+        return False
+    candidates = catalog.candidate_index()
+    return all(
+        not placement.candidate_id or placement.candidate_id in candidates
+        for day in skeleton.days
+        for placement in day.placements
+    ) and all(
+        candidate_id in candidates for candidate_id in skeleton.lodging_candidate_ids
+    )
 
 
 def _log_composition_dispersion(workspace: TripWorkspace) -> None:
@@ -179,6 +207,7 @@ def _research_redo_update(
         "research_redo_rounds": {**redo_rounds, base: previous_redos + 1},
         "agent_assignments": assignments,
         "placement_skeleton": None,
+        "composition_fallback_skeleton": None,
         "local_connector_gaps": [],
         "composition_failure_context": None,
     }
@@ -193,6 +222,7 @@ async def itinerary_planner_node(
     phase = _composition_phase(state)
     stage = phase
     deadline_update = {}
+    observation = None
     try:
         if state.run_deadline is not None:
             observed, observation = observe_run_deadline(state.run_deadline)
@@ -203,66 +233,141 @@ async def itinerary_planner_node(
                 )
         if state.recommendation_catalog is None:
             raise ValueError("composition requires the candidate catalog")
-        if phase == "placement_skeleton":
+        should_compose = phase == "placement_skeleton" and not (
+            state.placement_skeleton is not None
+            and state.composition_failure_context is None
+        )
+        fallback = state.composition_fallback_skeleton
+        use_fallback = bool(
+            fallback is not None
+            and (not _can_reschedule() if should_compose else _remaining_materialization_seconds() <= 0)
+        )
+        catalog = state.recommendation_catalog
+        if should_compose and not use_fallback:
             configurable = (config or {}).get("configurable", {})
             available_tools = filter_tools_for_agent(
                 await get_available_tools(),
                 NODE_ITINERARY,
             )
             catalog_updates = []
-            result = await _compose_draft(
-                state,
-                str(assignment["objective"]),
-                llm_for_task(get_model_router(), TaskKind.COMPOSITION, has_tools=True),
-                available_tools=available_tools,
-                tool_context=build_tool_context_from_state(state),
-                stream_queue=configurable.get("stream_queue"),
-                tool_cache=dict(state.tool_cache) if state.tool_cache else None,
-                catalog_updates=catalog_updates,
-            )
+            try:
+                if fallback is not None:
+                    available = _remaining_materialization_seconds()
+                    if not _can_reschedule() or available <= 0:
+                        raise CompositionTimeExhausted("insufficient time to reschedule")
+                    async with asyncio.timeout(available):
+                        result = await _compose_draft(
+                            state,
+                            str(assignment["objective"]),
+                            llm_for_task(get_model_router(), TaskKind.COMPOSITION, has_tools=True),
+                            available_tools=available_tools,
+                            tool_context=build_tool_context_from_state(state),
+                            stream_queue=configurable.get("stream_queue"),
+                            tool_cache=dict(state.tool_cache) if state.tool_cache else None,
+                            catalog_updates=catalog_updates,
+                        )
+                else:
+                    result = await _compose_draft(
+                        state,
+                        str(assignment["objective"]),
+                        llm_for_task(get_model_router(), TaskKind.COMPOSITION, has_tools=True),
+                        available_tools=available_tools,
+                        tool_context=build_tool_context_from_state(state),
+                        stream_queue=configurable.get("stream_queue"),
+                        tool_cache=dict(state.tool_cache) if state.tool_cache else None,
+                        catalog_updates=catalog_updates,
+                    )
+            except (CompositionTimeExhausted, asyncio.TimeoutError):
+                if fallback is None:
+                    raise
+                logger.info("行程重排未在预留时间内完成，交付安全的部分行程")
+                use_fallback = True
+            except (RunCancelled, JournalConflict):
+                raise
+            except Exception:
+                if fallback is None:
+                    raise
+                logger.warning("行程重排失败，交付安全的部分行程", exc_info=True)
+                use_fallback = True
             catalog = catalog_updates[-1] if catalog_updates else state.recommendation_catalog
-            if isinstance(result, ResearchRedoRequest):
-                return {
-                    **_research_redo_update(state, result, output_key, deadline_update),
-                    "recommendation_catalog": catalog,
-                }
-            draft = result
-            from travel_agent.planning.invalidation import workspace_acceptance_invalidation
+            if fallback is not None and _remaining_materialization_seconds() <= 0:
+                use_fallback = True
+            if not use_fallback:
+                if isinstance(result, ResearchRedoRequest):
+                    if fallback is None:
+                        return {
+                            **_research_redo_update(state, result, output_key, deadline_update),
+                            "recommendation_catalog": catalog,
+                        }
+                    logger.info("重排仍需返研，保留安全的部分行程")
+                    use_fallback = True
+                else:
+                    draft = result
+                    from travel_agent.planning.invalidation import workspace_acceptance_invalidation
 
-            return {
-                **deadline_update,
-                **workspace_acceptance_invalidation(),
-                "messages": [AIMessage(content="完整行程草稿已完成，接着核对相邻路线")],
-                "agent_status": {output_key: "pending"},
-                "next_agent": None,
-                "placement_skeleton": draft,
-                "recommendation_catalog": catalog,
-                "trip_workspace": None,
-                "local_connector_gaps": [],
-                "composition_failure_context": None,
-            }
-        skeleton = await locate_authored_composition(state.placement_skeleton, state)
+                    return {
+                        **deadline_update,
+                        **workspace_acceptance_invalidation(),
+                        "messages": [AIMessage(content="完整行程草稿已完成，接着核对相邻路线")],
+                        "agent_status": {output_key: "pending"},
+                        "next_agent": None,
+                        "placement_skeleton": draft,
+                        "composition_fallback_skeleton": fallback,
+                        "recommendation_catalog": catalog,
+                        "trip_workspace": None,
+                        "local_connector_gaps": [],
+                        "composition_failure_context": None,
+                    }
+        if state.run_deadline is not None:
+            observed, observation = observe_run_deadline(state.run_deadline)
+            deadline_update["run_deadline"] = observed
+            if observation.phase == "expired":
+                raise ValueError("delivery deadline elapsed before itinerary composition")
+        if fallback is not None and _remaining_materialization_seconds() <= 0:
+            use_fallback = True
+        composition_window_closed = bool(observation and observation.composition_closed)
+        # 窗口关闭或回退草稿只做本地物化，不再发起外部调用。
+        deterministic_closeout = composition_window_closed or use_fallback
+        candidate_skeleton = fallback if use_fallback else state.placement_skeleton
+        skeleton_state = state.model_copy(update={
+            "placement_skeleton": candidate_skeleton,
+            "recommendation_catalog": catalog,
+            "composition_failure_context": None if use_fallback else state.composition_failure_context,
+        })
+        if deterministic_closeout and not _skeleton_is_current(skeleton_state, candidate_skeleton):
+            raise ValueError("composition skeleton is stale or unavailable")
+        skeleton = (
+            candidate_skeleton
+            if deterministic_closeout
+            else await locate_authored_composition(
+                candidate_skeleton, state, remaining_seconds=_remaining_materialization_seconds
+            )
+        )
         requests, required_pairs = connector_mode_requests_from_constraint_pack(
             skeleton,
             state.constraint_pack,
-            state.recommendation_catalog,
+            catalog,
         )
         gaps = extract_local_connector_gaps(
             skeleton,
-            state.recommendation_catalog,
-            weather_data_revision=state.recommendation_catalog.weather_data_revision,
+            catalog,
+            weather_data_revision=catalog.weather_data_revision,
             flexible_mode_requests=requests,
             required_flexible_mode_pairs=required_pairs,
         )
-        catalog = state.recommendation_catalog
         unfilled = unfilled_connector_gaps(catalog, gaps)
         response = None
-        if unfilled:
+        if unfilled and not deterministic_closeout:
             configurable = (config or {}).get("configurable", {})
             groups: dict[str, list] = {}
             for gap in unfilled:
                 groups.setdefault(gap.destination_id, []).append(gap)
+            followup_budget = _CONNECTOR_FOLLOWUP_LIMIT_SECONDS
             for destination_id, destination_gaps in groups.items():
+                available = min(followup_budget, _remaining_materialization_seconds())
+                if available <= 0:
+                    break
+                started = time.monotonic()
                 response, catalog = await research_transport_followup(
                     state.model_copy(update={"placement_skeleton": skeleton, "recommendation_catalog": catalog}),
                     question="请查询这些相邻安排之间的市内接驳，说明可用路线和未能核实的部分。",
@@ -271,31 +376,61 @@ async def itinerary_planner_node(
                     gaps=destination_gaps,
                     stream_queue=configurable.get("stream_queue"),
                     request_id=f"skeleton_connectors:{destination_id}",
+                    max_duration_seconds=available,
                 )
+                followup_budget = max(0.0, followup_budget - (time.monotonic() - started))
             unfilled = unfilled_connector_gaps(catalog, gaps)
-        composition = materialize_skeleton_connectors(skeleton, catalog, gaps, {})
-        # 路线超出可用时间窗时，下一轮组合可按实际耗时调整排程。
+        # 已知路线超窗不能作为可执行行程交付。
         overtimed = overtimed_connector_gaps(catalog, gaps, {})
-        if overtimed and (state.composition_reschedule_rounds or 0) < _COMPOSITION_RESCHEDULE_LIMIT:
-            logger.info(
-                "ItineraryPlanner 实际路线超出时间窗口，回炉修正排程: %s",
-                [gap.gap_id for gap, _duration, _window in overtimed],
-            )
-            return {
-                **deadline_update,
-                "messages": [AIMessage(content="相邻路线与时间窗口冲突，正在重新安排")],
-                "agent_status": {output_key: "pending"},
-                "next_agent": None,
-                "placement_skeleton": skeleton,
-                "recommendation_catalog": catalog,
-                "trip_workspace": None,
-                "local_connector_gaps": [],
-                "composition_reschedule_rounds": (
-                    state.composition_reschedule_rounds or 0
+        if overtimed:
+            safe_skeleton = build_partial_closeout(skeleton, catalog, overtimed)
+            if (
+                not deterministic_closeout
+                and (state.composition_reschedule_rounds or 0) < _COMPOSITION_RESCHEDULE_LIMIT
+                and _can_reschedule()
+            ):
+                logger.info(
+                    "ItineraryPlanner 实际路线超出时间窗口，回炉修正排程: %s",
+                    [gap.gap_id for gap, _duration, _window in overtimed],
                 )
-                + 1,
-                "composition_failure_context": _connector_overtime_context(overtimed, response),
-            }
+                return {
+                    **deadline_update,
+                    "messages": [AIMessage(content="相邻路线与时间窗口冲突，正在重新安排")],
+                    "agent_status": {output_key: "pending"},
+                    "next_agent": None,
+                    "placement_skeleton": skeleton,
+                    "composition_fallback_skeleton": safe_skeleton,
+                    "recommendation_catalog": catalog,
+                    "trip_workspace": None,
+                    "local_connector_gaps": [],
+                    "composition_reschedule_rounds": (
+                        state.composition_reschedule_rounds or 0
+                    ) + 1,
+                    "composition_failure_context": _connector_overtime_context(overtimed, response),
+                }
+            logger.info("行程重排不可用，保留无冲突日期并标记待安排事项")
+            deterministic_closeout = True
+            while overtimed:
+                skeleton = safe_skeleton
+                requests, required_pairs = connector_mode_requests_from_constraint_pack(
+                    skeleton, state.constraint_pack, catalog
+                )
+                gaps = extract_local_connector_gaps(
+                    skeleton,
+                    catalog,
+                    weather_data_revision=catalog.weather_data_revision,
+                    flexible_mode_requests=requests,
+                    required_flexible_mode_pairs=required_pairs,
+                )
+                overtimed = overtimed_connector_gaps(catalog, gaps, {})
+                if overtimed:
+                    safe_skeleton = build_partial_closeout(skeleton, catalog, overtimed)
+                    if safe_skeleton == skeleton:
+                        raise ValueError("conflicting connector could not be removed")
+            unfilled = unfilled_connector_gaps(catalog, gaps)
+        if _remaining_materialization_seconds() <= 0:
+            deterministic_closeout = True
+        composition = materialize_skeleton_connectors(skeleton, catalog, gaps, {})
         stage = "materialize_connectors/workspace_materialization"
         workspace = materialize_trip_workspace(
             run_id=state.run_id,
@@ -308,11 +443,21 @@ async def itinerary_planner_node(
             reference_services=list(state.provider_reference_services),
             connector_gaps=gaps,
         )
-        workspace = await complete_rail_route_paths(
-            workspace,
-            tool_context=build_tool_context_from_state(state),
-        )
+        if not deterministic_closeout:
+            try:
+                async with asyncio.timeout(_remaining_materialization_seconds()):
+                    workspace = await complete_rail_route_paths(
+                        workspace,
+                        tool_context=build_tool_context_from_state(state),
+                    )
+            except asyncio.TimeoutError:
+                logger.info("铁路路线补全时间已用完，保留现有行程")
         workspace = apply_day_design(workspace, composition)
+        if state.run_deadline is not None:
+            observed, observation = observe_run_deadline(state.run_deadline)
+            deadline_update["run_deadline"] = observed
+            if observation.phase == "expired":
+                raise ValueError("delivery deadline elapsed before itinerary composition")
         if unfilled:
             itinerary = workspace.itinerary
             unresolved = list(itinerary.unresolved)
@@ -324,10 +469,13 @@ async def itinerary_planner_node(
                 "itinerary": itinerary.model_copy(update={"unresolved": list(dict.fromkeys(unresolved))})
             })
         try:
-            workspace = await write_itinerary_copy(
-                workspace,
-                llm_for_task(get_model_router(), TaskKind.SUMMARY),
-            )
+            remaining = _remaining_materialization_seconds()
+            if not deterministic_closeout and remaining > 0:
+                async with asyncio.timeout(remaining):
+                    workspace = await write_itinerary_copy(
+                        workspace,
+                        llm_for_task(get_model_router(), TaskKind.SUMMARY),
+                    )
         except (RunCancelled, JournalConflict):
             raise
         except Exception as exc:
@@ -335,14 +483,16 @@ async def itinerary_planner_node(
         _log_composition_dispersion(workspace)
         return {
             **deadline_update,
-                "messages": [AIMessage(content=(
-                    "行程已整理，部分接驳仍待确认" if unfilled else "已根据路线整理正式行程"
-                ))],
+            "messages": [AIMessage(content=(
+                "行程已整理，部分安排尚未完成" if workspace.itinerary.unresolved
+                else "已根据路线整理正式行程"
+            ))],
             "agent_status": {output_key: "completed"},
             "next_agent": None,
             "trip_workspace": workspace,
             "recommendation_catalog": workspace.recommendation_catalog,
             "local_connector_gaps": gaps,
+            "composition_fallback_skeleton": None,
             "composition_failure_context": None,
         }
     except (RunCancelled, JournalConflict):

@@ -160,9 +160,13 @@ def _successful_place_records(
 
 def _successful_route_records(
     context_messages: Sequence[Mapping[str, Any]],
+    *,
+    reject_conflicting_ids: bool = False,
 ) -> dict[str, tuple[dict[str, Any], dict[str, Any], int]]:
     """按稳定 route id 索引完整可用的 Provider 路线。"""
     records: dict[str, tuple[dict[str, Any], dict[str, Any], int]] = {}
+    seen_routes: dict[str, dict[str, Any]] = {}
+    conflicting_ids: set[str] = set()
     for message in context_messages:
         envelope = _parse_tool_envelope(message)
         if (
@@ -177,6 +181,7 @@ def _successful_route_records(
             not isinstance(metadata, dict)
             or metadata.get("evidence_allowed") is not True
             or metadata.get("quarantine_result") is True
+            or (reject_conflicting_ids and bool(metadata.get("quarantine_result")))
         ):
             continue
         result = envelope.get("sanitized_result")
@@ -185,14 +190,19 @@ def _successful_route_records(
         routes = result.get("routes")
         if not isinstance(routes, list):
             continue
+        audit_id = str(envelope.get("audit_id") or "").strip()
         for index, route in enumerate(routes):
             if not isinstance(route, dict):
                 continue
-            audit_id = str(envelope.get("audit_id") or "").strip()
             route_id = route.get("route_id")
             transport_class = route.get("transport_class")
             selected_mode = route.get("selected_mode")
             segments = route.get("segments")
+            if reject_conflicting_ids and audit_id and isinstance(route_id, str) and route_id.strip():
+                previous = seen_routes.get(route_id)
+                if previous is not None and previous != route:
+                    conflicting_ids.add(route_id)
+                seen_routes.setdefault(route_id, route)
             if (
                 not audit_id
                 or not isinstance(route_id, str)
@@ -225,4 +235,8 @@ def _successful_route_records(
             ):
                 continue
             records[route_id] = (envelope, route, index)
-    return records
+    return {
+        route_id: record
+        for route_id, record in records.items()
+        if route_id not in conflicting_ids
+    }

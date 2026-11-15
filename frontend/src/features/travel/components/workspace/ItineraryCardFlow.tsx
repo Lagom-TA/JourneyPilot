@@ -1,5 +1,5 @@
 import { AnimatePresence, m } from 'motion/react';
-import { ChevronDown, MapPinned } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import React from 'react';
 import { duration, easing, staggerContainer, staggerItem } from '../../../../lib/motion';
 import { cn } from '../../../../lib/utils';
@@ -15,7 +15,7 @@ import {
   type PublicTransportLeg,
   type PublicVisitStop,
 } from '../../types/itinerary';
-import { CustomBlockRow, DiningStopCard, LodgingStayCard, VisitStopCard } from './TravelEntityCards';
+import { CustomBlockRow, DiningStopCard, DiningStopFacts, LodgingStayCard, LodgingStayFacts, VisitStopCard, VisitStopFacts } from './TravelEntityCards';
 import { TransportLegCard } from './TransportLegCard';
 import { DayHeader } from './DayHeader';
 import { TimelineNodeMark } from './TimelineNodeMark';
@@ -47,18 +47,20 @@ interface ItineraryCardFlowProps {
   onSelectEntity: (selection: CardMapSelection) => void;
 }
 
-export function TimelineEntityDetails({ bundle, entity }: { bundle: PublicDeliveryBundle; entity: TimelineEntity }) {
+export function TimelineEntityDetails({ bundle, entity, occurrenceKey }: { bundle: PublicDeliveryBundle; entity: TimelineEntity; occurrenceKey?: string | null }) {
   const content = entity.type === 'transport_leg'
-    ? <TransportLegCard leg={entity} sandboxNote={bundle.provider_environment.sandbox_note} />
+    ? <TransportLegCard leg={entity} />
     : entity.type === 'visit_stop' ? <VisitStopCard stop={entity} />
     : entity.type === 'dining_stop' ? <DiningStopCard stop={entity} />
     : entity.type === 'lodging_stay' ? <LodgingStayCard stay={entity} />
     : <CustomBlockRow block={entity} />;
   const id = entity.type === 'transport_leg' ? entity.transport_leg_id : entity.type === 'lodging_stay' ? entity.stay_id : entity.item_id;
-  const summary = entity.type === 'visit_stop' || entity.type === 'dining_stop'
-    ? bundle.report_projection.document?.days.flatMap((day) => day.blocks).find((block) => block.entity_ref.entity_id === id)?.summary
-    : null;
-  return <>{summary && <p className="journey-detail-summary">{summary}</p>}{content}<EntitySourceList bundle={bundle} entityId={id} /></>;
+  const blocks = bundle.report_projection.document?.days.flatMap((day) => day.blocks) ?? [];
+  const block = occurrenceKey
+    ? blocks.find((item) => item.details.entry_id === occurrenceKey && item.entity_ref.entity_id === id)
+    : blocks.find((item) => item.entity_ref.entity_id === id);
+  const summary = entity.type === 'visit_stop' || entity.type === 'dining_stop' ? block?.summary : null;
+  return <>{content}{summary && summary !== ('name' in entity ? entity.name : '') && <p className="journey-detail-summary">{summary}</p>}<EntitySourceList bundle={bundle} entityId={id} /></>;
 }
 
 const ENTITY_LABELS: Record<DayTimelineNodeVM['entityKind'], string> = {
@@ -114,7 +116,9 @@ function OccurrenceCard({
   const custom = entity?.type === 'custom_block';
   const mappable = transport ? drawableRouteIds.has(node.entityId) : !custom && waypoint != null;
   const transportEntryVisible = transport && entity ? mappable && transportMapEntryVisible(entity) : false;
-  const showCardActions = Boolean(entity && !transport);
+  const hasExtraDetails = entity?.type === 'visit_stop' || entity?.type === 'dining_stop'
+    ? Boolean(node.summary && node.summary !== node.title)
+    : entity?.type === 'custom_block' ? Boolean(entity.note?.trim()) : false;
   const detailId = `journey-occurrence-detail-${node.key}`;
   const selectOnMap = () => {
     if (!mappable) return;
@@ -162,7 +166,13 @@ function OccurrenceCard({
         if (mappable && !event.currentTarget.contains(event.relatedTarget as Node | null)) onLinkEntity(null);
       }}
     >
-      <article className="journey-place-card">
+      <article
+        className={cn('journey-place-card', !transport && mappable && 'is-interactive')}
+        onClick={!transport && mappable ? (event) => {
+          const nested = (event.target as HTMLElement).closest('button, a, input, select, textarea, summary, [role="button"]');
+          if (!nested) selectOnMap();
+        } : undefined}
+      >
         {!transport && (
           <div className="journey-occurrence-gutter">
             {node.timeLabel && <time>{node.timeLabel}</time>}
@@ -191,12 +201,14 @@ function OccurrenceCard({
               onClick={transportEntryVisible ? selectFromTransportCard : undefined}
               onKeyDown={transportEntryVisible ? selectFromTransportCardKey : undefined}
             >
-              <TransportLegCard leg={entity} sandboxNote={bundle.provider_environment.sandbox_note} />
+              <TransportLegCard leg={entity} />
               <EntitySourceList bundle={bundle} entityId={node.entityId} />
             </div>
           ) : (
             <div className="journey-card-copy">
-              <h3>{node.title}</h3>
+              <h3>{mappable ? (
+                <button type="button" data-map-focus-trigger aria-label={`在地图查看 ${node.title}`} onClick={selectOnMap}>{node.title}</button>
+              ) : node.title}</h3>
               {node.summary && !entity && <p>{node.summary}</p>}
               {(node.durationLabel || node.priceLabel) && (
                 <div className="journey-card-readouts">
@@ -204,28 +216,25 @@ function OccurrenceCard({
                   {node.priceLabel && <span>{node.priceLabel}</span>}
                 </div>
               )}
+              {entity?.type === 'visit_stop' && <VisitStopFacts stop={entity} />}
+              {entity?.type === 'dining_stop' && <DiningStopFacts stop={entity} />}
+              {entity?.type === 'lodging_stay' && <LodgingStayFacts stay={entity} role={node.projectionRole === 'check_in' || node.projectionRole === 'check_out' ? node.projectionRole : 'full'} />}
+              {entity && <EntitySourceList bundle={bundle} entityId={node.entityId} />}
             </div>
           )}
 
-          {showCardActions && (
+          {hasExtraDetails && (
             <div className="journey-card-actions">
-              {mappable && (
-                <button type="button" data-map-focus-trigger onClick={selectOnMap}>
-                  <MapPinned size={14} aria-hidden />在地图查看
-                </button>
-              )}
-              {entity && !transport && (
-                <button
-                  type="button"
-                  className="journey-card-details-toggle"
-                  aria-expanded={detailsOpen}
-                  aria-controls={detailId}
-                  onClick={() => setDetailsOpen((open) => !open)}
-                >
-                  {detailsOpen ? '收起详情' : '查看详情'}
-                  <ChevronDown size={13} aria-hidden className={cn('transition-transform', detailsOpen && 'rotate-180')} />
-                </button>
-              )}
+              <button
+                type="button"
+                className="journey-card-details-toggle"
+                aria-expanded={detailsOpen}
+                aria-controls={detailId}
+                onClick={() => setDetailsOpen((open) => !open)}
+              >
+                {detailsOpen ? '收起详情' : '查看详情'}
+                <ChevronDown size={13} aria-hidden className={cn('transition-transform', detailsOpen && 'rotate-180')} />
+              </button>
             </div>
           )}
 
@@ -238,7 +247,7 @@ function OccurrenceCard({
                 animate={{ opacity: 1, y: 0, transition: { duration: duration.base, ease: easing.decelerate } }}
                 exit={{ opacity: 0, y: -4, transition: { duration: duration.fast, ease: easing.accelerate } }}
               >
-                <TimelineEntityDetails bundle={bundle} entity={entity} />
+                <p className="journey-detail-summary">{entity.type === 'custom_block' ? entity.note : node.summary}</p>
               </PresenceFrame>
             )}
           </AnimatePresence>

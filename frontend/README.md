@@ -13,13 +13,15 @@ JourneyPilot 的 Web 旅行工作台前端，基于 React 18、TypeScript、Vite
 ## 核心数据流与状态
 
 - **REST 与配置解析**：所有 HTTP 请求统一经过 `src/lib/http.ts`，由 `src/lib/runtimeConfig.ts` 根据 `VITE_API_BASE` 解析接口前缀（默认为 `/api`）。
-- **流式规划会话（SSE）**：`src/features/chat/api/streamChat.ts` 消费 `POST /api/chat-stream` 事件流，`src/app/session/` 负责维护各会话的流生命周期、断线恢复与多会话并行快照。
-- **全局状态与交付物**：`src/app/state/` 提供集中式的状态 reducer 与 Context Provider。规划完成后，前端接收完整的 `DeliveryBundle`，统一驱动日程表、交互地图、阅读版、资料来源与天气面板。
+- **地点搜索**：输入时会即时显示匹配的本地候选，包括常见城市和本页缓存的搜索结果；同时自动通过网络搜索更多候选，无需手动搜索，网络搜索可能受网络状况影响。自动补全使用 [Photon 公共演示服务](https://github.com/komoot/photon#demo-server)，输入的地点会发送至该服务。该服务允许项目适度使用，但高流量可能被限流，服务可能停止，且没有 SLA；部分境外地点的中文搜索覆盖有限。生产环境应部署可靠的自动补全服务并调整地点接口。搜索结果的页面内缓存刷新后清除，无需新增 API 密钥。首页可以直接提交尚未确认的目的地，供后续规划核实。
+- **首页规划入口**：从首页开始规划后立即进入规划工作台，等待系统理解请求；规划任务创建后，追问和研究方案在同一工作台展示。普通问题和推荐请求在路由确定后显示对应回答。
+- **流式规划会话（SSE）**：`src/features/chat/api/streamChat.ts` 消费 `POST /api/chat-stream` 事件流，`src/app/session/` 负责维护各会话的流生命周期、断线恢复与多会话并行快照。切换页面或开启新旅行时保留进行中的流，「我的行程」显示规划状态并可返回原工作台；刷新、关闭页面或断网可能中断服务端任务。
+- **全局状态与交付物**：`src/app/state/` 提供集中式的状态 reducer 与 Context Provider。规划完成后，前端接收完整的 `DeliveryBundle`，统一驱动日程表、交互地图、阅读版、资料来源与天气面板。可定位的地点卡片直接联动地图，卡片展示已有的实用信息和可查看的来源，天气建议保留在日程中。调整对话通过原导航入口返回日程，消息区独立滚动，输入框固定在工作区面板底部。
 
 ## 样式与视口
 
 - **样式组织**：`src/index.css` 定义全局 CSS 变量（颜色、圆角、阴影、动效与层级 token）及基础样式；`src/styles/` 存放首页、档案页与工作台布局样式；动效时长与缓动统一定义在 `src/lib/motion.ts`，交通方式配色集中在 `src/features/travel/model/transportPresentation.ts`。
-- **响应式断点**：`breakpoints.json` 定义 Tailwind 与 JS 共享的断点（`sm` 640px、`md` 768px、`lg` 1024px、`xl` 1280px、`2xl` 1536px）。
+- **响应式断点**：`breakpoints.json` 定义 Tailwind 与 JS 共享的断点（`sm` 640px、`md` 768px、`lg` 1024px、`xl` 1280px、`2xl` 1536px）。首页条件表单在桌面端采用紧凑间距，较矮窗口会相应调整标题和灵感卡；内容增多时保留正常滚动。地点数据署名显示在首页表单外。
 - **字体加载**：通过 Fontsource 本地加载 Inter（西文）、Noto Sans SC（中文正文与粗体标题）及 Noto Serif SC（衬线装饰标题）。
 
 全局浮层与面板遵循统一的 `z-index` 层级规划：

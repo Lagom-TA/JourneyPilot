@@ -29,6 +29,8 @@ export interface TravelState {
     } | null;
     /** 提交旅行想法后即进入工作台；首页只服务尚未开始的新会话。 */
     workspaceActive: boolean;
+    /** 首页请求正在等待服务端确定处理路径。 */
+    homeSubmissionPending: string | null;
     pendingRouteConfirmation: {
         rawInput: string;
         decision: RouteDecision;
@@ -58,6 +60,9 @@ export type TravelAction = {
     payload: TravelState['understandingQuestions'];
 } | {
     type: 'ENTER_WORKSPACE';
+} | {
+    type: 'SET_HOME_SUBMISSION_PENDING';
+    payload: { token: string; pending: boolean };
 } | {
     type: 'SET_ROUTE_CONFIRMATION';
     payload: {

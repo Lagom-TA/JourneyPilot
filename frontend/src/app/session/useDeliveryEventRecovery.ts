@@ -44,6 +44,8 @@ export function useDeliveryEventRecovery(): void {
     const finalizedRuns = React.useRef(new Set<string>());
     const runId = state.currentTripRunId;
     const sessionId = state.currentSessionId;
+    const runStatus = state.currentTripRunStatus;
+    const refreshKey = state.tripRunRefreshKey;
     React.useEffect(() => {
         if (!runId)
             return;
@@ -140,13 +142,10 @@ export function useDeliveryEventRecovery(): void {
                             if (latestAssistant
                                 && !latestAssistant.streamCompleted
                                 && latestAssistant.type !== 'error') {
-                                const readyMessage = '旅行方案已保存，可以查看完整行程。';
                                 dispatch({
                                     type: 'UPDATE_MESSAGE_BY_ID',
                                     payload: {
                                         id: latestAssistant.id,
-                                        content: latestAssistant.content.trim() || readyMessage,
-                                        displayContent: latestAssistant.displayContent.trim() || readyMessage,
                                         pendingStatusText: undefined,
                                         streamCompleted: true,
                                     },
@@ -188,15 +187,18 @@ export function useDeliveryEventRecovery(): void {
                             const detail = await getTripRunDetail(runId, { sessionId });
                             if (!active || currentStateRef.current.currentTripRunId !== runId) return;
                             dispatch({ type: 'SET_CONTROLLED_TRIP_IDENTITY', payload: detail.controlled_trip_identity });
+                            if (isTripRunStatus(detail.run.status) && detail.run.status !== window.run_status) {
+                                dispatch({ type: 'SET_TRIP_RUN_STATUS', payload: detail.run.status });
+                            }
                             const choice = detail.state.pending_user_choice;
                             const payload = choice?.payload && typeof choice.payload === 'object' && !Array.isArray(choice.payload)
                                 ? choice.payload as Record<string, unknown>
                                 : null;
-                            if (choice?.gate === 'plan' && payload) {
+                            if (detail.run.status === 'awaiting_input' && choice?.gate === 'plan' && payload) {
                                 const gate = normalizePlanApprovalGate({ run_id: runId, gate: 'plan', payload }, 'pending', 'restored');
                                 if (gate) dispatch({ type: 'SET_PLAN_APPROVAL_GATE', payload: gate });
                             }
-                            else if ((choice?.gate === 'understanding' || choice?.gate === 'research') && payload && Array.isArray(payload.questions)) {
+                            else if (detail.run.status === 'awaiting_input' && (choice?.gate === 'understanding' || choice?.gate === 'research') && payload && Array.isArray(payload.questions)) {
                                 dispatch({ type: 'SET_UNDERSTANDING_QUESTIONS', payload: {
                                     runId,
                                     revision: typeof payload.revision === 'number' ? payload.revision : 0,
@@ -234,7 +236,7 @@ export function useDeliveryEventRecovery(): void {
         };
         void monitor();
         return () => { active = false; };
-    }, [currentStateRef, dispatch, pendingFollowupsRef, runId, sessionId, setPendingFollowups]);
+    }, [currentStateRef, dispatch, pendingFollowupsRef, refreshKey, runId, runStatus, sessionId, setPendingFollowups]);
 }
 export const DeliveryEventRecovery: React.FC = () => {
     useDeliveryEventRecovery();

@@ -9,6 +9,7 @@
 .my-trip-status { flex-shrink: 0; color: var(--color-ink-secondary-on-paper); font-size: 12px; }
 .my-trip-status.is-complete { color: var(--color-chart); }
 .my-trip-meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 10px; color: var(--color-ink-secondary-on-paper); font-size: 12px; font-variant-numeric: tabular-nums; }
+.my-trip-progress { margin-top: 12px; color: var(--color-ink-secondary-on-paper); font-size: 13px; line-height: 1.6; }
 .my-trip-actions { margin-top: 15px; }
 .my-trip-history { margin-top: 12px; }
 .my-trip-history summary { width: fit-content; padding: 8px 0; color: var(--color-ink-secondary-on-paper); font-size: 12px; cursor: pointer; }

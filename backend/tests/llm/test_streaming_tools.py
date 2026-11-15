@@ -79,6 +79,25 @@ def test_merge_stream_chunk_keeps_the_latest_string_metadata():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("with_tools", [False, True])
+async def test_stream_without_terminal_marker_is_not_a_complete_answer(monkeypatch, with_tools):
+    import travel_agent.llm.router as router_module
+
+    chunks = [_chunk({"role": "assistant", "content": '{"valid":true}'})]
+
+    def respond(request):
+        return httpx.Response(200, content=_sse(chunks).encode(), headers={"content-type": "text/event-stream"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        llm = _llm(monkeypatch, client)
+        with pytest.raises(router_module.IncompleteModelResponse, match="missing_terminal_response"):
+            if with_tools:
+                _ = [item async for item in llm.ainvoke_with_tools_events([{"role": "user", "content": "查"}], TOOLS)]
+            else:
+                _ = [item async for item in llm.astream([{"role": "user", "content": "查"}])]
+
+
+@pytest.mark.asyncio
 async def test_truncated_stream_is_rejected_even_when_finish_reason_repeats(monkeypatch):
     import travel_agent.llm.router as router_module
 

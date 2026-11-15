@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { deriveActivityStages, getActivityStageIdForAgent, latestActivityStageId, parseAgentRound } from "./agentStages";
+import { researchGroups } from "./researchProgress";
 import { type ThinkingStep } from "../types/messages";
 function step(agentName: string): ThinkingStep {
     return {
@@ -15,6 +16,20 @@ describe('agent stage projection', () => {
         expect(parseAgentRound('destination_researcher_r2')).toEqual({ base: 'destination_researcher', round: 2 });
         expect(parseAgentRound('目的地调研（第3轮补充）')).toEqual({ base: '目的地调研', round: 3 });
         expect(parseAgentRound('目的地调研(第4轮)')).toEqual({ base: '目的地调研', round: 4 });
+    });
+    it.each([
+        ['交通查询（第 2 轮补充）', 2],
+        ['交通查询(第 2 轮补充)', 2],
+        [' 交通查询  （  第  12  轮 补充  ）  ', 12],
+        ['交通查询 ( 第 3 轮 补充 )', 3],
+        ['交通查询（第 4 轮 ）', 4],
+        ['交通查询　（第　5　轮补充）', 5],
+    ])('解析括号和轮次周围的空格：%s', (name, round) => {
+        expect(parseAgentRound(name)).toEqual({ base: '交通查询', round });
+    });
+    it('不把非轮次后缀解析为补充轮次', () => {
+        expect(parseAgentRound('交通查询（第 2 轮补充')).toEqual({ base: '交通查询（第 2 轮补充', round: 0 });
+        expect(parseAgentRound('交通查询_r2_extra')).toEqual({ base: '交通查询_r2_extra', round: 0 });
     });
 });
 describe('activity stage filtering', () => {
@@ -54,6 +69,30 @@ describe('four-stage activity projection', () => {
         expect(getActivityStageIdForAgent('安排查询')).toBe('research');
         expect(getActivityStageIdForAgent('理解旅行需求（第2轮补充）')).toBe('requirements');
     });
+    it('将研究方案及既有节点名归入需求阶段', () => {
+        for (const name of ['research_plan_generator', '研究生成', '研究方案', '研究方案（第 2 轮补充）']) {
+            expect(getActivityStageIdForAgent(name)).toBe('requirements');
+        }
+        expect(getActivityStageIdForAgent('研究方案以外')).toBeNull();
+    });
+    it('将带空格的补充轮次归入对应研究阶段', () => {
+        for (const name of ['交通查询（第 2 轮补充）', '住宿查询 ( 第 3 轮 补充 )', '目的地调研（第 4 轮 ）']) {
+            expect(getActivityStageIdForAgent(name)).toBe('research');
+        }
+    });
+    it('研究方案与补充研究事件落入对应成员分组', () => {
+        const groups = researchGroups([
+            step('研究方案'),
+            step('交通查询'),
+            step('交通查询（第 2 轮补充）'),
+            step('住宿查询 ( 第 3 轮 补充 )'),
+        ], true, false);
+        expect(groups.map(group => [group.id, group.stage, group.steps.map(item => item.agentName)])).toEqual([
+            ['planning', 'requirements', ['研究方案']],
+            ['transport', 'research', ['交通查询', '交通查询（第 2 轮补充）']],
+            ['stay', 'research', ['住宿查询 ( 第 3 轮 补充 )']],
+        ]);
+    });
     it('已完成阶段在 Run 仍运行时保持 done，当前阶段才 active', () => {
         const projection = deriveActivityStages(
             [step('理解旅行需求'), step('目的地调研')],
@@ -92,6 +131,10 @@ describe('four-stage activity projection', () => {
         const base = { isStreaming: true, isSynthesizing: false, answerStarted: false };
         expect(deriveActivityStages([step('行程规划'), step('整理需求（第2轮补充）')], base).currentStage).toBe('requirements');
         expect(deriveActivityStages([step('行程规划'), step('目的地调研（第2轮补充）')], base).currentStage).toBe('research');
+        const transport = deriveActivityStages([step('行程规划'), step('交通查询（第 2 轮补充）')], base);
+        expect(transport.currentStage).toBe('research');
+        expect(transport.stages.find(stage => stage.id === 'research')?.status).toBe('active');
+        expect(deriveActivityStages([step('行程规划'), step('研究方案（第 2 轮补充）')], base).currentStage).toBe('requirements');
     });
     it('等待用户门停在需求阶段，完成态全部收口', () => {
         const base = { isStreaming: false, isSynthesizing: false, answerStarted: false };

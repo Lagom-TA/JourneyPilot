@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from typing import Any, AsyncGenerator, Dict, NoReturn, Optional
 
 from langgraph.types import Command
@@ -244,6 +245,7 @@ class TravelPlanningWorkflow:
                 preset_context=preset_context,
                 preset_pack_constraints=dict(preset_pack_constraints or {}),
                 controlled_trip_identity=controlled_trip_identity or {},
+                submitted_trip_identity=deepcopy(controlled_trip_identity or {}) if not refinement_action else {},
                 route_decision=route_decision or {},
                 refinement_action=refinement_action,
                 refinement_context=refinement_instruction,

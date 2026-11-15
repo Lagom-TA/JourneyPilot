@@ -100,3 +100,20 @@ async def test_summary_prompt_separates_rules_current_memory_and_manual_actions(
     assert data["current_preferences"] == context.preferences
     assert data["manual_management_history"] == context.management_history
     assert data["turn_revision"] == 5
+
+
+async def test_labeled_question_and_answer_remain_separate_for_memory_extraction(monkeypatch):
+    from travel_agent.llm import router
+
+    model = SimpleNamespace(ainvoke=AsyncMock(return_value='{"facts": [], "portrait": []}'))
+    monkeypatch.setattr(router, "get_model_router", lambda: SimpleNamespace(get_fast=lambda: model))
+    context = MemoryExtractionContext(
+        facts=[], relations=[], management_history=[], portrait="", revision=0, preferences={},
+    )
+    user_message = "助手提问：这次有儿童同行吗？\n旅行者回答：没有儿童同行。"
+
+    await MemoryExtractor()._call_llm(user_message, context, 0)
+    messages = model.ainvoke.await_args.args[0]
+    assert "完整问答中结合助手提问理解旅行者回答" in messages[0]["content"]
+    assert "以旅行者实际表达或确认的内容为依据" in messages[0]["content"]
+    assert json.loads(messages[1]["content"])["user_message"] == user_message

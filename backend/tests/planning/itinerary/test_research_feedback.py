@@ -78,7 +78,10 @@ class FeedbackModel:
     async def ainvoke(self, messages, **kwargs):
         system = str(messages[0].get("content", ""))
         if "研究协调员" in system:
-            return json.dumps({"summary": "围绕文化与慢节奏安排行程。"}, ensure_ascii=False)
+            return json.dumps({
+                "summary": "围绕文化与慢节奏安排行程。",
+                "agent_guidance": "关注博物馆和街区漫步等文化体验，安排时保持慢节奏。",
+            }, ensure_ascii=False)
         if "行程组合器" in system:
             described = json.loads(
                 str(messages[-1].get("content", "")).split("待补的相邻段：", 1)[1]

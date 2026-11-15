@@ -201,8 +201,8 @@ function hostFromUrl(value: string | null): string | null {
     }
 }
 function routeSubject(args: ArgsMap): string | null {
-    const origin = firstArg(args, ['from_name', 'origin', 'from', 'from_city', 'departure', 'departure_city', 'source']);
-    const destination = firstArg(args, ['to_name', 'destination', 'to', 'to_city', 'arrival', 'arrival_city', 'target']);
+    const origin = firstArg(args, ['from_name', 'fromStation', 'from_station', 'origin', 'from', 'from_city', 'departure', 'departure_city', 'source']);
+    const destination = firstArg(args, ['to_name', 'toStation', 'to_station', 'destination', 'to', 'to_city', 'arrival', 'arrival_city', 'target']);
     const date = firstArg(args, ['date', 'departure_date', 'travel_date']);
     if (origin && destination)
         return [truncate(origin, 18), '→', truncate(destination, 18), date ? `· ${date}` : ''].join(' ').trim();
@@ -228,7 +228,7 @@ function classifyTool(toolName: string | undefined, category: ToolCategory | und
         return 'place_search';
     if (/flight|duffel|offer/.test(name))
         return 'flight';
-    if (/train|rail|station|12306/.test(name))
+    if (/train|rail|station|12306/.test(name) || /(?:^|_)get[-_](?:interline[-_])?tickets$/.test(name))
         return 'train';
     if (/currency|exchange|forex|frankfurter/.test(name))
         return 'currency';
@@ -298,8 +298,8 @@ function inputFieldsForKind(kind: DisplayKind, args: ArgsMap): ToolInputField[] 
         case 'route':
         case 'flight':
         case 'train':
-            add('出发地', ['from_name', 'origin', 'from', 'from_city', 'departure', 'departure_city', 'source']);
-            add('目的地', ['to_name', 'destination', 'to', 'to_city', 'arrival', 'arrival_city', 'target']);
+            add('出发地', ['from_name', 'fromStation', 'from_station', 'origin', 'from', 'from_city', 'departure', 'departure_city', 'source']);
+            add('目的地', ['to_name', 'toStation', 'to_station', 'destination', 'to', 'to_city', 'arrival', 'arrival_city', 'target']);
             add('日期', ['date', 'departure_date', 'travel_date']);
             add('路线', ['route', 'query', 'q']);
             break;
@@ -365,6 +365,7 @@ function looksLikeMachinePayload(text: string): boolean {
 function aliasForInternalIdentifier(value: string): string {
     return KIND_LABELS[classifyTool(value, undefined)];
 }
+const RAIL_IDENTIFIER = /\bget-(?:interline-)?tickets\b|\bget-station-code-of-citys\b/gi;
 const INTERNAL_IDENTIFIER = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/gi;
 const PROVIDER_IDENTIFIER = /\b(?:brave|tavily|firecrawl|duckduckgo|nominatim|amap|duffel|frankfurter)\b/gi;
 function activationSummary(text: string): string | null {
@@ -383,10 +384,11 @@ function activationSummary(text: string): string | null {
 }
 function sanitizeInternalIdentifiers(text: string): string {
     return text
+        .replace(RAIL_IDENTIFIER, token => aliasForInternalIdentifier(token))
         .replace(INTERNAL_IDENTIFIER, token => aliasForInternalIdentifier(token))
         .replace(PROVIDER_IDENTIFIER, token => aliasForInternalIdentifier(token));
 }
-const TECHNICAL_INPUT_FIELDS = /\b(?:contract_version|research_packet_id|tool_call_id|run_id|session_id|provider|status_code|args_summary|sanitized_result|raw_result)\b\s*[:=]/i;
+const TECHNICAL_INPUT_FIELDS = /\b(?:contract_version|research_packet_id|tool_call_id|run_id|session_id|provider|status_code|args_summary|sanitized_result|raw_result|fromStation|toStation|from_station|to_station|tool_name|tool_args|tool_result)\b\s*[:：=]/i;
 const TECHNICAL_ERROR_TEXT = [
     /^\s*(?:error|exception|traceback|typeerror|valueerror|runtimeerror|keyerror|httpx?error|urllib3)\b/i,
     /\b(?:traceback \(most recent call last\)|stack trace|internal server error|service unavailable|bad gateway|gateway timeout)\b/i,
@@ -404,13 +406,105 @@ function publicToolArgText(value: string | null | undefined): string | null {
 }
 export function toolResultText(step: Pick<ThinkingStep, 'toolResult'>): string | null {
     const text = step.toolResult?.trim();
-    if (!text || looksLikeMachinePayload(text))
+    if (!text || looksLikeMachinePayload(text) || TECHNICAL_INPUT_FIELDS.test(text))
         return null;
     const activation = activationSummary(text);
     if (activation)
         return activation;
     return sanitizeInternalIdentifiers(text);
 }
+export type ToolActivityItem =
+    | { kind: 'step'; step: ThinkingStep; events: ThinkingStep[] }
+    | { kind: 'tool_group'; key: string; toolName: string; steps: ThinkingStep[]; callEvents: ThinkingStep[][] };
+
+interface ToolCallSnapshot {
+    step: ThinkingStep;
+    events: ThinkingStep[];
+    separated: boolean;
+}
+
+function nonemptyId(value: string | undefined): string | undefined {
+    return value?.trim() ? value : undefined;
+}
+
+function groupableToolName(step: ThinkingStep): string | null {
+    if (step.isToolCall !== true || step.kind === 'work_explanation' || step.toolCategory === 'internal')
+        return null;
+    const name = normalizeToolName(step.toolName?.trim());
+    if (!name || ['unknown', 'unknown_tool', 'unknown-tool', '未命名工具', '未知工具'].includes(name)
+        || classifyTool(step.toolName, step.toolCategory) === 'internal')
+        return null;
+    return name;
+}
+
+function mergeToolCall(previous: ThinkingStep, next: ThinkingStep): ThinkingStep {
+    const merged: ThinkingStep = { ...previous };
+    for (const [key, value] of Object.entries(next)) {
+        if (value !== undefined && value !== null && value !== '' && !(Array.isArray(value) && value.length === 0))
+            Object.assign(merged, { [key]: value });
+    }
+    // 重复事件可能先到达结果、后重放开始；完成状态与结果不能倒退。
+    if (previous.toolStatus && previous.toolStatus !== 'running' && (!next.toolStatus || next.toolStatus === 'running'))
+        merged.toolStatus = previous.toolStatus;
+    merged.id = previous.id;
+    merged.toolCallId = previous.toolCallId || next.toolCallId;
+    return merged;
+}
+
+/**
+ * 按已公开步骤的顺序聚合同一工具的相邻调用，不按参数或结果折叠独立调用。
+ * 重放的同一 toolCallId 在首次出现处合并，原始事件快照留在 events 中。
+ */
+export function groupToolSteps(steps: readonly ThinkingStep[]): ToolActivityItem[] {
+    const calls: ToolCallSnapshot[] = [];
+    const byCallId = new Map<string, ToolCallSnapshot>();
+    let previousName: string | null = null;
+    let separated = false;
+    for (const step of steps) {
+        const name = groupableToolName(step);
+        if (!name || name !== previousName)
+            separated = true;
+        previousName = name;
+        const callId = step.isToolCall === true ? nonemptyId(step.toolCallId) : undefined;
+        const existing = callId ? byCallId.get(callId) : undefined;
+        if (existing) {
+            existing.step = mergeToolCall(existing.step, step);
+            existing.events.push(step);
+        }
+        else {
+            const snapshot = { step, events: [step], separated };
+            calls.push(snapshot);
+            separated = false;
+            if (callId)
+                byCallId.set(callId, snapshot);
+        }
+    }
+    const items: ToolActivityItem[] = [];
+    let index = 0;
+    while (index < calls.length) {
+        const first = calls[index];
+        const name = groupableToolName(first.step);
+        const key = nonemptyId(first.step.id) || nonemptyId(first.step.toolCallId);
+        let end = index + 1;
+        if (name && key) {
+            while (end < calls.length
+                && !calls[end].separated
+                && groupableToolName(calls[end].step) === name
+                && (nonemptyId(calls[end].step.id) || nonemptyId(calls[end].step.toolCallId)))
+                end += 1;
+        }
+        if (end - index > 1 && key) {
+            const members = calls.slice(index, end);
+            items.push({ kind: 'tool_group', key, toolName: first.step.toolName!, steps: members.map(member => member.step), callEvents: members.map(member => member.events) });
+        }
+        else {
+            items.push({ kind: 'step', step: first.step, events: first.events });
+        }
+        index = end;
+    }
+    return items;
+}
+
 function normalizedInvocationPart(value: string | undefined): string {
     return (value || '').replace(/\s+/g, ' ').trim();
 }

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import hashlib
 import json
 import logging
 import time
 import uuid
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
 
 from ..public_note import (
     MAX_NOTE_CHARS_PER_RUN,
@@ -35,6 +37,7 @@ from .governance import (
 )
 from .registry import get_tool_registry
 from .result import ReactOutcome, ReactResult
+from ..storage.worker_journal_store import JournalConflict
 
 if TYPE_CHECKING:
     from ..runtime.events import EventBuffer
@@ -93,6 +96,33 @@ def _ensure_final_round_notice(messages: List[Dict[str, Any]], notice: str) -> N
     messages.append({"role": "user", "content": notice})
 
 
+class _FinalAnswerRequired(RuntimeError):
+    """探索时间已用完，保留余下时间直接生成最终答案。"""
+
+
+@contextlib.asynccontextmanager
+async def _exploration_limit(
+    remaining: Optional[Callable[[], float]],
+):
+    if remaining is None:
+        yield
+        return
+    seconds = max(0.0, remaining())
+    if seconds == float("inf"):
+        yield
+        return
+    if seconds <= 0:
+        raise _FinalAnswerRequired()
+    timeout = asyncio.timeout(seconds)
+    try:
+        async with timeout:
+            yield
+    except TimeoutError as exc:
+        if timeout.expired():
+            raise _FinalAnswerRequired() from exc
+        raise
+
+
 def _cacheable_tool_result(tool_name: str, result: Dict[str, Any]) -> bool:
     if tool_name in _NO_CACHE_TOOLS or not isinstance(result, dict):
         return False
@@ -124,6 +154,8 @@ async def streaming_react_loop(
     journal_key: str = "react",
     public_note: bool = False,
     local_tool_handlers: Optional[Dict[str, Any]] = None,
+    exploration_remaining: Optional[Callable[[], float]] = None,
+    stop_when_exploration_expires: bool = False,
 ) -> ReactResult:
     "通用流式 ReAct 循环。"
 
@@ -184,6 +216,7 @@ async def streaming_react_loop(
     )
 
     effective_max_iterations = max_iterations + (1 if exposure_plan.deferred else 0)
+    exploration_last_iteration = effective_max_iterations - 1
     local_tool_call_limit = max_iterations * 2
     local_tool_calls = 0
 
@@ -267,7 +300,41 @@ async def streaming_react_loop(
         )
 
     start_iteration = saved.get("iteration", 0)
+    def has_bounded_exploration() -> bool:
+        return (
+            exploration_remaining is not None
+            and exploration_remaining() != float("inf")
+        )
+
+    # 恢复一轮已生成工具请求时，始终保留最后一次无工具成稿的机会。
+    if has_bounded_exploration() and not stop_when_exploration_expires:
+        effective_max_iterations = max(effective_max_iterations + 1, start_iteration + 2)
     content = last_text_content
+    final_answer_only = bool(saved.get("final_answer_only"))
+
+    async def begin_final_answer(iteration: int) -> None:
+        nonlocal final_answer_only
+        final_answer_only = True
+        _ensure_final_round_notice(messages, final_round_notice or _FINAL_ROUND_NOTICE)
+        logger.info("[%s] 探索时间已用完，基于已有资料生成最终答案", node_name)
+        await save_round(iteration, final_answer_only=True)
+
+    async def model_events():
+        if final_answer_only:
+            async with contextlib.aclosing(llm.astream(messages)) as stream:
+                async for delta in stream:
+                    yield {"type": "text_delta", "content": delta}
+            yield {"type": "finish", "tool_calls": []}
+            return
+        async with (
+            _exploration_limit(exploration_remaining) if has_bounded_exploration() else contextlib.nullcontext(),
+            contextlib.aclosing(
+                llm.ainvoke_with_tools_events(messages, exposure.tool_schemas)
+            ) as stream,
+        ):
+            async for event in stream:
+                yield event
+
     for iteration in range(start_iteration, effective_max_iterations):
         check_cancel_requested(node_name)
         try:
@@ -291,6 +358,23 @@ async def streaming_react_loop(
         recovered_response = (
             saved.get("response") if iteration == start_iteration else None
         )
+        if has_bounded_exploration() and not final_answer_only:
+            if exploration_remaining() <= 0 and stop_when_exploration_expires:
+                if recovered_response:
+                    for skipped in recovered_response[1][saved.get("next_tool", 0) :]:
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": skipped["id"],
+                            "content": '{"status":"not_executed","reason":"exploration_time_limit"}',
+                        })
+                return await terminate(
+                    iteration, ReactOutcome.BUDGET_LIMIT, error="exploration time limit reached"
+                )
+            if not stop_when_exploration_expires and recovered_response is None and (
+                iteration >= exploration_last_iteration
+                or exploration_remaining() <= 0
+            ):
+                await begin_final_answer(iteration)
         if (
             final_round_notice
             and recovered_response is None
@@ -300,7 +384,9 @@ async def streaming_react_loop(
         if recovered_response:
             content, tool_calls, assistant_replay = recovered_response
         else:
-            await save_round(iteration, phase="request_started")
+            await save_round(
+                iteration, phase="request_started", final_answer_only=final_answer_only
+            )
             finished = False
             # 本轮可见正文先缓冲，直到上游给出第一个工具调用增量才发布。
             # 最终轮（没有工具调用）的正文是 Research Packet/最终答案，必须丢弃，
@@ -327,53 +413,59 @@ async def streaming_react_loop(
                 tool_round_started = True
 
             try:
-                async for event in llm.ainvoke_with_tools_events(
-                    messages, exposure.tool_schemas
-                ):
-                    event_type = event["type"]
-                    if event_type == "stream_start":
-                        note_call_id = str(event.get("call_id") or "")
-                    elif event_type == "text_delta":
-                        delta = str(event.get("content") or "")
-                        content += delta
-                        round_visible += delta
-                        if tool_round_started and note_stream is not None:
-                            await publish_notes(
-                                note_stream.feed(delta),
-                                iteration=iteration,
-                                call_id=note_call_id,
-                            )
-                    elif event_type == "tool_call_delta":
-                        if not tool_round_started:
-                            await publish_round_visible()
-                    elif event_type == "reasoning_delta":
-                        pass
-                    elif event_type == "finish":
-                        finished = True
-                        finish_content = event.get("content")
-                        if finish_content is not None:
-                            content = finish_content
-                        tool_calls = event.get("tool_calls", [])
-                        assistant_replay = event.get("assistant_replay") or {}
-                        note_call_id = str(event.get("call_id") or note_call_id)
-                        if tool_calls and note_stream is not None:
-                            # 供应商没有逐段给出 tool_call_chunks 时，到 finish
-                            # 才确认这是工具轮；此时发布缓冲的完整句子。
+                async with contextlib.aclosing(model_events()) as events:
+                    async for event in events:
+                        event_type = event["type"]
+                        if event_type == "stream_start":
+                            note_call_id = str(event.get("call_id") or "")
+                        elif event_type == "text_delta":
+                            delta = str(event.get("content") or "")
+                            content += delta
+                            round_visible += delta
+                            if tool_round_started and note_stream is not None:
+                                await publish_notes(
+                                    note_stream.feed(delta),
+                                    iteration=iteration,
+                                    call_id=note_call_id,
+                                )
+                        elif event_type == "tool_call_delta":
                             if not tool_round_started:
                                 await publish_round_visible()
-                            await publish_notes(
-                                note_stream.flush(),
-                                iteration=iteration,
-                                call_id=note_call_id,
-                            )
-                        elif note_stream is not None and not tool_calls:
-                            # 最终轮：不发布、不保留半句。
-                            note_stream = None
+                        elif event_type == "reasoning_delta":
+                            pass
+                        elif event_type == "finish":
+                            finished = True
+                            finish_content = event.get("content")
+                            if finish_content is not None:
+                                content = finish_content
+                            tool_calls = event.get("tool_calls", [])
+                            assistant_replay = event.get("assistant_replay") or {}
+                            note_call_id = str(event.get("call_id") or note_call_id)
+                            if tool_calls and note_stream is not None:
+                                # 供应商没有逐段给出 tool_call_chunks 时，到 finish
+                                # 才确认这是工具轮；此时发布缓冲的完整句子。
+                                if not tool_round_started:
+                                    await publish_round_visible()
+                                await publish_notes(
+                                    note_stream.flush(),
+                                    iteration=iteration,
+                                    call_id=note_call_id,
+                                )
+                            elif note_stream is not None and not tool_calls:
+                                # 最终轮：不发布、不保留半句。
+                                note_stream = None
+            except _FinalAnswerRequired:
+                if stop_when_exploration_expires:
+                    return await terminate(
+                        iteration, ReactOutcome.BUDGET_LIMIT, error="exploration time limit reached"
+                    )
+                await begin_final_answer(iteration + 1)
+                continue
             except (ModelWindowClosed, RunBudgetExhausted) as exc:
                 return await terminate(
                     iteration, ReactOutcome.BUDGET_LIMIT, error=str(exc)
                 )
-            except RunCancelled:
+            except (RunCancelled, JournalConflict):
                 raise
             except Exception as e:
                 logger.error(f"[{node_name}] 流式 LLM 调用失败 (迭代 {iteration}): {e}")
@@ -433,9 +525,19 @@ async def streaming_react_loop(
 
         capability_tool_names: List[str] = list(round_counts["capabilities"])
 
+        close_after_tools = False
         for tool_index, tc in enumerate(tool_calls):
             if recovered_response and tool_index < saved.get("next_tool", 0):
                 continue
+            if exploration_remaining is not None and exploration_remaining() <= 0:
+                close_after_tools = True
+                for skipped in tool_calls[tool_index:]:
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": skipped["id"],
+                        "content": '{"status":"not_executed","reason":"final_answer_reserved"}',
+                    })
+                break
             tc_name = tc.get("name", "")
             tc_args = tc.get("arguments", {})
             tc_id = tc.get("id", "") or f"tool_{uuid.uuid4().hex}"
@@ -559,32 +661,44 @@ async def streaming_react_loop(
                         )
                     )
                 handler = (local_tool_handlers or {}).get(tc_name)
-                if handler is not None and tc_name in allowed_names:
-                    if local_tool_calls >= local_tool_call_limit:
-                        from .governance import build_tool_execution_envelope
+                try:
+                    async with _exploration_limit(exploration_remaining):
+                        if handler is not None and tc_name in allowed_names:
+                            if local_tool_calls >= local_tool_call_limit:
+                                from .governance import build_tool_execution_envelope
 
-                        tool_result = build_tool_execution_envelope(
-                            tool_name=tc_name,
-                            arguments=tc_args if isinstance(tc_args, dict) else {},
-                            status="failed",
-                            error="本轮补查次数已用完，请基于已有资料安排并说明未知。",
-                        )
-                    else:
-                        local_tool_calls += 1
-                        tool_result = await handler(tc_args, f"{journal_key}:{iteration}:{tc_id}")
-                else:
-                    tool_result = await execute_tool(
-                        tc_name,
-                        tc_args,
-                        available_tools,
-                        run_id=tool_context.get("run_id"),
-                        node_name=node_name,
-                        tool_audit_store=tool_context.get("tool_audit_store"),
-                        tool_gateway=tool_context.get("tool_gateway"),
-                        activation_source="searched"
-                        if exposure.was_activated(tc_name)
-                        else "preloaded",
-                        provider_snapshot_cache=tool_context.get("provider_snapshot_cache"),
+                                tool_result = build_tool_execution_envelope(
+                                    tool_name=tc_name,
+                                    arguments=tc_args if isinstance(tc_args, dict) else {},
+                                    status="failed",
+                                    error="本轮补查次数已用完，请基于已有资料安排并说明未知。",
+                                )
+                            else:
+                                local_tool_calls += 1
+                                tool_result = await handler(tc_args, f"{journal_key}:{iteration}:{tc_id}")
+                        else:
+                            tool_result = await execute_tool(
+                                tc_name,
+                                tc_args,
+                                available_tools,
+                                run_id=tool_context.get("run_id"),
+                                node_name=node_name,
+                                tool_audit_store=tool_context.get("tool_audit_store"),
+                                tool_gateway=tool_context.get("tool_gateway"),
+                                activation_source="searched"
+                                if exposure.was_activated(tc_name)
+                                else "preloaded",
+                                provider_snapshot_cache=tool_context.get("provider_snapshot_cache"),
+                            )
+                except _FinalAnswerRequired:
+                    from .governance import build_tool_execution_envelope
+
+                    close_after_tools = True
+                    tool_result = build_tool_execution_envelope(
+                        tool_name=tc_name,
+                        arguments=tc_args if isinstance(tc_args, dict) else {},
+                        status="failed",
+                        error="补查未完成，相关内容仍待确认。",
                     )
                 if handler is None and _cacheable_tool_result(tc_name, tool_result):
                     invocation_cache[cache_key] = tool_result
@@ -723,6 +837,22 @@ async def streaming_react_loop(
                 next_tool=tool_index + 1,
             )
             check_cancel_requested(node_name)
+            if close_after_tools:
+                for skipped in tool_calls[tool_index + 1 :]:
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": skipped["id"],
+                        "content": '{"status":"not_executed","reason":"final_answer_reserved"}',
+                    })
+                break
+
+        if close_after_tools:
+            if stop_when_exploration_expires:
+                return await terminate(
+                    iteration, ReactOutcome.BUDGET_LIMIT, error="exploration time limit reached"
+                )
+            await begin_final_answer(iteration + 1)
+            continue
 
         executed_count = total_count - len(capability_tool_names)
         notices: List[str] = []

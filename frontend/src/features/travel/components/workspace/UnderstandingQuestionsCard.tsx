@@ -5,6 +5,7 @@ import { useStopRun } from '../../../../app/session/useStopRun';
 import { cn } from '../../../../lib/utils';
 import React from 'react';
 import type { UnderstandingQuestion } from '../../types/planner';
+import { formatUnderstandingAnswers } from '../../model/understandingAnswers';
 import { DateRangePicker } from '../planning/DateRangePicker';
 
 type AnswerDraft = { optionIds: string[]; freeText: string; start: string; end: string };
@@ -96,12 +97,7 @@ export const UnderstandingQuestionsCard: React.FC<{
       question_id: question.id,
       text: answerText(question, draftOf(question)),
     }));
-    const displayText = answers
-      .map((answer) => {
-        const question = questions.find((item) => item.id === answer.question_id);
-        return `${question?.question ?? answer.question_id}：${answer.text}`;
-      })
-      .join('\n');
+    const displayText = formatUnderstandingAnswers(questions, answers);
     setSubmitting(true);
     try {
       await sendMessage(displayText, {

@@ -24,6 +24,7 @@ npx playwright test --list
 | `mobile-navigation.spec.ts` | 是 | 完整应用；验证移动端抽屉导航与页面切换 |
 | `home-inspiration.spec.ts` | 是 | 任意前端入口；拦截 `/api/` 验证首页灵感卡片与输入交互 |
 | `planner-intake.spec.ts` | 是 | 任意前端入口；拦截 `/api/` 验证自由输入与条件表单 |
+| `planner-pending.spec.ts` | 是 | 本地前端入口；拦截 `/api/` 验证首页交接、等待状态与取消操作 |
 | `multi-round-intake.spec.ts` | 是 | 任意前端入口；拦截 `/api/` 验证多轮需求追问交互 |
 | `generation-workspace.spec.ts` | 是 | Vite dev 服务（`:8080`）；通过本地夹具验证生成工作台四阶段交互 |
 | `archive-workspace.spec.ts` | 是 | 任意前端入口；拦截 `/api/` 验证我的行程、偏好设置与个人资料管理 |
@@ -31,6 +32,7 @@ npx playwright test --list
 | `session-state.spec.ts` | 需 `JP_SESSION_STATE_E2E=1` | Vite dev 服务（地址须为 `http://127.0.0.1:<端口>`）；验证多会话状态切换与恢复 |
 | `map-load-failure.spec.ts` | 需 `JP_MAP_LOAD_FAILURE_E2E=1` | Vite dev 服务（地址须为 `http://127.0.0.1:<端口>`）；验证地图瓦片加载降级提示 |
 | `research-progress.spec.ts` | 需 `JP_COMPONENT_E2E=1` | Vite dev 服务（`:8080`）；验证调研进度与 SSE 事件流夹具 |
+| `research-progress-layout.spec.ts` | 需 `JP_COMPONENT_E2E=1` | Vite dev 服务（`:8080`）；验证任务列表的桌面/窄屏对齐、可读字号及详情展开 |
 | `deployment-settings.spec.ts` | 需 `JP_DEPLOYMENT_URL=<URL>` | 自定义子路径与瓦片源的 Vite 服务；验证部署环境变量生效 |
 | `workspace.spec.ts` | 写入用例需 `JP_WRITE_E2E=1` | 完整应用；测试真实知识库资料与旅行风格的增删改查 |
 | `live-planning.spec.ts` | 需 `JP_LIVE_E2E=1` | 完整应用与可用大模型（可选 `JP_LIVE_DESTINATION=苏州`）；验证真实端到端行程生成 |
@@ -41,14 +43,14 @@ npx playwright test --list
 ```bash
 # 运行离线首页与需求输入测试
 JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
-  npx playwright test e2e/home-inspiration.spec.ts e2e/planner-intake.spec.ts e2e/multi-round-intake.spec.ts
+  npx playwright test e2e/home-inspiration.spec.ts e2e/planner-intake.spec.ts e2e/planner-pending.spec.ts e2e/multi-round-intake.spec.ts
 
 # 运行生成工作台与研究进度组件夹具测试（需 Vite dev 服务 :8080）
 JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
   npx playwright test e2e/generation-workspace.spec.ts
 
 JP_COMPONENT_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
-  npx playwright test e2e/research-progress.spec.ts
+  npx playwright test e2e/research-progress.spec.ts e2e/research-progress-layout.spec.ts
 
 # 运行会话状态与地图异常降级测试（需 127.0.0.1 的 Vite dev 服务）
 JP_SESSION_STATE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \

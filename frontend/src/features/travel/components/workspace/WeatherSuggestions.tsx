@@ -4,11 +4,9 @@ import type { PublicWeatherAdjustment } from '../../types/weather';
 
 interface WeatherSuggestionsProps {
   suggestions: readonly PublicWeatherAdjustment[];
-  readOnly: boolean;
-  onDiscuss: (suggestion: PublicWeatherAdjustment, event: React.MouseEvent<HTMLButtonElement>) => void;
 }
 
-export const WeatherSuggestions: React.FC<WeatherSuggestionsProps> = ({ suggestions, readOnly, onDiscuss }) => {
+export const WeatherSuggestions: React.FC<WeatherSuggestionsProps> = ({ suggestions }) => {
   if (suggestions.length === 0) return null;
 
   return (
@@ -19,14 +17,6 @@ export const WeatherSuggestions: React.FC<WeatherSuggestionsProps> = ({ suggesti
           <li key={suggestion.proposal_id} className="text-sm leading-5 text-ink-secondary">
             <p><time dateTime={suggestion.date}>{suggestion.date}</time> · {suggestion.severity === 'high' ? '天气影响较大' : '留意天气变化'}</p>
             <p className="mt-1 text-ink">{suggestion.summary}</p>
-            {!readOnly && (
-              <button
-                type="button"
-                data-conversation-trigger={`weather-${suggestion.proposal_id}`}
-                className="mt-2 text-sm font-medium text-accent hover:underline"
-                onClick={(event) => onDiscuss(suggestion, event)}
-              >讨论调整</button>
-            )}
           </li>
         ))}
       </ul>

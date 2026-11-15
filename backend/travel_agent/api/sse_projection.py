@@ -139,7 +139,7 @@ def public_plan_gate_payload(payload: Any) -> Dict[str, Any]:
                 {
                     "step": step.get("step"),
                     "agents": step.get("agents"),
-                    # 各角色收到同一份已确认的设想。
+                    # 任务展示使用面向旅行者的方案摘要。
                     "tasks": step.get("tasks"),
                 }
                 for step in steps

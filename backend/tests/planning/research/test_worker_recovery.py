@@ -115,10 +115,16 @@ async def test_understanding_without_assignment_replays_and_changes_scope():
     scope = invocation_scope(state, NODE_UNDERSTANDING_AGENT, config)
     changed_time = state.model_copy(update={"current_time": "2026-11-03"})
     changed_answer = state.model_copy(update={"understanding_rounds": 1})
+    changed_submission = state.model_copy(update={
+        "submitted_trip_identity": {"party": {"adults": 1, "children": 0}},
+    })
     changed_task = {"configurable": {"__pregel_task_id": "task-2"}}
     assert invocation_scope(changed_time, NODE_UNDERSTANDING_AGENT, config) != scope
     assert invocation_scope(changed_answer, NODE_UNDERSTANDING_AGENT, config) != scope
+    assert invocation_scope(changed_submission, NODE_UNDERSTANDING_AGENT, config) != scope
     assert invocation_scope(state, NODE_UNDERSTANDING_AGENT, changed_task) != scope
+    await recovered(changed_submission, config)
+    assert calls == [1, 1]
 
 
 @pytest.mark.parametrize("assignments", [{}, {"worker": {"objective": "  "}}])

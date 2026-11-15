@@ -13,9 +13,10 @@ export interface SegmentedTab<T extends string> {
 interface SegmentedTabsProps<T extends string> {
   tabs: ReadonlyArray<SegmentedTab<T>>;
   value: T;
-  onChange: (id: T) => void;
+  onChange: (id: T, direction?: -1 | 1) => void;
   'aria-label': string;
   className?: string;
+  preventScrollOnFocus?: boolean;
 }
 
 interface IndicatorRect {
@@ -30,6 +31,7 @@ export function SegmentedTabs<T extends string>({
   onChange,
   'aria-label': ariaLabel,
   className,
+  preventScrollOnFocus = false,
 }: SegmentedTabsProps<T>) {
   const reducedMotion = useReducedMotion();
   const groupRef = useRef<HTMLDivElement>(null);
@@ -58,11 +60,11 @@ export function SegmentedTabs<T extends string>({
     return () => observer.disconnect();
   }, [measure, tabs.length]);
 
-  const focusAndSelect = (index: number) => {
+  const focusAndSelect = (index: number, direction?: -1 | 1) => {
     const tab = tabs[(index + tabs.length) % tabs.length];
     if (!tab) return;
-    onChange(tab.id);
-    buttonRefs.current.get(tab.id)?.focus();
+    onChange(tab.id, direction);
+    buttonRefs.current.get(tab.id)?.focus({ preventScroll: preventScrollOnFocus });
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -70,12 +72,12 @@ export function SegmentedTabs<T extends string>({
       case 'ArrowRight':
       case 'ArrowDown':
         event.preventDefault();
-        focusAndSelect(index + 1);
+        focusAndSelect(index + 1, 1);
         break;
       case 'ArrowLeft':
       case 'ArrowUp':
         event.preventDefault();
-        focusAndSelect(index - 1);
+        focusAndSelect(index - 1, -1);
         break;
       case 'Home':
         event.preventDefault();

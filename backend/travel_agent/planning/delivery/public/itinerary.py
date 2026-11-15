@@ -6,6 +6,8 @@ from datetime import date as Date
 from datetime import datetime
 from travel_agent.planning.costs.coverage import CostCoverageSummary
 from travel_agent.planning.delivery.evidence_basis import EvidenceBasisView
+from travel_agent.planning.delivery.travel_content import public_trip_title
+from travel_agent.planning.delivery.travel_content import public_trip_unresolved
 from travel_agent.planning.delivery.travel_content import selection_reason
 from travel_agent.planning.itinerary.models import CustomBlock
 from travel_agent.planning.itinerary.models import DayPlan
@@ -231,7 +233,7 @@ def _public_itinerary(
 
     return {
         "itinerary_id": itinerary.itinerary_id,
-        "title": itinerary.title,
+        "title": public_trip_title(itinerary.title),
         "destination_ids": list(itinerary.destination_ids),
         "duration_days": itinerary.duration_days,
         "day_plans": [_public_day_plan(day) for day in itinerary.day_plans],
@@ -266,5 +268,5 @@ def _public_itinerary(
         ],
         "cost_summary": _public_cost_summary(itinerary.cost_summary),
         "highlights": list(itinerary.highlights),
-        "unresolved": list(itinerary.unresolved),
+        "unresolved": public_trip_unresolved(itinerary.unresolved),
     }

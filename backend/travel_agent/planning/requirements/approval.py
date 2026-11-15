@@ -50,6 +50,8 @@ def _build_plan_gate_payload(state: TravelAgentState) -> Dict[str, Any]:
         "plan": payload["plan"],
         "plan_text": text,
     }
+    if plan is not None and plan.agent_guidance is not None:
+        material["agent_guidance"] = plan.agent_guidance
     digest = hashlib.sha256(json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     payload["approval_token"] = f"plan_gate.approval:{digest}"
     return payload
@@ -90,6 +92,16 @@ async def plan_gate_node(state: TravelAgentState, config: Optional[RunnableConfi
                 "understanding_messages": [],
                 "understanding_pending_questions": None,
             }
+        plan = state.research_plan
+        if plan is None:
+            raise ValueError("确认前需要研究方案")
+        if state.agent_assignments and any(
+            not isinstance(assignment := state.agent_assignments.get(worker), dict)
+            or assignment.get("objective") != plan.task_guidance
+            for group in RESEARCH_EXECUTION_PLAN
+            for worker in group
+        ):
+            raise ValueError("研究任务与当前方案不一致，请重新规划")
         return {
             "plan_gate_decision": {"action": "approve", "revision": state.plan_gate_revision_count, "approval_token": supplied},
             # 批准时落章确认门展示的执行分组，保持授权与实际执行一致。

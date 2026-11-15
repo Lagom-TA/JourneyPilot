@@ -187,6 +187,12 @@ Tests:
 - `backend/tests/runtime/test_deadline_resume.py::test_a_run_parked_on_a_recorded_delivery_failure_goes_back_to_composition`
 - `backend/tests/runtime/test_deadline_resume.py::test_the_real_graph_leaves_the_rewound_run_waiting_at_the_dispatcher`
 
+### INV-RUN-007：同一 Run 重试时前端清除旧恢复状态
+约定：同一 Run 从失败或中断恢复并进入 running 时，客户端清除旧的 resume 快照；终态轮询重新读取动作授权，避免第二次失败沿用第一次的恢复结论。
+Owner: `frontend/src/app/state/appReducer.ts`、`frontend/src/app/session/useDeliveryEventRecovery.ts`
+Tests:
+- `frontend/src/app/session/sessionRuntime.test.ts`
+
 ## 意图与编排
 
 ### INV-INTENT-004：supplement 追加到同一条当前需求
@@ -204,13 +210,16 @@ Tests:
 - `backend/tests/planning/test_amendment_routing.py::test_continuation_table_equals_graph_branch_targets`
 
 ### INV-INTENT-007：理解问题绑定当轮凭据，回答进入同一理解
-约定：`understanding_gate` 下发的每个问题轮次携带 `approval_token`；回答必须引用当前待答问题并回传同一凭据，凭据不匹配时原样重发问题，不消费状态、不重跑模型。回答全文保存在理解问答与消息历史中，模型据此整理当前需求；模型提问、日期补问和地点重试共用轮次上限。
-Owner: `backend/travel_agent/planning/requirements/understanding/gate.py`、`backend/travel_agent/conversation/chat/contracts.py`、`backend/travel_agent/conversation/chat/preparation.py`
+约定：`understanding_gate` 下发的每个问题轮次携带 `approval_token`；回答必须引用当前待答问题并回传同一凭据，凭据不匹配时原样重发问题，不消费状态、不重跑模型。本次提交的自然语言、表单值和同一行程的问答共同构成当前输入；理解上下文保留问题与回答及各自的说话人，历史资料作为有来源的参考。模型结合当前输入整理需求；模型提问、日期补问和地点重试共用轮次上限。
+Owner: `backend/travel_agent/planning/requirements/understanding/prompts.py`、`backend/travel_agent/planning/requirements/understanding/gate.py`、`backend/travel_agent/planning/requirements/constraints/presentation.py`、`backend/travel_agent/conversation/chat/contracts.py`、`backend/travel_agent/conversation/chat/preparation.py`
 Tests:
 - `backend/tests/api/test_multi_round_intake_flow.py::test_understanding_rounds_reach_the_plan_gate_with_answers_in_requirements`
 - `backend/tests/api/test_trip_intake.py::test_stale_answer_token_is_rejected_before_execution`
 - `backend/tests/api/test_trip_intake.py::test_answer_resumes_the_same_run_and_next_round_streams_back`
 - `backend/tests/api/test_multi_round_intake_flow.py::test_automatic_questions_and_place_retries_respect_the_round_cap`
+- `backend/tests/planning/test_understanding_flow.py::test_submission_snapshot_survives_model_output_and_message_reset`
+- `backend/tests/planning/test_understanding_prompt.py::test_reference_precedes_current_and_keeps_its_actual_sources`
+- `frontend/src/features/travel/model/understandingAnswers.test.ts`
 
 ### INV-NODE-001：运行图节点都有用户可见元数据
 约定：运行图的每个节点都出现在后端三张运行时表（trace phase、agent 显示名、step 显示名）中；前端阶段表覆盖同一组节点并接受 `_rN` 与「（第N轮补充）」后缀，进度摘要表为可展示的节点提供标签与说明。
@@ -219,11 +228,25 @@ Tests:
 - `backend/tests/planning/test_node_presentation.py::test_user_facing_node_metadata_matches_the_runtime_graph`
 - `frontend/src/features/chat/model/agentStages.test.ts`
 
-### INV-PLAN-001：方案与任务说明来自当前规划代际
-约定：`ResearchPlan`、`PlanningGeneration` 与 `execution_plan` 绑定同一次方案确认；Worker 与行程组合消费确认后的自然语言任务和当前需求文字。
-Owner: `backend/travel_agent/planning/requirements/natural_language.py`、`backend/travel_agent/planning/research/research_plan_node.py`、`backend/travel_agent/planning/research/plan.py`
+### INV-NODE-002：理解节点只恢复同一任务的 journal
+约定：理解节点 journal 的任务身份绑定 `run_id`、节点名、节点语义输入（包括问答轮次和 `submitted_trip_identity` 提交快照）及 Pregel 任务 ID；不同 Run、参与身份的输入、提交快照或 Pregel 任务不能互相复用记录。恢复时优先加载当前 scope；仅当当前记录不存在（版本为 0）且快照为 `None` 时，才查询不含快照字段的 scope，存在记录时沿用其 scope、版本和载荷；快照为 `{}` 或非空时都不能回退。载荷中的部分工具进度和可重放的工具结果继续使用；已记录的节点结果在重放前先提交。后续提交保留选中的原 scope，从读出的版本接续，以当前 journal 版本做 CAS 并校验有效执行租约；版本冲突或租约失效时不能覆盖记录。
+Owner: `backend/travel_agent/planning/recovery.py` 的 `invocation_scope` / `with_worker_recovery`、`backend/travel_agent/runtime/journal.py`、`backend/travel_agent/storage/worker_journal_store.py`
+Storage: `run_worker_journals`（`run_id` / `scope_id` / `version` / `payload`）。
+Tests:
+- `backend/tests/planning/research/test_understanding_journal_compat.py`
+- `backend/tests/planning/research/test_understanding_checkpoint_compat.py`
+- `backend/tests/planning/research/test_worker_recovery.py::test_understanding_without_assignment_replays_and_changes_scope`
+- `backend/tests/planning/research/test_worker_recovery.py::test_resume_between_tools_keeps_pairing_and_completed_results`
+- `backend/tests/api/test_multi_round_intake_flow.py::test_understanding_repair_recovers_tool_without_repeating_it`
+- `backend/tests/planning/test_understanding_flow.py::test_workflow_snapshots_only_new_run_submissions`
+- `backend/tests/db/test_runtime_rollback.py::test_expired_leases_are_rejected_inside_a_long_transaction`
+
+### INV-PLAN-001：方案摘要与执行指引绑定当前规划代际
+约定：模型一次生成面向用户的简短列表 `summary` 和独立内部 `agent_guidance`；新生成的方案必须包含指引，完整 `current_requirements` 是旅行真实要求的权威，摘要和指引不替代它。`ResearchPlan`、`PlanningGeneration` 与 `execution_plan` 绑定同一次方案确认；`plan_gate` 展示摘要，`approval_token` 绑定摘要、实际执行的指引及方案版本，独立内部指引不公开在 `plan_text` 或 `steps.tasks`。研究 Worker 与行程组合获取同一份实际执行指引和完整 `current_requirements`。
+Owner: `backend/travel_agent/planning/requirements/natural_language.py`、`backend/travel_agent/planning/requirements/approval.py`、`backend/travel_agent/planning/research/research_plan_node.py`、`backend/travel_agent/planning/research/plan.py`、`backend/travel_agent/planning/recovery.py`
 Tests:
 - `backend/tests/planning/research/test_model_research_plan_flow.py::test_confirmed_idea_and_travel_understanding_reach_research_and_delivery`
+- `backend/tests/planning/requirements/test_research_plan_contract.py`
 
 ### INV-WEP-002：provider_empty: 前缀固定判 (incomplete, provider_empty_result)
 约定：持久化的 `provider_empty:` 前缀映射为 incomplete / provider_empty_result，`is_provider_or_model_failure` 返回 True；Provider 完成调用但零命中属于空结果。前缀字符串是持久化格式，逐字符稳定。
@@ -398,6 +421,11 @@ Tests:
 - `backend/tests/tools/test_tool_registry_contract.py::test_same_name_other_origin_cannot_replace_the_first_registration`
 
 ## 配置与交付
+
+### INV-DELIVERY-001：路线超窗无法重排时保留明确的部分交付
+约定：组合在既有期限内为无工具成稿和物化保留时间；实际接驳路线超出可用时间窗且无法在期限内重排时，保留其余日期，受影响日留空，不展示为可行。缺口按 ISO 日期加「尚未安排」进入未安排事项，并由工作台、公开 Bundle、报告和 PDF 保留；这不保证其他所有排程均已验证可行。
+Owner: `backend/travel_agent/planning/itinerary/node.py`、`backend/travel_agent/planning/itinerary/day_design.py`、`backend/travel_agent/planning/delivery/`、`frontend/src/features/travel/model/itineraryNavigation.ts`
+ADR: [ADR-0011](adr/ADR-0011-generation-quality-owned-by-model.md)
 
 ### INV-CFG-001：未知配置字段与拼错的环境变量都是错误
 约定：配置模型 `extra="forbid"`；校验失败带字段路径、当前值与合法范围；认不出的 `JOURNEYPILOT_*` 阻止启动。

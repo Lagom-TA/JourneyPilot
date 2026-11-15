@@ -59,6 +59,7 @@ export function useSendMessage() {
         // 从首页提交即进入工作台；此标记只在新会话（CLEAR_CHAT）时复位。
         dispatch({ type: 'ENTER_WORKSPACE' });
         if (options?.newTrip) {
+            dispatch({ type: 'SET_HOME_SUBMISSION_PENDING', payload: { token: streamToken, pending: true } });
             dispatch({ type: 'SET_CONTROLLED_TRIP_IDENTITY', payload: options.controlledTripIdentity ?? null });
         }
         if (startSessionId && pendingFollowupsRef.current[startSessionId]?.length) {
@@ -146,6 +147,9 @@ export function useSendMessage() {
         }
         finally {
             flushFrameNow();
+            if (options?.newTrip) {
+                scopedDispatch({ type: 'SET_HOME_SUBMISSION_PENDING', payload: { token: streamToken, pending: false } });
+            }
             if (!effectiveSignal.aborted) {
                 scopedDispatch({ type: 'SET_STREAMING', payload: false });
             }
@@ -153,6 +157,9 @@ export function useSendMessage() {
             const completedSessionId = identity.sessionId || startSessionId;
             activeStreamsRef.current.delete(streamToken);
             sessionRuntimeCacheRef.current.delete(pendingStreamCacheKey(streamToken));
+            if (completedSessionId && completedWhileVisible) {
+                sessionRuntimeCacheRef.current.delete(completedSessionId);
+            }
             if (completedSessionId && pendingFollowupsRef.current[completedSessionId]?.length) {
                 const status = events.completed && !events.awaitingInput && !requestFailed && !events.failed && !effectiveSignal.aborted
                     && completedWhileVisible
@@ -172,6 +179,10 @@ export function useSendMessage() {
             }
             if (identity.sessionId && completedWhileVisible) {
                 setLastSession(identity.sessionId);
+            }
+            if (!completedWhileVisible && identity.sessionId) {
+                // 后台结束时保留快照到列表页可见；恢复一次后再释放。
+                dispatch({ type: 'BUMP_TRIP_RUN_REFRESH' });
             }
         }
         return !requestFailed && !events.failed && !effectiveSignal.aborted

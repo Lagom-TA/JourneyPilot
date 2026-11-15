@@ -10,12 +10,12 @@ export function createStreamOwnership(streamToken: string, startSessionId: strin
         if (!isCurrentStream())
             return false;
         const current = currentStateRef.current;
-        if (identity.sessionId) {
-            return current.currentSessionId === identity.sessionId || (!startSessionId && current.conversationEpoch === startEpoch);
+        if (identity.sessionId && current.currentSessionId === identity.sessionId) {
+            return !current.currentTripRunReadOnly;
         }
-        if (startSessionId)
-            return current.currentSessionId === startSessionId;
-        return current.conversationEpoch === startEpoch;
+        if (!startSessionId && !current.currentSessionId)
+            return current.conversationEpoch === startEpoch;
+        return false;
     };
     const reduceHiddenRuntime = (action: AppAction) => {
         const cacheKey = identity.sessionId || startSessionId || pendingStreamCacheKey(streamToken);
@@ -61,6 +61,6 @@ export function createStreamOwnership(streamToken: string, startSessionId: strin
             controller: activeStream.controller ?? ownedController,
         });
     };
-    return { identity, isCurrentStream, isStreamVisible, scopedDispatch, updateActiveStreamHandle };
+    return { streamToken, identity, isCurrentStream, isStreamVisible, scopedDispatch, updateActiveStreamHandle };
 }
 export type StreamOwnership = ReturnType<typeof createStreamOwnership>;

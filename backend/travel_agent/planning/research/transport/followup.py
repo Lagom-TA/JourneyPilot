@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time
 from typing import Any, Mapping
 
 from travel_agent.llm.router import get_model_router
@@ -12,6 +13,7 @@ from travel_agent.planning.itinerary.prompts import _current_draft_context
 from travel_agent.planning.nodes import NODE_TRANSPORT
 from travel_agent.planning.research.catalog import RecommendationCatalog
 from travel_agent.planning.research.transport.local_routes import _route_packet
+from travel_agent.planning.research.transport.rail.followup import compile_rail_followup_packet
 from travel_agent.planning.research.transport.prompts import TASK_TEMPLATE
 from travel_agent.planning.state import TravelAgentState
 from travel_agent.planning.tool_context import build_tool_context_from_state
@@ -20,7 +22,7 @@ from travel_agent.runtime.context import current_agent, current_node
 from travel_agent.runtime.journal import current_worker_journal
 from travel_agent.storage.worker_journal_store import JournalConflict
 from travel_agent.tools.access import filter_tools_for_agent, get_available_tools
-from travel_agent.tools.governance import build_tool_execution_envelope
+from travel_agent.tools.governance import build_tool_execution_envelope, sanitize_tool_result
 from travel_agent.tools.react import streaming_react_loop
 from travel_agent.tools.result import ReactOutcome
 
@@ -39,6 +41,9 @@ FOLLOWUP_TOOL = {
                     "question": {"type": "string", "description": "需要交通研究员核实的具体问题。"},
                     "current_arrangement": {"type": "string", "description": "与问题有关的当前安排、地点和时间。"},
                     "destination_id": {"type": "string", "description": "相关目的地的标识，未知时留空。"},
+                    "from_destination_id": {"type": "string", "description": "跨城交通的出发城市标识，已知时填写。"},
+                    "to_destination_id": {"type": "string", "description": "跨城交通的到达城市标识，已知时填写。"},
+                    "service_date": {"type": "string", "description": "跨城交通出发日期（YYYY-MM-DD），已知时填写。"},
                 },
                 "required": ["question", "current_arrangement", "destination_id"],
             },
@@ -110,15 +115,26 @@ async def research_transport_followup(
     question: str,
     arrangement: Any,
     destination_id: str = "",
+    from_destination_id: str = "",
+    to_destination_id: str = "",
+    service_date: str = "",
     gaps: list[LocalConnectorGap] | None = None,
     stream_queue: Any = None,
     request_id: str = "followup",
+    max_duration_seconds: float | None = None,
 ) -> tuple[dict[str, Any], RecommendationCatalog]:
     """在组合窗口内调用交通角色，并保留可追溯的新增路线。"""
     catalog = state.recommendation_catalog
     if catalog is None:
         raise ValueError("交通补查需要已有候选目录")
     arguments = {"question": question, "current_arrangement": arrangement, "destination_id": destination_id}
+    for name, value in (
+        ("from_destination_id", from_destination_id),
+        ("to_destination_id", to_destination_id),
+        ("service_date", service_date),
+    ):
+        if value:
+            arguments[name] = value
     if not isinstance(question, str) or not question.strip():
         return build_tool_execution_envelope(
             tool_name=FOLLOWUP_TOOL_NAME, arguments=arguments, status="failed", error="交通补查需要具体问题"
@@ -136,11 +152,28 @@ async def research_transport_followup(
     check_cancel_requested(NODE_TRANSPORT)
     if saved.get("result") is not None:
         return saved["result"], _restore_catalog(catalog, saved["result"])
+    started_at = time.monotonic()
+
+    def followup_remaining() -> float:
+        if max_duration_seconds is None:
+            return float("inf")
+        return max(0.0, max_duration_seconds - (time.monotonic() - started_at))
+
     if journal is not None and not saved.get("started"):
         journal.payload[key] = {"started": True, "tool_cursor": journal.tool_cursor, "request_id": request_id}
         await journal.commit()
         saved = journal.payload[key]
 
+    if followup_remaining() <= 0:
+        logger.info("交通补查时间已用完，保留现有候选")
+        return build_tool_execution_envelope(
+            tool_name=FOLLOWUP_TOOL_NAME,
+            arguments=arguments,
+            status="failed",
+            error="交通补查时间已用完，相关路线仍待确认。",
+            source="local",
+            category="internal",
+        ), catalog
     available = filter_tools_for_agent(await get_available_tools(), NODE_TRANSPORT)
     available = [item for item in available if item.get("schema", {}).get("function", {}).get("name") != FOLLOWUP_TOOL_NAME]
     if gaps:
@@ -170,6 +203,11 @@ async def research_transport_followup(
             "已有交通研究": _transport_research(catalog),
             "当前安排": arrangement or json.loads(_current_draft_context(state)),
             "需要补查": question,
+            "跨城方向": {
+                "from_destination_id": from_destination_id,
+                "to_destination_id": to_destination_id,
+                "service_date": service_date,
+            },
             "接驳缺口": described_gaps,
         }, ensure_ascii=False, default=str)},
     ]
@@ -192,9 +230,12 @@ async def research_transport_followup(
             journal_key=f"{key}:react",
             public_note=True,
             final_round_notice="请根据已查资料直接说明交通补查结果、来源及尚未核实的内容，不再调用工具。",
+            exploration_remaining=followup_remaining if max_duration_seconds is not None else None,
+            stop_when_exploration_expires=max_duration_seconds is not None,
         )
         packets = []
         existing = set(catalog.candidate_index())
+        matched_rail_ids: set[str] = set()
         destinations = _destination_ids(state)
         default_destination = destination_id if destination_id in destinations else ""
         if not default_destination and len(destinations) == 1:
@@ -205,6 +246,21 @@ async def research_transport_followup(
         )
 
         for envelope in result.tool_results:
+            rail_packet = None if gaps else compile_rail_followup_packet(
+                state=state,
+                catalog=catalog,
+                envelope=envelope,
+                task_id=key,
+                existing_candidate_ids=existing,
+                destination_id=default_destination,
+                from_destination_id=from_destination_id,
+                to_destination_id=to_destination_id,
+                service_date=service_date,
+                matched_candidate_ids=matched_rail_ids,
+            )
+            if rail_packet is not None:
+                packets.append(rail_packet)
+                existing.update(candidate.candidate_id for candidate in rail_packet.candidates)
             records = _successful_route_records(authoritative_tool_messages([envelope]))
             for route_id, (_source, route, _index) in records.items():
                 matching_gaps = [gap for gap in gaps or [] if (
@@ -228,16 +284,34 @@ async def research_transport_followup(
                         packets.append(packet)
                         existing.update(candidate.candidate_id for candidate in packet.candidates)
         updated = _merge_packets(catalog, packets)
+        added_packet_ids = {packet.research_packet_id for packet in packets}
+        visible = [
+            (packet, candidate)
+            for packet in updated.research_packets
+            for candidate in packet.candidates
+            if packet.research_packet_id in added_packet_ids or candidate.candidate_id in matched_rail_ids
+        ]
         routes = [{
             "candidate_id": candidate.candidate_id,
-            "from": candidate.from_endpoint.name,
-            "to": candidate.to_endpoint.name,
-            "mode": candidate.selected_mode.value,
+            "route_id": candidate.route_id,
+            "from_endpoint": candidate.from_endpoint.model_dump(mode="json", exclude_none=True),
+            "to_endpoint": candidate.to_endpoint.model_dump(mode="json", exclude_none=True),
+            "departure_at": candidate.departure_at.isoformat() if candidate.departure_at else None,
+            "arrival_at": candidate.arrival_at.isoformat() if candidate.arrival_at else None,
             "duration_minutes": candidate.duration_minutes,
-            "sources": [source.title for source in packet.source_records],
+            "service_number": candidate.segments[0].service_number,
+            "total_cost_cny": candidate.total_cost_cny,
+            "mode": candidate.selected_mode.value,
+            "sources": [source.title for source in packet.source_records if source.source_record_id in candidate.source_record_ids],
             "observed_at": candidate.observed_at.isoformat() if candidate.observed_at else None,
-        } for packet in packets for candidate in packet.candidates]
+        } for packet, candidate in visible]
         complete = result.outcome is ReactOutcome.FINAL_ANSWER
+        if result.outcome is ReactOutcome.BUDGET_LIMIT:
+            logger.info(
+                "交通补查未在时间窗口内完成 elapsed=%.3fs verified_routes=%d",
+                time.monotonic() - started_at,
+                len(routes),
+            )
         observations = [{
             "tool": item.get("tool_name"),
             "status": item.get("status"),
@@ -289,6 +363,12 @@ async def research_transport_followup(
             ),
             category="internal",
         )
+        sanitized_routes = [sanitize_tool_result({"routes": [route]})["routes"][0] for route in routes]
+        for route in sanitized_routes:
+            if "from_endpoint" in route and "to_endpoint" in route:
+                route["from"] = route["from_endpoint"]["name"]
+                route["to"] = route["to_endpoint"]["name"]
+        response["sanitized_result"]["routes"] = sanitized_routes
         response["followup_packets"] = [packet.model_dump(mode="json") for packet in packets]
         if journal is not None:
             journal.payload[key] = {**saved, "result": response}

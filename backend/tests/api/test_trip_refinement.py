@@ -287,7 +287,10 @@ async def test_destination_change_reaches_a_new_plan_and_failure_keeps_the_origi
 
         async def ainvoke(self, messages, **kwargs):
             assert "京都" in str(messages)
-            return json.dumps({"summary": "京都慢游"})
+            return json.dumps({
+                "summary": "京都慢游",
+                "agent_guidance": "以京都为目的地，围绕文化旅行风格研究体验与行程安排。",
+            })
 
     async def tools():
         return [{"source": "local", "schema": {"type": "function", "function": {

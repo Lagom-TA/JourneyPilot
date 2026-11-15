@@ -1,8 +1,8 @@
 import { MapPin } from 'lucide-react';
-import { createPlaceSearchRunner, type PlaceSearchCandidate } from '../../model/placeSearch';
 import { FIELD_LABEL, FIELD_VALUE, RULED_FIELD } from '../../../../components/ui/Input';
 import { cn } from '../../../../lib/utils';
 import { type PlaceIdentity } from '../../types/planner';
+import { usePlaceSearch } from './usePlaceSearch';
 import React from 'react';
 
 export const PlaceField: React.FC<{
@@ -13,31 +13,26 @@ export const PlaceField: React.FC<{
   frequent?: boolean;
   initialQuery?: string;
   onQueryChange?: (query: string) => void;
+  active?: boolean;
+  showAttribution?: boolean;
   className?: string;
-}> = ({ role, value, onChange, label, frequent, initialQuery = '', onQueryChange, className }) => {
+}> = ({ role, value, onChange, label, frequent, initialQuery = '', onQueryChange, active = true, showAttribution = true, className }) => {
   const rootRef = React.useRef<HTMLDivElement>(null);
+  const composingRef = React.useRef(false);
   const [query, setQuery] = React.useState(value?.name || initialQuery);
   const [focused, setFocused] = React.useState(false);
+  const [composing, setComposing] = React.useState(false);
   const valueRef = React.useRef(value);
   valueRef.current = value;
-  const [candidates, setCandidates] = React.useState<PlaceSearchCandidate[]>([]);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState('');
-  const runner = React.useMemo(() => createPlaceSearchRunner(role), [role]);
-  React.useEffect(() => () => runner.cancel(), [runner]);
-  const closeCandidates = () => {
-    runner.cancel();
-    setCandidates([]);
-    setError('');
-    setLoading(false);
+  const { candidates, loading, error, search, cancel } = usePlaceSearch(role, query, active && focused && !composing && query.trim() !== value?.name);
+  const closeCandidates = React.useCallback(() => {
+    cancel();
     setFocused(false);
-  };
+  }, [cancel]);
 
-  const search = React.useCallback(async (raw: string) => {
-    const q = raw.trim();
-    if (q.length < 2) return;
-    await runner.run(q, { setLoading, setError, setCandidates });
-  }, [runner]);
+  React.useEffect(() => {
+    if (!active) closeCandidates();
+  }, [active, closeCandidates]);
 
   React.useEffect(() => {
     if (value) setQuery(value.name);
@@ -47,34 +42,48 @@ export const PlaceField: React.FC<{
     if (!valueRef.current && initialQuery) setQuery(initialQuery);
   }, [initialQuery]);
 
-  React.useEffect(() => {
-    const q = query.trim();
-    if (!focused || q.length < 2 || q === value?.name) {
-      runner.cancel();
-      setCandidates([]);
-      setError('');
-      setLoading(false);
-      return;
-    }
-    const timer = window.setTimeout(() => void search(q), 280);
-    return () => window.clearTimeout(timer);
-  }, [focused, query, value?.name, search, runner]);
+  const submitSearch = () => {
+    if (composingRef.current) return;
+    setFocused(true);
+    search();
+  };
+
+  const showCandidates = active && focused && !composing && query.trim() !== value?.name && (candidates.length > 0 || Boolean(error));
 
   return (
-    <div ref={rootRef} className={cn('relative min-w-0 flex-1', className)}>
+    <div
+      ref={rootRef}
+      className={cn('relative min-w-0 flex-1', className)}
+      onBlur={() => {
+        window.setTimeout(() => {
+          if (!rootRef.current?.contains(document.activeElement)) closeCandidates();
+        }, 0);
+      }}
+    >
       <label className={FIELD_LABEL}>{label}</label>
       <div className={RULED_FIELD}>
         <MapPin size={15} className="shrink-0 text-accent" />
         <input
           value={query}
-          onChange={(event) => { setFocused(true); setQuery(event.target.value); onQueryChange?.(event.target.value); if (value) onChange(null); }}
+          onChange={(event) => {
+            cancel();
+            setFocused(true);
+            setQuery(event.target.value);
+            onQueryChange?.(event.target.value);
+            if (value) onChange(null);
+          }}
           onFocus={() => setFocused(true)}
-          onBlur={() => {
-            window.setTimeout(() => {
-              if (!rootRef.current?.contains(document.activeElement)) closeCandidates();
-            }, 0);
+          onCompositionStart={() => {
+            composingRef.current = true;
+            setComposing(true);
+            cancel();
+          }}
+          onCompositionEnd={() => {
+            composingRef.current = false;
+            setComposing(false);
           }}
           onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing || composingRef.current) return;
             if (event.key === 'Escape') {
               event.preventDefault();
               closeCandidates();
@@ -82,7 +91,7 @@ export const PlaceField: React.FC<{
             }
             if (event.key === 'Enter') {
               event.preventDefault();
-              void search(query);
+              submitSearch();
             }
           }}
           className={cn('min-w-0 flex-1 bg-transparent py-2', FIELD_VALUE)}
@@ -91,19 +100,19 @@ export const PlaceField: React.FC<{
           autoComplete="off"
         />
         {frequent && value && <span className="rounded-label bg-chart/8 px-1.5 py-0.5 text-[11px] text-chart">常用</span>}
-        {loading && <span className="text-[11px] text-ink-muted">搜索中…</span>}
+        {loading && <span className="shrink-0 text-[11px] text-ink-muted" role="status">搜索中…</span>}
       </div>
+      {showAttribution && <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer" className="block text-[10px] text-ink-muted">地点数据 © OpenStreetMap contributors</a>}
 
-      {(candidates.length > 0 || error) && (
+      {showCandidates && (
         <div className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-card border border-stroke bg-panel p-1 shadow-lg">
           {candidates.map(({ place }) => (
             <button
               key={place.place_id}
               type="button"
               onClick={() => {
+                closeCandidates();
                 onChange(place);
-                setCandidates([]);
-                setError('');
               }}
               className="flex min-h-11 w-full items-start gap-2 rounded-label px-3 py-2 text-left transition-colors hover:bg-accent-soft"
             >

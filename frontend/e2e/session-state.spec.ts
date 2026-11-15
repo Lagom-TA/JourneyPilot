@@ -1,13 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createHash, randomUUID } from 'node:crypto';
 import { deliveryBundle, sessionDetail, sessionSummary } from './fixtures/sessionData';
-import { xianLayoutBundle, xianMixedTransportBundle, xianTransportDisplayBundle } from './fixtures/xianBundle';
+import { intercityRailCandidateBundle, xianLayoutBundle, xianMixedTransportBundle, xianTransportDisplayBundle } from './fixtures/xianBundle';
 
 const fixtureOrigin = { place_id: 'manual:beijing', provider: 'manual_verified', kind: 'city', name: '北京', display_name: '北京', country_code: 'CN', latitude: 39.9042, longitude: 116.4074, admin_path: ['中国', '北京'] };
 const fixtureDestination = { place_id: 'manual:xian', provider: 'manual_verified', kind: 'city', name: '西安', display_name: '西安', country_code: 'CN', latitude: 34.2649, longitude: 108.9542, admin_path: ['中国', '陕西', '西安'] };
 
 test.skip(process.env.JP_SESSION_STATE_E2E !== '1', 'Explicit offline session-state opt-in required');
 const baseURL = process.env.JOURNEYPILOT_APP_URL || '';
+test.use({ serviceWorkers: 'block' });
 if (process.env.JP_SESSION_STATE_E2E === '1' && !/^http:\/\/127\.0\.0\.1:\d+$/.test(baseURL)) throw new Error('Offline suite requires an explicit loopback Vite URL');
 
 type StreamHarness = { send: (events: unknown[]) => void; close: () => void };
@@ -24,10 +25,12 @@ const STAGED_RESEARCH_STEPS = [
 
 async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: boolean; delayedA?: boolean; research?: boolean; planGate?: boolean; notice?: boolean; bundleData?: ReturnType<typeof deliveryBundle>; terminalStatus?: TerminalRunStatus; resumable?: boolean; readOnlyHistory?: boolean; memoryFact?: boolean } = {}) {
   const pageErrors: string[] = [], escapes: string[] = [], requests: string[] = [];
+  let understandingGate = false;
   let status: string = options.planGate
     ? 'awaiting_input'
     : options.terminalStatus ?? (options.bundle ? 'completed' : 'running');
   let recovered = false, releaseA: (() => void) | undefined;
+  let hasLiveRun = false;
   let gateRevision = 0;
   let gateDetailUnavailable = false;
   let aReads = 0;
@@ -111,14 +114,23 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
     }
     if (path === '/trip-runs') {
       const id = url.searchParams.get('session_id');
-      const hasRun = Boolean(options.bundle || options.recovery || options.planGate || options.notice || options.terminalStatus);
+      const hasRun = Boolean(hasLiveRun || options.bundle || options.recovery || options.planGate || options.notice || options.terminalStatus || options.readOnlyHistory);
       const runA = { run_id: 'run-A', session_id: 'A', status: options.notice && noticeTriggered ? 'completed' : status, title: '离线运行', mode: 'deep', created_at: '2026-10-25T08:00:00Z', updated_at: '2026-10-25T08:00:00Z' };
       const runB = { run_id: 'run-B', session_id: 'A', status: 'completed', title: '离线运行（较新）', mode: 'deep', created_at: '2026-10-26T08:00:00Z', updated_at: '2026-10-26T08:00:00Z' };
-      const runs = id !== 'A' || !hasRun ? [] : options.readOnlyHistory ? [runB, runA] : [runA];
-      return json({ runs, total: id === 'A' ? Math.max(1, runs.length) : 0 });
+      const runOld = { ...runA, run_id: 'run-old', status: 'completed' };
+      const runs = (id && id !== 'A') || !hasRun ? [] : options.readOnlyHistory ? hasLiveRun ? [runA, runOld] : [runB, runA] : [runA];
+      return json({ runs, total: runs.length });
     }
     if (path === '/trip-runs/run-A' && gateDetailUnavailable) return json({ detail: '离线模拟计划读取失败' }, 503);
-    if (path === '/trip-runs/run-A') return json({ run: { run_id: 'run-A', session_id: 'A', status: options.notice && noticeTriggered ? 'completed' : status }, state: { pending_user_choice: options.planGate ? {
+    if (path === '/trip-runs/run-old') return json({ run: { run_id: 'run-old', session_id: 'A', status: 'completed', mode: 'deep' }, state: { pending_user_choice: null, latest_state_summary: {} }, execution: null, available_actions: [], events: [], controlled_trip_identity: null });
+    if (path === '/trip-runs/run-old/bundle/current') return json({ detail: 'not ready' }, 404);
+    if (path === '/trip-runs/run-old/events') {
+      const after = Number(url.searchParams.get('after_sequence'));
+      return json({ run_id: 'run-old', requested_after_sequence: after, replay_floor_sequence: 1, latest_sequence: 0, next_after_sequence: after, window_expired: false, run_status: 'completed', current_bundle_id: null, events: [] });
+    }
+    if (path === '/trip-runs/run-A') return json({ run: { run_id: 'run-A', session_id: 'A', status: options.notice && noticeTriggered ? 'completed' : status }, state: { pending_user_choice: understandingGate ? {
+      type: 'understanding_questions', gate: 'understanding', payload: { revision: 1, approval_token: 'question-A', questions: [{ id: 'pace', question: '这趟旅行想安排得轻松些吗？', kind: 'single', options: [{ id: 'slow', label: '轻松一些' }] }] },
+    } : options.planGate ? {
       type: 'approval_gate', gate: 'plan', read_only: status === 'cancelled', terminal_status: status === 'cancelled' ? 'cancelled' : null,
       payload: { gate: 'plan', approval_token: `test-token-A-${gateRevision}`, revision: gateRevision, revision_limit: 2, decision_options: ['approve', 'supplement', 'cancel'], plan: { steps: [{ step: 1, agents: ['destination_researcher'], tasks: { destination_researcher: '安排适合放松的城市路线' } }] }, recognized_requirements: { hard: [], preferences: [{ requirement_id: 'slow', summary: '想慢一点，每天少走一些' }], attention: [] }, unresolved_requirement_ids: [] },
     } : null, latest_state_summary: {} }, execution: options.resumable ? { status: 'resume_available', last_heartbeat_at: null, lease_expires_at: null, last_safe_checkpoint_id: 'checkpoint-offline', recovery_reason: 'offline fixture' } : null, available_actions: options.resumable ? ['resume'] : [], events: [], controlled_trip_identity: { origin: fixtureOrigin, destinations: [fixtureDestination], start_date: '2026-11-01', end_date: '2026-11-02', dates_assumed: false, party: { total: 1, adults: 1, children: 0, elderly_companions: false, accessibility_required: false }, style: { primary: '轻松', secondary_interests: ['当地美食'], source: 'current' } } });
@@ -146,9 +158,10 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
       }
       const ready = options.bundle || recovered;
       const terminalReady = ready && !options.planGate;
-      return json({ run_id: 'run-A', requested_after_sequence: after, replay_floor_sequence: 1, latest_sequence: terminalReady ? 2 : 0, next_after_sequence: terminalReady ? Math.max(after, 2) : after, window_expired: false, run_status: options.planGate ? 'awaiting_input' : ready ? 'completed' : status, current_bundle_id: terminalReady ? 'bundle-1' : null,
+      return json({ run_id: 'run-A', requested_after_sequence: after, replay_floor_sequence: 1, latest_sequence: terminalReady ? 2 : 0, next_after_sequence: terminalReady ? Math.max(after, 2) : after, window_expired: false, run_status: options.planGate ? status : ready ? 'completed' : status, current_bundle_id: terminalReady ? 'bundle-1' : null,
         events: terminalReady && after < 2 ? [{ event_id: 2, run_id: 'run-A', sequence: 2, event_type: 'run.terminal', payload: { status: 'completed', bundle_id: 'bundle-1' }, created_at: '2026-10-25T08:00:00Z' }] : [] });
     }
+    if (path === '/trip-runs/run-followup') return json({ run: { run_id: 'run-followup', session_id: 'A', status: 'failed' }, state: { pending_user_choice: null, latest_state_summary: {} }, execution: null, available_actions: [], events: [], controlled_trip_identity: null });
     if (path === '/trip-runs/run-followup/events') {
       // 续聊产生的新 Run 只用于验证归属；离线窗口直接收口为失败，不要求新的 Bundle。
       const after = Number(url.searchParams.get('after_sequence'));
@@ -174,9 +187,12 @@ async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: bo
     releaseA: () => releaseA?.(),
     completeRecovery: () => { recovered = true; status = 'completed'; },
     recoverPlanGate: () => { options.planGate = true; status = 'awaiting_input'; },
+    recoverUnderstandingGate: () => { understandingGate = true; status = 'awaiting_input'; },
     advancePlanGate: () => { gateRevision += 1; },
     setGateDetailUnavailable: (value: boolean) => { gateDetailUnavailable = value; },
     cancelPlanGate: () => { status = 'cancelled'; },
+    startLiveRun: () => { hasLiveRun = true; status = 'running'; },
+    startLiveRunWithHistory: () => { hasLiveRun = true; options.readOnlyHistory = true; status = 'running'; },
     triggerRecoveryNotice: (config: { bundle?: 'ok' | 'fail'; delayMs?: number } = {}) => {
       noticeTriggered = true;
       noticeTerminalPolls = 1;
@@ -331,6 +347,152 @@ test('continues a hidden stream in its own cache and restores it while still str
   await assertOffline(page, fixture);
 });
 
+test('新旅行不停止规划，可从我的行程返回正在生成的页面', async ({ page }) => {
+  const fixture = await offlineApp(page);
+  await page.goto('/');
+  await expect(page.getByText('A 的历史回答', { exact: true })).toBeVisible();
+  await page.getByTestId('brief-input').fill('后台继续规划');
+  await page.getByTestId('send-button').click();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.A))).toBe(true);
+  await sendSessionFrames(page, 'A', [
+    { type: 'chat_start', session_id: 'A', message_id: 'planning-A', run_id: 'run-A', route_decision: { route: 'trip_planning' } },
+    { type: 'agent_progress', agent_name: 'destination_researcher', content: '正在查找海边资料', progress_status: 'running' },
+  ]);
+  await expect(page.getByTestId('generation-journey-panel').locator('.research-panel-title')).toHaveText('查找旅行资料');
+  await page.getByRole('link', { name: '新旅行', exact: true }).click();
+  await expect(page.getByRole('button', { name: '开始规划', exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.A))).toBe(true);
+  await sendSessionFrames(page, 'A', [{ type: 'agent_progress', agent_name: 'destination_researcher', content: '后台找到海边资料', progress_status: 'running' }]);
+  await page.getByRole('link', { name: '我的行程', exact: true }).click();
+  const card = page.getByTestId('trip-card-A');
+  await expect(card).toContainText('规划中');
+  await expect(card).toContainText('切换页面不会停止');
+  await card.getByRole('button', { name: '查看进度', exact: true }).click();
+  const workspace = page.getByTestId('generation-journey-panel');
+  await expect(workspace.locator('.research-panel-title')).toHaveText('查找旅行资料');
+  await expect(workspace.getByTestId('boarding-pass-stop')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.A))).toBe(true);
+  await sendSessionFrames(page, 'A', [{ type: 'agent_progress', agent_name: 'transport_researcher', content: '继续查询交通', progress_status: 'running' }]);
+  await expect(workspace.getByTestId('thinking-chain')).toBeVisible();
+  await assertOffline(page, fixture);
+});
+
+test('离开后规划等待回答，仍能从我的行程找回原问题', async ({ page }) => {
+  const fixture = await offlineApp(page);
+  await page.goto('/');
+  await expect(page.getByText('A 的历史回答', { exact: true })).toBeVisible();
+  await page.getByTestId('brief-input').fill('需要回答的后台规划');
+  await page.getByTestId('send-button').click();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.A))).toBe(true);
+  fixture.startLiveRun();
+  await sendSessionFrames(page, 'A', [{ type: 'chat_start', session_id: 'A', message_id: 'hidden-question', run_id: 'run-A', route_decision: { route: 'trip_planning' } }]);
+  await expect(page.getByTestId('generation-journey-panel')).toBeVisible();
+  await page.getByRole('link', { name: '新旅行', exact: true }).click();
+  fixture.recoverUnderstandingGate();
+  await sendSessionFrames(page, 'A', [
+    { type: 'understanding_questions', run_id: 'run-A', gate: 'understanding', run_status: 'awaiting_input', payload: {
+      revision: 1, approval_token: 'question-A', questions: [{ id: 'pace', question: '这趟旅行想安排得轻松些吗？', kind: 'single', options: [{ id: 'slow', label: '轻松一些' }] }],
+    } },
+    { type: 'chat_complete', run_id: 'run-A', run_status: 'awaiting_input', requires_input: true },
+  ], true);
+  await page.getByRole('link', { name: '我的行程', exact: true }).click();
+  const card = page.getByTestId('trip-card-A');
+  await expect(card).toContainText('等待确认');
+  await card.getByRole('button', { name: '继续规划', exact: true }).click();
+  await expect(page.getByText('这趟旅行想安排得轻松些吗？', { exact: true })).toBeVisible();
+  await assertOffline(page, fixture);
+});
+
+test('查看同一旅行的旧记录不会抢走正在规划的实时进度', async ({ page }) => {
+  const fixture = await offlineApp(page);
+  await page.goto('/');
+  await expect(page.getByText('A 的历史回答', { exact: true })).toBeVisible();
+  await page.getByTestId('brief-input').fill('为旧旅行重新规划');
+  await page.getByTestId('send-button').click();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.A))).toBe(true);
+  await sendSessionFrames(page, 'A', [
+    { type: 'chat_start', session_id: 'A', message_id: 'live-planning', run_id: 'run-A', route_decision: { route: 'trip_planning' } },
+    { type: 'agent_progress', agent_name: 'destination_researcher', content: '原规划进度', progress_status: 'running' },
+  ]);
+  await expect(page.getByTestId('generation-journey-panel').locator('.research-panel-title')).toHaveText('查找旅行资料');
+  fixture.startLiveRunWithHistory();
+  await page.getByRole('link', { name: '我的行程', exact: true }).click();
+  const card = page.getByTestId('trip-card-A');
+  await card.locator('summary').click();
+  await card.getByRole('button', { name: '只读查看', exact: true }).click();
+  await expect(page).toHaveURL(/run_id=run-old/);
+  await expect(page.getByText('历史生成记录 · 只读', { exact: true })).toBeVisible();
+  await sendSessionFrames(page, 'A', [{ type: 'agent_progress', agent_name: 'destination_researcher', content: '后台继续查找海边路线', progress_status: 'running' }]);
+  await expect(page.getByText('后台继续查找海边路线', { exact: true })).toHaveCount(0);
+  await page.getByRole('link', { name: '我的行程', exact: true }).click();
+  await expect(card).toContainText('规划中');
+  await card.getByRole('button', { name: '查看进度', exact: true }).click();
+  const workspace = page.getByTestId('generation-journey-panel');
+  await expect(workspace.locator('.research-panel-title')).toHaveText('查找旅行资料');
+  await workspace.getByRole('button', { name: '查找旅行资料', exact: true }).click();
+  await expect(workspace.getByText('后台继续查找海边路线', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.A))).toBe(true);
+  await assertOffline(page, fixture);
+});
+
+test('尚未拿到会话编号时开启新旅行仍保留后台规划', async ({ page }) => {
+  const fixture = await offlineApp(page);
+  await page.goto('/');
+  await expect(page.getByText('A 的历史回答', { exact: true })).toBeVisible();
+  await page.getByRole('link', { name: '新旅行', exact: true }).click();
+  await page.getByRole('textbox', { name: '一句话描述旅行', exact: true }).fill('想去西安，边看边规划');
+  await page.getByRole('button', { name: '开始规划', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.new))).toBe(true);
+  await page.getByRole('link', { name: '新旅行', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.new))).toBe(true);
+  fixture.startLiveRun();
+  await sendSessionFrames(page, 'new', [
+    { type: 'chat_start', session_id: 'A', message_id: 'late-identity', run_id: 'run-A', route_decision: { route: 'trip_planning' } },
+    { type: 'agent_progress', agent_name: 'destination_researcher', content: '后台开始查找资料', progress_status: 'running' },
+  ]);
+  await page.getByRole('link', { name: '我的行程', exact: true }).click();
+  const card = page.getByTestId('trip-card-A');
+  await expect(card).toContainText('规划中');
+  await card.getByRole('button', { name: '查看进度', exact: true }).click();
+  const workspace = page.getByTestId('generation-journey-panel');
+  await expect(workspace.locator('.research-panel-title')).toHaveText('查找旅行资料');
+  await workspace.getByRole('button', { name: '查找旅行资料', exact: true }).click();
+  await expect(workspace.getByText('后台开始查找资料', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.new))).toBe(true);
+  await assertOffline(page, fixture);
+});
+
+test('进入我的行程后才创建的规划会出现在列表并持续更新', async ({ page }) => {
+  const fixture = await offlineApp(page);
+  await page.goto('/');
+  await expect(page.getByText('A 的历史回答', { exact: true })).toBeVisible();
+  await page.getByTestId('brief-input').fill('刚开始的规划');
+  await page.getByTestId('send-button').click();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.A))).toBe(true);
+  await page.getByRole('link', { name: '我的行程', exact: true }).click();
+  const card = page.getByTestId('trip-card-A');
+  await expect(card).toContainText('旅行问答');
+  fixture.startLiveRun();
+  await sendSessionFrames(page, 'A', [
+    { type: 'chat_start', session_id: 'A', message_id: 'late-planning-A', run_id: 'run-A', route_decision: { route: 'trip_planning' } },
+    { type: 'agent_progress', agent_name: 'destination_researcher', content: '查找旅行资料', progress_status: 'running' },
+  ]);
+  await expect(card).toContainText('规划中');
+  await expect(card.getByRole('button', { name: '查看进度', exact: true })).toBeVisible();
+  fixture.recoverUnderstandingGate();
+  await sendSessionFrames(page, 'A', [
+    { type: 'understanding_questions', run_id: 'run-A', gate: 'understanding', run_status: 'awaiting_input', payload: {
+      gate: 'understanding', revision: 1, approval_token: 'question-A', questions: [{ id: 'pace', question: '这趟旅行想安排得轻松些吗？', kind: 'single', options: [{ id: 'slow', label: '轻松一些' }] }],
+    } },
+    { type: 'chat_complete', run_id: 'run-A', run_status: 'awaiting_input', requires_input: true },
+  ], true);
+  await expect(card).toContainText('等待确认');
+  await card.getByRole('button', { name: '继续规划', exact: true }).click();
+  await expect(page.getByTestId('generation-journey-panel')).toBeVisible();
+  await expect(page.getByText('这趟旅行想安排得轻松些吗？', { exact: true })).toBeVisible();
+  await assertOffline(page, fixture);
+});
+
 test('不同会话并行发送时仍能返回第一条进行中的流', async ({ page }) => {
   await offlineApp(page);
   await page.goto('/');
@@ -358,6 +520,37 @@ test('不同会话并行发送时仍能返回第一条进行中的流', async ({
   await expect(page.getByText('B 已完成', { exact: true })).toBeVisible();
 });
 
+test('移动端切换页面后仍可从我的行程返回规划', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const fixture = await offlineApp(page);
+  await page.goto('/');
+  await expect(page.getByText('A 的历史回答', { exact: true })).toBeVisible();
+  await page.getByTestId('brief-input').fill('移动端后台规划');
+  await page.getByTestId('send-button').click();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.A))).toBe(true);
+  await sendSessionFrames(page, 'A', [
+    { type: 'chat_start', session_id: 'A', message_id: 'mobile-live', run_id: 'run-A', route_decision: { route: 'trip_planning' } },
+    { type: 'agent_progress', agent_name: 'destination_researcher', content: '移动端查找资料', progress_status: 'running' },
+  ]);
+  await expect(page.getByTestId('generation-journey-panel')).toBeVisible();
+  await page.getByTestId('sidebar-open').click();
+  await page.getByTestId('app-sidebar').getByRole('link', { name: '我的偏好', exact: true }).click();
+  await expect(page.getByTestId('generation-journey-panel')).toHaveCount(0);
+  await sendSessionFrames(page, 'A', [{ type: 'agent_progress', agent_name: 'destination_researcher', content: '移动端后台继续', progress_status: 'running' }]);
+  await page.getByTestId('sidebar-open').click();
+  await page.getByTestId('app-sidebar').getByRole('link', { name: '我的行程', exact: true }).click();
+  const card = page.getByTestId('trip-card-A');
+  await expect(card).toContainText('规划中');
+  await card.getByRole('button', { name: '查看进度', exact: true }).click();
+  const workspace = page.getByTestId('generation-journey-panel');
+  await expect(workspace).toBeVisible();
+  await workspace.getByRole('button', { name: '查找旅行资料', exact: true }).click();
+  await expect(workspace.getByText('移动端后台继续', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStreams?.A))).toBe(true);
+  await assertOffline(page, fixture);
+});
+
 test('cancels through HTTP control and leaves the composer usable', async ({ page }) => {
   const fixture = await offlineApp(page);
   await page.goto('/');
@@ -370,7 +563,7 @@ test('cancels through HTTP control and leaves the composer usable', async ({ pag
   await expect(workspace.getByTestId('generation-followup-composer')).toHaveCount(0);
   await workspace.getByTestId('boarding-pass-stop').click();
   await expect(workspace.locator('.generation-progress > h2')).toHaveText('旅行规划已取消');
-  await expect(workspace.getByRole('textbox', { name: '行程调整要求' })).toBeEditable();
+  await expect(workspace.getByTestId('generation-followup-composer').getByTestId('brief-input')).toBeEditable();
   expect(fixture.requests.some(request => request.startsWith('POST /api/trip-runs/run-A/control'))).toBe(true);
   await workspace.getByRole('button', { name: '查找旅行资料', exact: true }).click();
   await expect(workspace.locator('.research-panel-title')).toHaveText('查找旅行资料');
@@ -413,7 +606,7 @@ for (const terminalStatus of ['failed', 'cancelled'] as const) {
   test(`${terminalStatus} planning keeps the follow-up composer and the real retry actions`, async ({ page }) => {
     await page.setViewportSize({ width: 2000, height: 880 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    const fixture = await offlineApp(page, { terminalStatus, research: true });
+    const fixture = await offlineApp(page, { terminalStatus, research: true, resumable: terminalStatus === 'failed' });
     await page.goto('/');
     const workspace = page.getByTestId('generation-journey-panel');
     const composer = page.getByTestId('generation-followup-composer');
@@ -421,7 +614,12 @@ for (const terminalStatus of ['failed', 'cancelled'] as const) {
     await expect(workspace.locator('.generation-progress > h2')).toHaveText(terminalStatus === 'failed' ? '旅行规划未完成' : '旅行规划已取消');
     await expect(composer).toBeVisible();
     await expect(composer.getByTestId('brief-input')).toBeVisible();
-    await expect(workspace.getByTestId('boarding-pass-resume')).toHaveCount(0);
+    if (terminalStatus === 'failed') {
+      await expect(workspace.getByTestId('boarding-pass-resume')).toBeVisible();
+      await expect(workspace.getByRole('button', { name: '从上次位置重试', exact: true })).toBeVisible();
+    } else {
+      await expect(workspace.getByTestId('boarding-pass-resume')).toHaveCount(0);
+    }
     await expect(workspace.getByRole('button', { name: '返回新旅行', exact: true })).toBeVisible();
     if (terminalStatus === 'failed') {
       await expect(composer.locator('.generation-followup-hint')).toHaveCount(0);
@@ -498,8 +696,41 @@ test('delivered trip adjustment keeps the single shared composer in the same wor
   await assertOffline(page, fixture);
 });
 
+test('many queued adjustments do not push the composer below the panel', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const fixture = await offlineApp(page, { bundle: true });
+  await page.goto('/');
+  await page.getByTestId('canvas-pill').click();
+  await page.getByRole('button', { name: '调整', exact: true }).click();
+  const conversation = page.getByRole('region', { name: '调整行程对话' });
+  const input = conversation.getByTestId('brief-input');
+  await input.fill('调整第一天的安排');
+  await input.press('Enter');
+  await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
+  for (let index = 1; index <= 6; index += 1) {
+    await input.fill(`补充要求 ${index}`);
+    await input.press('Enter');
+  }
+  const pending = conversation.getByRole('region', { name: '待发送消息' });
+  await expect(pending.getByRole('textbox', { name: '待发送消息 6' })).toHaveValue('补充要求 6');
+  await input.fill('希望调整行程并预留休息时间。\n'.repeat(20));
+  expect(await pending.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await pending.getByRole('textbox', { name: '待发送消息 6' }).scrollIntoViewIfNeeded();
+  await expect(pending.getByRole('textbox', { name: '待发送消息 6' })).toBeVisible();
+  await pending.getByRole('textbox', { name: '待发送消息 1' }).scrollIntoViewIfNeeded();
+  await expect(pending.getByRole('textbox', { name: '待发送消息 1' })).toBeVisible();
+  const panel = conversation.locator('.journey-content-scroll');
+  await input.focus();
+  const [inputBox, panelBox] = await Promise.all([input.boundingBox(), panel.boundingBox()]);
+  expect(Math.abs(panelBox!.y + panelBox!.height - (inputBox!.y + inputBox!.height))).toBeLessThan(35);
+  await expect(input).toBeInViewport();
+  expect(await input.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  await assertOffline(page, fixture);
+});
+
 for (const width of [390, 1440]) {
-  test(`天气建议可在 ${width}px 带入行程调整对话`, async ({ page }) => {
+  test(`天气建议在 ${width}px 展示且不提供讨论按钮`, async ({ page }) => {
     const bundle = deliveryBundle();
     bundle.workspace.weather_adjustments.push({
       proposal_id: 'rain-day-one', date: '2026-11-01', severity: 'high',
@@ -513,26 +744,17 @@ for (const width of [390, 1440]) {
     const suggestions = page.getByTestId('weather-suggestions');
     await expect(suggestions).toContainText('2026-11-01');
     await expect(suggestions).toContainText('降雨变化，建议调整 1 项安排');
-    await suggestions.getByRole('button', { name: '讨论调整' }).click();
+    await expect(suggestions.getByRole('button', { name: '讨论调整' })).toHaveCount(0);
+    await page.getByRole('button', { name: '调整', exact: true }).click();
     const composer = page.locator('.journey-conversation-view').getByTestId('brief-input');
-    await expect(composer).toBeFocused();
-    await expect(composer).toHaveValue(/2026-11-01.*降雨变化，建议调整 1 项安排/);
+    await expect(composer).toBeVisible();
+    await expect(composer).toHaveValue('');
     expect(await page.evaluate(() => (window as FixtureWindow).__offlineChatBodies?.length)).toBe(0);
-    await composer.press('Enter');
-    await expect.poll(async () => (await lastChatBody(page))?.messages?.[0]?.content).toContain('降雨变化，建议调整 1 项安排');
-    expect((await lastChatBody(page))?.run_id).toBe('run-A');
-    await sendFrames(page, [
-      { type: 'chat_start', session_id: 'A', run_id: 'run-A', message_id: 'weather-adjustment', route_decision: { route: 'trip_refinement' } },
-      gateFrame(),
-    ]);
-    await expect(page.getByTestId('trip-brief-plan-gate')).toBeVisible();
-    await sendFrames(page, [{ type: 'run_failed', run_id: 'run-A', message: '调整未完成' }], true);
-    await expect(page.locator('.journey-conversation-view').getByTestId('brief-input')).toHaveValue('');
     await assertOffline(page, fixture);
   });
 }
 
-test('取消同一会话的调整后，天气讨论使用仍可查看的父行程', async ({ page }) => {
+test('取消同一会话的调整后，继续调整仍使用可查看的父行程', async ({ page }) => {
   // 会话和 Run 身份与聊天入口的 UUIDv5 规则一致，调整 Run 属于同一会话并指向父 Run。
   const uuid5 = (name: string) => {
     const bytes = createHash('sha1')
@@ -627,10 +849,10 @@ test('取消同一会话的调整后，天气讨论使用仍可查看的父行�
   await conversation.getByTestId('send-button').click();
   await expect.poll(() => cancelled).toEqual([firstChildId]);
   await expect(conversation.getByRole('textbox', { name: '行程调整要求' })).toBeVisible();
-  await conversation.getByRole('button', { name: '返回日程' }).click();
-  await page.getByTestId('weather-suggestions').getByRole('button', { name: '讨论调整' }).click();
+  await page.getByRole('button', { name: '返回日程' }).click();
+  await page.getByRole('button', { name: '调整', exact: true }).first().click();
   const stoppedComposer = conversation.getByRole('textbox', { name: '行程调整要求' });
-  await expect(stoppedComposer).toHaveValue(/降雨变化/);
+  await stoppedComposer.fill('根据降雨变化调整行程');
   await page.evaluate(() => { (window as FixtureWindow).__offlineFailChatAttempts = 3; });
   await stoppedComposer.press('Enter');
   await expect(conversation.getByTestId('retry-send').last()).toBeVisible();
@@ -651,7 +873,8 @@ test('取消同一会话的调整后，天气讨论使用仍可查看的父行�
   for (const child of children) child.status = 'cancelled';
   showCancelledEvents = true;
   await page.reload();
-  await page.getByTestId('weather-suggestions').getByRole('button', { name: '讨论调整' }).click();
+  await page.getByRole('button', { name: '调整', exact: true }).first().click();
+  await conversation.getByTestId('brief-input').fill('根据降雨变化调整行程');
   await conversation.getByTestId('brief-input').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
   const restoredRequest = await lastChatBody(page);
@@ -707,6 +930,22 @@ test('recovers durable delivery without a stream and keeps recovery mounted acro
   await page.getByRole('button', { name: '阅读版', exact: true }).click();
   await expect(page.getByTestId('full-report')).toBeVisible();
   await expect(page.getByText('离线旅行报告', { exact: true })).toBeVisible();
+  await assertOffline(page, fixture);
+});
+
+test('交付恢复后保留调研记录但不添加完成提示', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const fixture = await offlineApp(page, { recovery: true, research: true });
+  await page.goto('/');
+  await expect(page.getByTestId('generation-journey-panel')).toBeVisible();
+  fixture.completeRecovery();
+  await expect(page.getByTestId('bundle-leaflet-map')).toBeVisible();
+  await page.getByRole('button', { name: '调整', exact: true }).click();
+  const conversation = page.getByRole('region', { name: '调整行程对话' });
+  await expect(conversation.getByTestId('thinking-chain')).toBeVisible();
+  await expect(conversation.getByText('旅行方案已保存，可以查看完整行程。', { exact: true })).toHaveCount(0);
+  await expect(conversation.getByTestId('copy-message')).toHaveCount(0);
   await assertOffline(page, fixture);
 });
 
@@ -864,6 +1103,7 @@ test('cancel keeps the current run workspace and restores a pending gate on phon
   })).toBe('cancel');
   expect((await lastChatBody(page))?.gate_decision).toEqual({ action: 'cancel', content: '' });
   await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
+  fixture.cancelPlanGate();
   await sendFrames(page, [{ type: 'run_cancelled', run_id: 'run-A', final_content: '已取消当前规划。', ts_ms: Date.now() }]);
   await expect(gate).toHaveCount(0);
   await expect(workspace).toBeVisible();
@@ -996,7 +1236,7 @@ test('concise delivery keeps unlocated stops, expandable descriptions and comple
   await page.getByTestId('day-summary-card-day-2').click();
   const occurrence = page.locator('[data-itinerary-occurrence="d2-museum"]');
   await expect(occurrence).not.toContainText(reason);
-  await expect(occurrence.getByRole('button', { name: '在地图查看' })).toHaveCount(0);
+  await expect(occurrence.getByRole('button', { name: /^在地图查看/ })).toHaveCount(0);
   await occurrence.getByRole('button', { name: '查看详情' }).click();
   await expect(occurrence.getByText(reason, { exact: true })).toHaveCount(1);
   await page.waitForTimeout(500);
@@ -1013,7 +1253,7 @@ test('concise delivery keeps unlocated stops, expandable descriptions and comple
   await expect(page.getByTestId('bundle-leaflet-map')).toBeVisible();
   await page.getByTestId('canvas-pill').click();
   await page.getByTestId('day-summary-card-day-2').click();
-  await page.locator('[data-itinerary-occurrence="d2-wall"]').getByRole('button', { name: '在地图查看', exact: true }).click();
+  await page.locator('[data-itinerary-occurrence="d2-wall"]').getByRole('button', { name: /^在地图查看/ }).click();
   await expect(page.locator('[data-bundle-map-entity="visit-yongning-gate"]')).toBeVisible();
   await page.waitForTimeout(500);
   await assertOffline(page, fixture);
@@ -1061,7 +1301,7 @@ test('desktop itinerary cards and map stay linked across hover, selection, days 
   const marker = page.locator('[data-bundle-map-entity="visit-terracotta"]');
   const dayanMarker = page.locator('[data-bundle-map-entity="visit-dayan"]');
   const map = page.getByTestId('bundle-leaflet-map');
-  const mapTrigger = terracotta.getByRole('button', { name: '在地图查看', exact: true });
+  const mapTrigger = terracotta.getByRole('button', { name: /^在地图查看/ });
   const detail = page.getByTestId('map-place-detail');
   const initialCamera = await settledCamera(page, ['visit-terracotta', 'visit-dayan']);
   expect(initialCamera.zoom).toHaveLength(1);
@@ -1162,7 +1402,7 @@ test('desktop itinerary cards and map stay linked across hover, selection, days 
   await expect(page.locator('[data-bundle-map-entity]')).toHaveCount(3);
   await page.keyboard.press('Escape');
   const lunch = page.locator('[data-itinerary-occurrence="d2-lunch"]');
-  await lunch.getByRole('button', { name: '在地图查看', exact: true }).click();
+  await lunch.getByRole('button', { name: /^在地图查看/ }).click();
   await expect(page.locator('[data-bundle-map-entity]')).toHaveCount(4);
   await expect(page.getByTestId('map-place-detail')).toContainText('子午路张记肉夹馍');
 
@@ -1212,7 +1452,7 @@ test('map detail switches selections without overlapping detail panels', async (
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto('/');
   await page.getByTestId('day-summary-card-day-1').click();
-  await page.locator('[data-itinerary-occurrence="d1-terracotta"]').getByRole('button', { name: '在地图查看', exact: true }).click();
+  await page.locator('[data-itinerary-occurrence="d1-terracotta"]').getByRole('button', { name: /^在地图查看/ }).click();
   const detail = page.getByTestId('map-place-detail');
   await expect(detail).toContainText('兵马俑');
   await page.evaluate(() => {
@@ -1222,9 +1462,9 @@ test('map detail switches selections without overlapping detail panels', async (
       evidence.maximum = Math.max(evidence.maximum, document.querySelectorAll('[data-testid="map-place-detail"]').length);
     }).observe(document.body, { childList: true, subtree: true });
   });
-  await page.locator('[data-itinerary-occurrence="d1-dayan"]').getByRole('button', { name: '在地图查看', exact: true }).click();
+  await page.locator('[data-itinerary-occurrence="d1-dayan"]').getByRole('button', { name: /^在地图查看/ }).click();
   await expect(detail).toContainText('大雁塔');
-  await page.locator('[data-itinerary-occurrence="d1-terracotta"]').getByRole('button', { name: '在地图查看', exact: true }).click();
+  await page.locator('[data-itinerary-occurrence="d1-terracotta"]').getByRole('button', { name: /^在地图查看/ }).click();
   await expect(detail).toContainText('兵马俑');
   expect(await page.evaluate(() => (window as unknown as { detailPanelEvidence: { maximum: number } }).detailPanelEvidence.maximum)).toBe(1);
   await assertOffline(page, fixture);
@@ -1298,8 +1538,50 @@ test('clustered map places can be expanded and selected', async ({ page }) => {
   await assertOffline(page, fixture);
 });
 
+for (const viewport of [
+  { name: '桌面', width: 1440, height: 960, mobile: false },
+  { name: '手机', width: 390, height: 844, mobile: true },
+]) {
+  test(`${viewport.name}已查询的 12306 高铁在对应日期展示班次、站点、时间与来源`, async ({ page }) => {
+    const fixture = await offlineApp(page, { bundle: true, bundleData: intercityRailCandidateBundle() });
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto('/');
+    if (viewport.mobile) await page.getByTestId('canvas-pill').click();
+
+    await page.getByTestId('day-summary-card-day-1').click();
+    await expect(page.getByRole('list', { name: '第 1 天行程卡片' })).toBeVisible();
+    await expect(page.locator('[data-itinerary-occurrence="d2-12306-g382"]')).toHaveCount(0);
+    if (viewport.mobile) await page.getByRole('combobox', { name: '选择行程日期' }).selectOption('2');
+    else await page.getByRole('button', { name: '第 2 天', exact: true }).click();
+
+    const timeline = page.getByRole('list', { name: '第 2 天行程卡片' });
+    const occurrence = timeline.locator('[data-itinerary-occurrence="d2-12306-g382"]');
+    await expect(occurrence).toHaveCount(1);
+    const rail = occurrence.getByTestId('transport-card-leg-12306-g382');
+    await expect(rail).toBeVisible();
+    await expect(rail).toHaveAttribute('data-transport-family', 'scheduled');
+    await expect(rail.getByText('高铁', { exact: true })).toHaveCount(1);
+    for (const fact of ['G382', '中国铁路', '深圳北', '北京西', '11:41–19:30', '7 小时 49 分钟', '¥1,108']) {
+      const value = occurrence.getByText(fact, { exact: true });
+      await expect(value).toHaveCount(1);
+      await expect(value).toBeVisible();
+    }
+    await expect(occurrence.getByTestId('transport-segments-toggle')).toHaveCount(0);
+    const sources = occurrence.locator('details.journey-entity-sources');
+    await expect(sources).toHaveCount(1);
+    await sources.locator('summary').click();
+    await expect(sources.getByText('12306 车次查询', { exact: true })).toBeVisible();
+    await expect(sources.locator('[data-source-record="source-12306-g382"]')).toHaveCount(1);
+    await expect(occurrence.getByText('12306 车次查询', { exact: true })).toHaveCount(1);
+    await assertOffline(page, fixture);
+  });
+}
+
 test('mixed transport display merges headings and keeps station truth', async ({ page }) => {
-  const fixture = await offlineApp(page, { bundle: true, bundleData: xianTransportDisplayBundle() });
+  const bundle = xianTransportDisplayBundle();
+  bundle.provider_environment.sandbox_note = '测试数据提示';
+  const fixture = await offlineApp(page, { bundle: true, bundleData: bundle });
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
@@ -1333,6 +1615,8 @@ test('mixed transport display merges headings and keeps station truth', async ({
   await expect(flight).toContainText('XIY');
   await expect(flight.locator('.transport-mode-icon')).toHaveCount(1);
   await expect(flight).not.toContainText('班次');
+  await expect(page.getByTestId('transport-provider-note')).toHaveCount(0);
+  await expect(page.getByText('测试数据提示')).toHaveCount(0);
   const flightOccurrence = page.locator('[data-itinerary-occurrence="d1-display-flight"]');
   await expect(flightOccurrence.getByTestId('transport-map-entry')).toHaveCount(0);
   await expect(flightOccurrence.getByRole('button', { name: /在地图中查看/ })).toHaveCount(0);
@@ -1626,7 +1910,7 @@ test('phone card selection closes the sheet and reveals the selected map place',
   await expect(sheet.getByTestId('itinerary-card-flow')).toBeVisible();
   const dayan = sheet.locator('[data-itinerary-occurrence="d1-dayan"]');
   await dayan.scrollIntoViewIfNeeded();
-  await dayan.getByRole('button', { name: '在地图查看', exact: true }).click();
+  await dayan.getByRole('button', { name: /^在地图查看/ }).click();
   await expect(sheet).toHaveCount(0);
   await expect(page.getByTestId('map-place-detail')).toContainText('大雁塔');
   await expect(page.locator('[data-bundle-map-entity="visit-dayan"]')).toBeVisible();
@@ -1655,7 +1939,8 @@ async function start(page: Page) {
   await sendFrames(page, [{ type: 'chat_start', session_id: 'A', run_id: 'run-A', message_id: 'live-update', route_decision: { route: 'trip_refinement' } }]);
   return fixture;
 }
-async function openGate(page: Page) {
+async function openGate(page: Page, fixture: Awaited<ReturnType<typeof offlineApp>>) {
+  fixture.recoverPlanGate();
   await sendFrames(page, [gateFrame(), { type: 'chat_complete', run_id: 'run-A', run_status: 'awaiting_input', ts_ms: Date.now() }], true);
   await expect(page.getByTestId('trip-brief-plan-gate')).toBeVisible();
 }
@@ -1741,7 +2026,7 @@ test('repeated stale-plan refresh failures restore error focus', async ({ page }
 
 test('gate stays editable when an opened decision stream fails before acceptance', async ({ page }) => {
   const fixture = await start(page);
-  await openGate(page);
+  await openGate(page, fixture);
   const gate = page.getByTestId('trip-brief-plan-gate');
   await gate.getByRole('button', { name: '补充或调整旅行要求' }).click();
   await gate.getByLabel('想改哪里？').fill('午后留出休息时间');
@@ -1759,7 +2044,7 @@ test('gate stays editable when an opened decision stream fails before acceptance
 
 test('live gate must receive heading focus after expansion', async ({ page }) => {
   const fixture = await start(page);
-  await openGate(page);
+  await openGate(page, fixture);
   await assertOffline(page, fixture);
   await expect(page.getByRole('heading', { name: '研究方案', exact: true })).toBeFocused({ timeout: 1000 });
 });
@@ -1769,7 +2054,7 @@ test('研究方案交接保持阶段标题，研究任务由各自的入口展�
   const heading = page.getByTestId('thinking-chain').locator('.research-panel-heading');
   await expect(heading).toBeVisible();
   await expect(heading).not.toHaveAttribute('aria-expanded');
-  await openGate(page);
+  await openGate(page, fixture);
   await page.getByRole('button', { name: '确认并开始生成', exact: true }).click();
   await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
   await sendFrames(page, [{ type: 'chat_start', session_id: 'A', run_id: 'run-A', message_id: 'approved-update', route_decision: { route: 'trip_refinement' } }]);
@@ -1792,9 +2077,10 @@ test('events recover the pending plan approval', async ({ page }) => {
 
 test('new Run after live gate cancellation starts compact instead of carrying old UI state', async ({ page }) => {
   const fixture = await start(page);
-  await openGate(page);
+  await openGate(page, fixture);
   await page.getByRole('button', { name: '取消规划', exact: true }).click();
   await expect.poll(() => page.evaluate(() => Boolean((window as FixtureWindow).offlineStream))).toBe(true);
+  fixture.cancelPlanGate();
   await sendFrames(page, [{ type: 'run_cancelled', run_id: 'run-A', final_content: '已取消当前规划。', ts_ms: Date.now() }], true);
   await expect(page.getByTestId('trip-brief-plan-gate')).toHaveCount(0);
   const handoff = page.getByTestId('generation-handoff');
@@ -1814,7 +2100,7 @@ test('new Run after live gate cancellation starts compact instead of carrying ol
 
 test('fast new revision reopens with keyboard focus on the current gate', async ({ page }) => {
   const fixture = await start(page);
-  await openGate(page);
+  await openGate(page, fixture);
   const gate = page.getByTestId('trip-brief-plan-gate');
   await gate.getByRole('button', { name: '补充或调整旅行要求', exact: true }).click();
   await gate.getByLabel('想改哪里？').fill('午后留出休息时间');

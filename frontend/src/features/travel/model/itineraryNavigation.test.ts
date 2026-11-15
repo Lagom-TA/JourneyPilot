@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isUnscheduledItem, tripSegments, unresolvedForDay } from './itineraryNavigation';
+import { isUnscheduledItem, isUsefulUnresolvedItem, tripSegments, unresolvedForDay } from './itineraryNavigation';
 import { type DaySummaryVM } from './itineraryPresentation';
 import { type PublicDeliveryBundle } from '../types/delivery';
 
@@ -34,5 +34,13 @@ describe('day-specific unresolved items', () => {
   it('distinguishes unscheduled activities from information gaps', () => {
     expect(isUnscheduledItem('第 6 天下午尚未安排具体活动。')).toBe(true);
     expect(isUnscheduledItem('接驳尚未核实。')).toBe(false);
+  });
+
+  it('hides only generic reminders while retaining specific gaps', () => {
+    expect(isUsefulUnresolvedItem('（入住日期为规划假设）。')).toBe(false);
+    expect(isUsefulUnresolvedItem('出行前核对开放时间和票价。')).toBe(false);
+    expect(isUsefulUnresolvedItem('2026-12-10 餐饮至住宿的接驳尚未核实。')).toBe(true);
+    expect(isUsefulUnresolvedItem('第 6 天尚未安排具体活动。')).toBe(true);
+    expect(isUsefulUnresolvedItem('酒店无法确认入住日期，需另选住宿。')).toBe(true);
   });
 });

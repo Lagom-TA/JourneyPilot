@@ -102,13 +102,11 @@ def _build_rail_route_envelope(
 ) -> Dict[str, Any]:
     """把一条真实的 12306 班次包装成结构化的 Provider 路线信封。"""
     departure_at = _rail_iso(start_date, train["departure_time"])
-    arrival_date = start_date
-    if _rail_time_to_minutes(train["arrival_time"]) < _rail_time_to_minutes(
-        train["departure_time"]
-    ):
-        arrival_date = (
-            datetime.date.fromisoformat(start_date) + datetime.timedelta(days=1)
-        ).isoformat()
+    departure_minutes = _rail_time_to_minutes(train["departure_time"])
+    arrival_days = (departure_minutes + int(train["duration_minutes"])) // (24 * 60)
+    arrival_date = (
+        datetime.date.fromisoformat(start_date) + datetime.timedelta(days=arrival_days)
+    ).isoformat()
     arrival_at = _rail_iso(arrival_date, train["arrival_time"])
     mode = (
         "high_speed_rail"
@@ -188,6 +186,7 @@ async def _bind_one_rail_leg(
     depart_after: Optional[str] = None,
     same_day_roundtrip: bool = False,
     bound_arrivals: Optional[Dict[str, Optional[str]]] = None,
+    scope_id: Optional[str] = None,
 ) -> bool:
     """用真实 12306 数据为一条指定长途腿确定班次。"""
     route_origin = identity_by_place_id.get(scoped_leg.from_place_id)
@@ -562,32 +561,47 @@ async def _bind_one_rail_leg(
         )
         return False
 
+    from_point = await _locate_rail_station(
+        telecode=train["from_code"],
+        station_name=train["from_name"],
+        city=query_origin,
+        city_identity=route_origin,
+        tool_context=tool_context,
+        point_cache=station_point_cache,
+    )
+    to_point = await _locate_rail_station(
+        telecode=train["to_code"],
+        station_name=train["to_name"],
+        city=query_dest,
+        city_identity=route_destination,
+        tool_context=tool_context,
+        point_cache=station_point_cache,
+    )
     envelope = _build_rail_route_envelope(
         train=train,
         start_date=start_date,
         audit_id=audit_id,
         retrieved_at=retrieved_at,
-        from_point=await _locate_rail_station(
-            telecode=train["from_code"],
-            station_name=train["from_name"],
-            city=query_origin,
-            city_identity=route_origin,
-            tool_context=tool_context,
-            point_cache=station_point_cache,
-        ),
-        to_point=await _locate_rail_station(
-            telecode=train["to_code"],
-            station_name=train["to_name"],
-            city=query_dest,
-            city_identity=route_destination,
-            tool_context=tool_context,
-            point_cache=station_point_cache,
-        ),
+        from_point=from_point,
+        to_point=to_point,
     )
     messages.append(
         {"role": "tool", "content": compact_tool_content_for_model(envelope)}
     )
     authoritative_tool_results.append(envelope)
+    authoritative_tool_results.append({
+        **ticket_env,
+        "metadata": {
+            **(ticket_env.get("metadata") or {}),
+            "rail_selected_train": {
+                key: train[key] for key in ("train_code", "from_code", "to_code")
+            },
+            "rail_route_leg": scoped_leg.model_dump(mode="json"),
+            "rail_scope_id": scope_id,
+            "rail_from_point": from_point,
+            "rail_to_point": to_point,
+        },
+    })
     logger.info(
         "[transport_researcher] deterministic 12306 rail bound: %s %s %s->%s %s "
         "(telecode_source=%s pair=%s query_date=%s)",
@@ -630,6 +644,11 @@ async def discover_domestic_rail_route(
         for scope in required_route_scopes
         if scope.transport_class == "long_distance" and scope.route_leg is not None
     ]
+    scope_ids = {
+        scope.route_leg: scope.scope_id
+        for scope in required_route_scopes
+        if scope.transport_class == "long_distance" and scope.route_leg is not None
+    }
     if not scoped_legs:
         logger.warning(
             "[transport_researcher] skip domestic rail: no exact long-distance route scope"
@@ -681,6 +700,7 @@ async def discover_domestic_rail_route(
             depart_after=depart_after,
             same_day_roundtrip=same_day_roundtrip,
             bound_arrivals=bound_arrivals,
+            scope_id=scope_ids.get(scoped_leg),
         ):
             bound_leg_roles.append(scoped_leg.leg_role)
     logger.info(

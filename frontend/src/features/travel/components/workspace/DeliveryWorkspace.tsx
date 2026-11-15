@@ -16,7 +16,6 @@ import { routeLines } from '../../model/mapModel';
 import { tripSegments, unresolvedForDay } from '../../model/itineraryNavigation';
 import { type ControlledTripIdentity } from '../../types/planner';
 import { type PublicDeliveryBundle } from '../../types/delivery';
-import { type PublicWeatherAdjustment } from '../../types/weather';
 import { type MapProjection } from '../../types/report';
 import { BundleMapLeafletLazy } from './BundleMapLeafletLazy';
 import { DayTimeline } from './DayTimeline';
@@ -175,11 +174,25 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   const { state, dispatch } = useApp();
   const isMobile = useIsMobileViewport();
   const reducedMotion = useReducedMotion();
+  const waitingForRoute = Boolean(state.homeSubmissionPending && !state.currentTripRunId && !bundle);
+  const pendingPanelHadFocusRef = React.useRef(false);
+  const previousWaitingForRouteRef = React.useRef(waitingForRoute);
+  const conversationHandoffRef = React.useRef<HTMLDivElement>(null);
+  React.useLayoutEffect(() => {
+    const wasWaiting = previousWaitingForRouteRef.current;
+    previousWaitingForRouteRef.current = waitingForRoute;
+    if (waitingForRoute) return;
+    if (wasWaiting && !state.currentTripRunId && !bundle && pendingPanelHadFocusRef.current) {
+      conversationHandoffRef.current?.querySelector<HTMLElement>('[data-route-confirmation-focus]')?.focus({ preventScroll: true });
+      if (document.activeElement === document.body) {
+        conversationHandoffRef.current?.focus({ preventScroll: true });
+      }
+    }
+    pendingPanelHadFocusRef.current = false;
+  }, [bundle, state.currentTripRunId, waitingForRoute]);
   const [activeDay, setActiveDay] = React.useState<number | null>(null);
   const [activeSegmentId, setActiveSegmentId] = React.useState<string | null>(null);
   const [sidebarMode, setSidebarMode] = React.useState<'itinerary' | 'conversation'>('itinerary');
-  const [conversationDraft, setConversationDraft] = React.useState('');
-  const [conversationRunId, setConversationRunId] = React.useState<string | null>(null);
   const [selectedEntityId, setSelectedEntityId] = React.useState<string | null>(null);
   const [selectedOccurrenceKey, setSelectedOccurrenceKey] = React.useState<string | null>(null);
   const [linkedEntityId, setLinkedEntityId] = React.useState<string | null>(null);
@@ -243,18 +256,8 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
 
   const openConversation = React.useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
     conversationReturnFocusRef.current = event.currentTarget.dataset.conversationTrigger ?? 'navigation';
-    setConversationDraft('');
-    setConversationRunId(null);
     setSidebarMode('conversation');
   }, []);
-
-  const discussWeather = React.useCallback((suggestion: PublicWeatherAdjustment, event: React.MouseEvent<HTMLButtonElement>) => {
-    conversationReturnFocusRef.current = event.currentTarget.dataset.conversationTrigger ?? 'navigation';
-    setConversationDraft(`请根据 ${suggestion.date} 的天气建议调整行程：${suggestion.summary}。请结合最新天气和当天安排重新规划受影响的部分。`);
-    setConversationRunId(bundle?.manifest.run_id ?? null);
-    dispatch({ type: 'SET_DELIVERABLE_VIEW', payload: 'interactive_itinerary' });
-    setSidebarMode('conversation');
-  }, [bundle?.manifest.run_id, dispatch]);
 
   const closeConversation = React.useCallback(() => {
     const source = conversationReturnFocusRef.current ?? 'navigation';
@@ -457,7 +460,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
       ? [daySummaries[0].dateLabel, daySummaries[daySummaries.length - 1].dateLabel].filter(Boolean).join(' — ')
       : null
     : identity?.start_date && identity.end_date ? `${identity.start_date} — ${identity.end_date}` : null;
-  const dateLabel = dateRange && identity?.dates_assumed ? `${dateRange}（暂定）` : dateRange;
+  const dateLabel = dateRange;
   const metaLabel = bundle
     ? [
       identity?.destinations.map((place) => place.name).join('＋'),
@@ -525,8 +528,13 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
         <div className="journey-view-actions">
           <button type="button" className="journey-view-action" onClick={openReading}><BookOpen size={14} />阅读版</button>
           <button type="button" className={cn('journey-view-action', view === 'today' && 'is-active')} onClick={toggleToday}><Sun size={14} />{view === 'today' ? '返回全程' : '旅中查看'}</button>
-          {view === 'interactive_itinerary' && !state.currentTripRunReadOnly && !conversationOpen && (
-            <button type="button" data-conversation-trigger="navigation" className="journey-view-action" onClick={openConversation}><MessageCircle size={14} />调整</button>
+          {view === 'interactive_itinerary' && !state.currentTripRunReadOnly && (
+            <button
+              type="button"
+              data-conversation-trigger="navigation"
+              className={cn('journey-view-action', conversationOpen && 'is-active')}
+              onClick={conversationOpen ? closeConversation : openConversation}
+            >{conversationOpen ? <><ArrowLeft size={14} />返回日程</> : <><MessageCircle size={14} />调整</>}</button>
           )}
         </div>
       </header>
@@ -536,17 +544,10 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
   const contentBody = conversationOpen ? (
     <div className="journey-conversation-view" onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); closeConversation(); } }}>
       <header>
-        <button type="button" onClick={closeConversation}><ArrowLeft size={14} />返回日程</button>
         <h2>调整这趟旅行</h2>
       </header>
       {(state.planApprovalGate || state.understandingQuestions) ? <GenerationJourneyPanel /> : (
-        <ConversationThread
-          key={state.conversationEpoch}
-          embedded
-          initialInput={conversationDraft}
-          targetRunId={conversationRunId}
-          onInputSent={() => setConversationDraft('')}
-        />
+        <ConversationThread key={state.conversationEpoch} embedded targetRunId={bundle?.manifest.run_id} />
       )}
     </div>
   ) : !reportDocument ? (
@@ -561,7 +562,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
         <h2>{selectedSummary?.destinationLabel ?? selectedDay.theme}</h2>
         <span>{selectedDay.theme}</span>
       </header>
-      <WeatherSuggestions suggestions={bundle?.workspace.weather_adjustments.filter((item) => item.date === selectedDay.date) ?? []} readOnly={state.currentTripRunReadOnly} onDiscuss={discussWeather} />
+      <WeatherSuggestions suggestions={bundle?.workspace.weather_adjustments.filter((item) => item.date === selectedDay.date) ?? []} />
       <TodayNextCard node={nextNode} actualToday={actualToday} />
       <UnresolvedReadout items={bundle && selectedDay ? unresolvedForDay(bundle, selectedDay.day_id) : []} />
       <DayTimeline nodes={selectedTimeline} waypointOrder={waypointOrder} linkedEntityId={linkedEntityId} onLinkEntity={setLinkedEntityId} />
@@ -569,7 +570,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
     </div>
   ) : bundle ? (
     <>
-      <WeatherSuggestions suggestions={bundle.workspace.weather_adjustments.filter((item) => activeDay == null || item.date === selectedDay?.date)} readOnly={state.currentTripRunReadOnly} onDiscuss={discussWeather} />
+      <WeatherSuggestions suggestions={bundle.workspace.weather_adjustments.filter((item) => activeDay == null || item.date === selectedDay?.date)} />
       {activeDay == null && (
         <TripOverview
           itinerary={bundle.workspace.itinerary}
@@ -618,7 +619,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
             animate="visible"
             exit="exit"
           >
-            <div ref={contentScrollRef} className="journey-content-scroll" data-testid="interactive-itinerary">
+              <div ref={contentScrollRef} className={cn('journey-content-scroll', contentMode === 'conversation' && 'is-conversation')} data-testid="interactive-itinerary">
               {contentBody}
             </div>
           </PresenceFrame>
@@ -688,7 +689,7 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
             exit={{ y: distance.panel, transition: { duration: duration.fast, ease: easing.accelerate } }}
           >
             <button type="button" aria-label="关闭地点详情" onClick={closePlaceDetail}><X size={16} /></button>
-            <TimelineEntityDetails bundle={bundle} entity={selectedEntity} />
+            <TimelineEntityDetails bundle={bundle} entity={selectedEntity} occurrenceKey={selectedOccurrenceKey} />
           </PresenceSection>
         )}
       </AnimatePresence>
@@ -723,9 +724,17 @@ export const DeliveryWorkspace: React.FC<DeliveryWorkspaceProps> = ({ bundle }) 
             >
               {bundle
                 ? mapRegion
-                : state.currentTripRunId
-                  ? <div className="generation-workspace"><GenerationJourneyPanel /></div>
-                  : <div className="generation-workspace generation-workspace-conversation"><ConversationThread key={state.conversationEpoch} embedded /></div>}
+                : state.currentTripRunId || state.homeSubmissionPending
+                  ? <div
+                      className="generation-workspace"
+                      onFocusCapture={() => { if (waitingForRoute) pendingPanelHadFocusRef.current = true; }}
+                      onBlurCapture={(event) => {
+                        if (waitingForRoute && event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) {
+                          pendingPanelHadFocusRef.current = false;
+                        }
+                      }}
+                    ><GenerationJourneyPanel /></div>
+                  : <div ref={conversationHandoffRef} tabIndex={-1} className="generation-workspace generation-workspace-conversation"><ConversationThread key={state.conversationEpoch} embedded /></div>}
               {bundle && !isMobile && <PresenceFrame ref={floatingPanelRef} className="journey-floating-panel" initial={{ x: reducedMotion ? 0 : -distance.panel }} animate={{ x: 0 }} transition={{ duration: reducedMotion ? 0 : duration.page, ease: easing.decelerate }}>{navigation}{content}</PresenceFrame>}
               {isMobile && bundle && (
                 <DeliveryMobileSheet open={state.mobileCanvasOpen} onClose={closeMobileSheet}>

@@ -238,7 +238,7 @@ def _entity_block(
     elif isinstance(entity, LodgingStay):
         ref = EntityRef(entity_type=EntityType.LODGING_STAY, entity_id=entity.stay_id)
         kind = "lodging"
-        summary = selection_reason(entity)
+        summary = selection_reason(entity) or entity.name
         day_id = None
     elif isinstance(entity, TransportLeg):
         ref = EntityRef(
@@ -378,18 +378,22 @@ def project_report(
                     rank=option.rank,
                     selected=is_selected,
                     recommended=option.option_id == slot.recommended_option_id,
-                    selection_reasons=[
-                        public_selection_text(
-                            reason,
-                            fallback=candidate_reason_fallback(
-                                candidates[option.candidate_id], index
-                            ),
-                        )
-                        for index, reason in enumerate(option.selection_reasons)
-                    ],
+                    selection_reasons=(
+                        list(option.selection_reasons)
+                        if slot.slot_type == "lodging"
+                        else [
+                            public_selection_text(
+                                reason,
+                                fallback=candidate_reason_fallback(
+                                    candidates[option.candidate_id], index
+                                ),
+                            )
+                            for index, reason in enumerate(option.selection_reasons)
+                        ]
+                    ),
                     tradeoff=(
-                        _public_selection_text(option.tradeoff)
-                        if option.tradeoff
+                        option.tradeoff if slot.slot_type == "lodging"
+                        else _public_selection_text(option.tradeoff) if option.tradeoff
                         else None
                     ),
                     comparison_facts=_public_comparison_facts(option.comparison_facts),

@@ -16,9 +16,10 @@ from travel_agent.planning.research.candidates import (
 )
 from travel_agent.planning.research.evidence import FactAssertion, FieldProvenance, SourceRecord
 from travel_agent.planning.research.packets import ResearchPacket
+from travel_agent.planning.research.provider_contracts import ProviderEvidenceScope
 from travel_agent.tools.knowledge_results import knowledge_tool_documents
 
-from .identity import _bind_successful_place_identity
+from .identity import _bind_successful_flight_numbers, _bind_successful_place_identity
 from .lineage import (
     _drop_borrowed_compiled_source_links,
     _prune_payload_to_candidate_closure,
@@ -153,6 +154,7 @@ def parse_research_packet_output(
     authoritative_tool_results: Sequence[Mapping[str, Any]] = (),
     authoritative_packet_metadata: Mapping[str, Any] | None = None,
     authoritative_source_records: Sequence[SourceRecord] = (),
+    required_route_scopes: Sequence[ProviderEvidenceScope] = (),
 ) -> ResearchPacket:
     """只解析精确 JSON；不抽取 Markdown、不修复、不回退到其他信封。"""
     try:
@@ -198,6 +200,15 @@ def parse_research_packet_output(
     authoritative_sources.update(
         _bind_successful_place_identity(payload, evidence_messages)
     )
+    if expected_worker == "transport_researcher":
+        authoritative_sources.update(
+            _bind_successful_flight_numbers(
+                payload,
+                evidence_messages,
+                scopes=required_route_scopes,
+                run_id=expected_run_id,
+            )
+        )
     _ground_model_tool_sources(
         payload, evidence_messages, authoritative_sources=authoritative_sources
     )

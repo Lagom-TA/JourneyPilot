@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizePlanApprovalGate } from "./planApprovalGate";
+import { normalizePlanApprovalGate, planGateFromRunEvents } from "./planApprovalGate";
 describe('normalizePlanApprovalGate', () => {
     it('restores the approval token without clarification controls', () => {
         const gate = normalizePlanApprovalGate({
@@ -38,6 +38,39 @@ describe('normalizePlanApprovalGate', () => {
         expect(gate?.steps).toEqual([]);
         expect(gate?.decisionOptions).toEqual(['retry', 'supplement', 'cancel']);
         expect(gate?.approvalToken).toBe('failed-plan-token');
+    });
+
+    it('restores the latest plan gate from the run event window', () => {
+        const gate = planGateFromRunEvents([
+            {
+                event_id: 1, run_id: 'run-events', sequence: 1, event_type: 'run.started',
+                payload: {}, created_at: '2026-11-10T09:00:00Z',
+            },
+            {
+                event_id: 2, run_id: 'run-events', sequence: 2, event_type: 'run.gate_raised',
+                payload: {
+                    status: 'awaiting_input',
+                    gate: 'plan',
+                    payload: {
+                        revision: 1,
+                        plan_text: '先比较交通和住宿，再安排每天的路线。',
+                        plan: { steps: [{ step: 1, agents: ['destination_researcher'], tasks: {} }] },
+                        decision_options: ['approve', 'supplement', 'cancel'],
+                    },
+                },
+                created_at: '2026-11-10T09:00:01Z',
+            },
+        ], 'run-events');
+        expect(gate?.planText).toBe('先比较交通和住宿，再安排每天的路线。');
+        expect(gate?.source).toBe('restored');
+    });
+
+    it('ignores planless event payloads', () => {
+        expect(planGateFromRunEvents([{
+            event_id: 1, run_id: 'run-events', sequence: 1, event_type: 'run.gate_raised',
+            payload: { status: 'awaiting_input', gate: 'understanding', payload: { questions: [] } },
+            created_at: '2026-11-10T09:00:00Z',
+        }], 'run-events')).toBeNull();
     });
 
     it('restores a plan without fabricating a missing approval token', () => {

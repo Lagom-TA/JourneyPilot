@@ -121,8 +121,21 @@ def _event_response(event) -> Optional[TripRunEventResponse]:
         }
     elif event.event_type in {"run.completed", "run.cancelled", "run.interrupted"}:
         payload = {"status": event.event_type.removeprefix("run.")}
-    elif event.event_type in {"run.awaiting_input", "run.gate_raised"}:
+    elif event.event_type == "run.awaiting_input":
         payload = {"status": TripRunStatus.AWAITING_INPUT.value}
+    elif event.event_type == "run.gate_raised":
+        # 门的公开载荷要能随事件窗口回放，刷新后仍可回看确认过的研究方案。
+        gate = str((event.payload or {}).get("gate") or "")
+        gate_payload = (event.payload or {}).get("payload")
+        payload = {
+            "status": TripRunStatus.AWAITING_INPUT.value,
+            "gate": gate,
+            "payload": (
+                public_understanding_questions_payload(gate_payload)
+                if gate in {"understanding", "research"}
+                else public_plan_gate_payload(gate_payload)
+            ),
+        }
     elif event.event_type == "run.guard_blocked":
         payload = {
             "status": TripRunStatus.FAILED.value,

@@ -1,7 +1,6 @@
 import { ChevronDown } from "lucide-react";
 import { cn } from "../../../../lib/utils";
 import { READOUT_LABEL } from "../../../../lib/typography";
-import { TransportProviderNote } from "./TransportProviderNote";
 import { type PublicTransportLeg } from "../../types/itinerary";
 import { type TransportEndpoint, type TransportMode, type TransportSegment } from "../../types/entities";
 import { BOOKING_LABELS, TRANSPORT_MODE_LABELS } from "../../model/deliveryLabels";
@@ -40,14 +39,14 @@ function SegmentRow({ segment, index, selectedMode }: {
           </p>
           <TimeWindow departure={segment.departure_at} arrival={segment.arrival_at} className="shrink-0 text-[11px]"/>
         </div>
-        <MetaLine values={[
+        <MetaLine values={[...new Set([
             TRANSPORT_MODE_LABELS[mode],
-            segment.line_name,
-            segment.service_number,
-            segment.operator_name,
+            segment.line_name?.trim() || null,
+            segment.service_number?.trim() || null,
+            segment.operator_name?.trim() || null,
             durationLabel(segment.duration_minutes),
             distanceLabel(segment.distance_meters),
-        ]}/>
+        ])]}/>
       </div>
     </li>);
 }
@@ -242,12 +241,11 @@ function TransitRideList({ chain, id, open }: {
       {chain.rides.map((ride) => <TransitRideRow key={ride.key} ride={ride}/>)}
     </ol>);
 }
-function CardShell({ leg, family, badge, aside = null, sandboxNote = null, compact = false, children, }: {
+function CardShell({ leg, family, badge, aside = null, compact = false, children, }: {
     leg: PublicTransportLeg;
     family: TransportFamily;
     badge?: React.ReactNode;
     aside?: React.ReactNode;
-    sandboxNote?: string | null;
     compact?: boolean;
     children: React.ReactNode;
 }) {
@@ -257,7 +255,6 @@ function CardShell({ leg, family, badge, aside = null, sandboxNote = null, compa
     const variant = leg.transport_class === 'long_distance'
         ? 'long-distance'
         : leg.transport_class === 'public_transit' ? 'public-transit' : 'flexible';
-    const providerNote = leg.transport_class === 'long_distance' && Boolean(sandboxNote);
     const service = family === 'scheduled' ? legService(leg) : null;
     const serviceLabel = service?.serviceNumber ?? service?.lineName ?? null;
     const showNoun = family !== 'scheduled';
@@ -283,7 +280,6 @@ function CardShell({ leg, family, badge, aside = null, sandboxNote = null, compa
         <span className="flex min-w-0 shrink-0 items-center gap-2">
           {aside}
           {badge}
-          {providerNote && <TransportProviderNote detail={sandboxNote!}/>}
         </span>
       </div>
       {children}
@@ -310,7 +306,6 @@ function LegBadge({ leg }: {
 }
 interface TransportLegCardProps {
     leg: PublicTransportLeg;
-    sandboxNote?: string | null;
 }
 function SupportingContent({ leg }: TransportLegCardProps) {
     return (<>
@@ -318,9 +313,9 @@ function SupportingContent({ leg }: TransportLegCardProps) {
       <SegmentDisclosure leg={leg}/>
          </>);
 }
-function ScheduledTicket({ leg, sandboxNote = null }: TransportLegCardProps) {
+function ScheduledTicket({ leg }: TransportLegCardProps) {
     const ready = leg.route_status === 'ready';
-    return (<CardShell leg={leg} family="scheduled" badge={<LegBadge leg={leg}/>} aside={ready ? <TimeWindow departure={leg.departure_at} arrival={leg.arrival_at} className="text-[11px]"/> : null} sandboxNote={sandboxNote}>
+    return (<CardShell leg={leg} family="scheduled" badge={<LegBadge leg={leg}/>} aside={ready ? <TimeWindow departure={leg.departure_at} arrival={leg.arrival_at} className="text-[11px]"/> : null}>
       {ready && (<>
           <div className="mt-2 flex min-w-0 items-start gap-2">
             <TicketEndpoint endpoint={leg.from_endpoint} mode={leg.selected_mode} align="left"/>

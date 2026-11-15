@@ -1,5 +1,6 @@
 import { type PlanApprovalGate, type PlanGateStep } from "../types/planning";
 import { type PlanGateDecisionAction } from "../types/planner";
+import { type TripRunEventResponse } from "../types/runs";
 export const PLAN_GATE_ACTIONS: PlanGateDecisionAction[] = ['approve', 'supplement', 'retry', 'cancel'];
 export function normalizePlanApprovalGate(event: {
     run_id?: string;
@@ -41,4 +42,24 @@ export function normalizePlanApprovalGate(event: {
         planText: String(payload.plan_text || ''),
         decisionOptions,
     };
+}
+/** 从 Run 事件里取最近一次计划门载荷，用于刷新后回看已确认的研究方案。 */
+export function planGateFromRunEvents(events: TripRunEventResponse[], runId: string): PlanApprovalGate | null {
+    for (let index = events.length - 1; index >= 0; index -= 1) {
+        const event = events[index];
+        if (event.event_type !== 'run.gate_raised')
+            continue;
+        const envelope: Record<string, unknown> = event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload)
+            ? event.payload as Record<string, unknown>
+            : {};
+        if (String(envelope.gate || '') !== 'plan')
+            continue;
+        const payload = envelope.payload;
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload))
+            continue;
+        const gate = normalizePlanApprovalGate({ run_id: runId, gate: 'plan', payload: payload as Record<string, unknown> }, 'pending', 'restored');
+        if (gate)
+            return gate;
+    }
+    return null;
 }

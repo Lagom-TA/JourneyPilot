@@ -37,3 +37,11 @@ export function unresolvedForDay(bundle: PublicDeliveryBundle, dayId: string): s
 export function isUnscheduledItem(text: string): boolean {
   return /尚未安排|未安排|尚未覆盖|未覆盖/.test(text);
 }
+
+/** 仅排除独立的日期假设和通用核对提示，保留具体行程缺口。 */
+export function isUsefulUnresolvedItem(text: string): boolean {
+  const value = text.trim().replace(/[。；;\s]+$/g, '');
+  if (!value) return false;
+  if (/^(?:入住|出发|旅行|行程|查询)?日期(?:为|是|属于)?(?:规划)?(?:假设|暂定)$/u.test(value.replace(/[（）()]/g, ''))) return false;
+  return !/^(?:出行|出发|预订|前往)前(?:请|需|建议)?(?:核对|确认)(?:开放时间|营业时间|票价|门票价格|预约信息|营业安排|费用)(?:[、，,和与及/](?:开放时间|营业时间|票价|门票价格|预约信息|营业安排|费用))*$/u.test(value);
+}

@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -24,6 +25,74 @@ async def test_compaction_uses_model_key_constraints_as_is(monkeypatch):
     ], existing_anchor=anchor())
     get_for_task.assert_called_once_with(TaskKind.SUMMARY, has_tools=False)
     assert result.key_constraints == ["必须住五星酒店", "每晚预算不超过300元"]
+
+
+@pytest.mark.parametrize(
+    ("question", "answer", "confirmed_constraint"),
+    [
+        ("这趟行程要避开夜行吗？", "不用，可以夜间出行。", "旅行者可以夜间出行"),
+        ("对什么食物过敏？", "花生。", "旅行者对花生过敏"),
+        ("这趟行程要避开夜行吗？", "还不确定。", None),
+    ],
+)
+async def test_compaction_preserves_question_answer_sources_and_current_inputs(
+    monkeypatch, question, answer, confirmed_constraint
+):
+    qa_message = f"用户回答：\n助手提问（q1）：{question}\n旅行者回答：{answer}"
+    messages = [
+        {"role": "user", "content": "去苏州三天，每晚住宿不超过500元。"},
+        {"role": "user", "content": "本次已提交表单（含默认值）：同行2人。"},
+        {"role": "assistant", "content": "可以考虑住在市中心。"},
+        {"role": "user", "content": qa_message},
+    ]
+    expected_summary = f"去苏州三天。助手提问：{question}旅行者回答：{answer}"
+    expected_constraints = ["每晚住宿不超过500元", "同行2人"]
+    if confirmed_constraint:
+        expected_constraints.append(confirmed_constraint)
+    captured = []
+
+    class LLM:
+        async def ainvoke(self, prompt):
+            captured.extend(prompt)
+            return json.dumps({
+                "summary": expected_summary,
+                "key_constraints": expected_constraints,
+            }, ensure_ascii=False)
+
+    get_for_task = Mock(return_value=LLM())
+    monkeypatch.setattr("travel_agent.llm.router.get_model_router", lambda: SimpleNamespace(get_for_task=get_for_task))
+    result = await ContextCompressor().compress(messages, existing_anchor=anchor())
+
+    get_for_task.assert_called_once_with(TaskKind.SUMMARY, has_tools=False)
+    assert result.summary == expected_summary
+    assert result.key_constraints == expected_constraints
+    system_prompt = captured[0]["content"]
+    assert "已提交表单中的值（包括默认值）和本次问答同等考虑" in system_prompt
+    assert "结合完整的一问一答理解回答" in system_prompt
+    assert "提问中涉及的条件以旅行者的回答判断是否确认" in system_prompt
+    assert "问答成对保留" in system_prompt
+    assert "早先消息里的用户约束也要保留" in system_prompt
+    user_content = captured[1]["content"]
+    assert f"用户：{qa_message}" in user_content
+    assert "用户：本次已提交表单（含默认值）：同行2人。" in user_content
+    assert "助手：可以考虑住在市中心。" in user_content
+    assert "对话摘要中的约束（结合来源理解）：" in user_content
+    assert "用户明确约束（必须严格遵守）" not in user_content
+
+
+async def test_model_constraints_remain_an_attributed_summary_in_built_context():
+    summary = AnchorSummary(
+        "now", 2, 100, 20,
+        ["需要避开夜行", "每晚住宿不超过500元"],
+        "助手提问：需要避开夜行吗？旅行者回答：不用。",
+    )
+    result = await ContextBuilder().build_context("session", "contract", [], session_anchor=summary)
+
+    assert "对话摘要中的约束（结合来源理解）：" in result.system_prompt
+    assert "- 需要避开夜行" in result.system_prompt
+    assert "- 每晚住宿不超过500元" in result.system_prompt
+    assert "助手提问：需要避开夜行吗？旅行者回答：不用。" in result.system_prompt
+    assert "用户明确约束（必须严格遵守）" not in result.system_prompt
 
 
 @pytest.mark.parametrize("output", ['[]', 'null', '{"summary":42}', 'broken'])

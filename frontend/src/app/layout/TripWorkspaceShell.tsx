@@ -1,4 +1,4 @@
-import { useReducedMotion } from 'motion/react';
+import { AnimatePresence } from 'motion/react';
 import type { Variants } from 'motion/react';
 import { getCurrentDeliveryBundle } from '../../features/travel/api/delivery';
 import { PresenceFrame } from '../../components/ui/PresenceSurface';
@@ -11,6 +11,7 @@ import { PageSkeleton } from '../components/PageSkeleton';
 import { DeliveryWorkspace } from '../../features/travel/components/workspace/DeliveryWorkspace';
 import { LazyViewBoundary } from '../../components/ui/LazyViewBoundary';
 import { workspaceEnter, workspaceReturn } from '../../lib/motion';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import React from 'react';
 
 const directHandoff: Variants = {
@@ -22,7 +23,7 @@ const directHandoff: Variants = {
 export const TripWorkspaceShell: React.FC = () => {
   const { state, dispatch, currentStateRef } = useApp();
   const { openSession } = useSessionManager();
-  const reducedMotion = useReducedMotion();
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const retryCurrentBundle = React.useCallback(async () => {
     const runId = state.currentTripRunId;
     if (!runId) return;
@@ -49,6 +50,7 @@ export const TripWorkspaceShell: React.FC = () => {
     || state.currentTripRunId !== null;
   const previousJourneyWorkspaceRef = React.useRef(hasJourneyWorkspace);
   const handoffFocusPendingRef = React.useRef(false);
+  const workspaceRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     const previous = previousJourneyWorkspaceRef.current;
     previousJourneyWorkspaceRef.current = hasJourneyWorkspace;
@@ -57,7 +59,9 @@ export const TripWorkspaceShell: React.FC = () => {
   const focusJourneyWorkspace = React.useCallback(() => {
     if (!handoffFocusPendingRef.current) return;
     handoffFocusPendingRef.current = false;
-    document.querySelector<HTMLElement>('[data-workspace-handoff-focus]')?.focus({ preventScroll: true });
+    const active = document.activeElement;
+    if (active && active !== document.body && active.isConnected && !active.closest('[inert]')) return;
+    workspaceRef.current?.querySelector<HTMLElement>('[data-workspace-handoff-focus], [data-route-confirmation-focus]')?.focus({ preventScroll: true });
   }, []);
   const retrySession = React.useCallback(() => {
     const error = state.sessionLoadError;
@@ -79,14 +83,17 @@ export const TripWorkspaceShell: React.FC = () => {
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-bg">
       <div className="relative min-h-0 flex-1" data-testid="trip-workspace-layout">
+        <AnimatePresence initial={false}>
           {hasJourneyWorkspace ? (
             <PresenceFrame
               key="journey-workspace"
-              className="h-full min-h-0 w-full bg-bg"
+              ref={workspaceRef}
+              className="workspace-handoff-frame is-journey h-full min-h-0 w-full"
               data-testid="journey-workspace"
               variants={reducedMotion ? directHandoff : workspaceEnter}
               initial={previousJourneyWorkspaceRef.current === hasJourneyWorkspace ? false : 'hidden'}
               animate="visible"
+              exit="exit"
               onAnimationComplete={focusJourneyWorkspace}
             >
               <LazyViewBoundary
@@ -107,10 +114,11 @@ export const TripWorkspaceShell: React.FC = () => {
               </LazyViewBoundary>
             </PresenceFrame>
           ) : (
-            <PresenceFrame key="workspace-conversation" className="h-full min-h-0 w-full" data-testid="workspace-conversation" variants={reducedMotion ? directHandoff : workspaceReturn} initial={previousJourneyWorkspaceRef.current === hasJourneyWorkspace ? false : 'hidden'} animate="visible">
+            <PresenceFrame key="workspace-conversation" className="workspace-handoff-frame h-full min-h-0 w-full" data-testid="workspace-conversation" variants={reducedMotion ? directHandoff : workspaceReturn} initial={previousJourneyWorkspaceRef.current === hasJourneyWorkspace ? false : 'hidden'} animate="visible" exit="exit">
               <ConversationThread key={state.conversationEpoch} />
             </PresenceFrame>
           )}
+        </AnimatePresence>
       </div>
 
       {state.sessionLoadError && (

@@ -104,27 +104,35 @@ PostgreSQL + pgvector（最终事实）        Redis（缓存与快照）
    历史问答：能查到的用工具查（联网资料、真实地点），只有值得用户决定的问题才通过
    `understanding_gate` 暂停提问；回答回到同一模型继续理解。信息充分后模型给出受控旅行身份
    （地点来自工具查到的真实记录）并写回 Run 行。模型提问、日期补问和地点重试共用轮次上限。
-3. **需求文字**：模型结合用户原话、理解问答和后续补充整理当前需求文字；
-   `requirements_preparer` 校验基础信息、推进规划代际并记录已整理的补充。用户原话不做逐条
-   语义审批，也不展示单独的参数确认页。
-4. **研究与安排方案**：`research_plan_generator` 让模型根据基础信息和当前需求写出简短方案，
-   作为各角色的共同任务；`minimum_delivery_draft_builder` 生成
-   `MinimumDeliveryDraft`；`destination_geo_resolver` 准备目的地边界；`trip_summary_card_brief`
-   生成摘要；`planner` 把任务交给各角色。
-5. **方案确认**：`plan_gate` 暂停等待用户 approve / supplement / retry / cancel。关闭
-   `run_control.plan_gate_enabled` 时，新的完整调研会在创建 Run 前被拒绝（409
+3. **需求文字**：模型结合用户原话、理解问答和后续补充整理当前需求文字
+   `current_requirements`，作为旅行真实要求的权威；`requirements_preparer` 校验基础信息、
+   推进规划代际并记录已整理的补充。用户原话不做逐条语义审批，也不展示单独的参数确认页。
+4. **研究与安排方案**：`research_plan_generator` 让模型根据基础信息和完整当前需求，一次生成
+   面向用户的简短列表摘要 `summary` 和独立的内部执行指引 `agent_guidance`；新生成的方案必须
+   包含指引，两者都不替代完整需求。`minimum_delivery_draft_builder` 生成 `MinimumDeliveryDraft`；
+   `destination_geo_resolver` 准备目的地边界；`trip_summary_card_brief` 生成旅行摘要卡片；
+   `planner` 将同一份内部指引交给各研究和行程角色。
+5. **方案确认**：`plan_gate` 暂停等待用户 approve / supplement / retry / cancel。用户确认摘要，
+   确认凭据绑定摘要、实际执行的指引及方案版本；独立内部指引不公开在 `plan_text` 或 `steps.tasks`。
+   关闭 `run_control.plan_gate_enabled` 时，新的完整调研会在创建 Run 前被拒绝（409
    `plan_gate_disabled`），快问快答不受影响。确认时封存 Draft、`RunDeadlineSnapshot` 与
    `RunBudgetSnapshot`；修改转成 `IntentAmendment`，进入当前需求文字并失效旧方案与旧研究结果。
-6. **研究**：批准并封存预算后，`weather_context_builder` 获取规划天气；研究按
-   `destination_researcher` 先完成，`transport_researcher` 和 `accommodation_researcher` 并行进行，
-   两者通过上游研究视图读取目的地成果。Worker 按运行租约、取消与预算控制调用工具，返回
-   带字段和来源的 `ResearchPacket`。研究失败或超时时保留已有成果，在研究门等待重试或取消；
-   重试沿用本次 Run 的时限设置，查无候选且研究正常完成时继续组合。
+6. **研究**：批准并封存预算后，`weather_context_builder` 获取规划天气；研究角色接收内部指引和
+   完整当前需求，研究按 `destination_researcher` 先完成，`transport_researcher` 和
+   `accommodation_researcher` 并行进行，两者通过上游研究视图读取目的地成果。Worker 按运行租约、
+   取消与预算控制调用工具，返回带字段和来源的 `ResearchPacket`。研究失败或超时时保留已有成果，
+   在研究门等待重试或取消；重试沿用本次 Run 的时限设置，查无候选且研究正常完成时继续组合。
 7. **候选目录**：Worker 完成后，`dispatcher` 收齐 packet 并构建 `RecommendationCatalog`；
    catalog 保留 generation 一致性检查，拦截过期产物。
-8. **组合**：`itinerary_planner` 读取 catalog，由模型直接写出完整行程草稿，再物化为
-   `TripWorkspace`。服务端检查草稿日期与已确认日期一致；无法安排的日期可保留空行程并记录
-   缺口。服务端负责结构解析、身份绑定与时间线物化，接驳缺口由服务端按真实路线补齐。
+8. **组合**：`itinerary_planner` 获取内部指引、完整当前需求和 catalog，由模型直接写出结构完整的行程
+   草稿，再物化为 `TripWorkspace`。组合在现有期限内为最终无工具成稿和物化保留时间，交通补查受共享上限约束；
+   未核实的接驳进入公开的待确认事项，不把半截模型流当成草稿。服务端检查草稿日期与已确认日期一致；
+   无法安排的日期可保留空行程并记录缺口。实际路线超出可用时间窗时尝试重排；无法在期限内重排时，
+   保留其余日期，受影响日留空，并以 ISO 日期加「尚未安排」记录缺口，不把冲突日展示为可行。
+   部分交付不保证其他所有排程均已验证可行，内容质量仍由模型负责（[ADR-0011](../adr/ADR-0011-generation-quality-owned-by-model.md)）。
+   交通研究和组合期补查取得的真实铁路班次进入候选目录，组合可按车次和时间安排跨城交通；
+   服务端负责结构解析、身份绑定与时间线物化，市内接驳按真实路线补齐。组合窗口关闭但已有合法骨架时，
+   只走不发起外部调用的确定性物化路径。
 9. **交付**：`delivery_projector` 从同一 Workspace 生成报告、地图与来源索引；`delivery_finalizer`
    原子提交唯一的 `DeliveryBundle`。工作台、报告、PDF 与来源列表都来自这份记录；PDF 导出
    前后检查 Bundle 修订，并显示待安排事项。不同计价口径的单项价格不对外汇总。

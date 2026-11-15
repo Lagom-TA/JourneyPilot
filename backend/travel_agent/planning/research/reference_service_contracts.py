@@ -5,8 +5,8 @@ from pydantic import BaseModel
 from pydantic import ConfigDict
 from pydantic import Field
 from pydantic import model_validator
+from travel_agent.planning.research.provider_contracts import ProviderRouteLegRole
 from typing import List
-from typing import Literal
 from typing import Optional
 
 
@@ -20,7 +20,7 @@ class ProviderReferenceService(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    leg_role: Literal["outbound", "return"]
+    leg_role: ProviderRouteLegRole
     from_name: str = Field(min_length=1)
     to_name: str = Field(min_length=1)
     service_number: str = Field(min_length=1)

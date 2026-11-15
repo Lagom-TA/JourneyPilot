@@ -548,6 +548,12 @@ class OpenAICompatibleLLM(BaseLLM):
         elif response_finish_reason(message) in {"error", "failed", "cancelled", "incomplete", "length", "content_filter"}:
             raise IncompleteModelResponse(message)
 
+    def _validate_stream_completion(self, message: Any) -> None:
+        """流必须收到供应商终止标记，不能把提前断开的正文当作完整答案。"""
+        self._validate_response_completion(message)
+        if response_finish_reason(message) is None:
+            raise IncompleteModelResponse(message)
+
     def _start_record(self, method: str, *, stream: bool) -> Optional[LLMCallRecord]:
         """无 run 上下文时返回 None，跳过记账。
 
@@ -843,7 +849,7 @@ class OpenAICompatibleLLM(BaseLLM):
                                         ttft_ms = (time.perf_counter() - started) * 1000
                                     collected.append(text)
                                     yield text
-                            self._validate_response_completion(full)
+                            self._validate_stream_completion(full)
                         except (GeneratorExit, asyncio.CancelledError) as exc:
                             status, error = "cancelled", exc
                             raise
@@ -862,11 +868,14 @@ class OpenAICompatibleLLM(BaseLLM):
                         async for text in stream:
                             yield text
                 else:
+                    timer = asyncio.timeout(remaining)
                     try:
-                        async with asyncio.timeout(remaining), contextlib.aclosing(stream):
+                        async with timer, contextlib.aclosing(stream):
                             async for text in stream:
                                 yield text
                     except asyncio.TimeoutError as exc:
+                        if not timer.expired():
+                            raise
                         _deadline, observation = observe_current_run_deadline()
                         if observation is None:
                             raise
@@ -943,7 +952,7 @@ class OpenAICompatibleLLM(BaseLLM):
                                     yield {"type": "text_delta", "content": text}
                                 if getattr(chunk, "tool_call_chunks", None):
                                     yield {"type": "tool_call_delta", "content": ""}
-                            self._validate_response_completion(full)
+                            self._validate_stream_completion(full)
                         except (GeneratorExit, asyncio.CancelledError) as exc:
                             status, error = "cancelled", exc
                             raise
@@ -963,11 +972,14 @@ class OpenAICompatibleLLM(BaseLLM):
                         async for event in stream:
                             yield event
                 else:
+                    timer = asyncio.timeout(remaining)
                     try:
-                        async with asyncio.timeout(remaining), contextlib.aclosing(stream):
+                        async with timer, contextlib.aclosing(stream):
                             async for event in stream:
                                 yield event
                     except asyncio.TimeoutError as exc:
+                        if not timer.expired():
+                            raise
                         _deadline, observation = observe_current_run_deadline()
                         if observation is None:
                             raise

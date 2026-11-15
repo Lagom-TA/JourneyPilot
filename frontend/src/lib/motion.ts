@@ -58,15 +58,16 @@ export const transitions = {
 } as const;
 
 
-// 不透明表面承接新内容，避免两套正文在交接时透明叠印。
+// 工作台以不透明表面承接内容，避免交接时文字叠印。
 export const workspaceEnter: Variants = {
-  hidden: { x: distance.panel },
-  visible: { x: 0, transition: transitions.enter(duration.detail) },
+  hidden: { y: distance.content },
+  visible: { y: 0, transition: transitions.enter(duration.detail) },
 };
 
 export const workspaceReturn: Variants = {
   hidden: { x: -distance.panel },
   visible: { x: 0, transition: transitions.enter(duration.slow) },
+  exit: { opacity: 0, y: -distance.content / 2, transition: transitions.exit(duration.fast) },
 };
 
 export const emphasisEnter: Variants = {

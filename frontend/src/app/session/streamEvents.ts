@@ -36,16 +36,12 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
             type: 'FINISH_LAST_THINKING_STEP',
             payload: { endTime: new Date(), tsMs: terminal.ts_ms },
         });
-        if (!assistantMessage.content.trim()) {
-            const readyMessage = '旅行方案已保存，可以查看完整行程。';
-            assistantMessage.content = readyMessage;
-            assistantMessage.displayContent = readyMessage;
-        }
         scopedDispatch({
             type: 'UPDATE_LAST_MESSAGE',
             payload: {
                 content: assistantMessage.content,
                 displayContent: assistantMessage.displayContent,
+                pendingStatusText: undefined,
                 streamCompleted: true,
             },
         });
@@ -69,6 +65,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                 return;
             switch (event.type) {
                 case 'route_confirmation':
+                    scopedDispatch({ type: 'SET_HOME_SUBMISSION_PENDING', payload: { token: ownership.streamToken, pending: false } });
                     waitingForRouteConfirmation = true;
                     if (event.route_decision) {
                         scopedDispatch({ type: 'SET_LAST_ROUTE_DECISION', payload: event.route_decision });
@@ -127,6 +124,12 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                             type: 'UPDATE_MESSAGE_BY_ID',
                             payload: { id: assistantMessage.id, runId: event.run_id },
                         });
+                    }
+                    if (event.route_decision && (
+                        (event.route_decision.route !== 'trip_planning' && event.route_decision.route !== 'trip_refinement')
+                        || event.run_id
+                    )) {
+                        scopedDispatch({ type: 'SET_HOME_SUBMISSION_PENDING', payload: { token: ownership.streamToken, pending: false } });
                     }
                     break;
                 case 'trip_identity_updated': {
@@ -195,6 +198,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     break;
                 }
                 case 'chat_complete': {
+                    scopedDispatch({ type: 'SET_HOME_SUBMISSION_PENDING', payload: { token: ownership.streamToken, pending: false } });
                     waitingForRequiredInput = waitingForRequiredInput || event.requires_input === true || event.run_status === 'awaiting_input';
                     responseCompleted = (!event.run_status || event.run_status === 'completed' || event.run_status === 'awaiting_input')
                         && !event.guard_blocked
@@ -256,6 +260,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     break;
                 }
                 case 'run_cancelled': {
+                    scopedDispatch({ type: 'SET_HOME_SUBMISSION_PENDING', payload: { token: ownership.streamToken, pending: false } });
                     flushFrameNow();
                     scopedDispatch({ type: 'FINISH_LAST_THINKING_STEP', payload: { endTime: new Date() } });
                     const hadPendingDecision = Boolean(currentStateRef.current.planApprovalGate
@@ -301,6 +306,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     break;
                 }
                 case 'run_failed': {
+                    scopedDispatch({ type: 'SET_HOME_SUBMISSION_PENDING', payload: { token: ownership.streamToken, pending: false } });
                     streamFailed = true;
                     if (event.run_cost_summary !== undefined) {
                         scopedDispatch({ type: 'SET_RUN_COST_SUMMARY', payload: event.run_cost_summary });
@@ -332,6 +338,7 @@ export function createStreamEvents(ownership: StreamOwnership, assistantMessage:
                     break;
                 }
                 case 'error':
+                    scopedDispatch({ type: 'SET_HOME_SUBMISSION_PENDING', payload: { token: ownership.streamToken, pending: false } });
                     streamFailed = true;
                     flushFrameNow();
                     if (!presentation.hasReceivedChunk) {

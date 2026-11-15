@@ -77,7 +77,8 @@ export const TravelerPicker: React.FC<{
   adults: number;
   childrenCount: number;
   onChange: (adults: number, children: number) => void;
-}> = ({ adults, childrenCount, onChange }) => {
+  active?: boolean;
+}> = ({ adults, childrenCount, onChange, active = true }) => {
   const [open, setOpen] = React.useState(false);
   const [adultDraft, setAdultDraft] = React.useState(() => countDraft(adults, ADULT_OPTIONS));
   const [childDraft, setChildDraft] = React.useState(() => countDraft(childrenCount, CHILD_OPTIONS));
@@ -88,6 +89,9 @@ export const TravelerPicker: React.FC<{
   const isCompact = useIsCompactViewport();
   const reducedMotion = useReducedMotion();
   const close = React.useCallback(() => setOpen(false), []);
+  React.useEffect(() => {
+    if (!active) close();
+  }, [active, close]);
   const nextAdults = countValue(adultDraft, 1);
   const nextChildren = countValue(childDraft, 0);
   const valid = nextAdults !== null && nextChildren !== null;
@@ -129,7 +133,7 @@ export const TravelerPicker: React.FC<{
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
   }, [close, open]);
 
-  useOverlayDismiss({ open, onDismiss: close, panelRef, trapFocus: isCompact });
+  useOverlayDismiss({ open: open && active, onDismiss: close, panelRef, trapFocus: isCompact, restoreFocus: active });
 
   const toggle = () => {
     if (open) {
@@ -160,7 +164,7 @@ export const TravelerPicker: React.FC<{
         <span>{summary}</span>
         <ChevronDown size={16} aria-hidden="true" />
       </button>
-      {createPortal(
+      {active && createPortal(
         <AnimatePresence>
           {open && (
             <div

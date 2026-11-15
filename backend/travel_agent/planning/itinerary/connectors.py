@@ -437,10 +437,9 @@ def overtimed_connector_gaps(
             if authored is None:
                 continue
             duration = authored.duration_minutes
-        window_minutes = round(
-            (gap.latest_arrival_time - gap.departure_time).total_seconds() / 60
-        )
-        if duration > window_minutes:
+        window_seconds = (gap.latest_arrival_time - gap.departure_time).total_seconds()
+        window_minutes = int(window_seconds // 60)
+        if duration * 60 > window_seconds:
             overtimed.append((gap, duration, window_minutes))
     return overtimed
 

@@ -87,7 +87,10 @@ async def understanding_gate_node(state: Any) -> Dict[str, Any]:
                     "answer": answer.text.strip(),
                 }
             )
-            answer_lines.append(f"问：{question.question}\n答：{answer.text.strip()}")
+            answer_lines.append(
+                f"助手提问（{question.id}）：{question.question}\n"
+                f"旅行者回答：{answer.text.strip()}"
+            )
         return {
             "understanding_qa": [
                 *(state.understanding_qa or []),

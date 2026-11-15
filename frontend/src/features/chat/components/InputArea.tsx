@@ -8,9 +8,8 @@ import { Button } from "../../../components/ui/Button";
 import { Tooltip } from "../../../components/ui/Tooltip";
 import { Send, Square, Check, Plus, Sparkles, Loader2, Copy, X } from "lucide-react";
 import { useSendMessage } from "../../../app/session/useSendMessage";
-import { useSessionManager } from "../../../app/session/useSessionManager";
+import { useStartNewTrip } from "../../../app/session/useStartNewTrip";
 import { useStopRun } from "../../../app/session/useStopRun";
-import { abortSessionStream } from "../../../app/session/streamRegistry";
 import { usePendingFollowups } from "../../../app/session/usePendingFollowups";
 import { PresetSelector } from "../../presets/components/PresetSelector";
 import React, { useState, useRef, useCallback } from 'react';
@@ -22,10 +21,10 @@ export const InputArea: React.FC<{
     targetRunId?: string | null;
     onInputSent?: () => void;
 }> = ({ minimal = false, autoFocus = true, placeholder, initialInput = '', targetRunId, onInputSent }) => {
-    const { state, dispatch, activeStreamsRef } = useApp();
+    const { state, dispatch } = useApp();
     const { sendMessage } = useSendMessage();
     const pending = usePendingFollowups();
-    const { setLastSession } = useSessionManager();
+    const startNewTrip = useStartNewTrip();
     const { stopRun } = useStopRun();
     const [input, setInput] = useState(initialInput);
     const [stoppedInput, setStoppedInput] = useState(initialInput);
@@ -101,11 +100,9 @@ export const InputArea: React.FC<{
         if (!sent) setInput(text);
     }, [dispatch, onInputSent, pending, sendMessage, state.currentTripRunId, state.currentTripRunStatus, state.deliveryBundle, state.isStreaming, stoppedInput, targetRunId]);
     const handleNewChat = useCallback(() => {
-        abortSessionStream(activeStreamsRef.current, state);
-        dispatch({ type: 'CLEAR_CHAT' });
-        setLastSession(null);
+        startNewTrip();
         setStoppedInput('');
-    }, [activeStreamsRef, dispatch, setLastSession, state]);
+    }, [startNewTrip]);
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (!e.nativeEvent.isComposing && e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -187,8 +184,8 @@ export const InputArea: React.FC<{
         && (!state.deliveryBundle || !state.currentSessionId);
     const normalPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改…' : '描述这趟旅行：目的地、日期、同行人、预算、偏好…');
     const stoppedPlaceholder = placeholder ?? (minimal ? '告诉我想怎么改…' : '说说这趟行程想怎么调整…');
-    return (<div className="w-full">
-      {pending.items.length > 0 && <section className="mb-2 rounded-card border border-stroke bg-panel p-3" aria-label="待发送消息">
+    return (<div className={cn('w-full', minimal && 'flex h-full min-h-0 flex-col')}>
+      {pending.items.length > 0 && <section className={cn('mb-2 rounded-card border border-stroke bg-panel p-3', minimal && 'min-h-0 shrink overflow-y-auto overscroll-contain')} aria-label="待发送消息">
         <p className="mb-2 text-xs text-ink-secondary">
           {pendingPaused ? '待发送消息已暂停，可修改或删除后继续。' : '当前回复结束后，以下消息会合并发送。'}
         </p>
@@ -212,13 +209,13 @@ export const InputArea: React.FC<{
           发送待处理消息
         </button>}
       </section>}
-      <div className="rounded-card shadow-sm">
+      <div className={cn('shrink-0 rounded-card shadow-sm', minimal && 'min-h-0 max-h-full shrink')}>
 
-        <div className="overflow-hidden rounded-card border border-stroke bg-panel">
-          <div className="input-normal-row">
+        <div className={cn('overflow-hidden rounded-card border border-stroke bg-panel', minimal && 'h-full max-h-full')}>
+          <div className={cn('input-normal-row', minimal && 'h-full max-h-full')}>
             <div className="input-normal-inner flex items-center gap-2 px-4 py-3">
               {mode === 'stopped' ? (<>
-                  <textarea value={stoppedInput} onChange={(e) => setStoppedInput(e.target.value)} onKeyDown={handleStoppedKeyDown} aria-label="行程调整要求" placeholder={stoppedPlaceholder} rows={1} autoFocus={autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[120px] leading-relaxed')}/>
+                  <textarea value={stoppedInput} onChange={(e) => setStoppedInput(e.target.value)} onKeyDown={handleStoppedKeyDown} aria-label="行程调整要求" placeholder={stoppedPlaceholder} rows={1} autoFocus={autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[120px] leading-relaxed', minimal && '!max-h-full')}/>
                   <Button variant="primary" size="sm" aria-label="发送调整要求" onClick={handleStoppedSend} disabled={!stoppedInput.trim()} className="flex-shrink-0 !rounded-card !h-8 !w-8 !p-0">
                     <Send size={14}/>
                   </Button>
@@ -230,7 +227,7 @@ export const InputArea: React.FC<{
                   <textarea ref={textareaRef} data-testid="brief-input" aria-label="旅行需求" value={input} onChange={(e) => {
                 setInput(e.target.value);
                 adjustHeight();
-            }} onKeyDown={handleKeyDown} disabled={inputDisabled} placeholder={normalPlaceholder} rows={1} name="chat-message" autoComplete="off" autoFocus={minimal && autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[200px] leading-relaxed')}/>
+            }} onKeyDown={handleKeyDown} disabled={inputDisabled} placeholder={normalPlaceholder} rows={1} name="chat-message" autoComplete="off" autoFocus={minimal && autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[200px] leading-relaxed', minimal && '!max-h-full')}/>
                   <Button variant="primary" size="sm" data-testid="send-button" aria-label={showStop ? (state.currentTripRunId ? '停止本次运行' : '停止回答') : '发送'} data-streaming={showStop ? 'true' : 'false'} onClick={showStop ? handleStop : handleSend} disabled={!showStop && (inputDisabled || composer.sendDisabled)} className={cn('flex-shrink-0 !rounded-card !h-8 !w-8 !p-0', showStop &&
                 '!bg-ink/75 hover:!bg-ink !shadow-none')}>
                     {showStop ? <Square size={13}/> : <Send size={14}/>}

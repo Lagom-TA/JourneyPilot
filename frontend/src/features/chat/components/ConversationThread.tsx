@@ -4,7 +4,7 @@ import { useSendMessage } from "../../../app/session/useSendMessage";
 import { useSessionManager } from "../../../app/session/useSessionManager";
 import { cn } from "../../../lib/utils";
 import { duration, easing } from "../../../lib/motion";
-import { projectVisibleMessages } from "../model/conversationFlow";
+import { hideDeliveryReadyNotice, projectVisibleMessages } from "../model/conversationFlow";
 import { InputArea } from "./InputArea";
 import { MessageBubble } from "./MessageBubble";
 import { TripPlanner, type PlannerInspiration } from "../../travel/components/planning/TripPlanner";
@@ -38,6 +38,7 @@ export const HeroEmptyState: React.FC<{
           />
         </div>
         <TravelAtlas onUseExample={useInspiration} />
+        <a className="home-place-attribution" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a>
       </div>
     </div>);
 };
@@ -54,7 +55,8 @@ export const ConversationThread: React.FC<{
     const messages = state.currentMessages;
     const planGatePending = Boolean(state.planApprovalGate && state.planApprovalGate.status !== 'cancelled');
     const visibleMessages = React.useMemo(() => projectVisibleMessages(messages, { planGatePending })
-        .filter((message) => message.type !== 'context_compaction'), [messages, planGatePending]);
+        .filter((message) => message.type !== 'context_compaction')
+        .map((message) => embedded ? hideDeliveryReadyNotice(message) : message), [embedded, messages, planGatePending]);
     const isEmpty = messages.length === 0 && !state.pendingRouteConfirmation;
     const hasJourneyWorkspace = state.workspaceActive || state.deliveryBundle !== null || state.currentTripRunId !== null;
     const [homePlanning, setHomePlanning] = React.useState(false);
@@ -153,7 +155,7 @@ export const ConversationThread: React.FC<{
         onHomePlanSubmitted={() => setHomePlanning(true)}
       />
     </div>) : (<div className="flex h-full min-h-0 flex-col">
-      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+      <div ref={scrollRef} onScroll={handleScroll} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6">
 
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
           {hasEarlierHistory && (<div className="flex justify-center">
@@ -169,7 +171,7 @@ export const ConversationThread: React.FC<{
         })}
           {planGatePending && <TripBriefPlanGate />}
           {state.pendingRouteConfirmation && (<section className="rounded-card border border-stroke bg-panel p-4 shadow-sm sm:p-5" aria-labelledby="route-confirmation-title">
-              <h2 id="route-confirmation-title" className="text-xl font-semibold text-ink">你希望我先做哪件事？</h2>
+              <h2 id="route-confirmation-title" tabIndex={-1} data-route-confirmation-focus className="text-xl font-semibold text-ink">你希望我先做哪件事？</h2>
               <div className="mt-4 flex flex-wrap gap-2">
                 {[state.pendingRouteConfirmation.decision.route, ...state.pendingRouteConfirmation.decision.alternatives.map((item) => item.route)]
                 .filter((route, index, all) => all.indexOf(route) === index)
@@ -200,8 +202,8 @@ export const ConversationThread: React.FC<{
         </div>
       </div>
 
-      {!planGatePending && (<div className={cn('px-4 py-3 sm:px-6', showCanvas && 'border-t border-stroke bg-surface/50')}>
-          <div className="mx-auto max-w-3xl">
+      {!planGatePending && (<div className={cn('shrink-0 px-4 py-3 sm:px-6', embedded && 'flex max-h-full min-h-0 flex-col', showCanvas && 'border-t border-stroke bg-surface/50')}>
+          <div className={cn('mx-auto w-full max-w-3xl', embedded && 'flex max-h-[min(24rem,45dvh)] min-h-0 shrink flex-col')}>
             {!state.pendingRouteConfirmation && <InputArea minimal={embedded} initialInput={initialInput} targetRunId={targetRunId} onInputSent={onInputSent}/>}
           </div>
         </div>)}

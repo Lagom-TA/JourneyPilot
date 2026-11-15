@@ -30,6 +30,7 @@ export const initialState: AppState = {
     planApprovalGate: null,
     understandingQuestions: null,
     workspaceActive: false,
+    homeSubmissionPending: null,
     pendingRouteConfirmation: null,
     lastRouteDecision: null,
     controlledTripIdentity: null,

@@ -20,7 +20,7 @@ from .research.execution_lease import observe_execution_lease
 logger = logging.getLogger(__name__)
 
 
-def invocation_scope(state, node, config=None):
+def invocation_scope(state, node, config=None, *, include_submitted_identity=True):
     # 参与任务身份的全部语义输入，包含 amendment、历史与 generation；耗时与
     # 累计计量在恢复时会变化，不属于任务身份。理解阶段的问答随轮次推进，
     # 必须进入身份，否则同一节点的新一轮会错误命中上一轮的恢复日志。
@@ -46,15 +46,24 @@ def invocation_scope(state, node, config=None):
     }
     if node == "itinerary_planner":
         keys.update({
-            "placement_skeleton", "trip_workspace", "composition_failure_context",
-            "composition_reschedule_rounds", "research_redo_requests", "research_redo_rounds",
+            "placement_skeleton", "composition_fallback_skeleton", "trip_workspace",
+            "composition_failure_context", "composition_reschedule_rounds",
+            "research_redo_requests", "research_redo_rounds",
         })
     if node == NODE_UNDERSTANDING_AGENT:
         keys.update({
             "current_time", "plan_gate_amendment", "pending_intent_amendments",
-            "refinement_context",
+            "refinement_context", "submitted_trip_identity",
         })
     fields = state.model_dump(mode="json", include=keys)
+    if node == NODE_UNDERSTANDING_AGENT and not include_submitted_identity:
+        fields.pop("submitted_trip_identity", None)
+    research_plan = fields.get("research_plan")
+    if isinstance(research_plan, dict) and research_plan.get("agent_guidance") is None:
+        research_plan.pop("agent_guidance", None)
+    if node == "itinerary_planner" and fields.get("composition_fallback_skeleton") is None:
+        # 旧检查点没有该字段；空值不参与身份，才能在升级后继续命中旧 journal。
+        fields.pop("composition_fallback_skeleton", None)
     if node != NODE_UNDERSTANDING_AGENT:
         fields["assignment"] = resolve_agent_assignment(state.agent_assignments, node)
     fields["plan_gate_decision"] = state.plan_gate_decision
@@ -83,6 +92,12 @@ def with_worker_recovery(node, worker):
             return await worker(state, config)
         scope = invocation_scope(state, node, config)
         version, payload = await store.load(state.run_id, scope)
+        if version == 0 and node == NODE_UNDERSTANDING_AGENT and state.submitted_trip_identity is None:
+            # 当前记录只要存在就必须优先，部分工具进度也不能被其他记录覆盖。
+            prior_scope = invocation_scope(state, node, config, include_submitted_identity=False)
+            prior_version, prior_payload = await store.load(state.run_id, prior_scope)
+            if prior_version != 0:
+                scope, version, payload = prior_scope, prior_version, prior_payload
         journal = WorkerJournal(
             store, state.run_id, scope, version, payload, current_execution_lease.get()
         )

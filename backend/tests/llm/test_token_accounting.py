@@ -332,7 +332,8 @@ async def test_stream_uses_the_last_cumulative_usage_sample(monkeypatch):
             yield AIMessageChunk(content=text, usage_metadata={
                 "input_tokens": 100, "output_tokens": output, "total_tokens": 100 + output,
             }, response_metadata={"token_usage": {"prompt_tokens": 100, "completion_tokens": output,
-                                                   "prompt_cache_hit_tokens": 40}})
+                                                   "prompt_cache_hit_tokens": 40},
+                                  **({"finish_reason": "stop"} if output == 20 else {})})
 
     monkeypatch.setattr(ReasoningChatOpenAI, "astream", stream)
     recorder = UsageRecorder()

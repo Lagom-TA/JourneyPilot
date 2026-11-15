@@ -18,6 +18,7 @@ from travel_agent.planning.requirements.constraints.items import (
 from travel_agent.planning.requirements.constraints.resolution import (
     _dedupe_constraints,
     _resolve_conflicts,
+    normalize_constraint_pack,
 )
 from travel_agent.planning.requirements.constraints.sources import (
     _auto_portrait_block,
@@ -126,7 +127,10 @@ async def build_constraint_pack(
 
     # 后续模型回复没有提到此前生效的约束，不等于用户撤回了它；
     # 保留到有显式的生命周期决定为止。
-    previous_pack = _get(state, "constraint_pack") or {}
+    previous_pack = normalize_constraint_pack(
+        _get(state, "constraint_pack"),
+        preset_pack_constraints=_get(state, "preset_pack_constraints") or {},
+    )
     if isinstance(previous_pack, dict):
         for previous in previous_pack.get("constraints") or []:
             if not isinstance(previous, dict) or previous.get("status") not in (None, "active"):
@@ -158,7 +162,7 @@ async def build_constraint_pack(
         ),
     }
 
-    return {
+    return normalize_constraint_pack({
         "pack_meta": {
             "run_id": run_id,
             "user_id": _get(state, "user_id") or "",
@@ -173,4 +177,4 @@ async def build_constraint_pack(
         "constraints": constraints,
         "hard_constraints": [c for c in active if c["type"] == "hard"],
         "soft_preferences": [c for c in active if c["type"] == "soft"],
-    }
+    })

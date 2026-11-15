@@ -28,7 +28,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                 currentTripRunStatus: action.payload.status !== undefined
                     ? action.payload.status
                     : (isDifferentRun ? null : state.currentTripRunStatus),
-                currentTripRunRecovery: isDifferentRun ? null : state.currentTripRunRecovery,
+                currentTripRunRecovery: isDifferentRun || action.payload.status === 'running'
+                    ? null
+                    : state.currentTripRunRecovery,
                 currentTripRunReadOnly: action.payload.readOnly ?? (isDifferentRun ? false : state.currentTripRunReadOnly),
                 tripRunSource: action.payload.source ?? (action.payload.runId ? state.tripRunSource : 'none'),
                 tripSummaryCard: isDifferentRun ? null : state.tripSummaryCard,
@@ -116,6 +118,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                 planApprovalGate: null,
                 understandingQuestions: null,
                 workspaceActive: false,
+                homeSubmissionPending: null,
                 pendingRouteConfirmation: null,
                 lastRouteDecision: null,
                 controlledTripIdentity: null,
@@ -166,6 +169,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         case 'SET_PLAN_APPROVAL_GATE':
         case 'SET_UNDERSTANDING_QUESTIONS':
         case 'ENTER_WORKSPACE':
+        case 'SET_HOME_SUBMISSION_PENDING':
         case 'SET_ROUTE_CONFIRMATION':
         case 'SET_LAST_ROUTE_DECISION':
         case 'SET_CONTROLLED_TRIP_IDENTITY':

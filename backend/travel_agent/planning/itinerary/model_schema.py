@@ -18,8 +18,9 @@ def _composition_response_schema(
     *,
     skeleton_only: bool = False,
     strict_wire: bool = True,
+    dynamic_transport: bool = False,
 ) -> Dict[str, Any]:
-    """把每种落位分支绑定到同类型的已选候选。"""
+    """为每种落位提供对应的候选结构。"""
     schema = ItineraryCompositionDraft.model_json_schema()
     definitions = schema.get("$defs", {})
 
@@ -74,7 +75,10 @@ def _composition_response_schema(
         if candidate_kind == "transport" and skeleton_only:
             # 骨架不包含任何市内接驳。
             properties.pop("authored_route", None)
-        if ids_by_kind is not None:
+        if dynamic_transport and candidate_kind == "transport" and skeleton_only:
+            # 交通补查会在组合过程中向目录添加候选，初始结构不能提前封死其标识。
+            properties["candidate_id"] = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        elif ids_by_kind is not None:
             selected = ids_by_kind[candidate_kind]
             may_author = (
                 "authored_place" in properties or "authored_route" in properties

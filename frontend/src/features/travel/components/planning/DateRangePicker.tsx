@@ -98,7 +98,8 @@ export const DateRangePicker: React.FC<{
     onChange: (start: string, end: string) => void;
     hideLabel?: boolean;
     condensed?: boolean;
-}> = ({ start, end, onChange, hideLabel = false, condensed = false }) => {
+    active?: boolean;
+}> = ({ start, end, onChange, hideLabel = false, condensed = false, active = true }) => {
     const [open, setOpen] = React.useState(false);
     const [visibleMonth, setVisibleMonth] = React.useState(() => fromIso(start) || new Date());
     const today = localToday();
@@ -108,6 +109,9 @@ export const DateRangePicker: React.FC<{
     const [anchor, setAnchor] = React.useState<AnchorPosition | null>(null);
     const isCompact = useIsCompactViewport();
     const close = React.useCallback(() => setOpen(false), []);
+    React.useEffect(() => {
+        if (!active) close();
+    }, [active, close]);
     const days = daysBetween(start, end);
     const todayDay = calendarDay(today);
     const startDay = calendarDay(start);
@@ -157,7 +161,7 @@ export const DateRangePicker: React.FC<{
             document.removeEventListener('mousedown', onPointerDown);
         };
     }, [close, open]);
-    useOverlayDismiss({ open, onDismiss: close, panelRef });
+    useOverlayDismiss({ open: open && active, onDismiss: close, panelRef, restoreFocus: active });
     const openPicker = () => {
         setVisibleMonth(fromIso(start) || new Date());
         setOpen(true);
@@ -194,7 +198,7 @@ export const DateRangePicker: React.FC<{
         </span>
       </button>
 
-      {createPortal(<AnimatePresence>
+      {active && createPortal(<AnimatePresence>
         {open && (
           <div
             className={isCompact ? 'fixed inset-0 flex items-end' : 'fixed'}

@@ -84,12 +84,16 @@ _HARD_HINTS = _BUDGET_HARD_HINTS + (
 
 
 _EXPLICIT_SOURCES = {
-    "manual_profile",
-    "session_anchor",
     "current_query",
     "plan_gate_amendment",
     "run_supplement",
+    "preset",
 }
+
+
+def _source_is_current(source: str) -> bool:
+    """只有明确属于本次输入的来源可以作为当前要求。"""
+    return source in _EXPLICIT_SOURCES
 
 
 def _now_iso() -> str:
@@ -126,15 +130,15 @@ def _normalize_category(cat: Any) -> str:
 
 
 def _default_type(category: str, value: str, source: str) -> str:
-    """按类别确定默认强度；预算仅在显式来源且有上限措辞时为 hard。"""
+    """按类别确定默认强度；预设自由文本的力度交由语义理解。"""
+    if source == "preset":
+        return "soft"
     if category in _HARD_CATEGORIES:
         return "hard"
     if category in _CONDITIONAL_HARD_CATEGORIES:
         v = (value or "").lower()
         hints = _BUDGET_HARD_HINTS if category == "budget_cap" else _HARD_HINTS
-        if (source in _EXPLICIT_SOURCES or source == "memory_fact") and any(
-            h in v for h in hints
-        ):
+        if _source_is_current(source) and any(h in v for h in hints):
             return "hard"
     return "soft"
 
@@ -251,11 +255,7 @@ def _make_item(
     params = _canonical_constraint_params(category, value, params)
     ctype = _default_type(category, value, source)
 
-    if (
-        ctype == "hard"
-        and source not in _EXPLICIT_SOURCES
-        and not (source == "memory_fact" and confidence == "high")
-    ):
+    if ctype == "hard" and not _source_is_current(source):
         ctype = "soft"
     policy = _enforcement_policy(category, params, ctype)
     return {

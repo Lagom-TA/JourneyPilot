@@ -17,6 +17,12 @@ export function travelReducer<T extends TravelState>(state: T, action: TravelAct
             return { ...state, understandingQuestions: action.payload };
         case 'ENTER_WORKSPACE':
             return { ...state, workspaceActive: true };
+        case 'SET_HOME_SUBMISSION_PENDING':
+            if (action.payload.pending)
+                return { ...state, homeSubmissionPending: action.payload.token };
+            return state.homeSubmissionPending === action.payload.token
+                ? { ...state, homeSubmissionPending: null }
+                : state;
         case 'SET_ROUTE_CONFIRMATION':
             return { ...state, pendingRouteConfirmation: action.payload };
         case 'SET_LAST_ROUTE_DECISION':

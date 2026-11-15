@@ -45,6 +45,85 @@ describe('session runtime behavior', () => {
     expect(appReducer(restored, { type: 'SET_SESSION_ID', payload: 'server-id' }).conversationEpoch).toBe(21);
   });
 
+  it('keeps the pending home submission scoped to its session and clears it with the conversation', () => {
+    const pending = appReducer(stateFor('A'), { type: 'SET_HOME_SUBMISSION_PENDING', payload: { token: 'home-A', pending: true } });
+    const snapshot = createSessionRuntimeSnapshot(pending);
+    const visible = { ...stateFor('B'), homeSubmissionPending: null };
+    const restored = appReducer(visible, { type: 'RESTORE_SESSION_RUNTIME', payload: snapshot });
+
+    expect(snapshot.homeSubmissionPending).toBe('home-A');
+    expect(restored.homeSubmissionPending).toBe('home-A');
+    expect(appReducer(restored, { type: 'CLEAR_CHAT' }).homeSubmissionPending).toBeNull();
+  });
+
+  it('does not let an older request clear a newer home submission', () => {
+    const pending = appReducer(initialState, { type: 'SET_HOME_SUBMISSION_PENDING', payload: { token: 'new', pending: true } });
+    const stale = appReducer(pending, { type: 'SET_HOME_SUBMISSION_PENDING', payload: { token: 'old', pending: false } });
+    expect(stale).toBe(pending);
+    expect(stale.homeSubmissionPending).toBe('new');
+    expect(appReducer(stale, { type: 'SET_HOME_SUBMISSION_PENDING', payload: { token: 'new', pending: false } }).homeSubmissionPending).toBeNull();
+  });
+
+  it.each([
+    { type: 'planning', route: 'trip_planning' as const, expectedRun: 'run-pending' },
+    { type: 'answer', route: 'fast_answer' as const, expectedRun: null },
+    { type: 'discovery', route: 'destination_discovery' as const, expectedRun: null },
+  ])('resolves a pending home submission on $type routing', ({ route, expectedRun }) => {
+    const assistant = message('temporary', '');
+    let state: AppState = { ...initialState, currentMessages: [assistant], homeSubmissionPending: 'home', isStreaming: true };
+    const currentStateRef = { current: state };
+    const dispatch = (action: AppAction) => { state = appReducer(state, action); currentStateRef.current = state; };
+    const active = activeStreams({ token: 'home', sessionId: null, runId: null, controller: null });
+    const owner = createStreamOwnership('home', null, 0, null, null, active, currentStateRef, { current: new Map() }, dispatch);
+    const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);
+    const events = createStreamEvents(owner, assistant, '旅行想法', null, undefined, currentStateRef, () => {}, frame);
+
+    events.handleEvent({ type: 'chat_start', run_id: 'run-pending', message_id: assistant.id, route_decision: {
+      route, confidence: 1, alternatives: [], signals: [], requires_trip_draft: route === 'trip_planning', requires_confirmation: false,
+    } });
+
+    expect(state.homeSubmissionPending).toBeNull();
+    expect(state.currentTripRunId).toBe(expectedRun);
+  });
+
+  it('clears the pending home submission when the route needs confirmation', () => {
+    const assistant = message('temporary', '');
+    let state: AppState = { ...initialState, currentMessages: [assistant], homeSubmissionPending: 'home', isStreaming: true };
+    const currentStateRef = { current: state };
+    const dispatch = (action: AppAction) => { state = appReducer(state, action); currentStateRef.current = state; };
+    const active = activeStreams({ token: 'home', sessionId: null, runId: null, controller: null });
+    const owner = createStreamOwnership('home', null, 0, null, null, active, currentStateRef, { current: new Map() }, dispatch);
+    const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);
+    const events = createStreamEvents(owner, assistant, '旅行想法', null, undefined, currentStateRef, () => {}, frame);
+
+    events.handleEvent({ type: 'route_confirmation', route_decision: {
+      route: 'trip_planning', confidence: 0.5, alternatives: [], signals: [], requires_trip_draft: true, requires_confirmation: true,
+    } });
+
+    expect(state.homeSubmissionPending).toBeNull();
+    expect(state.pendingRouteConfirmation?.rawInput).toBe('旅行想法');
+    expect(state.currentTripRunId).toBeNull();
+  });
+
+  it('shows a guard-blocked reply when the stream finishes without a route decision', () => {
+    const assistant = message('temporary', '');
+    let state: AppState = { ...initialState, currentMessages: [assistant], homeSubmissionPending: 'home', isStreaming: true };
+    const currentStateRef = { current: state };
+    const dispatch = (action: AppAction) => { state = appReducer(state, action); currentStateRef.current = state; };
+    const active = activeStreams({ token: 'home', sessionId: null, runId: null, controller: null });
+    const owner = createStreamOwnership('home', null, 0, null, null, active, currentStateRef, { current: new Map() }, dispatch);
+    const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);
+    const events = createStreamEvents(owner, assistant, '旅行想法', null, undefined, currentStateRef, () => {}, frame);
+
+    events.handleEvent({ type: 'chat_start', run_id: 'blocked-run', message_id: assistant.id });
+    expect(state.homeSubmissionPending).toBe('home');
+    events.handleEvent({ type: 'chat_complete', run_id: 'blocked-run', run_status: 'failed', guard_blocked: true, final_content: '请调整请求后继续。' });
+
+    expect(state.homeSubmissionPending).toBeNull();
+    expect(state.currentTripRunId).toBeNull();
+    expect(state.currentMessages[0]).toMatchObject({ type: 'guard_blocked', displayContent: '请调整请求后继续。' });
+  });
+
   it('keeps hidden stream updates and delivery in its cached session using the root reducer', () => {
     const currentStateRef = { current: stateFor('B') };
     const activeStreamRef = activeStreams({ token: 'stream-A', sessionId: 'A', runId: 'run-A', controller: null });
@@ -61,6 +140,20 @@ describe('session runtime behavior', () => {
     expect(cached.runCostLive?.callCount).toBe(1);
     expect(cached.deliveryBundle?.manifest.bundle_id).toBe('bundle-1');
     expect(appReducer(currentStateRef.current, { type: 'RESTORE_SESSION_RUNTIME', payload: cached }).currentMessages[0].content).toBe('A 的后台回答');
+  });
+
+  it('keeps a live run hidden while an older run in the same session is open', () => {
+    const currentStateRef = { current: { ...stateFor('A'), currentTripRunId: 'run-old', currentTripRunReadOnly: true } };
+    const active = activeStreams({ token: 'stream-A', sessionId: 'A', runId: 'run-A', controller: null });
+    const cache = { current: new Map<string, SessionRuntimeSnapshot>([['A', createSessionRuntimeSnapshot(stateFor('A'))]]) };
+    const dispatch = vi.fn();
+    const owner = createStreamOwnership('stream-A', 'A', 0, 'run-A', null, active, currentStateRef, cache, dispatch);
+
+    owner.scopedDispatch({ type: 'UPDATE_LAST_MESSAGE', payload: { content: '规划仍在继续', displayContent: '规划仍在继续' } });
+
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(currentStateRef.current.currentMessages[0].content).toBe('A');
+    expect(cache.current.get('A')?.currentMessages[0].content).toBe('规划仍在继续');
   });
 
   it('understanding questions bind to the run, survive awaiting completion and clear on resume', () => {
@@ -208,6 +301,20 @@ describe('session runtime behavior', () => {
     expect(next.runCostLive).toMatchObject({ runId: 'run-B', callCount: 1, totalTokens: 15, totalCostUsd: 0.03 });
   });
 
+  it('clears stale recovery when the same Run resumes', () => {
+    const resumable = appReducer({ ...stateFor('A'), currentTripRunRecovery: { status: 'resume_available', reason: null, resumable: true } }, {
+      type: 'SET_CURRENT_TRIP_RUN', payload: { runId: 'run-A', status: 'running' },
+    });
+    expect(resumable.currentTripRunRecovery).toBeNull();
+  });
+
+  it('keeps recovery for a terminal status until detail refreshes it', () => {
+    const failed = appReducer({ ...stateFor('A'), currentTripRunRecovery: { status: 'resume_available', reason: null, resumable: true } }, {
+      type: 'SET_CURRENT_TRIP_RUN', payload: { runId: 'run-A', status: 'failed' },
+    });
+    expect(failed.currentTripRunRecovery?.resumable).toBe(true);
+  });
+
   it('keeps the delivered trip visible while a new revision is running', () => {
     const delivered = appReducer(stateFor('A'), { type: 'CONFIRM_DELIVERY_BUNDLE', payload: deliveryBundle() });
     const pending = appReducer(delivered, { type: 'SET_CURRENT_TRIP_RUN', payload: { runId: 'revision-A', status: 'running', preserveDelivery: true } });
@@ -271,6 +378,25 @@ describe('session runtime behavior', () => {
     frame.flushFrameNow();
     expect(cancel).toHaveBeenCalledWith(1);
     expect(dispatch.mock.calls.map(call => call[0].type)).toEqual(['USAGE_UPDATE', 'UPDATE_LAST_MESSAGE']);
+  });
+
+  it.each(['', '已经调整第二天的行程。'])('finishes delivery without inventing a reply: %s', (answer) => {
+    const assistant = { ...message('assistant', answer), pendingStatusText: '正在整理行程' };
+    let state: AppState = { ...stateFor('A'), currentMessages: [assistant] };
+    const currentStateRef = { current: state };
+    const dispatch = (action: AppAction) => { state = appReducer(state, action); currentStateRef.current = state; };
+    const active = activeStreams({ token: 'delivery', sessionId: 'A', runId: 'run-A', controller: null });
+    const owner = createStreamOwnership('delivery', 'A', 0, 'run-A', null, active, currentStateRef, { current: new Map() }, dispatch);
+    const frame = createStreamFrameBatch(owner.scopedDispatch, assistant);
+    const events = createStreamEvents(owner, assistant, '规划', 'run-A', undefined, currentStateRef, () => {}, frame);
+    const bundle = deliveryBundle();
+
+    events.handleEvent({ type: 'delivery_ready', event_seq: 1, run_id: 'run-A', bundle_id: 'bundle-1', bundle, manifest: bundle.manifest });
+    events.handleEvent({ type: 'run_terminal', event_seq: 2, run_id: 'run-A', bundle_id: 'bundle-1', status: 'completed' });
+
+    expect(state.deliveryBundle).toEqual(bundle);
+    expect(state.currentTripRunStatus).toBe('completed');
+    expect(state.currentMessages[0]).toMatchObject({ content: answer, displayContent: answer, pendingStatusText: undefined, streamCompleted: true });
   });
 
   it('accepts terminal-before-ready only with matching identity and forward sequence', () => {
