@@ -100,7 +100,7 @@ test('long adjustment history scrolls independently of the composer', async ({ p
   const conversation = page.getByRole('region', { name: '调整行程对话' });
   const input = conversation.getByTestId('brief-input');
   const scroll = conversation.locator('.overflow-y-auto').first();
-  await expect(scroll).toHaveJSProperty('scrollTop', await scroll.evaluate((element) => element.scrollHeight - element.clientHeight));
+  await expect.poll(() => scroll.evaluate((element) => Math.abs(element.scrollHeight - element.clientHeight - element.scrollTop))).toBeLessThanOrEqual(1);
   const before = await input.boundingBox();
   await scroll.evaluate((element) => { element.scrollTop = 0; });
   await expect(conversation.getByText(/^对话记录 0：/)).toBeVisible();

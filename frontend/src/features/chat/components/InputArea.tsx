@@ -209,11 +209,11 @@ export const InputArea: React.FC<{
           发送待处理消息
         </button>}
       </section>}
-      <div className={cn('shrink-0 rounded-card shadow-sm', minimal && 'min-h-0 max-h-full shrink')}>
+      <div className={cn('rounded-card shadow-sm', minimal ? 'min-h-0 max-h-full shrink' : 'shrink-0')}>
 
         <div className={cn('overflow-hidden rounded-card border border-stroke bg-panel', minimal && 'h-full max-h-full')}>
           <div className={cn('input-normal-row', minimal && 'h-full max-h-full')}>
-            <div className="input-normal-inner flex items-center gap-2 px-4 py-3">
+            <div className={cn('input-normal-inner flex items-center gap-2 px-4 py-3', minimal && 'h-full min-h-0')}>
               {mode === 'stopped' ? (<>
                   <textarea value={stoppedInput} onChange={(e) => setStoppedInput(e.target.value)} onKeyDown={handleStoppedKeyDown} aria-label="行程调整要求" placeholder={stoppedPlaceholder} rows={1} autoFocus={autoFocus} className={cn('flex-1 bg-transparent border-none resize-none', 'text-sm text-ink placeholder:text-ink-muted', 'min-h-[24px] max-h-[120px] leading-relaxed', minimal && '!max-h-full')}/>
                   <Button variant="primary" size="sm" aria-label="发送调整要求" onClick={handleStoppedSend} disabled={!stoppedInput.trim()} className="flex-shrink-0 !rounded-card !h-8 !w-8 !p-0">

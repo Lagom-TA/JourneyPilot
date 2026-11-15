@@ -721,8 +721,10 @@ test('many queued adjustments do not push the composer below the panel', async (
   const panel = conversation.locator('.journey-content-scroll');
   await input.focus();
   const [inputBox, panelBox] = await Promise.all([input.boundingBox(), panel.boundingBox()]);
-  expect(Math.abs(panelBox!.y + panelBox!.height - (inputBox!.y + inputBox!.height))).toBeLessThan(35);
-  await expect(input).toBeInViewport();
+  expect(inputBox!.y).toBeGreaterThanOrEqual(panelBox!.y);
+  expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(panelBox!.y + panelBox!.height);
+  await expect(input).toBeInViewport({ ratio: 1 });
+  await expect(conversation.getByTestId('send-button')).toBeInViewport({ ratio: 1 });
   expect(await input.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
   await assertOffline(page, fixture);
 });
