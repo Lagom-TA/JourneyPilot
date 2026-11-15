@@ -309,7 +309,7 @@ def test_json_object_downgrade_does_not_duplicate_an_embedded_schema():
     assert prepared == messages
 
 
-def test_task_scoped_output_limit_replaces_both_openrouter_token_fields():
+def test_task_scoped_output_limit_replaces_both_openrouter_token_fields(offline_http_environment):
     from langchain_core.messages import HumanMessage
 
     from travel_agent.llm.router import ModelTier, OpenAICompatibleLLM

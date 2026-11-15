@@ -7,8 +7,6 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from travel_agent.storage import database
-
 pytestmark = [
     pytest.mark.postgres,
     pytest.mark.skipif(os.getenv("JP_MEMORY_LIFECYCLE_ROLLBACK_TESTS") != "1", reason="需要显式启用配置库的临时表验证"),
@@ -16,11 +14,11 @@ pytestmark = [
 
 
 @pytest.fixture
-async def memory_database(monkeypatch):
+async def memory_database(monkeypatch, rollback_database_engine):
     from travel_agent.memory import manual_facts, memory_extractor, memory_store, user_profile
     from travel_agent.storage import background_job_store, memory_lifecycle_store
 
-    engine = database.get_engine()
+    engine = rollback_database_engine
     async with engine.connect() as connection:
         outer = await connection.begin()
         try:
@@ -31,16 +29,6 @@ async def memory_database(monkeypatch):
                 await connection.execute(text(
                     f"CREATE TEMP TABLE {name} (LIKE public.{name} INCLUDING ALL) ON COMMIT DROP"
                 ))
-            await connection.execute(text(
-                "ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS "
-                "memory_management_history JSONB NOT NULL DEFAULT '[]'::jsonb"
-            ))
-            await connection.execute(text(
-                "ALTER TABLE memory_facts ADD COLUMN IF NOT EXISTS memory_revision INTEGER NOT NULL DEFAULT 0"
-            ))
-            await connection.execute(text(
-                "ALTER TABLE memory_relations ADD COLUMN IF NOT EXISTS memory_revision INTEGER NOT NULL DEFAULT 0"
-            ))
             for name, field in (("memory_facts", "fact_id"), ("memory_entities", "entity_id"), ("memory_relations", "relation_id")):
                 await connection.execute(text(f"CREATE TEMP SEQUENCE {name}_lifecycle_sequence"))
                 await connection.execute(text(
@@ -62,7 +50,6 @@ async def memory_database(monkeypatch):
                 await session.close()
         finally:
             await outer.rollback()
-    await database.close_db()
 
 
 async def test_delete_all_cancels_old_jobs_and_fences_delayed_enqueue(memory_database):

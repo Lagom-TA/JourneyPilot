@@ -13,6 +13,7 @@ from typing import Iterator
 import pytest
 
 _USAGE_SPOOL_DIR = pytest.StashKey[str]()
+_PREVIOUS_USAGE_SPOOL_PATH = pytest.StashKey[str | None]()
 
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
 if str(_BACKEND_DIR) not in sys.path:
@@ -27,29 +28,52 @@ def pytest_configure(config: pytest.Config) -> None:
     # 一旦写进去，会被后端反复重试入库并因外键失败。整个测试会话改用一次性目录。
     spool_dir = tempfile.mkdtemp(prefix="jp_test_usage_")
     config.stash[_USAGE_SPOOL_DIR] = spool_dir
+    config.stash[_PREVIOUS_USAGE_SPOOL_PATH] = os.environ.get("JOURNEYPILOT_USAGE__SPOOL_PATH")
     os.environ["JOURNEYPILOT_USAGE__SPOOL_PATH"] = str(Path(spool_dir) / "outbox.sqlite3")
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(autouse=True)
 def _isolated_usage_recorder():
-    """进程级用量记录器在整个测试会话里固定指向一次性 spool。
+    """每个用例使用独立的内存 SQLite，结束后关闭连接并还原单例。
 
-    只设环境变量不够：个别配置用例会替换全局配置缓存，之后才创建的记录器会
-    回到默认路径，写进本机后端共用的真实 spool。
+    固定单例使配置替身不会把假 run 写进应用 spool；按用例隔离待确认记录与
+    失败计数。落盘、重开和进程恢复由显式传入临时路径的 spool 测试负责。
     """
 
     from travel_agent.llm import usage
 
-    recorder = usage.UsageRecorder(spool_path=Path(os.environ["JOURNEYPILOT_USAGE__SPOOL_PATH"]))
+    previous = usage._recorder_singleton
+    recorder = usage.UsageRecorder()
+    connection = recorder._spool.db if recorder._spool is not None else None
     usage._recorder_singleton = recorder
-    yield recorder
-    usage._recorder_singleton = None
+    try:
+        yield recorder
+    finally:
+        usage._recorder_singleton = previous
+        if connection is not None:
+            connection.close()
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:
+    if _PREVIOUS_USAGE_SPOOL_PATH in config.stash:
+        previous = config.stash[_PREVIOUS_USAGE_SPOOL_PATH]
+        if previous is None:
+            os.environ.pop("JOURNEYPILOT_USAGE__SPOOL_PATH", None)
+        else:
+            os.environ["JOURNEYPILOT_USAGE__SPOOL_PATH"] = previous
     spool_dir = config.stash.get(_USAGE_SPOOL_DIR, None)
     if spool_dir:
         shutil.rmtree(spool_dir, ignore_errors=True)
+
+
+@pytest.fixture
+def offline_http_environment(monkeypatch):
+    """仅为显式使用替身的测试隔离代理，不改变真实集成环境。"""
+
+    # SDK 即使接入 MockTransport，也可能初始化未使用的同步客户端。
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv(name.lower(), raising=False)
 
 
 @pytest.fixture(scope="session")
@@ -150,6 +174,18 @@ async def migrated_async_database(temp_database, monkeypatch):
         await close_db()
         monkeypatch.undo()
         reload_settings()
+
+
+@pytest.fixture
+async def rollback_database_engine():
+    """配置库回滚测试共享引擎生命周期，初始化失败也释放连接池。"""
+
+    from travel_agent.storage import database
+
+    try:
+        yield database.get_engine()
+    finally:
+        await database.close_db()
 
 
 @pytest.fixture
