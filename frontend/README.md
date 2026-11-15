@@ -74,6 +74,7 @@ npm run lint         # 运行 ESLint 代码检查
 npm run test         # 运行 Vitest 单元测试
 npm run build        # 构建生产产物至 ../backend/static
 npm run check        # 依次执行 type-check、lint、test 与 build
+npm run test:e2e:offline  # 自动启动独立前端，运行使用合成数据的浏览器回归
 ```
 
 子路径构建示例：
@@ -82,4 +83,6 @@ npm run check        # 依次执行 type-check、lint、test 与 build
 VITE_BASE=/journeypilot/ VITE_OUT_DIR=dist npm run build
 ```
 
-Playwright 浏览器端到端测试说明请参阅 [e2e/README.md](e2e/README.md)。
+离线浏览器测试需要先执行 `npx playwright install chromium`，运行时不需要后端或模型密钥。
+真实服务联调通过 `JOURNEYPILOT_APP_URL=<URL> npm run test:e2e:integration` 运行；写入与付费规划需要单独启用。
+项目分工与运行条件见 [e2e/README.md](e2e/README.md)。

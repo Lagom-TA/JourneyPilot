@@ -6,7 +6,7 @@ type PlanStep = { step: number; agents: string[]; tasks?: Record<string, string>
 
 async function openWorkspace(page: Page, scene: GenerationWorkspaceScene = 'research', variant: GateVariant = 'workspace') {
   const errors: string[] = [];
-  const origin = new URL(process.env.JOURNEYPILOT_APP_URL || 'http://127.0.0.1:8080').origin;
+  const origin = new URL(test.info().project.use.baseURL!).origin;
   page.on('pageerror', error => errors.push(error.message));
   await page.route('**/*', async route => {
     const url = new URL(route.request().url());

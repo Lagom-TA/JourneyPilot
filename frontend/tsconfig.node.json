@@ -23,8 +23,10 @@
   // 而 `composite` 要求所有文件都列入 include，因此它们由 `tsconfig.json` 检查。
   "include": [
     "vite.config.ts",
+    "vite.offline.config.ts",
     "vitest.config.ts",
     "playwright.config.ts",
+    "playwright.offline.config.ts",
     "tailwind.config.ts",
     "breakpoints.json",
     "e2e/**/*.ts"

@@ -165,7 +165,9 @@ uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignor
 cd frontend && npm ci && npm run check
 ```
 
-数据库集成测试与浏览器端到端测试的运行方式分别见[后端测试说明](backend/tests/README.md)与[端到端测试说明](frontend/e2e/README.md)。
+涉及浏览器行为时，在 `frontend/` 首次执行 `npx playwright install chromium`，再运行 `npm run test:e2e:offline`。该入口自动启动独立 Vite，使用合成 API 夹具，无需后端或模型密钥。已有完整部署通过 `JOURNEYPILOT_APP_URL=<URL> npm run test:e2e:integration` 验证，持久化写入与真实模型调用需要显式启用。
+
+数据库集成、按影响选择用例与浏览器验收范围分别见[后端测试说明](backend/tests/README.md)与[端到端测试说明](frontend/e2e/README.md)。
 
 - [文档索引](docs/README.md) · [架构总览](docs/architecture/overview.md) · [配置参考](docs/configuration.md)
 - [参与贡献](CONTRIBUTING.md) · [安全策略](SECURITY.md)
