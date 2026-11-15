@@ -9,9 +9,9 @@ PR 和 main 推送自动运行；`changes` 作业按变更路径决定哪些作�
 
 - 后端（`backend/`、生成的配置文档变化时）：ruff；`config validate` 与 `config docs --check`；非数据库单元测试与离线迁移 SQL；迁移脚本目录只有一个 alembic head。只安装 `dev` 依赖组，不装本地 embedding 组：单元测试不依赖它。PDF 字体缺失时 PDF 测试失败而不是跳过。
 - 前端与 MCP（`frontend/`、`backend/mcp/` 变化时，同一个 Node 22 作业）：`npm run check`（类型检查、lint、单元测试、构建）；MCP 的 `npm ci` 与站表数据模块语法检查。
-- shell（`.sh` 文件变化时）：`bash -n`、固定版本的 shellcheck，以及 `infra/scripts/supervise_harness.sh` 的服务监督检查。
+- shell（`.sh` 文件变化时）：`bash -n`、固定版本的 shellcheck，以及 `infra/scripts/supervise_harness.sh` 和 `infra/scripts/stop_tree_harness.sh` 的服务监督、后代进程清理与树外进程保护检查。
 - Docker（后端、前端、`infra/` 变化时）：`docker compose config`、带层缓存的 API 镜像构建与镜像 smoke（`config validate`、`config docs --check`、Node 22、前端静态产物、`pg_dump`）。
-- 密钥扫描（每次运行）：gitleaks，外加一次种入合成密钥、要求扫描器报出的自检。
+- 密钥扫描（每次运行）：gitleaks；自检复用已安装的同一版本扫描器，在临时目录种入合成密钥，同时核对检出退出码和报告中的目标命中。扫描器执行错误、未检出或报告缺失均使自检失败。
 
 依赖安装使用锁文件，不另设重复安装矩阵或源码字符串检查，也不设覆盖率下限：覆盖率数字不说明测试是否有用。
 
