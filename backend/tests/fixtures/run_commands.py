@@ -14,7 +14,7 @@ from travel_agent.runtime.command_contracts import (
 
 
 class FakeCommandStore:
-    """内存版命令表。语义与 SQL 那份一致：只有未收口的命令能被取走或改写。"""
+    """单执行器的内存命令表；数据库并发领取与租约由集成测试验证。"""
 
     def __init__(self) -> None:
         self.commands: Dict[str, RunCommand] = {}
@@ -42,6 +42,7 @@ class FakeCommandStore:
 
     async def claim_pending(self, run_id: str, *, limit: int = 20) -> List[RunCommand]:
         claimed = []
+        batch_limit = max(1, min(limit, 200))
         for command in list(self.commands.values()):
             if (
                 command.run_id != run_id
@@ -50,7 +51,9 @@ class FakeCommandStore:
                 continue
             command.status = RunCommandStatus.CLAIMED
             claimed.append(command)
-        return claimed[:limit]
+            if len(claimed) == batch_limit:
+                break
+        return claimed
 
     async def settle(
         self,

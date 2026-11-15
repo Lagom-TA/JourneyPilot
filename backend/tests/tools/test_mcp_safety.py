@@ -375,7 +375,7 @@ async def test_protocol_and_amap_errors_do_not_return_provider_payload(monkeypat
     assert "private-credential-value" not in json.dumps(refusal)
 
 
-async def test_currency_failure_keeps_status_without_response_body(monkeypatch):
+async def test_currency_failure_keeps_status_without_response_body(monkeypatch, offline_http_environment):
     path = Path(__file__).resolve().parents[2] / "mcp/currency/frankfurter_mcp.py"
     spec = importlib.util.spec_from_file_location("test_frankfurter_mcp", path)
     assert spec and spec.loader

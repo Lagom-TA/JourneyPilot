@@ -7,8 +7,6 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from travel_agent.storage import database
-
 pytestmark = [
     pytest.mark.postgres,
     pytest.mark.skipif(os.getenv("JP_RUNTIME_ROLLBACK_TESTS") != "1", reason="需要显式启用配置库的临时表验证"),
@@ -16,7 +14,7 @@ pytestmark = [
 
 
 @pytest.fixture
-async def rollback_database(monkeypatch):
+async def rollback_database(monkeypatch, rollback_database_engine):
     from travel_agent.memory import chat_session
     from travel_agent.planning.delivery import persistence
     from travel_agent.runtime import run_recovery
@@ -32,7 +30,7 @@ async def rollback_database(monkeypatch):
         "delivery_bundle_heads", "delivery_bundle_commits", "trip_workspace_revisions",
         "fact_store_revisions", "weather_context_revisions",
     )
-    engine = database.get_engine()
+    engine = rollback_database_engine
     async with engine.connect() as connection:
         outer = await connection.begin()
         try:
@@ -66,7 +64,6 @@ async def rollback_database(monkeypatch):
                 await session.close()
         finally:
             await outer.rollback()
-    await database.close_db()
 
 
 async def test_long_turn_pages_without_repeating(rollback_database, monkeypatch):
