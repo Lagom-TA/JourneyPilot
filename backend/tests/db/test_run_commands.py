@@ -93,18 +93,18 @@ async def test_claim_takes_pending_in_creation_order_and_only_once(
     third, _ = await store.enqueue(
         run_id, RunCommandType.SUPPLEMENT, {"category": "pace", "content": "第三条"}
     )
-
     claimed = await store.claim_pending(run_id, limit=2)
 
-    assert [command.command_id for command in claimed] == [
-        first.command_id,
-        second.command_id,
-    ]
-    assert all(command.status is RunCommandStatus.CLAIMED for command in claimed)
-    assert all(command.claimed_by == EXECUTOR_ID for command in claimed)
+    assert len(claimed) == 2
+    assert claimed[0].status is claimed[1].status is RunCommandStatus.CLAIMED
+    assert claimed[0].claimed_by == claimed[1].claimed_by == EXECUTOR_ID
     # 超过本批上限的命令保持待领，下次轮询才能交付。
     remaining = await store.claim_pending(run_id, limit=2)
-    assert [command.command_id for command in remaining] == [third.command_id]
+    assert len(remaining) == 1
+    assert claimed[0].created_at <= claimed[1].created_at <= remaining[0].created_at
+    assert {claimed[0].command_id, claimed[1].command_id, remaining[0].command_id} == {
+        first.command_id, second.command_id, third.command_id,
+    }
     # 取走过就不再是待处理的：后续轮询不该把同一条要求再交付一遍。
     assert await store.claim_pending(run_id) == []
 

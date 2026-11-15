@@ -120,6 +120,17 @@ async def test_durable_cancel_reaches_the_boundary_without_any_notification(
         )
 
 
+async def test_command_fixture_keeps_later_batches_pending(run_id) -> None:
+    store = FakeCommandStore()
+    first, _ = await store.enqueue(run_id, RunCommandType.SUPPLEMENT, {"content": "第一条"})
+    second, _ = await store.enqueue(run_id, RunCommandType.SUPPLEMENT, {"content": "第二条"})
+    third, _ = await store.enqueue(run_id, RunCommandType.SUPPLEMENT, {"content": "第三条"})
+
+    assert await store.claim_pending(run_id, limit=2) == [first, second]
+    assert await store.claim_pending(run_id, limit=2) == [third]
+    assert await store.claim_pending(run_id, limit=2) == []
+
+
 async def test_supplement_is_consumed_only_after_requirements_preparation(
     wired, run_id
 ) -> None:
