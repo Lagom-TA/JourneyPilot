@@ -20,4 +20,6 @@ description = "只放行确定性的误报。"
 regexes = [
   # Python 属性表达式会被通用规则误判成凭据。
   '''^reasoning_effort=self\._reasoning_effort$''',
+  # 离线审批事件的固定样本值；只匹配该值，不放行测试文件或 token 字段。
+  '''^pending-e2e-approval$''',
 ]
