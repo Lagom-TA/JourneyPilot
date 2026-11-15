@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import time
+import threading
 
 import pytest
 
@@ -41,83 +41,90 @@ async def test_unknown_channel_is_rejected_rather_than_run_unbounded():
 
 
 async def test_channel_limit_caps_concurrent_thread_work(limits):
-    import threading
-
     limits.document_parse = 2
+    limits.queue_wait_seconds = 0.05
+    loop = asyncio.get_running_loop()
+    full = asyncio.Event()
+    release = threading.Event()
     peak = 0
     in_flight = 0
     guard = threading.Lock()
 
     def _work() -> None:
-        # 在线程体内记录真实并发峰值，这才会被通道上限挡住。
-        nonlocal in_flight
+        nonlocal in_flight, peak
         with guard:
             in_flight += 1
-        time.sleep(0.05)
-        with guard:
-            in_flight -= 1
-
-    def _snapshot_peak() -> None:
-        nonlocal peak
-        for _ in range(80):
+            peak = max(peak, in_flight)
+            if in_flight == 2:
+                loop.call_soon_threadsafe(full.set)
+        try:
+            assert release.wait(timeout=3), "测试结束时必须释放线程"
+        finally:
             with guard:
-                peak = max(peak, in_flight)
-            time.sleep(0.005)
+                in_flight -= 1
 
-    async def _one() -> None:
-        await run_blocking("document_parse", _work)
+    tasks = [asyncio.create_task(run_blocking("document_parse", _work)) for _ in range(2)]
+    try:
+        await asyncio.wait_for(full.wait(), timeout=3)
+        # 两个真实线程持续占用通道，第三个请求必须按排队预算拒绝。
+        with pytest.raises(BlockingWorkBusy):
+            await run_blocking("document_parse", lambda: None)
+    finally:
+        release.set()
+        await asyncio.gather(*tasks)
 
-    # 六个请求、上限两个：通道把线程内并发压到 2，而不是 6 个一起进线程池。
-    # watcher 每 5ms 采样一次 in_flight，持续 0.4s，覆盖全部六次调度的窗口。
-    watcher = asyncio.get_running_loop().run_in_executor(None, _snapshot_peak)
-    done, _ = await asyncio.wait(
-        [asyncio.gather(*[_one() for _ in range(6)])], timeout=0.5,
-    )
-    assert done
-    await watcher
-    assert blocking_work_metrics()["document_parse"]["admitted"] == 6
+    assert peak == 2 and in_flight == 0
+    assert await run_blocking("document_parse", lambda: "released") == "released"
+    assert blocking_work_metrics()["document_parse"]["admitted"] == 3
     assert blocking_work_metrics()["document_parse"]["limit"] == 2
-    assert 0 < peak <= 2
 
 
 async def test_queue_wait_has_an_upper_bound(limits):
     limits.pdf_export = 1
     limits.queue_wait_seconds = 0.05
+    held = asyncio.Event()
 
     async def _hold() -> None:
         async with blocking_channel("pdf_export"):
-            await asyncio.sleep(0.4)
+            held.set()
+            await asyncio.Event().wait()
 
     holder = asyncio.create_task(_hold())
-    await asyncio.sleep(0.02)
-    with pytest.raises(BlockingWorkBusy) as exc:
-        await run_blocking("pdf_export", lambda: None)
+    try:
+        await asyncio.wait_for(held.wait(), timeout=3)
+        with pytest.raises(BlockingWorkBusy) as exc:
+            await run_blocking("pdf_export", lambda: None)
+    finally:
+        holder.cancel()
+        await asyncio.gather(holder, return_exceptions=True)
     assert exc.value.channel == "pdf_export"
     assert blocking_work_metrics()["pdf_export"]["busy_rejections"] == 1
-    holder.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await holder
+    assert await run_blocking("pdf_export", lambda: "released") == "released"
 
 
 async def test_blocking_call_does_not_stall_the_event_loop(limits):
-    """一次 0.3 秒的同步调用期间，Event Loop 上的心跳必须继续跳。
+    """同步工作等待 Event Loop 发出释放信号，证明另一个协程能够继续执行。"""
 
-    这就是「PDF 不阻塞 Event Loop」那句话可以被机械验证的形式：不断言 PDF 的内容，
-    断言的是**另一个协程在这期间还能跑**。
-    """
-
-    ticks = 0
+    loop = asyncio.get_running_loop()
+    started = asyncio.Event()
+    release = threading.Event()
 
     async def _heartbeat() -> None:
-        nonlocal ticks
-        while True:
-            await asyncio.sleep(0.02)
-            ticks += 1
+        await started.wait()
+        release.set()
+
+    def _work() -> bool:
+        loop.call_soon_threadsafe(started.set)
+        return release.wait(timeout=3)
 
     beat = asyncio.create_task(_heartbeat())
-    await run_blocking("pdf_export", time.sleep, 0.3)
-    beat.cancel()
-    assert ticks >= 5
+    try:
+        released_by_loop = await run_blocking("pdf_export", _work)
+    finally:
+        release.set()
+        beat.cancel()
+        await asyncio.gather(beat, return_exceptions=True)
+    assert released_by_loop is True
 
 
 async def test_a_thread_call_keeps_its_contextvars():
