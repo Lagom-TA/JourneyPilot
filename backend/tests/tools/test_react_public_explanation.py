@@ -34,6 +34,17 @@ class FakeLLM:
             yield {"type": "finish", "content": "最终答案", "tool_calls": [], "assistant_replay": {}, "call_id": "llm_2"}
 
 
+async def _consume_notes(queue, note_received, notes, kinds):
+    while True:
+        item = await queue.get(timeout=3)
+        if item[0] == "done":
+            return
+        kinds.append(item[0])
+        if item[0] == "work_explanation":
+            notes.append(item[2]["content"])
+            note_received.set()
+
+
 @pytest.mark.asyncio
 async def test_note_is_published_before_tool_round_finishes_only():
     queue = EventBuffer()
@@ -42,17 +53,7 @@ async def test_note_is_published_before_tool_round_finishes_only():
     notes = []
     kinds = []
 
-    async def consume():
-        while True:
-            item = await queue.get(timeout=3)
-            if item[0] == "done":
-                return
-            kinds.append(item[0])
-            if item[0] == "work_explanation":
-                notes.append(item[2]["content"])
-                note_received.set()
-
-    consumer = asyncio.create_task(consume())
+    consumer = asyncio.create_task(_consume_notes(queue, note_received, notes, kinds))
     try:
         result = await asyncio.wait_for(streaming_react_loop(llm, [{"role": "user", "content": "找博物馆"}], TOOLS, queue, "destination_researcher", max_iterations=3, public_note=True), timeout=3)
         await queue.put(("done",))

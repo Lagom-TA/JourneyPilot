@@ -35,11 +35,7 @@ class _Session:
         return SimpleNamespace(first=lambda: ("run",))
 
 
-@pytest.mark.parametrize("operation", ["save", "reserve_tool"])
-@pytest.mark.parametrize("expired_after_lock", [False, True], ids=["live", "expired-after-lock"])
-async def test_journal_writes_lock_parent_and_recheck_lease_before_mutation(
-    monkeypatch, operation, expired_after_lock,
-):
+def _store_with_session(monkeypatch, *, expired_after_lock):
     session = _Session(expired_after_lock=expired_after_lock)
 
     @asynccontextmanager
@@ -47,32 +43,57 @@ async def test_journal_writes_lock_parent_and_recheck_lease_before_mutation(
         yield session
 
     monkeypatch.setattr(worker_journal_store, "get_db_session", transaction)
-    store = WorkerJournalStore()
+    return WorkerJournalStore(), session
 
-    async def write():
-        if operation == "save":
-            return await store.save("run", "scope", 0, {"answer": "已完成"}, lease_token="lease")
-        return await store.reserve_tool("run", "search", lease_token="lease", limit=2)
 
-    if expired_after_lock:
-        with pytest.raises(JournalConflict, match="execution lease lost"):
-            await write()
-        assert session.writes == []
-    else:
-        result = await write()
-        assert result == (1 if operation == "save" else {"calls": 1, "retries": {}})
-        assert len(session.writes) == 1
+def _assert_guard_order(session):
+    def index_of(*parts):
+        return next(
+            (index for index, (sql, _) in enumerate(session.statements)
+             if all(part in sql for part in parts)),
+            None,
+        )
 
-    guards = {
-        name: [index for index, (sql, _) in enumerate(session.statements)
-               if all(part in sql for part in parts)]
-        for name, parts in {
-            "parent": ("FROM trip_runs", "FOR KEY SHARE"),
-            "execution": ("FROM trip_run_executions", "FOR UPDATE"),
-            "lease": ("FROM trip_run_executions", "clock_timestamp()"),
-        }.items()
-    }
-    assert all(guards.values()), "写入口必须执行父行锁、执行行锁与实时租约校验"
-    assert guards["parent"][0] < guards["execution"][0] < guards["lease"][0]
-    assert session.statements[guards["lease"][0]][1] == {"run_id": "run", "lease_token": "lease"}
-    assert all(session.statements.index(write) > guards["lease"][0] for write in session.writes)
+    parent = index_of("FROM trip_runs", "FOR KEY SHARE")
+    execution = index_of("FROM trip_run_executions", "FOR UPDATE")
+    lease = index_of("FROM trip_run_executions", "clock_timestamp()")
+    assert parent is not None and execution is not None and lease is not None
+    assert parent < execution < lease
+    assert session.statements[lease][1] == {"run_id": "run", "lease_token": "lease"}
+    return lease
+
+
+_OPERATIONS = [
+    pytest.param("save", ("run", "scope", 0, {"answer": "已完成"}), {}, 1, id="save"),
+    pytest.param(
+        "reserve_tool", ("run", "search"), {"limit": 2}, {"calls": 1, "retries": {}},
+        id="reserve_tool",
+    ),
+]
+
+
+@pytest.mark.parametrize("operation,args,kwargs,expected", _OPERATIONS)
+async def test_journal_writes_after_locking_and_checking_live_lease(
+    monkeypatch, operation, args, kwargs, expected,
+):
+    store, session = _store_with_session(monkeypatch, expired_after_lock=False)
+
+    result = await getattr(store, operation)(*args, lease_token="lease", **kwargs)
+
+    assert result == expected
+    assert len(session.writes) == 1
+    lease_index = _assert_guard_order(session)
+    assert session.statements.index(session.writes[0]) > lease_index
+
+
+@pytest.mark.parametrize("operation,args,kwargs,expected", _OPERATIONS)
+async def test_journal_rejects_lease_expired_during_lock_wait(
+    monkeypatch, operation, args, kwargs, expected,
+):
+    store, session = _store_with_session(monkeypatch, expired_after_lock=True)
+
+    with pytest.raises(JournalConflict, match="execution lease lost"):
+        await getattr(store, operation)(*args, lease_token="lease", **kwargs)
+
+    assert session.writes == []
+    _assert_guard_order(session)

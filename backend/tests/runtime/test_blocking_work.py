@@ -44,7 +44,7 @@ async def test_channel_limit_caps_concurrent_thread_work(limits):
     limits.document_parse = 2
     limits.queue_wait_seconds = 0.05
     loop = asyncio.get_running_loop()
-    full = asyncio.Event()
+    entered = asyncio.Semaphore(0)
     release = threading.Event()
     peak = 0
     in_flight = 0
@@ -55,17 +55,20 @@ async def test_channel_limit_caps_concurrent_thread_work(limits):
         with guard:
             in_flight += 1
             peak = max(peak, in_flight)
-            if in_flight == 2:
-                loop.call_soon_threadsafe(full.set)
+            loop.call_soon_threadsafe(entered.release)
         try:
             assert release.wait(timeout=3), "测试结束时必须释放线程"
         finally:
             with guard:
                 in_flight -= 1
 
-    tasks = [asyncio.create_task(run_blocking("document_parse", _work)) for _ in range(2)]
+    tasks = [
+        asyncio.create_task(run_blocking("document_parse", _work)),
+        asyncio.create_task(run_blocking("document_parse", _work)),
+    ]
     try:
-        await asyncio.wait_for(full.wait(), timeout=3)
+        await asyncio.wait_for(entered.acquire(), timeout=3)
+        await asyncio.wait_for(entered.acquire(), timeout=3)
         # 两个真实线程持续占用通道，第三个请求必须按排队预算拒绝。
         with pytest.raises(BlockingWorkBusy):
             await run_blocking("document_parse", lambda: None)
