@@ -114,7 +114,7 @@ async function interceptOffline(
   reply: (body: ChatRequest, index: number) => MockReply,
   reducedMotion: 'reduce' | 'no-preference' = 'reduce',
 ): Promise<Harness> {
-  const appUrl = new URL(process.env.JOURNEYPILOT_APP_URL || 'http://127.0.0.1:8080');
+  const appUrl = new URL(test.info().project.use.baseURL!);
   if (!['localhost', '127.0.0.1', '[::1]'].includes(appUrl.hostname)) {
     throw new Error('Offline tests require a local frontend URL');
   }

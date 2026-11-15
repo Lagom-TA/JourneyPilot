@@ -1,84 +1,96 @@
-# 浏览器端到端测试（Playwright）
+# 浏览器回归与端到端测试（Playwright）
 
-端到端测试位于 `frontend/e2e/`，用于验证页面交互、工作台组件状态流转以及前后端联调。
+测试按环境分为 `offline` 和 `integration` 两个原生 Playwright project。同一用例只属于其中一个项目；离线浏览器回归验证真实组件与浏览器交互，完整服务联调验证实际 API、部署与持久化。
 
-运行前请先启动服务，并通过 `JOURNEYPILOT_APP_URL` 指定访问地址（默认为 `http://127.0.0.1:8080`）：
-- **本地开发前端（`:8080`）**：由 `./run.sh start` 或 `npm run dev` 启动的 Vite 服务提供，包含 `/e2e/fixtures/*.html` 组件测试夹具。
-- **构建产物入口（`:8001`）**：由 Docker Compose 或后端静态托管提供，适合运行面向完整应用的联调测试。
-
-在 `frontend/` 目录下执行：
+在 `frontend/` 目录安装依赖与浏览器：
 
 ```bash
-# 运行全部默认启用的测试
-JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 npm run test:e2e
-
-# 仅检查测试文件编译并列出所有用例
-npx playwright test --list
+npm ci
+npx playwright install chromium
 ```
 
-## 用例与运行条件
-
-| 测试文件 | 默认运行 | 适用环境与说明 |
-|---|---|---|
-| `smoke.spec.ts` | 是 | 完整应用；验证首页加载、`/api/health/ready` 与知识库接口连通性 |
-| `mobile-navigation.spec.ts` | 是 | 完整应用；验证移动端抽屉导航与页面切换 |
-| `home-inspiration.spec.ts` | 是 | 任意前端入口；拦截 `/api/` 验证首页灵感卡片与输入交互 |
-| `planner-intake.spec.ts` | 是 | 任意前端入口；拦截 `/api/` 验证自由输入与条件表单 |
-| `planner-pending.spec.ts` | 是 | 本地前端入口；拦截 `/api/` 验证首页交接、等待状态与取消操作 |
-| `multi-round-intake.spec.ts` | 是 | 任意前端入口；拦截 `/api/` 验证多轮需求追问交互 |
-| `generation-workspace.spec.ts` | 是 | Vite dev 服务（`:8080`）；通过本地夹具验证生成工作台四阶段交互 |
-| `archive-workspace.spec.ts` | 是 | 任意前端入口；拦截 `/api/` 验证我的行程、偏好设置与个人资料管理 |
-| `delivery-workspace.spec.ts` | 是 | 任意前端入口；拦截 `/api/` 与瓦片请求，验证地图、日程与阅读版联动 |
-| `session-state.spec.ts` | 需 `JP_SESSION_STATE_E2E=1` | Vite dev 服务（地址须为 `http://127.0.0.1:<端口>`）；验证多会话状态切换与恢复 |
-| `map-load-failure.spec.ts` | 需 `JP_MAP_LOAD_FAILURE_E2E=1` | Vite dev 服务（地址须为 `http://127.0.0.1:<端口>`）；验证地图瓦片加载降级提示 |
-| `research-progress.spec.ts` | 需 `JP_COMPONENT_E2E=1` | Vite dev 服务（`:8080`）；验证调研进度与 SSE 事件流夹具 |
-| `research-progress-layout.spec.ts` | 需 `JP_COMPONENT_E2E=1` | Vite dev 服务（`:8080`）；验证任务列表的桌面/窄屏对齐、可读字号及详情展开 |
-| `deployment-settings.spec.ts` | 需 `JP_DEPLOYMENT_URL=<URL>` | 自定义子路径与瓦片源的 Vite 服务；验证部署环境变量生效 |
-| `workspace.spec.ts` | 写入用例需 `JP_WRITE_E2E=1` | 完整应用；测试真实知识库资料与旅行风格的增删改查 |
-| `live-planning.spec.ts` | 需 `JP_LIVE_E2E=1` | 完整应用与可用大模型（可选 `JP_LIVE_DESTINATION=苏州`）；验证真实端到端行程生成 |
-| `delivery-readonly.spec.ts` | 需 `JP_READ_RUN_ID=<run_id>` | 完整应用；对已生成的历史行程做只读渲染验证 |
-
-## 常用运行命令
+## 离线浏览器回归
 
 ```bash
-# 运行离线首页与需求输入测试
-JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
-  npx playwright test e2e/home-inspiration.spec.ts e2e/planner-intake.spec.ts e2e/planner-pending.spec.ts e2e/multi-round-intake.spec.ts
+# 自动启动并在结束后关闭独立的 Vite 服务，不需要数据库或模型密钥
+npm run test:e2e:offline
 
-# 运行生成工作台与研究进度组件夹具测试（需 Vite dev 服务 :8080）
-JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
-  npx playwright test e2e/generation-workspace.spec.ts
+# 按受影响功能运行，仍使用同一套隔离服务
+npm run test:e2e:offline -- e2e/research-progress.spec.ts e2e/research-progress-layout.spec.ts
+npm run test:e2e:offline -- e2e/session-state.spec.ts
+npm run test:e2e:offline -- e2e/map-load-failure.spec.ts
+```
 
-JP_COMPONENT_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
-  npx playwright test e2e/research-progress.spec.ts e2e/research-progress-layout.spec.ts
+`playwright.offline.config.ts` 使用当前工作区源码启动 `http://127.0.0.1:4173`，由 Playwright 管理服务生命周期。端口已占用时明确失败，不复用可能属于其他版本的服务。测试中的 API、SSE 与瓦片使用夹具；专用 Vite 配置关闭 API 代理，并对漏拦截的 `/api` 请求明确返回 503，无法转发到正在运行的真实后端。`JOURNEYPILOT_APP_URL` 不改变这个隔离入口。
 
-# 运行会话状态与地图异常降级测试（需 127.0.0.1 的 Vite dev 服务）
-JP_SESSION_STATE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
-  npx playwright test e2e/session-state.spec.ts
+离线项目中所有用例直接执行，包括会话恢复、地图失败和研究进度，不需要额外的 opt-in 变量。
 
-JP_MAP_LOAD_FAILURE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
-  npx playwright test e2e/map-load-failure.spec.ts
+| 测试文件 | 保护的行为 |
+|---|---|
+| `home-inspiration.spec.ts` | 首页灵感、两种输入模式、地点搜索与键盘交互 |
+| `planner-intake.spec.ts`、`planner-pending.spec.ts`、`multi-round-intake.spec.ts` | 需求输入、交接、等待、取消与多轮追问 |
+| `generation-workspace.spec.ts` | 生成工作台阶段与研究方案操作 |
+| `archive-workspace.spec.ts` | 我的行程、偏好、资料管理及失败反馈 |
+| `delivery-workspace.spec.ts` | 地图、日程、阅读版联动与交付失败反馈 |
+| `session-state.spec.ts` | 多会话隔离、断线恢复、审批与只读历史 |
+| `map-load-failure.spec.ts` | 地图模块加载失败、日程可用与恢复 |
+| `research-progress.spec.ts`、`research-progress-layout.spec.ts` | SSE 事件投影、任务详情、可读布局与键盘操作 |
 
-# 验证局域网子路径与自定义瓦片部署（先在终端 A 启动定制 Vite 服务，再在终端 B 运行测试）
+布局测试保留无溢出、可读字号、触控范围、对齐与键盘操作保护。装饰边框、伪元素和具体留白值由界面设计决定，不固定为行为契约。
+
+## 完整服务与部署联调
+
+先通过 `./run.sh start` 或 Docker Compose 启动完整服务，再指定 Vite 代理入口或构建产物入口：
+
+```bash
+JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 npm run test:e2e:integration
+```
+
+这个命令连接已有服务，不自动启动离线 Vite。实际写入、真实模型调用、历史行程读取与特殊部署仍各自显式启用。
+
+| 测试文件 | 运行条件与保护的行为 |
+|---|---|
+| `smoke.spec.ts` | 默认执行；首页挂载、readiness 组件状态和非法上传拒绝 |
+| `mobile-navigation.spec.ts` | 默认执行；移动导航、焦点与页面切换 |
+| `workspace.spec.ts` | 默认检查导航与恢复；写入用例需 `JP_WRITE_E2E=1`，只创建和清理自身测试资料与风格 |
+| `live-planning.spec.ts` | 需 `JP_LIVE_E2E=1` 和可用模型；验证真实规划并产生供应商费用 |
+| `delivery-readonly.spec.ts` | 需 `JP_READ_RUN_ID=<run_id>`；检查已有交付及 PDF |
+| `deployment-settings.spec.ts` | 需 `JP_DEPLOYMENT_URL=<URL>`；检查子路径、定制瓦片与非安全 HTTP 环境 |
+
+```bash
+# 真实后端写入
+JP_WRITE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
+  npm run test:e2e:integration -- e2e/workspace.spec.ts --workers=1
+
+# 真实模型规划，可通过 JP_LIVE_DESTINATION 指定目的地
+JP_LIVE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
+  npm run test:e2e:integration -- e2e/live-planning.spec.ts --workers=1
+
+# 已有行程的只读交付
+JP_READ_RUN_ID=trip_xxx JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
+  npm run test:e2e:integration -- e2e/delivery-readonly.spec.ts --workers=1
+
+# 定制部署：终端 A 启动，终端 B 运行测试
 HOST="$LAN_HOST" PORT=8082 VITE_BASE=/journeypilot/ \
   VITE_MAP_TILE_URL="http://$LAN_HOST:8082/custom-tile/{z}/{x}/{y}.png" \
   VITE_MAP_TILE_ATTRIBUTION="Offline Tile" npm run dev
 
-JP_DEPLOYMENT_URL="http://$LAN_HOST:8082" npx playwright test e2e/deployment-settings.spec.ts
-
-# 运行真实后端写入与真实模型规划测试
-JP_WRITE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
-  npx playwright test e2e/workspace.spec.ts --workers=1
-
-JP_LIVE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
-  npx playwright test e2e/live-planning.spec.ts --workers=1
-
-# 验证已有行程的只读交付页面
-JP_READ_RUN_ID=trip_xxx JOURNEYPILOT_APP_URL=http://127.0.0.1:8001 \
-  npx playwright test e2e/delivery-readonly.spec.ts --workers=1
+JP_DEPLOYMENT_URL="http://$LAN_HOST:8082" \
+  npm run test:e2e:integration -- e2e/deployment-settings.spec.ts
 ```
 
-## 测试产物与报告
+`npm run test:e2e` 同时选择两个项目，并连接 `JOURNEYPILOT_APP_URL`（默认 `http://127.0.0.1:8080`）。使用该入口跑全部用例时，应提供带真实 API 代理的 Vite 服务，既能加载 `/e2e/fixtures/*.html`，也能处理完整服务联调。仅提供构建产物的 `:8001` 入口应选择 `test:e2e:integration`。
 
-- 测试失败时，Playwright 会自动在 `test-results/` 下保存页面截图、执行 Trace 与录屏；当环境中存在 `CI` 变量时，还会生成 `test-results/playwright-junit.xml` 报告。
-- `live-planning.spec.ts` 在运行真实规划时会额外归档 SSE 事件流、Run/Bundle 快照与导出的 PDF 文件，便于回溯分析。
+## 收集、验证与报告
+
+```bash
+npm run type-check                  # TypeScript 类型检查，包括配置、规格与组件夹具
+npm run test:e2e:offline -- --list    # 只收集离线用例，不启动服务、不执行断言
+npm run test:e2e:integration -- --list
+```
+
+- `--list` 只证明用例可以收集；类型检查、浏览器执行与完整服务验收分别报告。
+- CI 禁止 `.only`，失败可重试一次以保留诊断证据；首次失败后重试成功仍使门禁失败，不以重试隐藏不稳定行为。
+- 失败截图、Trace 与录屏写入 `test-results/`；设置 `CI` 时额外生成 `test-results/playwright-junit.xml`。
+- `live-planning.spec.ts` 还会归档 SSE 事件、Run/Bundle 快照和 PDF。
+- 环境未满足或主动跳过的用例不计为通过。离线结果证明前端行为，真实供应商、数据库与定制部署需要对应联调结果。

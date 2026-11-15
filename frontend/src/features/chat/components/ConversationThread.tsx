@@ -202,7 +202,7 @@ export const ConversationThread: React.FC<{
         </div>
       </div>
 
-      {!planGatePending && (<div className={cn('shrink-0 px-4 py-3 sm:px-6', embedded && 'flex max-h-full min-h-0 flex-col', showCanvas && 'border-t border-stroke bg-surface/50')}>
+      {!planGatePending && (<div className={cn('px-4 py-3 sm:px-6', embedded ? 'flex max-h-full min-h-0 shrink flex-col' : 'shrink-0', showCanvas && 'border-t border-stroke bg-surface/50')}>
           <div className={cn('mx-auto w-full max-w-3xl', embedded && 'flex max-h-[min(24rem,45dvh)] min-h-0 shrink flex-col')}>
             {!state.pendingRouteConfirmation && <InputArea minimal={embedded} initialInput={initialInput} targetRunId={targetRunId} onInputSent={onInputSent}/>}
           </div>

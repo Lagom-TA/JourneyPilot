@@ -190,6 +190,8 @@ test('刷新后工作台恢复待答问题，回答继续同一运行', async ({
         }, trace_event_count: 0, pending_monitor_trigger_count: 0, last_error: null, updated_at: '2026-11-01',
       },
       events: [],
+      execution: null,
+      available_actions: [],
     }),
   });
   await page.goto('/');

@@ -6,10 +6,7 @@ import { intercityRailCandidateBundle, xianLayoutBundle, xianMixedTransportBundl
 const fixtureOrigin = { place_id: 'manual:beijing', provider: 'manual_verified', kind: 'city', name: '北京', display_name: '北京', country_code: 'CN', latitude: 39.9042, longitude: 116.4074, admin_path: ['中国', '北京'] };
 const fixtureDestination = { place_id: 'manual:xian', provider: 'manual_verified', kind: 'city', name: '西安', display_name: '西安', country_code: 'CN', latitude: 34.2649, longitude: 108.9542, admin_path: ['中国', '陕西', '西安'] };
 
-test.skip(process.env.JP_SESSION_STATE_E2E !== '1', 'Explicit offline session-state opt-in required');
-const baseURL = process.env.JOURNEYPILOT_APP_URL || '';
 test.use({ serviceWorkers: 'block' });
-if (process.env.JP_SESSION_STATE_E2E === '1' && !/^http:\/\/127\.0\.0\.1:\d+$/.test(baseURL)) throw new Error('Offline suite requires an explicit loopback Vite URL');
 
 type StreamHarness = { send: (events: unknown[]) => void; close: () => void };
 type FixtureWindow = Window & { offlineStream?: StreamHarness; offlineStreams?: Record<string, StreamHarness>; __offlineChatBodies?: unknown[]; __offlineFailChatAttempts?: number; __offlineStaleGateOnce?: boolean };
@@ -24,6 +21,7 @@ const STAGED_RESEARCH_STEPS = [
 ];
 
 async function offlineApp(page: Page, options: { bundle?: boolean; recovery?: boolean; delayedA?: boolean; research?: boolean; planGate?: boolean; notice?: boolean; bundleData?: ReturnType<typeof deliveryBundle>; terminalStatus?: TerminalRunStatus; resumable?: boolean; readOnlyHistory?: boolean; memoryFact?: boolean } = {}) {
+  const baseURL = new URL(test.info().project.use.baseURL!).origin;
   const pageErrors: string[] = [], escapes: string[] = [], requests: string[] = [];
   let understandingGate = false;
   let status: string = options.planGate
@@ -723,8 +721,10 @@ test('many queued adjustments do not push the composer below the panel', async (
   const panel = conversation.locator('.journey-content-scroll');
   await input.focus();
   const [inputBox, panelBox] = await Promise.all([input.boundingBox(), panel.boundingBox()]);
-  expect(Math.abs(panelBox!.y + panelBox!.height - (inputBox!.y + inputBox!.height))).toBeLessThan(35);
-  await expect(input).toBeInViewport();
+  expect(inputBox!.y).toBeGreaterThanOrEqual(panelBox!.y);
+  expect(inputBox!.y + inputBox!.height).toBeLessThanOrEqual(panelBox!.y + panelBox!.height);
+  await expect(input).toBeInViewport({ ratio: 1 });
+  await expect(conversation.getByTestId('send-button')).toBeInViewport({ ratio: 1 });
   expect(await input.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
   await assertOffline(page, fixture);
 });

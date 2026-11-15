@@ -1,8 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 
 // 正式组件与合成事件；经真实 SSE 解析和状态投影，不调用付费 API。
-test.skip(process.env.JP_COMPONENT_E2E !== '1', 'Requires Vite dev component fixture');
-
 test.beforeEach(async ({ page, baseURL }) => {
   const localOrigin = new URL(baseURL!).origin;
   await page.route('**/*', route => {
@@ -68,6 +66,8 @@ test('工具保留真实计数与安全详情，内部载荷和失败正文不�
   await page.getByRole('button', { name: '长查询', exact: true }).click();
   const destination = await openGroup(page, 'destination');
   await expect(page.getByTestId('research-agent-planning')).toHaveCount(0);
+  await destination.getByRole('button', { name: '地点搜索 · 3 次 已结束' }).click();
+  await destination.getByRole('button', { name: '地点搜索 · 4 次 已结束' }).click();
   const fourResults = page.getByTestId('research-query').filter({ hasText: '找到 4 个结果：深圳湾公园、红树林、人才公园、海上世界' });
   await expect(fourResults.locator('summary')).toHaveCount(1);
   await fourResults.locator('summary').click();

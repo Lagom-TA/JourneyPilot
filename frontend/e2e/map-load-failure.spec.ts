@@ -1,14 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// 在 Vite dev server 下运行（`npm run dev` 默认监听 :8080）：
-//   JP_MAP_LOAD_FAILURE_E2E=1 JOURNEYPILOT_APP_URL=http://127.0.0.1:8080 \
-//     npx playwright test e2e/map-load-failure.spec.ts
+// npm run test:e2e:offline -- e2e/map-load-failure.spec.ts
 // 页面只加载本地合成 Bundle；/api 与地图瓦片全部在浏览器内拦截，不读写真实行程。
-test.skip(process.env.JP_MAP_LOAD_FAILURE_E2E !== '1', 'Explicit offline map-load opt-in required');
-const baseURL = process.env.JOURNEYPILOT_APP_URL || '';
-if (process.env.JP_MAP_LOAD_FAILURE_E2E === '1' && !/^http:\/\/127\.0\.0\.1:\d+$/.test(baseURL)) {
-  throw new Error('Offline suite requires an explicit loopback Vite URL');
-}
 
 const TILE_PATTERN = /^https:\/\/webrd0[1-4]\.is\.autonavi\.com\/appmaptile/;
 // Vite 的依赖缓存目录可自定义，包含 /@fs/ 路径时仍需拦截地图依赖。
@@ -28,6 +21,7 @@ async function mountFixture(
   page: Page,
   options: { depFailure?: Partial<DepFailure> } = {},
 ): Promise<OfflineFixture> {
+  const baseURL = new URL(test.info().project.use.baseURL!).origin;
   const fixture: OfflineFixture = {
     pageErrors: [],
     apiRequests: [],

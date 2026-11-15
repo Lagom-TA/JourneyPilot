@@ -165,7 +165,9 @@ uv run --project backend pytest -c backend/pyproject.toml backend/tests/ --ignor
 cd frontend && npm ci && npm run check
 ```
 
-See the [backend test guide](backend/tests/README.md) and [end-to-end test guide](frontend/e2e/README.md) for database integration and browser test workflows.
+For affected browser behavior, run `npx playwright install chromium` once in `frontend/`, then `npm run test:e2e:offline`. This starts an isolated Vite server with synthetic API fixtures and needs no backend or model credentials. To check an existing full deployment, use `JOURNEYPILOT_APP_URL=<URL> npm run test:e2e:integration`; persistent writes and real model calls require explicit opt-ins.
+
+See the [backend test guide](backend/tests/README.md) and [end-to-end test guide](frontend/e2e/README.md) for database integration, test selection, and browser acceptance boundaries.
 
 - [Documentation index](docs/README.md) · [Architecture](docs/architecture/overview.md) · [Configuration](docs/configuration.md)
 - [Contributing](CONTRIBUTING.md) · [Security policy](SECURITY.md)
